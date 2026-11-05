@@ -19,6 +19,7 @@ import {
 import {
   ERR_INPUT_INVALID,
   errorTypeOf,
+  deriveContext,
   InvokeError,
   isCancellationError,
   isInvokeError,
@@ -1151,7 +1152,7 @@ class HttpServer implements ResourceInstance {
           if (restricted) route.constraints = { ...(route.constraints ?? {}), teloHost: hosts.id };
           this.hostRoutes.record(route.url, route.method, hosts);
         });
-        if (guard) scope.addHook("onRequest", this.guardHook(guard));
+        if (guard) scope.addHook("onRequest", this.guardHook(guard, `/mounts/${index}/guard/invoke`));
         await api.register(scope, prefix, this.requestScope);
       });
     }
@@ -1210,7 +1211,7 @@ class HttpServer implements ResourceInstance {
         let result: any;
         try {
           result = await this.ctx.invoke(handler.kind, handler.name, invokeInput, {
-            ctx: trace.context,
+            ctx: deriveContext(trace.context, { calledAt: "/notFoundHandler/invoke" }),
           });
         } catch (err) {
           if (requestBodyRefused(trace.context)) return reply;
@@ -1269,7 +1270,7 @@ class HttpServer implements ResourceInstance {
    * whose `catches:` and 500 problem follow — so a guard that fails never lets
    * the request through.
    */
-  private guardHook(guard: ResolvedGuard) {
+  private guardHook(guard: ResolvedGuard, calledAt: string) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
       const language = this.languageOf(request, reply);
       const requestContext = {
@@ -1298,7 +1299,9 @@ class HttpServer implements ResourceInstance {
           : {};
       const trace = this.requestScope.forRequest(request);
       try {
-        await this.ctx.invoke(guard.kind, guard.name, inputs, { ctx: trace.context });
+        await this.ctx.invoke(guard.kind, guard.name, inputs, {
+          ctx: deriveContext(trace.context, { calledAt }),
+        });
       } catch (err) {
         if (!isInvokeError(err)) throw err;
         trace.reject(err);

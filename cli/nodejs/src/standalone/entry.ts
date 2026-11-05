@@ -5,6 +5,7 @@ import { hideBin } from "yargs/helpers";
 import { APP_INFO_ENV } from "../package/app-home.js";
 import { carriesPayload } from "../package/app-trailer.js";
 import { outErrLine } from "../output.js";
+import { startFailureText } from "../start-failure-text.js";
 import { installStandaloneRuntime } from "./standalone-runtime.js";
 
 /**
@@ -70,6 +71,6 @@ void (async () => {
   // stack swallowed by the runtime's unhandled-rejection default. It goes
   // through the Output seam like every other CLI-owned write — the format has
   // not been selected yet, and stderr is the human surface in both.
-  outErrLine(`telo: failed to start: ${err instanceof Error ? err.stack : String(err)}`);
+  outErrLine(`telo: failed to start: ${startFailureText(err)}`);
   process.exitCode = 1;
 });

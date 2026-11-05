@@ -76,4 +76,22 @@ describe("OTLP/JSON encoding", () => {
     expect(attributes).toContainEqual({ key: "exception.type", value: { stringValue: "ERR_X" } });
     expect(attributes).toContainEqual({ key: "exception.message", value: { stringValue: "boom" } });
   });
+
+  it("exports the Telo trace as the stacktrace and the host stack only for an uncoded failure", () => {
+    const attributesOf = (error: object) =>
+      firstRecord(toOtlpPayload([baseRecord({ error: { type: "ERR_X", message: "boom", ...error } })]))[
+        "attributes"
+      ] as { key: string; value: unknown }[];
+    const coded = attributesOf({ stack: "at A.a#/x (m.yaml:1:2)" });
+    expect(coded).toContainEqual({
+      key: "exception.stacktrace",
+      value: { stringValue: "at A.a#/x (m.yaml:1:2)" },
+    });
+    expect(coded.map((a) => a.key)).not.toContain("telo.exception.host_stacktrace");
+    const uncoded = attributesOf({ stack: "at A.a#/x (m.yaml:1:2)", hostStack: "Error\n  at f.js:1" });
+    expect(uncoded).toContainEqual({
+      key: "telo.exception.host_stacktrace",
+      value: { stringValue: "Error\n  at f.js:1" },
+    });
+  });
 });

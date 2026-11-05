@@ -350,7 +350,7 @@ If a `mode: stream` `returns:` entry matches, the response is committed (status 
 
 The format-codec encoders embed *in-band* error frames at their own level: `Ndjson.Encoder` emits `{"type":"error","error":{"message":"..."}}` and ends; `Sse.Encoder` emits `event: error\ndata: ...\n\n` and ends; `PlainText.Encoder` and `Octet.Encoder` propagate the error and abort the transport.
 
-Regardless of encoder, a mid-stream failure is logged server-side through the server's structured logger at `error` level with the error, route, status, and MIME — so a failure that can't reach `catches:` is never silent for the operator. It is also emitted as an `Http.Api.streamFailed` event for debug tooling.
+Regardless of encoder, a mid-stream failure is logged server-side through the server's structured logger at `error` level with the error, route, status, and MIME — so a failure that can't reach `catches:` is never silent for the operator. It is also emitted as an `Http.Api.streamFailed` event for debug tooling, whose `error` is `ctx.errorValueOf(err)` — the failure's error value as a log line writes it (`type`, `message`, the Telo `stack` and `frames`, and a `hostStack` only for an uncoded failure). A handler that fails names the API as `HttpServer.Api.<name>#/routes/<i>/handler` in that trace, `<i>` being the route's position in `routes:`.
 
 ## `notFoundHandler`
 

@@ -63,6 +63,19 @@ fn marked_error(env: &Env, err: &ControllerError) -> napi::Result<JsUnknown> {
             .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
         object.set_named_property("displayMessage", value_to_js(env, &display_message)?)?;
     }
+    // The trace a controller carries survives its return (protocol §3.2).
+    if !err.trace.frames.is_empty() {
+        let frames = serde_json::to_value(&err.trace.frames)
+            .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
+        object.set_named_property("frames", value_to_js(env, &frames)?)?;
+    }
+    if err.trace.dropped_frames_count > 0 {
+        let dropped = serde_json::Value::from(err.trace.dropped_frames_count);
+        object.set_named_property("droppedFramesCount", value_to_js(env, &dropped)?)?;
+    }
+    if let Some(host_stack) = &err.host_stack {
+        object.set_named_property("hostStack", value_to_js(env, &serde_json::Value::from(host_stack.clone()))?)?;
+    }
     Ok(object.into_unknown())
 }
 

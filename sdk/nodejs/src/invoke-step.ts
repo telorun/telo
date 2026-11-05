@@ -237,6 +237,10 @@ export interface InvokeStepState {
    *  `invokeCtx` to carry it, since a context seeded from nothing would replace
    *  the ambient one. */
   inputsAt?: string;
+  /** Where this step is written in the calling resource's declaration (RFC 6901),
+   *  sent as the dispatch context's `calledAt`: the pointer of the caller's frame
+   *  in a failure's trace. Sent under the same conditions as `inputsAt`. */
+  calledAt?: string;
 }
 
 /**
@@ -802,10 +806,15 @@ async function dispatch(
   // arrived with, which names the call that reached this body. The direct call
   // below gets none: it has no exit to read one at and would hand it on.
   const ownCtx =
-    attemptCtx?.inputsAt === undefined ? attemptCtx : deriveContext(attemptCtx, {});
+    attemptCtx?.inputsAt === undefined && attemptCtx?.calledAt === undefined
+      ? attemptCtx
+      : deriveContext(attemptCtx!, {});
   const dispatchCtx =
-    attemptCtx && state.inputsAt !== undefined
-      ? deriveContext(attemptCtx, { inputsAt: state.inputsAt })
+    attemptCtx && (state.inputsAt !== undefined || state.calledAt !== undefined)
+      ? deriveContext(attemptCtx, {
+          ...(state.inputsAt === undefined ? {} : { inputsAt: state.inputsAt }),
+          ...(state.calledAt === undefined ? {} : { calledAt: state.calledAt }),
+        })
       : ownCtx;
 
   if (raw && typeof (raw as Invocable).invoke === "function") {

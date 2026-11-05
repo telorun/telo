@@ -26,6 +26,7 @@ use crate::controllers::module::module_controller::{load_module, LoadedModule, M
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
 use crate::invoke_dispatch;
+use telorun_sdk_core::FailureFrame;
 use crate::lexical_path;
 use crate::manifest_sources::local_file_source::LocalFileSource;
 use crate::manifest_sources::local_manifest_cache_source::{
@@ -259,7 +260,12 @@ impl Kernel {
 
         let instance = self.resolve_target_ref(root, invoke, index)?;
         let inputs = target.get("inputs").cloned().unwrap_or_else(|| json!({}));
-        invoke_dispatch::invoke(&instance, &inputs)
+        let application = FailureFrame::new(
+            "Telo.Application",
+            root.context.name.clone(),
+            Some(root.context.source.clone()),
+        );
+        invoke_dispatch::invoke(&instance, &inputs, Some(&application))
     }
 
     /// Resolve a step's `invoke:` to a live instance — local by name, or through

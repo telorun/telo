@@ -94,6 +94,62 @@
               "name"
             ],
             "additionalProperties": false
+          },
+          "frames": {
+            "description": "The failure's trace, innermost first: each resource it left and the call site in its declaration. Carried unchanged by a controller rethrowing the failure.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "module": {
+                  "type": "string"
+                },
+                "pointer": {
+                  "type": "string",
+                  "pattern": "^(/([^/~]|~[01])*)*$"
+                },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "line": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "column": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "line",
+                    "column"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "kind",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "droppedFramesCount": {
+            "description": "How many frames the bound of 64 cut.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "hostStack": {
+            "description": "The host's own stack text, set only for a failure that was not a structured refusal.",
+            "type": "string"
           }
         },
         "required": [

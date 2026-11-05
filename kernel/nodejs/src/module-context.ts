@@ -30,6 +30,7 @@ import {
 import { MODULE_CALL_DISPATCH_KEY } from "@telorun/templating";
 import { EvaluationContext } from "./evaluation-context.js";
 import type { DispatchCaller } from "./failure-location.js";
+import { recordDispatchExit } from "./failure-trace.js";
 import { ModuleFunctionTable, splitQualifiedCall } from "./module-functions.js";
 import type { NeedFulfilment } from "./need-fulfilment.js";
 import { isResolvedReference, resolvedReference, type AnalysisRegistry } from "@telorun/analyzer";
@@ -911,7 +912,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return result;
   }
 
-  override async run(name: string, ctx?: InvokeContext) {
+  override async run(name: string, ctx?: InvokeContext, caller?: DispatchCaller, calledAt?: string) {
     const resource = this.resourceInstances.get(name);
     if (!resource) {
       throw new Error(
@@ -923,7 +924,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     }
     // Delegate execution to the base run(), which applies the cancellation gate
     // and scope; the checks above keep the module-scoped error messages.
-    await super.run(name, ctx);
+    await super.run(name, ctx, caller, calledAt);
   }
 
   async runTargets(ctx?: InvokeContext, appName?: string) {
@@ -989,9 +990,12 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     // The boot run's own context, carrying only the per-dispatch place of the
     // target's inputs the leaf sends.
     const dispatchCtx = (sent: InvokeContext | undefined): InvokeContext | undefined =>
-      sent?.inputsAt === undefined || targetCtx === undefined
+      (sent?.inputsAt === undefined && sent?.calledAt === undefined) || targetCtx === undefined
         ? targetCtx
-        : deriveContext(targetCtx, { inputsAt: sent.inputsAt });
+        : deriveContext(targetCtx, {
+            ...(sent.inputsAt === undefined ? {} : { inputsAt: sent.inputsAt }),
+            ...(sent.calledAt === undefined ? {} : { calledAt: sent.calledAt }),
+          });
     const stepCtx: InvokeStepContext = {
       expandValue: (value, context) => this.expandWith(value, context),
       invoke: (kind, name, inputs, options?: { ctx?: InvokeContext }) =>
@@ -1009,7 +1013,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
 
     if (tracing) await this.emit(`${appLabel}.Running`, appSpan("start", undefined));
     try {
-      await this.dispatchTargets(stepCtx, steps, runResolvedInstance, targetCtx);
+      await this.dispatchTargets(stepCtx, steps, runResolvedInstance, caller, targetCtx);
       if (tracing) {
         await this.emit(`${appLabel}.Run`, appSpan("end", "ok"));
         finishApp("ok");
@@ -1031,6 +1035,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     stepCtx: InvokeStepContext,
     steps: Record<string, unknown>,
     runResolvedInstance: (inst: ResourceInstance, kind: string, name: string) => Promise<void>,
+    application: DispatchCaller,
     ctx?: InvokeContext,
   ) {
     // Recover the kind+name the kernel stamped onto a `!ref`-injected instance,
@@ -1040,96 +1045,108 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       return { kind: id?.kind ?? "", name: id?.name ?? fallbackName };
     };
     for (let i = 0; i < this.targets.length; i++) {
-      const target = this.targets[i]!;
-      if (typeof target === "string") {
-        await this.run(target, ctx);
-        continue;
-      }
-      // A bare `!ref Alias.name` boot target is Phase-5-injected into the live
-      // instance, which for a Run.Sequence exposes both `run()` and `invoke()`.
-      // Guard against treating such an instance as an authored inline-invoke
-      // step — only a structural `{ invoke: <ref>, inputs }` spec (no `run`)
-      // belongs here; the live instance falls through to the runnable branch.
-      if (!isRunnableInstance(target) && "invoke" in target && target.invoke !== undefined) {
-        // SPREAD, not field-by-field. A dispatch site is one kernel-owned shape,
-        // and rebuilding it here by hand is what silently dropped `retry:` —
-        // the schema admitted the field and this reconstruction threw it away, so
-        // a boot target asking for three attempts got one. Forwarding the entry
-        // keeps this correct the next time the shape grows.
-        // A cross-module `!ref Alias.name` stays a `{kind, name, alias}` ref; the leaf's
-        // alias branch resolves it via `resolveImportedInstance` and dispatches through
-        // `invokeResolved` so invocation events and error wrapping still fire.
-        const step: InvokeStep = {
-          ...(target as InlineInvokeTarget),
-          name: target.name ?? `Target${i}`,
-          invoke: target.invoke,
-        };
-        // The boot cancellation, so a target parked in a retry backoff ends on
-        // SIGINT rather than sitting out the remaining delay.
+      // A target the Application dispatches through the invoke chokepoint is framed
+      // there, as a caller; a run target is framed here, at its place in `targets:`.
+      let dispatched = false;
+      try {
+        const target = this.targets[i]!;
+        if (typeof target === "string") {
+          await this.run(target, ctx);
+          continue;
+        }
+        // A bare `!ref Alias.name` boot target is Phase-5-injected into the live
+        // instance, which for a Run.Sequence exposes both `run()` and `invoke()`.
+        // Guard against treating such an instance as an authored inline-invoke
+        // step — only a structural `{ invoke: <ref>, inputs }` spec (no `run`)
+        // belongs here; the live instance falls through to the runnable branch.
+        if (!isRunnableInstance(target) && "invoke" in target && target.invoke !== undefined) {
+          // SPREAD, not field-by-field. A dispatch site is one kernel-owned shape,
+          // and rebuilding it here by hand is what silently dropped `retry:` —
+          // the schema admitted the field and this reconstruction threw it away, so
+          // a boot target asking for three attempts got one. Forwarding the entry
+          // keeps this correct the next time the shape grows.
+          // A cross-module `!ref Alias.name` stays a `{kind, name, alias}` ref; the leaf's
+          // alias branch resolves it via `resolveImportedInstance` and dispatches through
+          // `invokeResolved` so invocation events and error wrapping still fire.
+          const step: InvokeStep = {
+            ...(target as InlineInvokeTarget),
+            name: target.name ?? `Target${i}`,
+            invoke: target.invoke,
+          };
+          // The boot cancellation, so a target parked in a retry backoff ends on
+          // SIGINT rather than sitting out the remaining delay.
+          dispatched = true;
         await executeInvokeStep(step, stepCtx, {
-          steps,
-          invokeCtx: ctx,
-          site: `targets[${i}]`,
-          inputsAt: `/targets/${i}/inputs`,
-        });
-        continue;
-      }
-      if ("ref" in target && target.ref != null) {
-        if (
-          target.when === undefined ||
-          predicateResult(this.expandWith(target.when, { steps }), `targets[${i}].when`)
-        ) {
-          const ref = target.ref as unknown;
-          // Phase 5 injection may have replaced the ref slot with the live
-          // instance; run it directly.
-          if (isRunnableInstance(ref)) {
-            const id = idOf(ref, `target[${i}]`);
-            await runResolvedInstance(ref, id.kind, id.name);
-          } else {
-            const r =
-              ref && typeof ref === "object"
-                ? (ref as { name: string; alias?: string })
-                : undefined;
-            if (r && typeof r.alias === "string" && r.alias !== "Self") {
-              const inst = this.resolveImportedInstance(r.alias, r.name);
-              if (!inst || typeof inst.run !== "function") {
-                throw new Error(
-                  `Boot target '${r.alias}.${r.name}' is not a runnable exported instance`,
-                );
-              }
-              await runResolvedInstance(inst, getRefIdentity(inst as object)?.kind ?? "", r.name);
+            steps,
+            invokeCtx: ctx,
+            site: `targets[${i}]`,
+            inputsAt: `/targets/${i}/inputs`,
+          calledAt: `/targets/${i}`,
+          });
+          continue;
+        }
+        if ("ref" in target && target.ref != null) {
+          if (
+            target.when === undefined ||
+            predicateResult(this.expandWith(target.when, { steps }), `targets[${i}].when`)
+          ) {
+            const ref = target.ref as unknown;
+            // Phase 5 injection may have replaced the ref slot with the live
+            // instance; run it directly.
+            if (isRunnableInstance(ref)) {
+              const id = idOf(ref, `target[${i}]`);
+              await runResolvedInstance(ref, id.kind, id.name);
             } else {
-              await this.run(typeof ref === "string" ? ref : r!.name, ctx);
+              const r =
+                ref && typeof ref === "object"
+                  ? (ref as { name: string; alias?: string })
+                  : undefined;
+              if (r && typeof r.alias === "string" && r.alias !== "Self") {
+                const inst = this.resolveImportedInstance(r.alias, r.name);
+                if (!inst || typeof inst.run !== "function") {
+                  throw new Error(
+                    `Boot target '${r.alias}.${r.name}' is not a runnable exported instance`,
+                  );
+                }
+                await runResolvedInstance(inst, getRefIdentity(inst as object)?.kind ?? "", r.name);
+              } else {
+                await this.run(typeof ref === "string" ? ref : r!.name, ctx);
+              }
             }
           }
+          continue;
         }
-        continue;
-      }
-      // Bare run target. Phase 5 injection resolves a `!ref name` /
-      // cross-module `!ref Alias.name` slot into the live instance before boot,
-      // so the common runtime shape here is a pre-resolved ResourceInstance;
-      // fall back to the structural ref forms when injection left them in place.
-      if (isRunnableInstance(target)) {
-        const id = idOf(target, `target[${i}]`);
-        await runResolvedInstance(target, id.kind, id.name);
-        continue;
-      }
-      const bare = isResolvedReference(target) ? target : undefined;
-      if (bare && bare.alias !== undefined && bare.alias !== "Self") {
-        const inst = this.resolveImportedInstance(bare.alias, bare.name);
-        if (!inst || typeof inst.run !== "function") {
-          throw new Error(
-            `Boot target '${bare.alias}.${bare.name}' is not a runnable exported instance`,
-          );
+        // Bare run target. Phase 5 injection resolves a `!ref name` /
+        // cross-module `!ref Alias.name` slot into the live instance before boot,
+        // so the common runtime shape here is a pre-resolved ResourceInstance;
+        // fall back to the structural ref forms when injection left them in place.
+        if (isRunnableInstance(target)) {
+          const id = idOf(target, `target[${i}]`);
+          await runResolvedInstance(target, id.kind, id.name);
+          continue;
         }
-        await runResolvedInstance(inst, getRefIdentity(inst as object)?.kind ?? "", bare.name);
-        continue;
+        const bare = isResolvedReference(target) ? target : undefined;
+        if (bare && bare.alias !== undefined && bare.alias !== "Self") {
+          const inst = this.resolveImportedInstance(bare.alias, bare.name);
+          if (!inst || typeof inst.run !== "function") {
+            throw new Error(
+              `Boot target '${bare.alias}.${bare.name}' is not a runnable exported instance`,
+            );
+          }
+          await runResolvedInstance(inst, getRefIdentity(inst as object)?.kind ?? "", bare.name);
+          continue;
+        }
+        if (bare) {
+          await this.run(bare.name, ctx);
+          continue;
+        }
+        throw new Error(`Unrecognized target shape at index ${i}: ${safeStringify(target)}`);
+      } catch (err) {
+        if (!dispatched) {
+          recordDispatchExit(err, () => this.failureGraph?.(), undefined, application, `/targets/${i}`);
+        }
+        throw err;
       }
-      if (bare) {
-        await this.run(bare.name, ctx);
-        continue;
-      }
-      throw new Error(`Unrecognized target shape at index ${i}: ${safeStringify(target)}`);
     }
   }
 }

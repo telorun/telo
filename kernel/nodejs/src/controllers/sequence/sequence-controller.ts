@@ -139,7 +139,7 @@ class Sequence {
 
   private async runScopeTargets(scope: ScopeContext): Promise<void> {
     if (!this.resource.targets?.length) return;
-    await Promise.all(this.resource.targets.map((target) => scope.run(scopeTargetName(target))));
+    await Promise.all(this.resource.targets.map((target, i) => scope.run(scopeTargetName(target), { calledAt: `/targets/${i}` })));
   }
 }
 

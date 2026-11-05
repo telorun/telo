@@ -1,93 +1,50 @@
-import { holdsSensitiveMember, type ErrorValue } from "@telorun/sdk";
+import { errorValueOf, type ErrorValue } from "@telorun/sdk";
+import { fileURLToPath } from "node:url";
+import * as path from "node:path";
 
 /**
  * Normalize any thrown value into the record's structured error —
- * `kernel/specs/logging.md` §4.2.
- *
- * The `cause` chain is bounded per §6.3 and the truncation is *recorded* rather
- * than silently applied, so a reader can tell a chain was cut from one that
- * simply ended.
+ * `kernel/specs/logging.md` §4.2. The SDK builds it (so a controller writing an
+ * error into an event payload builds the same value); the kernel's part is naming
+ * each frame's file relative to the entry module's directory.
  */
-
-const MAX_CAUSE_DEPTH = 10;
+export interface ToErrorValueOptions {
+  maxDepth?: number;
+  /** The entry module's directory; absent, a file is shown as its module source. */
+  entryDirectory?: string;
+}
 
 /** `censor` replaces every value holding a member its type declares sensitive (a URL's
  *  password) wherever a thrown value is written out (§14). */
-export function toErrorValue(thrown: unknown, censor: string, maxDepth = MAX_CAUSE_DEPTH): ErrorValue {
-  const seen = new Set<unknown>();
-  let depth = 0;
-  let current: unknown = thrown;
+export function toErrorValue(thrown: unknown, censor: string, options: ToErrorValueOptions = {}): ErrorValue {
+  return errorValueOf(thrown, {
+    censor,
+    ...(options.maxDepth !== undefined ? { maxDepth: options.maxDepth } : {}),
+    file: relativeModuleFile(options.entryDirectory),
+  });
+}
 
-  const root = shallowErrorValue(current, censor);
-  let tail = root;
-  seen.add(current);
+/** A module source as a path relative to `directory`; a source that is no file on this
+ *  host (an `oci://` module) is shown as it is. */
+export function relativeModuleFile(directory: string | undefined): (module: string) => string {
+  return (module) => {
+    if (directory === undefined) return module;
+    const local = localPath(module);
+    return local === undefined ? module : toPosix(path.relative(directory, local));
+  };
+}
 
-  while (depth < maxDepth) {
-    const cause = causeOf(current);
-    if (cause === undefined) return root;
-    if (seen.has(cause)) {
-      tail.cause = { type: "ERR_CAUSE_CYCLE", message: "cause chain refers to itself" };
-      return root;
+export function localPath(module: string): string | undefined {
+  if (module.startsWith("file://")) {
+    try {
+      return fileURLToPath(module);
+    } catch {
+      return undefined;
     }
-    seen.add(cause);
-    const next = shallowErrorValue(cause, censor);
-    tail.cause = next;
-    tail = next;
-    current = cause;
-    depth += 1;
   }
-
-  if (causeOf(current) !== undefined) {
-    tail.cause = {
-      type: "ERR_CAUSE_CHAIN_TRUNCATED",
-      message: `cause chain truncated at ${maxDepth} entries`,
-    };
-  }
-  return root;
+  return path.isAbsolute(module) ? module : undefined;
 }
 
-function shallowErrorValue(thrown: unknown, censor: string): ErrorValue {
-  if (thrown instanceof Error) {
-    const code = (thrown as { code?: unknown }).code;
-    return {
-      type: typeof code === "string" && code.length > 0 ? code : thrown.name,
-      message: thrown.message,
-      ...(thrown.stack ? { stack: thrown.stack } : {}),
-    };
-  }
-
-  if (typeof thrown === "object" && thrown !== null) {
-    const record = thrown as { code?: unknown; name?: unknown; message?: unknown; stack?: unknown };
-    const type =
-      typeof record.code === "string"
-        ? record.code
-        : typeof record.name === "string"
-          ? record.name
-          : "Error";
-    const message =
-      typeof record.message === "string" ? record.message : safeStringify(thrown, censor);
-    return {
-      type,
-      message,
-      ...(typeof record.stack === "string" ? { stack: record.stack } : {}),
-    };
-  }
-
-  return { type: typeof thrown === "string" ? "Error" : typeof thrown, message: String(thrown) };
-}
-
-function causeOf(value: unknown): unknown {
-  if (typeof value !== "object" || value === null) return undefined;
-  const cause = (value as { cause?: unknown }).cause;
-  return cause === undefined || cause === null ? undefined : cause;
-}
-
-function safeStringify(value: unknown, censor: string): string {
-  try {
-    return (
-      JSON.stringify(value, (_key, held) => (holdsSensitiveMember(held) ? censor : held)) ?? String(value)
-    );
-  } catch {
-    return String(value);
-  }
+function toPosix(file: string): string {
+  return path.sep === "/" ? file : file.split(path.sep).join("/");
 }

@@ -111,8 +111,9 @@ export interface ScopeContext {
   /** `run()` a scope-local resource through the kernel's dispatch chokepoint, so
    *  it is traced, records that it started, and publishes its snapshot — a bare
    *  `getInstance(name).run()` does none of that. Throws if the name was not
-   *  declared in the scope or the instance is not runnable. */
-  run(name: string): Promise<void>;
+   *  declared in the scope or the instance is not runnable. `calledAt` is the
+   *  pointer, into the owning resource's declaration, of the `targets:` entry run. */
+  run(name: string, options?: { calledAt?: string }): Promise<void>;
   /** The CEL `resources` map as seen from inside this scope: the enclosing
    *  module's published resources with the scope-local ones layered on top
    *  (scope-local names win, matching {@link getInstance}'s resolution order).

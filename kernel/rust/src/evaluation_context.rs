@@ -22,6 +22,8 @@ use crate::invocation_contract_binding::InvocationContract;
 /// never observable without its contract.
 pub struct ResourceInstance {
     pub name: String,
+    /// Source of the module declaring the resource.
+    pub module: String,
     pub kind: String,
     pub definition: Rc<Definition>,
     pub contract: InvocationContract,

@@ -1,0 +1,10 @@
+# A controller's own dispatch refusal, which the kernel wraps as ERR_EXECUTION_FAILED.
+kind: Telo.Application
+metadata: { name: FailureWrap }
+imports: { Fx: ./kinds }
+targets:
+  - name: forward
+    invoke: !ref forward
+---
+kind: Fx.Forward
+metadata: { name: forward }

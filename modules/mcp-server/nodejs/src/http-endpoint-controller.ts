@@ -231,7 +231,7 @@ export class McpHttpEndpoint {
       await this.ctx.emitEvent(`${this.resource.metadata.name}.SessionCloseFailed`, {
         sessionId,
         stage: "transport",
-        error: errorPayload(err),
+        error: this.ctx.errorValueOf(err),
       });
     }
     try {
@@ -240,7 +240,7 @@ export class McpHttpEndpoint {
       await this.ctx.emitEvent(`${this.resource.metadata.name}.SessionCloseFailed`, {
         sessionId,
         stage: "server",
-        error: errorPayload(err),
+        error: this.ctx.errorValueOf(err),
       });
     }
   }
@@ -280,13 +280,6 @@ function carryContext(
       if (record.dispatchContexts.get(id) === context) record.dispatchContexts.delete(id);
     }
   });
-}
-
-function errorPayload(err: unknown): { message: string; stack?: string; code?: string } {
-  if (err instanceof Error) {
-    return { message: err.message, stack: err.stack, code: (err as { code?: string }).code };
-  }
-  return { message: String(err) };
 }
 
 export async function create(

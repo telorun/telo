@@ -35,6 +35,8 @@ export * from "./display-message.js";
 export * from "./issue-keywords.js";
 export * from "./contract-errors.js";
 export * from "./function-controller.js";
+export * from "./error-value.js";
+export * from "./failure-trace.js";
 export * from "./invoke-error.js";
 export * from "./log-record.js";
 export * from "./log-sink.js";

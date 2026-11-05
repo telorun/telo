@@ -127,6 +127,13 @@ export interface InvokeContext {
    * context without it. An error's `inputPointer` is joined onto it there.
    */
   readonly inputsAt?: string;
+  /**
+   * Where the caller makes this dispatch: an RFC 6901 pointer into the calling
+   * resource's own declaration (`/steps/1`, `/targets/0`) — the pointer of the
+   * caller's frame in a failure's trace. Handled exactly as {@link inputsAt}:
+   * per dispatch, never inherited, stripped from the target's context.
+   */
+  readonly calledAt?: string;
 }
 
 /**
@@ -137,11 +144,11 @@ export interface InvokeContext {
  * site (the kernel's tracing branches, span derivation) goes through here so a
  * field added to {@link InvokeContext} propagates without each site opting in.
  *
- * The one member that does not propagate is the per-dispatch `inputsAt`: it is
- * kept only when `overrides` states it.
+ * The members that do not propagate are the per-dispatch `inputsAt` and `calledAt`:
+ * each is kept only when `overrides` states it.
  */
 export function deriveContext(base: InvokeContext, overrides: Partial<InvokeContext>): InvokeContext {
-  const { inputsAt, ...inherited } = base;
+  const { inputsAt, calledAt, ...inherited } = base;
   return { ...inherited, ...overrides };
 }
 

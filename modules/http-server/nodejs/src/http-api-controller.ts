@@ -14,6 +14,7 @@ import {
 } from "@telorun/http-dispatch";
 import {
   ControllerContext,
+  deriveContext,
   ERR_INPUT_INVALID,
   Invocable,
   InvokeError,
@@ -103,14 +104,15 @@ export class HttpServerApi implements ResourceInstance {
     // Carrying the prefix on the path keeps the OpenAPI doc unambiguous for any mix
     // of mounts; a single `servers` origin is set by the server controller.
     const routes = this.manifest.routes || [];
-    for (const route of routes) {
-      this.registerRoute(app, route, normalizeMountPrefix(prefix), requestScope);
-    }
+    routes.forEach((route, index) => {
+      this.registerRoute(app, route, index, normalizeMountPrefix(prefix), requestScope);
+    });
   }
 
   private registerRoute(
     app: FastifyInstance,
     route: HttpApiRouteManifest,
+    routeIndex: number,
     prefix: string,
     requestScope: RequestScope<FastifyRequest> | undefined,
   ) {
@@ -277,7 +279,7 @@ export class HttpServerApi implements ResourceInstance {
                 handlerName,
                 handler,
                 invokeInput,
-                trace.context,
+                deriveContext(trace.context, { calledAt: `/routes/${routeIndex}/handler` }),
               )
             : undefined;
         } catch (err) {
@@ -346,10 +348,7 @@ export class HttpServerApi implements ResourceInstance {
               method: route.request.method,
               status: errCtx.status,
               mime: errCtx.mime,
-              error:
-                err instanceof Error
-                  ? { message: err.message, stack: err.stack, code: (err as { code?: string }).code }
-                  : { message: String(err) },
+              error: this.ctx.errorValueOf(err),
             });
           },
         );

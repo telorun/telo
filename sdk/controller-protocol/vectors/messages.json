@@ -515,7 +515,8 @@
           },
           "invocationId": 7,
           "traceId": "0af7651916cd43dd8448eb211c80319c",
-          "inputsAt": "/steps/1/inputs"
+          "inputsAt": "/steps/1/inputs",
+          "calledAt": "/steps/1"
         }
       }
     },

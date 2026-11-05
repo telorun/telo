@@ -151,3 +151,7 @@ The same distinction as `Mcp.StdioServer` applies — see [Mcp.Tools](./tools.md
 
 - `result.isError: true` — handler succeeded but content describes an upstream failure (LLM reads it as natural language).
 - `catches:` — handler threw an `InvokeError`; the entry maps it to a JSON-RPC error response.
+
+## Error events
+
+A failure while closing a session is emitted as an `<endpoint>.SessionCloseFailed` event whose `error` is the failure's error value as a log line writes it: `type`, `message`, the Telo `stack` and `frames`, and a `hostStack` only for an uncoded failure.

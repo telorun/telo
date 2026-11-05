@@ -136,12 +136,45 @@ A record carrying an error MUST represent it as:
 |---|---|---|
 | `type` | string | REQUIRED — error class/code (e.g. `ERR_INVOKE_CANCELLED`). |
 | `message` | string | REQUIRED |
-| `stack` | string | OPTIONAL — multi-line, unmodified. |
+| `stack` | string | OPTIONAL — the Telo trace as text (below). |
+| `frames` | array of Frame | OPTIONAL — the failure's trace, innermost first (invocation contract §5.5). |
+| `dropped_frames_count` | uint32 | OPTIONAL — how many frames the bound cut; MUST be emitted when non-zero. |
+| `host_stack` | string | OPTIONAL — the host runtime's stack, multi-line, unmodified; only for an uncoded failure (below). |
 | `cause` | ErrorValue | OPTIONAL — nested; runtimes MUST bound the chain (§6.3). |
+
+A Frame is `{ kind, name, module?, pointer?, position? }`, as invocation contract
+§5.5 defines it. In `frames` each frame carries its module's full source.
+
+`stack` is `frames` as text: one line per frame, innermost first, each
+
+```
+at <kind>.<name>#<pointer> (<file>:<line>:<column>)
+```
+
+with no padding and lines joined by `\n`. An empty or absent `pointer` drops
+`#<pointer>`; an absent `position` drops the parenthesised part. `<file>` is the
+frame's module source relative to the entry module's directory, so the same
+failure reads alike wherever the application is checked out. `stack` MUST NOT
+hold a host path, a host runtime's frame or a bundle path.
+
+`host_stack` MUST be present on an entry of the error value (the error or any
+`cause`) whose own thrown value has no non-empty string `code`, or whose code is
+`ERR_FATAL`, or which an out-of-process controller's SDK reported with a
+`hostStack` (controller protocol §3.2: a Rust panic arrives coded
+`ERR_CONTROLLER_PANIC` with its backtrace there), and MUST be absent on every
+other entry: a coded failure is a refusal a manifest describes, an uncoded one
+is a bug in controller or kernel code, where the host stack is the finding.
+There is no switch.
+
+A controller writing an error into an event payload builds it with
+`ctx.errorValueOf(err)`, which the kernel answers as it writes a log record's
+`ErrorValue`, so `stack` is relative to the entry module's directory there too.
 
 Runtimes SHOULD additionally mirror these onto attributes using OTel exception
 semantic conventions (`exception.type`, `exception.message`,
-`exception.stacktrace`) when exporting to OTLP.
+`exception.stacktrace`) when exporting to OTLP: `exception.stacktrace` carries
+`stack`, and `telo.exception.host_stacktrace` carries `host_stack`, present only
+when `host_stack` is.
 
 ---
 
@@ -722,8 +755,24 @@ For humans on a terminal. Layout:
 - **Resource**: `<kind>.<name>` when present.
 - **Message**, then attributes as `key=value`, space-separated. Values containing
   whitespace, `"`, or `=` MUST be quoted.
-- Errors render after the message; a stack trace goes on following lines,
-  indented, unmodified.
+- Errors render after the message as `<type>: <message>`, indented two spaces.
+  Under it go the lines of `stack`, built from `frames` and indented four
+  spaces, with one difference: each `<file>` is relative to the **working
+  directory** of the process, so a terminal can open it. A `cause` follows as
+  `caused by <type>: <message>` at the error's indent, with its own frame lines.
+  An entry carrying `host_stack` shows it after its frame lines under a dimmed
+  `host stack` label, indented four spaces, its lines six, unmodified.
+
+  ```
+  12:34:56.789 ERROR Http.Api.api  request failed
+    ERR_EXECUTION_FAILED: Sql.Exec insertUser failed
+      at Sql.Exec.insertUser (users/telo.yaml:58:3)
+      at Telo.Sequence.createUser#/steps/1 (users/telo.yaml:40:7)
+      at Http.Api.api#/routes/3/handler (telo.yaml:18:9)
+    caused by TypeError: Cannot read properties of undefined (reading 'rows')
+      host stack
+        at SqlExec.invoke (/home/me/app/.telo/controller-src/sql-3f2a91/sql.mjs:814:22)
+  ```
 
 **Colors.** The modal convention across pino-pretty, zap, tint,
 tracing-subscriber, consola, and winston:
@@ -1527,6 +1576,29 @@ is the artifact a non-TypeScript producer conforms to, following the precedent o
         "type": { "type": "string" },
         "message": { "type": "string" },
         "stack": { "type": "string" },
+        "frames": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "name"],
+            "properties": {
+              "kind": { "type": "string" },
+              "name": { "type": "string" },
+              "module": { "type": "string" },
+              "pointer": { "type": "string" },
+              "position": {
+                "type": "object",
+                "required": ["line", "column"],
+                "properties": {
+                  "line": { "type": "integer", "minimum": 1 },
+                  "column": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
+        "dropped_frames_count": { "type": "integer", "minimum": 1 },
+        "host_stack": { "type": "string" },
         "cause": { "$ref": "#/$defs/ErrorValue" }
       }
     }

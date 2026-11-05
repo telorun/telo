@@ -35,7 +35,7 @@ import {
   type SpanSettleDetail,
   nowUnixNano,
 } from "@telorun/sdk";
-import { errorTypeOf, membersEntryOfValue, RuntimeError } from "@telorun/sdk";
+import { carryFailureFrames, errorTypeOf, membersEntryOfValue, moveFailureFrames, RuntimeError } from "@telorun/sdk";
 import {
   celResourceReads,
   concreteEvalPaths,
@@ -43,8 +43,11 @@ import {
   reportsFromInit,
   startupObservedStateReads,
   type CelEvalSites,
+  type LoadedGraph,
 } from "@telorun/analyzer";
-import { recordDeclarationScope } from "./declaration-scope.js";
+import { authoredDeclarationOf, recordDeclarationScope } from "./declaration-scope.js";
+import { outermostDeclarationOf } from "./instance-declaration.js";
+import { recordDispatchExit } from "./failure-trace.js";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import { moduleCallsOf } from "./module-functions.js";
 import { declarationReadsOf } from "./declaration-reads.js";
@@ -784,6 +787,10 @@ export class EvaluationContext implements IEvaluationContext {
    *  the error leaves a dispatch. Set by the kernel beside `getDefinition`. */
   errorDataValidator?: ErrorDataValidator;
 
+  /** The load's graph, which a failure's frames are positioned against. Set by the
+   *  kernel beside `getDefinition`; read on the failure path only. */
+  failureGraph?: () => LoadedGraph | undefined;
+
   /**
    * Per-kernel invocation tracer. Set by the kernel on the root context and
    * propagated through spawnChild(); gates invocation-id minting in runInvoke()
@@ -1151,9 +1158,15 @@ export class EvaluationContext implements IEvaluationContext {
     if (this.getDefinition && !child.getDefinition) {
       child.getDefinition = this.getDefinition;
     }
-    const inheriting = child as unknown as { errorDataValidator?: ErrorDataValidator };
+    const inheriting = child as unknown as {
+      errorDataValidator?: ErrorDataValidator;
+      failureGraph?: () => LoadedGraph | undefined;
+    };
     if (this.errorDataValidator && !inheriting.errorDataValidator) {
       inheriting.errorDataValidator = this.errorDataValidator;
+    }
+    if (this.failureGraph && !inheriting.failureGraph) {
+      inheriting.failureGraph = this.failureGraph;
     }
     if (this.tracer && !child.tracer) {
       child.tracer = this.tracer;
@@ -1299,6 +1312,30 @@ export class EvaluationContext implements IEvaluationContext {
       { message: string; code?: string; details?: string; children?: RuntimeDiagnostic[] }
     >();
 
+    // The failure each entry of `errors` was built from, and the resource's frame
+    // it gained: the trace the aggregate raised below carries.
+    const rawErrors = new Map<string, unknown>();
+    const failed = (name: string, error: unknown, declaration: ResourceManifest): void => {
+      errors.set(name, formatErrorForDiagnostic(error));
+      if (isDeferral(error)) return;
+      rawErrors.set(name, error);
+      recordDispatchExit(
+        error,
+        () => this.failureGraph?.(),
+        () => ({
+          kind: this.resolveKindSafe(declaration.kind as string),
+          name,
+          declaration: authoredDeclarationOf(declaration) ?? declaration,
+        }),
+        undefined,
+        undefined,
+      );
+    };
+    const cleared = (name: string): void => {
+      errors.delete(name);
+      rawErrors.delete(name);
+    };
+
     const initialize = async (
       name: string,
       { resource, instance, ctx, source }: CreatedInstance,
@@ -1395,7 +1432,7 @@ export class EvaluationContext implements IEvaluationContext {
         // as a cancellation for the rest of the process.
         this.unwoundResources.delete(name);
         this.createdInstances.delete(name);
-        errors.delete(name);
+        cleared(name);
         progress = true;
         initOutcome = "initialized";
         await this.emit(`${resource.kind}.${resource.metadata.name}.Initialized`, {
@@ -1409,7 +1446,7 @@ export class EvaluationContext implements IEvaluationContext {
       } catch (error) {
         if (isDeferral(error)) initOutcome = "deferred";
         if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
-        errors.set(name, formatErrorForDiagnostic(error));
+        failed(name, error, source);
       }
       if (initStartedAt !== undefined) {
         await this.emit(
@@ -1444,7 +1481,7 @@ export class EvaluationContext implements IEvaluationContext {
             });
             const idx = this.pendingResources.findIndex((m) => m.metadata.name === name);
             if (idx >= 0) this.pendingResources.splice(idx, 1);
-            errors.delete(name);
+            cleared(name);
             // A FIRST creation is progress; RE-creating a resource whose init
             // failed is not. Counting it would keep the loop alive on a
             // permanently failing resource for every remaining pass, re-running
@@ -1486,7 +1523,7 @@ export class EvaluationContext implements IEvaluationContext {
         } catch (error) {
           createOutcome = "failed";
           if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
-          errors.set(name, formatErrorForDiagnostic(error));
+          failed(name, error, resource);
         }
         if (createStartedAt !== undefined) {
           await this.emit(
@@ -1541,11 +1578,20 @@ export class EvaluationContext implements IEvaluationContext {
         ),
       ];
       const diagnostics = classifyInitFailures(failures);
-      throw new RuntimeError(
+      const aggregate = new RuntimeError(
         "ERR_RESOURCE_INITIALIZATION_FAILED",
         `${summarizeInitFailures(diagnostics)}:\n${renderInitFailureText(diagnostics)}`,
         diagnostics,
       );
+      // The first root cause is what the aggregate wraps: it carries that failure's
+      // trace and the failure itself becomes its cause.
+      const root = diagnostics.find((d) => !d.derived && d.resource !== undefined && rawErrors.has(d.resource));
+      if (root) {
+        const cause = rawErrors.get(root.resource!);
+        moveFailureFrames(cause, aggregate);
+        (aggregate as { cause?: unknown }).cause = cause;
+      }
+      throw aggregate;
     }
 
     this.state = "Initialized";
@@ -1583,8 +1629,21 @@ export class EvaluationContext implements IEvaluationContext {
    * resources hold x-telo-ref slots pointing to outer resources — those deps are already
    * live when the scope opens.
    */
-  createScopeHandle(manifests: ResourceManifest[]): ScopeHandle {
+  createScopeHandle(manifests: ResourceManifest[], holder?: ResourceManifest): ScopeHandle {
     const parent = this;
+    // The resource owning the scope, as the issuer of its `targets:` runs.
+    const holderCaller = (): DispatchCaller | undefined => {
+      const holderName = holder?.metadata?.name;
+      if (!holder || typeof holderName !== "string") return undefined;
+      const declaration = authoredDeclarationOf(holder) ?? holder;
+      const module = holder.metadata?.source ?? parent.source;
+      return {
+        kind: parent.resolveKindSafe(holder.kind as string),
+        name: holderName,
+        ...(typeof module === "string" ? { module } : {}),
+        declaration,
+      };
+    };
     return {
       async run<T>(fn: (scope: ScopeContext) => Promise<T>): Promise<T> {
         const child = parent.spawnChild(
@@ -1657,12 +1716,12 @@ export class EvaluationContext implements IEvaluationContext {
                 `Resource '${name}' not found in scope or outer context. Available scoped: ${[...child.resourceInstances.keys()].join(", ")}`,
               );
             },
-            async run(name: string): Promise<void> {
+            async run(name: string, options?: { calledAt?: string }): Promise<void> {
               // Through the child context's chokepoint, so a scope target is
               // traced, records that it started, and publishes its snapshot —
               // exactly like a boot target. A scope target is always a
               // with-resource, so it lives in the child.
-              await child.run(name);
+              await child.run(name, undefined, holderCaller(), options?.calledAt);
             },
             get resources(): Record<string, unknown> {
               // Merged on read so the outer half stays live; scope-local names
@@ -2069,9 +2128,13 @@ export class EvaluationContext implements IEvaluationContext {
             `been torn down.`,
         );
       }
-      throw new RuntimeError(
-        "ERR_RESOURCE_NOT_FOUND",
-        `Resource not found for invocation: ${kind}.${name}. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
+      throw this.refusedDispatch(
+        new RuntimeError(
+          "ERR_RESOURCE_NOT_FOUND",
+          `Resource not found for invocation: ${kind}.${name}. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
+        ),
+        caller,
+        ctx,
       );
     }
 
@@ -2085,9 +2148,13 @@ export class EvaluationContext implements IEvaluationContext {
       typeof entry.instance.invoke !== "function" &&
       typeof entry.instance.run !== "function"
     ) {
-      throw new RuntimeError(
-        "ERR_RESOURCE_NOT_INVOKABLE",
-        `Resource ${effectiveKind}.${name} does not have an invoke or run method`,
+      throw this.refusedDispatch(
+        new RuntimeError(
+          "ERR_RESOURCE_NOT_INVOKABLE",
+          `Resource ${effectiveKind}.${name} does not have an invoke or run method`,
+        ),
+        caller,
+        ctx,
       );
     }
 
@@ -2109,9 +2176,13 @@ export class EvaluationContext implements IEvaluationContext {
     caller?: DispatchCaller,
   ): Promise<any> {
     if (typeof instance.invoke !== "function" && typeof instance.run !== "function") {
-      throw new RuntimeError(
-        "ERR_RESOURCE_NOT_INVOKABLE",
-        `Resource ${kind}.${name} does not have an invoke or run method`,
+      throw this.refusedDispatch(
+        new RuntimeError(
+          "ERR_RESOURCE_NOT_INVOKABLE",
+          `Resource ${kind}.${name} does not have an invoke or run method`,
+        ),
+        caller,
+        ctx,
       );
     }
     return this.runInvoke(kind, name, instance, inputs, ctx, caller);
@@ -2311,10 +2382,13 @@ export class EvaluationContext implements IEvaluationContext {
     // propagation differ between tracing on and off.
     // `inputsAt` names this call's inputs in the caller's declaration, so the
     // target's context never carries it on.
+    // `calledAt` is the same kind of fact for the failure's trace: where the caller
+    // makes this call, read here and handed on to nothing.
     const inputsAt = ctx?.inputsAt;
+    const calledAt = ctx?.calledAt;
     const invokeCtx: InvokeContext = tracing
       ? deriveContext(baseCtx, { invocationId, parentInvocationId, traceId })
-      : inputsAt === undefined
+      : inputsAt === undefined && calledAt === undefined
         ? baseCtx
         : deriveContext(baseCtx, {});
 
@@ -2405,6 +2479,7 @@ export class EvaluationContext implements IEvaluationContext {
         }
         finish("rejected", { errorType: settled.code });
         locateInvokeFailure(settled, caller, inputsAt);
+        this.recordExit(settled, kind, name, instance, caller, calledAt);
         throw settled;
       }
       if (err instanceof Error) {
@@ -2421,7 +2496,10 @@ export class EvaluationContext implements IEvaluationContext {
       finish("failed", { errorType: errorTypeOf(err) });
       // Already enriched at an inner invoke: keep the innermost (most
       // specific) resource as the failure location.
-      if (err instanceof RuntimeError && err.diagnostics?.length) throw err;
+      if (err instanceof RuntimeError && err.diagnostics?.length) {
+        this.recordExit(err, kind, name, instance, caller, calledAt);
+        throw err;
+      }
       const message = err instanceof Error ? err.message : String(err);
       const code = err instanceof Error ? err.name : undefined;
       // Keep `message` raw so callers (Run.Sequence catch blocks, assertions)
@@ -2440,8 +2518,46 @@ export class EvaluationContext implements IEvaluationContext {
       if (caller) recordCallerDeclaration(diagnostic, caller);
       const wrapped = new RuntimeError("ERR_EXECUTION_FAILED", message, [diagnostic]);
       (wrapped as { cause?: unknown }).cause = err;
+      // The wrapper carries the trace and the wrapped value keeps none.
+      moveFailureFrames(err, wrapped);
+      this.recordExit(wrapped, kind, name, instance, caller, calledAt);
       throw wrapped;
     }
+  }
+
+  /** A dispatch refused before it reached a target: the failure gains the caller's frame alone. */
+  private refusedDispatch(err: RuntimeError, caller: DispatchCaller | undefined, ctx?: InvokeContext): RuntimeError {
+    recordDispatchExit(err, () => this.failureGraph?.(), undefined, caller, ctx?.calledAt);
+    return err;
+  }
+
+  /** The target of a dispatch as its frame names it — built only for a failure. */
+  private dispatchTarget(kind: string, name: string, instance: ResourceInstance): DispatchCaller {
+    const outermost = outermostDeclarationOf(instance);
+    const declaration = outermost ? (authoredDeclarationOf(outermost) ?? outermost) : undefined;
+    return {
+      kind: this.resolveKindSafe(kind),
+      name,
+      ...(declaration ? { declaration } : {}),
+    };
+  }
+
+  /** Add to a failure leaving a dispatch the frames of its target and its caller. */
+  private recordExit(
+    err: unknown,
+    kind: string,
+    name: string,
+    instance: ResourceInstance,
+    caller: DispatchCaller | undefined,
+    calledAt: string | undefined,
+  ): void {
+    recordDispatchExit(
+      err,
+      () => this.failureGraph?.(),
+      () => this.dispatchTarget(kind, name, instance),
+      caller,
+      calledAt,
+    );
   }
 
   /**
@@ -2488,7 +2604,7 @@ export class EvaluationContext implements IEvaluationContext {
     return new Set(Object.keys(codes));
   }
 
-  async run(name: string, ctx?: InvokeContext): Promise<void> {
+  async run(name: string, ctx?: InvokeContext, caller?: DispatchCaller, calledAt?: string): Promise<void> {
     const entry = this.resourceInstances.get(name);
     if (!(entry && typeof entry.instance.run === "function")) {
       throw new RuntimeError(
@@ -2496,7 +2612,7 @@ export class EvaluationContext implements IEvaluationContext {
         `Resource ${name} is not runnable or not found. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,
       );
     }
-    return this.runInstance(entry.resource.kind as string, name, entry.instance, ctx);
+    return this.runInstance(entry.resource.kind as string, name, entry.instance, ctx, caller, calledAt);
   }
 
   /**
@@ -2631,6 +2747,8 @@ export class EvaluationContext implements IEvaluationContext {
     name: string,
     instance: ResourceInstance,
     ctx?: InvokeContext,
+    caller?: DispatchCaller,
+    calledAt?: string,
   ): Promise<void> {
     const ambient = cancellationStore.getStore();
     const baseCtx = ctx ?? ambient ?? UNCANCELLABLE_CONTEXT;
@@ -2773,6 +2891,7 @@ export class EvaluationContext implements IEvaluationContext {
           : { name: "UnknownError", message: String(err) };
       await this.emitSpan(`${name}.RunFailed`, () => span("end", "failed", { ...detail, ...recovery }));
       finish("failed", { errorType: errorTypeOf(err) });
+      this.recordExit(err, kind, name, instance, caller, calledAt);
       throw err;
     }
   }

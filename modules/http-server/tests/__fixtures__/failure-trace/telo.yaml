@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: HttpFailureTraceFixtures
+  version: 0.0.0
+  description: >-
+    Test fixture: an invocable that refuses every call with a coded failure it does not declare,
+    so a route calling it needs no catch entry for it.
+exports: { kinds: [Refuse] }
+---
+kind: Telo.Definition
+metadata: { name: Refuse, description: Refuses every call with the code ERR_USER_EXISTS. }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./refuse.mjs#Refuse]
+schema: { type: object, additionalProperties: false }

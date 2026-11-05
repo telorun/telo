@@ -3,6 +3,8 @@ import {
   decodeTypedFrame,
   encodeTypedFrame,
   InvokeError,
+  setFailureFrames,
+  type FailureFrame,
   isTextRecord,
   RuntimeError,
   writePlainJson,
@@ -415,7 +417,7 @@ const NAPI_CONTROLLER_ERROR_MARKER = "teloControllerError";
  * as a plain failure (`ERR_EXECUTION_FAILED`) — exactly as it reports a
  * JavaScript controller's plain `Error`.
  */
-function restructure(err: unknown): unknown {
+export function restructure(err: unknown): unknown {
   if (!(err instanceof Error)) return err;
   const marked = err as Error & {
     code?: unknown;
@@ -431,10 +433,34 @@ function restructure(err: unknown): unknown {
       `A Rust controller's error '${marked.code}' carries a \`displayMessage\` that is no text record.`,
     );
   }
-  return new InvokeError(marked.code, err.message, marked.data, {
+  const restructured = new InvokeError(marked.code, err.message, marked.data, {
     cause: err,
     ...(marked.displayMessage !== undefined ? { displayMessage: marked.displayMessage } : {}),
   });
+  // The trace the controller carries survives its return (protocol §3.2).
+  const { frames, droppedFramesCount, hostStack } = err as {
+    frames?: unknown;
+    droppedFramesCount?: unknown;
+    hostStack?: unknown;
+  };
+  if (frames !== undefined) {
+    if (!Array.isArray(frames) || !frames.every(isFailureFrame)) {
+      return new RuntimeError(
+        "ERR_CONTROLLER_INVALID",
+        `A Rust controller's error '${marked.code}' carries \`frames\` that are no list of { kind, name, … } frames.`,
+      );
+    }
+    setFailureFrames(restructured, frames, typeof droppedFramesCount === "number" ? droppedFramesCount : 0);
+  }
+  if (typeof hostStack === "string" && hostStack !== "") {
+    Object.defineProperty(restructured, "hostStack", { value: hostStack, enumerable: false, configurable: true });
+  }
+  return restructured;
+}
+
+function isFailureFrame(value: unknown): value is FailureFrame {
+  const frame = value as Partial<FailureFrame> | null;
+  return typeof frame === "object" && frame !== null && typeof frame.kind === "string" && typeof frame.name === "string";
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {

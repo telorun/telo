@@ -514,6 +514,10 @@ export class Kernel implements IKernel {
     // §7.2: a record emitted inside an active dispatch span carries that span's
     // ids automatically — a controller never passes them. The ids come from the
     // same counter the trace wire uses, rendered here at the encoding boundary.
+    // A failure's `stack` names files relative to the entry module's directory.
+    this.logging.setEntryDirectoryProvider(() =>
+      this._entryUrl === undefined ? undefined : (resolveEntryDir(this._entryUrl) ?? undefined),
+    );
     this.logging.setTraceContextProvider(() => {
       const explicit = explicitRecordTraceIdentity();
       if (explicit) return explicit;
@@ -835,6 +839,7 @@ export class Kernel implements IKernel {
     // through spawnChild() to module imports and scoped handles.
     this.rootContext.getDefinition = (kind) => this.controllers.getDefinition(kind);
     this.rootContext.errorDataValidator = errorDataValidatorOver(this.sharedSchemaValidator);
+    this.rootContext.failureGraph = () => this._loadedGraph;
 
     // Kept so `reconcile()` re-produces against the same directories and cache
     // policy this load used — a second load resolving them again could differ.
@@ -3859,6 +3864,7 @@ export class Kernel implements IKernel {
         }
         (site.holder as Record<string | number, unknown>)[site.key!] = owner.createScopeHandle(
           site.data as ResourceManifest[],
+          resource,
         );
         continue;
       }

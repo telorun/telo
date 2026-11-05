@@ -168,9 +168,31 @@ fn error_from_payload(bytes: &[u8], purl: &str, operation: &str) -> KernelError 
             ));
         }
     }
-    let mut error = KernelError::new(code, message);
+    let mut error = KernelError::new(code.clone(), message);
     error.data = payload.get("data").cloned();
     error.display_message = payload.get("displayMessage").cloned();
+    // The trace below an out-of-process controller survives its return (protocol §3.2).
+    let frames: Vec<telorun_sdk_core::FailureFrame> = match payload.get("frames") {
+        None => Vec::new(),
+        Some(frames) => {
+            let parsed = frames.as_array().and_then(|list| {
+                list.iter()
+                    .map(|frame| serde_json::from_value(frame.clone()).ok())
+                    .collect::<Option<Vec<_>>>()
+            });
+            let Some(parsed) = parsed else {
+                return KernelError::controller_invalid(format!(
+                    "controller {purl} failed during {operation} with error '{code}', whose `frames` are no list of {{ kind, name, … }} frames"
+                ));
+            };
+            parsed
+        }
+    };
+    error.trace = telorun_sdk_core::FailureTrace::restored(
+        frames,
+        payload.get("droppedFramesCount").and_then(Value::as_u64).unwrap_or(0),
+    );
+    error.host_stack = payload.get("hostStack").and_then(Value::as_str).map(str::to_string);
     error
 }
 
@@ -300,6 +322,24 @@ mod error_payload_tests {
         assert_eq!(read.code, "NOT_FOUND");
         assert_eq!(read.data, Some(serde_json::json!({ "id": "42" })));
         assert_eq!(read.display_message.unwrap()["text"], serde_json::json!("Item {$id} is missing."));
+    }
+
+    #[test]
+    fn reads_the_frames_and_host_stack_a_controller_returned() {
+        let frames = vec![telorun_sdk_core::FailureFrame::new("Lib.K", "inner", None)];
+        let mut error = telorun_sdk_core::ControllerError::new("X", "m").with_frames(frames, 2);
+        error.host_stack = Some("panicked".into());
+        let bytes = serde_json::to_vec(&error.payload()).unwrap();
+        let read = error_from_payload(&bytes, "pkg:cargo/x", "invoke");
+        assert_eq!(read.trace.frames[0].name, "inner");
+        assert_eq!(read.trace.dropped_frames_count, 2);
+        assert_eq!(read.host_stack.as_deref(), Some("panicked"));
+    }
+
+    #[test]
+    fn refuses_frames_that_are_no_frame_list() {
+        let bytes = br#"{"code":"NOT_FOUND","message":"missing","frames":[{"kind":"A.B"}]}"#;
+        assert_eq!(error_from_payload(bytes, "pkg:cargo/x", "invoke").code, "ERR_CONTROLLER_INVALID");
     }
 
     #[test]

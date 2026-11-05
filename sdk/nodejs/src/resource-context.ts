@@ -10,6 +10,7 @@ import type { EffectBody, EffectChain } from "./effect.js";
 import type { ResourceHandle } from "./resource-instance.js";
 import { ControllerContext } from "./controller-context.js";
 import type { Logger } from "./logger.js";
+import type { ErrorValue } from "./log-record.js";
 import type { LoggingHost } from "./log-sink.js";
 import { ControllerPolicy } from "./controller-policy.js";
 import { EvaluationContext } from "./evaluation-context.js";
@@ -560,6 +561,13 @@ export interface ResourceContext extends ControllerContext {
    * is unaffected.
    */
   readonly log: Logger;
+  /**
+   * A thrown value as a log record writes its `error`: type, message, Telo frames
+   * and their `stack` text with files relative to the entry module's directory,
+   * `hostStack` only for a bug. A controller putting an error into an event payload
+   * uses this, so the payload and the log line agree.
+   */
+  errorValueOf(thrown: unknown): ErrorValue;
   /**
    * Level resolution and drop accounting — what a `Telo.Sink` controller needs
    * and nothing else. A sink never attaches itself: the kernel attaches the

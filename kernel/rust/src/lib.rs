@@ -22,6 +22,7 @@ pub mod error;
 pub mod evaluation_context;
 pub mod host_paths;
 pub mod invocation_contract_binding;
+pub mod failure_trace;
 pub mod invoke_dispatch;
 pub mod kernel;
 pub mod lexical_path;

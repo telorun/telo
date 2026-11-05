@@ -1,4 +1,5 @@
 import type { SeverityNumber } from "./log-severity.js";
+import type { FailureFrame } from "./failure-trace.js";
 
 /**
  * The Telo log record model — `kernel/specs/logging.md` §4. Maps 1:1 onto an
@@ -29,8 +30,16 @@ export interface ErrorValue {
   /** Error class or code, e.g. `ERR_INVOKE_CANCELLED`. */
   type: string;
   message: string;
-  /** Multi-line, unmodified. */
+  /** The Telo trace as text: one `at <kind>.<name>#<pointer> (<file>:<line>:<column>)`
+   *  line per frame, innermost first, files relative to the entry module's directory. */
   stack?: string;
+  /** The failure's trace, each frame's module its full source. */
+  frames?: FailureFrame[];
+  /** How many outer frames the bound cut (`dropped_frames_count` in the `json` encoding). */
+  droppedFramesCount?: number;
+  /** The host's stack, multi-line, unmodified; only for an uncoded failure
+   *  (`host_stack` in the `json` encoding). */
+  hostStack?: string;
   cause?: ErrorValue;
 }
 

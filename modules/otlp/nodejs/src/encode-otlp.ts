@@ -129,6 +129,7 @@ function mirrorException(attributes: Record<string, AnyValue>, error: ErrorValue
   attributes["exception.type"] = error.type;
   attributes["exception.message"] = error.message;
   if (error.stack !== undefined) attributes["exception.stacktrace"] = error.stack;
+  if (error.hostStack !== undefined) attributes["telo.exception.host_stacktrace"] = error.hostStack;
 }
 
 export function toKeyValueList(map: Record<string, AnyValue>): { key: string; value: unknown }[] {

@@ -211,7 +211,7 @@ pub fn load_module(
         }
         let name = resource_name(document, &context.source)?;
         let definition = resolve_resource_kind(&context, &kind, name)?;
-        let instance = create_resource(definition, document, name, &env.controllers)?;
+        let instance = create_resource(definition, document, name, &context.source, &env.controllers)?;
         context.resources.set_resource(instance);
     }
 
