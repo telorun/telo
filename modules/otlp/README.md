@@ -90,6 +90,8 @@ condition, list it as `{ sink, when }` in `tracing.sinks`. This module requires 
 `>=0.104.0`, the release that carries trace export. Details:
 [docs/otlp-trace-sink.md](docs/otlp-trace-sink.md).
 
+A record's error is mirrored onto the OpenTelemetry exception attributes: `exception.type`, `exception.message` and `exception.stacktrace`, which carries the Telo trace (one `at <kind>.<name>#<pointer> (<file>:<line>:<column>)` line per frame). A host JavaScript stack, present only for an uncoded failure, is exported as `telo.exception.host_stacktrace`.
+
 See the [logging guide](https://telo.run/docs/guides/logging) and the
 [tracing guide](https://telo.run/docs/guides/tracing) for the full
 configuration surface.

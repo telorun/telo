@@ -66,3 +66,9 @@ Files mirror `kernel/nodejs/src/` one-for-one, kebab-case becoming snake_case. T
 Deferring step 2 to first use is what lets this kernel load an **unmodified** standard-library manifest. `modules/console` declares four kinds and only two have Rust controllers; the other two register fine and fail — naming the kind — only if someone declares a resource of them.
 
 The recoverable/fatal split is the same one `napi-loader.ts` makes: a missing `rustc` is the host's problem and the next candidate is tried; a `cargo build` that ran and failed is the author's code and surfaces immediately, because falling through would mask it.
+
+## Failure trace
+
+A failure leaving a dispatch carries frames (`kernel/specs/invocation-contract.md` §5.5): the target's, then the Application's for a boot target. The frames hold `kind`, `name` and `module` only; the bound is 64, innermost kept, the cut counted. A controller's own frames, `droppedFramesCount` and `hostStack` are read from its error payload (`kernel/specs/controller-protocol.md` §3.2); a Rust controller's panic arrives as `ERR_CONTROLLER_PANIC` with its backtrace as the host stack, and a structured refusal carries none.
+
+- **Debt — pointer and position.** No frame carries a `pointer` or a `position`, and `calledAt` is not read. This kernel writes no log record, so no `stack` text is built here.

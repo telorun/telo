@@ -27,6 +27,7 @@ import type { CompiledValue } from "./compiled-value.js";
 import { decideValue, stepPath, type DurableDecisionKind } from "./durable-run.js";
 import { isSuspension } from "./durable-suspension.js";
 import { fileStepResult, stepJournalPath, stepLabel } from "./emitted-step.js";
+import { attachRaisedAt } from "./failure-trace.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
 import { formatDisplayMessage } from "./display-message.js";
@@ -386,7 +387,7 @@ export class StepEngine {
         cel: extraCtx,
         invokeCtx,
         journalPath: here,
-        ...(written === undefined ? {} : { inputsAt: `${written}/inputs` }),
+        ...(written === undefined ? {} : { inputsAt: `${written}/inputs`, calledAt: written }),
       });
     }
     else if (isIfStep(step)) await this.executeIfStep(step, steps, scope, extraCtx, invokeCtx, here);
@@ -396,7 +397,7 @@ export class StepEngine {
       await this.executeSwitchStep(step, steps, scope, extraCtx, invokeCtx, here);
     else if (isTryStep(step))
       await this.executeTryStep(step, steps, scope, extraCtx, invokeCtx, here);
-    else if (isThrowStep(step)) this.executeThrowStep(step, steps, extraCtx);
+    else if (isThrowStep(step)) this.executeThrowStep(step, steps, extraCtx, this.writtenPointers.get(step));
     else if (isRethrowStep(step)) this.executeRethrowStep(step, extraCtx);
     else if (isValueStep(step)) await this.executeValueStep(step, steps, extraCtx, invokeCtx, here);
     else throw new Error(`Step "${(step as Step).name}" has no recognized type key`);
@@ -551,6 +552,7 @@ export class StepEngine {
     step: ThrowStep,
     steps: Record<string, unknown>,
     extraCtx: Record<string, unknown>,
+    written?: string,
   ): never {
     const cel = { steps, ...extraCtx };
     const expanded = this.ctx.expandValue(step.throw, cel) as {
@@ -588,10 +590,13 @@ export class StepEngine {
           ? formatDisplayMessage(displayMessage, expanded.data)
           : code;
     const caught = caughtFailureOf(extraCtx);
-    throw new InvokeError(code, message, expanded.data, {
+    const thrown = new InvokeError(code, message, expanded.data, {
       ...(displayMessage ? { displayMessage } : {}),
       ...(caught ? { cause: caught.failure } : {}),
     });
+    // A fresh trace: the dispatch exit starts it at this step.
+    if (written !== undefined) attachRaisedAt(thrown, written);
+    throw thrown;
   }
 
   private executeRethrowStep(step: RethrowStep, extraCtx: Record<string, unknown>): never {

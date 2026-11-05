@@ -699,6 +699,66 @@ A controller rethrowing a failure MUST carry its `displayMessage` unchanged; one
 rendering a refusal outside any dispatch reads its kind's entry through
 `ctx.declaredDisplayMessage(code, data)`, which applies the same validation.
 
+### 5.5 Failure trace
+
+A failure carries the path it took through the manifest as **frames**, so a log
+names the resources and manifest lines it passed through rather than the host
+code that ran them.
+
+**A frame** is `{ kind, name, module?, pointer?, position? }`: a resource, the
+module declaring it, an RFC 6901 pointer into its declaration, and `position`, a
+`{ line, column }` (1-based) in the module's file. `position` MUST be given only
+under the rule `location` (the controller protocol's error payload) follows: for
+a declaration the load read from a file, whose written document agrees with the
+declaration along the pointer. A template body's entry, a `base:` parent and a
+scope member are named with no position.
+
+**Frames are added on the failure path only, at each exit a failure leaves.** A
+dispatch that succeeds records nothing. Frames are listed innermost first.
+
+- At a dispatch exit a runtime MUST add, when the failure has no frames yet, the
+  frame of the target (an empty pointer, positioned at its declaration), and then
+  MUST always add the frame of the caller, its pointer the call site.
+- The call site is the dispatch context's `calledAt`, beside `inputsAt` and
+  handled like it: an RFC 6901 pointer read at that one dispatch and never
+  inherited by a nested one. The step engine MUST state it for every step
+  (`/steps/1`; a nested step at its full path), the boot runner for every target
+  (`/targets/0`), and a router for a route's handler (`/routes/3/handler`). A
+  dispatch that states none gives the caller's frame with no pointer.
+- A failure in a resource's `create()`, `init()` or `run()` MUST carry that
+  resource's frame; one in a boot target adds the Application's frame at
+  `/targets/<i>`.
+- Frames are bounded at 64. Past that the innermost are kept and
+  `dropped_frames_count` says how many were cut.
+
+**Frames follow the failure.**
+
+- `rethrow: {}` keeps them, and the exits above keep adding.
+- A `throw` step starts a fresh trace with its resource's frame, pointed at the
+  step. Inside a `catch:` its `cause` keeps the caught failure's frames.
+- A retry raises the frames of the last attempt.
+- When a runtime wraps a thrown value (`ERR_EXECUTION_FAILED`,
+  `ERR_FUNCTION_FAILED`), the wrapper carries the frames and the wrapped value
+  becomes its `cause`.
+- A controller rethrowing a failure carries its frames unchanged.
+- Frames belong to the thrown value. One value raised twice — held and thrown
+  again by a controller, outside `rethrow: {}` — keeps the frames of its first
+  path and adds those of its second.
+- Frames are diagnostic only. They MUST NOT appear in a catch context (`error.frames`
+  is `CEL_UNKNOWN_FIELD`), in a durable record or in a trace payload. `location`
+  is unchanged.
+
+**A host stack is recorded only for an uncoded failure.** An entry of the error
+value (the error or any `cause`) whose own thrown value has no non-empty string
+`code`, or whose code is `ERR_FATAL`, carries `host_stack`, as does one an
+out-of-process controller's SDK reported with a `hostStack` (a panic); every
+other coded failure carries none. There is no switch and no environment variable. How frames and
+`host_stack` are written is the log record's `ErrorValue` (`kernel/specs/logging.md`
+§4.2).
+
+**Polyglot debt.** The Rust kernel builds frames with `kind`, `name` and `module`
+only; pointer and position are not yet given, and `calledAt` is not yet read.
+
 ## 6. Conformance
 
 A conforming runtime:
@@ -731,7 +791,10 @@ A conforming runtime:
     and refuses an unreachable location at registration in every position a kind
     writes the annotation — in its `schema:`, its `inputType` or its
     `outputType`, written there or in the named shape the field names,
-    resolved across imports and with its `extends` parents folded (§2.4).
+    resolved across imports and with its `extends` parents folded (§2.4);
+15. adds frames only on the failure path as §5.5 states, bounds them at 64 with
+    `dropped_frames_count`, keeps them out of every catch context, durable record
+    and trace payload, and records a host stack only for an uncoded failure.
 
 ## 7. Module functions
 

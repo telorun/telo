@@ -59,13 +59,27 @@ export function toJsonProfile(record: LogRecord): Record<string, unknown> {
   // user data with no natural order, and sorted is the only order both this
   // runtime and a Rust `BTreeMap`-backed one produce without extra config.
   if (record.attributes !== undefined) out["attributes"] = sortKeysDeep(record.attributes);
-  if (record.error !== undefined) out["err"] = record.error satisfies ErrorValue;
+  if (record.error !== undefined) out["err"] = errorProfile(record.error);
   if (record.eventName !== undefined) out["event_name"] = record.eventName;
   if (record.droppedAttributesCount) {
     out["dropped_attributes_count"] = record.droppedAttributesCount;
   }
 
   return out;
+}
+
+/** An error in the §4.2 spelling: snake_case members in the spec's order, the
+ *  `cause` chain likewise. */
+function errorProfile(error: ErrorValue): Record<string, unknown> {
+  return {
+    type: error.type,
+    message: error.message,
+    ...(error.stack !== undefined ? { stack: error.stack } : {}),
+    ...(error.frames !== undefined ? { frames: error.frames } : {}),
+    ...(error.droppedFramesCount ? { dropped_frames_count: error.droppedFramesCount } : {}),
+    ...(error.hostStack !== undefined ? { host_stack: error.hostStack } : {}),
+    ...(error.cause !== undefined ? { cause: errorProfile(error.cause) } : {}),
+  };
 }
 
 /** Rebuild an attribute value with every nested object's keys in sorted order.

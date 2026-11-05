@@ -52,7 +52,11 @@ requires:
   # 0.129.0: the controllers read `ctx.translations`, which an older runtime does
   # not have, to negotiate `request.lang`: a request on 0.127.0 dies with "Cannot
   # read properties of undefined (reading 'languages')" (verified by execution).
-  telo: ">=0.129.0"
+  #
+  # 0.130.0: the controllers import `errorValueOf` from the SDK to write the
+  # failure trace into `Http.Api.streamFailed`; a 0.129.0 runtime fails to load
+  # the controller (verified by execution).
+  telo: ">=0.130.0"
 lang: en
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at

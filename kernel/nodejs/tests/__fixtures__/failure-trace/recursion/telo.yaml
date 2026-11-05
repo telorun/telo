@@ -1,0 +1,12 @@
+# A resource dispatching itself `depth` times, then refusing at the bottom.
+kind: Telo.Application
+metadata: { name: FailureRecursion }
+imports: { Fx: ./kinds }
+targets:
+  - name: recurse
+    invoke: !ref recurse
+    inputs: { depth: 0 }
+---
+kind: Fx.Recurse
+metadata: { name: recurse }
+limit: 98

@@ -319,8 +319,10 @@ async function refused(app: string): Promise<string[]> {
       if (node.code === "ERR_REF_SLOT_COMPUTED" && typeof node.message === "string") {
         out.push(node.message.replace(/^RuntimeError: /, ""));
       }
-      for (const child of [...(node.diagnostics ?? []), ...(node.children ?? [])]) walk(child);
-      walk(node.cause);
+      const nested = [...(node.diagnostics ?? []), ...(node.children ?? [])];
+      for (const child of nested) walk(child);
+      // An aggregate's diagnostics already hold its root causes; its `cause` repeats the first.
+      if (nested.length === 0) walk(node.cause);
     };
     walk(error);
     if (out.length === 0) throw error;

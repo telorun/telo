@@ -1,0 +1,25 @@
+kind: Telo.Library
+metadata:
+  name: FailureTraceFixtures
+  version: 0.0.0
+  description: >-
+    Test fixture: an invocable that refuses with a coded failure and one whose controller
+    breaks with an uncoded exception.
+exports: { kinds: [Refuse, Break] }
+---
+kind: Telo.Definition
+metadata:
+  name: Refuse
+  description: Refuses every call with the coded failure ERR_USER_EXISTS.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./kinds.mjs#Refuse]
+throws: { codes: { ERR_USER_EXISTS: { description: The user exists already. } } }
+schema: { type: object, additionalProperties: false }
+---
+kind: Telo.Definition
+metadata:
+  name: Break
+  description: Fails every call with a TypeError, as a controller bug would.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./kinds.mjs#Break]
+schema: { type: object, additionalProperties: false }

@@ -27,6 +27,7 @@ pub fn create_resource(
     definition: Rc<Definition>,
     manifest: &Value,
     name: &str,
+    module: &str,
     loader: &ControllerLoader,
 ) -> Result<Rc<ResourceInstance>, KernelError> {
     if let Some(capability) = &definition.capability {
@@ -52,6 +53,7 @@ pub fn create_resource(
 
     Ok(Rc::new(ResourceInstance {
         name: name.to_string(),
+        module: module.to_string(),
         kind: definition.kind.clone(),
         definition,
         contract,

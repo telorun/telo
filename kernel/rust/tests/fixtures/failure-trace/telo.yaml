@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: FailureTrace
+  version: 1.0.0
+imports:
+  Console: ../../../../../modules/console
+targets:
+  - invoke: !ref Console.writeLine
+    inputs:
+      output: 42

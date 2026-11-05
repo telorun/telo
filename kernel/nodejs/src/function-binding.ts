@@ -40,6 +40,7 @@ import {
   isCelMap,
   isInvokeError,
   isSuspension,
+  moveFailureFrames,
   readText,
   RuntimeError,
   type FunctionContext,
@@ -217,12 +218,14 @@ export function functionFailure(name: string, error: unknown): unknown {
   if (isInvokeError(error) && error.code === ERR_FUNCTION_FAILED) return error;
   const code = (error as { code?: unknown } | null | undefined)?.code;
   const message = error instanceof Error ? error.message : String(error);
-  return new InvokeError(
+  const wrapper = new InvokeError(
     ERR_FUNCTION_FAILED,
     `Function '${name}' failed: ${message}`,
     { function: name, message, ...(typeof code === "string" ? { code } : {}) },
     { cause: error },
   );
+  moveFailureFrames(error, wrapper);
+  return wrapper;
 }
 
 /** What a message's values hold, by name — none for an omitted map. */

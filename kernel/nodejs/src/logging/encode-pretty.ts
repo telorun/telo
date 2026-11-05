@@ -1,4 +1,5 @@
-import { bigIntAt, severityFloor, type AnyValue, type ErrorValue, type LogRecord } from "@telorun/sdk";
+import { bigIntAt, failureFrameLine, severityFloor, type AnyValue, type ErrorValue, type LogRecord } from "@telorun/sdk";
+import { relativeModuleFile } from "./to-error-value.js";
 
 /**
  * The `pretty` encoding — `kernel/specs/logging.md` §11.2. For humans on a
@@ -27,6 +28,8 @@ const DIM = "\u001b[2m";
 
 export interface PrettyEncodeOptions {
   color: boolean;
+  /** What a trace's files are shown relative to, so a terminal can open them. */
+  workingDirectory?: string;
 }
 
 export function encodePrettyLine(record: LogRecord, options: PrettyEncodeOptions): string {
@@ -61,7 +64,10 @@ export function encodePretty(record: LogRecord, options: PrettyEncodeOptions): s
 
   let line = parts.join("  ");
 
-  if (record.error) line += `\n${formatError(record.error, paint)}`;
+  if (record.error) {
+    const file = relativeModuleFile(options.workingDirectory ?? process.cwd());
+    line += `\n${formatError(record.error, paint, file)}`;
+  }
 
   return line;
 }
@@ -105,20 +111,34 @@ function jsonSafe(this: unknown, key: string, value: unknown): unknown {
   return value;
 }
 
-/** Errors render after the message; the stack goes on following lines,
- *  indented, unmodified. The `cause` chain follows, already bounded by §6.3. */
-function formatError(error: ErrorValue, paint: (code: string, text: string) => string): string {
+/** Errors render after the message as `<type>: <message>`; the lines of the Telo trace
+ *  go beneath, built from `frames` with each file relative to the working directory,
+ *  then the host stack under a dimmed label. The `cause` chain follows, already
+ *  bounded by §6.3. */
+function formatError(
+  error: ErrorValue,
+  paint: (code: string, text: string) => string,
+  file: (module: string) => string,
+): string {
   const lines: string[] = [`  ${paint(LEVEL_COLOR[17]!, error.type)}: ${error.message}`];
-  if (error.stack) {
-    for (const line of error.stack.split("\n")) lines.push(`    ${line}`);
-  }
+  const body = (entry: ErrorValue): void => {
+    const trace = entry.frames
+      ? entry.frames.map((frame) =>
+          failureFrameLine(frame, frame.module === undefined ? undefined : file(frame.module)),
+        )
+      : (entry.stack?.split("\n") ?? []);
+    for (const line of trace) lines.push(`    ${line}`);
+    if (entry.hostStack) {
+      lines.push(`    ${paint(DIM, "host stack")}`);
+      for (const line of entry.hostStack.split("\n")) lines.push(`      ${line}`);
+    }
+  };
+  body(error);
   let cause = error.cause;
   let guard = 0;
   while (cause && guard < 16) {
     lines.push(`  ${paint(DIM, "caused by")} ${cause.type}: ${cause.message}`);
-    if (cause.stack) {
-      for (const line of cause.stack.split("\n")) lines.push(`    ${line}`);
-    }
+    body(cause);
     cause = cause.cause;
     guard += 1;
   }

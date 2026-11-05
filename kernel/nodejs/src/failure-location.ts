@@ -1,4 +1,4 @@
-import { writtenFailureSite, writtenRootOf, type LoadedGraph } from "@telorun/analyzer";
+import { locateDiagnostic, writtenFailureSite, writtenRootOf, type LoadedGraph } from "@telorun/analyzer";
 import {
   anchorableInputPointer,
   attachLocation,
@@ -91,6 +91,46 @@ export function locateInvokeFailure(
   if (!caller || err.location !== undefined) return;
   attachLocation(err, dispatchLocation(caller, inputsAt, anchorableInputPointer(err)));
   if (caller.declaration) callerDeclarations.set(err, caller.declaration);
+}
+
+/**
+ * The file position (1-based) of `pointer` in `declaration`, under the one rule a
+ * failure's `location` follows: only a declaration the load read from a file, whose
+ * written document agrees with it along the pointer. An empty pointer is the
+ * declaration itself. `file` is the file the position is in.
+ */
+export function writtenPositionOf(
+  graph: LoadedGraph,
+  declaration: ResourceManifest,
+  pointer: string | undefined,
+): { file: string; line: number; column: number } | undefined {
+  if (!writtenDeclarations.has(declaration)) return undefined;
+  const target = pointer || undefined;
+  let site = writtenFailureSite(graph, declaration, target, writtenParentOf);
+  let path = site?.path;
+  if (!site && target !== undefined) {
+    // A step holding an inline `invoke:` is not the value written (the load extracted
+    // the inline resource into a reference), so the step is identified by its name
+    // instead, as every list entry on the way to it is.
+    site = writtenFailureSite(graph, declaration, `${target}/name`, writtenParentOf);
+    path = site?.path?.replace(/\.name$/, "");
+    if (site && path === site.path) return undefined;
+  }
+  if (!site) return undefined;
+  const located = locateDiagnostic(graph, {
+    message: "",
+    data: {
+      filePath: site.filePath,
+      resource: site.resource,
+      ...(path !== undefined ? { path } : {}),
+    },
+  });
+  if (!located) return undefined;
+  return {
+    file: located.file ?? site.filePath,
+    line: located.range.start.line + 1,
+    column: located.range.start.character + 1,
+  };
 }
 
 /** Record whose declaration a wrapped failure's diagnostic is located in. */

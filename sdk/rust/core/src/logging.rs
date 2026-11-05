@@ -128,8 +128,15 @@ pub struct ErrorValue {
     /// Error class or code, e.g. `ERR_INVOKE_CANCELLED`.
     pub error_type: String,
     pub message: String,
-    /// Multi-line, unmodified.
+    /// The Telo trace as text, one `at <kind>.<name>#<pointer> (<file>:<line>:<column>)`
+    /// line per frame, innermost first.
     pub stack: Option<String>,
+    /// The failure's trace (`frames` in the `json` encoding).
+    pub frames: Vec<crate::failure_trace::FailureFrame>,
+    /// How many outer frames the bound cut (`dropped_frames_count`).
+    pub dropped_frames_count: u64,
+    /// The host's stack; only for an uncoded failure (`host_stack`).
+    pub host_stack: Option<String>,
     pub cause: Option<Box<ErrorValue>>,
 }
 

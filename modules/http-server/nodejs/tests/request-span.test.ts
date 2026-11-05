@@ -32,6 +32,14 @@ type SpanCall = {
 
 type Dispatch = { name: string; context: InvokeContext };
 
+/** A dispatch runs on the span's context, at its own call site. */
+function expectOnSpan(dispatch: Dispatch, span: SpanCall, calledAt: string) {
+  const { calledAt: site, ...inherited } = dispatch.context;
+  expect(site).toBe(calledAt);
+  expect(inherited).toEqual(span.context);
+  expect(dispatch.context.cancellation).toBe(span.context.cancellation);
+}
+
 async function freePort(): Promise<number> {
   const probe = net.createServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
@@ -236,7 +244,8 @@ describe("Http.Server request span", () => {
       inbound: { traceparent, tracestate: "vendor=1" },
     });
     expect(server.dispatches.map((d) => d.name)).toEqual(["auth", "items"]);
-    for (const dispatch of server.dispatches) expect(dispatch.context).toBe(span.context);
+    expectOnSpan(server.dispatches[0]!, span, "/mounts/0/guard/invoke");
+    expectOnSpan(server.dispatches[1]!, span, "/routes/0/handler");
     expect(span.settled).toEqual([
       { outcome: "ok", attributes: { "http.response.status_code": 200 } },
     ]);
@@ -250,7 +259,7 @@ describe("Http.Server request span", () => {
     const span = await settledSpan(server.spans);
     expect(span.opts).not.toHaveProperty("inbound");
     expect(server.dispatches.map((d) => d.name)).toEqual(["auth"]);
-    expect(server.dispatches[0]!.context).toBe(span.context);
+    expectOnSpan(server.dispatches[0]!, span, "/mounts/0/guard/invoke");
     expect(span.settled).toEqual([
       {
         outcome: "rejected",
@@ -269,7 +278,7 @@ describe("Http.Server request span", () => {
       attributes: { "http.request.method": "GET", "http.route": "/probes/ready" },
     });
     expect(server.dispatches.map((d) => d.name)).toEqual(["ready"]);
-    expect(server.dispatches[0]!.context).toBe(span.context);
+    expectOnSpan(server.dispatches[0]!, span, "/routes/0/handler");
     expect(span.settled).toEqual([
       { outcome: "ok", attributes: { "http.response.status_code": 200 } },
     ]);
@@ -283,7 +292,7 @@ describe("Http.Server request span", () => {
     expect(span.opts).toMatchObject({ label: "GET", attributes: { "http.request.method": "GET" } });
     expect(span.opts.attributes).not.toHaveProperty("http.route");
     expect(server.dispatches.map((d) => d.name)).toEqual(["missing"]);
-    expect(server.dispatches[0]!.context).toBe(span.context);
+    expectOnSpan(server.dispatches[0]!, span, "/notFoundHandler/invoke");
     expect(span.settled).toEqual([
       { outcome: "ok", attributes: { "http.response.status_code": 404 } },
     ]);
@@ -378,7 +387,8 @@ describe("Http.Server request span", () => {
     });
     const span = await settledSpan(server.spans);
     expect(server.dispatches.map((d) => d.name)).toEqual(["auth", "slow"]);
-    for (const dispatch of server.dispatches) expect(dispatch.context).toBe(span.context);
+    expectOnSpan(server.dispatches[0]!, span, "/mounts/0/guard/invoke");
+    expectOnSpan(server.dispatches[1]!, span, "/routes/1/handler");
     expect(span.context.cancellation.isCancelled).toBe(true);
     expect(span.context.cancellation.reason).toBe("client-disconnect");
     expect(span.settled).toEqual([{ outcome: "cancelled", attributes: {} }]);

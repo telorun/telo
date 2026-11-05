@@ -243,6 +243,34 @@ ctx.log.info("listening", { "net.host.port": 8080 });
 ctx.log.error("upstream failed", { "http.response.status_code": 502 }, { error: err });
 ```
 
+### What an error record shows
+
+A failure logged with `{ error: err }` shows the path it took through the
+manifest, not the code that ran it. Each resource it passed through is a frame,
+innermost first, with the manifest pointer of the call (`#/steps/1`) and its
+line and column where the file position is known:
+
+```
+12:34:56.789 ERROR Http.Api.api  request failed
+  ERR_SQL_CONSTRAINT: duplicate key value violates unique constraint "users_email"
+    at Sql.Exec.insertUser (users/telo.yaml:58:3)
+    at Telo.Sequence.createUser#/steps/1 (users/telo.yaml:40:7)
+    at Http.Api.api#/routes/3/handler (telo.yaml:18:9)
+```
+
+In the `json` encoding the record's `err` carries `stack` (these lines, files
+relative to the entry module's directory), `frames` (each frame with its module's
+full source), `dropped_frames_count` when a trace past 64 frames was cut, and
+`cause`. The `pretty` encoding shows files relative to the working directory so a
+terminal can open them. A resource generated from a template or a `base:` parent
+is named without a position. A `throw` inside a `catch:` starts its own trace and
+keeps the caught failure's under its `cause`.
+
+The JavaScript stack is written as `host_stack` only for a failure with no code:
+a `TypeError` in a controller, a library's exception, `ERR_FATAL`. Such a failure
+is logged as `ERR_EXECUTION_FAILED` carrying the trace, and its `cause` holds the
+host stack. A coded failure carries none, and there is no switch.
+
 Guard an expensive call so its arguments are never evaluated:
 
 ```ts

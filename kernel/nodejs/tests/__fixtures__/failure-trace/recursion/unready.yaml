@@ -1,0 +1,7 @@
+# A resource whose init() refuses.
+kind: Telo.Application
+metadata: { name: FailureUnready }
+imports: { Fx: ./kinds }
+---
+kind: Fx.Unready
+metadata: { name: unready }

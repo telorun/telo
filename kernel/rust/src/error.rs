@@ -5,6 +5,8 @@
 //! code-plus-message shape lives here. Codes match the Node kernel's wherever
 //! the failure is the same one, so a message is searchable across both.
 
+use telorun_sdk_core::FailureTrace;
+
 #[derive(Debug, thiserror::Error)]
 #[error("[{code}] {message}")]
 pub struct KernelError {
@@ -14,6 +16,10 @@ pub struct KernelError {
     pub data: Option<serde_json::Value>,
     /// The text a person is shown for the failure, as its record.
     pub display_message: Option<serde_json::Value>,
+    /// The path the failure took through the manifest (`kernel/specs/invocation-contract.md` §5.5).
+    pub trace: FailureTrace,
+    /// The host's stack; only for a failure that is not a structured refusal (a panic).
+    pub host_stack: Option<String>,
 }
 
 impl KernelError {
@@ -23,6 +29,8 @@ impl KernelError {
             message: message.into(),
             data: None,
             display_message: None,
+            trace: FailureTrace::default(),
+            host_stack: None,
         }
     }
 

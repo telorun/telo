@@ -1,0 +1,99 @@
+kind: Telo.Application
+metadata:
+  name: HttpFailureTraceTest
+  version: 1.0.0
+  description: |
+    A route whose handler fails names the resources and manifest lines it passed
+    through. The handler is a sequence whose second step invokes a resource that
+    refuses with a coded failure: the logged error carries the refusing resource,
+    the handler sequence at its step and the API at the route's handler pointer,
+    each with a position, and no host stack.
+logging:
+  level: info
+  sinks:
+    - kind: Telo.FileSink
+      destination: /tmp/telo-http-failure-trace.jsonl
+      flush_interval: 20ms
+imports:
+  Fx: ./__fixtures__/failure-trace
+  Http: ../
+  HttpClient: ../../http-client
+  Fs: ../../fs
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Fx.Refuse
+metadata: { name: insertUser }
+---
+kind: Telo.Sequence
+metadata: { name: createUser }
+steps:
+  - { name: validated, value: 1 }
+  - name: insert
+    invoke: !ref insertUser
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ok, method: GET }
+    handler: { kind: Telo.Sequence, steps: [{ name: fine, value: 1 }] }
+    returns:
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
+  - request: { path: /users, method: POST }
+    handler: !ref createUser
+    returns:
+      - { status: 201, content: { application/json: { body: { ok: true } } } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - { kind: Fs.File, metadata: { name: readLog } }
+  - { kind: Fs.FileWrite, metadata: { name: truncateLog } }
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9761 }
+    mounts:
+      - { path: /, mount: !ref api }
+targets:
+  - !ref server
+steps:
+  # The sink appends, so an earlier run's lines are cleared and only this run's remain.
+  - name: truncate
+    invoke: !ref truncateLog
+    inputs: { path: /tmp/telo-http-failure-trace.jsonl, content: "" }
+  - name: request
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:9761/users, method: POST }
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "300ms", value: {} }
+  - name: read
+    invoke: !ref readLog
+    inputs: { path: /tmp/telo-http-failure-trace.jsonl }
+  - name: failures
+    value: !cel >-
+      steps.read.result.content.split('\n')
+        .filter(line, line.contains('ERR_USER_EXISTS') && line.contains('"err"'))
+        .map(line, parseJson(line))
+  - name: failure
+    value: !cel "reverse(steps.failures.result)[0]"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        type: !cel "steps.failure.result.err.type"
+        stack: !cel "steps.failure.result.err.stack"
+        frames: !cel >-
+          steps.failure.result.err.frames.map(f,
+            f.kind + ' ' + f.name + ' pointer=' + f.pointer +
+            ' at ' + string(f.position.line) + ':' + string(f.position.column))
+        hasHostStack: !cel "has(steps.failure.result.err.host_stack)"
+      expected:
+        type: ERR_USER_EXISTS
+        stack: |-
+          at HttpFailureTraceFixtures.Refuse.insertUser (failure-trace.yaml:27:1)
+          at Telo.Sequence.createUser#/steps/1 (failure-trace.yaml:34:5)
+          at HttpServer.Api.api#/routes/1/handler (failure-trace.yaml:45:19)
+        frames: ["HttpFailureTraceFixtures.Refuse insertUser pointer= at 27:1", "Telo.Sequence createUser pointer=/steps/1 at 34:5", "HttpServer.Api api pointer=/routes/1/handler at 45:19"]
+        hasHostStack: false

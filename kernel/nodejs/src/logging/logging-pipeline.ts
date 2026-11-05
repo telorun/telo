@@ -2,6 +2,7 @@ import {
   nowUnixNano,
   severityText as canonicalSeverityText,
   SEVERITY,
+  type ErrorValue,
   type LogAttributes,
   type LogAttributesInput,
   type LogOptions,
@@ -66,6 +67,7 @@ export class LoggingPipeline {
   readonly #limits: AttributeLimits | undefined;
   readonly #bootstrapCapacity: number;
   #traceContext: TraceContextProvider | undefined;
+  #entryDirectory: (() => string | undefined) | undefined;
 
   /** Bumped whenever the sink set changes, so a logger's cached gate
    *  invalidates without every logger being tracked and rewritten (§12.4). */
@@ -88,6 +90,19 @@ export class LoggingPipeline {
   /** Wire the ambient trace source once the kernel's tracer exists. */
   setTraceContextProvider(provider: TraceContextProvider | undefined): void {
     this.#traceContext = provider;
+  }
+
+  /** The directory a failure's `stack` names files relative to — the entry module's. */
+  setEntryDirectoryProvider(provider: (() => string | undefined) | undefined): void {
+    this.#entryDirectory = provider;
+  }
+
+  /** A thrown value as a record's error, as a log line writes it: frames and `stack`
+   *  relative to the entry directory, the scope's redaction applied. */
+  errorValueOf(thrown: unknown, scope: ScopeConfig): ErrorValue {
+    const error = toErrorValue(thrown, scope.redaction.censor, { entryDirectory: this.#entryDirectory?.() });
+    redactError(error, scope.redaction);
+    return error;
   }
 
   get sinkCount(): number {
@@ -225,7 +240,7 @@ export class LoggingPipeline {
 
     redactAttributes(normalized.attributes, scope.redaction);
 
-    const error = options?.error === undefined ? undefined : toErrorValue(options.error, scope.redaction.censor);
+    const error = options?.error === undefined ? undefined : toErrorValue(options.error, scope.redaction.censor, { entryDirectory: this.#entryDirectory?.() });
     redactError(error, scope.redaction);
 
     const timestamp = options?.timestamp ?? nowUnixNano();

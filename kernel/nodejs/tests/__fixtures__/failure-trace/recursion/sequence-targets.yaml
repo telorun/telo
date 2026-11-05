@@ -1,0 +1,16 @@
+# A sequence whose `targets:` member refuses.
+kind: Telo.Application
+metadata: { name: FailureSequenceTargets }
+imports: { Fx: ./kinds }
+targets:
+  - name: outer
+    invoke: !ref outer
+---
+kind: Telo.Sequence
+metadata: { name: outer }
+with:
+  - kind: Fx.Fail
+    metadata: { name: refuses }
+targets:
+  - !ref refuses
+steps: []

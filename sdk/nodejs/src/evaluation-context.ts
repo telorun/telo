@@ -191,7 +191,8 @@ export interface EvaluationContext {
   spawnChildContext(): EvaluationContext;
   initializeResources(): Promise<void>;
   withManifests<T>(manifests: any[], fn: () => T): T;
-  createScopeHandle(manifests: ResourceManifest[]): ScopeHandle;
+  /** `holder` is the resource owning the scope; it is the caller its `targets:` runs are framed by. */
+  createScopeHandle(manifests: ResourceManifest[], holder?: ResourceManifest): ScopeHandle;
   /** Re-read a resource's `snapshot()` and republish it, joined with whatever
    *  observed state the resource has reported. The publication path the
    *  post-init capture, the post-run publication, the post-invoke refresh and

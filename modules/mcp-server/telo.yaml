@@ -13,7 +13,10 @@ metadata:
 requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=0.82.0"
+  #
+  # 0.130.0: the endpoint imports `errorValueOf` from the SDK for its error
+  # event; a 0.129.0 runtime fails to load the controller (verified by execution).
+  telo: ">=0.130.0"
 exports: { kinds: [StdioServer, HttpEndpoint, Tools, Resources, Prompts] }
 ---
 # Mcp.Tools — passive bundle of tool entries. A transport (StdioServer or

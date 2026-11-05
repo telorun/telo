@@ -41,7 +41,7 @@ import {
   parseCanonicalTypeSchemaId,
   canonicalTypeSchemaId,
 } from "@telorun/sdk";
-import type { ApplicationTranslations, TextRecord } from "@telorun/sdk";
+import type { ApplicationTranslations, ErrorValue, TextRecord } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
 import { declarationOfInstance } from "./instance-declaration.js";
 import { authoredDeclarationOf, declarationScopeOf } from "./declaration-scope.js";
@@ -176,6 +176,13 @@ export class ResourceContextImpl implements ResourceContext {
       this.#log = this.kernel.logging.createLogger(scope, resource);
     }
     return this.#log;
+  }
+
+  /** A thrown value as a log record writes its error — Telo frames relative to the
+   *  entry module's directory, redaction applied. */
+  errorValueOf(thrown: unknown): ErrorValue {
+    const scope = (this.moduleContext as unknown as KernelModuleContext).getLoggingConfig?.();
+    return this.kernel.logging.errorValueOf(thrown, scope);
   }
 
   /** The sink-facing half of the pipeline (level resolution, drop accounting).

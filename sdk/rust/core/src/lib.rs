@@ -18,6 +18,7 @@
 //!
 //! * `cel_value_identity.rs` — `sdk/nodejs/src/cel-value-identity.ts`
 //! * `controller_protocol.rs` — `sdk/nodejs/tests/controller-protocol.test.ts`
+//! * `failure_trace.rs` — `sdk/nodejs/src/failure-trace.ts`
 //! * `function_controller.rs` — `sdk/nodejs/src/function-controller.ts`
 //! * `logging.rs` — `sdk/nodejs/src/{logger,log-record,log-severity,log-sink}.ts`
 //! * `plain_encoding.rs` — `sdk/nodejs/src/plain-encoding.ts`
@@ -34,6 +35,7 @@ pub use serde_json::Value;
 mod cel_value_identity;
 mod controller_protocol;
 mod error;
+pub mod failure_trace;
 pub mod function_controller;
 mod invoke_context;
 pub mod logging;
@@ -55,6 +57,7 @@ pub use function_controller::{Function, FunctionContext};
 pub use text_record::{MessageSource, TextRecord};
 
 pub use error::ControllerError;
+pub use failure_trace::{failure_frame_line, FailureFrame, FailureTrace, FramePosition, FAILURE_FRAME_LIMIT};
 pub use logging::{
     format_span_counter, format_span_id, format_trace_id, salt_span_id, severity, severity_floor,
     severity_text, ErrorValue, LogOptions, LogRecord, LogSink, Logger, ResourceRef, SeverityNumber,

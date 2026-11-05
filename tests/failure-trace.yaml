@@ -1,0 +1,121 @@
+kind: Telo.Application
+metadata:
+  name: FailureTrace
+  version: 1.0.0
+  description: |
+    A failure written to a log names the resources and manifest lines it passed through.
+    A schedule whose body is a sequence refuses at its second step: the record's error
+    carries the refusing resource, the sequence at the step and the schedule, as frames and
+    as the `stack` text with files relative to this manifest's directory, and no host
+    stack. A body whose controller throws an uncoded exception is `ERR_EXECUTION_FAILED`
+    with the same frames, and only its cause carries the host stack.
+logging:
+  level: info
+  sinks:
+    # A literal path: `Telo.FileSink.destination` is not a CEL slot.
+    - kind: Telo.FileSink
+      destination: /tmp/telo-failure-trace.jsonl
+      flush_interval: 20ms
+imports:
+  Fx: ./__fixtures__/failure-trace/kinds
+  Schedule: ../modules/scheduler
+  Fs: ../modules/fs
+  Timer: ../modules/timer
+  Assert: ../modules/assert
+targets:
+  - !ref check
+---
+kind: Fx.Refuse
+metadata: { name: insertUser }
+---
+kind: Fx.Break
+metadata: { name: insertBrokenUser }
+---
+kind: Telo.Sequence
+metadata: { name: createUser }
+steps:
+  - { name: validated, value: 1 }
+  - name: insert
+    invoke: !ref insertUser
+---
+kind: Telo.Sequence
+metadata: { name: createBrokenUser }
+steps:
+  - { name: validated, value: 1 }
+  - name: insert
+    invoke: !ref insertBrokenUser
+---
+kind: Telo.Sequence
+metadata: { name: check }
+with:
+  - { kind: Fs.File, metadata: { name: readLog } }
+  - { kind: Fs.FileWrite, metadata: { name: truncateLog } }
+  - kind: Schedule.Interval
+    metadata: { name: coded }
+    every: "50ms"
+    invoke: !ref createUser
+  - kind: Schedule.Interval
+    metadata: { name: uncoded }
+    every: "50ms"
+    invoke: !ref createBrokenUser
+targets:
+  - !ref coded
+  - !ref uncoded
+steps:
+  # The sink appends, so an earlier run's lines are cleared and only this run's remain.
+  - name: truncate
+    invoke: !ref truncateLog
+    inputs: { path: /tmp/telo-failure-trace.jsonl, content: "" }
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "400ms", value: {} }
+  - name: read
+    invoke: !ref readLog
+    inputs: { path: /tmp/telo-failure-trace.jsonl }
+  - name: failures
+    value: !cel >-
+      steps.read.result.content.split('\n')
+        .filter(line, line.contains('Tick failed'))
+        .map(line, parseJson(line))
+  - name: codedError
+    value: !cel "reverse(steps.failures.result.filter(r, r.resource.name == 'coded'))[0].err"
+  - name: uncodedError
+    value: !cel "reverse(steps.failures.result.filter(r, r.resource.name == 'uncoded'))[0].err"
+  - name: verifyCoded
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        type: !cel "steps.codedError.result.type"
+        stack: !cel "steps.codedError.result.stack"
+        frames: !cel >-
+          steps.codedError.result.frames.map(f,
+            f.kind + ' ' + f.name + ' pointer=' + (has(f.pointer) ? f.pointer : '-') +
+            ' at ' + (has(f.position) ? string(f.position.line) + ':' + string(f.position.column) : '-'))
+        hasHostStack: !cel "has(steps.codedError.result.host_stack)"
+      expected:
+        type: ERR_USER_EXISTS
+        stack: |-
+          at FailureTraceFixtures.Refuse.insertUser (failure-trace.yaml:28:1)
+          at Telo.Sequence.createUser#/steps/1 (failure-trace.yaml:38:5)
+          at Scheduler.Interval.coded
+        frames: ["FailureTraceFixtures.Refuse insertUser pointer= at 28:1", "Telo.Sequence createUser pointer=/steps/1 at 38:5", "Scheduler.Interval coded pointer=- at -"]
+        hasHostStack: false
+  - name: verifyUncoded
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        type: !cel "steps.uncodedError.result.type"
+        stack: !cel "steps.uncodedError.result.stack"
+        hasHostStack: !cel "has(steps.uncodedError.result.host_stack)"
+        cause:
+          type: !cel "steps.uncodedError.result.cause.type"
+          hasFrames: !cel "has(steps.uncodedError.result.cause.frames)"
+          hasHostStack: !cel "has(steps.uncodedError.result.cause.host_stack)"
+      expected:
+        type: ERR_EXECUTION_FAILED
+        stack: |-
+          at FailureTraceFixtures.Break.insertBrokenUser (failure-trace.yaml:31:1)
+          at Telo.Sequence.createBrokenUser#/steps/1 (failure-trace.yaml:45:5)
+          at Scheduler.Interval.uncoded
+        hasHostStack: false
+        cause: { type: TypeError, hasFrames: false, hasHostStack: true }

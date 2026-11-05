@@ -388,7 +388,7 @@ A **response** frame carries the requester's `id` and the same `type`, and its
 `payload` is an object with exactly one member:
 
 - `ok` — the response body; or
-- `error` — `{ "code": "<ERR_*>", "message": "<text>", "data": <value>, "displayMessage": <record>, "inputPointer": "<pointer>", "location": { "kind", "name", "module", "pointer" } }`,
+- `error` — `{ "code": "<ERR_*>", "message": "<text>", "data": <value>, "displayMessage": <record>, "inputPointer": "<pointer>", "location": { "kind", "name", "module", "pointer" }, "frames": [ { "kind", "name", "module", "pointer", "position": { "line", "column" } } ], "droppedFramesCount": <integer>, "hostStack": "<text>" }`,
   every member but `code` and `message` optional. `message` is the developer's;
   `displayMessage` is the text a person is shown for the failure, as its record
   (`{ "text", "context", "lang", "computed" }`, the `TextRecord` fragment), whose
@@ -403,8 +403,19 @@ A **response** frame carries the requester's `id` and the same `type`, and its
   dispatch, the pointer joining the dispatch's `inputsAt` (§6.2) and the
   failure's `inputPointer`; the first location attached is kept, and a
   controller rethrowing a failure carries both members unchanged.
-  `displayMessage`, `inputPointer` and `location` are additive members within
-  `telo-9`, which no carrier speaks yet. An error's `cause` is not carried.
+  `frames` is the failure's trace (`kernel/specs/invocation-contract.md` §5.5),
+  innermost first, each frame `kind` and `name` required and `module`, `pointer`
+  and `position` optional; `droppedFramesCount` says how many were cut at the
+  bound. A controller rethrowing a failure carries `frames` and
+  `droppedFramesCount` unchanged, so the frames below an out-of-process
+  controller survive its return. `hostStack` is the host's own stack text; an SDK
+  MUST set it when a controller's failure was not a structured refusal (a Rust
+  panic, an uncoded throw) and MUST NOT set it for a coded one; a kernel keeps it
+  on the failure and writes it as that entry's `host_stack`, whatever the code
+  (`kernel/specs/logging.md` §4.2).
+  `displayMessage`, `inputPointer`, `location`, `frames`, `droppedFramesCount` and
+  `hostStack` are additive members within `telo-9`, which no carrier speaks yet.
+  An error's `cause` is not carried.
 
 A message whose `response` in `messages/` is `null` is a **notification**: no
 response frame is ever sent for it, and a peer that sends one is in violation.
@@ -719,7 +730,12 @@ durable step path. A `Dispatch.Invoke` / `Dispatch.InvokeResolved` context may
 also carry `inputsAt`, an RFC 6901 pointer to where the calling resource's
 declaration writes this call's inputs (`/steps/1/inputs`). It belongs to that
 one dispatch: the kernel reads it there and hands the target a context without
-it, so it never reaches a nested dispatch (§3.2's `location`). One member of the in-process context deliberately does **not**
+it, so it never reaches a nested dispatch (§3.2's `location`). It may likewise
+carry `calledAt`, an RFC 6901 pointer to where the calling resource's declaration
+makes this call (`/steps/1`, `/targets/0`), handled exactly as `inputsAt` is — read
+at that one dispatch, never inherited — and the pointer of the caller's frame in
+the failure's trace (`kernel/specs/invocation-contract.md` §5.5). `calledAt` is an
+additive member within `telo-9`. One member of the in-process context deliberately does **not**
 cross: the durable run handle, which is a live object with methods. The kernel is
 a pure conduit for it — it carries it and never calls it — so a second runtime
 threads a handle it owns rather than deserializing this one.

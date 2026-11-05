@@ -1,0 +1,34 @@
+kind: Telo.Library
+metadata:
+  name: FailureRecursionKinds
+  version: 0.0.0
+  description: Test fixture, an invocable that dispatches itself a number of times and then refuses.
+exports: { kinds: [Recurse, Unready, Forward, Fail] }
+---
+kind: Telo.Definition
+metadata: { name: Recurse }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./recurse.mjs#Recurse]
+schema:
+  type: object
+  required: [limit]
+  additionalProperties: false
+  properties: { limit: { type: integer } }
+---
+kind: Telo.Definition
+metadata: { name: Unready }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./recurse.mjs#Unready]
+schema: { type: object, additionalProperties: false }
+---
+kind: Telo.Definition
+metadata: { name: Forward }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./recurse.mjs#Forward]
+schema: { type: object, additionalProperties: false }
+---
+kind: Telo.Definition
+metadata: { name: Fail }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./recurse.mjs#Fail]
+schema: { type: object, additionalProperties: false }

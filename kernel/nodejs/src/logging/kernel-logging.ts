@@ -3,6 +3,7 @@ import {
   SEVERITY,
   type LevelName,
   type LogAttributes,
+  type ErrorValue,
   type Logger,
   type ResourceRef,
 } from "@telorun/sdk";
@@ -99,6 +100,14 @@ export class KernelLogging {
 
   setTraceContextProvider(provider: TraceContextProvider | undefined): void {
     this.pipeline.setTraceContextProvider(provider);
+  }
+
+  setEntryDirectoryProvider(provider: (() => string | undefined) | undefined): void {
+    this.pipeline.setEntryDirectoryProvider(provider);
+  }
+
+  errorValueOf(thrown: unknown, scope: ScopeConfig | undefined): ErrorValue {
+    return this.pipeline.errorValueOf(thrown, scope ?? this.#rootScope);
   }
 
   recordDrop(sinkId: string, cause: DropCause, count = 1): void {
