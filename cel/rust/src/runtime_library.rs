@@ -154,7 +154,7 @@ fn any(value: &CelValue) -> Option<&CelValue> {
 }
 
 /// The refusal of values the implementation's signature does not take.
-fn mismatch(ctx: &CelCallContext, name: &str, args: &[CelValue]) -> CelValue {
+pub(crate) fn mismatch(ctx: &CelCallContext, name: &str, args: &[CelValue]) -> CelValue {
     let names: Option<Vec<&str>> = args.iter().map(cel_type_name_of).collect();
     let message = match names {
         Some(names) => format!("no overload of {} takes ({})", json_quote(name), names.join(", ")),

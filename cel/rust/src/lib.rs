@@ -13,8 +13,9 @@
 //! fields in a time zone over the IANA database it bundles, and ECMAScript's casing — and
 //! evaluation: an expression compiled to a flat program over a snapshot of its
 //! environment, run in one loop with errors as values, its comprehensions, per-site
-//! dispatch, the compiled cache and namespaced calls — and the calendar in a time zone the
-//! function catalog reads. It answers as the Node engine answers.
+//! dispatch, the compiled cache and namespaced calls — and the function catalog, with the
+//! host's handler seam, and the calendar in a time zone it reads. It answers as the Node
+//! engine answers.
 //!
 //! Three rules hold for every file here: three dependencies, the value crate by path,
 //! `jiff-tzdb` for the zone database's names and bytes and `getrandom` for the operating
@@ -33,7 +34,7 @@
 //! the bounded cache, the runtime library's, member read's, equality's, the timestamp
 //! file's and `value-text.ts`'s, evaluation's — the activation, the program and its
 //! options, the compile refusal, the call-site capacity and the comprehension functions —
-//! and the zoned calendar's.
+//! the function catalog's, and the zoned calendar's.
 //!
 //! - `reserved_words.rs`         — `reserved-words.ts`
 //! - `syntax_diagnostic.rs`      — `syntax-diagnostic.ts`
@@ -91,6 +92,8 @@
 //! - `es_number_text.rs`         — no twin: V8's number methods
 //! - `d3_format.rs`              — no twin: d3-format, the number-formatting grammar
 //! - `uri_component.rs`          — no twin: ECMAScript's URI component encoding
+//! - `function_catalog.rs`       — `function-catalog.ts`
+//! - `catalog_runtime.rs`        — `catalog-runtime.ts`
 //! - `zoned_calendar.rs`         — `zoned-calendar.ts`
 //! - `host_clock.rs`             — no twin: the clock Node's host reads, `Date.now()`
 //! - `host_random.rs`            — no twin: the random source Node's host reads, `crypto`
@@ -106,11 +109,8 @@ mod cel_program;
 mod cel_type;
 mod cel_value;
 mod check_diagnostic;
-// The catalog's text substrate is crate-private and read only by the catalog, which is not
-// yet registered here; until it is, nothing outside the files' own tests calls them.
-#[allow(dead_code)]
+mod catalog_runtime;
 mod d3_format;
-#[allow(dead_code)]
 mod es_number_text;
 mod checker;
 mod closure_backend;
@@ -118,12 +118,9 @@ mod comprehension_bindings;
 mod comprehension_runtime;
 mod declared_chain;
 mod environment;
+mod function_catalog;
 mod function_registry;
-// The clock, the random source and UUIDs are crate-private and read only by the catalog,
-// which is not yet registered here; until it is, nothing outside their own tests calls them.
-#[allow(dead_code)]
 mod host_clock;
-#[allow(dead_code)]
 mod host_random;
 mod integer_arithmetic;
 mod json_schema_type;
@@ -142,7 +139,6 @@ mod qualified_calls;
 mod re2_backtracker;
 mod re2_dfa;
 mod re2_machine;
-#[allow(dead_code)]
 mod re2_matcher;
 mod re2_onepass;
 mod re2_prefilter;
@@ -164,12 +160,9 @@ mod type_expression;
 // The dataset is generated whole; not every table has a reader in every build.
 #[allow(dead_code)]
 mod unicode_tables;
-#[allow(dead_code)]
 mod uri_component;
 mod value_equality;
-#[allow(dead_code)]
 mod uuid;
-#[allow(dead_code)]
 mod uuid_digests;
 mod value_text;
 mod zone_database;
@@ -180,6 +173,10 @@ pub use backend_runtime::{CelCompileError, CALL_SITE_CACHE_CAPACITY};
 pub use bounded_cache::BoundedCache;
 pub use cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
 pub use cel_program::{CelProgram, EvaluateOptions};
+pub use catalog_runtime::{
+    catalog_guarded_names, catalog_implementation, catalog_implemented_keys, catalog_literal_check, CatalogRefusal,
+    CelCatalogHandlers,
+};
 pub use cel_type::{
     admits_null, assignable, format_type, is_dyn, is_numeric, list_of, map_of, optional_of, parameter_of,
     types_equal, unify, union_of, without_null, without_parameters, CelType, ListType, MapType, NominalType,
@@ -207,6 +204,10 @@ pub use environment::{
     FunctionDefinition, DEFAULT_COMPILED_CACHE_CAPACITY,
     NamespaceFunctionDeclaration, NamespaceFunctionForm, NamespaceListing, NamespaceOptions, SchemaRegistrationReport,
     SignatureDeclaration, TypeDeclaration, TypeDefinitionListing, VariableDefinition, WithheldReturns,
+};
+pub use function_catalog::{
+    catalog_categories, catalog_signatures, function_catalog, register_function_catalog, CatalogFunction,
+    RegisterCatalogOptions, FUNCTION_CATALOG_GENERATION,
 };
 pub use function_registry::{
     describe_arguments, describe_candidates, substitute, FunctionRegistry, RegisteredFunction, Resolution,

@@ -1,6 +1,6 @@
 //! A call site answers the same **cold** as it does **warm** — the twin of
-//! `cel/nodejs/tests/call-site-identity.test.ts`, over CEL's own library; its sweep over
-//! the function catalog arrives with the catalog.
+//! `cel/nodejs/tests/call-site-identity.test.ts`, over CEL's own library and over the
+//! library with the function catalog beside it.
 //!
 //! A site resolves its overload on its first call and then holds it, reached by comparing
 //! the arguments' type names, with a bounded cache behind it for every other combination.
@@ -19,7 +19,7 @@ mod value_support;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use evaluation_support::{bindings, call_source, loose, program_answer};
+use evaluation_support::{bindings, call_source, catalog_environment, loose, program_answer};
 use telorun_cel::{CelEnvironment, CelEnvironmentOptions, CelProgram, CelValue};
 use value_support::{b, by, d, i, l, s};
 
@@ -44,6 +44,36 @@ fn answers_every_registered_call_the_same_cold_as_warm_and_as_a_site_that_never_
     }
     assert_eq!(differences, Vec::<String>::new());
     assert_eq!(functions.len(), 214);
+}
+
+#[test]
+fn answers_every_call_of_the_library_and_the_catalog_the_same_cold_as_warm() {
+    let environment = catalog_environment();
+    let fresh = |source: &str| environment.compile_parsed(&environment.parse(source)).unwrap();
+    let functions = environment.definitions().functions;
+    let mut differences = Vec::new();
+    for held in &functions {
+        let source = call_source(held);
+        // A volatile call answers something new each time by design, so it is held to what
+        // its answer text holds before its first parenthesis, as Node's gate holds it.
+        let compare = |text: String| -> String {
+            if held.deterministic {
+                text
+            } else {
+                text.find('(').map_or_else(String::new, |at| text[..=at].to_string())
+            }
+        };
+        let program = fresh(&source);
+        let cold = compare(program_answer(&program, &()));
+        let warm = compare(program_answer(&program, &()));
+        let warmer = compare(program_answer(&program, &()));
+        let never_ran = compare(program_answer(&fresh(&source), &()));
+        if cold != warm || warm != warmer || cold != never_ran {
+            differences.push(format!("{source}: cold {cold}, warm {warm}/{warmer}, fresh site {never_ran}"));
+        }
+    }
+    assert_eq!(differences, Vec::<String>::new());
+    assert_eq!(functions.len(), 300);
 }
 
 /// One site, several argument types, each with Node's answer.

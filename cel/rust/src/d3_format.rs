@@ -20,8 +20,9 @@
 //!
 //! **A width past the longest text a string holds** — 536,870,888 UTF-16 code units, V8's
 //! limit — is too long where the padding would be written, which is wherever the width is
-//! more than the number's own text; d3 throws V8's `RangeError` there. Both refusals reach
-//! the caller as a `D3Refusal`, worded by the caller.
+//! more than the number's own text; d3 throws V8's `RangeError` there. Each operation has its
+//! own refusal, worded by the caller: reading a specifier answers `InvalidSpecifier`, and
+//! formatting a value `TooLong`, carrying the width as d3 read it.
 //!
 //! Formatters are kept in one process-wide cache of `FORMATTER_CACHE_CAPACITY` (256)
 //! entries keyed by the specifier as written; a hit is a borrowed lookup, and a refusal is
@@ -44,13 +45,15 @@ pub(crate) const LONGEST_TEXT: f64 = 536_870_888.0;
 /// How many formatters the process keeps.
 pub(crate) const FORMATTER_CACHE_CAPACITY: usize = 256;
 
-/// Why d3 gives no text.
+/// d3's pattern does not read the specifier.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum D3Refusal {
-    /// d3's pattern does not read the specifier.
-    InvalidSpecifier,
-    /// The padded text would be longer than a string holds.
-    TooLong,
+pub(crate) struct InvalidSpecifier;
+
+/// The padded text would be longer than a string holds.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) struct TooLong {
+    /// The width the specifier wrote, as d3 read it.
+    pub(crate) width: f64,
 }
 
 /// The type a formatter writes with, once `n`, an unknown letter and none are read as `g`.
@@ -199,8 +202,8 @@ pub(crate) struct D3Format {
 const SI_PREFIXES: [&str; 17] = ["y", "z", "a", "f", "p", "n", "µ", "m", "", "k", "M", "G", "T", "P", "E", "Z", "Y"];
 
 /// Reads a specifier as d3's `format(specifier)` does.
-pub(crate) fn parse_format(specifier: &str) -> Result<D3Format, D3Refusal> {
-    let groups = read_specifier(specifier).ok_or(D3Refusal::InvalidSpecifier)?;
+pub(crate) fn parse_format(specifier: &str) -> Result<D3Format, InvalidSpecifier> {
+    let groups = read_specifier(specifier).ok_or(InvalidSpecifier)?;
     let mut comma = groups.comma;
     let mut trim = groups.trim;
     let mut precision = groups.precision.map(es_string_to_number);
@@ -269,7 +272,7 @@ fn formatter_cache() -> &'static Mutex<BoundedCache<Arc<str>, Arc<D3Format>>> {
 const CACHE_LOCK: &str = "the formatter cache's lock is held only to read or write an entry";
 
 /// The formatter for a specifier, from the process's cache or read and kept there.
-pub(crate) fn d3_formatter(specifier: &str) -> Result<Arc<D3Format>, D3Refusal> {
+pub(crate) fn d3_formatter(specifier: &str) -> Result<Arc<D3Format>, InvalidSpecifier> {
     if let Some(held) = formatter_cache().lock().expect(CACHE_LOCK).get(specifier) {
         return Ok(Arc::clone(held));
     }
@@ -404,7 +407,7 @@ fn code_units(text: &str) -> usize {
 
 impl D3Format {
     /// The text d3's formatter answers for a value, or `TooLong` where it would throw.
-    pub(crate) fn format(&self, value: f64) -> Result<String, D3Refusal> {
+    pub(crate) fn format(&self, value: f64) -> Result<String, TooLong> {
         let mut value_prefix: String;
         let mut value_suffix: String;
         let mut value_text: String;
@@ -476,7 +479,7 @@ impl D3Format {
         let mut padding = String::new();
         if let Some(width) = self.width.filter(|width| length < *width) {
             if pads_past_longest_text(length, width) {
-                return Err(D3Refusal::TooLong);
+                return Err(TooLong { width });
             }
             padding = std::iter::repeat(self.fill).take((width - length) as usize).collect();
         }
@@ -547,8 +550,7 @@ mod tests {
     fn answer(format: &D3Format, value: f64) -> String {
         match format.format(value) {
             Ok(text) => text,
-            Err(D3Refusal::TooLong) => "TOOLONG".into(),
-            Err(D3Refusal::InvalidSpecifier) => panic!("a formatter read refuses nothing"),
+            Err(TooLong { .. }) => "TOOLONG".into(),
         }
     }
 
@@ -557,8 +559,7 @@ mod tests {
         let mut wrong = Vec::new();
         for &(specifier, digest) in D3_SPECIFIERS {
             let answers = match parse_format(specifier) {
-                Err(D3Refusal::InvalidSpecifier) => None,
-                Err(D3Refusal::TooLong) => panic!("reading refuses no width"),
+                Err(InvalidSpecifier) => None,
                 Ok(format) => Some(D3_VALUES.iter().map(|bits| answer(&format, f64::from_bits(*bits))).collect::<Vec<_>>()),
             };
             if answers.as_ref().map(|answers| fnv(&answers.join("\n"))) != digest {
@@ -593,7 +594,7 @@ mod tests {
         // One test, so that no other test's formatters move this one's entries.
         let held = d3_formatter("$,.7f").expect("a specifier");
         assert!(Arc::ptr_eq(&held, &d3_formatter("$,.7f").expect("held")));
-        assert_eq!(d3_formatter("$,.7f%%").err(), Some(D3Refusal::InvalidSpecifier));
+        assert_eq!(d3_formatter("$,.7f%%").err(), Some(InvalidSpecifier));
         assert!(formatter_cache().lock().expect(CACHE_LOCK).get("$,.7f%%").is_none(), "a refusal is not kept");
         let direct = allocations_during(|| drop(held.format(-1234.5)));
         let through = allocations_during(|| drop(d3_formatter("$,.7f").expect("held").format(-1234.5)));
