@@ -84,7 +84,7 @@ pub fn duration_nanos(value: CelDuration) -> i128 {
 }
 
 /// In the order the grammar tries them, so `ms` is read before `m` and `s`.
-const UNIT_NANOS: [(&str, u128); 8] = [
+const UNIT_NANOS: [(&str, u128); 10] = [
     ("ns", 1),
     ("us", 1_000),
     ("\u{b5}s", 1_000),
@@ -93,10 +93,13 @@ const UNIT_NANOS: [(&str, u128); 8] = [
     ("s", 1_000_000_000),
     ("m", 60_000_000_000),
     ("h", 3_600_000_000_000),
+    ("d", 86_400_000_000_000),
+    ("w", 604_800_000_000_000),
 ];
 
 /// A duration from CEL's own text: a sign, then one or more number-and-unit parts over
-/// `ns`, `us`, `ms`, `s`, `m` and `h` (`1h30m`, `1.5s`, `-10m`), under CEL's range.
+/// `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (24 hours) and `w` (7 days) (`1h30m`, `1.5d`, `-10m`), under
+/// CEL's range. `d` and `w` extend cel-spec on purpose; months and years have no fixed length.
 pub fn parse_duration(text: &str) -> Result<CelDuration, CelError> {
     cel_duration_from_nanos(duration_nanos_from_text(text)?)
 }

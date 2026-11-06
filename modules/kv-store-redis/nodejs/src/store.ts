@@ -1,7 +1,7 @@
 import {
   decodeJsonValue,
   encodeJsonValue,
-  parseDurationMs,
+  durationMs,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
@@ -13,7 +13,7 @@ interface StoreResource {
   metadata: { name: string; module?: string };
   url: string;
   keyPrefix?: string;
-  connectTimeout?: string;
+  connectTimeout?: unknown;
 }
 
 /** What is stored per key: the value plus its revision, in one string so a write
@@ -68,8 +68,13 @@ class RedisKvStore implements ResourceInstance, KvStore {
 
   constructor(resource: StoreResource) {
     this.prefix = resource.keyPrefix ?? "telo:kv:";
+    const connectTimeout =
+      resource.connectTimeout === undefined ? 2000 : durationMs(resource.connectTimeout);
+    if (connectTimeout === undefined) {
+      throw new Error(`KvStoreRedis.Store "${resource.metadata.name}": 'connectTimeout' must be a duration`);
+    }
     this.client = new Redis(resource.url, {
-      connectTimeout: parseDurationMs(resource.connectTimeout, 2000),
+      connectTimeout,
       // Fail loudly rather than queueing forever: a caller must never block
       // indefinitely waiting to learn whether its conditional write landed.
       maxRetriesPerRequest: 2,

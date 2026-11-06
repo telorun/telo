@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | `url` | yes | Redis URL (`redis://…`, `rediss://…`). |
 | `fallback` | no | A `Cache.Store` served while Redis is down (degraded mode). |
-| `connectTimeout` | no | Wait before degrading (duration, default `2s`). |
+| `connectTimeout` | no | Wait before degrading (a duration, default `2s`). |
 | `keyPrefix` | no | Prefix applied to every key (namespacing a shared Redis). |
 
 ## Example

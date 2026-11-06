@@ -27,7 +27,7 @@ function tombstone(sequence: number, ms: number): TombstoneRecord {
   };
 }
 
-const POLICY = { afterVersions: 2, afterDuration: "30d" };
+const POLICY = { afterVersions: 2, afterDuration: 30 * DAY };
 
 describe("assessTombstone", () => {
   it("holds while neither condition is met", () => {

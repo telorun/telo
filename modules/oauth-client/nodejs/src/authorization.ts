@@ -1,4 +1,5 @@
-import { parseDurationMs, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
+import { type ResourceContext, type ResourceInstance } from "@telorun/sdk";
+import { slotMs } from "./duration-slot.js";
 import { challengeFor, createVerifier, randomState } from "./pkce.js";
 import { issuerRefusal, requestTokens, scopeParam } from "./token-endpoint.js";
 import { resolveSource, type TokenSourceResource } from "./token-source.js";
@@ -6,7 +7,7 @@ import { resolveSource, type TokenSourceResource } from "./token-source.js";
 interface AuthorizationManifest {
   metadata?: { name?: string };
   source: unknown;
-  pendingTtl?: string;
+  pendingTtl?: unknown;
 }
 
 interface AuthorizationInputs {
@@ -26,7 +27,11 @@ export class AuthorizationResource implements ResourceInstance {
       ctx,
       () => `OAuthClient.Authorization "${manifest.metadata?.name ?? ""}"`,
     );
-    this.pendingTtlMs = parseDurationMs(manifest.pendingTtl, 600_000);
+    this.pendingTtlMs = slotMs(
+      manifest.pendingTtl,
+      600_000,
+      `OAuthClient.Authorization "${manifest.metadata?.name ?? ""}": 'pendingTtl'`,
+    );
   }
 
   async invoke(inputs: AuthorizationInputs) {

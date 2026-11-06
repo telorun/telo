@@ -26,7 +26,7 @@ export const CATALOG_FILE = "catalog.json";
  * Without it a row could be deleted and every other number in the report would stay true —
  * a removed row is the one change a per-row driver cannot see.
  */
-export const CATALOG_ROWS = 178;
+export const CATALOG_ROWS = 186;
 
 export const CATALOG_CORRECTIONS: readonly DialectCorrectionGroup[] = [
   {

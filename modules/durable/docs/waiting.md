@@ -25,6 +25,8 @@ metadata: { name: cooldown }
 for: 24h
 ```
 
+`for` is a duration (`30s`, `1h30m`, `30d`); a computed one must be a duration too,
+`!cel "duration(inputs.delay)"`, and a malformed literal is refused by `telo check`.
 Or `until:` for a deadline that is a property of the data rather than of when
 the wait started.
 
@@ -63,7 +65,7 @@ the steps reading `steps.approval.result.approvedBy` type-check against nothing.
 
 **A deadline is per call as well as per instance.** `timeout:` on the resource
 sets a default; `inputs.timeout` at a step overrides it, so one await can serve
-two sites that wait different lengths.
+two sites that wait different lengths. Both are durations.
 
 It is **pinned when the wait begins**, like a sleep's wake time and for a sharper
 reason: a deadline recomputed on every resume slides forward by however long each

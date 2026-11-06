@@ -1,7 +1,6 @@
 import {
   ERR_INVOKE_CANCELLED,
   InvokeError,
-  parseDurationMs,
   RuntimeError,
   type EffectChain,
   type InvokeContext,
@@ -9,6 +8,7 @@ import {
   type ResourceInstance,
 } from "@telorun/sdk";
 import { createServer, type Server } from "node:http";
+import { slotMs } from "./duration-slot.js";
 import { integerSetting } from "./integer-setting.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
@@ -203,7 +203,7 @@ function isRedirectListener(value: unknown): value is RedirectListenerResource {
 interface RedirectAwaitManifest {
   metadata?: { name?: string };
   listener: unknown;
-  timeout?: string;
+  timeout?: unknown;
 }
 
 export class RedirectAwaitResource implements ResourceInstance {
@@ -214,7 +214,11 @@ export class RedirectAwaitResource implements ResourceInstance {
     private readonly manifest: RedirectAwaitManifest,
     private readonly ctx: ResourceContext,
   ) {
-    this.timeoutMs = parseDurationMs(manifest.timeout, 300_000);
+    this.timeoutMs = slotMs(
+      manifest.timeout,
+      300_000,
+      `OAuthClient.RedirectAwait "${manifest.metadata?.name ?? ""}": 'timeout'`,
+    );
   }
 
   /**

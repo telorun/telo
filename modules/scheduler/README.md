@@ -26,7 +26,7 @@ targets:
 ---
 kind: Schedule.Interval
 metadata: { name: cacheRefresh }
-every: "1m"
+every: 1m
 invoke: !ref refreshCache
 ---
 kind: Schedule.Cron
@@ -42,7 +42,7 @@ Listing a schedule in `targets` is what makes its start position explicit. A sch
 
 | Field | `Interval` | `Cron` |
 | --- | --- | --- |
-| `every` | Tick period as a duration (`30s`, `1m`). | — |
+| `every` | Tick period, a positive duration (`30s`, `1m`, `1h30m`). | — |
 | `cron` | — | 5-field expression (`m h dom mon dow`), or 6 with leading seconds. |
 | `timezone` | — | IANA timezone (default `UTC`). |
 | `invoke` | The body fired on each tick. | Same. |
@@ -58,7 +58,7 @@ A schedule is identified by what it fires on: `every` for `Schedule.Interval`, `
 ```yaml
 kind: Schedule.Interval
 metadata: { name: cacheRefresh }
-every: "1m"
+every: 1m
 when: !cel "variables.refreshEnabled"
 invoke: !ref refreshCache
 ```
@@ -80,7 +80,7 @@ invoke: !ref reportOncePerNight
 kind: Lease.Critical
 metadata: { name: reportOncePerNight }
 store: !ref store          # a shared durable store
-ttl: "30m"
+ttl: 30m
 invoke: !ref generateReport
 ```
 

@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: TimerDurationNotADuration, version: 1.0.0 }
+imports: { Timer: ../../ }
+---
+kind: Telo.Sequence
+metadata: { name: pause }
+steps:
+  - name: wait
+    inputs: { duration: a little while }
+    invoke: { kind: Timer.Delay }

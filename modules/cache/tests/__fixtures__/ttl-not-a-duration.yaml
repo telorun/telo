@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: CacheTtlNotADuration, version: 1.0.0 }
+imports: { Cache: ../../, CacheMemory: ../../../cache-memory }
+---
+kind: CacheMemory.Store
+metadata: { name: mem }
+---
+kind: Cache.Entry
+metadata: { name: entry }
+store: !ref mem
+ttl: 5 minutes

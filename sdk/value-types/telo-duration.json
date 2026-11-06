@@ -26,5 +26,5 @@
       "description": "A duration every value must stay below — written as a duration or an integer number of milliseconds."
     }
   ],
-  "description": "A span of time, held as a native duration so it adds to and subtracts from timestamps exactly. Written inline as any CEL duration string (`1h30m`, `250ms`) or as an integer number of milliseconds (`250`); it is written as seconds (`5400s`). A slot may bound it: `x-telo-type: { name: Telo.Duration, minimum: 0s }`."
+  "description": "A span of time, held as a native duration so it adds to and subtracts from timestamps exactly. Written inline as any CEL duration string (`1h30m`, `250ms`, `30d`; units `ns` to `w`, a day is 24 hours and a week 7 days) or as an integer number of milliseconds (`250`); it is written as seconds (`5400s`). A slot may bound it: `x-telo-type: { name: Telo.Duration, minimum: 0s }`."
 }

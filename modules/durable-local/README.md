@@ -89,7 +89,7 @@ A caller that genuinely wants the outcome asks for it:
 kind: Local.Result
 metadata: { name: outcome }
 journal: !ref runs
-wait: 30s          # omit to answer immediately with whatever state it is in
+wait: 30s          # a duration; omit to answer immediately with whatever state it is in
 ```
 
 Putting the choice here rather than on the start is what keeps both usable: the work never has to block anyone, and a caller that can afford to wait says so.
@@ -132,7 +132,7 @@ A token that matches nothing answers `{ "delivered": false }` rather than failin
 
 ## Scheduling, and forcing work forward
 
-`Local.Schedule` records work to start later — and unlike a cron firing, a scheduled run missed while the process is down is still found due on restart. It stores the values the work should start with, since there is no caller at the moment it begins.
+`Local.Schedule` records work to start later — and unlike a cron firing, a scheduled run missed while the process is down is still found due on restart. It stores the values the work should start with, since there is no caller at the moment it begins. Its `after` is a duration, and a computed one must be a duration (`!cel "duration(inputs.delay)"`), not text. `Local.Resumer.interval` and `Local.Result`'s `wait` and `poll` are durations too.
 
 `Local.Resume` exists for one situation: work held because the code changed underneath it. It clears the hold and **records the override** as a journal entry, because work continued against different code may diverge, and a divergent run has to be identifiable afterwards rather than indistinguishable from a clean one. Parking is a hold, not a grave.
 

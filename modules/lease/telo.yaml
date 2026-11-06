@@ -15,8 +15,10 @@ requires:
   # The zone-attribute object form of `x-telo-provides-zone` is syntax an older
   # analyzer reads as a malformed annotation, so it would reject this module and
   # blame its author. Declaring the floor turns that into one message naming the
-  # cause. Forward-declared: 0.79.0 is the release that carries the form.
-  telo: ">=0.79.0"
+  # cause. 0.79.0 is the release that carries the form.
+  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
+  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
+  telo: ">=0.130.0"
 imports: { KvStore: ../kv-store }
 exports: { kinds: [Critical] }
 ---
@@ -111,12 +113,11 @@ schema:
       x-telo-ref: { kind: KvStore.Store, use: dependency }
     ttl:
       title: TTL
-      type: string
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
       description: >-
-        Lease lifetime as a duration (`30s`, `5m`). On expiry the lease frees
-        (self-healing if a holder dies), so set it comfortably above the body's
-        max expected duration.
+        Lease lifetime. On expiry the lease frees (self-healing if a holder dies), so
+        set it comfortably above the body's max expected duration.
     detach:
       title: Detach
       type: boolean

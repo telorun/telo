@@ -42,7 +42,7 @@ counter can't be gamed:
   every terminal path; report `amount == reserved` to keep the full reservation
   when a unit of work failed with no measurable cost.
 
-`limit` is the max total cost per key per `window`. The backend must expose an
+`window` is a duration (`60s`, `1h`, `1d12h`); a malformed literal is refused by `telo check`, an integer is milliseconds, and a computed value is written `!cel "duration('1h')"`. `limit` is the max total cost per key per `window`. The backend must expose an
 atomic counter (`Cache.Store.increment`) — both bundled stores do; it is a
 **fixed window** (resets `window` after the first debit), the honest generic
 guarantee over a plain key/value store.
@@ -52,7 +52,7 @@ kind: RateLimit.Budget
 metadata: { name: SpendCap }
 store: !ref Counters      # a CacheRedis.Store bounds spend across instances
 limit: 2000000            # e.g. tokens per window
-window: "1h"
+window: 1h
 ```
 
 ## Example
@@ -70,7 +70,7 @@ kind: RateLimit.Guard
 metadata: { name: PublicLimit }
 store: !ref Counters
 limit: 60
-window: "60s"
+window: 60s
 ```
 
 Invoke with `{ key: "<client id>" }`. On an HTTP route, feed `!cel "request.ip"` (see `Http.Server.trustProxy`) and map `allowed: false` to a `429` with a `Retry-After` header of `!cel "string(result.retryAfter)"`.

@@ -50,9 +50,11 @@ kind: Cache.View
 metadata: { name: UserView }
 store: !ref Store
 invoke: !ref LoadUser      # any invocable or runnable (e.g. a SQL lookup, a Run.Sequence)
-ttl: "300s"
-staleTtl: "3600s"
+ttl: 5m
+staleTtl: 1h
 revalidate: background
 ```
+
+`ttl` and `staleTtl` are durations (`300s`, `5m`, `1d12h`, `250ms`); a malformed literal is refused by `telo check` and an integer is milliseconds.
 
 Invoke `UserView` with `{ key: "<cache key>", ... }`; all inputs are forwarded to the wrapped target on a miss or revalidation.

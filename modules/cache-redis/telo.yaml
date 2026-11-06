@@ -11,9 +11,11 @@ metadata:
     apps can share a server. When Redis is unreachable it degrades to an optional
     fallback cache, reports the degradation, and recovers on its own.
 requires:
-  # Controllers return their effects from `init()` / `run()`; a runtime that does
-  # not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=0.82.0"
+  # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime that
+  # does not execute a returned chain allocates nothing and undoes nothing.
+  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
+  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
+  telo: ">=0.130.0"
 imports: { Cache: ../cache }
 exports: { kinds: [Store] }
 ---
@@ -45,9 +47,8 @@ schema:
       x-telo-ref: { kind: Cache.Store, use: dependency }
     connectTimeout:
       title: Connect Timeout
-      type: string
-      default: "2s"
-      description: How long to wait for a Redis connection before degrading (duration).
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+      description: How long to wait for a Redis connection before degrading; `2s` when omitted.
     keyPrefix:
       title: Key Prefix
       type: string

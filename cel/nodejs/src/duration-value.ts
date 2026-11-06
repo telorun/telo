@@ -69,13 +69,16 @@ const UNIT_NANOS: Readonly<Record<string, bigint>> = {
   s: 1_000_000_000n,
   m: 60_000_000_000n,
   h: 3_600_000_000_000n,
+  d: 86_400_000_000_000n,
+  w: 604_800_000_000_000n,
 };
 
-const PART = /([0-9]*)(?:\.([0-9]*))?(ns|us|µs|μs|ms|s|m|h)/g;
+const PART = /([0-9]*)(?:\.([0-9]*))?(ns|us|µs|μs|ms|s|m|h|d|w)/g;
 
 /**
  * A duration from CEL's own text: a sign, then one or more number-and-unit parts over
- * `ns`, `us`, `ms`, `s`, `m` and `h` (`1h30m`, `1.5s`, `-10m`).
+ * `ns`, `us`, `ms`, `s`, `m`, `h`, `d` (24 hours) and `w` (7 days) (`1h30m`, `1.5d`, `-10m`).
+ * `d` and `w` extend cel-spec on purpose; months and years stay out, having no fixed length.
  */
 export function parseDuration(text: string, range?: SourceRange): CelDuration | CelError {
   const total = durationNanosFromText(text, range);

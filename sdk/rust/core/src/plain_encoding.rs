@@ -26,7 +26,7 @@ pub const PLAIN_ENCODINGS: &[PlainEncoding] = &[
     PlainEncoding { name: "rfc3339", form: "RFC 3339 text (2026-01-15T09:30:00Z)", composes: false },
     PlainEncoding {
         name: "cel-duration",
-        form: "a CEL duration string within ±315576000000s (1h30m, 250ms, 5400s)",
+        form: "a CEL duration string within ±315576000000s (1h30m, 250ms, 30d)",
         composes: false,
     },
     PlainEncoding {
@@ -183,74 +183,22 @@ pub mod rfc3339 {
 /// `cel-duration` — a duration as a CEL duration string; the canonical text is
 /// seconds (`5400s`).
 ///
-/// `decode` reads with a grammar of its own, which is not yet the value domain's
-/// `duration_nanos_from_text`: moving to it changes what some text reads as, and
-/// awaits the user's confirmation.
+/// `decode` reads the value domain's `duration_nanos_from_text` — the one grammar CEL's
+/// `duration()` reads — and applies protobuf's range here.
 pub mod cel_duration {
-    use telorun_cel_value::format_duration;
+    use telorun_cel_value::{duration_nanos_from_text, format_duration};
 
     use super::Duration;
-
-    const NANOS_PER_SECOND: i128 = 1_000_000_000;
 
     /// protobuf Duration's range, in whole seconds either side of zero. CEL's own
     /// range is narrower and is applied where a duration enters the engine.
     pub const MAX_SECONDS: u64 = 315_576_000_000;
 
-    fn unit_nanos(unit: &str) -> i128 {
-        match unit {
-            "h" => 3_600 * NANOS_PER_SECOND,
-            "m" => 60 * NANOS_PER_SECOND,
-            "s" => NANOS_PER_SECOND,
-            "ms" => 1_000_000,
-            "us" | "µs" => 1_000,
-            _ => 1,
-        }
-    }
-
-    /// The first unit `rest` starts with, in the order CEL's reader tries them.
-    fn unit_at(rest: &str) -> Option<&'static str> {
-        ["ns", "us", "µs", "ms", "s", "m", "h"].into_iter().find(|unit| rest.starts_with(unit))
-    }
-
-    /// The duration `text` encodes, or `None`: an optional sign, then one or more decimal numbers, each
-    /// with an optional fraction and a unit (`ns`, `us`, `µs`, `ms`, `s`, `m`,
-    /// `h`). A fraction is read to 13 digits. A duration outside
-    /// ±[`MAX_SECONDS`] is not one.
+    /// The duration `text` encodes, or `None`: CEL's duration text (`1h30m`, `250ms`,
+    /// `1.5d`, units `ns` to `w`). A duration outside ±[`MAX_SECONDS`] is not one.
     pub fn decode(text: &str) -> Option<Duration> {
-        if text.is_empty() {
-            return None;
-        }
-        let negative = text.starts_with('-');
-        let mut rest = text.strip_prefix(['-', '+']).unwrap_or(text);
-        let mut total: i128 = 0;
-        loop {
-            let integer_end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-            let integer = &rest[..integer_end];
-            let mut after = &rest[integer_end..];
-            let mut fraction = "";
-            if let Some(stripped) = after.strip_prefix('.') {
-                let end = stripped.find(|c: char| !c.is_ascii_digit()).unwrap_or(stripped.len());
-                fraction = &stripped[..end];
-                after = &stripped[end..];
-            }
-            let unit = unit_at(after)?;
-            let nanos = unit_nanos(unit);
-            let whole = if integer.is_empty() { 0 } else { integer.parse::<i128>().ok()? };
-            let mut part = whole.checked_mul(nanos)?;
-            if !fraction.is_empty() {
-                let digits: String = fraction.chars().take(13).collect();
-                let padded = format!("{digits:0<13}").parse::<i128>().ok()?;
-                part = part.checked_add(padded.checked_mul(nanos)? / 10_000_000_000_000)?;
-            }
-            total = total.checked_add(part)?;
-            rest = &after[unit.len()..];
-            if rest.is_empty() {
-                break;
-            }
-        }
-        Duration::from_total_nanos(if negative { -total } else { total })
-            .filter(|duration| duration.seconds().unsigned_abs() <= MAX_SECONDS)
+        let total = duration_nanos_from_text(text).ok()?;
+        Duration::from_total_nanos(total).filter(|duration| duration.seconds().unsigned_abs() <= MAX_SECONDS)
     }
 
     /// The canonical text: seconds with a trimmed fraction, as the protobuf JSON
@@ -788,7 +736,15 @@ mod tests {
         assert_eq!(read("-1.5h").as_deref(), Some("-5400s"));
         assert_eq!(read("250ms").as_deref(), Some("0.25s"));
         assert_eq!(read("1µs").as_deref(), Some("0.000001s"));
-        assert_eq!(read("s").as_deref(), Some("0s"));
+        assert_eq!(read("s"), None);
+        assert_eq!(read("30d").as_deref(), Some("2592000s"));
+        assert_eq!(read("1w").as_deref(), Some("604800s"));
+        assert_eq!(read("1d12h30m").as_deref(), Some("131400s"));
+        assert_eq!(read("1.5d").as_deref(), Some("129600s"));
+        assert_eq!(read("-1w").as_deref(), Some("-604800s"));
+        assert_eq!(read("1y"), None);
+        assert_eq!(read("2M"), None);
+        assert_eq!(read("1d 30m"), None);
         assert_eq!(read("1.5.5s"), None);
         assert_eq!(read("5"), None);
         assert_eq!(read("-315576000000.999999999s").as_deref(), Some("-315576000000.999999999s"));

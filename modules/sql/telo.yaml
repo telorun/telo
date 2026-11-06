@@ -25,7 +25,9 @@ requires:
   # 0.90.0: `Transaction` declares `throws: { inherit: true }` over a reference
   # to its body rather than a step array; an older analyzer refuses that shape
   # (INHERIT_WITHOUT_STEP_CONTEXT). Verified by execution against 0.89.0.
-  telo: ">=0.90.0"
+  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
+  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
+  telo: ">=0.130.0"
 exports:
   kinds: [Connection, Query, Command, Transaction, Selection, Table, Enum, Schema]
   # The entry point a dependent module's controller bundle resolves
@@ -815,12 +817,11 @@ schema:
         afterDuration:
           title: After Duration
           description: >-
-            How much time must pass after the object went missing (`30d`, `12h`).
-            The backstop to `afterVersions`, since several versions can land in an
-            afternoon. `0ms` switches it off, leaving `afterVersions` alone to gate
-            an irreversible drop — allowed, and reported at boot when it happens.
-          type: string
-          pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h|d)\\s*$"
+            How much time must pass after the object went missing. The backstop to
+            `afterVersions`, since several versions can land in an afternoon. `0ms`
+            switches it off, leaving `afterVersions` alone to gate an irreversible
+            drop — allowed, and reported at boot when it happens.
+          x-telo-type: { name: Telo.Duration, minimum: 0s }
   # The version is the reclamation clock and nothing else reads it, so an
   # implementation must require it exactly when a policy is declared.
   dependencies: { reclaim: [version] }
@@ -829,8 +830,10 @@ schema:
   # exists because several releases can land in an afternoon. Said out loud
   # rather than passing silently. Inherited by every backend's Schema kind,
   # which extends this abstract without declaring rules of its own.
+  # A rule reads the value as written (text or integer milliseconds), so the zero
+  # test matches the text form without parsing it: a malformed value never errors here.
   x-telo-resource-rules:
-    - condition: !cel "!has(self.reclaim) || self.reclaim.afterDuration != '0ms'"
+    - condition: !cel "!has(self.reclaim) || (type(dyn(self.reclaim.afterDuration)) == string ? !string(dyn(self.reclaim.afterDuration)).matches('^[+-]?(0|([0.]+(ns|us|µs|μs|ms|s|m|h|d|w))+)$') : dyn(self.reclaim.afterDuration) != 0)"
       code: SQL_RECLAIM_DURATION_DISABLED
       severity: warning
       message: >-

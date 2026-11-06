@@ -3,7 +3,7 @@ import {
   type ControllerContext,
   type ResourceContext,
   type ResourceInstance,
-  parseDurationMs,
+  durationMs,
 } from "@telorun/sdk";
 import { type CacheLookupResult, type CacheStore, isCacheStore } from "@telorun/cache";
 import { Redis } from "ioredis";
@@ -12,7 +12,7 @@ interface StoreResource {
   metadata: { name: string; module?: string };
   url: string;
   fallback?: CacheStore | KindRef<CacheStore>;
-  connectTimeout?: string;
+  connectTimeout?: unknown;
   keyPrefix?: string;
 }
 
@@ -44,11 +44,15 @@ class RedisStore implements ResourceInstance, CacheStore {
     private readonly ctx: ResourceContext,
   ) {
     this.keyPrefix = resource.keyPrefix ?? "";
+    const connectTimeout = resource.connectTimeout === undefined ? 2000 : durationMs(resource.connectTimeout);
+    if (connectTimeout === undefined) {
+      throw new Error(`CacheRedis.Store "${resource.metadata.name}": 'connectTimeout' must be a duration`);
+    }
     this.redis = new Redis(resource.url, {
       lazyConnect: true,
       enableOfflineQueue: false,
       maxRetriesPerRequest: 1,
-      connectTimeout: parseDurationMs(resource.connectTimeout ?? "2s"),
+      connectTimeout,
       // Individual commands fail fast to the fallback (offline queue off,
       // 1 retry), but keep reconnecting in the background with bounded backoff
       // so the store recovers (and emits `cache.recovered`) when Redis returns.

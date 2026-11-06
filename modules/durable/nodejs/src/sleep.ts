@@ -15,7 +15,7 @@
  */
 import {
   InvokeError,
-  parseDurationMs,
+  durationMs,
   parkRun,
   assertMaySuspend,
   stepPath,
@@ -76,7 +76,14 @@ class SleepController {
       return at;
     }
     const raw = this.ctx.expandValue(this.resource.for, cel);
-    const ms = parseDurationMs(String(raw));
+    const ms = durationMs(raw);
+    if (ms === undefined || ms < 0) {
+      throw new InvokeError(
+        "ERR_DURABLE_SLEEP_INVALID",
+        `Durable.Sleep '${name}': 'for' evaluated to ${JSON.stringify(raw)}, which is not a non-negative duration.`,
+        { resource: name, value: raw },
+      );
+    }
     return Date.now() + ms;
   }
 

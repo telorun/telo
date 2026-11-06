@@ -24,6 +24,8 @@ that URL and the scopes you ask for.
   call, so one token source serves every user of a web application.
 - **Your storage.** Grants live in any `KvStore.Store`.
 
+`timeout`, `grantTtl`, `refreshSkew`, `claimTtl` and `pendingTtl` are durations (`30s`, `5m`, `1d12h`); a malformed literal is refused by `telo check`, an integer is milliseconds, and a computed value is written `!cel "duration('5m')"`.
+
 ## Kinds
 
 | Kind | Purpose |

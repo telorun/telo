@@ -1,5 +1,4 @@
 import {
-  parseDurationMs,
   RuntimeError,
   type Logger,
   type ResourceContext,
@@ -7,6 +6,7 @@ import {
 } from "@telorun/sdk";
 import { KeyedClaim, newHolderToken, type KvStore } from "@telorun/kv-store";
 import { isClient, type ClientResource } from "./client.js";
+import { slotMs } from "./duration-slot.js";
 import type { TokenSet } from "./token-set.js";
 
 interface TokenSourceManifest {
@@ -14,9 +14,9 @@ interface TokenSourceManifest {
   client: unknown;
   store: unknown;
   key?: string;
-  grantTtl?: string;
-  refreshSkew?: string;
-  claimTtl?: string;
+  grantTtl?: unknown;
+  refreshSkew?: unknown;
+  claimTtl?: unknown;
 }
 
 /** A pending authorization, keyed by its one-time `state`. Single-use: consuming
@@ -83,9 +83,9 @@ export class TokenSourceResource implements ResourceInstance {
       "KvStore.Store",
     );
     this.claims = new KeyedClaim(this.store);
-    this.grantTtlMs = parseDurationMs(manifest.grantTtl, 8_760 * 3_600_000);
-    this.refreshSkewMs = parseDurationMs(manifest.refreshSkew, 60_000);
-    this.claimTtlMs = parseDurationMs(manifest.claimTtl, 30_000);
+    this.grantTtlMs = slotMs(manifest.grantTtl, 8_760 * 3_600_000, `${describe()}: 'grantTtl'`);
+    this.refreshSkewMs = slotMs(manifest.refreshSkew, 60_000, `${describe()}: 'refreshSkew'`);
+    this.claimTtlMs = slotMs(manifest.claimTtl, 30_000, `${describe()}: 'claimTtl'`);
   }
 
   /** The caller's key, or this source's default. */

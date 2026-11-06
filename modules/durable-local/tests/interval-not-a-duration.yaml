@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: DurableLocalIntervalNotADurationTest
+  version: 1.0.0
+  description: A `interval` that is not a duration is refused by `telo check` at the line that writes it.
+imports: { Assert: ../../assert }
+targets: [!ref refusedAtCheck]
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCheck }
+source: ./__fixtures__/interval-not-a-duration.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/interval must be a Telo.Duration" }

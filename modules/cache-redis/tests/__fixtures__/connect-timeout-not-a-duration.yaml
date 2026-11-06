@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: CacheRedisConnectTimeoutNotADuration, version: 1.0.0 }
+imports: { CacheRedis: ../../ }
+---
+kind: CacheRedis.Store
+metadata: { name: redis }
+url: redis://127.0.0.1:6390
+connectTimeout: soon

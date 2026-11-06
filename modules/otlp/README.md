@@ -45,11 +45,11 @@ resourceAttributes:
 | `endpoint` | yes | Collector's OTLP/JSON logs endpoint. |
 | `headers` | no | Extra request headers, typically credentials. |
 | `resourceAttributes` | no | OTel resource attributes on every batch. |
-| `timeout` | no | Per-request timeout (default `10s`). |
+| `timeout` | no | A duration: per-request timeout (default `10s`). |
 | `level` | no | Minimum severity, filtered at fan-out. |
 | `buffer` | no | Records held before the drop policy applies (default `8192`). |
 | `on_full` | no | `drop_new` (default) or `drop_old`. |
-| `flush_interval` | no | Max time a record sits buffered (default `1s`). |
+| `flush_interval` | no | A duration: max time a record sits buffered (default `1s`). |
 
 The encoding is fixed at OTLP/JSON and is not configurable: a collector accepts
 exactly one wire format, so offering a choice would only produce payloads it

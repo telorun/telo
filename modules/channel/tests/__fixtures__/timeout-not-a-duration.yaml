@@ -1,0 +1,13 @@
+kind: Telo.Application
+metadata: { name: TimeoutNotADuration, version: 1.0.0 }
+imports: { App: ../../../app, Channel: ../../ }
+---
+kind: App.Instance
+metadata: { name: quiz }
+source: ./quiz/telo.yaml
+awaitStart: false
+---
+kind: Channel.ReadUntil
+metadata: { name: read }
+channel: !ref quiz
+timeout: ten seconds

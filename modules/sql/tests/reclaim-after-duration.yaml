@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: ReclaimAfterDuration
+  version: 1.0.0
+  description: |
+    `reclaim.afterDuration` is a duration: text that is not one is refused by
+    `telo check`, and a zero one is reported as a warning.
+imports: { Assert: ../../assert }
+targets: [!ref refusedAtCheck, !ref zeroWarns]
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCheck }
+source: ./__fixtures__/reclaim/not-a-duration.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/reclaim/afterDuration must be a Telo.Duration" }
+---
+kind: Assert.Manifest
+metadata: { name: zeroWarns }
+source: ./__fixtures__/reclaim/disabled.yaml
+expect:
+  warnings:
+    - { code: RESOURCE_RULE_VIOLATED, message: "switching off the time backstop" }

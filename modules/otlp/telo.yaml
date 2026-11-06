@@ -16,7 +16,11 @@ requires:
   # Application's sink lists name — the floor turns that into one message naming
   # the cause. (The log sink alone needed
   # `>=0.82.0`, for `ctx.effect`.)
-  telo: ">=0.104.0"
+  # 0.129.0: the controllers read a `Telo.Duration` slot with `durationMs` from `@telorun/sdk`,
+  # which is external and collapsed to the runtime's own copy; a runtime without that export
+  # fails at controller load ("does not provide an export named 'durationMs'"). Verified by
+  # execution against the published 0.128.0.
+  telo: ">=0.129.0"
 exports: { kinds: [Sink, TraceSink] }
 ---
 kind: Telo.Definition
@@ -56,9 +60,8 @@ schema:
       x-telo-eval: compile
     timeout:
       title: Request timeout
-      description: How long a single export request may take before it is aborted.
-      type: string
-      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+      description: How long a single export request may take before it is aborted; `10s` when omitted.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
     level:
       title: Level
@@ -82,9 +85,8 @@ schema:
       x-telo-eval: compile
     flush_interval:
       title: Flush interval
-      description: Maximum time a record may sit buffered before an export.
-      type: string
-      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+      description: Maximum time a record may sit buffered before an export; `1s` when omitted.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
   required: [endpoint]
   additionalProperties: false
@@ -127,9 +129,8 @@ schema:
       x-telo-eval: compile
     timeout:
       title: Request timeout
-      description: How long a single export request may take before it is aborted.
-      type: string
-      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+      description: How long a single export request may take before it is aborted; `10s` when omitted.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
     buffer:
       title: Buffer size
@@ -147,9 +148,8 @@ schema:
       x-telo-eval: compile
     flush_interval:
       title: Flush interval
-      description: Maximum time a span may sit buffered before an export.
-      type: string
-      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+      description: Maximum time a span may sit buffered before an export; `1s` when omitted.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
   required: [endpoint]
   additionalProperties: false

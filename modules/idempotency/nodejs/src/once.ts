@@ -1,7 +1,7 @@
 import {
   InvokeError,
   SEVERITY,
-  parseDurationMs,
+  durationMs,
   resolveInvocableDispatcher,
   type InvokeContext,
   type ResourceContext,
@@ -12,8 +12,8 @@ import { KeyedClaim, newHolderToken, type KvStore } from "@telorun/kv-store";
 interface OnceResource {
   metadata: { name: string; module?: string };
   store?: unknown;
-  claimTtl: string;
-  ttl: string;
+  claimTtl: unknown;
+  ttl: unknown;
   invoke?: unknown;
 }
 
@@ -60,8 +60,18 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
     private readonly resource: OnceResource,
     private readonly ctx: ResourceContext,
   ) {
-    this.claimTtlMs = parseDurationMs(resource.claimTtl);
-    this.ttlMs = parseDurationMs(resource.ttl);
+    this.claimTtlMs = this.durationField("claimTtl", resource.claimTtl);
+    this.ttlMs = this.durationField("ttl", resource.ttl);
+  }
+
+  private durationField(field: string, value: unknown): number {
+    const ms = durationMs(value);
+    if (ms === undefined) {
+      throw new Error(
+        `Idempotency.Once "${this.resource.metadata.name}": '${field}' must be a duration`,
+      );
+    }
+    return ms;
   }
 
   // A missing or empty `key` is rejected by the declared `inputType`

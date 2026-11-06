@@ -1,4 +1,4 @@
-import { parseDurationMs, type ResourceContext } from "@telorun/sdk";
+import { type ResourceContext } from "@telorun/sdk";
 import type { DeclaredEnum, DeclaredTable, SchemaObjectId } from "./declared-schema.js";
 import { describeObject, objectKey } from "./declared-schema.js";
 import { applyRenames, planRenames, renameSources } from "./plan-renames.js";
@@ -7,7 +7,7 @@ import type { DeclarationSnapshot } from "./declaration-snapshot.js";
 import { snapshotDeclaration, snapshotDigest, parseObjectKey } from "./declaration-snapshot.js";
 import type { SchemaDriver } from "./schema-driver.js";
 import { ledgerTables, SchemaLedger, type TombstoneRecord } from "./schema-ledger.js";
-import { assessTombstone, type ReclaimPolicy } from "./reclaim-policy.js";
+import { afterDurationMs, assessTombstone, type ReclaimPolicy } from "./reclaim-policy.js";
 import {
   migrationStatements,
   orphanedKeys,
@@ -180,7 +180,7 @@ async function pass(
   // alone to gate an irreversible drop. A static diagnostic belongs to the
   // declaration-consistency mechanism (analyzer/nodejs/plans/); until that
   // lands, saying it at boot is better than not saying it.
-  if (input.reclaim && parseDurationMs(input.reclaim.afterDuration) === 0) {
+  if (input.reclaim && afterDurationMs(input.reclaim) === 0) {
     ctx.log.warn("Reclamation has no time backstop", {
       "sql.schema.reclaim.afterVersions": input.reclaim.afterVersions,
     });

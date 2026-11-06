@@ -1,10 +1,10 @@
 import {
   DEFAULT_BUFFER_POLICY,
   integerInput,
-  parseDurationMs,
   RuntimeError,
   type SinkBufferPolicy,
 } from "@telorun/sdk";
+import { slotMs } from "./duration-slot.js";
 
 /**
  * What the log sink and the trace sink share: the buffering policy read off the
@@ -14,11 +14,11 @@ import {
 export interface OtlpExportConfig {
   endpoint: string;
   headers?: Record<string, string>;
-  timeout?: string;
+  timeout?: unknown;
   resourceAttributes?: Record<string, unknown>;
   buffer?: number | bigint;
   on_full?: string;
-  flush_interval?: string;
+  flush_interval?: unknown;
 }
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
@@ -45,9 +45,11 @@ export function bufferPolicyOf(config: OtlpExportConfig, sinkId: string): SinkBu
   return {
     buffer,
     onFull: (config.on_full ?? DEFAULT_BUFFER_POLICY.onFull) as SinkBufferPolicy["onFull"],
-    flushIntervalMs: config.flush_interval
-      ? parseDurationMs(config.flush_interval, DEFAULT_BUFFER_POLICY.flushIntervalMs)
-      : DEFAULT_BUFFER_POLICY.flushIntervalMs,
+    flushIntervalMs: slotMs(
+      config.flush_interval,
+      DEFAULT_BUFFER_POLICY.flushIntervalMs,
+      `Sink "${sinkId}": 'flush_interval'`,
+    ),
   };
 }
 

@@ -20,26 +20,15 @@ targets:
   - !ref migrate
   - !ref server
   - !ref sweeper
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8099
+ports: { http: { env: PORT, protocol: tcp, default: 8099 } }
 variables:
-  sweepEvery:
-    env: SWEEP_EVERY
-    type: string
-    default: "3s"
+  sweepEvery: { env: SWEEP_EVERY, type: string, default: "3s" }
   dbFile:
     env: DB_FILE
     type: string
     x-telo-type: Telo.HostPath
     default: orders.db
-secrets:
-  webhookToken:
-    env: WEBHOOK_TOKEN
-    type: string
-    default: local-dev-token
+secrets: { webhookToken: { env: WEBHOOK_TOKEN, type: string, default: local-dev-token } }
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -145,9 +134,7 @@ steps:
     if: !cel "inputs.token != 'Bearer ' + secrets.webhookToken"
     then:
       - name: deny
-        throw:
-          code: ERR_WEBHOOK_UNAUTHORIZED
-          message: bad or missing webhook token
+        throw: { code: ERR_WEBHOOK_UNAUTHORIZED, message: bad or missing webhook token }
     else:
       - name: accepted
         invoke: !ref stamp
@@ -173,8 +160,7 @@ routes:
         headers:
           type: object
           required: [authorization]
-          properties:
-            authorization: { type: string }
+          properties: { authorization: { type: string } }
         body:
           type: object
           additionalProperties: false
@@ -201,16 +187,10 @@ routes:
     catches:
       - when: !cel "error.code == 'ERR_WEBHOOK_UNAUTHORIZED'"
         status: 401
-        content:
-          application/json:
-            body:
-              error: unauthorized
+        content: { application/json: { body: { error: unauthorized } } }
       - when: !cel "error.code == 'ERR_CLAIM_LOST'"
         status: 503
-        content:
-          application/json:
-            body:
-              error: retry_later
+        content: { application/json: { body: { error: retry_later } } }
       - status: 500
         content:
           application/json:
@@ -248,5 +228,5 @@ steps:
 ---
 kind: Schedule.Interval
 metadata: { name: sweeper }
-every: !cel "variables.sweepEvery"
+every: !cel "duration(variables.sweepEvery)"
 invoke: !ref shipPending

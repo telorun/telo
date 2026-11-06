@@ -37,7 +37,7 @@ use telorun_cel::{
 /// `(file, its rows, the rows selected, the rows excluded, the selected rows that do not read)`.
 const NODE_COUNTS: [(&str, usize, usize, usize, usize); 6] = [
     ("language.json", 1814, 1814, 0, 0),
-    ("catalog.json", 178, 178, 0, 0),
+    ("catalog.json", 186, 186, 0, 0),
     ("types.json", 74, 74, 0, 0),
     ("holes.json", 82, 5, 77, 2),
     ("module-calls.json", 53, 49, 4, 0),

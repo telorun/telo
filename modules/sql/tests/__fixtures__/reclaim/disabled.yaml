@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata: { name: Reclaimdisabled, version: 1.0.0 }
+imports: { SQLite: ../../../../sqlite }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: "1"
+tables: []
+reclaim: { afterVersions: 1, afterDuration: 0ms }

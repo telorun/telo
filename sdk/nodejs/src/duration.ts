@@ -8,10 +8,10 @@
  * throws a coded `RuntimeError` and treats `undefined` as a default (for optional
  * fields), so a bad duration in a manifest surfaces as a structured config error.
  *
- * This grammar is NOT `Telo.Duration`'s: it reads one number and one unit and
- * accepts days (`30d`), while a `Telo.Duration` slot reads CEL's grammar
- * (`1h30m`, no `d`). A field moved from a string read here to `Telo.Duration`
- * changes which literals are valid, and is a breaking change for its kind.
+ * This grammar is NOT `Telo.Duration`'s: it reads one number and one unit, while a
+ * `Telo.Duration` slot reads CEL's grammar (`1h30m`, `1.5d`, units `ns` to `w`). Prefer a
+ * `Telo.Duration` slot read with `durationMs`; a field moved from a string read here to
+ * `Telo.Duration` changes which literals are valid, and is a breaking change for its kind.
  */
 import { durationNanos, isCelDuration } from "./cel-value-identity.js";
 import { RuntimeError } from "./types.js";
@@ -19,7 +19,8 @@ import { RuntimeError } from "./types.js";
 const DURATION_PATTERN = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d)$/;
 const UNIT_MS = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
 
-/** Parse a duration string to milliseconds, or `null` if it is not a valid
+/** @deprecated Declare the field as a `Telo.Duration` slot and read it with `durationMs`.
+ *  Parse a duration string to milliseconds, or `null` if it is not a valid
  *  duration. Lets the caller own the error message and error type. */
 export function tryParseDurationMs(value: string): number | null {
   const match = DURATION_PATTERN.exec(value.trim());
@@ -27,7 +28,8 @@ export function tryParseDurationMs(value: string): number | null {
   return Number(match[1]) * UNIT_MS[match[2] as keyof typeof UNIT_MS];
 }
 
-/** Parse a duration string (`300s`, `5m`, `1h`, `30d`, `50ms`) to milliseconds. An
+/** @deprecated Declare the field as a `Telo.Duration` slot and read it with `durationMs`.
+ *  Parse a duration string (`300s`, `5m`, `1h`, `30d`, `50ms`) to milliseconds. An
  *  `undefined` value yields `fallback` (default `0`) for optional fields; an
  *  invalid string throws a plain `Error`. */
 export function parseDurationMs(value: string | undefined, fallback = 0): number {

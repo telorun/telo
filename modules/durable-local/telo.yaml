@@ -13,7 +13,9 @@ metadata:
 requires:
   # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime
   # that does not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=0.82.0"
+  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
+  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
+  telo: ">=0.130.0"
 imports: { Durable: ../durable }
 exports:
   kinds: [Workflow, Journal, Resumer, Deliver, Status, Result, Cancel, Schedule, Resume]
@@ -190,10 +192,9 @@ schema:
       x-telo-ref: { kind: Self.Workflow, use: [call] }
     interval:
       title: Interval
-      description: How often to look for interrupted runs.
-      type: string
+      description: How often to look for interrupted runs; `5s` when omitted.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
-      default: 5s
 ---
 # DurableLocal.Deliver — the wake side of Durable.Await, in this backend's words.
 #
@@ -392,14 +393,13 @@ schema:
       description: >-
         How long to wait for work still in progress. Omit to answer immediately with
         whatever state it is in.
-      type: string
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
     poll:
       title: Poll
-      description: How often to re-read while waiting.
-      type: string
+      description: How often to re-read while waiting; `100ms` when omitted.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
-      default: 100ms
 ---
 # DurableLocal.Cancel — call a run off.
 #
@@ -501,8 +501,8 @@ schema:
       x-telo-context: { type: object, properties: { inputs: {} } }
     after:
       title: After
-      description: How long from now, as a duration.
-      type: string
+      description: How long from now. A computed value must be a duration, e.g. `duration(inputs.delay)`.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: runtime
       x-telo-context: { type: object, properties: { inputs: {} } }
     at:

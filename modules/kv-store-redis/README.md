@@ -15,7 +15,7 @@
 | --- | --- |
 | `url` | Redis connection URL (`redis://localhost:6379`, `rediss://…`). |
 | `keyPrefix` | Prefix on every key (default `telo:kv:`), so unrelated key spaces can share one instance. |
-| `connectTimeout` | How long to wait for a connection before failing (default `2s`). |
+| `connectTimeout` | How long to wait for a connection before failing (a duration, default `2s`). |
 
 ## Example
 

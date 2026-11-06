@@ -5,15 +5,15 @@ import {
   type ResourceInstance,
   SEVERITY,
   integerInput,
-  parseDurationMs,
 } from "@telorun/sdk";
+import { windowMs } from "./window-ms.js";
 import { type CacheStore, isCacheStore } from "@telorun/cache";
 
 interface GuardResource {
   metadata: { name: string; module?: string };
   store?: CacheStore | KindRef<CacheStore>;
   limit: number;
-  window: string;
+  window: unknown;
 }
 
 interface GuardInputs {
@@ -41,7 +41,7 @@ class RateLimitGuard implements ResourceInstance<GuardInputs, GuardResult> {
     private readonly resource: GuardResource,
     private readonly ctx: ResourceContext,
   ) {
-    this.windowMs = parseDurationMs(resource.window);
+    this.windowMs = windowMs(resource.window, `RateLimit.Guard "${resource.metadata.name}"`);
     const limit = integerInput(resource.limit);
     if (limit === undefined) {
       throw new Error(
