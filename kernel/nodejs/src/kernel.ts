@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import {
   AnalysisRegistry,
   authoredModuleMetadata,
@@ -469,6 +470,11 @@ export class Kernel implements IKernel {
   // appears as the trace root with its targets nested beneath.
   private _appName?: string;
 
+  /** This kernel instance's identity, read by controllers as
+   *  `ctx.kernelInstanceId`: minted at construction, kept across `reconcile()`,
+   *  never reused. A child manifest runs as a kernel of its own, so it has
+   *  another. */
+  readonly kernelInstanceId: string = randomUUID();
   readonly stdin: NodeJS.ReadableStream;
   readonly stdout: NodeJS.WritableStream;
   readonly stderr: NodeJS.WritableStream;

@@ -33,12 +33,12 @@ import {
 import { assignConcretePath, navigateConcretePath } from "./manifest-path.js";
 import { visitManifest } from "./manifest-visitor.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import { siteRefEntry, type ReachSite } from "./reference-reach.js";
+import { enclosingProperty, siteRefEntry, type ReachSite } from "./reference-reach.js";
+import { readArgumentMapDefault, stepArgumentMapOf, type ArgumentMapDefault } from "./argument-map-default.js";
 import { withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
 import { isSchemaFromSite, schemaFromSites } from "./schema-from-sites.js";
-import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
+import { resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
-import { topologyRoleOf } from "./topology-role.js";
 import { dispatchTargetOf } from "./template-body.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
 import { isKindDocument } from "./kind-declaration.js";
@@ -86,6 +86,10 @@ export interface CallSite {
   readonly contract: ResolvedContract | undefined;
   /** The step itself and its item schema — only a step declares a re-attempt. */
   readonly step?: { readonly value: Record<string, any>; readonly schema: Record<string, any> };
+  /** Set where no argument map is written: `values` is the `default:` its
+   *  property declares, and `path` the reference — the slot, or the step's
+   *  invoke field — since no map exists to point at. */
+  readonly omitted?: { readonly inputsPath: string };
 }
 
 /** An `x-telo-value-schema-from` slot and the type it must satisfy. */
@@ -123,6 +127,7 @@ export function callSiteAt(
   manifest: Record<string, any>,
   ctx: DerivedSlotContext,
   step?: CallSite["step"],
+  omitted?: CallSite["omitted"],
 ): CallSite {
   const scope = contractScopeOf(ctx);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
@@ -138,6 +143,7 @@ export function callSiteAt(
     invokedDefinition,
     contract: resolveContract("inputType", invokedManifest, invokedDefinition, scope),
     ...(step ? { step } : {}),
+    ...(omitted ? { omitted } : {}),
   };
 }
 
@@ -149,6 +155,8 @@ export interface StepItem {
   /** The field holding its target, and the one holding its arguments. */
   readonly invokeField: string;
   readonly inputsField: string;
+  /** What the argument-map property declares about an omitted map. */
+  readonly inputsDefault: ArgumentMapDefault;
 }
 
 /** Every step item of `manifest`'s step bodies whose item schema declares an
@@ -165,29 +173,34 @@ export function stepItemsOf(manifest: Record<string, any>, defSchema: Record<str
     if (!Array.isArray(steps)) continue;
     const itemSchema = resolveLocalRef(fieldSchema.items as Record<string, any> | undefined, defSchema);
     if (!itemSchema) continue;
-    let inputsField: string | undefined;
-    for (const [key, sub] of gatherPropertySchemas(itemSchema)) {
-      if (topologyRoleOf(sub) === "inputs") inputsField = key;
-    }
-    if (!inputsField) continue;
+    const map = stepArgumentMapOf(itemSchema, defSchema);
+    if (!map) continue;
+    const inputsDefault = readArgumentMapDefault(map.property);
     walkStepArray(steps, itemSchema, defSchema, fieldName, (step, path) => {
-      out.push({ path, value: step, itemSchema, invokeField: slot.invoke, inputsField: inputsField! });
+      out.push({ path, value: step, itemSchema, invokeField: slot.invoke, inputsField: map.field, inputsDefault });
     });
   }
   return out;
 }
 
-/** The call a step item makes: its argument map against its target; undefined
- *  where it names no target or writes no argument map. */
+/** The call a step item makes: its argument map against its target — or, where
+ *  it writes none, the default its property declares, reported at the invoke
+ *  field. Undefined where it names no target, writes a map that is no object, or
+ *  omits one whose property declares no literal default. */
 export function stepCallSiteOf(item: StepItem, manifest: Record<string, any>, ctx: DerivedSlotContext): CallSite | undefined {
   const invoke = item.value[item.invokeField];
   const values = item.value[item.inputsField];
   if (!invoke || typeof invoke !== "object") return undefined;
+  const step = { value: item.value, schema: item.itemSchema };
+  const inputsPath = `${item.path}.${item.inputsField}`;
+  if (values === undefined) {
+    if (!("default" in item.inputsDefault)) return undefined;
+    return callSiteAt("step", `${item.path}.${item.invokeField}`, structuredClone(item.inputsDefault.default), invoke, manifest, ctx, step, {
+      inputsPath,
+    });
+  }
   if (!values || typeof values !== "object" || Array.isArray(values)) return undefined;
-  return callSiteAt("step", `${item.path}.${item.inputsField}`, values, invoke, manifest, ctx, {
-    value: item.value,
-    schema: item.itemSchema,
-  });
+  return callSiteAt("step", inputsPath, values, invoke, manifest, ctx, step);
 }
 
 /** Every step's argument map, found through the step grammar. */
@@ -213,12 +226,47 @@ export function slotCallSites(
     const invoke = site.data;
     if (!invoke || typeof invoke !== "object" || Array.isArray(invoke)) continue;
     const values = navigateConcretePath(manifest, inputsPath);
+    if (values === undefined) {
+      const omitted = omittedSlotCallSite(site, manifest, ctx);
+      if (omitted) out.push(omitted);
+      continue;
+    }
     if (!values || typeof values !== "object" || Array.isArray(values)) continue;
     out.push(
       callSiteAt("slot", inputsPath, values as Record<string, any>, invoke as Record<string, any>, manifest, ctx),
     );
   }
   return out;
+}
+
+/** What the property a reference slot's `inputs:` pointer names declares about
+ *  an omitted map, read against the object enclosing the slot; undefined for a
+ *  slot pairing none. */
+export function slotArgumentMapDefault(site: ReachSite): ArgumentMapDefault | undefined {
+  for (const ref of site.refs) {
+    if (ref.slot.inputs === undefined) continue;
+    const property = enclosingProperty(ref, ref.slot.inputs);
+    return property && readArgumentMapDefault(property);
+  }
+  return undefined;
+}
+
+/** The call a reference slot writing no argument map makes: the default its
+ *  property declares, reported at the slot. Undefined where the slot pairs no
+ *  map, holds no reference, or its property declares no literal default. */
+export function omittedSlotCallSite(
+  site: ReachSite,
+  manifest: Record<string, any>,
+  ctx: DerivedSlotContext,
+): CallSite | undefined {
+  const inputsPath = slotInputsPath(site);
+  const invoke = site.data;
+  if (inputsPath === undefined || !invoke || typeof invoke !== "object" || Array.isArray(invoke)) return undefined;
+  const reading = slotArgumentMapDefault(site);
+  if (!reading || !("default" in reading)) return undefined;
+  return callSiteAt("slot", site.path, structuredClone(reading.default), invoke as Record<string, any>, manifest, ctx, undefined, {
+    inputsPath,
+  });
 }
 
 /** The concrete path of the argument map a reference slot names through its
@@ -387,8 +435,9 @@ export function derivedSlotsOf(
   ];
   const template = templateCallSite(manifest, ctx);
   if (template) calls.push(template);
+  // An omitted map is judged as its default, never written into the manifest.
   for (const call of calls) {
-    if (call.contract) at(call.path, call.values, call.contract.schema);
+    if (call.contract && !call.omitted) at(call.path, call.values, call.contract.schema);
   }
   const valueSchemaHost = valueSchemaHostOf(contractScopeOf(ctx));
   for (const site of valueSchemaSites(manifest, schema, {

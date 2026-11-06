@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: SharedChannel
+  version: 1.0.0
+  description: A library that declares the memory channel `events` and exports it.
+imports: { Broadcast: ../../.. }
+exports: { resources: [events] }
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: events }
+name: events
+messageType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [text], properties: { text: { type: string } } }

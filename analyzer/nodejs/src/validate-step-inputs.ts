@@ -33,6 +33,9 @@ export interface StepInputIssue {
   /** Set when the issue is not a contract shape violation: a live value retried, or a
    *  value type's own refusal (`URL_INVALID`). */
   code?: string;
+  /** Set when no argument map is written: the default it was judged as, and
+   *  where the map would be written. `path` is then the reference. */
+  omitted?: { inputsPath: string; default: Record<string, any> };
 }
 
 /**
@@ -188,7 +191,10 @@ export function checkCallSite(
   const targetLabel = invokedManifest && isGeneratedDeclaration(invokedManifest)
     ? `the inline ${String(invoke.kind)}`
     : ((invoke.name as string | undefined) ?? (invoke.kind as string | undefined) ?? "the invoked resource");
-  argumentMaps?.push({
+  // An omitted map is its property's literal default: no expression to join
+  // and no live value, and every finding is at the reference.
+  const omitted = site.omitted && { inputsPath: site.omitted.inputsPath, default: values };
+  if (!omitted) argumentMaps?.push({
     path: site.path,
     values,
     schema: contract.schema,
@@ -228,7 +234,7 @@ export function checkCallSite(
     if (ownContract) roots.push(["inputs.", ownContract.schema]);
   }
 
-  if (roots.length > 0 && site.step) {
+  if (roots.length > 0 && site.step && !omitted) {
     for (const [inputName, inputValue] of Object.entries(values)) {
       const chain = plainChainOf(inputValue);
       const root = chain ? roots.find(([prefix]) => chain.startsWith(prefix)) : undefined;
@@ -271,10 +277,11 @@ export function checkCallSite(
     );
     const code = valueTypeRefusalCode(issue);
     out.push({
-      path: anchor ? `${site.path}.${anchor}` : site.path,
+      path: anchor && !omitted ? `${site.path}.${anchor}` : site.path,
       targetLabel,
       message: issue.message,
       ...(code ? { code } : {}),
+      ...(omitted ? { omitted } : {}),
     });
   }
   return out;

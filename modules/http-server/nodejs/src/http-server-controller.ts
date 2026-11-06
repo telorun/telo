@@ -1192,20 +1192,10 @@ class HttpServer implements ResourceInstance {
 
         const sink = fastifyReplySink(reply);
 
-        // Expand the `inputs:` sibling template against the request context,
-        // then pass the merged shape (spread for convenience + `inputs:` field
-        // for handlers that read it explicitly) to the dispatch target. Same
-        // contract Api.routes[*] uses. When no `inputs:` is declared, the
-        // request context itself is forwarded so existing manifests that read
-        // `request.*` directly continue to work.
-        const resolvedInputs: Record<string, any> =
-          handler.inputs && Object.keys(handler.inputs).length > 0
-            ? ((this.ctx.moduleContext.expandWith(handler.inputs, requestContext) as any) ?? {})
-            : requestContext;
-        const invokeInput: Record<string, any> = {
-          ...resolvedInputs,
-          inputs: resolvedInputs,
-        };
+        // The handler is dispatched exactly the evaluated `inputs:` map (`{}` when
+        // omitted or written empty): nothing spread, nothing nested.
+        const invokeInput: Record<string, any> =
+          (this.ctx.moduleContext.expandWith(handler.inputs, requestContext) as any) ?? {};
 
         const trace = this.requestScope.forRequest(request);
         let result: any;

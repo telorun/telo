@@ -1,0 +1,80 @@
+kind: Telo.Application
+metadata:
+  name: HttpHandlerInputsExactTest
+  version: 1.0.0
+  description: |
+    A handler is dispatched exactly the evaluated `inputs:` map. A route or a
+    not-found handler writing none dispatches `{}`, and a written `{}` is `{}`;
+    nothing of the request is forwarded, spread or nested.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /omitted, method: GET }
+    handler: { kind: Run.Value, value: !cel "inputs" }
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request: { path: /written, method: GET }
+    handler: { kind: Run.Value, value: !cel "inputs" }
+    inputs:
+      method: !cel "request.method"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9318 }
+    notFoundHandler:
+      invoke: { kind: Run.Value, value: !cel "inputs" }
+      returns:
+        - status: 404
+          content: { application/json: { body: !cel "result" } }
+    mounts:
+      - { path: /, mount: !ref api }
+  - kind: Http.Server
+    metadata: { name: emptyServer }
+    listen: { address: 127.0.0.1, port: 9319 }
+    notFoundHandler:
+      invoke: { kind: Run.Value, value: !cel "inputs" }
+      inputs: {}
+      returns:
+        - status: 404
+          content: { application/json: { body: !cel "result" } }
+    mounts: []
+targets:
+  - !ref server
+  - !ref emptyServer
+steps:
+  - name: omitted
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:9318/omitted, method: GET }
+  - name: written
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:9318/written, method: GET }
+  - name: notFoundOmitted
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:9318/nothing-here, method: GET }
+  - name: notFoundEmpty
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:9319/nothing-here, method: GET }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        omitted: !cel "steps.omitted.result.body"
+        written: !cel "steps.written.result.body"
+        notFoundOmitted: !cel "steps.notFoundOmitted.result.body"
+        notFoundEmpty: !cel "steps.notFoundEmpty.result.body"
+      expected:
+        omitted: {}
+        written: { method: GET }
+        notFoundOmitted: {}
+        notFoundEmpty: {}

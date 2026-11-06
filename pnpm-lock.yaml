@@ -963,6 +963,46 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
+  modules/broadcast-postgres/nodejs:
+    dependencies:
+      '@telorun/broadcast':
+        specifier: workspace:*
+        version: link:../../broadcast/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+
+  modules/broadcast/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+
   modules/cache-memory/nodejs:
     dependencies:
       '@telorun/cache':

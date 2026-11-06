@@ -913,16 +913,53 @@ export interface ReachRef {
  * wins. Undefined when none declares one.
  */
 export function enclosingDefault(ref: ReachRef, pointer: string): unknown {
+  return enclosingProperty(ref, pointer)?.default;
+}
+
+/** A property a pointer relative to the object enclosing a slot names, read
+ *  from that object's conjunct declarations. */
+export interface EnclosedProperty {
+  /** Some declaration declares it under `properties`. */
+  declared: boolean;
+  /** Some declaration lists it, at every level of the pointer, as required. */
+  required: boolean;
+  /** The first `default:` found, in the order the declarations were entered;
+   *  undefined when none declares one. */
+  default: unknown;
+  /** The first declaration of it, and the document its references resolve
+   *  against. */
+  node?: Record<string, any>;
+}
+
+/** The property `pointer` names relative to the object enclosing `ref`'s slot,
+ *  or undefined when the pointer is not a JSON Pointer. */
+export function enclosingProperty(ref: ReachRef, pointer: string): EnclosedProperty | undefined {
+  return propertyOfEnclosing(ref.enclosing, ref.declaredIn.document, pointer);
+}
+
+function propertyOfEnclosing(
+  enclosing: readonly Record<string, any>[],
+  document: Record<string, any>,
+  pointer: string,
+): EnclosedProperty | undefined {
   if (!pointer.startsWith("/")) return undefined;
   const segments = pointer
     .slice(1)
     .split("/")
     .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
-  const document = ref.declaredIn.document;
-  for (const declaration of ref.enclosing) {
+  const out: EnclosedProperty = { declared: false, required: false, default: undefined };
+  const lists = (node: Record<string, any> | undefined, key: string): boolean =>
+    Array.isArray(node?.required) && node!.required.includes(key);
+  if (segments.length === 1 && enclosing.some((declaration) => lists(declaration, segments[0]!))) {
+    out.required = true;
+  }
+  for (const declaration of enclosing) {
     let current: Record<string, any> | undefined = declaration;
     let value: unknown;
+    let required = true;
+    let declaredNode: Record<string, any> | undefined;
     for (const segment of segments) {
+      required &&= lists(current, segment);
       const written: unknown = current?.properties?.[segment];
       if (!written || typeof written !== "object") {
         current = undefined;
@@ -931,11 +968,53 @@ export function enclosingDefault(ref: ReachRef, pointer: string): unknown {
       const node = written as Record<string, any>;
       const target = typeof node.$ref === "string" ? resolveLocalReference(node, document)?.node : undefined;
       value = node.default !== undefined ? node.default : target?.default;
+      declaredNode = node;
       current = target ?? node;
     }
-    if (current && value !== undefined) return value;
+    if (!current) continue;
+    out.declared = true;
+    if (required) out.required = true;
+    if (!out.node) out.node = declaredNode;
+    if (out.default === undefined && value !== undefined) out.default = value;
   }
-  return undefined;
+  return out;
+}
+
+/** A reference slot of a kind's own schema pairing an argument map through its
+ *  `x-telo-ref` `inputs:` pointer, with the property that pointer names. */
+export interface DeclaredArgumentMap {
+  /** Where the slot is written in the schema (`properties.routes.items.properties.handler`). */
+  slotLocation: string;
+  /** Where the paired property is written, when some declaration declares it. */
+  propertyLocation?: string;
+  pointer: string;
+  property: EnclosedProperty;
+}
+
+/** Every reference slot `schema`'s own reach declares with an `inputs:` pointer,
+ *  each with the property it pairs. */
+export function declaredArgumentMaps(schema: Record<string, any>): DeclaredArgumentMap[] {
+  const reach = reachOfSchema(schema);
+  const out: DeclaredArgumentMap[] = [];
+  for (const at of reach.paths.values()) {
+    for (const entry of at.refs) {
+      if (typeof entry.inputs !== "string") continue;
+      const property = propertyOfEnclosing(
+        enclosingDeclarations(reach, at.pattern, entry),
+        reach.document,
+        entry.inputs,
+      );
+      if (!property) continue;
+      const own = entryDeclarations.get(entry);
+      out.push({
+        slotLocation: own ? locationIn(reach.document, own.node) : patternText(at.pattern),
+        ...(property.node ? { propertyLocation: locationIn(reach.document, property.node) } : {}),
+        pointer: entry.inputs,
+        property,
+      });
+    }
+  }
+  return out;
 }
 
 /** Everything one concrete site of one resource carries, from every branch and

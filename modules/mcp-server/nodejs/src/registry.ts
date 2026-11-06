@@ -106,7 +106,7 @@ async function dispatch(
       entry.handlerKind,
       entry.handlerName,
       entry.handler,
-      { ...inputs, inputs },
+      inputs,
       opts.dispatchContext(requestId),
     );
   } catch (err) {

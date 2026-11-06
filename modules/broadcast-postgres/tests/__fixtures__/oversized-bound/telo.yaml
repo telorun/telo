@@ -1,0 +1,18 @@
+# A channel whose bound exceeds the notification payload limit.
+kind: Telo.Library
+metadata: { name: OversizedBound }
+imports: { BroadcastPostgres: ../../.., Postgres: ../../../../postgres }
+exports: { resources: [cacheEvents] }
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields: { url: postgres://postgres:postgres@127.0.0.1:9/postgres }
+---
+kind: BroadcastPostgres.Channel
+metadata: { name: cacheEvents }
+connection: !ref db
+name: cache_events
+maxBytes: 100000
+messageType: { kind: Telo.JsonSchema, schema: { type: object } }

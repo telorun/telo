@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastStaticSurface
+  version: 1.0.0
+  description: |
+    What `telo check` says about the broadcast kinds before anything runs: the
+    documented use checks clean, and each refusal the module's surface makes is
+    reported where it is written.
+imports: { Assert: ../../assert }
+targets:
+  - !ref documentedUse
+  - !ref patternOutsideGrammar
+  - !ref publishCallSite
+  - !ref streamInMessageType
+  - !ref handlerInputs
+---
+kind: Assert.Manifest
+metadata: { name: documentedUse }
+source: ./__fixtures__/valid/telo.yaml
+expect: {}
+---
+kind: Assert.Manifest
+metadata: { name: patternOutsideGrammar }
+source: ./__fixtures__/bad-pattern/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/topics/0 must match pattern" }
+---
+kind: Assert.Manifest
+metadata: { name: publishCallSite }
+source: ./__fixtures__/call-site/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/message is missing required property 'orderId'"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/topic" }
+---
+kind: Assert.Manifest
+metadata: { name: streamInMessageType }
+source: ./__fixtures__/not-serializable/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_NOT_SERIALIZABLE
+      message: "it holds a live Telo.Stream at /parts/*"
+---
+kind: Assert.Manifest
+metadata: { name: handlerInputs }
+source: ./__fixtures__/handler-inputs/telo.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "the call at 'invoke' writes no 'inputs:'" }
+    - { code: CEL_UNKNOWN_FIELD, message: "'message.kye' is not defined" }
+    - { code: CEL_TYPE_ERROR, message: "reads 'topic', which may be null" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "the call at 'onError.invoke' writes no 'inputs:'" }

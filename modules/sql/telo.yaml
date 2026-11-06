@@ -255,6 +255,7 @@ schema:
       title: Inputs
       type: object
       additionalProperties: true
+      default: {}
       description: >-
         Inputs forwarded to the steps resource at invoke time. CEL here reads the
         caller's invocation input as `inputs.<field>` — the same variable a

@@ -44,5 +44,5 @@ A problem's `detail` — and `error.displayMessage` in a `catches:` entry — is
 
 ## Notes
 
-- `request.lang` is not enumerable on the `request` object: it is read by name (`request.lang`), but a handler handed the whole `request` without `inputs:` does not receive it. Map it through `inputs`.
+- `request.lang` is not enumerable on the `request` object: it is read by name (`request.lang`), and it reaches a handler only when its `inputs:` map names it (`inputs: { lang: !cel "request.lang" }`).
 - A mount registered by another module reads the language from its request scope: `requestScope.forRequest(request).lang` (see `@telorun/http-dispatch`). Reading it is what makes the response vary by it.

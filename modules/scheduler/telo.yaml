@@ -48,6 +48,7 @@ schema:
       title: Inputs
       type: object
       additionalProperties: true
+      default: {}
       description: Inputs forwarded to the body on each fire, re-evaluated per tick.
       x-telo-context: { type: object, properties: {} }
     when:
@@ -104,6 +105,7 @@ schema:
       title: Inputs
       type: object
       additionalProperties: true
+      default: {}
       description: Inputs forwarded to the body on each fire, re-evaluated per tick.
       x-telo-context: { type: object, properties: {} }
     when:

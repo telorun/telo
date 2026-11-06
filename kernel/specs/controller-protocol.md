@@ -560,6 +560,15 @@ controller end is releasing bookkeeping rather than running work. It is
 A kernel MUST NOT reuse a session id within a carrier instance, and a controller
 end MUST refuse an `Session.Open` naming one already open.
 
+**A session is one kernel instance for that instance's whole life.** A kernel
+opens exactly one, keeps it across a reconciliation, and closes it only at its
+own teardown; a child manifest is a kernel instance of its own and so a session
+of its own (§9.2). A controller therefore keys in-process state that every
+resource of one application must share by its session id — the SDKs surface it
+as the resource context's kernel instance id — and never holds such state
+per carrier instance or per process, since one carrier instance serves every
+kernel instance in a process.
+
 ## 5. Lifecycle
 
 This section carries the capability entry points that build, start and tear an

@@ -17,7 +17,10 @@
  *  - a `use` case map whose selector is written in CEL — a call graph known
  *    only at runtime is not statically analyzable, which is the property the
  *    typed reference graph exists to protect. There is deliberately no
- *    fallback: no single value is conservative for every consumer.
+ *    fallback: no single value is conservative for every consumer;
+ *  - an argument map paired by an `inputs:` pointer (or a step item's
+ *    `x-telo-topology-role: inputs`) that may be omitted and declares no literal
+ *    object `default:` — what an omitted map is dispatched and judged as.
  *
  * Scoping follows `X_TELO_REF_UNRESOLVED`: schema issues are reported only for
  * definitions in the entry's own modules, and the dynamic-selector issue only
@@ -33,6 +36,7 @@ import { CALLABLE_CAPABILITY, isCallableKind, resolveSignature } from "./callabl
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { isRefUse, readRefSlot, REF_USES, type RefUse } from "./ref-slot.js";
+import { argumentMapDefaultProblems } from "./argument-map-default.js";
 
 export interface RefSlotIssue {
   code:
@@ -44,7 +48,8 @@ export interface RefSlotIssue {
     | "X_TELO_REF_UNKNOWN_KEY"
     | "X_TELO_REF_INVALID_THROWS_THROUGH"
     | "X_TELO_REF_INVALID_OUTPUT_TYPE"
-    | "X_TELO_REF_INVALID_OBSERVES";
+    | "X_TELO_REF_INVALID_OBSERVES"
+    | "ARGUMENT_MAP_DEFAULT_INVALID";
   /** The definition (schema issues) or resource (selector issues) at fault. */
   manifest: ResourceManifest;
   /** Schema path of the slot (schema issues) or concrete value path of the
@@ -318,6 +323,15 @@ export function validateRefSlotDeclarations(definition: ResourceManifest): RefSl
       }
     }
   });
+
+  for (const problem of argumentMapDefaultProblems(schema as Record<string, any>)) {
+    issues.push({
+      code: "ARGUMENT_MAP_DEFAULT_INVALID",
+      manifest: definition,
+      path: problem.location ? `schema.${problem.location}` : "schema",
+      message: problem.message,
+    });
+  }
 
   return issues;
 }

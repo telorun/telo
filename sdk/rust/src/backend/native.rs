@@ -80,6 +80,11 @@ impl ResourceContext for NativeResourceContext {
         };
         Ok(Box::new(NativeDataValidator::compile(&schema)?))
     }
+
+    /// The ABI this backend speaks (`abi=telo-3`) carries no session.
+    fn kernel_instance_id(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
 }
 
 /// JSON Schema validator over the `jsonschema` crate.

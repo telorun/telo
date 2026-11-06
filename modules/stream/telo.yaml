@@ -446,6 +446,7 @@ schema:
         and index. Omitted, the handler is called with no arguments.
       type: object
       additionalProperties: true
+      default: {}
       x-telo-context: { type: object, properties: { item: {}, index: { type: integer } } }
     when:
       title: When
@@ -552,6 +553,7 @@ schema:
               `inputType`. Omitted, the source is called with no arguments.
             type: object
             additionalProperties: true
+            default: {}
             x-telo-context:
               type: object
               additionalProperties: false

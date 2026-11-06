@@ -1,0 +1,78 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastPostgresDelivery
+  version: 1.0.0
+  description: |
+    Two replicas, each a child application with a subscription on one channel of
+    one PostgreSQL database. A message published by replica a runs both
+    handlers once, and a raw notification whose payload is not a message of the
+    channel runs no handler and is reported to `onError` as
+    ERR_BROADCAST_MESSAGE_INVALID on both.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+include: [./__fixtures__/model.yaml]
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  BroadcastPostgres: ../..
+  Broadcast: ../../../broadcast
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  App: ../../../app
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref appSchema
+  - !ref fanOut
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Telo.Sequence
+metadata: { name: fanOut }
+with:
+  - kind: App.Instance
+    metadata: { name: replicaA }
+    source: ./__fixtures__/listener.yaml
+    variables:
+      dbHost: !cel "resources.Pg.endpoint.status.host"
+      dbPort: !cel "resources.Pg.endpoint.status.port"
+      instance: a
+      announce: hello
+  - kind: App.Instance
+    metadata: { name: replicaB }
+    source: ./__fixtures__/listener.yaml
+    variables:
+      dbHost: !cel "resources.Pg.endpoint.status.host"
+      dbPort: !cel "resources.Pg.endpoint.status.port"
+      instance: b
+      announce: ""
+targets:
+  - !ref replicaA
+  - !ref replicaB
+steps:
+  - name: wrongShape
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT pg_notify('telo_broadcast_broadcast_it', '{"message":{"text":5}}')
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 3s } }
+  - name: heard
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT instance, kind, topic, detail FROM bc_deliveries ORDER BY instance, kind
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.heard.result.rows"
+      expected:
+        - { instance: a, kind: error, topic: null, detail: ERR_BROADCAST_MESSAGE_INVALID }
+        - { instance: a, kind: message, topic: rooms.42, detail: hello }
+        - { instance: b, kind: error, topic: null, detail: ERR_BROADCAST_MESSAGE_INVALID }
+        - { instance: b, kind: message, topic: rooms.42, detail: hello }

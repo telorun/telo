@@ -1,0 +1,77 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastValid
+  version: 1.0.0
+  description: The documented use of a channel, a publish and a subscription.
+imports: { Broadcast: ../../.. }
+targets:
+  - !ref listener
+  - !ref keyed
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: cacheEvents }
+name: cache_events
+maxBytes: 1024
+messageType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [key], properties: { key: { type: string } } }
+---
+kind: Telo.Sequence
+metadata: { name: drop }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [topic, message]
+    properties:
+      topic: { type: [string, "null"] }
+      message: { type: object, required: [key], properties: { key: { type: string } } }
+steps:
+  - name: dropped
+    value: !cel "inputs.message.key"
+---
+kind: Telo.Sequence
+metadata: { name: dropKey }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [key], properties: { key: { type: string } } }
+steps:
+  - name: dropped
+    value: !cel "inputs.key"
+---
+kind: Telo.Sequence
+metadata: { name: note }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: { detail: { type: string } } }
+steps:
+  - name: noted
+    value: !cel "inputs.detail"
+---
+kind: Broadcast.Subscription
+metadata: { name: listener }
+channel: !ref cacheEvents
+topics: [tenants.*.cache, "orders.>"]
+invoke: !ref drop
+inputs: { topic: !cel "topic", message: !cel "message" }
+concurrency: 2
+buffer: 64
+onGap:
+  invoke: !ref note
+  inputs: { detail: !cel "reason" }
+onError:
+  invoke: !ref note
+  inputs: { detail: !cel "error.code" }
+---
+kind: Broadcast.Subscription
+metadata: { name: keyed }
+channel: !ref cacheEvents
+invoke: !ref dropKey
+inputs: { key: !cel "message.key" }
+---
+kind: Telo.Sequence
+metadata: { name: changed }
+steps:
+  - name: announce
+    invoke: { kind: Broadcast.Publish, channel: !ref cacheEvents }
+    inputs: { topic: tenants.7.cache, message: { key: user-1 } }

@@ -66,16 +66,27 @@ steps:
   - name: truncate
     invoke: !ref truncateLog
     inputs: { path: /tmp/telo-failure-trace.jsonl, content: "" }
-  - name: settle
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: "400ms", value: {} }
   - name: read
     invoke: !ref readLog
     inputs: { path: /tmp/telo-failure-trace.jsonl }
+  # Read until both schedules' failures are flushed; a fixed wait raced the sink on a slow runner.
+  - name: untilBothFailed
+    while: !cel >-
+      !(['coded', 'uncoded'].all(name, steps.read.result.content.split('\n')
+        .exists(line, line.contains('Tick failed') && line.endsWith('}')
+          && parseJson(line).resource.name == name)))
+    maxIterations: 200
+    do:
+      - name: settle
+        invoke: { kind: Timer.Delay }
+        inputs: { duration: "50ms", value: {} }
+      - name: read
+        invoke: !ref readLog
+        inputs: { path: /tmp/telo-failure-trace.jsonl }
   - name: failures
     value: !cel >-
       steps.read.result.content.split('\n')
-        .filter(line, line.contains('Tick failed'))
+        .filter(line, line.contains('Tick failed') && line.endsWith('}'))
         .map(line, parseJson(line))
   - name: codedError
     value: !cel "reverse(steps.failures.result.filter(r, r.resource.name == 'coded'))[0].err"

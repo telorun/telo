@@ -554,6 +554,28 @@ their own rendering of bytes, because their formats define one: a log record's
 `bytes` attribute (base64, or a blob pointer on the debug wire — `logging.md`
 §6.1), and a debug-wire payload's byte buffer, offloaded to its blob store.
 
+### 4.8 The argument map at a paired site
+
+A call's argument map is PAIRED with its target by the property a reference
+slot's `x-telo-ref` `inputs:` pointer names, read against the object enclosing
+the slot, or by the property a step item marks `x-telo-topology-role: inputs`.
+
+An omitted argument map at a paired site dispatches exactly the `default:` its
+property declares; a property that may be omitted declares one, as a literal
+object. A property the enclosing object requires is never omitted and needs none.
+
+A written map is dispatched exactly as evaluated: nothing spread, nothing nested,
+and a written `{}` is `{}`.
+
+A static checker MUST judge an omitted map as that literal default against the
+target's resolved input contract, and report what it finds at the reference — the
+slot, or the step's invoke field — since no map exists to point at. It MUST refuse
+a kind whose paired property may be omitted with no `default:`, or with one that
+is not a literal object (`ARGUMENT_MAP_DEFAULT_INVALID`, at the declaring module).
+Where a kind published before this rule declares no default, its consumers' sites
+stay unjudged. A runtime MUST NOT write the default into the declaration: it is
+filled where the dispatch reads it.
+
 ## 5. Errors
 
 ### 5.1 Codes
@@ -795,6 +817,8 @@ A conforming runtime:
 15. adds frames only on the failure path as §5.5 states, bounds them at 64 with
     `dropped_frames_count`, keeps them out of every catch context, durable record
     and trace payload, and records a host stack only for an uncoded failure.
+16. dispatches an omitted argument map at a paired site as its property's
+    `default:`, and a written one exactly as evaluated (§4.8).
 
 ## 7. Module functions
 

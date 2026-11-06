@@ -30,6 +30,8 @@
     "@telorun/benchmark-build",
     "@telorun/blob",
     "@telorun/blob-fs-build",
+    "@telorun/broadcast",
+    "@telorun/broadcast-postgres-build",
     "@telorun/cache",
     "@telorun/cache-memory-build",
     "@telorun/cache-redis-build",

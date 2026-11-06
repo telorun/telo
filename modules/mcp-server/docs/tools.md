@@ -51,6 +51,10 @@ Each entry exposes three runtime scopes:
 | `result:`  | `result` (handler output), `request.{name, arguments}`                |
 | `catches:` | `error.{code, message, data}`, `request.{name, arguments}`            |
 
+The handler is dispatched exactly the map `inputs:` evaluates to: nothing is spread into it and no `inputs` member is added, so a closed `inputType` sees only what the entry wrote. An entry writing no `inputs:` dispatches `{}`.
+
+The handler is dispatched exactly the map `inputs:` evaluates to: nothing is spread into it and no `inputs` member is added, so a closed `inputType` sees only what the entry wrote. An entry writing no `inputs:` dispatches `{}`.
+
 Inside a `catches:` entry, `error.data` is the `data` the codes the entry matches declare
 (those its `when:` names, or every code the handler throws for an entry without one), so a
 misspelled field is a `CEL_UNKNOWN_FIELD` error. A `when:` comparing `error.code` with code

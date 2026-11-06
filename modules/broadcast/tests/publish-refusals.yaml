@@ -1,0 +1,71 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastPublishRefusals
+  version: 1.0.0
+  description: |
+    What `telo check` cannot see is refused at the call: a computed message
+    that is not the channel's message type and a computed topic outside the
+    topic grammar are `ERR_INPUT_INVALID`, and a message whose encoding,
+    topic included, is over `maxBytes` is `ERR_BROADCAST_MESSAGE_TOO_LARGE`
+    carrying both sizes. A message that fits is sent.
+imports: { Broadcast: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: publish_refusals
+maxBytes: 60
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties: { text: { type: string } }
+---
+kind: Broadcast.Publish
+metadata: { name: publish }
+channel: !ref bus
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: sent
+    inputs: { topic: rooms.1, message: { text: ok } }
+    invoke: !ref publish
+  - name: wrongType
+    try:
+      - name: publishWrongType
+        inputs: { message: !cel "{'text': 7}" }
+        invoke: !ref publish
+      - name: wrongTypeAccepted
+        throw: { code: NOT_REFUSED, message: a message of the wrong type was sent }
+    catch:
+      - name: assertWrongType
+        inputs: { actual: !cel "error.code", expected: ERR_INPUT_INVALID }
+        invoke: { kind: Assert.Equals }
+  - name: wrongTopic
+    try:
+      - name: publishWrongTopic
+        inputs: { topic: !cel "'Rooms.' + '1'", message: { text: ok } }
+        invoke: !ref publish
+      - name: wrongTopicAccepted
+        throw: { code: NOT_REFUSED, message: a topic outside the grammar was sent }
+    catch:
+      - name: assertWrongTopic
+        inputs: { actual: !cel "error.code", expected: ERR_INPUT_INVALID }
+        invoke: { kind: Assert.Equals }
+  - name: tooLarge
+    try:
+      - name: publishTooLarge
+        inputs: { topic: rooms.1, message: { text: this text is far too long for the bound } }
+        invoke: !ref publish
+      - name: tooLargeAccepted
+        throw: { code: NOT_REFUSED, message: a message over maxBytes was sent }
+    catch:
+      - name: assertTooLarge
+        inputs:
+          actual: { code: !cel "error.code", maxBytes: !cel "error.data.maxBytes", over: !cel "error.data.bytes > 60" }
+          expected: { code: ERR_BROADCAST_MESSAGE_TOO_LARGE, maxBytes: 60, over: true }
+        invoke: { kind: Assert.Equals }

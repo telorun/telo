@@ -183,6 +183,8 @@ export async function create(
 
 > **Host environment.** A controller must not read host configuration from the ambient `process.env` — once the kernel boots it installs a guardrail over `process.env`, so a host-config key reads back `undefined` (with a warning) even when it is set. Read host configuration through `ctx.env` (the sanctioned snapshot the kernel threads in) or, preferably, declare it as a resource field the manifest fills from a typed `variables` / `secrets`. When spawning a child process, pass `ctx.env` as its environment rather than inheriting the guarded one. (Runtime conventions like `NODE_ENV` pass through unchanged, so libraries keep their prod/dev behavior.)
 
+> **State shared across one application.** One process may run several kernels — a child manifest started through `ctx.runtime.run` or `App.Instance` is a kernel of its own, loading the same controller bundle — so a module-level variable is shared by every application in the process. In-process state that every resource of one application must share (a registry, an in-memory channel) is keyed by `ctx.kernelInstanceId`: an opaque string naming the kernel that owns the resource, unique in the process, kept for the kernel's whole life (a reload keeps it) and never reused.
+
 The instance implements the method that matches the declared capability:
 
 | Capability | Implement | For |

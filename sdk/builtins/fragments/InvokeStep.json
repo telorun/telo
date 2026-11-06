@@ -28,10 +28,11 @@
     },
     "inputs": {
       "title": "Inputs",
-      "description": "Values passed to the invoked resource.",
+      "description": "Values passed to the invoked resource. Omitted, it sends `{}`.",
       "x-telo-topology-role": "inputs",
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "default": {}
     },
     "when": {
       "title": "When",

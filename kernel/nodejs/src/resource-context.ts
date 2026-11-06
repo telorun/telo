@@ -143,6 +143,10 @@ export class ResourceContextImpl implements ResourceContext {
    *  and stamps the owner on the child context it registers them into. */
   readonly ownerPrefix: string;
 
+  get kernelInstanceId(): string {
+    return this.kernel.kernelInstanceId;
+  }
+
   /** Built lazily: most resources never log, and constructing the scoped logger
    *  eagerly for every context would allocate per resource for nothing. */
   #log: Logger | undefined;

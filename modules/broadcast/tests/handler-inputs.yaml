@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastHandlerInputs
+  version: 1.0.0
+  description: |
+    A handler receives exactly its subscription's `inputs:` evaluated over `topic`
+    and `message` — nothing else of the message — and `{}` when none is written.
+imports: { Broadcast: ../, Timer: ../../timer, Assert: ../../assert }
+targets:
+  - !ref test
+  - !ref expectInputs
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: handler_inputs
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [key, extra]
+    properties: { key: { type: string }, extra: { type: string } }
+---
+kind: Telo.Sequence
+metadata: { name: mapped }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key, where]
+    properties: { key: { type: string }, where: { type: string } }
+steps:
+  - { name: seen, value: !cel "inputs.key" }
+---
+kind: Telo.Sequence
+metadata: { name: bare }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
+steps:
+  - { name: seen, value: ok }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Broadcast.Subscription
+    metadata: { name: withInputs }
+    channel: !ref bus
+    invoke: !ref mapped
+    inputs:
+      key: !cel "message.key"
+      where: !cel "topic != null ? topic : '-'"
+  - kind: Broadcast.Subscription
+    metadata: { name: withoutInputs }
+    channel: !ref bus
+    invoke: !ref bare
+targets:
+  - !ref withInputs
+  - !ref withoutInputs
+steps:
+  - name: publish
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { topic: rooms.1, message: { key: user-1, extra: ignored } }
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
+---
+kind: Assert.Events
+metadata: { name: expectInputs }
+filter:
+  - { type: "*.Invoked" }
+expect:
+  - { event: mapped.Invoked, times: 1, payload: { inputs: { key: user-1, where: rooms.1 } } }
+  - { event: bare.Invoked, times: 1, payload: { inputs: {} } }

@@ -1,0 +1,280 @@
+kind: Telo.Library
+metadata:
+  name: Broadcast
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Coordination, Streaming]
+  description: >-
+    Tell every running instance of an application that something happened: publish
+    a small typed message, optionally under a dot-separated topic, and every live
+    subscription whose topic patterns match runs its handler. Delivery is live and
+    at most once, with nothing stored; a subscription is told when messages may
+    have been missed, so it can re-read its source of truth.
+requires:
+  # The memory channel is keyed by `ctx.kernelInstanceId`, first provided by 0.130.0.
+  telo: ">=0.130.0"
+exports:
+  kinds: [Channel, MemoryChannel, Publish, Subscription]
+  # The channel interface a backend implements and the helpers it may reuse.
+  # Optional for a backend — a channel is recognised by its methods, never by
+  # having imported this.
+  code:
+    - specifier: "@telorun/broadcast"
+      format: js
+      path: ./nodejs/broadcast.mjs
+      source: ./nodejs/src/index.ts
+---
+# A backend extends this with a kind whose instance implements the channel
+# interface (docs/channel-contract.md); the operation kinds own every code and
+# the topic matching.
+kind: Telo.Abstract
+metadata:
+  name: Channel
+  description: >-
+    A named conduit that carries small typed messages to every subscription live
+    on it. A message is delivered at most once and never stored, so a subscription
+    that was not connected when it was sent never receives it; a subscription whose
+    connection dropped, or that fell behind, is told that messages may be missing.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [name, messageType]
+  properties:
+    name:
+      title: Name
+      description: >-
+        The channel's durable identity: two resources naming one channel on one
+        backend are one channel, and two applications share it by naming it.
+        Lower-case letters, digits and underscores, starting with a letter, at
+        most 48 characters.
+      type: string
+      pattern: "^[a-z][a-z0-9_]{0,47}$"
+    messageType:
+      title: Message type
+      description: >-
+        The shape every message on this channel has, inline or a `!ref` to a
+        named type. It is sent as plain JSON, so a live value (a stream) is
+        refused anywhere in it.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+      x-telo-serializable: true
+    maxBytes:
+      title: Max bytes
+      description: >-
+        The largest encoded message this channel sends, its topic included, in
+        UTF-8 bytes. A larger one is refused with `ERR_BROADCAST_MESSAGE_TOO_LARGE`
+        and nothing sent. A backend may cap it lower.
+      type: integer
+      minimum: 1
+      default: 4096
+---
+kind: Telo.Definition
+metadata:
+  name: MemoryChannel
+  description: >-
+    A broadcast channel within one running application, for development, tests and
+    single-instance applications: a message reaches every subscription on that
+    channel name in the same application at once, and never another instance or
+    another application in the same process. It has no connection to lose and no
+    transaction to join, so it never reports a gap by itself and sends inside a
+    transaction immediately.
+extends: Self.Channel
+controllers: [pkg:telo/local/js?path=./nodejs/broadcast.mjs&local_path=./nodejs/src/index.ts#MemoryChannel]
+---
+kind: Telo.Definition
+metadata:
+  name: Publish
+  description: >-
+    Sends one message on a channel to every live subscription, optionally under a
+    topic such as rooms.42. The message is checked against the channel's message
+    type and the topic against the topic grammar; a message over the channel's size
+    bound is refused and one the channel cannot send is a retryable failure.
+    Delivery is at most once, so nothing confirms that anyone received it.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/broadcast.mjs&local_path=./nodejs/src/index.ts#Publish]
+throws:
+  codes:
+    ERR_BROADCAST_UNAVAILABLE:
+      description: >-
+        The channel could not send the message. It may or may not have reached
+        subscribers; a retry may deliver it twice.
+    ERR_BROADCAST_MESSAGE_TOO_LARGE:
+      description: >-
+        The encoded message, its topic included, is larger than the channel's
+        `maxBytes`. Nothing was sent.
+      data:
+        type: object
+        additionalProperties: false
+        required: [bytes, maxBytes]
+        properties:
+          bytes: { type: integer, description: The encoded message's size in bytes. }
+          maxBytes: { type: integer, description: The channel's bound. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [message]
+    properties:
+      message:
+        title: Message
+        description: The message, which must have the channel's `messageType`.
+        x-telo-value-schema-from: /channel/messageType
+      topic:
+        title: Topic
+        description: >-
+          What the message is about: dot-separated segments of lower-case
+          letters, digits, `_` and `-`, at most 128 bytes (`rooms.42`). Omitted,
+          only subscriptions without `topics` receive it.
+        type: string
+        maxLength: 128
+        pattern: "^[a-z0-9_-]+(\\.[a-z0-9_-]+)*$"
+schema:
+  type: object
+  additionalProperties: false
+  required: [channel]
+  x-telo-violates-zone:
+    replayed: >-
+      a message already sent cannot be taken back, so replaying this step after a
+      restart would deliver it to every subscriber a second time
+  properties:
+    channel:
+      title: Channel
+      description: The channel the message is sent on.
+      x-telo-ref: { kind: Self.Channel, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Subscription
+  description: >-
+    Listens on a channel and runs a handler for each message whose topic matches
+    one of its patterns (`*` for one segment, `>` for one or more), at most a
+    configured number at a time, queueing a bounded backlog. A failing handler or
+    an invalid message is logged and reported, never stops it; a gap, when
+    messages may have been missed, runs a hook. Live only: it stores nothing and
+    releases everything when stopped.
+capability: Telo.Service
+controllers: [pkg:telo/local/js?path=./nodejs/broadcast.mjs&local_path=./nodejs/src/index.ts#Subscription]
+schema:
+  type: object
+  additionalProperties: false
+  required: [channel, invoke]
+  properties:
+    channel:
+      title: Channel
+      description: The channel listened on.
+      x-telo-ref: { kind: Self.Channel, use: dependency }
+    topics:
+      title: Topics
+      description: >-
+        Patterns a message's topic must match one of: segments of the topic
+        grammar, `*` for exactly one segment and a final `>` for one or more.
+        Omitted, every message is received, a topic-less one included; a list
+        receives only messages with a matching topic.
+      type: array
+      minItems: 1
+      items:
+        type: string
+        maxLength: 128
+        pattern: "^(?:(?:[a-z0-9_-]+|\\*)\\.)*(?:[a-z0-9_-]+|\\*|>)$"
+    invoke:
+      title: Handler
+      description: >-
+        What runs for each matching message; its inputs are `inputs:` evaluated
+        over the message. A failure is reported, never retried.
+      x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
+    inputs:
+      title: Inputs
+      description: >-
+        The handler's inputs, evaluated per message over `topic` and `message`;
+        omitted, the handler is invoked with `{}`.
+      type: object
+      additionalProperties: true
+      default: {}
+      x-telo-context:
+        type: object
+        properties:
+          topic:
+            description: The message's topic, null when none was sent.
+            type: [string, "null"]
+          message:
+            description: The message, typed from the channel's `messageType`.
+            x-telo-context-ref-from: channel/messageType
+    concurrency:
+      title: Concurrency
+      description: How many messages are handled at once; 1 handles them in order.
+      type: integer
+      minimum: 1
+      default: 1
+      x-telo-eval: compile
+    buffer:
+      title: Buffer
+      description: >-
+        How many messages wait while every handler slot is busy. A message
+        finding the buffer full drops the backlog and itself and raises a gap.
+      type: integer
+      minimum: 1
+      default: 256
+      x-telo-eval: compile
+    onGap:
+      title: On gap
+      description: >-
+        What runs when messages may have been missed — the buffer overflowed or
+        the channel's connection dropped. Without it the gap is logged as a
+        warning.
+      type: object
+      additionalProperties: false
+      required: [invoke]
+      x-telo-context:
+        type: object
+        properties: { reason: { description: Why messages may have been missed., type: string } }
+      properties:
+        invoke:
+          title: Handler
+          description: What runs on a gap.
+          x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
+        inputs:
+          title: Inputs
+          description: The hook's inputs, evaluated over `reason`.
+          type: object
+          additionalProperties: true
+          default: {}
+    onError:
+      title: On error
+      description: >-
+        What runs when the handler fails or a received message is not a message
+        of the channel (`ERR_BROADCAST_MESSAGE_INVALID`), after the failure is
+        logged. A failure of the hook itself is only logged.
+      type: object
+      additionalProperties: false
+      required: [invoke]
+      x-telo-context:
+        type: object
+        properties:
+          error:
+            description: What failed.
+            type: object
+            additionalProperties: false
+            required: [code, message]
+            properties:
+              code: { type: string, description: The failure's code. }
+              message: { type: string, description: The failure's message. }
+              data: { description: "The failure's structured data, when it carries any." }
+          topic:
+            description: The message's topic, null when none was sent or it could not be read.
+            type: [string, "null"]
+          message:
+            description: The message, null when it could not be read as one of the channel.
+            type: [object, "null"]
+            x-telo-context-ref-from: channel/messageType
+      properties:
+        invoke:
+          title: Handler
+          description: What runs on a failure.
+          x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
+        inputs:
+          title: Inputs
+          description: The hook's inputs, evaluated over `error`, `topic` and `message`.
+          type: object
+          additionalProperties: true
+          default: {}

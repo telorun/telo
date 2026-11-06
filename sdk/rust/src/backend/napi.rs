@@ -121,6 +121,24 @@ impl ResourceContext for NapiResourceContext {
             validator_ref,
         }))
     }
+
+    /// `ctx.kernelInstanceId`; a kernel released before it leaves the member
+    /// undefined.
+    fn kernel_instance_id(&self) -> Result<Option<String>> {
+        (|| -> napi::Result<Option<String>> {
+            let ctx_obj: JsObject = self.env.get_reference_value(&self.ctx_ref)?;
+            let id: JsUnknown = ctx_obj.get_named_property("kernelInstanceId")?;
+            match id.get_type()? {
+                napi::ValueType::Undefined => Ok(None),
+                napi::ValueType::String => Ok(Some(id.coerce_to_string()?.into_utf8()?.into_owned()?)),
+                other => Err(napi::Error::new(
+                    napi::Status::StringExpected,
+                    format!("ctx.kernelInstanceId is a {other:?}, not a string"),
+                )),
+            }
+        })()
+        .map_err(napi_failure)
+    }
 }
 
 /// Concrete `DataValidator` backed by a JS validator object with a `validate`

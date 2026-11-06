@@ -1,0 +1,5 @@
+modules:
+  modules/sql: Added
+body: "`Sql.Transaction` declares `inputs` with `default: {}`, so `telo check` judges a
+  body wired without `inputs:` as receiving `{}`, and refuses one whose contract
+  requires an argument."

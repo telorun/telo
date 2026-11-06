@@ -1,0 +1,102 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastHandlerFailure
+  version: 1.0.0
+  description: |
+    A handler failing on one message never stops the subscription: `onError`
+    runs with the failure's code and the message that caused it, and the next
+    message is still handled. The failure is logged at error level with its
+    code.
+logging:
+  level: info
+  sinks:
+    - kind: Telo.FileSink
+      destination: /tmp/telo-broadcast-handler-failure.jsonl
+      flush_interval: 20ms
+imports: { Broadcast: ../, Fs: ../../fs, Timer: ../../timer, Assert: ../../assert }
+targets:
+  - !ref test
+  - !ref expectReports
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: handler_failure
+messageType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [n], properties: { n: { type: integer } } }
+---
+kind: Telo.Sequence
+metadata: { name: handle }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [topic, message]
+    properties: { topic: { type: [string, "null"] }, message: { type: object } }
+steps:
+  - name: refuseOdd
+    if: !cel "inputs.message.n % 2 == 1"
+    then:
+      - { name: fail, throw: { code: ERR_ODD, message: odd numbers are refused } }
+---
+kind: Telo.Sequence
+metadata: { name: report }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [code, n]
+    properties: { code: { type: string }, n: { type: integer } }
+steps:
+  - name: reported
+    value: !cel "inputs.code"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Broadcast.Subscription
+    metadata: { name: subscription }
+    channel: !ref bus
+    invoke: !ref handle
+    inputs: { topic: !cel "topic", message: !cel "message" }
+    onError:
+      invoke: !ref report
+      inputs:
+        code: !cel "error.code"
+        n: !cel "message != null ? message.n : 0"
+targets:
+  - !ref subscription
+steps:
+  # `Telo.FileSink.destination` is not a CEL slot: this run's records are those
+  # after what the fixed path holds now.
+  - name: before
+    invoke: { kind: Fs.File }
+    inputs: { path: /tmp/telo-broadcast-handler-failure.jsonl }
+  - name: first
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 1 } }
+  - name: second
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 2 } }
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
+  - name: after
+    invoke: { kind: Fs.File }
+    inputs: { path: /tmp/telo-broadcast-handler-failure.jsonl }
+  - name: loggedCodes
+    value: !cel >-
+      steps.after.result.content.substring(steps.before.result.content.size())
+      .split("\n")
+      .filter(line, line.contains('"telo.broadcast.error.code"'))
+      .map(line, parseJson(line).attributes['telo.broadcast.error.code'])
+  - name: assertLogged
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "steps.loggedCodes.result", expected: [ERR_ODD] }
+---
+kind: Assert.Events
+metadata: { name: expectReports }
+filter:
+  - { type: "*.Invoked" }
+expect:
+  # Only a handler that returned is `Invoked`: the failed one is the odd message.
+  - { event: handle.Invoked, times: 1, payload: { inputs: { message: { n: 2 } } } }
+  - { event: report.Invoked, times: 1, payload: { inputs: { code: ERR_ODD, n: 1 } } }

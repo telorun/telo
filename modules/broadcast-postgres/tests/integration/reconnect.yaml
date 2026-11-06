@@ -1,0 +1,82 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastPostgresReconnect
+  version: 1.0.0
+  description: |
+    Each replica's LISTEN connection is terminated on the server
+    (pg_terminate_backend). After it reconnects every subscription receives one
+    gap, worded with the reason, and a message published afterwards still
+    arrives.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+include: [./__fixtures__/model.yaml]
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  BroadcastPostgres: ../..
+  Broadcast: ../../../broadcast
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  App: ../../../app
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref appSchema
+  - !ref reconnect
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Telo.Sequence
+metadata: { name: reconnect }
+with:
+  - kind: App.Instance
+    metadata: { name: replicaA }
+    source: ./__fixtures__/listener.yaml
+    variables:
+      dbHost: !cel "resources.Pg.endpoint.status.host"
+      dbPort: !cel "resources.Pg.endpoint.status.port"
+      instance: a
+  - kind: App.Instance
+    metadata: { name: replicaB }
+    source: ./__fixtures__/listener.yaml
+    variables:
+      dbHost: !cel "resources.Pg.endpoint.status.host"
+      dbPort: !cel "resources.Pg.endpoint.status.port"
+      instance: b
+targets:
+  - !ref replicaA
+  - !ref replicaB
+steps:
+  - name: terminate
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: >-
+        SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+        WHERE query LIKE 'LISTEN "telo_broadcast_broadcast_it"%' AND pid <> pg_backend_pid()
+  - { name: reconnecting, invoke: { kind: Timer.Delay }, inputs: { duration: 3s } }
+  - name: after
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { text: after } }
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
+  - name: heard
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT instance, kind, detail FROM bc_deliveries ORDER BY instance, seq
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[size(steps.terminate.result.rows), steps.heard.result.rows]"
+      expected:
+        - 2
+        - - { instance: a, kind: gap, detail: the database connection was lost and re-established }
+          - { instance: a, kind: message, detail: after }
+          - { instance: b, kind: gap, detail: the database connection was lost and re-established }
+          - { instance: b, kind: message, detail: after }

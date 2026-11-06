@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastBadPattern
+  version: 1.0.0
+  description: A subscription whose topic pattern breaks the grammar.
+imports: { Broadcast: ../../.. }
+targets:
+  - !ref listener
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: bad_pattern
+messageType: { kind: Telo.JsonSchema, schema: { type: object } }
+---
+kind: Telo.Sequence
+metadata: { name: handle }
+steps:
+  - { name: noted, value: ok }
+---
+kind: Broadcast.Subscription
+metadata: { name: listener }
+channel: !ref bus
+topics: ["rooms.**"]
+invoke: !ref handle

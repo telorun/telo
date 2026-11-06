@@ -430,7 +430,7 @@ schema:
       title: Keys
       description: The keys to publish.
       x-telo-ref: { kind: Self.Keys, use: dependency }
-# Open, so a route can mount it without an `inputs:` map (it is then handed the request).
+# Open, so a route can mount it without an `inputs:` map (it is then dispatched `{}`).
 inputType:
   kind: Telo.JsonSchema
   schema: { type: object, description: Takes no inputs; whatever is given is ignored. }

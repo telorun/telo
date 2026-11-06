@@ -1,0 +1,35 @@
+# What every process of a broadcast test shares, a partial. Each includer
+# declares the connection `db`.
+kind: Postgres.Table
+metadata: { name: deliveries }
+table: bc_deliveries
+columns:
+  seq: { type: bigint, primaryKey: true, identity: always }
+  instance: { type: text, nullable: false }
+  kind: { type: text, nullable: false }
+  topic: { type: text }
+  detail: { type: text }
+  marker: { type: integer }
+---
+kind: Postgres.Table
+metadata: { name: markers }
+table: bc_markers
+columns: { id: { type: text, nullable: false, primaryKey: true } }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref deliveries, !ref markers]
+---
+kind: BroadcastPostgres.Channel
+metadata: { name: bus }
+connection: !ref db
+name: broadcast_it
+maxBytes: 512
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties: { text: { type: string } }

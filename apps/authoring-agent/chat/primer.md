@@ -331,6 +331,16 @@ accept several kinds, give `kind` a LIST (`kind: [Telo.Runnable,
 Telo.Service]`) — never an `anyOf` of separate `x-telo-ref` branches, with
 one exception below.
 
+`inputs: /inputs` PAIRS the slot with the sibling property holding the call's
+arguments. When a resource writes no `inputs:` there, the target is sent
+exactly that property's `default:` — so a paired property that may be omitted
+MUST declare one, as a literal object (`inputs: { type: object, default: {} }`),
+or be listed in `required` (`ARGUMENT_MAP_DEFAULT_INVALID` otherwise; the same
+holds for a step item's `x-telo-topology-role: inputs` property). At a USE site,
+leaving `inputs:` out means the default is what is checked against the target's
+`inputType`: a target requiring an argument is `CONTRACT_INPUTS_MISMATCH` at the
+reference — write `inputs:` with what it needs.
+
 ### A slot that holds EITHER a value or a reference
 
 The one shape where the constraint IS a branch: a slot whose value is a name
@@ -1693,6 +1703,53 @@ write "exactly once". Make a repeat harmless:
 `KvStore.Store`) replays a stored result and suits effects outside the
 database; the SQL one stores no result (`executed: false` on a repeat) and must
 run inside a transaction on its ledger's connection.
+
+## Telling every running instance — the `broadcast` module
+
+When something that happened must reach EVERY replica (drop a cached key, refresh
+a screen another viewer changed, reload configuration), publish on a broadcast
+channel; a queue delivers each message to ONE worker, and `Watch.Publish` carries
+no payload. Import `broadcast` as `Broadcast`. Kinds: `Broadcast.MemoryChannel`
+(one running application — development, tests, single-instance apps; it never
+crosses instances, nor reaches another application in the same process), `BroadcastPostgres.Channel` (module `broadcast-postgres`: carries it
+across replicas on one PostgreSQL database — `connection: !ref db`, `maxBytes` at
+most 7999), `Broadcast.Publish` and `Broadcast.Subscription` (a Service — list it
+in `targets:`). A channel has a durable `name` (`^[a-z][a-z0-9_]{0,47}$`, the
+identity — not the resource name), a `messageType` (plain JSON; no streams) and
+`maxBytes` (default 4096, topic included). A message may carry a `topic`
+(`rooms.42`; segments of `[a-z0-9_-]`, at most 128 bytes).
+
+    kind: Broadcast.Subscription
+    metadata: { name: dropOnChange }
+    channel: !ref cacheEvents
+    topics: [tenants.*.cache]    # `*` = one segment, a last `>` = one or more;
+                                 # omitted = every message, topic-less included
+    invoke: !ref dropCacheEntry  # any invocable
+    inputs:                      # optional (else {}); CEL over `topic` (may be null)
+      key: !cel "message.key"    # and `message`, checked against its inputType
+    concurrency: 1               # default; 1 = in order
+    buffer: 256                  # default; a full buffer drops it and raises a gap
+    onGap:                       # optional; else logged as a warning
+      invoke: !ref reloadAll     # `inputs:` optional, over `reason`
+    onError:                     # optional; inputs over `error`, `topic`, `message`
+      invoke: !ref noteFailure
+      inputs: { code: !cel "error.code" }
+
+DELIVERY IS LIVE AND AT-MOST-ONCE: nothing is stored, a subscription not
+connected when a message is sent never gets it, and a `gap` ("messages may have
+been missed") means re-read the source of truth. A message is a HINT that
+something changed — the consumer reads the data from where it lives, under its own
+authorization; a topic is a filter, not a security boundary. A failing handler
+never stops the subscription (logged with its code, then `onError`); a received
+message that is not the channel's `messageType` is `ERR_BROADCAST_MESSAGE_INVALID`.
+`Broadcast.Publish` refuses a literal message or topic that breaks the contract
+before the app runs, a computed one with `ERR_INPUT_INVALID`, a message over
+`maxBytes` with `ERR_BROADCAST_MESSAGE_TOO_LARGE`, and an unreachable channel with
+`ERR_BROADCAST_UNAVAILABLE`; `telo check` refuses it inside a durable (replayed) body, where a replay would send it again. Publish
+AFTER the change it announces (the PostgreSQL channel delivers a message published
+inside a `Sql.Transaction` when it commits and never on rollback, and gives a
+subscription a gap when its database connection dropped and came back; the memory
+channel sends at once).
 
 ## What a value IS — `x-telo-type`
 
@@ -3470,7 +3527,9 @@ to say.
   OWN module's file through `ctx.resolveControllerFile(relative)`, which
   resolves against the module declaring the kind; `ctx.resolveModuleFile` is
   for paths the resource's author wrote and resolves against the author's
-  module.
+  module. Controller state every resource of one application shares is keyed
+  by `ctx.kernelInstanceId`, never module-global: a child app started through
+  `App.Instance` runs in the same process as a kernel of its own.
 - `native:` — OPTIONAL list of platform-specific files (a prebuilt addon, a
   shared library), one entry per file per platform tuple (`telo builtins
   NativeEntries` prints the entry):
@@ -4024,6 +4083,13 @@ resource itself; put the PER-CALL `inputs:` (e.g. a statement's `sql` +
 `bindings`) at the place that CALLS it. Request-derived values must be
 supplied at the route/step that dispatches to the resource — never bolted onto
 a standalone resource.
+
+A handler receives EXACTLY its route's `inputs:` map: nothing of the request is
+forwarded, spread or nested, and a route (or `Http.Server.notFoundHandler`)
+writing none dispatches `{}`. A handler that needs the request gets it
+explicitly — `inputs: { request: !cel "request" }`, or just the fields it reads.
+An `Mcp.Tools` / `Mcp.Resources` / `Mcp.Prompts` entry's handler likewise
+receives exactly its `inputs:` map, with no `inputs` member added to it.
 
 This is because CEL is evaluated in the DISPATCH SITE's scope, not the
 resource's:

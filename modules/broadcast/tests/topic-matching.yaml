@@ -1,0 +1,97 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastTopicMatching
+  version: 1.0.0
+  description: |
+    On one memory channel a subscription to `rooms.*` hears `rooms.42` and not
+    `rooms.42.typing`, one to `rooms.>` hears both, and one with no `topics`
+    hears every message, a topic-less one included.
+imports: { Broadcast: ../, Timer: ../../timer, Assert: ../../assert }
+targets:
+  - !ref test
+  - !ref expectDeliveries
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: topic_matching
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties: { text: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Delivery }
+schema:
+  type: object
+  required: [topic, message]
+  properties: { topic: { type: [string, "null"] }, message: { type: object } }
+---
+kind: Telo.Sequence
+metadata: { name: onOneSegment }
+inputType: !ref Delivery
+steps:
+  - name: seen
+    value: !cel "inputs.topic"
+---
+kind: Telo.Sequence
+metadata: { name: onAnyDepth }
+inputType: !ref Delivery
+steps:
+  - name: seen
+    value: !cel "inputs.topic"
+---
+kind: Telo.Sequence
+metadata: { name: onEverything }
+inputType: !ref Delivery
+steps:
+  - name: seen
+    value: !cel "(inputs.topic != null ? inputs.topic : '-') + ':' + inputs.message.text"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Broadcast.Subscription
+    metadata: { name: oneSegment }
+    channel: !ref bus
+    topics: [rooms.*]
+    invoke: !ref onOneSegment
+    inputs: { topic: !cel "topic", message: !cel "message" }
+  - kind: Broadcast.Subscription
+    metadata: { name: anyDepth }
+    channel: !ref bus
+    topics: ["rooms.>"]
+    invoke: !ref onAnyDepth
+    inputs: { topic: !cel "topic", message: !cel "message" }
+  - kind: Broadcast.Subscription
+    metadata: { name: everything }
+    channel: !ref bus
+    invoke: !ref onEverything
+    inputs: { topic: !cel "topic", message: !cel "message" }
+targets:
+  - !ref oneSegment
+  - !ref anyDepth
+  - !ref everything
+steps:
+  - name: room
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { topic: rooms.42, message: { text: hello } }
+  - name: typing
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { topic: rooms.42.typing, message: { text: typing } }
+  - name: untopiced
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { text: bare } }
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
+---
+kind: Assert.Events
+metadata: { name: expectDeliveries }
+filter:
+  - { type: "*.Invoked" }
+expect:
+  - { event: onOneSegment.Invoked, times: 1 }
+  - { event: onAnyDepth.Invoked, times: 2 }
+  - { event: onEverything.Invoked, times: 3 }
+  - { event: onOneSegment.Invoked, payload: { inputs: { topic: rooms.42 } } }

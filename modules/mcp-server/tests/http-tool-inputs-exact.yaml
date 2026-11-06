@@ -1,0 +1,71 @@
+kind: Telo.Application
+metadata:
+  name: McpHttpToolInputsExactTest
+  version: 1.0.0
+  description: |
+    A tool's handler is dispatched exactly the map `inputs:` evaluates to: a
+    written `{}` dispatches `{}`, and a member the author names `inputs`
+    reaches the handler as written, with no copy of the map nested beside it.
+imports:
+  Mcp: ../
+  McpClient: ../../mcp-client
+  Http: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets: [ !ref testRun ]
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpHttp }
+serverInfo: { name: telo-test-mcp, version: 1.0.0 }
+tools:
+  - kind: Mcp.Tools
+    entries:
+      - name: empty
+        description: Echoes the map it was dispatched.
+        argumentsSchema: { type: object }
+        handler: { kind: Run.Value, value: !cel "inputs" }
+        inputs: {}
+        result:
+          content: [{ type: text, text: echo }]
+          structuredContent: !cel "result"
+      - name: written
+        description: Echoes the map it was dispatched.
+        argumentsSchema: { type: object }
+        handler: { kind: Run.Value, value: !cel "inputs" }
+        inputs:
+          city: !cel "request.arguments.city"
+          inputs: own
+        result:
+          content: [{ type: text, text: echo }]
+          structuredContent: !cel "result"
+---
+kind: McpClient.ToolsCall
+metadata: { name: callTool }
+client:
+  kind: McpClient.HttpClient
+  url: http://127.0.0.1:8986/mcp
+  clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: Telo.Sequence
+metadata: { name: testRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    listen: { address: 127.0.0.1, port: 8986 }
+    mounts:
+      - { path: /mcp, mount: !ref mcpHttp }
+targets: [ !ref Server ]
+steps:
+  - name: empty
+    inputs: { name: empty, arguments: { city: Atlantis } }
+    invoke: !ref callTool
+  - name: written
+    inputs: { name: written, arguments: { city: Atlantis } }
+    invoke: !ref callTool
+  - name: verify
+    inputs:
+      actual:
+        empty: !cel "steps.empty.result.structuredContent"
+        written: !cel "steps.written.result.structuredContent"
+      expected: { empty: {}, written: { city: Atlantis, inputs: own } }
+    invoke: { kind: Assert.Equals }

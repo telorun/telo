@@ -267,7 +267,7 @@ export class HttpServerApi implements ResourceInstance {
         // duplicated data in the debug trace.)
         const invokeInput: Record<string, any> = route.inputs
           ? ((this.ctx.moduleContext.expandWith(route.inputs, requestContext) as any) ?? {})
-          : requestContext;
+          : {};
 
         const sink = fastifyReplySink(reply);
 
