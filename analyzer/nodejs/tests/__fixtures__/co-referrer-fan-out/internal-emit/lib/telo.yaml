@@ -1,0 +1,19 @@
+# The exported operation opens the transaction and calls an internal announcer.
+kind: Telo.Library
+metadata: { name: SignupInternal }
+imports: { Z: ../../../zone-resource-inputs/kinds, Co: ../../../co-referrers/kinds }
+resources: { connection: { kind: Z.Conn } }
+exports: { resources: [Created, create] }
+---
+kind: Co.Topic
+metadata: { name: Created }
+schema: { type: object }
+---
+kind: Z.Tx
+metadata: { name: create }
+connection: !ref connection
+steps: !ref announce
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Created

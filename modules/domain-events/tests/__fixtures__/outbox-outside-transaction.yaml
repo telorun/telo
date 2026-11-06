@@ -1,0 +1,54 @@
+# The outbox handler's event is also emitted from a boot target, outside any transaction.
+kind: Telo.Application
+metadata: { name: OutboxOutside, version: 1.0.0 }
+imports:
+  Sql: ../../../sql
+  SQLite: ../../../sqlite
+  QueueSql: ../../../queue-sql
+  QueueSqlite: ../../../queue-sqlite
+  Domain: ../../
+targets:
+  - !ref appSchema
+  - invoke: !ref reannounce
+    inputs: { userId: u-1, email: "ada@lovelace.dev" }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Domain.Event
+metadata: { name: UserCreated }
+schema:
+  type: object
+  required: [userId, email]
+  properties: { userId: { type: string }, email: { type: string } }
+---
+kind: QueueSqlite.Table
+metadata: { name: messages }
+table: queue_messages
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref messages]
+---
+kind: Domain.Handler
+metadata: { name: queueWelcomeEmail }
+event: !ref UserCreated
+invoke:
+  kind: QueueSql.Enqueue
+  queue:
+    kind: QueueSqlite.Queue
+    connection: !ref db
+    schema: !ref appSchema
+    table: !ref messages
+    name: welcome_emails
+    retention: 168h
+    messageType: { kind: Telo.JsonSchema, schema: { type: object } }
+inputs:
+  id: !interpolate "welcome-${{ event.userId }}"
+  message: { email: !cel "event.email" }
+---
+kind: Domain.Emit
+metadata: { name: reannounce }
+event: !ref UserCreated

@@ -1,0 +1,9 @@
+# Kinds and a topic the guard tests create scope members against, with no
+# analysis in front of them.
+kind: Telo.Application
+metadata: { name: CoGuards }
+imports: { Co: ./kinds }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object }

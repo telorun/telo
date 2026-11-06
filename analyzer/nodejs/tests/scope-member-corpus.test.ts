@@ -59,6 +59,11 @@ const BROKEN_ON_PURPOSE = new Set(
     "tests/__fixtures__/check-run-agreement/scope-members/lib/telo.yaml",
     "tests/__fixtures__/check-run-agreement/scoped-kind-document/telo.yaml",
     "tests/__fixtures__/check-run-agreement/scoped-kind-document-library/lib/telo.yaml",
+    "tests/__fixtures__/calls-co-referrers/scoped/telo.yaml",
+    "tests/__fixtures__/calls-co-referrers/scoped-library/telo.yaml",
+    "tests/__fixtures__/scoped-imports/kind-through-scope.yaml",
+    "tests/__fixtures__/scoped-imports/outliving.yaml",
+    "tests/__fixtures__/scoped-imports/shadowing.yaml",
   ].map((file) => join(REPO, file)),
 );
 

@@ -1,0 +1,60 @@
+# Generic kinds: a topic, an announcer whose dispatch runs every listener of its
+# topic, a listener answering with its label, and a template whose body holds a
+# topic, its announcer and a family of listeners.
+kind: Telo.Library
+metadata: { name: CoKinds }
+exports: { kinds: [Topic, Announce, Listener, Channel] }
+---
+kind: Telo.Definition
+metadata: { name: Topic }
+capability: Telo.Type
+extends: Telo.JsonSchema
+---
+kind: Telo.Definition
+metadata: { name: Announce }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/co.mjs#announce]
+schema:
+  type: object
+  additionalProperties: false
+  required: [topic]
+  properties:
+    topic:
+      x-telo-ref:
+        kind: Self.Topic
+        use: schema
+        callsCoReferrers: { kind: Self.Listener, slot: /topic }
+---
+kind: Telo.Definition
+metadata: { name: Listener }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/co.mjs#listener]
+schema:
+  type: object
+  additionalProperties: false
+  required: [topic, label]
+  properties:
+    topic: { x-telo-ref: { kind: Self.Topic, use: schema } }
+    label: { type: string }
+---
+kind: Telo.Definition
+metadata: { name: Channel }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  required: [labels]
+  properties: { labels: { type: array, items: { type: string } } }
+resources:
+  - { kind: Self.Topic, metadata: { name: topic }, schema: { type: object } }
+  - kind: Self.Announce
+    metadata: { name: announce }
+    topic: !ref topic
+  - !for-each
+    metadata: { name: listeners }
+    in: !cel "self.labels"
+    emit:
+      kind: Self.Listener
+      topic: !ref topic
+      label: !cel "each.value"
+invoke: !ref announce

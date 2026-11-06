@@ -848,6 +848,48 @@
       "body": {}
     },
     {
+      "message": "Ref.CoReferrers",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "slot": "/event"
+      }
+    },
+    {
+      "message": "Ref.CoReferrers",
+      "part": "response",
+      "body": {
+        "coReferrers": [
+          {
+            "target": {
+              "id": "h4",
+              "ref": {
+                "kind": "Accounts.Reaction",
+                "name": "auditSignUp"
+              }
+            },
+            "entryPoints": [
+              "invoke"
+            ],
+            "local": true
+          },
+          {
+            "target": {
+              "id": "h9",
+              "ref": {
+                "kind": "Accounts.Reaction",
+                "name": "handlers['welcome']"
+              }
+            },
+            "entryPoints": [
+              "invoke"
+            ],
+            "local": false
+          }
+        ]
+      }
+    },
+    {
       "message": "Ref.Declaration",
       "part": "request",
       "body": {
@@ -1122,7 +1164,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 9,
+        "generation": 10,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1136,7 +1178,7 @@
       "message": "Session.Hello",
       "part": "response",
       "body": {
-        "generation": 9,
+        "generation": 10,
         "controller": {
           "telo": "0.103.2",
           "runtime": {
@@ -1648,7 +1690,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 9,
+        "generation": 10,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1901,6 +1943,38 @@
         "pointer": "access"
       },
       "pointer": "/pointer"
+    },
+    {
+      "name": "co-referrers asked for at a slot that is not a JSON Pointer",
+      "message": "Ref.CoReferrers",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "slot": "event"
+      },
+      "pointer": "/slot"
+    },
+    {
+      "name": "a co-referrer answered without saying whether it is live",
+      "message": "Ref.CoReferrers",
+      "part": "response",
+      "body": {
+        "coReferrers": [
+          {
+            "target": {
+              "id": "h4",
+              "ref": {
+                "kind": "Accounts.Reaction",
+                "name": "auditSignUp"
+              }
+            },
+            "entryPoints": [
+              "invoke"
+            ]
+          }
+        ]
+      },
+      "pointer": "/coReferrers/0"
     },
     {
       "name": "an observation reporting something no need constrains",

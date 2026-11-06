@@ -1,0 +1,13 @@
+kind: Telo.Application
+metadata: { name: CoIsolated }
+imports: { Co: ./kinds, First: ./announcer, Second: ./announcer }
+---
+kind: Co.Listener
+metadata: { name: onFirst }
+topic: !ref First.Joined
+label: first
+---
+kind: Co.Listener
+metadata: { name: onSecond }
+topic: !ref Second.Joined
+label: second

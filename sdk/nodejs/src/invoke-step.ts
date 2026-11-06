@@ -855,7 +855,11 @@ async function dispatch(
       // Cross-module exported instance: resolve into the owning import's context and invoke
       // the live instance directly — works whether or not the step runs inside a `with:`
       // scope (a plain `steps` list has no scope, so name lookup in the local context fails).
-      const instance = ctx.resolveImportedInstance?.(ref.alias, ref.name);
+      // Inside a scope, through it: a `Telo.Import` the scope declares answers
+      // first, then the module's imports.
+      const instance = state.scope
+        ? (state.scope.getInstance(ref.name, ref.alias) as unknown as ResourceInstance)
+        : ctx.resolveImportedInstance?.(ref.alias, ref.name);
       if (!instance) {
         throw new Error(
           `Cross-module reference '${ref.alias}.${ref.name}' did not resolve to an exported instance.`,

@@ -1,3 +1,4 @@
+import { inheritedCapability } from "./extends-resolution.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -90,7 +91,7 @@ export function validateSchemaTypeRefs(
     }
 
     const kind = typeof m.kind === "string" ? (resolver.resolveKind(m.kind) ?? m.kind) : undefined;
-    if (kind && registry.resolve(kind)?.capability === "Telo.Type") {
+    if (kind && inheritedCapability(registry.resolve(kind), (k) => registry.resolve(k)) === "Telo.Type") {
       for (const { sentinel, path } of refSentinelsIn((m as Record<string, unknown>).schema, "schema")) {
         diagnostics.push({
           severity: DiagnosticSeverity.Error,

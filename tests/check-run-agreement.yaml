@@ -443,6 +443,16 @@ targets:
   - !ref observesOnSinkAtRuntime
   - !ref observesOnTemplate
   - !ref observesOnTemplateAtRuntime
+  - !ref callsCoReferrersMalformed
+  - !ref callsCoReferrersMalformedAtRuntime
+  - !ref coReferrerScoped
+  - !ref coReferrerScopedInLibraryAtRuntime
+  - !ref scopedImportUnresolved
+  - !ref scopedImportApplicationTarget
+  - !ref scopedImportKind
+  - !ref scopedImportShadowing
+  - !ref scopedImportOutlivingHandler
+  - !ref scopedImportOwnHandler
   - !ref needConstraintUnverified
   - !ref needConstraintUnverifiedSuppliedAtRuntime
   - !ref needConstraintUnverifiedForwardedAtRuntime
@@ -4217,6 +4227,104 @@ kind: Assert.Manifest
 metadata: { name: observesInheritedBySinkAtRuntime }
 source: ./__fixtures__/needs/consume/consumers/abstract-sink.yaml
 expect: { errors: [], runFails: "ERR_X_TELO_REF_INVALID_OBSERVES" }
+---
+# `callsCoReferrers` names a kind and a reference slot of it able to hold this
+# slot's target — refused at the kind, and at the import reaching a dependency's.
+kind: Assert.Manifest
+metadata: { name: callsCoReferrersMalformed }
+source: ./__fixtures__/calls-co-referrers/malformed/telo.yaml
+expect:
+  errors:
+    - { code: X_TELO_REF_INVALID_CALLS_CO_REFERRERS, message: "its kind 'Co.Listenr' does not resolve" }
+    - { code: X_TELO_REF_INVALID_CALLS_CO_REFERRERS, message: "'CoKinds.Listener' declares no reference slot at '/when'" }
+    - { code: X_TELO_REF_INVALID_CALLS_CO_REFERRERS, message: "takes Telo.Executable, which cannot hold this slot's target (CoKinds.Topic)" }
+    - { code: X_TELO_REF_INVALID_CALLS_CO_REFERRERS, message: "whose value \"Co.Listener\" is not an object with a kind and a slot pointer" }
+---
+kind: Assert.Manifest
+metadata: { name: callsCoReferrersMalformedAtRuntime }
+source: ./__fixtures__/calls-co-referrers/malformed/consumer.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_CALLS_CO_REFERRERS
+      message: "Imported library 'BadCalls', reached through import 'Bad': Telo.Definition 'NoSlot'"
+  runFails: "[X_TELO_REF_INVALID_CALLS_CO_REFERRERS] Imported library 'BadCalls', reached through import 'Bad': Telo.Definition 'NoSlot'"
+---
+# A co-referrer declared in an execution scope exists only while the scope runs,
+# so no dispatch from module scope reaches it.
+kind: Assert.Manifest
+metadata: { name: coReferrerScoped }
+source: ./__fixtures__/calls-co-referrers/scoped/telo.yaml
+expect:
+  errors:
+    - code: CO_REFERRER_SCOPED
+      message: "Co.Listener 'captureJoined' names Joined at 'topic', which makes it a co-referrer that every dispatch through a 'callsCoReferrers' slot naming Joined calls, but it is declared in the `with:` scope of 'announceTest'"
+    - { code: CO_REFERRER_SCOPED, message: "declared in the `members:` scope of 'held'" }
+  runFails: "[CO_REFERRER_SCOPED] Co.Listener 'captureJoined' names Joined at 'topic'"
+---
+kind: Assert.Manifest
+metadata: { name: coReferrerScopedInLibraryAtRuntime }
+source: ./__fixtures__/calls-co-referrers/scoped-library/consumer.yaml
+expect:
+  errors:
+    - code: CO_REFERRER_SCOPED
+      message: "Imported library 'ScopedListenerLib', reached through import 'Lib': Co.Listener 'captureJoined'"
+  runFails: "[CO_REFERRER_SCOPED] Imported library 'ScopedListenerLib', reached through import 'Lib': Co.Listener 'captureJoined'"
+---
+# A `Telo.Import` declared in a scope is loaded as an `imports:` entry is: a
+# source naming no module is refused at the member, before anything boots.
+kind: Assert.Manifest
+metadata: { name: scopedImportUnresolved }
+source: ./__fixtures__/scoped-imports/unresolved.yaml
+expect:
+  errors:
+    - code: IMPORT_UNRESOLVED
+      message: "Cannot resolve import 'Inner' → './missing'"
+  runFails: "[IMPORT_UNRESOLVED] Cannot resolve import 'Inner' → './missing'"
+---
+kind: Assert.Manifest
+metadata: { name: scopedImportApplicationTarget }
+source: ./__fixtures__/scoped-imports/application-target.yaml
+expect:
+  errors:
+    - code: INVALID_IMPORT_TARGET
+      message: "Cannot use import 'Inner' → './own-event.yaml': Telo.Import target './own-event.yaml' is a Telo.Application."
+  runFails: "[INVALID_IMPORT_TARGET] Cannot use import 'Inner' → './own-event.yaml': Telo.Import target './own-event.yaml' is a Telo.Application."
+---
+# A scoped import gives its scope instance names only, never a module name.
+kind: Assert.Manifest
+metadata: { name: scopedImportKind }
+source: ./__fixtures__/scoped-imports/kind-through-scope.yaml
+expect:
+  errors:
+    - code: UNDEFINED_KIND
+      message: "Kind 'Inner.Thing': 'Inner' is a Telo.Import declared in the `with:` scope of 'seq', which gives that scope its exported instances"
+  runFails: "[UNDEFINED_KIND] Kind 'Inner.Thing': 'Inner' is a Telo.Import declared in the `with:` scope of 'seq'"
+---
+kind: Assert.Manifest
+metadata: { name: scopedImportShadowing }
+source: ./__fixtures__/scoped-imports/shadowing.yaml
+expect:
+  errors:
+    - code: DUPLICATE_RESOURCE_NAME
+      message: "Telo.Import/Inner: the import declared in the `with:` scope of 'seq' is named like the import aliased 'Inner'"
+  runFails: "[DUPLICATE_RESOURCE_NAME] Telo.Import/Inner: the import declared in the `with:` scope of 'seq'"
+---
+# A handler in a scoped import's library lives one scope run; a shared
+# library's event outlives it, so no emit of that event reaches the handler.
+kind: Assert.Manifest
+metadata: { name: scopedImportOutlivingHandler }
+source: ./__fixtures__/scoped-imports/outliving.yaml
+expect:
+  errors:
+    - code: CO_REFERRER_SCOPED
+      message: "Imported library 'ScopedOutlivingHandler', reached through import 'Handlers': Domain.Handler 'onShared' names Shared.Joined at 'event'"
+  runFails: "[CO_REFERRER_SCOPED] Imported library 'ScopedOutlivingHandler', reached through import 'Handlers': Domain.Handler 'onShared'"
+---
+# A handler of the scoped library's own event lives as long as its event.
+kind: Assert.Manifest
+metadata: { name: scopedImportOwnHandler }
+source: ./__fixtures__/scoped-imports/own-event.yaml
+expect: { errors: [], runs: true }
 ---
 # A stated constraint must reach a slot observing it, through the module's own
 # reference slots and every need it is forwarded to whole, downward only — so a

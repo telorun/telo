@@ -75,7 +75,7 @@ an incompatible controller and an incompatible peer are the same fact, discovere
 at different moments, and a second code would only invite a caller to handle one
 and not the other.
 
-### 0.3 Generation `telo-9`
+### 0.3 Generation `telo-10`
 
 One generation counter covers both carriers, reported in the handshake (§4.1) and
 written into a native controller's PURL as `abi=telo-<n>`.
@@ -84,26 +84,26 @@ written into a native controller's PURL as `abi=telo-<n>`.
   buffers across the C ABI, described only by the ABI crate's own layout. This
   specification does **not** retroactively describe it, and a generation `3`
   controller keeps loading exactly as it does today.
-- **Generations `4`, `5`, `6`, `7` and `8` are withdrawn, and nothing ever spoke
-  any of them.** `4` was the first generation this specification defined, and its
+- **Generations `4`, `5`, `6`, `7`, `8` and `9` are withdrawn, and nothing ever
+  spoke any of them.** `4` was the first generation this specification defined, and its
   value encoding named the typed frame's millisecond timestamp payload. `5` moved
   the value encoding to `durable-execution.md` §6's typed frame. `6` added the two
   need operations (§7.5). `7` added `Runtime.Run`'s `inputs` carrying `needs`
   (§9.2) and `Throws.DisplayMessage` (§7.6). `8` added `Translations.Lookup`
-  (§7.7), its answer carrying the keyed texts of the instance's kind. No carrier
-  implemented any of them and no artifact could declare one, so each is
-  superseded rather than kept readable.
-- **Generation `9` is the generation this specification defines.** It is `8`'s
-  message set plus `Span.Carrier` (§6.5), with the same value encoding:
+  (§7.7), its answer carrying the keyed texts of the instance's kind. `9` added
+  `Span.Carrier` (§6.5). No carrier implemented any of them and no artifact could
+  declare one, so each is superseded rather than kept readable.
+- **Generation `10` is the generation this specification defines.** It is `9`'s
+  message set plus `Ref.CoReferrers` (§7.1), with the same value encoding:
   `durable-execution.md` §6's typed frame, whose timestamp payload is RFC 3339
   with a trimmed nanosecond fraction. It is the value in
   `sdk/controller-protocol/generation.json`, and every `Session.Hello` a
   conformance vector carries states it.
-- **No artifact may declare `abi=telo-9` until the ABI carrier lands.** A
+- **No artifact may declare `abi=telo-10` until the ABI carrier lands.** A
   declaration reaching a kernel that does not implement the carrier MUST be
   refused with `ERR_CONTROLLER_HOST_INCOMPATIBLE`. Until then the ABI crate's
   `TELO_ABI_VERSION` stays `3`, which is what keeps the published `abi=telo-3`
-  controller candidates valid: specifying `9` does not retire `3`.
+  controller candidates valid: specifying `10` does not retire `3`.
 
 ### 0.4 Related specifications
 
@@ -278,6 +278,7 @@ One row per message, in the lexical order of the file names in
 | `Native.File` | `controller-to-kernel` | `9. Host facilities` | no | no |
 | `Need.Resolve` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
 | `Need.Verify` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
+| `Ref.CoReferrers` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
 | `Ref.Declaration` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
 | `Ref.Ensure` | `controller-to-kernel` | `7. Resolution & schema` | no | no |
 | `Ref.Resolve` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
@@ -414,7 +415,7 @@ A **response** frame carries the requester's `id` and the same `type`, and its
   on the failure and writes it as that entry's `host_stack`, whatever the code
   (`kernel/specs/logging.md` §4.2).
   `displayMessage`, `inputPointer`, `location`, `frames`, `droppedFramesCount` and
-  `hostStack` are additive members within `telo-9`, which no carrier speaks yet.
+  `hostStack` are additive members within `telo-10`, which no carrier speaks yet.
   An error's `cause` is not carried.
 
 A message whose `response` in `messages/` is `null` is a **notification**: no
@@ -744,7 +745,7 @@ carry `calledAt`, an RFC 6901 pointer to where the calling resource's declaratio
 makes this call (`/steps/1`, `/targets/0`), handled exactly as `inputsAt` is — read
 at that one dispatch, never inherited — and the pointer of the caller's frame in
 the failure's trace (`kernel/specs/invocation-contract.md` §5.5). `calledAt` is an
-additive member within `telo-9`. One member of the in-process context deliberately does **not**
+additive member within `telo-10`. One member of the in-process context deliberately does **not**
 cross: the durable run handle, which is a live object with methods. The kernel is
 a pure conduit for it — it carries it and never calls it — so a second runtime
 threads a handle it owns rather than deserializing this one.
@@ -861,6 +862,38 @@ registering an inline definition into the declaring module's scope on the way. I
 is a separate message from `Ref.Resolve` — the two have different failure modes,
 and a controller that wants the target's identity for a dispatch wants this one.
 
+`Ref.CoReferrers` names a reference slot of the asking instance's own kind that
+declares `callsCoReferrers: { kind, slot }` by a JSON Pointer into its manifest
+(`/event`), and answers the **co-referrers** of the declaration the slot names:
+every module-scope declaration of `kind`, or of a kind extending it, whose
+reference slot at `slot` names that same declaration in the same module instance
+— the asking instance itself excluded, a template instance's body entries
+included. Each crosses as a `Ref.Resolve` answer does: its handle, the entry
+points reachable through it, and whether it is the live object. A declaration in
+an execution scope is never one: it exists only while its scope runs, and a
+runtime refuses it before the scope's holder initializes
+(`ERR_CO_REFERRER_SCOPED`). Any other pointer is `ERR_REF_UNRESOLVED`, naming it.
+
+**The co-referrers are in application load order**: the root module instance,
+then its imports depth-first in `imports:` order — a `shared` library, one
+instance however many imports reach it, at its first reach — and within one
+instance in the order its documents are read, the body entries of each template
+instance after them, a `!for-each` family in family order. The order is fixed
+per application, the same for every request about one target, and both kernels
+answer the same one.
+
+The answer is read when the request is made, from an index a runtime builds once
+the application has initialized and again after each reconciliation — never
+fixed when the asking instance is created, so the asking instance is ordered
+after none of its co-referrers and a reconciliation that adds one reaches the
+next request. Asked before the application has initialized, the request is
+`ERR_LOCAL_REF_PENDING`; asked while a reconciliation has withdrawn the index to
+rebuild it, it is `ERR_INVOKE_CANCELLED`, as a dispatch to a target the
+reconciliation unwound is. What the
+caller does with the co-referrers — dispatching each through
+`Dispatch.InvokeResolved`, in order, and what it does with a failure — is the
+calling kind's own.
+
 `Ref.Declaration` reads the manifest a name was DECLARED with, resolved in the
 context that owns the asking resource. A declaration is readable whether or not
 the target has been constructed, which is what lets a slot wanting a fact about
@@ -870,7 +903,7 @@ WRITTEN, so each answer carries a `declaration` handle, and a request naming one
 as `holder` is resolved in the context that declared that answer — its own names
 and its own imports' aliases, whichever module asks. A `holder` that names no
 answer is `ERR_REF_UNRESOLVED`. `holder` and `declaration` are additive members
-within `telo-9`.
+within `telo-10`.
 
 A reference site whose every slot is `use: schema` — in every case of a case
 map — is a **declaration read**: a runtime MUST NOT substitute an instance there
@@ -943,7 +976,7 @@ is judged against its text (`ERR_MESSAGE_PLACEHOLDER_UNBOUND`,
 `ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`), and each `Text` crosses as the record
 `{ text, context, lang, computed }` with `computed: true`. A literal text the
 instance's manifest already holds as a record crosses as it is. This is a reading
-of the result within `telo-9`, not a new message.
+of the result within `telo-10`, not a new message.
 
 **An accessor-mode field is not a compiled value.** A field its kind annotates
 `x-telo-eval: accessor` names a value for the controller's own consumer to
@@ -1230,7 +1263,7 @@ codes cross unchanged and are not listed here.
 | `ERR_CONTRACT_UNRESOLVABLE` | a declared contract resolved to no schema at all | `Controller.Create`, `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Schema.Resolve` |
 | `ERR_SCHEMA_PROJECTION_UNRESOLVED` | a projected schema could not be resolved | `Schema.Resolve` |
 | `ERR_FUNCTION_FAILED` | a module function raised | `Callable.Call`, `Value.Expand` |
-| `ERR_INVOKE_CANCELLED` | the invocation's token was cancelled — a **signal**, rethrown by anything that catches | `Controller.Invoke`, `Controller.Run`, `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Dispatch.Run` |
+| `ERR_INVOKE_CANCELLED` | the invocation's token was cancelled, or co-referrers are asked for while a reconciliation rebuilds them — a **signal**, rethrown by anything that catches | `Controller.Invoke`, `Controller.Run`, `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Dispatch.Run`, `Ref.CoReferrers` |
 | `ERR_DURABLE_SUSPENDED` | a durable run parked — a **signal**, rethrown by anything that catches | `Controller.Invoke`, `Dispatch.Invoke`, `Dispatch.InvokeResolved` |
 | `ERR_ZONE_REQUIRED` | a required zone was not open | `Zone.Require` |
 | `ERR_EFFECT_SCOPE_CLOSED` | an effect was registered against a scope that has fully unwound | `Controller.Init`, `Effect.Perform`, `Effect.Register`, `Effect.Run` |
@@ -1247,10 +1280,10 @@ codes cross unchanged and are not listed here.
 | `ERR_MESSAGE_PLACEHOLDER_UNBOUND` | a text's values lack a name the text reads | `Value.Expand` |
 | `ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED` | a text's value is neither a string nor a number, or a selector's is not a number | `Value.Expand` |
 | `ERR_MODULE_FILES_UNAVAILABLE` | a module file could not be staged or is unpinned | `Module.File`, `Module.ControllerFile` |
-| `ERR_REF_UNRESOLVED` | a pointer names no reference slot of the asking instance's kind, or one whose target is not a need's fulfilment; a `holder` names no earlier answer | `Need.Resolve`, `Need.Verify`, `Ref.Declaration` |
+| `ERR_REF_UNRESOLVED` | a pointer names no reference slot of the asking instance's kind, one whose target is not a need's fulfilment, or one declaring no `callsCoReferrers`; a `holder` names no earlier answer | `Need.Resolve`, `Need.Verify`, `Ref.CoReferrers`, `Ref.Declaration` |
 | `ERR_NEED_UNMET` | an observation does not satisfy the outermost need; `data` holds `need`, `type`, `source`, `required` and `actual` | `Need.Verify`, and the entry point whose controller reported it: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
 | `ERR_NEED_OBSERVATION_INVALID` | an observation at a slot that does not observe, one missing or extra member, or a version that is not semver; or an observing slot left unreported when the entry point its deadline names returns | `Need.Verify`, and that entry point: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
-| `ERR_LOCAL_REF_PENDING` / `ERR_CROSS_MODULE_REF_PENDING` | a listed translations catalog has not been created yet — a deferral the kernel's initialization retries, raised out of the entry point that asked | `Translations.Lookup`, and that entry point: `Controller.Init` |
+| `ERR_LOCAL_REF_PENDING` / `ERR_CROSS_MODULE_REF_PENDING` | a listed translations catalog has not been created yet, or co-referrers are asked for before the application has initialized — a deferral the kernel's initialization retries, raised out of the entry point that asked | `Translations.Lookup`, `Ref.CoReferrers`, and that entry point: `Controller.Init` |
 | `ERR_NATIVE_FILE_UNAVAILABLE` | no `native:` entry of that name matches the host, or its staged file could not be brought to its pin | `Native.File` |
 
 `ERR_DURABLE_SUSPENDED` and `ERR_INVOKE_CANCELLED` are **signals, not errors**.

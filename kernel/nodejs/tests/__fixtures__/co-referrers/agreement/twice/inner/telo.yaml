@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata: { name: CoInner }
+imports: { Co: ../../../kinds, Events: ../../../events }
+---
+kind: Co.Listener
+metadata: { name: innerListener }
+topic: !ref Events.Joined
+label: inner

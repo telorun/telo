@@ -123,6 +123,52 @@ Both lists also take `<Alias>.<name>` to re-export what an import of yours
 owns; every hop resolves to the same instance, never a copy. Without an
 `exports` block nothing is gated — always write one.
 
+## Announcing events
+
+A library telling its importers something happened emits a business event
+instead of writing the reaction itself. Import `domain-events` as `Domain`,
+declare a `Domain.Event` (a named shape: the payload's schema), export it in
+`exports.resources`, and emit it with the payload as `inputs`.
+
+```yaml
+exports:
+  resources: [createUser, UserCreated]
+---
+kind: Domain.Event
+metadata: { name: UserCreated }
+schema:
+  type: object
+  required: [userId, email]
+  properties:
+    userId: { type: string }
+    email: { type: string }
+---
+# a step inside createUser
+- name: announce
+  invoke: { kind: Domain.Emit, event: !ref UserCreated }
+  inputs: { userId: !cel "inputs.userId", email: !cel "inputs.email" }
+```
+
+The importer reacts with a named top-level handler. `invoke` is any invocable
+or runnable, `when` filters on `event`, omitted `inputs` is `{}`, and
+`inputs: !cel "event"` forwards the payload whole:
+
+```yaml
+kind: Domain.Handler
+metadata: { name: queueWelcomeEmail }
+event: !ref Iam.UserCreated
+invoke: { kind: QueueSql.Enqueue, queue: !ref welcomeEmails }
+inputs:
+  id: !interpolate "welcome-${{ event.userId }}"
+  message: { email: !cel "event.email" }
+```
+
+Handlers run inside the emitter's call and join its transaction: a failing
+handler rolls the library's writes back, and the emit fails with
+`ERR_DOMAIN_EVENT_HANDLER_FAILED` (`data: { event, handler }`). Say so in the
+library's docs. Keep external I/O out of handlers; after-commit work is a
+handler enqueueing on an outbox. Never declare a handler in a `with:` scope.
+
 ## Making a kind
 
 A `Telo.Definition` registers a kind. Without writing code there are two ways

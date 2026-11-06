@@ -81,6 +81,10 @@ second table — there is no other system to deduplicate: wrap the handler's
 writes in a transaction and record `delivery.messageId` in it with
 `IdempotencySql.Once`, so the effects are committed once per message id.
 
+## Enqueueing from an event handler
+
+A library that announces a business event with `Domain.Emit` knows nothing of the queue. The application adds a `Domain.Handler` whose target is `QueueSql.Enqueue`: it runs inside the emitter's transaction, so the message is committed with the emitter's writes and lost with a rollback, and `telo check` proves the transaction through the emit. See [Work after commit](../../domain-events/docs/after-commit.md).
+
 ## Order
 
 A queue promises no order. When the destination must see events for one entity

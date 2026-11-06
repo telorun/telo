@@ -3,6 +3,7 @@ import {
   DiagnosticSeverity,
   flattenLoadedModule,
   importPathOf,
+  stampScopedImportsIn,
   type AnalysisDiagnostic,
   type LoadedModule,
 } from "@telorun/analyzer";
@@ -111,6 +112,8 @@ async function computeLibraryScope(
 ): Promise<LibraryScope> {
   const host = ctx.libraryAnalysisHost();
   const rawManifests = flattenLoadedModule(await loadLibraryTarget(resolvedUrl, ctx));
+  // The library's own scoped `Telo.Import`s carry the identity the load gave them.
+  if (host.loadedGraph) stampScopedImportsIn(host.loadedGraph, rawManifests);
 
   if (module === host.entryModule) {
     return ownRegistryScope(resolvedUrl, ctx, rawManifests);

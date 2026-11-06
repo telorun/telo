@@ -1,0 +1,20 @@
+# Opens its transaction on the connection its importer lends it, announces
+# inside it, and exports an operation on that same connection.
+kind: Telo.Library
+metadata: { name: Signup }
+imports: { Z: ../kinds, Co: ../../co-referrers/kinds }
+resources: { connection: { kind: Z.Conn } }
+exports: { resources: [Created, create, op] }
+---
+kind: Co.Topic
+metadata: { name: Created }
+schema: { type: object }
+---
+kind: Z.Tx
+metadata: { name: create }
+connection: !ref connection
+steps: { kind: Co.Announce, topic: !ref Created }
+---
+kind: Z.Op
+metadata: { name: op }
+connection: !ref connection

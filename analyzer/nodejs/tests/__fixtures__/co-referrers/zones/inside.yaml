@@ -1,0 +1,19 @@
+# The listener's guarded target is reached through the announce, inside the zone.
+kind: Telo.Application
+metadata: { name: CoReferrerInside }
+imports: { Co: ../kinds }
+targets:
+  - invoke: !ref zoned
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object, required: [userId], properties: { userId: { type: string } } }
+---
+kind: Co.Zone
+metadata: { name: zoned }
+steps: { kind: Co.Announce, topic: !ref Joined }
+---
+kind: Co.Listener
+metadata: { name: onJoined }
+topic: !ref Joined
+invoke: { kind: Co.Guarded }

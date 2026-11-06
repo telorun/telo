@@ -1,0 +1,13 @@
+kind: Telo.Application
+metadata: { name: InputsOmitted, version: 1.0.0 }
+imports: { Domain: ../../, Events: ./lib-events }
+---
+kind: Telo.Sequence
+metadata: { name: target }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, required: [email], properties: { email: { type: string } } } }
+steps: []
+---
+kind: Domain.Handler
+metadata: { name: omits }
+event: !ref Events.UserCreated
+invoke: !ref target

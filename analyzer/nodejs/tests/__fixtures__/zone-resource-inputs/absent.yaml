@@ -1,0 +1,15 @@
+# The optional connection is not lent, so the library's transaction is on no
+# connection of the application's.
+kind: Telo.Application
+metadata: { name: LentAbsent }
+imports: { Z: ./kinds, Co: ../co-referrers/kinds, Maybe: ./optional }
+targets:
+  - invoke: !ref Maybe.create
+---
+kind: Z.Conn
+metadata: { name: db }
+---
+kind: Co.Listener
+metadata: { name: onCreated }
+topic: !ref Maybe.Created
+invoke: { kind: Z.Op, connection: !ref db }

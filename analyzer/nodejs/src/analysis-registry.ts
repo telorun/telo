@@ -200,6 +200,12 @@ export class AnalysisRegistry {
     this.defs.register(def);
   }
 
+  /** Changes with every definition registered through this registry or any of
+   *  its views, which share one definition set. */
+  get definitionGeneration(): number {
+    return this.defs.generation;
+  }
+
   registerModuleIdentity(namespace: string | null, name: string): void {
     this.defs.registerModuleIdentity(namespace, name);
   }
@@ -563,13 +569,17 @@ export class AnalysisRegistry {
     return {
       refFields: (resource) => {
         const declared = this.defs.declaredReachOf(resource, this.aliases, this.aliasesByModule);
-        return (declared?.references ?? []).map(({ path, isArray, kinds, entries }) => ({
-          path,
-          isArray,
-          refs: kinds,
-          capabilities: this.capabilitiesForRefs(kinds),
-          uses: [...new Set(entries.flatMap((entry) => possibleUses(refSlotOfEntry(entry))))],
-        }));
+        return (declared?.references ?? []).map(({ path, isArray, kinds, entries }) => {
+          const callsCoReferrers = entries.find((entry) => entry.callsCoReferrers)?.callsCoReferrers;
+          return {
+            path,
+            isArray,
+            refs: kinds,
+            capabilities: this.capabilitiesForRefs(kinds),
+            uses: [...new Set(entries.flatMap((entry) => possibleUses(refSlotOfEntry(entry))))],
+            ...(callsCoReferrers ? { callsCoReferrers } : {}),
+          };
+        });
       },
       refPositions: (resource) =>
         this.defs.referencePositions(resource, this.aliases, this.aliasesByModule),

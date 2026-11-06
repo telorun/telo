@@ -1,0 +1,13 @@
+# A scope imports a library whose handler handles a shared library's event.
+kind: Telo.Application
+metadata: { name: ScopedOutlivingHandlerApp }
+imports: { Shared: ./shared-events }
+targets: [!ref announceTest]
+---
+kind: Telo.Sequence
+metadata: { name: announceTest }
+with:
+  - { kind: Telo.Import, metadata: { name: Handlers }, source: ./outliving-handler }
+steps:
+  - name: announce
+    invoke: !ref Shared.announce

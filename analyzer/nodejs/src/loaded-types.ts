@@ -88,6 +88,27 @@ export interface ImportEdge {
   targetNamespace: string | null;
 }
 
+/** One holder on the way from a module's top level to a scope member: the
+ *  holder's name, the scope field and the index of the next step in it. */
+export interface ScopeHolderStep {
+  readonly name: string;
+  readonly field: string;
+  readonly index: number;
+}
+
+/** A `Telo.Import` declared as a scope member, resolved as an `imports:` entry
+ *  is. It names a module instance of its own, never a module alias. */
+export interface ScopedImportEdge extends ImportEdge {
+  /** The member's `metadata.name`. */
+  alias: string;
+  /** The holders from the declaring module's top level down to the scope. */
+  holders: readonly ScopeHolderStep[];
+  /** The top-level holder's kind, as written. */
+  holderKind: string;
+  /** The member, as the declaring file holds it. */
+  member: Record<string, unknown>;
+}
+
 /** An entry plus every transitively-imported library. Returned by
  *  `Loader.loadGraph`. */
 export interface LoadedGraph {
@@ -104,6 +125,10 @@ export interface LoadedGraph {
    *  consumer walking these edges (`flattenForAnalyzer`) sees one version per
    *  module identity. */
   importEdges: Map<string, Map<string, ImportEdge>>;
+  /** Every `Telo.Import` declared as a scope member, by the file declaring it,
+   *  in document order. Kept apart from `importEdges`: such an import gives its
+   *  scope instance names and no module alias. */
+  scopedImportEdges?: Map<string, ScopedImportEdge[]>;
   /** Version-reconciliation redirects: a losing module's canonical source URL →
    *  the winning version's canonical source URL. The runtime consults this when
    *  it independently re-resolves an import (the analyzer already sees repointed
@@ -178,5 +203,8 @@ export interface GraphLoadError {
    *  reached, is `Telo` or `Self` (`reserved-kind-prefix.ts`): registering it
    *  would replace the built-in or the module's own kinds. */
   reason?: "unresolved" | "unusable-target" | "reserved-prefix";
+  /** Set for an import declared as a scope member, which has no `imports:`
+   *  entry: the top-level holder and the member's place in it (`with[0]`). */
+  scope?: { holder: { kind: string; name: string }; path: string };
   error: Error;
 }

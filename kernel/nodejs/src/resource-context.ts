@@ -35,6 +35,7 @@ import {
   type BrowserEntryFiles,
   type NeedObservation,
   type NeedResolution,
+  type CoReferrer,
   type ValueIssue,
   valueIssue,
   refSentinelTarget,
@@ -84,6 +85,8 @@ import {
   referenceSiteAt,
 } from "./need-resolution.js";
 import { handleOfInstance, mintResourceHandle } from "./resource-handle.js";
+import { declarationNamedBy } from "./co-referrer-index.js";
+import { CanonicalSlotKinds } from "./canonical-slot-kinds.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { bigIntView } from "./bigint-schema-view.js";
@@ -95,6 +98,8 @@ import { hostEnv } from "./host-env.js";
 import type { LoggingHost } from "./logging/logging-host.js";
 import type { ScopeConfig } from "./logging/scope-config.js";
 import type { LibraryAnalysisHost } from "./internal-context.js";
+import type { EvaluationContext } from "./evaluation-context.js";
+import type { ModuleContext as KernelModuleContextImpl } from "./module-context.js";
 
 /** The kernel's `ModuleContext` as far as logging is concerned. Declared
  *  structurally rather than imported to avoid a module cycle. */
@@ -730,7 +735,23 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined {
-    return this.moduleContext.resolveImportedInstance(alias, name);
+    // Through the owning context, so a scope run's own `Telo.Import`s answer
+    // first; at module level it is the module context itself.
+    return (this.owningContext as EvaluationContext).resolveImportedInstance(alias, name);
+  }
+
+  indexScopedLibrary(library: KernelModuleContextImpl, scope: { alias: string; holder: string; field: string }): () => void {
+    return this.kernel.indexScopedLibrary(library, scope);
+  }
+
+  reindexCoReferrers(): void {
+    this.kernel.reindexCoReferrers();
+  }
+
+  /** The scope run owning this resource, when it is declared in one. */
+  scopeRunContext(): EvaluationContext | undefined {
+    const owning = this.owningContext as EvaluationContext;
+    return owning !== (this.moduleContext as unknown) && owning.scopeHolders?.length > 0 ? owning : undefined;
   }
 
   /**
@@ -907,6 +928,72 @@ export class ResourceContextImpl implements ResourceContext {
     this.#needObservations?.record(pointer);
     const shape = needTypeOf(this.kernel.getAnalysisRegistry().resolveDefinition(fulfilment.type));
     compareObservation(this.outermostNeed(needPath), fulfilment.type, shape?.features ?? [], checked);
+  }
+
+  resolveCoReferrers(slot: string): CoReferrer[] {
+    const label = `${this.#resolvedKind ?? "resource"} '${(this.metadata?.name as string) ?? "<unnamed>"}'`;
+    const manifest = this.#manifest;
+    if (!manifest) {
+      throw new RuntimeError(
+        "ERR_RESOURCE_IDENTITY_UNBOUND",
+        `[${this.metadata.name}] co-referrers are unavailable inside create() — they are asked for at dispatch`,
+      );
+    }
+    const site = referenceSiteAt(
+      this.analysisView.referenceSitesOf(manifest as unknown as ResourceManifest),
+      slot,
+    );
+    const written = site?.refs.find((ref) => ref.slot.callsCoReferrers)?.slot.callsCoReferrers;
+    if (!site || !written) {
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        `${label}: '${slot}' is not a reference slot of its kind declaring 'callsCoReferrers', ` +
+          `so it has no co-referrers to resolve.`,
+      );
+    }
+    const target = declarationNamedBy(site.data, this.owningContext);
+    if (!target) {
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        `${label}: '${slot}' names no declaration this resource can reach, so it has no co-referrers.`,
+      );
+    }
+    // Canonical, read in the module that wrote the slot, as the index compares it.
+    const registry = this.kernel.getAnalysisRegistry();
+    const own = registry.resolveDefinition(this.#resolvedKind ?? "");
+    const coKind = own
+      ? new CanonicalSlotKinds((kind, module) => registry.resolveDefinitionIn(kind, module)).kindAt(
+          own,
+          String(site.keys[0]),
+          written.kind,
+        )
+      : undefined;
+    if (!coKind) {
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        `${label}: '${slot}' calls the co-referrers of kind '${written.kind}', which resolves to no registered kind.`,
+      );
+    }
+    const call = { kind: coKind, slot: written.slot };
+    const self = authoredDeclarationOf(manifest) ?? manifest;
+    return this.kernel
+      .coReferrerIndexFor(target, `${label}: '${slot}'`)
+      .coReferrersOf(call, target)
+      .filter((declaration) => declaration.manifest !== self)
+      .map(({ context, name }) => {
+        const instance = context.resourceInstances.get(name)?.instance;
+        if (!instance) {
+          throw new RuntimeError(
+            context.state === "Initialized" ? "ERR_RESOURCE_NOT_FOUND" : "ERR_LOCAL_REF_PENDING",
+            `${label}: co-referrer '${name}' at '${slot}' is declared but not initialized.`,
+          );
+        }
+        const handle = handleOfInstance(instance);
+        if (!handle) {
+          throw new RuntimeError("ERR_FATAL", `${label}: co-referrer '${name}' has no resource handle.`);
+        }
+        return { target: handle, instance };
+      });
   }
 
   /** Name lookup with scope-local precedence, for {@link resolveRefInstance}. */

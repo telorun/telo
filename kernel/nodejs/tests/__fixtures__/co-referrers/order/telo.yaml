@@ -1,0 +1,32 @@
+# Listeners in the root, in an included partial, and in imports at two depths.
+kind: Telo.Application
+metadata: { name: CoOrder }
+include: [./partial.yaml]
+imports: { Co: ../kinds, Events: ../events, A: ../a, B: ../b }
+---
+kind: Co.Listener
+metadata: { name: rootFirst }
+topic: !ref Events.Joined
+label: rootFirst
+---
+kind: Co.Announce
+metadata: { name: announceJoined }
+topic: !ref Events.Joined
+---
+kind: Co.Listener
+metadata: { name: rootSecond }
+topic: !ref Events.Joined
+label: rootSecond
+---
+kind: Co.Channel
+metadata: { name: channel }
+labels: [x, y, z]
+---
+# Inherits the announcer's slot, written in another module's aliases.
+kind: Telo.Definition
+metadata: { name: Shout }
+extends: Co.Announce
+---
+kind: Self.Shout
+metadata: { name: shoutJoined }
+topic: !ref Events.Joined

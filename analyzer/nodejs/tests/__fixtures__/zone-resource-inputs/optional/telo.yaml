@@ -1,0 +1,15 @@
+# As `lib`, with the connection optional.
+kind: Telo.Library
+metadata: { name: MaybeSignup }
+imports: { Z: ../kinds, Co: ../../co-referrers/kinds }
+resources: { connection: { kind: Z.Conn, optional: true } }
+exports: { resources: [Created, create] }
+---
+kind: Co.Topic
+metadata: { name: Created }
+schema: { type: object }
+---
+kind: Z.Tx
+metadata: { name: create }
+connection: !ref connection
+steps: { kind: Co.Announce, topic: !ref Created }

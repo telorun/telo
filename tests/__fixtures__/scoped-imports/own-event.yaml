@@ -1,0 +1,12 @@
+# A scope imports a library whose handler handles the library's own event.
+kind: Telo.Application
+metadata: { name: ScopedOwnEvent }
+targets: [!ref announceTest]
+---
+kind: Telo.Sequence
+metadata: { name: announceTest }
+with:
+  - { kind: Telo.Import, metadata: { name: Events }, source: ./own-events }
+steps:
+  - name: announce
+    invoke: !ref Events.announce

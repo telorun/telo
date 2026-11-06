@@ -1,0 +1,29 @@
+kind: Telo.Library
+metadata: { name: Iam, version: 0.1.0 }
+imports: { Sql: ../../../../sql, Domain: ../../../ }
+resources: { connection: { kind: Sql.Connection } }
+exports: { resources: [createUser, UserCreated] }
+---
+kind: Domain.Event
+metadata: { name: UserCreated }
+schema:
+  type: object
+  required: [userId, email]
+  properties: { userId: { type: string }, email: { type: string } }
+---
+kind: Sql.Transaction
+metadata: { name: createUser }
+connection: !ref connection
+inputs: { userId: !cel "uuidv4()", email: !cel "inputs.email" }
+steps:
+  kind: Telo.Sequence
+  inputType: !ref UserCreated
+  steps:
+    - name: insert
+      invoke: { kind: Sql.Command, connection: !ref connection }
+      inputs:
+        sql: "INSERT INTO users (id, email) VALUES (?, ?)"
+        bindings: [!cel "inputs.userId", !cel "inputs.email"]
+    - name: announce
+      invoke: { kind: Domain.Emit, event: !ref UserCreated }
+      inputs: { userId: !cel "inputs.userId", email: !cel "inputs.email" }

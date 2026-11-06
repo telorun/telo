@@ -1,6 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
-import { rewriteRefSlotKinds } from "./ref-slot.js";
+import { rewriteCoReferrerKinds, rewriteRefSlotKinds } from "./ref-slot.js";
 import {
   REFERRER_RULES_ANNOTATION,
   hasReferrerRules,
@@ -50,8 +50,8 @@ export function isLegacyRefIdentity(ref: string): boolean {
 }
 
 /**
- * Rewrites the `x-telo-ref` constraints (and the kinds `x-telo-requires-zone`,
- * `x-telo-referrer-rules` and `x-telo-text-keys` name) on one definition doc from the alias
+ * Rewrites the `x-telo-ref` constraints (and the kinds a `callsCoReferrers`,
+ * `x-telo-requires-zone`, `x-telo-referrer-rules` and `x-telo-text-keys` name) on one definition doc from the alias
  * form (`KvStore.Store`, `Self.Store`, `Telo.Invocable`) to the canonical
  * `<module>.<Kind>` key the definition registry is keyed by.
  *
@@ -130,6 +130,12 @@ export function resolveSchemaRefKinds(
         if (result?.status === "ok") return result.kind;
         record(ref, path);
         return undefined;
+      });
+      // A co-referrer kind that does not canonicalize is
+      // X_TELO_REF_INVALID_CALLS_CO_REFERRERS (`co-referrer-slot.ts`).
+      rewriteCoReferrerKinds(obj, (kind) => {
+        const result = resolver.resolveKindResult(kind);
+        return result.status === "ok" ? result.kind : undefined;
       });
     }
     if (hasRequiresZone(obj)) {

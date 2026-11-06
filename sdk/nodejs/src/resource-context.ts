@@ -17,6 +17,7 @@ import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import type { KindRef } from "./ref.js";
 import type { NeedObservation, NeedResolution } from "./need-resolution.js";
+import type { CoReferrer } from "./co-referrer.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
@@ -361,6 +362,19 @@ export interface ResourceContext extends ControllerContext {
    * the end of startup.
    */
   verifyNeed(pointer: string, observation: NeedObservation): void;
+  /**
+   * The live co-referrers of the target at `slot` — a JSON Pointer into this
+   * resource's manifest naming a reference slot of its own kind that declares
+   * `callsCoReferrers` — in application load order: the root, then its imports
+   * depth-first in `imports:` order (a shared library at its first reach), each
+   * module instance's declarations in the order its documents are read, a
+   * template instance's body entries after them. Read at the call, so a
+   * reconcile adding one reaches the next call. Any other pointer is
+   * `ERR_REF_UNRESOLVED`; asked before the application has initialized,
+   * `ERR_LOCAL_REF_PENDING`; asked while a reconcile rebuilds the set,
+   * `ERR_INVOKE_CANCELLED`.
+   */
+  resolveCoReferrers(slot: string): CoReferrer[];
   /**
    * The manifest a name was DECLARED with, resolved in the context that OWNS
    * this resource — the same order {@link resolveRef} uses, so a declaration

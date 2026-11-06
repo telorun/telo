@@ -189,19 +189,39 @@ of your own. A failure you rethrow keeps its `inputPointer` and `location`
 unchanged. In Node the options are `new InvokeError(code, message, data,
 { inputPointer })` and the context member `inputsAt`.
 
-## Generations, and `abi=telo-9`
+## Calling the declarations that name your target
+
+A slot whose `x-telo-ref` declares `callsCoReferrers: { kind, slot }` says that
+dispatching your resource calls the co-referrers of the slot's target: every
+module-scope declaration of `kind` (or a kind extending it) whose own `slot`
+names the same declaration in the same module instance. `Ref.CoReferrers` names
+your slot by pointer (`/event`) and answers them, each as `Ref.Resolve` answers a
+target, in application load order — the root, then its imports depth-first in
+`imports:` order (a `shared` library at its first reach), each module instance's
+declarations in the order its documents are read, a template instance's body
+entries after them. The set is read at the call, so a reconcile that adds one
+reaches your next dispatch; asked before the application has initialized it
+fails with the deferral the kernel retries. Dispatch each through
+`Dispatch.InvokeResolved` with the context you were handed, so each has its own
+span and sees your zones and cancellation — how you run them and what you do with
+a failure is your kind's. In Node it is `ctx.resolveCoReferrers(slot)`, answering
+`{ target, instance }` per co-referrer for `ctx.invokeResolved(target.ref.kind,
+target.ref.name, instance, inputs, ctx)`.
+
+## Generations, and `abi=telo-10`
 
 Generation `3` is the shape shipping today: JSON in ABI buffers, described only by
-the ABI crate's layout. Generation `9` is the one this specification defines, and
-it is the generation in which the C ABI carries the protocol's messages. `4` to `8`
+the ABI crate's layout. Generation `10` is the one this specification defines, and
+it is the generation in which the C ABI carries the protocol's messages. `4` to `9`
 were withdrawn before any carrier spoke them: `4`'s value encoding named the typed
 frame's millisecond timestamp payload (now RFC 3339 with a trimmed nanosecond
 fraction), `6` was `5` plus the two need messages, `7` was `6` with a child run's
 inputs carrying the child's needs and the declared display message, `8` was `7`
-with the translations lookup, and `9` is `8` plus `Span.Carrier`. Every handshake
-in the vectors states `9`, and `pnpm run check:controller-protocol` refuses a
-conformance vector whose handshake states another generation.
+with the translations lookup, `9` was `8` plus `Span.Carrier`, and `10` is `9`
+plus `Ref.CoReferrers`. Every handshake in the vectors states `10`, and
+`pnpm run check:controller-protocol` refuses a conformance vector whose handshake
+states another generation.
 
-**Do not write `abi=telo-9` into a module yet.** The ABI carrier has not landed,
+**Do not write `abi=telo-10` into a module yet.** The ABI carrier has not landed,
 and a kernel meeting that declaration refuses it. Published `abi=telo-3`
 candidates stay valid — specifying a new generation does not retire the old one.

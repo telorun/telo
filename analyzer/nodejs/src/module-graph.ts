@@ -77,13 +77,15 @@ import { isStepSlot } from "./step-slot.js";
 import { isInlineDeclaration as isInlineDeclarationValue, isResolvedReference } from "./resolved-reference.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { findZoneProviders } from "./resolve-zone-containment.js";
-import { isTriggerUse, topFieldOf, type RefUse } from "./ref-slot.js";
+import { isTriggerUse, topFieldOf, type CoReferrerCall, type RefUse } from "./ref-slot.js";
+import { CoReferrerSearch } from "./co-referrers.js";
 import { canonicalJson } from "./canonical-json.js";
 import { isForwardedShape } from "./forwarded-declaration.js";
 import { isKindDocument, kindDeclarationOf } from "./kind-declaration.js";
 import { accessChains } from "./cel-access-chains.js";
 import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
 import { selfForwardPath } from "./template-forward.js";
+import { pointerToPath } from "./resource-rule.js";
 import { branchValue, branchesOf } from "./choice-reading.js";
 import { entryListsOf, rootMatchersOf, type EntryListDeclaration } from "./topology-role.js";
 
@@ -420,6 +422,9 @@ export interface GraphEdge {
   boot?: boolean;
   /** The target is declared inside the source's own scope. */
   scoped?: boolean;
+  /** A call the slot's `callsCoReferrers` adds to a co-referrer of its target:
+   *  nothing written at `path` names the target. */
+  coReferrer?: boolean;
   /** Data edges only: the access chain as written (`resources.db.status.port`),
    *  so a reader is told WHAT is read rather than only that something is. */
   read?: string;
@@ -605,6 +610,8 @@ export interface ModuleGraphDeps {
     refs: string[];
     capabilities: string[];
     uses: RefUse[];
+    /** The slot's `callsCoReferrers`, when it declares one. */
+    callsCoReferrers?: CoReferrerCall;
   }[];
   /** Every filled reference site of a resource — its concrete path, the
    *  declared slot (a `refFields` path) it is an occurrence of, and its value. */
@@ -1286,6 +1293,7 @@ export function buildModuleGraph(
   // in the file — and against the same name index every other edge uses, so a
   // hold reached through an inline declaration counts exactly as one written at
   // a named resource's own slot.
+  const coReferrerCalls: { edge: GraphEdge; call: CoReferrerCall }[] = [];
   for (const [from, list] of inlineEdgeSeeds) {
     const fromNode = byId.get(from);
     for (const seed of list) {
@@ -1304,8 +1312,14 @@ export function buildModuleGraph(
       };
       if (to) edge.to = to;
       edges.push(edge);
+      if (to && seed.callsCoReferrers) coReferrerCalls.push({ edge, call: seed.callsCoReferrers });
     }
   }
+
+  // An inline declaration is a row, never a call-graph node, so the calls its
+  // `callsCoReferrers` slot makes are read here, over the boxes drawn, by the
+  // definition the call graph's own edges come from.
+  if (coReferrerCalls.length > 0) edges.push(...inlineCoReferrerEdges(coReferrerCalls, nodes, edges, deps));
 
   if (options.forwardsOf !== undefined) {
     for (const node of [...nodes]) {
@@ -1702,6 +1716,7 @@ function inlineRows(
         // rather than to the resource hosting it.
         uses: field.uses,
         ...(forward ? { forward } : {}),
+        ...(field.callsCoReferrers && !forward ? { callsCoReferrers: field.callsCoReferrers } : {}),
       });
     };
     for (const entry of sitesOf(declarationSites, field.path)) {
@@ -1831,6 +1846,8 @@ interface InlineEdgeSeed {
   uses: RefUse[];
   /** The `self` path a forward at this site reads, instead of a name. */
   forward?: string[];
+  /** The declared kind's slot declares `callsCoReferrers`. */
+  callsCoReferrers?: CoReferrerCall;
 }
 
 /** The positions at or above one declared slot holding exactly `self.<path>` —
@@ -2382,6 +2399,11 @@ function projectEdge(
   }
   if (edge.inputs !== undefined) projected.inputs = edge.inputs;
   if (edge.scoped) projected.scoped = true;
+  if (edge.coReferrer) {
+    // One per co-referrer, all leaving the one calling slot.
+    projected.id = `${projected.id}\0${projected.to ?? edge.toName}`;
+    projected.coReferrer = true;
+  }
 
   // The row an edge leaves from: the step that declares it, or the entry whose
   // handler slot holds it. Longest-prefix on the concrete path, so a site
@@ -2389,6 +2411,47 @@ function projectEdge(
   const row = rowIdByPath.get(`${fromId}\0${edge.path}`) ?? rowAt(rowsByOwner, fromId, edge.path);
   if (row) projected.row = row;
   return projected;
+}
+
+/** One edge per co-referrer of each inline slot's target, among the module's
+ *  own named boxes in document order. */
+function inlineCoReferrerEdges(
+  calls: readonly { edge: GraphEdge; call: CoReferrerCall }[],
+  nodes: readonly GraphNode[],
+  edges: readonly GraphEdge[],
+  deps: ModuleGraphDeps,
+): GraphEdge[] {
+  const written = new Map<string, string>();
+  for (const edge of edges) {
+    if (!edge.to || edge.coReferrer) continue;
+    const key = `${edge.from}\0${edge.path}`;
+    if (!written.has(key)) written.set(key, edge.to);
+  }
+  const instance = { key: "", declarations: nodes.filter((n) => n.ownership === "named"), imports: [] };
+  const resolve = (kind: string) => deps.definition(kind);
+  const search = new CoReferrerSearch<GraphNode, string>(
+    instance,
+    {
+      kindOf: (node) => canonicalKindOf(deps.definition(node.kind, node.module)),
+      targetAt: (node, call) => written.get(`${node.id}\0${pointerToPath(call.slot)}`),
+    },
+    resolve,
+  );
+  const out: GraphEdge[] = [];
+  for (const { edge, call } of calls) {
+    for (const coReferrer of search.of(call, edge.to!)) {
+      out.push({
+        ...edge,
+        id: `${edge.id}\0${coReferrer.id}`,
+        to: coReferrer.id,
+        toName: coReferrer.name ?? coReferrer.id,
+        class: "flow",
+        use: ["call"],
+        coReferrer: true,
+      });
+    }
+  }
+  return out;
 }
 
 /** The row whose path is the longest prefix of a site's path. */

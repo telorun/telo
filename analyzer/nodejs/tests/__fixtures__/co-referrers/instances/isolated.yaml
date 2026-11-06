@@ -1,0 +1,31 @@
+# Two instances: the first's topic is announced inside the zone, the second's
+# by a relay booted outside it, so only the second's listener is reached there.
+kind: Telo.Application
+metadata: { name: IsolatedInstances }
+imports: { Co: ../kinds, First: ./isolated, Second: ./isolated }
+targets:
+  - invoke: !ref zoned
+  - invoke: !ref relay
+---
+kind: Co.Zone
+metadata: { name: zoned }
+steps: !ref First.announce
+---
+kind: Co.Topic
+metadata: { name: Ping }
+schema: { type: object }
+---
+kind: Co.Listener
+metadata: { name: relay }
+topic: !ref Ping
+invoke: !ref Second.announce
+---
+kind: Co.Listener
+metadata: { name: onFirstJoined }
+topic: !ref First.Joined
+invoke: { kind: Co.Guarded }
+---
+kind: Co.Listener
+metadata: { name: onSecondJoined }
+topic: !ref Second.Joined
+invoke: { kind: Co.Guarded }

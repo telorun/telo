@@ -1,0 +1,15 @@
+# Handles its own exported event with an operation on the connection it is lent.
+kind: Telo.Library
+metadata: { name: Audit }
+imports: { Z: ../../../zone-resource-inputs/kinds, Co: ../../../co-referrers/kinds }
+resources: { connection: { kind: Z.Conn } }
+exports: { resources: [Created] }
+---
+kind: Co.Topic
+metadata: { name: Created }
+schema: { type: object }
+---
+kind: Co.Listener
+metadata: { name: audit }
+topic: !ref Created
+invoke: { kind: Z.Op, connection: !ref connection }

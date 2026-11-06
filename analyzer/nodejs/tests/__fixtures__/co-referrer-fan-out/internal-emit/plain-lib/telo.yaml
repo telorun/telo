@@ -1,0 +1,19 @@
+# As `lib`, with the exported operation opening no transaction.
+kind: Telo.Library
+metadata: { name: SignupPlain }
+imports: { Co: ../../../co-referrers/kinds }
+exports: { resources: [Created, create] }
+---
+kind: Co.Topic
+metadata: { name: Created }
+schema: { type: object }
+---
+kind: Telo.Sequence
+metadata: { name: create }
+steps:
+  - name: announce
+    invoke: !ref announce
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Created

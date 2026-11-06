@@ -1,9 +1,16 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { instancesOf, moduleInstanceTree } from "./module-instance-tree.js";
 import type { AnalysisRegistry } from "./analysis-registry.js";
 import { readApplicationSourceSlot } from "./application-source-slot.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { LoadedGraph } from "./loaded-types.js";
-import { flattenLoadedModule } from "./flatten-for-analyzer.js";
+import {
+  edgesFrom,
+  flattenLoadedModule,
+  scopedImportMembers,
+  scopeHoldersOf,
+  stampScopedImportIdentity,
+} from "./flatten-for-analyzer.js";
 import { isModuleKind } from "./module-kinds.js";
 import {
   isNeedTypeDoc,
@@ -103,6 +110,9 @@ export interface NeedGraphReference {
 
 export interface NeedGraphImport {
   alias: string;
+  /** The holders of the scope a `Telo.Import` scope member is declared in;
+   *  absent for an `imports:` entry. */
+  holders?: readonly string[];
   manifest: ResourceManifest;
   /** The key of the target module, when it loaded. */
   target?: string;
@@ -1274,7 +1284,6 @@ function walkTree(graph: NeedGraph): {
   environment: NeedEnvironmentEntry[];
 } {
   const entries: NeedTableEntry[] = [];
-  const sharedVisited = new Set<string>();
   const root = graph.modules.get(graph.root);
   // What fills a need nothing in the tree supplies: an Application's
   // environment, a Library's importer.
@@ -1313,42 +1322,37 @@ function walkTree(graph: NeedGraph): {
     for (const need of root.needs) add(root, need, [need.name], unsupplied, undefined);
   }
 
-  const visit = (
-    moduleKey: string,
-    prefix: string[],
-    stack: Set<string>,
-    via: NeedGraphImport | undefined,
-  ): void => {
-    const module = graph.modules.get(moduleKey);
-    if (!module || stack.has(moduleKey)) return;
-    const inner = new Set(stack).add(moduleKey);
-    for (const imp of module.imports) {
-      const target = imp.target ? graph.modules.get(imp.target) : undefined;
-      if (!target) continue;
-      if (target.shared && sharedVisited.has(target.key)) continue;
-      if (target.shared) sharedVisited.add(target.key);
-      const at = target.shared ? [target.name] : [...prefix, imp.alias];
-      const reachedVia = via ?? imp;
-      for (const need of target.needs) {
-        const value = imp.supplied[need.name];
-        const read = value === undefined ? undefined : needSupplyOf(value);
-        const supply: NeedSupplyForm =
-          read === undefined ? unsupplied : read.form === "whole" ? "whole" : "fields";
-        let link: { forwardedFrom?: string[]; suppliedBy?: string } | undefined;
-        if (read?.form === "whole") {
-          const name = read.target.name;
-          link = module.needs.some((n) => n.name === name)
-            ? { forwardedFrom: [...prefix, name] }
-            : { suppliedBy: `declaration '${name}' of module '${module.name}'` };
-        } else if (read) {
-          link = { suppliedBy: `the field-by-field supply at import '${imp.alias}' of module '${module.name}'` };
-        }
-        add(target, need, [...at, need.name], supply, reachedVia, link);
+  const tree = moduleInstanceTree<NeedGraphImport>(graph.root, {
+    importsOf: (key) => graph.modules.get(key)?.imports ?? [],
+    targetOf: (imp) => (imp.target !== undefined && graph.modules.has(imp.target) ? imp.target : undefined),
+    aliasOf: (imp) => imp.alias,
+    holdersOf: (imp) => imp.holders ?? [],
+    isShared: (key) => graph.modules.get(key)?.shared === true,
+    nameOf: (key) => graph.modules.get(key)!.name,
+  });
+  for (const instance of instancesOf(tree)) {
+    const { importer, via: imp } = instance;
+    if (!importer || !imp) continue;
+    const module = graph.modules.get(importer.module)!;
+    const target = graph.modules.get(instance.module)!;
+    const prefix = importer.path;
+    for (const need of target.needs) {
+      const value = imp.supplied[need.name];
+      const read = value === undefined ? undefined : needSupplyOf(value);
+      const supply: NeedSupplyForm =
+        read === undefined ? unsupplied : read.form === "whole" ? "whole" : "fields";
+      let link: { forwardedFrom?: string[]; suppliedBy?: string } | undefined;
+      if (read?.form === "whole") {
+        const name = read.target.name;
+        link = module.needs.some((n) => n.name === name)
+          ? { forwardedFrom: [...prefix, name] }
+          : { suppliedBy: `declaration '${name}' of module '${module.name}'` };
+      } else if (read) {
+        link = { suppliedBy: `the field-by-field supply at import '${imp.alias}' of module '${module.name}'` };
       }
-      visit(target.key, at, inner, reachedVia);
+      add(target, need, [...instance.path, need.name], supply, instance.reachedVia, link);
     }
-  };
-  visit(graph.root, [], new Set(), undefined);
+  }
   return {
     entries,
     environment: entries.filter((entry): entry is NeedEnvironmentEntry => entry.supply === "environment"),
@@ -1469,6 +1473,17 @@ function moduleUnit(
     }
     declarations.push({ name: declared, kind: m.kind as string, type: resolve(m.kind as string), manifest: m });
   }
+  // A scope member's import is a module instance of its own, beneath its holders.
+  for (const { member } of scopedImportMembers(manifests)) {
+    const alias = member.metadata?.name as string;
+    imports.push({
+      alias,
+      holders: scopeHoldersOf(member) ?? [],
+      manifest: member,
+      target: (member.metadata as { resolvedSource?: string }).resolvedSource,
+      supplied: readSuppliedNeeds(member),
+    });
+  }
   const resourceInputs = readResourceInputs(doc).map((input) => {
     otherNames.set(input.name, `resource input '${input.name}'`);
     return { name: input.name, kind: input.kind, type: resolve(input.kind) };
@@ -1585,18 +1600,17 @@ function referencesOf(
  *  stays loaded, as does every module only it imports, but no edge reaches
  *  them and the application never runs them, so they have no unit. */
 export function needGraphFromLoadedGraph(graph: LoadedGraph, scope: NeedGraphScope): NeedGraph {
+  stampScopedImportIdentity(graph);
   const modules = new Map<string, NeedGraphModule>();
   const reached = new Set<string>([graph.rootSource]);
   const queue = [graph.rootSource];
   while (queue.length > 0) {
     const mod = graph.modules.get(queue.shift()!);
     if (!mod) continue;
-    for (const file of [mod.owner, ...mod.partials]) {
-      for (const edge of graph.importEdges.get(file.source)?.values() ?? []) {
-        if (reached.has(edge.targetSource)) continue;
-        reached.add(edge.targetSource);
-        queue.push(edge.targetSource);
-      }
+    for (const edge of edgesFrom(graph, mod.owner.source)) {
+      if (reached.has(edge.targetSource)) continue;
+      reached.add(edge.targetSource);
+      queue.push(edge.targetSource);
     }
   }
   for (const [source, mod] of graph.modules) {

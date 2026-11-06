@@ -1,0 +1,43 @@
+# Two instances lent different connections: each transaction encloses only an
+# operation on its own instance's connection.
+kind: Telo.Application
+metadata: { name: LentIsolated }
+imports:
+  Z: ./kinds
+  Co: ../co-referrers/kinds
+  First: { source: ./instance, resources: { connection: !ref firstDb } }
+  Second: { source: ./instance, resources: { connection: !ref secondDb } }
+targets:
+  - invoke: !ref runFirst
+  - invoke: !ref runSecond
+---
+# Each import's transaction is called from a resource, as a boot target naming
+# an export of a library imported twice reaches nothing in the call graph.
+kind: Co.Zone
+metadata: { name: runFirst }
+steps: !ref First.create
+---
+kind: Co.Zone
+metadata: { name: runSecond }
+steps: !ref Second.create
+---
+kind: Z.Conn
+metadata: { name: firstDb }
+---
+kind: Z.Conn
+metadata: { name: secondDb }
+---
+kind: Co.Listener
+metadata: { name: onFirst }
+topic: !ref First.Created
+invoke: { kind: Z.Op, connection: !ref firstDb }
+---
+kind: Co.Listener
+metadata: { name: onSecond }
+topic: !ref Second.Created
+invoke: { kind: Z.Op, connection: !ref secondDb }
+---
+kind: Co.Listener
+metadata: { name: onFirstCrossed }
+topic: !ref First.Created
+invoke: { kind: Z.Op, connection: !ref secondDb }

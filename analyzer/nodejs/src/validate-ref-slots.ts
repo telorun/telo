@@ -245,6 +245,7 @@ const REF_ANNOTATION_KEYS = new Set([
   "outputType",
   "outputTo",
   "observes",
+  "callsCoReferrers",
 ]);
 
 /** True when a node is a reference slot: it carries `x-telo-ref` directly or on

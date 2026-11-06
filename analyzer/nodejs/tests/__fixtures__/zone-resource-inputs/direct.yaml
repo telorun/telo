@@ -1,0 +1,26 @@
+# The library's exported operation is on its input: a transaction on `db`
+# encloses it, one on `other` does not.
+kind: Telo.Application
+metadata: { name: LentDirect }
+imports:
+  Z: ./kinds
+  Signup: { source: ./lib, resources: { connection: !ref db } }
+targets:
+  - invoke: !ref onDb
+  - invoke: !ref onOther
+---
+kind: Z.Conn
+metadata: { name: db }
+---
+kind: Z.Conn
+metadata: { name: other }
+---
+kind: Z.Tx
+metadata: { name: onDb }
+connection: !ref db
+steps: !ref Signup.op
+---
+kind: Z.Tx
+metadata: { name: onOther }
+connection: !ref other
+steps: !ref Signup.op

@@ -1,0 +1,15 @@
+# A kind declaring two scopes.
+kind: Telo.Library
+metadata: { name: ScopedHolder }
+exports: { kinds: [Pair] }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    left: { x-telo-scope: /steps }
+    right: { x-telo-scope: /steps }
+    steps: { type: array }

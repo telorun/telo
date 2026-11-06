@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: TwiceInstances }
+imports: { Co: ../../co-referrers/kinds, First: ./lib, Second: ./lib }
+targets:
+  - invoke: !ref First.announce
+  - invoke: !ref Second.announce

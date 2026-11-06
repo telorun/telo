@@ -1,4 +1,5 @@
 import type {
+  LoadedGraph,
   AnalysisRegistry,
   ApplicationSourceRecords,
   LoadedModule,
@@ -7,6 +8,8 @@ import type {
 } from "@telorun/analyzer";
 import type { LoadOptions, ResourceContext, ResourceManifest } from "@telorun/sdk";
 import type { ScopeConfig } from "./logging/scope-config.js";
+import type { EvaluationContext } from "./evaluation-context.js";
+import type { ModuleContext } from "./module-context.js";
 
 /** The kernel's analysis state an import reads its library's scope from. */
 export interface LibraryAnalysisHost {
@@ -22,6 +25,9 @@ export interface LibraryAnalysisHost {
   loadTimeDocuments: ResourceManifest[];
   /** The root Application's `metadata.name`. */
   entryModule: string | undefined;
+  /** The graph the load read, whose scoped imports a library's own reading
+   *  is stamped from. */
+  loadedGraph: LoadedGraph | undefined;
   /** An import target as the loader read it — what the import's identity is
    *  judged on — with its expressions adopted like any loaded module's. */
   loadModule(url: string, options?: LoadOptions): Promise<LoadedModule>;
@@ -61,4 +67,13 @@ export interface BuiltinControllerContext extends ResourceContext {
   /** The root Application's resolved logging configuration — the base an
    *  import's own `logging:` block cascades over (§12.2). */
   kernelLoggingRootScope(): ScopeConfig;
+  /** The scope run owning the resource, when it is declared in one — where a
+   *  scoped `Telo.Import` registers its exports. */
+  scopeRunContext(): EvaluationContext | undefined;
+  /** Index the library instance a scoped `Telo.Import` built, for this scope
+   *  run; the inverse withdraws it. */
+  indexScopedLibrary(library: ModuleContext, scope: { alias: string; holder: string; field: string }): () => void;
+  /** Rebuild the application's co-referrer index once a `shared` library a
+   *  scoped import instantiated has initialized. */
+  reindexCoReferrers(): void;
 }

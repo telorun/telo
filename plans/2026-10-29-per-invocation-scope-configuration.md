@@ -2,153 +2,337 @@
 status: draft
 priority: high
 depends-on: []
-packages: [analyzer, kernel, sdk, templating]
+packages: [analyzer, kernel, sdk, run, lease, idempotency]
 ---
 
 # Per-invocation scope configuration
 
 ## Problem
 
-A `with:` scope creates its resources when an invocation of its owner enters the scope, and tears them down when it leaves. Each run gets its own instances. So a scope is the natural home for a resource whose configuration belongs to one invocation: a credential a caller supplies, an endpoint chosen per request, a tenant's connection. Three gaps stop it being used that way.
+A `with:` scope creates its resources when an invocation of its owner enters the scope, and tears them down when it leaves. Each run gets its own instances. So a scope is the natural home for a resource whose configuration belongs to one invocation: a credential a caller supplies, an endpoint chosen per request. Four gaps stop it being used that way, or stop it scaling past one call.
 
-1. **A scoped declaration cannot read the invocation that created it.** Its fields expand against the module's scope alone, meaning `variables`, `secrets` and `resources`. The owner's step body, a few lines below, already sees `inputs`. The only way to configure a scoped resource per call is therefore not to scope it, which puts the value back at module level where every caller shares it.
-2. **A stream produced by a scoped resource can leave the scope unchecked.** A sequence's `outputs:` can return it, and a detached dispatch can carry it away. The consumer then pulls after the producer was torn down, and the failure is whatever the disposed resource happens to throw, reported far from the line that caused it.
-3. **`x-telo-sensitive` stops at a forwarding slot.** Several kinds take a payload in their own invocation contract and dispatch it as the inputs of the resource in one of their ref slots. A lease, an idempotency claim, a detach and a cache wrapper all do this. Their contract declares that property as an open bag, so a credential passing through one is carried verbatim on the `--inspect` debug wire, even when the target's contract marks it sensitive.
+1. **A scoped declaration cannot read the invocation that created it.** Its fields expand against the module's scope alone, meaning `variables`, `secrets` and `resources`, while the owner's step body, a few lines below, already sees `inputs`. The only way to configure a scoped resource per call is not to scope it, which puts the value back at module level where every caller shares it.
+2. **A stream produced by a scoped resource breaks when the scope ends.** A sequence returning a model's streamed reply, or handing it to detached work, ends its run, the scope is torn down, and the consumer's next pull fails with whatever the disposed resource throws, far from the line that caused it.
+3. **`x-telo-sensitive` stops at a forwarding kind.** `Lease.Critical`, `Idempotency.Once` and `Run.Detach` take a payload in their own invocation contract and dispatch it as the inputs of the resource in their `invoke` slot. Their contract declares that payload as an open object, so a credential passing through one is carried verbatim on the `--inspect` debug wire even when the target's contract marks it sensitive, and nothing checks the payload against the target's contract.
+4. **A resource configured from request-time data cannot be shared, and cannot reach deep consumers.** A cluster's client built from a kubeconfig in a database, or a tenant's connection, can only be built per call in a `with:` scope, rebuilt with its connections on every call; every resource using it must be redeclared in that scope, and the cluster or tenant id threaded through every contract down to it.
 
-4. **A resource configured from request-time data cannot be shared, and cannot reach deep consumers.** A cluster's client built from a kubeconfig in a database, or a tenant's connection, can only be built per call in a `with:` scope, rebuilt with its connections on every call, and every resource using it must be redeclared in that scope while the cluster or tenant id is threaded through every contract down to it.
-5. **A reference can only name a resource, an import's export or a family member.** It cannot name a resource that another resource holds in a field, such as a route of an API or the resource a pool builds.
-
-The authoring agent's bring-your-own-key design is the first consumer of the first three; a Kubernetes connector serving many clusters from kubeconfigs stored in a database, and multi-tenant applications holding one connection per tenant, are the first consumers of the last two. None of the five is specific to either.
+The authoring agent's bring-your-own-key design is the first consumer of the first three; a Kubernetes connector serving many clusters from kubeconfigs stored in a database, and multi-tenant applications holding one connection per tenant, are the first consumers of the fourth. None is specific to either.
 
 ## Solution
 
-**Warning**: This is just a draft, and idea, not a plan to implement, it needs major refinement.
-
 ### 1. A scope reads its opening invocation's `inputs`
 
-*Before:* a field of a resource declared in a `with:` block sees `variables`, `secrets` and `resources`. Reading `inputs` there is an unknown identifier.
+*Before:* a field of a resource declared in a `with:` block sees `variables`, `secrets` and `resources`; reading `inputs` there is `CEL_UNKNOWN_IDENTIFIER`. A per-caller key cannot be a scoped resource's configuration:
 
-*After:* a scoped declaration's **creation-time fields** can read `inputs`: the inputs of the invocation that opened this run of the scope. Creation-time fields are those marked `x-telo-eval: compile`, plus every field of a provider, which is implicitly compile. The value is exactly what the owner's step body sees: validated against the owner's bound invocation contract, with its declared defaults filled.
-- **Typing:** the same reader that types `inputs` in the owner's step body types it here, so the two cannot disagree. An undeclared field is `CEL_UNKNOWN_FIELD`.
-- **Opened by `run()`:** a scope opened by an owner invoked with no inputs (a sequence run as a boot target) sees the contract's defaults over an empty object, as its step body does.
+```yaml
+kind: Telo.Application
+metadata: { name: ByokChat }
+imports:
+  Http: oci://ghcr.io/telorun/http-client@0.25.0
+  Server: oci://ghcr.io/telorun/http-server@0.42.0
+  Anthropic: oci://ghcr.io/telorun/anthropic@0.8.0
+  Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.10.1
+secrets:
+  anthropicKey: { env: ANTHROPIC_API_KEY, type: string }
+ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
+targets:
+  - !ref server
+---
+kind: Server.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - { path: /, mount: !ref chatApi }
+---
+kind: Server.Api
+metadata: { name: chatApi }
+routes:
+  - request:
+      path: /chat
+      method: POST
+      schema:
+        body: { type: object, required: [prompt], properties: { prompt: { type: string } } }
+    handler:
+      kind: Anthropic.MessagesModelStream
+      model: claude-sonnet-5-5
+      maxTokens: 1024
+      request:
+        kind: Http.Request
+        client:
+          kind: Anthropic.Client
+          credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: !cel "secrets.anthropicKey" }
+    inputs:
+      messages:
+        - { role: user, content: !cel "request.body.prompt" }
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: { kind: Ndjson.Encoder }
+    catches:
+      - status: 502
+        content:
+          application/json:
+            schema: { type: object, required: [error], properties: { error: { type: string } } }
+            body: { error: !cel "error.code" }
+```
+
+*After:* a scoped declaration's **creation-time fields** can read `inputs`: the inputs of the invocation that opened this run of the scope. Creation-time fields are those marked `x-telo-eval: compile`, plus every field of a provider. The value is exactly what the owner's step body sees: validated against the owner's bound invocation contract, with its declared defaults filled. An inline declaration nested inside a scoped one is a member of the same scope and reads `inputs` too.
+
+```yaml
+kind: Telo.Application
+metadata: { name: ByokChat }
+imports:
+  Http: oci://ghcr.io/telorun/http-client@0.25.0
+  Server: oci://ghcr.io/telorun/http-server@0.42.0
+  Anthropic: oci://ghcr.io/telorun/anthropic@0.8.0
+  Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.10.1
+ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
+targets:
+  - !ref server
+---
+kind: Server.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - { path: /, mount: !ref chatApi }
+---
+kind: Server.Api
+metadata: { name: chatApi }
+routes:
+  - request:
+      path: /chat
+      method: POST
+      schema:
+        headers: { type: object, required: [x-model-key], properties: { x-model-key: { type: string } } }
+        body: { type: object, required: [prompt], properties: { prompt: { type: string } } }
+    handler:
+      kind: Telo.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [apiKey, prompt]
+          properties: { apiKey: { type: string, x-telo-sensitive: true }, prompt: { type: string } }
+      with:
+        - kind: Anthropic.MessagesModelStream
+          metadata: { name: model }
+          model: claude-sonnet-5-5
+          maxTokens: 1024
+          request:
+            kind: Http.Request
+            client:
+              kind: Anthropic.Client
+              credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: !cel "inputs.apiKey" }
+      steps:
+        - name: reply
+          invoke: !ref model
+          inputs:
+            messages:
+              - { role: user, content: !cel "inputs.prompt" }
+      outputs: { output: !cel "steps.reply.result.output" }
+    inputs:
+      apiKey: !cel "request.headers['x-model-key']"
+      prompt: !cel "request.body.prompt"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: { kind: Ndjson.Encoder }
+    catches:
+      - status: 502
+        content:
+          application/json:
+            schema: { type: object, required: [error], properties: { error: { type: string } } }
+            body: { error: !cel "error.code" }
+```
+
+Refused: writing the credential's `key` as `!cel "inputs.apikey"` is `CEL_UNKNOWN_FIELD` at that line under `telo check`, and the kernel refuses the same manifest at load.
+
+- **Typing:** the reader that types `inputs` in the owner's step body types it here, so the two cannot disagree.
+- **Opened by `run()`:** a scope whose owner runs with no inputs (a sequence run as a boot target) sees the contract's defaults over an empty object, as its step body does.
 - **Lifetime:** evaluated once per scope entry, when the scoped resource is created. A scoped resource never re-reads `inputs` mid-scope, and two concurrent runs each see their own.
-- **Runtime-eval fields are unchanged.** A runtime-eval field of a scoped resource is evaluated per call of that resource. Many such fields already bind an `inputs` of their own, meaning that resource's own call. Binding the opening invocation's inputs there too would make one name mean two things at one site. A value a per-call field needs from the opening invocation is lifted into a creation-time field.
+- **Runtime-eval fields are unchanged.** Many already bind an `inputs` of their own — that resource's own call — so binding the opening invocation's there too would make one name mean two things at one site. A value a per-call field needs from the opening invocation is lifted into a creation-time field.
 - **`steps` is not bound.** Scoped resources are created at scope entry, before any step has run.
-- **Static consequence:** a creation-time field that reads `inputs` is no longer a constant known at load. Every analyzer pass that resolves a creation-time value statically treats an `inputs`-dependent one as unresolved. This is the same treatment it gives a field reading another resource's published state. It covers resource rules, a ref slot's use chosen by a sibling field, and value checks against literals. For a use case map, unresolved means the union of its cases.
-- **Kernel:** opening a scope takes the opening invocation's inputs as an explicit argument, part of the SDK's scope-handle surface. The kernel binds them into the scope's creation-time evaluation. `Run.Sequence`, the only stdlib kind that declares a scope, passes its invocation's inputs.
-- **Controller defect:** a scope whose declarations read `inputs`, opened without them, fails at scope entry with `ERR_SCOPE_INPUTS_MISSING`. The error names the owning kind, whose controller did not pass them. This is a controller defect and not a manifest one, which is why it has no `telo check` twin: there is no line in the author's YAML to point at.
-- **Editor:** the editor's CEL scope query offers `inputs` at exactly these sites, completion and hover included, resolved the same way the checker resolves it.
+- **Static consequence:** a creation-time field that reads `inputs` is no longer a constant known at load. Every analyzer pass that resolves a creation-time value statically — resource rules, a ref slot's use chosen by a sibling field, value checks against literals — treats it as unresolved, as it already treats a field reading another resource's published state, and never folds it to a default. For a use case map, unresolved means the union of its cases.
+- **Kernel and SDK:** opening a scope takes the opening invocation's inputs as a required argument of the SDK's scope-handle surface, so a controller cannot open one without them. `Telo.Sequence` and its deprecated twin `Run.Sequence` pass their invocation's inputs.
+- **Editor:** the editor's CEL scope query offers `inputs` at exactly these sites, completion and hover included.
+- **Nested scope:** a scope sees the inputs of the invocation that opened *it*, never those of an enclosing scope.
 
 *Verify:*
-- A sequence whose `with:` declares an `HttpClient.BearerToken` with `token: !cel "inputs.key"`, invoked twice concurrently with two keys, sends each key on its own call only.
-- Reading an undeclared field fails `telo check` with `CEL_UNKNOWN_FIELD` at that line. At runtime the same manifest fails at scope entry.
+- The example above, called concurrently with two keys, sends each key on its own upstream call only.
+- The `inputs.apikey` variant fails `telo check` with `CEL_UNKNOWN_FIELD` at that line, and fails at load.
 - A scoped resource's `detach:` field that reads `inputs` puts both of its ref slot's uses into the call graph.
-- Completion in that field lists the owner's declared input fields.
+- Completion in `key:` lists `apiKey` and `prompt`.
 
-### 2. A scoped stream may not leave its scope
+### 2. A scope lives until the streams leaving it settle
 
-*Before:* nothing stops a stream produced by a scoped resource from being returned from the sequence or handed to detached work. The consumer's first pull after teardown fails, with no message about why.
+*Before:* a scope run ends when its owner returns. A stream in the returned value — the example above returns the model's reply — is pulled after the model was torn down.
 
-*After:* a static refusal, and a runtime twin that names the same cause.
+*After:* a scope run ends only when both hold: its owner has produced its value, and every stream reachable from a value leaving the run has settled — finished, failed, or cancelled by its consumer. A value leaves the run by being returned, or by being handed to a detached or trigger dispatch as its inputs.
 
-**What counts as a scoped stream.** A value of stream type (`x-telo-type: Telo.Stream`) that comes from the result of invoking a resource declared in the scope. Provenance propagates conservatively:
-- a `value:` step whose expression reads a scoped stream produces a scoped result;
-- a step whose inputs carry a scoped stream produces a scoped result wherever that result is itself stream-typed. A derived stream pulls from its source, so a mapped scoped stream is bound to the scope as tightly as the original.
+- **Found by value, not by contract.** When the run produces its value, and at each detached dispatch inside it, the kernel walks the value — maps and lists — for live streams and wraps each to observe when it settles. A wrapped stream applies the same walk to each item as its consumer pulls it, never ahead of the consumer and with nothing buffered: an item holding no stream is passed on as the same value, and a stream inside one (a multipart part's `content`) is wrapped and counted in the same hold. A stream derived from a scoped one, and a stream at an open or untyped path, are covered alike.
+- **SDK:** closing a scope takes the run's produced value as a required argument and returns it with its streams wrapped, the counterpart of the required opening inputs.
+- **Detached work** holds the scope run until every stream in its inputs settles, so a scoped stream handed to detached work keeps the scope open until that work drains it. Nothing is refused statically.
+- **A stream its receiver never reads or cancels** holds the scope until shutdown; the stream contract requires a receiver to read it to its end or cancel it. Shutdown tears every held scope down.
+- **Outside the guarantee:** a stream a controller keeps past its own call, and one hidden inside a host object that is neither a map, a list nor a stream.
 
-This is complete for CEL, not a heuristic. CEL cannot construct or transform a stream, so a stream moves only by being referenced, and every reference is visible in the expression.
-
-**`SCOPED_STREAM_ESCAPES_SCOPE`** is reported where a scoped stream is written into either of two places:
-- **(a)** a field of the scope's owner outside its scope regions. For `Run.Sequence`, that is `outputs:`.
-- **(b)** the inputs of a dispatch whose use at that site is `detached` or a trigger. Such work outlives the call, and so the scope.
-
-The message names the producing scoped resource, the escaping site, and the two fixes: drain the stream inside the scope, or declare its producer outside the scope.
-
-**`ERR_SCOPED_STREAM_CLOSED`** is the runtime twin. For a scoped resource's invocation, the kernel wraps each stream-typed path of its output. It knows these paths from the bound output contract, the same way it knows sensitive paths. A pull after the scope's teardown raises this error, naming the resource and the scope's owner. Only scoped producers pay for the wrapper, and a wrapper costs one flag check per pull.
+The same rule governs a checkout's hold (section 4).
 
 *Verify:*
-- A sequence returning a scoped model stream from `outputs:` fails `telo check` with the code at the `outputs:` line.
-- The same manifest run raises `ERR_SCOPED_STREAM_CLOSED` on the caller's first pull.
-- A sequence that drains the stream inside the scope, which is how the authoring agent's turn body works, passes both.
-- A derived stream built from a scoped one is refused the same way.
+- In the section 1 example the model's teardown is recorded after the last chunk reaches the client, and after a client that disconnects mid-reply, never before.
+- A reply mapped by a module-level stage and returned keeps the scope open the same way.
+- The same handler with an `outputType` declaring `additionalProperties: true` and no stream type keeps the scope open the same way.
+- A scoped stream handed to `Run.Detach` keeps the scope open until the detached body drains it.
+- A scoped multipart parse returned from a sequence keeps the scope open until the last part's `content` is drained or cancelled.
+- A bytes stream returned through a scope costs one type test per chunk, and memory stays flat over a large stream of structured items.
+- `telo check` reports nothing for any of these.
 
-### 3. Sensitivity marks survive a forwarding slot
+### 3. Sensitivity marks survive a forwarding kind
 
-*Before:* a kind that dispatches part of its own invocation payload as another resource's inputs declares that part as an open property. Its trace carries it verbatim, whatever the target marks sensitive.
+*Before:* `Lease.Critical`, `Idempotency.Once` and `Run.Detach` declare the payload they forward as an open object. With this application, the `nightly` invocation's traced inputs carry the token verbatim:
 
-*After:* a new annotation, **`x-telo-forwards-to`**, placed on a contract property or on the contract root. It states that this value is dispatched as a ref slot's target inputs. It takes two forms:
-- **a pointer string** naming the ref slot in the kind's own schema (anchored like a use case map's `by:`), when the value becomes the target's whole inputs;
-- **`{ slot, at }`**, when the value lands at pointer `at` inside the target's inputs.
+```yaml
+kind: Telo.Application
+metadata: { name: NightlyReport }
+imports:
+  Lease: oci://ghcr.io/telorun/lease@0.14.1
+  KvMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.1
+  Http: oci://ghcr.io/telorun/http-client@0.25.0
+secrets:
+  reportToken: { env: REPORT_TOKEN, type: string }
+targets:
+  - invoke: !ref nightly
+    inputs:
+      key: nightly-report
+      inputs: { token: !cel "secrets.reportToken", day: "2026-11-06" }
+---
+kind: Lease.Critical
+metadata: { name: nightly }
+store: { kind: KvMemory.Store }
+ttl: 600s
+invoke:
+  kind: Telo.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [token, day]
+      properties: { token: { type: string, x-telo-sensitive: true }, day: { type: string } }
+  steps:
+    - name: send
+      invoke: { kind: Http.Request, client: { kind: Http.Client, baseUrl: "https://reports.example.test" } }
+      inputs:
+        method: POST
+        url: /reports
+        headers: { Authorization: !interpolate "Bearer ${{ inputs.token }}" }
+        body: { day: !cel "inputs.day" }
+```
 
-It has two readers, one in the kernel and one in the analyzer, like `x-telo-sensitive`:
-- **Kernel trace path:** when it redacts an instance's input payload, the forwarded value is redacted by the target instance's own input-sensitive paths. The target is resolved from the instance's slot, per call where the slot is chosen dynamically. A target that cannot be resolved withholds the forwarded value whole, which is the existing rule for a contract that cannot be resolved.
-- **Analyzer:**
-  - It validates the annotation's placement and its pointer. `FORWARDS_TO_INVALID` is reported when the pointer names no ref slot of the same kind. `FORWARDS_TO_MISPLACED` is reported when the annotation sits anywhere but a contract.
-  - The kernel refuses the same declaration at `create()` with `ERR_FORWARDS_TO_INVALID`.
-  - Because the annotation names the target, the analyzer also checks the forwarded value a caller writes against that target's input contract wherever the target resolves statically, reporting `FORWARDED_INPUT_MISMATCH`. Today that payload is checked against nothing.
+```json
+{ "key": "nightly-report", "inputs": { "token": "s3cr3t-token", "day": "2026-11-06" } }
+```
 
-The kind that forwards declares the annotation. It is never inferred from property names. A property called `inputs` that the kind does not forward is ordinary data.
+*After:* the application is unchanged. Each forwarding kind types its forwarded node with the existing `x-telo-value-schema-from`, pointing at its slot target's contract. `Lease.Critical`'s `inputs` property, before and after:
 
-**Adopters:** every stdlib kind whose contract carries a payload it dispatches into a ref slot. The audit is part of this change, and each candidate is confirmed against its contract rather than assumed from its description. The known candidates are `Lease.Critical`, the idempotency claim, `Run.Detach`, the cache wrapper (which forwards its whole payload, hence the root placement), and `RecordStream.OnComplete` (which forwards `context` into the handler's inputs, hence the `{ slot, at }` form).
+```yaml
+inputs:
+  type: object
+  additionalProperties: true
+  description: Inputs forwarded to the wrapped `invoke` body when the lease is acquired.
+```
+
+```yaml
+inputs:
+  type: object
+  description: Inputs forwarded to the wrapped `invoke` body when the lease is acquired.
+  x-telo-value-schema-from: /invoke/inputType
+```
+
+The same traced inputs:
+
+```json
+{ "key": "nightly-report", "inputs": { "token": "[redacted]", "day": "2026-11-06" } }
+```
+
+- **Redaction:** an instance's input-sensitive paths are read from its resolved contract, so a node typed from its target's contract carries the target's `x-telo-sensitive` marks. A target whose contract cannot be resolved withholds the forwarded value whole, the existing rule.
+- **Checking:** the payload is checked against the target's contract by the existing call-site check. Refused: dropping `day` from the target's `inputs` above is `CONTRACT_INPUTS_MISMATCH` at that line under `telo check`, and `ERR_INPUT_INVALID` at the lease's own dispatch.
+- **Adopters:** `Lease.Critical` (`inputs`), `Idempotency.Once` (`inputs`) and `Run.Detach` (its whole `inputType`, at the contract root), each pointing at `/invoke/inputType`; the new `Telo.Checkout` (section 4) is built the same way, at the root of both of its contracts. `Run.Detach`'s contract, before and after:
+
+```yaml
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: Inputs passed through to the wrapped target at dispatch time.
+```
+
+```yaml
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    description: Inputs passed through to the wrapped target at dispatch time.
+    x-telo-value-schema-from: /invoke/inputType
+```
 
 *Verify:*
-- A lease forwarding `{ modelKey }` into a body whose contract marks `modelKey` sensitive traces `[redacted]` for it under `--inspect`, and the rest of the payload verbatim.
-- A forwarded payload missing a field the target requires fails `telo check` with `FORWARDED_INPUT_MISMATCH`.
-- An annotation pointing at a non-slot field fails both `telo check` and boot.
+- The example traces `[redacted]` for `token` under `--inspect`, and `day` verbatim, for the lease, the idempotency claim and the detach alike.
+- The `day`-less variant fails `telo check` with `CONTRACT_INPUTS_MISMATCH` and the run with `ERR_INPUT_INVALID`.
 
-### 4. A pool builds a resource per key, and a checkout chooses the key
+### 4. A keyed pool builds a resource per key, and a checkout chooses the key
 
-*Before:* a resource whose configuration is known only during a call — a cluster's client built from a kubeconfig stored in a database, a tenant's database connection — can be built only per call, inside a `with:` scope, together with its connections and TLS sessions. Every resource that uses it has to be redeclared in that scope, and the tenant or cluster id has to be passed down through every contract between the request's edge and the place it is used.
+*Before:* a resource whose configuration is known only during a call — a cluster's client built from a kubeconfig stored in a database, a tenant's database connection — can be built only per call, inside a `with:` scope, together with its connections and TLS sessions. Every resource that uses it has to be redeclared in that scope, and the tenant or cluster id passed down through every contract between the request's edge and the place it is used.
 
-*After:* two new built-in kinds. **`Telo.Pool`** says how one member is built from a key and keeps the members it built. **`Telo.Checkout`** chooses the key for the steps it runs, so every resource those steps reach that depends on the pool uses that key's member. No consumer kind declares anything.
+*After:* two new built-in kinds. **`Telo.KeyedPool`** says how one member is built from a key and keeps the members it built. **`Telo.Checkout`** wraps an executable and chooses the key for it, so every resource that dispatch reaches that depends on the pool uses that key's member. No consumer kind declares anything.
 
-**`Telo.Pool`**
+**`Telo.KeyedPool`**
 - **Fields:**
-  - `steps`: the shared step grammar, run only when a key has no member. It reads `key`, typed `string`.
-  - `resource`: one full resource declaration, written as in a `with:` block. Its kind resolves through the declaring module's imports, it is validated as a top-level resource, and its creation-time fields read `key` and `steps.<name>.result`.
-  - `idleTimeout` (default `5m`), `maxAge` (no default; absent means members never age out) and `maxEntries` (default `64`).
-- **What it can pool:** the `resource` must be a `Telo.Provider` or a `Telo.Invocable`. Anything else is `POOL_RESOURCE_CAPABILITY`, and `ERR_POOL_RESOURCE_CAPABILITY` at creation.
-- **Building a member:** a key with no member runs `steps`, then creates `resource`. Concurrent checkouts of one key wait for the same build, so it runs once. The build runs under the root invocation context, so no caller's cancellation, transaction or zone reaches it. One waiter cancelling abandons only its own wait; the build is cancelled only when no waiter is left. A failed build caches nothing, and the next checkout of that key builds again. Miss `steps` that reach the pool's own members are `DEPENDENCY_CYCLE`.
+  - `build` (optional): the shared step grammar, run only when a key has no member. It reads `key`, typed `string`. A resource declared inline in a `build` step is a module-scope declaration like any inline one: created once at load, shared by every build, and not member-bound unless it references the pool.
+  - `member`: one full resource declaration, written as in a `with:` block. Its kind resolves through the declaring module's imports, it is validated as a top-level resource, and its creation-time fields read `key` and `steps.<name>.result` of `build`.
+  - `idleTimeout` (default `300s`), `maxLifetime` (no default; absent means members never age out) and `maxMembers` (default `64`).
+- **What it can pool:** `member` must be a `Telo.Provider` or a `Telo.Invocable`; anything else is `POOL_MEMBER_CAPABILITY_UNSUPPORTED`, and `ERR_POOL_MEMBER_CAPABILITY_UNSUPPORTED` at creation.
+- **Building a member:** a key with no member runs `build`, then creates `member` and every module-scope declaration bound to that member (below), in one init loop under the build's root invocation context — the member is built whole, as an import is. A creation failure fails the build and reaches the checkout's caller as `ERR_RESOURCE_INITIALIZATION_FAILED`, carrying the root failure as `cause`, declared in `Telo.Checkout`'s throws. Concurrent checkouts of one key wait for the same build, so it runs once. No caller's cancellation, transaction or zone reaches it; one waiter cancelling abandons only its own wait, and the build is cancelled only when no waiter is left. A failed build caches nothing, and the next checkout of that key builds again; its failure reaches every waiting checkout's caller unchanged, so the build's codes join the checkout's throws union. `build` steps that reach the pool's own members are `DEPENDENCY_CYCLE`.
 - **Lifetime of a member:**
   - A member with no holds is torn down through its normal inverse chain after `idleTimeout`.
-  - After `maxAge` a member is retired: later checkouts of its key build a new member, and the retired one is torn down when its last hold is released.
-  - `maxEntries` bounds the live members. A checkout of a new key while every member is held fails at once with `ERR_POOL_EXHAUSTED`, declared retryable; when some member is idle, the least recently used idle member is evicted to make room.
-  - Idle and age timers take no kernel hold. Shutdown tears every member down after the checkouts holding them have ended.
-- **Reference:** a reference slot names the member as `!ref <pool>.resource`, or `!ref <Alias>.<pool>.resource` for a pool an imported library exports (section 5).
+  - After `maxLifetime` a member is retired: later checkouts of its key build a new member, and the retired one is torn down when its last hold is released.
+  - `maxMembers` bounds the live members of one process: being built, held, idle, and retired but still held all count. A checkout of a new key with no idle member to evict fails at once with `ERR_POOL_EXHAUSTED`, declared retryable in `Telo.Checkout`'s throws, so a step's `retry:` does the waiting; when some member is idle, the least recently used idle member is evicted to make room. Pools are process-local: each replica keeps its own members.
+  - Idle and lifetime timers take no kernel hold. Shutdown tears every member down after the checkouts holding them have ended.
+- **Reference:** `!ref <pool>` (or `!ref <Alias>.<pool>` for a pool an imported library exports) names the pool itself only at a slot whose kinds name `Telo.KeyedPool` — a checkout's `pool:`. At every other slot it stands for the member the innermost checkout of that pool holds, and is kind-checked against `member`'s kind; a mismatch is the existing `REFERENCE_KIND_MISMATCH`, naming the member's kind. The pool's built-in entry declares this as data (`referenceStandsFor: /member`), read generically by the reference resolver, the kernel and the editor's reference picker. `resources.<pool>` stays the pool's own reading.
 
 **`Telo.Checkout`**
-- **Fields:** `pool` (a `!ref` to a `Telo.Pool`), `key` (CEL over the checkout's own `inputs`, evaluated when the checkout is invoked), and the contract keys of `Telo.Sequence`: `inputType`, `outputType`, `steps`, `outputs`. It has no `with:` and no `targets:`. It is a `Telo.Invocable`, so it is declared like any resource, inline as a route handler or step target or named at top level.
-- **Zone:** its `steps` body provides a zone correlated on its `pool`. The zone entry holds only the checkout's and the pool's identities, never the key; the pool keeps its own map from zone entry to member.
-- **Holding:** invoking a checkout evaluates `key`, takes a hold on that key's member (building it when needed) and runs `steps`. The hold is released when the checkout returns, and only after every stream its result holds has settled (below).
-- **Nesting:** a checkout inside another checkout of the same pool takes over for its body; the innermost one decides. A dispatch therefore uses one member per pool. Using two members of one recipe at once means two pools.
+- **Fields:** `pool` (a `!ref` to a `Telo.KeyedPool`), `key` (CEL over the checkout's own `inputs`, evaluated when the checkout is invoked, typed `string`) and `invoke` (a `Telo.Executable`: an imported invocable, a `Lease.Critical`, a `Telo.Sequence` with its own `with:`, or the pool itself when its member is an invocable). It is a `Telo.Invocable`, declared like any resource: inline as a route handler or step target, or named at top level.
+- **Contract:** the target's, whole and unchanged — both contracts are typed from `/invoke/inputType` and `/invoke/outputType` (section 3), so a caller calls a checkout exactly as it would call its target, and `inputs` in `key` is typed from the target's input contract. A target whose closed contract lacks the key's field is wrapped in an inline `Telo.Sequence` that declares it.
+- **Throws:** the target's codes, `ERR_POOL_EXHAUSTED`, `ERR_RESOURCE_INITIALIZATION_FAILED` and the build's codes.
+- **Zone:** the `invoke` slot provides a zone correlated on `/pool`. The zone entry holds only the checkout's and the pool's identities, never the key; the pool keeps its own map from zone entry to member. The key is traced nowhere.
+- **Holding:** invoking a checkout evaluates `key`, takes a hold on that key's member (building it when needed) and dispatches `invoke` with its inputs. The hold is released by the rule of section 2: when the target has produced its value and every stream leaving it has settled.
+- **Nesting:** a checkout reached inside another checkout's dispatch of the same pool takes over for its own target; the innermost one decides. A dispatch therefore uses one member per pool; using two members of one recipe at once means two pools.
 
 **Member-bound declarations**
-- **Which they are**, computed statically from the reference graph:
-  - a pool's `resource`;
-  - any declaration that holds a member-bound declaration in a `use: dependency` slot or reads one in a creation-time field, transitively.
-  
-  An `Http.Request` whose `client` names `clusters.resource` is one, as is an `Sql.Query` whose `connection` names a pooled connection, an `Sql.Transaction` over it, a resource inside an imported library whose `resources:` input is supplied with `!ref tenants.resource`, and a template body entry that reaches one.
-- **Routing:** a dispatch of a member-bound declaration goes to that declaration's instance in a child context that belongs to the member the innermost checkout of its pool holds. That instance is created the first time it is dispatched for that member, lives as long as the member, and is torn down with it. So a member-bound declaration is created once per member, not once per call, and its controller is unchanged: a reference slot it reads, at creation or on every call, resolves inside that child context to that member.
+- **Which they are**, computed statically from the reference graph: a pool's `member`, and any declaration that references a member-bound declaration (or the pool, standing for its member) in a `use: dependency` slot or reads one in a creation-time field, transitively. An `Http.Request` whose `client` is `!ref clusters` is one, as is an `Sql.Query` whose `connection` is `!ref tenants`, an `Sql.Transaction` over it, a resource inside an imported library whose `resources:` input is supplied with `!ref tenants`, and a template body entry that reaches one.
+- **Routing:** a dispatch of a member-bound declaration goes to that declaration's instance in the member context of the member the innermost checkout of its pool holds. There is one member context per member and per module instance holding member-bound declarations; it is created when the member is built, lives as long as the member, and is torn down with it. So a member-bound declaration is created once per member, not once per call, and its controller is unchanged: a reference slot it reads, at creation or on every call, resolves inside that context to that member.
+- **Not in a scope:** a member-bound declaration inside a `with:` scope is `MEMBER_BOUND_SCOPED` at that declaration, and `ERR_MEMBER_BOUND_SCOPED` at load. A scoped declaration lives for one run and may read that run's `inputs`; a member-bound one lives as long as its member and is shared by every caller of its key, so one declaration cannot be both. A scope reaches a pooled resource only by calling it — a step's `invoke: !ref <module-scope member-bound declaration>` — never through a scoped declaration's dependency slot or creation-time field, which would make that declaration member-bound.
+- **Libraries:** of a library whose `resources:` input is supplied `!ref tenants`, only its member-bound declarations exist per member. Everything else in it, its `lifecycle` included, is untouched.
 - **Transactions:** an `Sql.Transaction` over a pooled connection is itself member-bound, so its zone correlation resolves to the same member's connection its statements use.
-- **Outside a checkout:** a reach of a member-bound declaration that no checkout of its pool covers is `ZONE_REQUIREMENT_UNSATISFIED`, and `ERR_ZONE_REQUIRED` at run time; both messages name the pool and the chain of references that made the declaration member-bound. That covers a dispatch, a detached or trigger dispatch (both start with no zones), a runtime-eval `resources.<name>` read, a boot target, a Service, Mount or Sink holding one, and a callable's data slot.
-
-**Streams**
-
-A stream a member-bound declaration returns, at a stream-typed path of its bound output contract, keeps the checkout's hold until it settles: finished, failed, or cancelled by its consumer. The member is never torn down under it. So a Kubernetes watch can be returned from a route handler to an SSE response, and closing the connection releases the member. Section 2's refusal applies to `with:` scopes only, not to checkouts. A stream at a path the contract does not type as `Telo.Stream` is not tracked. A stream nobody ever settles keeps its member held; `maxEntries` bounds that as `ERR_POOL_EXHAUSTED` instead of growing memory. Teardown releases every hold an open stream still owns.
+- **Outside a checkout:** a reach of a member-bound declaration that no checkout of its pool covers is `ZONE_REQUIREMENT_UNSATISFIED`, and `ERR_ZONE_REQUIRED` at run time; both name the pool and the chain of references that made the declaration member-bound. That covers a dispatch, a detached or trigger dispatch (both start with no zones), a runtime-eval `resources.<name>` read, a boot target, a member-bound Service, Mount or Sink (a library's included), and a callable's data slot.
 
 **Durable execution:** a checkout's key is a journaled decision, so a replay checks out the same key. A member-bound step target is refused at the sender, as a `with:`-scoped one already is.
 
-**Rust kernel:** refuses `Telo.Pool` and `Telo.Checkout` with `ERR_UNSUPPORTED_MANIFEST_FEATURE`.
+**Rust kernel:** refuses `Telo.KeyedPool` and `Telo.Checkout` with `ERR_UNSUPPORTED_MANIFEST_FEATURE`.
 
-*Example:* an application that lists the pods of one cluster, its kubeconfig stored in a database. Every call for the same cluster id uses the same `Http.Client` and the same `Http.Request` instance; the database is read and the kubeconfig parsed only when that id has no member.
+*Example — one client per cluster:* an application that lists the pods of one cluster, its kubeconfig stored in a database. Every call for the same cluster id uses the same `Http.Client` and the same `Http.Request` instance; the database is read and the kubeconfig parsed only when that id has no member.
 
 ```yaml
 kind: Telo.Application
 metadata: { name: K8sDashboard }
 imports:
-  Sqlite: oci://ghcr.io/telorun/sqlite@0.0.0
-  Sql: oci://ghcr.io/telorun/sql@0.0.0
+  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0
+  Sql: oci://ghcr.io/telorun/sql@0.30.0
   Yaml: oci://ghcr.io/telorun/yaml@0.11.1
-  Http: oci://ghcr.io/telorun/http-client@0.0.0
+  Http: oci://ghcr.io/telorun/http-client@0.25.0
 variables:
   database: { env: DATABASE_FILE, type: string, x-telo-type: { name: Telo.HostPath, entry: file } }
   clusterId: { env: CLUSTER_ID, type: string }
@@ -156,18 +340,16 @@ targets:
   - invoke: !ref listPods
     inputs: { clusterId: !cel "variables.clusterId" }
 ---
-kind: Sqlite.Connection
-metadata: { name: db }
-file: !cel "variables.database"
----
-kind: Telo.Pool
+kind: Telo.KeyedPool
 metadata: { name: clusters }
-idleTimeout: 5m
-maxAge: 1h
-maxEntries: 64
-steps:
+idleTimeout: 300s
+maxLifetime: 3600s
+maxMembers: 64
+build:
   - name: row
-    invoke: { kind: Sql.Query, connection: !ref db }
+    invoke:
+      kind: Sql.Query
+      connection: { kind: SQLite.Connection, file: !cel "variables.database" }
     inputs: { sql: !sql "SELECT kubeconfig FROM clusters WHERE id = ${{ key }}" }
   - name: missing
     if: !cel "size(steps.row.result.rows) == 0"
@@ -180,97 +362,176 @@ steps:
   - name: config
     invoke: { kind: Yaml.Parse }
     inputs: { text: !cel "steps.row.result.rows[0].kubeconfig" }
-resource:
+member:
   kind: Http.Client
   baseUrl: !cel "steps.config.result.docs[0].clusters[0].cluster.server"
   headers: { Authorization: !interpolate "Bearer ${{ steps.config.result.docs[0].users[0].user.token }}" }
 ---
 kind: Telo.Checkout
 metadata: { name: listPods }
-inputType:
-  type: object
-  required: [clusterId]
-  properties: { clusterId: { type: string } }
 pool: !ref clusters
 key: !cel "inputs.clusterId"
-steps:
-  - name: get
-    invoke: { kind: Http.Request, client: !ref clusters.resource }
-    inputs: { method: GET, url: /api/v1/pods }
-outputs: !cel "steps.get.result.body"
+invoke:
+  kind: Telo.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema: { type: object, required: [clusterId], properties: { clusterId: { type: string } } }
+  steps:
+    - name: get
+      invoke: { kind: Http.Request, client: !ref clusters }
+      inputs: { method: GET, url: /api/v1/pods }
+  outputs: { pods: !cel "steps.get.result.body" }
 ```
 
-The same checkout as an `Http.Api` route handler is declared inline, its `inputs` mapped from `request.params.clusterId`, and holds the member for exactly one request.
+Refused: a second boot target `- invoke: !ref probe`, where `probe` is a named `Http.Request` document with `client: !ref clusters`, outside any checkout, is `ZONE_REQUIREMENT_UNSATISFIED` under `telo check`, naming `clusters` and the `client` reference; `ERR_ZONE_REQUIRED` at boot. A `Telo.Sequence` as `member` is `POOL_MEMBER_CAPABILITY_UNSUPPORTED`.
+
+*Example — one connection per tenant, reached by unchanged resources in a library:* each tenant's orders live in their own SQLite file. The route's checkout chooses the tenant and wraps the library's `save`; the library's transaction and both statements name its `connection` input, which the application supplies as the pool, and use that tenant's connection with no tenant id in their contracts. `save` declares `tenant` only so the checkout can read its key from the target's inputs.
+
+`orders/telo.yaml`:
+
+```yaml
+kind: Telo.Library
+metadata: { name: Orders }
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.30.0
+resources:
+  connection: { kind: Sql.Connection }
+exports:
+  resources: [save]
+---
+kind: Telo.Sequence
+metadata: { name: save }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [tenant, item], properties: { tenant: { type: string }, item: { type: string } } }
+steps:
+  - name: write
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: { item: !cel "inputs.item" }
+      steps:
+        kind: Telo.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema: { type: object, required: [item], properties: { item: { type: string } } }
+        steps:
+          - name: insert
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs: { sql: !sql "INSERT INTO orders (item) VALUES (${{ inputs.item }})" }
+          - name: count
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs: { sql: SELECT count(*) AS n FROM orders }
+        outputs: { orders: !cel "steps.count.result.rows[0].n" }
+    inputs: { item: !cel "inputs.item" }
+outputs: { orders: !cel "steps.write.result.orders" }
+```
+
+`telo.yaml`:
+
+```yaml
+kind: Telo.Application
+metadata: { name: TenantOrders }
+imports:
+  Server: oci://ghcr.io/telorun/http-server@0.42.0
+  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0
+  Orders:
+    source: ./orders
+    resources: { connection: !ref tenants }
+variables:
+  dataDir: { env: DATA_DIR, type: string, x-telo-type: { name: Telo.HostPath, entry: directory } }
+ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
+targets:
+  - !ref server
+---
+kind: Telo.KeyedPool
+metadata: { name: tenants }
+maxMembers: 256
+member:
+  kind: SQLite.Connection
+  file: !cel "variables.dataDir.joinPath(key + '.db')"
+---
+kind: Server.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - { path: /, mount: !ref ordersApi }
+---
+kind: Server.Api
+metadata: { name: ordersApi }
+routes:
+  - request:
+      path: /tenants/{tenant}/orders
+      method: POST
+      schema:
+        params: { type: object, required: [tenant], properties: { tenant: { type: string, pattern: "^[a-z0-9-]+$" } } }
+        body: { type: object, required: [item], properties: { item: { type: string } } }
+    handler: { kind: Telo.Checkout, pool: !ref tenants, key: !cel "inputs.tenant", invoke: !ref Orders.save }
+    inputs: { tenant: !cel "request.params.tenant", item: !cel "request.body.item" }
+    returns:
+      - status: 201
+        content:
+          application/json:
+            schema: { type: object, required: [orders], properties: { orders: { type: integer } } }
+            body: { orders: !cel "result.orders" }
+    catches:
+      - status: 503
+        when: !cel "error.code == 'ERR_POOL_EXHAUSTED'"
+        content:
+          application/json:
+            schema: { type: object, required: [error], properties: { error: { type: string } } }
+            body: { error: pool busy }
+      - status: 500
+        content:
+          application/json:
+            schema: { type: object, required: [error], properties: { error: { type: string } } }
+            body: { error: !cel "error.code" }
+```
+
+Refused: `key: !cel "inputs.tenat"` is `CEL_UNKNOWN_FIELD` under `telo check`, and a route `inputs:` without `item` is `CONTRACT_INPUTS_MISMATCH`, both judged against `Orders.save`'s contract.
 
 *Verify:*
-- **Building:** a fixture provider counting its constructions, pooled: three checkouts of one key build one member, two keys build two, concurrent first checkouts of one key run `steps` once, and a failed build is retried by the next checkout.
-- **Routing, multi-tenant:** two concurrent requests for two tenants each read their own SQLite file through an unmodified `Sql.Query` whose `connection` names the pooled connection — once with the query at module level, once inside an imported library supplied with `resources: { connection: !ref tenants.resource }`, once inside an `Sql.Transaction`, whose statements join that transaction.
-- **Per member, not per call:** the `Http.Request` in the example is created once per cluster id across many calls.
+- **Building:** a fixture provider counting its constructions, pooled: three checkouts of one key build one member, two keys build two, concurrent first checkouts of one key run `build` once, a failed build is retried by the next checkout, and each member-bound declaration is created at build time, before any of the checkout's steps run.
+- **Creation failure:** a member-bound `Http.Client` that fails creation for key `bad` fails that checkout with `ERR_RESOURCE_INITIALIZATION_FAILED`, which a `catches:` entry naming it catches; the next checkout of `bad` rebuilds, and key `good` is unaffected.
+- **Routing, multi-tenant:** two concurrent requests for two tenants in the second example each write their own SQLite file, and both statements join that tenant's transaction, with `Orders` imported `isolated` and `shared` alike; `save` itself is not member-bound (it only calls the transaction), the transaction and both statements are.
+- **Transparent wrapper:** a checkout wrapping an imported invocable, and one wrapping a `Lease.Critical`, are called with the target's own inputs and return its output unchanged; a target input marked `x-telo-sensitive` traces `[redacted]` through the checkout; a checkout whose target is a `Telo.Sequence` with `with:` holds the member until that sequence's streams settle.
+- **Scoped:** a `Telo.Sequence` whose `with:` declares an `Sql.Query` with `connection: !ref tenants` fails `telo check` with `MEMBER_BOUND_SCOPED` at that declaration, and load with `ERR_MEMBER_BOUND_SCOPED`.
+- **Library Service:** a library Service whose creation-time field reads `resources.connection`, supplied `!ref tenants`, fails `telo check` and boot with `ZONE_REQUIREMENT_UNSATISFIED`.
+- **Per member, not per call:** the `Http.Request` in the first example is created once per cluster id across many calls.
 - **No consumer change:** no stdlib controller or kind schema changes for any of the above.
-- **Outside a checkout:** dispatching a member-bound declaration from a boot target, and from a detached dispatch, fails `telo check` and boot, naming the pool.
-- **Lifetime:** after `idleTimeout` with no hold the fixture records one teardown, before it none; a member past `maxAge` while held is torn down only when released, and the next checkout builds a new one; with `maxEntries: 1`, one held member and a new key fail at once with `ERR_POOL_EXHAUSTED`.
+- **Outside a checkout:** the refused boot target, and the same request from a detached dispatch, fail `telo check` and boot, naming the pool.
+- **Editor:** hover on a member-bound declaration names its pool and the chain of references that made it member-bound — the chain the refusals print. At `client: !ref clusters`, go-to-definition opens the pool, hover names the member's kind (`Http.Client`), rename of `clusters` rewrites both the checkout's `pool:` and every member reference, and the reference picker offers `clusters` at slots accepting `Http.Client`.
+- **Reference:** `client: !ref clusters` at a slot of an incompatible kind is `REFERENCE_KIND_MISMATCH` in both halves; `!ref Clusters.clusters` from an importer of a library exporting the pool resolves with no parser change.
+- **Lifetime:** after `idleTimeout` with no hold the fixture records one teardown, before it none; a member past `maxLifetime` while held is torn down only when released, and the next checkout builds a new one; with `maxMembers: 1`, a new key fails at once with `ERR_POOL_EXHAUSTED` while the one member is building, held, or retired but still held, and a step `retry:` with backoff naming it succeeds once the hold is released.
 - **Streams:** a watch streamed to an SSE client keeps its member past `idleTimeout`; it is torn down `idleTimeout` after the client disconnects, and not before.
-- **Capability:** a `Telo.Service` as a pool's `resource` fails `telo check` and boot.
-
-### 5. A reference names a member of a resource
-
-*Before:* a `!ref` is `<name>`, `<Alias>.<name>` or `<family>[<binding>.key]` / `[<binding>.index]`; any other text is `REF_MEMBER_INVALID`.
-
-*After:* the grammar accepts a member path after the name of a local resource. A segment is `.<name>`, `[<integer>]` or `[<field>=<value>,…]`:
-- `!ref clusters.resource` — the member a pool builds (section 4); `!ref Clusters.clusters.resource` for a pool an imported library exports.
-- `!ref api.routes[0]` — the item at a position in a list.
-- `!ref api.routes[method=GET,path=/some/path]` — the one item whose fields hold those values.
-
-Rules:
-- **Head:** an alias and a local resource share one namespace, so a head naming an import alias keeps reading as `<Alias>.<name>`, and one naming a local resource starts a member path. The resolver decides which, since the parser has no context; the parser yields the segments. A member path may also follow `<Alias>.<name>` when that export is a resource; a path past a family member is `REF_MEMBER_INVALID`.
-- **What a path names:** a resource the head's declaration holds in a field, extracted from an inline declaration written there (the origin recorded at extraction), or a pool's `resource`. Anything else — a scalar, plain data, a field holding no resource — is `REF_MEMBER_UNRESOLVED`, listing what the head does hold.
-- **Selector:** a `<field>` is a top-level identifier of the member. A bare value uses the characters `A-Za-z0-9_./:{}-`; any other value is written in single quotes, `''` escaping a quote. The value is compared as text with the member's written literal, every listed field must match, and the position of an integer index is the item's place among the list's items.
-- **Exactly one:** no match is `REF_MEMBER_UNRESOLVED` naming the values found for that field; more than one is `REF_MEMBER_AMBIGUOUS` naming how many. A field holding an expression, or whose value is only a schema default, is `REF_MEMBER_NOT_LITERAL` — it never matches by default, so `[method=GET]` cannot match a route that merely omits `method`.
-- **Edges:** a reference to a member is a reference to that resource everywhere a `!ref` is legal, template bodies included, and counts as a dependency of the head for creation order and the call graph.
-- **Kernel:** resolves the same text the same way and raises `ERR_REF_MEMBER_UNRESOLVED`, `ERR_REF_MEMBER_AMBIGUOUS` and `ERR_REF_MEMBER_NOT_LITERAL`. Both parsers and the `!ref` conformance vectors carry the grammar.
-
-The first consumer is the pool's `resource`. Routes of `Http.Api` use the same references once they become resources, which is a change of that module and not of this plan.
-
-*Verify:*
-- Parser vectors in both languages for each form, the quoting, `''`, and the refusals.
-- A reference by index and by selector each resolve to the right resource under `telo check` and at boot.
-- Zero matches, two matches and a computed field each fail with their own code in both halves.
-- Inserting an item before the referenced one leaves a selector reference valid and breaks an index reference only if the position changed.
+- **Capability:** a `Telo.Service` as a pool's `member` fails `telo check` and boot with the pool-capability code.
 
 ## Decisions
 
-- **`inputs` is bound only in creation-time fields of scoped declarations.** A runtime-eval field already has a per-call meaning for that name in many kinds, and one name with two meanings at one site is worse than lifting a value into a creation-time field.
-- **The name is `inputs`, not a new one.** It is the same value the owner's step body calls `inputs`, and a second name for one value would split completion, hover and documentation for no semantic gain.
-- **The opening inputs reach the kernel as an explicit argument, not through the ambient invocation context.** That context carries identities and never payload, which is the execution-zone rule, so that no controller can read another module's material off it.
-- **Stream provenance is conservative.** A resource that consumes a scoped stream and returns an unrelated stream is refused too. It is rare, the fix is stated in the message, and a precise rule would need knowledge of every controller's internals, which static analysis does not have.
-- **The runtime twin wraps only scoped producers**, so no module-level stream pays for a check it cannot fail.
-- **Forwarding is declared by the forwarding kind**, not inferred. Inference from a property's name or shape would mark data that is never forwarded and miss a forwarder that names its property differently. Marking the whole bag sensitive would blind every forwarded payload to keep one field safe.
-
-## Correctness and edge cases
-
-- **Two concurrent runs of one scope** each bind their own `inputs` at their own entry. The per-run child context already isolates instances, and the binding lives on the same child.
-- **A nested scope** sees the inputs of the invocation that opened *it*, not those of an outer scope. A nested sequence's owner is itself.
-- **A scoped resource reading `inputs` in a field another pass constant-folds** is unresolved to that pass, never folded to a default. Treating an unknown as its default is how a check passes on a value the runtime will never hold.
-- **A stream passed to a module-level resource during the scope** is legitimate, because the call returns before the scope ends. If that resource retains the stream past its call, the runtime twin names the cause at the late pull.
-- **A forwarding slot whose target changes between calls** is resolved per call at the trace site, so each trace uses its own target's marks.
-- **An older runtime reading a manifest that uses scope inputs** refuses the `inputs` reference as an unknown identifier. The adopter's `requires:` floor turns that into one `MODULE_REQUIRES_NEWER_RUNTIME`.
+- **`inputs` is bound only in creation-time fields of scoped declarations, under that name.** A runtime-eval field already has a per-call meaning for `inputs` in many kinds; a second name for the owner's value would split completion, hover and documentation.
+- **The opening inputs reach the kernel as a required argument, not through the ambient invocation context.** That context carries identities and never payload, which is the execution-zone rule.
+- **Stream lifetime is held, not refused.** A refusal would forbid the bring-your-own-key consumer's streamed reply, and both of its fixes defeat that consumer; holding the scope until its leaving streams settle makes every flow the manifest can express work, for scopes and checkouts alike.
+- **Forwarding is typed, not annotated.** `x-telo-value-schema-from` already says "this node is that resource's contract", so redaction and the payload check follow from the type rather than from a second annotation.
+- **A member is built whole.** `build`, `member` and every module-scope declaration bound to it are created in one init loop, so a creation failure is a build failure with a declared code, and nothing in Telo creates resources at dispatch.
+- **A full pool sheds load.** A new key with no idle member to evict fails at once with retryable `ERR_POOL_EXHAUSTED`; the caller's `retry:` is the one waiting layer, since a freed member serves only its own key and a hold can last as long as a stream.
+- **A checkout is a transparent wrapper.** It adds a hold and a zone and nothing else, so it takes its target's contract and wraps any executable; a step body of its own would be a second copy of `Telo.Sequence` drifting with every sequence feature.
+- **A pool is referenced by its own name.** A member is chosen at run time, so a structural member path would be a false address and a second way to reach inline declarations; the built-in entry's `referenceStandsFor` keeps the rule data rather than a kind-name check.
 
 ## Housekeeping
 
-- **Agreement suite.** `tests/check-run-agreement.yaml` gains one row for each refusal, each refused by both halves: an undeclared field read in a scope, a scoped stream escaping through `outputs:`, an invalid `x-telo-forwards-to` pointer, a pool of a kind outside `Telo.Provider` / `Telo.Invocable`, a member-bound declaration reached outside a checkout (from a boot target and from a detached dispatch), and each of the three member-reference refusals.
-- **Grammar floors.** The new surfaces follow the "Changing the grammar" rule, **verified by execution** against the previous published CLI:
-  - Every module whose own file declares a `Telo.Pool` or a `Telo.Checkout`, or writes a member reference, declares `requires: telo:` at the release that carries this. No stdlib kind changes for pooling, so none needs a floor for it.
-  - Every module whose own file reads `inputs` inside a `with:` block declares `requires: telo:` at the release that carries this.
-  - Every module adopting `x-telo-forwards-to` declares the floor only if the previous CLI rejects its file. If that CLI accepts and ignores the annotation, no floor is declared: its readers are defence in depth, and the adopting application declares its own floor.
-  - The `run` module passes inputs to the scope handle. That is a controller change an older kernel ignores harmlessly, so it needs no floor.
-- **Package bumps.** Changesets for the analyzer (member-bound declarations, the pool and checkout refusals), the kernel (pools, checkouts, routing by member), the SDK (the scope-handle argument) and `templating` (the `!ref` grammar), and a `telo release` fragment for `run` and each adopting module. The Rust twins of the line carry the same version, and the Rust templating and analyzer twins read the new `!ref` grammar.
-- **Built-in vocabulary.** `Telo.Pool` and `Telo.Checkout` are added to the built-in entries and the `Telo.Builtins` archive is re-rendered.
-- **Benefits ledger.** One entry under Telo itself in `docs/guides/what-you-get.md`: per-tenant connections and clients behind every request, declared with `Telo.Pool` and `Telo.Checkout`, built once per tenant and reused, with no tenant id passed through the code that uses them.
+- **Agreement suite.** `tests/check-run-agreement.yaml` gains one row for each refusal, refused by both halves: an undeclared field read in a scope, a pool of a kind outside `Telo.Provider` / `Telo.Invocable`, a pool referenced at a slot of an incompatible kind, a member-bound declaration reached outside a checkout (from a boot target and from a detached dispatch), and a member-bound declaration in a `with:` scope.
+- **Grammar floors**, under the "Changing the grammar" rule, verified by execution against the previous published CLI:
+  - Every module whose own file declares a `Telo.KeyedPool` or a `Telo.Checkout`, or reads `inputs` inside a `with:` block, declares `requires: telo:` at the release that carries this.
+  - `lease`, `idempotency` and `run` declare the floor only if the previous CLI rejects their file with `x-telo-value-schema-from` in its contract (expected for `Run.Detach`'s root placement only).
+  - The `run` module passing inputs and the produced value to the scope handle is a controller change; it rides the SDK surface the floor already covers.
+- **Releases.** One changeset naming `@telorun/analyzer`, `@telorun/kernel` and `@telorun/sdk` (one telo version line, a minor bump), and `telo release add` fragments of kind `Added` for `run`, `lease` and `idempotency`, one per module. No major bump anywhere.
+- **Built-in vocabulary.** `Telo.KeyedPool` and `Telo.Checkout`, with the pool's `referenceStandsFor`, are added to the built-in entries and the `Telo.Builtins` archive is re-rendered; both analyzers read them.
+- **Benefits ledger.** One entry under Telo itself in `docs/guides/what-you-get.md`: per-request and per-tenant resources — a resource configured from the caller's inputs lives for one call and stays alive until its streamed answer is consumed, and `Telo.KeyedPool` with `Telo.Checkout` builds one per tenant or cluster, reused across calls, with no tenant id passed through the code that uses it.
 - **Documentation:**
-  - A pool and checkout guide under `docs/extend/`, with the multi-tenant and Kubernetes examples.
-  - The templating guide's `!ref` grammar section, and the analyzer guide's reference-form and diagnostics entries.
-  - The `run` module's `with:` documentation.
-  - This package's guide: the `x-telo-scope` entry, the CEL-scope list, the new `x-telo-forwards-to` entry beside `x-telo-sensitive`, and the three diagnostics.
-  - The kernel guide's scope section, and a section on routing member-bound declarations.
-  - The root guide's annotation list.
-- **Authoring agent primer.** The primer gains the rule in the same change. A `with:`-scoped resource may read the enclosing invocation's `inputs` in its creation-time fields, and that, not an invented per-call field on a kind, is how a per-request credential, endpoint or tenant value is carried. It also gains `Telo.Pool` and `Telo.Checkout` as the way to build one resource per key (a tenant, a cluster) and use it from unchanged resources anywhere beneath the checkout, and the member-reference forms.
+  - A keyed pool and checkout guide under `docs/extend/`, with both examples, sizing `maxMembers` against concurrently active keys and long holds (with a step `retry:` naming `ERR_POOL_EXHAUSTED`), and why a pooled resource is declared at module scope.
+  - The `Telo.Sequence` and `run` `with:` documentation: scoped fields read `inputs`, and a scope lives until the streams leaving it settle.
+  - The analyzer guide: the `x-telo-scope` entry, the CEL-scope list, the `x-telo-value-schema-from` entry (forwarding kinds), the pool reference rule.
+  - The kernel guide: a scope's lifetime, and routing member-bound declarations.
+  - `lease`, `idempotency` and `run` docs: the forwarded payload is typed by the target's contract and refused at the wrapper's own dispatch.
+  - The root guide's built-in kinds and CEL-scope lists.
+- **Authoring agent primer.** In the same change: a `with:`-scoped resource reads the enclosing invocation's `inputs` in its creation-time fields, and that, not an invented per-call field on a kind, is how a per-request credential, endpoint or tenant value is carried; a scoped resource's stream may be returned; `Telo.KeyedPool` and `Telo.Checkout` build one resource per key and serve it to unchanged resources anywhere beneath the checkout, referenced by the pool's own name; a checkout wraps an executable and adds no contract of its own; a pooled resource is never declared in a `with:` scope.

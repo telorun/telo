@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata: { name: UnknownFieldSameModule, version: 1.0.0 }
+imports: { Domain: ../../ }
+---
+kind: Domain.Event
+metadata: { name: UserCreated }
+schema: { type: object, required: [email], properties: { email: { type: string } } }
+---
+kind: Telo.Sequence
+metadata: { name: target }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { email: { type: string } } } }
+steps: []
+---
+kind: Domain.Handler
+metadata: { name: misspelledWhen }
+event: !ref UserCreated
+when: !cel "event.kye == 'x'"
+invoke: !ref target
+---
+kind: Domain.Handler
+metadata: { name: misspelledInput }
+event: !ref UserCreated
+invoke: !ref target
+inputs: { email: !cel "event.kye" }

@@ -1,0 +1,10 @@
+# One topic for the whole application.
+kind: Telo.Library
+metadata: { name: ComposedEvents }
+lifecycle: shared
+imports: { Co: ../../../co-referrers/kinds }
+exports: { resources: [Joined] }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object }

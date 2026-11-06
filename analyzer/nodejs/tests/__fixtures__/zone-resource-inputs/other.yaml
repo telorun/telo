@@ -1,0 +1,20 @@
+# The library's transaction is on `db`; the handler's operation is on `other`.
+kind: Telo.Application
+metadata: { name: LentOther }
+imports:
+  Z: ./kinds
+  Co: ../co-referrers/kinds
+  Signup: { source: ./lib, resources: { connection: !ref db } }
+targets:
+  - invoke: !ref Signup.create
+---
+kind: Z.Conn
+metadata: { name: db }
+---
+kind: Z.Conn
+metadata: { name: other }
+---
+kind: Co.Listener
+metadata: { name: onCreated }
+topic: !ref Signup.Created
+invoke: { kind: Z.Op, connection: !ref other }

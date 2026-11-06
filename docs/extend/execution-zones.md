@@ -68,6 +68,9 @@ On a body slot. The value is the **correlation key**, never the zone: `true`
 establishes the zone uncorrelated, and a self-relative JSON pointer names the
 kind's own field whose resolved reference the zone carries as its correlation
 payload.
+A field holding a library's resource input correlates on the declaration the
+importer supplied for it, so a transaction a library opens on a connection it
+was lent discharges a requirement on the importer's own connection.
 
 The object form carries that pointer as `key` beside the zone's **attributes**
 — see [Zones that constrain their contents](#zones-that-constrain-their-contents).
@@ -163,9 +166,9 @@ enforcement; static analysis moves the failure earlier for the paths it can see.
   undecidable only when the target *might* be in a zone, never when a guaranteed
   fresh context is among the ways it is dispatched.
 - **`ZONE_EXPORT_UNSATISFIABLE`** (error) — a library exports a resource whose
-  open requirement correlates on something it does *not* export, so no importer
-  can satisfy it. Raised at the library's own check, the one desk where it is
-  fixable.
+  open requirement correlates on something it neither exports nor takes as a
+  resource input, so no importer can satisfy it. Raised at the library's own
+  check, the one desk where it is fixable.
 - **`ZONE_PROVIDER_UNRESOLVED`** (error) — the zone name resolves to no kind.
 - **`ZONE_ANNOTATION_INVALID`** (error) — an annotation neither half can read: a
   `provides` value that is not `true` or a pointer, a `requires` object with no

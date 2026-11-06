@@ -37,7 +37,12 @@ import { moduleAliasScope } from "./module-alias-scope.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import type { ScopeSite } from "./scope-address.js";
-import { addressOf, ScopedNameResolver } from "./scoped-name-resolver.js";
+import { addressOf, importPathOf, ScopedNameResolver } from "./scoped-name-resolver.js";
+import { isInjectedDeclaration } from "./resource-input.js";
+import { NOT_AN_INPUT, resourceInputBinding } from "./resource-input-binding.js";
+import { libraryCoReferrerReading } from "./co-referrer-stand-ins.js";
+import { normalizeInlineResources } from "./normalize-inline-resources.js";
+import { importAnchoredDiagnostic, importReach, type ReachingImport, type ImportReach } from "./reaching-import.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -56,6 +61,9 @@ export interface ZoneRequirementSpec {
   /** Bare name of the correlation target — what the export-satisfiability
    *  check compares against `exports.resources`. */
   correlationName?: string;
+  /** Set when the correlation target is one of the library's own resource
+   *  inputs: an importer rebinds it to the declaration it supplied. */
+  correlationInput?: string;
   reason?: string;
   /** Attributes the satisfying zone must declare. Carried across the export
    *  boundary with the rest of the requirement: a consumer discharging a
@@ -96,8 +104,12 @@ interface Requirement {
   correlation?: string;
   correlationLabel?: string;
   correlationName?: string;
+  correlationInput?: string;
   reason?: string;
   origin: string;
+  /** The module the requirement arose in: the origin's, or the library whose
+   *  summary seeded it. */
+  originModule?: string;
   /** Identity for memoization / dedup: zone + correlation. */
   key: string;
 }
@@ -116,6 +128,17 @@ interface ProjectionArgs {
   /** When set, record every requirement that reaches a module-level resource
    *  this returns an export name for. */
   exportOf?: (node: ResourceGraphNode) => string | undefined;
+  /** The set the graph was built over, whose `Telo.Import` documents say what
+   *  each library resource input names. */
+  manifests?: readonly ResourceManifest[];
+  /** Where a finding at a library's own edge is reported when only the entry's
+   *  composition of modules makes it — the entry's import first reaching the
+   *  library it arose in. Absent, such a finding is not reported. */
+  composed?: {
+    reach: ImportReach;
+    /** Whether `module` imports `target`, directly or through its imports. */
+    imports(module: string, target: string): boolean;
+  };
 }
 
 interface ProjectionResult {
@@ -295,7 +318,7 @@ function resolveProviderKey(
 
 /** Run the projection over one graph. */
 export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult {
-  const { graph, defs, aliases, aliasesByModule, reportModules, seeds, exportOf } = args;
+  const { graph, defs, aliases, aliasesByModule, reportModules, seeds, exportOf, manifests, composed } = args;
   const resolveDef = definitionResolver(defs, aliases, aliasesByModule);
   const diagnostics: AnalysisDiagnostic[] = [];
   const openExports: ZoneExportRequirements = new Map();
@@ -310,7 +333,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     (node.manifest.metadata as { module?: string } | undefined)?.module;
   const names = new ScopedNameResolver(
     resources.filter((node) => !node.scoped),
-    { nameOf: (node) => node.name, moduleOf: moduleOfNode },
+    { nameOf: (node) => node.name, moduleOf: moduleOfNode, importPathOf: (node) => importPathOf(node.manifest) },
   );
   const siteOf = (node: ResourceGraphNode): ScopeSite | undefined => {
     if (!node.scoped || !node.scopeOwner || !node.scopeSite) return undefined;
@@ -323,10 +346,23 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     const site = siteOf(node);
     if (site) names.declareScope(site, [node]);
   }
+  // A library's resource input is the importer's declaration, borrowed: a key
+  // naming one correlates on what the importer supplied in that instance.
+  const inputs = resourceInputBinding<ResourceGraphNode>(
+    manifests ?? [],
+    { inModule: (name, module, importPath) => names.inModule(name, module, importPath) },
+    aliases,
+    aliasesByModule,
+  );
   // In the scope that WROTE the name: a bare reference means the reader's own
   // module, and two libraries may each declare one.
-  const resolveName = (name: string, from: ResourceGraphNode): ResourceGraphNode | undefined =>
-    names.resolve(name, moduleOfNode(from), siteOf(from));
+  const resolveName = (name: string, from: ResourceGraphNode): ResourceGraphNode | undefined => {
+    const site = siteOf(from);
+    const member = names.scopeMember(name, site);
+    if (member) return member;
+    const bound = inputs.bound(name, moduleOfNode(from), importPathOf(from.manifest));
+    return bound === NOT_AN_INPUT ? names.resolve(name, moduleOfNode(from), site) : bound;
+  };
 
   const acceptedFor = (zone: string): ReadonlySet<string> => {
     const out = new Set<string>([zone]);
@@ -354,7 +390,23 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     via: string[],
     why: string,
   ): void => {
-    if (!reportable(caller)) return;
+    // At a library's own edge. A requirement arising in the entry is reported
+    // at the entry's import reaching that library. One arising in a library is
+    // the own check's of whichever of the two modules contains the other — at
+    // the edge, or at its import of the other — and only one neither contains
+    // is reported here, at the entry's import first reaching where it arose.
+    let anchor: { module: string; via: ReachingImport } | undefined;
+    if (!reportable(caller)) {
+      const at = moduleOf(caller);
+      const arose = req.originModule;
+      if (!composed || at === undefined || arose === undefined) return;
+      const fromEntry = reportModules.has(arose);
+      if (!fromEntry && (arose === at || composed.imports(at, arose) || composed.imports(arose, at))) return;
+      const module = fromEntry ? at : arose;
+      const via = composed.reach.of(module);
+      if (!via) return;
+      anchor = { module, via };
+    }
     const dedupe = `${code}\0${edge.from}\0${edge.path}\0${req.key}`;
     if (reported.has(dedupe)) return;
     reported.add(dedupe);
@@ -363,6 +415,13 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
       : `a ${req.zone} zone`;
     const path = [...via, `${shownName(caller)}.${edge.path}`].join(" → ");
     const reason = req.reason ? ` ${req.reason}.` : "";
+    if (anchor) {
+      diagnostics.push({
+        ...importAnchoredDiagnostic(code, anchor.module, anchor.via, `${req.origin} requires ${wanted}, and the path ${path} ${why}.${reason}`),
+        severity,
+      });
+      return;
+    }
     diagnostics.push({
       severity,
       code,
@@ -397,6 +456,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
           correlation: req.correlation,
           correlationLabel: req.correlationLabel,
           correlationName: req.correlationName,
+          ...(req.correlationInput !== undefined ? { correlationInput: req.correlationInput } : {}),
           reason: req.reason,
           origin: req.origin,
           via: [...via],
@@ -662,8 +722,10 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
         correlation: target ? correlationIdOf(target) : undefined,
         correlationLabel: target ? labelOf(target) : undefined,
         correlationName: target?.name,
+        ...(target && isInjectedDeclaration(target.manifest) ? { correlationInput: target.name } : {}),
         reason: requires.reason,
         origin: labelOf(node),
+        ...(meta?.module !== undefined ? { originModule: meta.module } : {}),
         key: "",
       };
       req.key = `${req.zone}\0${req.correlation ?? ""}`;
@@ -677,25 +739,46 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     for (const node of graph.nodes.values()) {
       if (node.type !== "resource") continue;
       const meta = node.manifest.metadata as
-        | { module?: string; forwardedExport?: boolean }
+        | { module?: string; forwardedExport?: boolean; forwardedInternal?: boolean; xTeloOrigin?: unknown }
         | undefined;
-      if (!meta?.forwardedExport || !meta.module) continue;
+      // An export, or a library's co-referrer forwarded as its stand-in.
+      if (!(meta?.forwardedExport || meta?.forwardedInternal) || meta.xTeloOrigin || !meta.module) continue;
       const specs = seeds.get(`${meta.module}\0${node.name}`);
       if (!specs) continue;
       for (const spec of specs) {
         const zoneDef = defs.resolve(spec.zone);
+        // Correlated on one of the library's inputs: here, in this instance,
+        // that is the declaration its importer supplied — or nothing, and the
+        // requirement is uncorrelated, as the kernel then finds no instance.
+        const rebound =
+          spec.correlationInput === undefined
+            ? NOT_AN_INPUT
+            : inputs.bound(spec.correlationInput, meta.module, importPathOf(node.manifest));
+        const correlation =
+          rebound === NOT_AN_INPUT
+            ? {
+                correlation: spec.correlation,
+                correlationLabel: spec.correlationLabel,
+                correlationName: spec.correlationName,
+              }
+            : {
+                correlation: rebound ? correlationIdOf(rebound) : undefined,
+                correlationLabel: rebound ? labelOf(rebound) : undefined,
+                correlationName: rebound?.name,
+                ...(rebound && isInjectedDeclaration(rebound.manifest) ? { correlationInput: rebound.name } : {}),
+              };
         const req: Requirement = {
           zone: spec.zone,
           accepted: zoneDef ? acceptedFor(spec.zone) : new Set([spec.zone]),
           attributes: spec.attributes ?? [],
-          correlation: spec.correlation,
-          correlationLabel: spec.correlationLabel,
-          correlationName: spec.correlationName,
+          ...correlation,
           reason: spec.reason,
           origin: spec.origin,
-          key: `${spec.zone}\0${spec.correlation ?? ""}`,
+          originModule: meta.module,
+          key: `${spec.zone}\0${correlation.correlation ?? ""}`,
         };
-        propagate(node, req, [...spec.via, shownName(node)]);
+        // The recorded path already ends at the entry point it was recorded at.
+        propagate(node, req, [...spec.via]);
       }
     }
   }
@@ -732,17 +815,26 @@ export function deriveLibraryExportRequirements(
   aliasesByModule: Map<string, AliasResolver>,
   cache?: ZoneExportCache,
 ): ZoneExportRequirements {
-  const signature = docs.signature ?? zoneDocumentsSignature(docs.manifests);
+  // Its co-referrers are entry points as its exports are: the importer's
+  // graph calls them through every holder its fan-out reaches.
+  const coReferrers = libraryCoReferrerReading(docs, { defs, aliases, aliasesByModule }).coReferrers;
+  const signature = `${docs.signature ?? zoneDocumentsSignature(docs.manifests)}\0${[...coReferrers].join(",")}`;
   const cached = cache?.get(docs.sourceId);
   if (cached && cached.signature === signature) return cached.exports;
 
-  const exported = new Set(docs.exportedNames);
-  const graph = buildCallGraph(docs.manifests, defs, { aliases, aliasesByModule });
+  const exported = new Set([...docs.exportedNames, ...coReferrers]);
+  // Derived without the fan-out, which only the entry's graph wires, so no
+  // requirement reaches the importer twice.
+  // Inline declarations extracted, as the importer's set holds them, so an
+  // inline target's requirement is an origin here too.
+  const manifests = normalizeInlineResources(docs.manifests, defs, aliases, aliasesByModule);
+  const graph = buildCallGraph(manifests, defs, { aliases, aliasesByModule, coReferrers: false });
   const { openExports } = projectZoneRequirements({
     graph,
     defs,
     aliases,
     aliasesByModule,
+    manifests,
     reportModules: new Set(),
     exportOf: (node) =>
       !node.scoped && exported.has(node.name) ? node.name : undefined,
@@ -774,9 +866,11 @@ export function runZoneAnalysis(args: ZoneAnalysisArgs): AnalysisDiagnostic[] {
 
   // Per-library export contracts, derived over each library's own documents.
   const seeds = new Map<string, ZoneRequirementSpec[]>();
+  const scope = { defs, aliases, aliasesByModule };
   for (const docs of args.moduleDocuments ?? []) {
-    // A library exporting no instance has no export contract to derive.
-    if (docs.exportedNames.length === 0) continue;
+    // A library exporting no instance and declaring no co-referrer has no
+    // contract to derive.
+    if (docs.exportedNames.length === 0 && libraryCoReferrerReading(docs, scope).coReferrers.size === 0) continue;
     const contracts = deriveLibraryExportRequirements(
       docs,
       defs,
@@ -822,6 +916,8 @@ export function runZoneAnalysis(args: ZoneAnalysisArgs): AnalysisDiagnostic[] {
     reportModules: rootModules,
     seeds: seeds.size > 0 ? seeds : undefined,
     exportOf,
+    manifests,
+    composed: { reach: importReach(manifests, rootModules), imports: importsClosure(manifests) },
   });
 
   // An export whose requirement correlates on a resource importers cannot
@@ -837,6 +933,7 @@ export function runZoneAnalysis(args: ZoneAnalysisArgs): AnalysisDiagnostic[] {
       for (const spec of specs) {
         if (spec.correlationName === undefined) continue; // uncorrelated — satisfiable by any zone
         if (lib.exportedNames.has(spec.correlationName)) continue; // importers can reach it
+        if (spec.correlationInput !== undefined) continue; // importers supply it
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
           code: "ZONE_EXPORT_UNSATISFIABLE",
@@ -859,4 +956,34 @@ export function runZoneAnalysis(args: ZoneAnalysisArgs): AnalysisDiagnostic[] {
   }
 
   return diagnostics;
+}
+
+/** Whether one module imports another, directly or through its imports, read
+ *  off the set's `Telo.Import` documents. */
+function importsClosure(manifests: readonly ResourceManifest[]): (module: string, target: string) => boolean {
+  const direct = new Map<string, string[]>();
+  for (const m of manifests) {
+    if (m.kind !== "Telo.Import") continue;
+    const meta = m.metadata as { module?: unknown; resolvedModuleName?: unknown } | undefined;
+    if (typeof meta?.module !== "string" || typeof meta.resolvedModuleName !== "string") continue;
+    const list = direct.get(meta.module);
+    if (list) list.push(meta.resolvedModuleName);
+    else direct.set(meta.module, [meta.resolvedModuleName]);
+  }
+  const closures = new Map<string, Set<string>>();
+  return (module, target) => {
+    let reached = closures.get(module);
+    if (!reached) {
+      reached = new Set();
+      const queue = [...(direct.get(module) ?? [])];
+      while (queue.length > 0) {
+        const next = queue.shift()!;
+        if (reached.has(next)) continue;
+        reached.add(next);
+        queue.push(...(direct.get(next) ?? []));
+      }
+      closures.set(module, reached);
+    }
+    return reached.has(target);
+  };
 }

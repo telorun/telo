@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: LiteralMismatch, version: 1.0.0 }
+imports: { Domain: ../../ }
+targets:
+  - invoke: !ref announce
+    inputs: { userId: 7, email: "ada@lovelace.dev" }
+---
+kind: Domain.Event
+metadata: { name: UserCreated }
+schema:
+  type: object
+  required: [userId, email]
+  properties: { userId: { type: string }, email: { type: string } }
+---
+kind: Domain.Emit
+metadata: { name: announce }
+event: !ref UserCreated

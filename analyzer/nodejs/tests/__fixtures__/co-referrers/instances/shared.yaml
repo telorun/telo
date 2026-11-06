@@ -1,0 +1,17 @@
+# One instance under two aliases: the topic the listener names is also
+# announced at boot.
+kind: Telo.Application
+metadata: { name: SharedInstances }
+imports: { Co: ../kinds, First: ./shared, Second: ./shared }
+targets:
+  - invoke: !ref zoned
+  - invoke: !ref Second.announce
+---
+kind: Co.Zone
+metadata: { name: zoned }
+steps: !ref First.announce
+---
+kind: Co.Listener
+metadata: { name: onFirstJoined }
+topic: !ref First.Joined
+invoke: { kind: Co.Guarded }

@@ -1,0 +1,12 @@
+# Needs a directory and reports where it was given one.
+kind: Telo.Library
+metadata: { name: ScopedNeedLib }
+needs: { storage: { kind: Telo.DurableDirectory } }
+exports: { resources: [report] }
+---
+kind: Telo.Sequence
+metadata: { name: report }
+steps:
+  - name: path
+    value: !cel "string(resources.storage.path)"
+outputs: { path: !cel "steps.path.result" }

@@ -1,0 +1,24 @@
+# Announces its own topic to two listeners; imported in a scope, one instance per
+# scope run.
+kind: Telo.Library
+metadata: { name: CoScopedLib }
+imports: { Co: ../kinds }
+exports: { resources: [announce] }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Joined
+---
+kind: Co.Listener
+metadata: { name: one }
+topic: !ref Joined
+label: one
+---
+kind: Co.Listener
+metadata: { name: two }
+topic: !ref Joined
+label: two

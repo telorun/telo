@@ -1,0 +1,18 @@
+# Announces its own event, handled inside the library.
+kind: Telo.Library
+metadata: { name: ScopedOwnEvents }
+imports: { Domain: ../../../../modules/domain-events }
+exports: { resources: [announce] }
+---
+kind: Domain.Event
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Domain.Emit
+metadata: { name: announce }
+event: !ref Joined
+---
+kind: Domain.Handler
+metadata: { name: onJoined }
+event: !ref Joined
+invoke: { kind: Telo.Sequence, steps: [] }

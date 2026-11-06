@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata: { name: LibraryHandlerInside }
+imports:
+  Z: ../../zone-resource-inputs/kinds
+  Co: ../../co-referrers/kinds
+  Audit: { source: ./lib, resources: { connection: !ref db } }
+targets:
+  - invoke: !ref tx
+---
+kind: Z.Conn
+metadata: { name: db }
+---
+kind: Z.Tx
+metadata: { name: tx }
+connection: !ref db
+steps: !ref emitCreated
+---
+kind: Co.Announce
+metadata: { name: emitCreated }
+topic: !ref Audit.Created

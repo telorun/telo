@@ -1,0 +1,24 @@
+# The same listener, with its topic also announced from a boot target.
+kind: Telo.Application
+metadata: { name: CoReferrerOutside }
+imports: { Co: ../kinds }
+targets:
+  - invoke: !ref zoned
+  - invoke: !ref reannounce
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object, required: [userId], properties: { userId: { type: string } } }
+---
+kind: Co.Zone
+metadata: { name: zoned }
+steps: { kind: Co.Announce, topic: !ref Joined }
+---
+kind: Co.Announce
+metadata: { name: reannounce }
+topic: !ref Joined
+---
+kind: Co.Listener
+metadata: { name: onJoined }
+topic: !ref Joined
+invoke: { kind: Co.Guarded }

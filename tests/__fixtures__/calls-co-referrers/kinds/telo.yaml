@@ -1,0 +1,62 @@
+# Generic fixture kinds: a topic, an announcer whose dispatch calls every
+# listener of its topic, a listener, and a zone with an operation requiring it.
+kind: Telo.Library
+metadata: { name: CoKinds }
+exports: { kinds: [Topic, Announce, Listener, Zone, Guarded] }
+---
+kind: Telo.Definition
+metadata: { name: Topic }
+capability: Telo.Type
+extends: Telo.JsonSchema
+---
+kind: Telo.Definition
+metadata: { name: Announce }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [topic]
+  properties:
+    topic:
+      x-telo-ref:
+        kind: Self.Topic
+        use: schema
+        callsCoReferrers: { kind: Self.Listener, slot: /topic }
+---
+kind: Telo.Definition
+metadata: { name: Listener }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [topic, invoke]
+  properties:
+    topic: { x-telo-ref: { kind: Self.Topic, use: schema } }
+    when:
+      type: boolean
+      x-telo-eval: runtime
+      x-telo-context: { type: object, properties: { event: { x-telo-context-ref-from: topic/schema } } }
+    invoke: { x-telo-ref: { kind: Telo.Executable, use: call } }
+---
+kind: Telo.Definition
+metadata: { name: Zone }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [steps]
+  properties:
+    steps: { x-telo-ref: { kind: Telo.Executable, use: call }, x-telo-provides-zone: true }
+---
+kind: Telo.Definition
+metadata: { name: Guarded }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  x-telo-requires-zone: { zone: Self.Zone, reason: the operation would run outside the zone }
+  properties: {}

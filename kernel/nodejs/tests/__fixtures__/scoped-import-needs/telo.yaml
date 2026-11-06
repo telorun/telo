@@ -1,0 +1,21 @@
+# Two holders, each importing the library under one name in its scope.
+kind: Telo.Application
+metadata: { name: ScopedNeeds }
+---
+kind: Telo.Sequence
+metadata: { name: first }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./lib }
+steps:
+  - name: report
+    invoke: !ref Inner.report
+outputs: { path: !cel "steps.report.result.path" }
+---
+kind: Telo.Sequence
+metadata: { name: second }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./lib }
+steps:
+  - name: report
+    invoke: !ref Inner.report
+outputs: { path: !cel "steps.report.result.path" }

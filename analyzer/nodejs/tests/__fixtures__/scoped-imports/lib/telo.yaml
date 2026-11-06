@@ -1,0 +1,10 @@
+# Exports one instance.
+kind: Telo.Library
+metadata: { name: ScopedGreetLib }
+exports: { resources: [greet] }
+---
+kind: Telo.Sequence
+metadata: { name: greet }
+steps:
+  - { name: say, value: { text: hello } }
+outputs: { text: !cel "steps.say.result.text" }

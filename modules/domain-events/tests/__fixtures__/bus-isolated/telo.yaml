@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata: { name: Bus, version: 0.1.0 }
+imports: { Domain: ../../../ }
+exports: { resources: [Tick, fire] }
+---
+kind: Domain.Event
+metadata: { name: Tick }
+schema: { type: object }
+---
+kind: Domain.Emit
+metadata: { name: fire }
+event: !ref Tick

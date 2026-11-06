@@ -1,0 +1,62 @@
+# A failing handler fails the emit and so rolls the emitter's transaction back.
+kind: Telo.Application
+metadata: { name: DomainEventsRollback, version: 1.0.0 }
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Domain: ../
+  Assert: ../../assert
+  Iam:
+    source: ./__fixtures__/iam
+    resources: { connection: !ref db }
+targets: [!ref appSchema, !ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns: { id: { type: text, primaryKey: true }, email: { type: text, nullable: false } }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref users]
+---
+kind: Domain.Handler
+metadata: { name: refuseSignUp }
+event: !ref Iam.UserCreated
+inputs: !cel "event"
+invoke:
+  kind: Telo.Sequence
+  inputType: !ref Iam.UserCreated
+  steps:
+    - name: refuse
+      throw: { code: SIGN_UP_REFUSED, message: !interpolate "refused ${{ inputs.email }}" }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: attempt
+    try:
+      - name: signUp
+        invoke: !ref Iam.createUser
+        inputs: { email: "grace@hopper.dev" }
+    catch:
+      - name: caught
+        value: !cel "{'code': error.code, 'data': error.data}"
+  - name: assertWrapped
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.caught.result"
+      expected:
+        code: ERR_DOMAIN_EVENT_HANDLER_FAILED
+        data: { event: UserCreated, handler: refuseSignUp }
+  - name: readUsers
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: "SELECT id FROM users" }
+  - name: assertRolledBack
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "steps.readUsers.result.rows", expected: [] }

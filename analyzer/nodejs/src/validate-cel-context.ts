@@ -15,10 +15,12 @@ import {
   isLiveSlot,
   mergeTypeSchemas,
   parseCanonicalTypeSchemaId,
+  type ResourceDefinition,
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
 import { CONTEXT_FROM_REFERRER, fromReferrerOwnKeywords, TYPING_ANNOTATIONS } from "./context-from-referrer.js";
 import { ELEMENT_FROM_ITEM } from "./element-from-item.js";
+import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import { kindDeclarationOf } from "./kind-declaration.js";
 import { scopeReadAt } from "./scoped-name-resolver.js";
 import { listRequests, type DeclarationRequests } from "./declaration-requests.js";
@@ -40,6 +42,7 @@ import {
 } from "./eval-paths.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import { declarationValuesAt } from "./schema-projection.js";
+import { namedShapeReading } from "./named-shape-reading.js";
 import type { ValueSchemaHost } from "./value-schema-slot.js";
 
 /** True when a node's value is decided at load or dispatch rather than written
@@ -127,44 +130,84 @@ export interface ContextResolveOpts {
  * - Object with `kind` + `schema`: inline type definition → return the `schema`
  * - Object with `type` or `properties`: raw JSON Schema, return as-is
  */
-/**
- * Kind names that DECLARE `capability: Telo.Type` — the kernel built-ins plus
- * every definition in scope.
- *
- * Derived from the declared capability, never from the kind's spelling: which
- * kinds are data shapes is a topology fact the analyzer must read off
- * `Telo.Definition` docs, not guess from a name. A name test would silently miss
- * any third-party type kind and would have to be edited every time one is added.
- *
- * Names, not fully-qualified kinds, because a resource writes its kind through
- * whatever alias its file declares (`Type.JsonSchema`, `Telo.JsonSchema`,
- * `Shapes.JsonSchema`) while the definition knows only its own module and name.
- * Memoized per manifest list — this runs on every type-field resolution.
- */
 /** What a reader with no declarations reads: no named type resolves. */
 const NO_DECLARATIONS: DeclarationRequests = listRequests([]);
 
-const typeKindNames = new WeakMap<object, { documents: readonly unknown[]; names: Set<string> }>();
-
-function typeCapableNames(declarations: DeclarationRequests): Set<string> {
-  const documents = declarations.kindDocuments();
-  const cached = typeKindNames.get(declarations);
-  if (cached && cached.documents === documents) return cached.names;
-  const names = new Set<string>();
-  for (const def of [...KERNEL_BUILTINS, ...documents] as Record<string, any>[]) {
-    const declared = kindDeclarationOf(def) as Record<string, any> | undefined;
-    if (declared?.capability !== "Telo.Type") continue;
-    const name = declared.metadata?.name;
-    if (typeof name === "string") names.add(name);
-  }
-  typeKindNames.set(declarations, { documents, names });
-  return names;
+interface KindIndex {
+  readonly byName: ReadonlyMap<string, readonly ResourceDefinition[]>;
+  isType(definition: ResourceDefinition): boolean;
 }
 
+const kindIndexes = new WeakMap<object, { documents: readonly unknown[]; index: KindIndex }>();
+
+/** The kind documents in scope by name, and each one's inherited capability,
+ *  memoized per request object and asked lazily. */
+function kindIndexOf(declarations: DeclarationRequests): KindIndex {
+  const documents = declarations.kindDocuments();
+  const cached = kindIndexes.get(declarations);
+  if (cached && cached.documents === documents) return cached.index;
+  const byName = new Map<string, ResourceDefinition[]>();
+  const canonical = new Map<string, ResourceDefinition>();
+  for (const def of [...KERNEL_BUILTINS, ...documents]) {
+    const declared = kindDeclarationOf(def);
+    const name = declared?.metadata?.name;
+    if (!declared || typeof name !== "string") continue;
+    const list = byName.get(name);
+    if (list) list.push(declared);
+    else byName.set(name, [declared]);
+    const module = declared.metadata.module;
+    if (typeof module === "string" && !canonical.has(`${module}.${name}`)) canonical.set(`${module}.${name}`, declared);
+  }
+  // `extends` as written, read in the declaring module: `Self` and its own name,
+  // a built-in, an import alias through that module's `Telo.Import`, else a
+  // canonical kind.
+  const resolve: DefResolver = (kind, from) => {
+    const dot = kind.lastIndexOf(".");
+    if (dot < 0) return undefined;
+    const prefix = kind.slice(0, dot);
+    const name = kind.slice(dot + 1);
+    const writer = from?.metadata?.module;
+    if (prefix === "Self" || prefix === writer) return writer ? canonical.get(`${writer}.${name}`) : undefined;
+    if (prefix === "Telo") return canonical.get(kind);
+    const imported = writer ? declarations.names.inModule(prefix, writer) : undefined;
+    const target =
+      imported?.kind === "Telo.Import"
+        ? (imported.metadata as { resolvedModuleName?: unknown } | undefined)?.resolvedModuleName
+        : undefined;
+    return canonical.get(`${typeof target === "string" ? target : prefix}.${name}`);
+  };
+  const types = new Map<ResourceDefinition, boolean>();
+  const index: KindIndex = {
+    byName,
+    isType: (definition) => {
+      let known = types.get(definition);
+      if (known === undefined) types.set(definition, (known = inheritedCapability(definition, resolve) === "Telo.Type"));
+      return known;
+    },
+  };
+  kindIndexes.set(declarations, { documents, index });
+  return index;
+}
+
+/**
+ * Whether a kind is a data shape: a kind of that name whose capability, its own
+ * or inherited along `extends`, is `Telo.Type` — the kernel built-ins plus every
+ * definition in scope.
+ *
+ * Derived from the capability, never from the kind's spelling: which kinds are
+ * data shapes is a topology fact the analyzer must read off `Telo.Definition`
+ * docs, not guess from a name.
+ *
+ * Read by name, not fully-qualified kind, because a resource writes its kind
+ * through whatever alias its file declares (`Type.JsonSchema`, `Telo.JsonSchema`,
+ * `Shapes.JsonSchema`) while the definition knows only its own module and name.
+ * An `extends` is resolved exactly, in the module that wrote it, so a parent of
+ * the same name in another module is never the one inherited from.
+ */
 export function isTypeKind(kind: unknown, declarations: DeclarationRequests): boolean {
   if (typeof kind !== "string") return false;
-  const suffix = kind.slice(kind.lastIndexOf(".") + 1);
-  return typeCapableNames(declarations).has(suffix);
+  const index = kindIndexOf(declarations);
+  return (index.byName.get(kind.slice(kind.lastIndexOf(".") + 1)) ?? []).some(index.isType);
 }
 
 /**
@@ -687,7 +730,7 @@ export function resolveContextAnnotations(
           : (names.declarationsOf(ref.name).find((m) => m.kind === ref.kind) ?? crossedDeclaration(ref, manifestRoot, referenceHost))
       ) as Record<string, any> | undefined;
       if (refManifest) {
-        const resolved = refFromSchema(refManifest, segments, declarations, referenceHost);
+        const resolved = refFromSchema(foldedShape(declarations)(refManifest), segments, declarations, referenceHost);
         if (resolved) return keepDeclaredNullability(schema, resolved);
       }
       // The instance declares nothing, so fall back to its KIND's declaration —
@@ -774,6 +817,16 @@ function keepDeclaredNullability(
   const own = resolved.type ?? (Array.isArray(node.type) ? node.type.filter((t: unknown) => t !== "null") : node.type);
   const types = own === undefined ? [] : Array.isArray(own) ? own : [own];
   return types.length === 0 ? { ...resolved, nullable: true } : { ...resolved, type: [...types, "null"] };
+}
+
+const foldedShapes = new WeakMap<DeclarationRequests, (declaration: Record<string, any>) => Record<string, any>>();
+
+/** A named shape with its `extends` parents folded into its `schema`, as a
+ *  read across a reference sees it; any other declaration as written. */
+function foldedShape(requests: DeclarationRequests): (declaration: Record<string, any>) => Record<string, any> {
+  let read = foldedShapes.get(requests);
+  if (!read) foldedShapes.set(requests, (read = namedShapeReading(requests)));
+  return read;
 }
 
 /**

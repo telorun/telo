@@ -1,0 +1,26 @@
+# Its exported operation announces detached, so its own handler's operation
+# runs outside the transaction it needs.
+kind: Telo.Library
+metadata: { name: WhollyInside }
+imports: { Z: ../../../zone-resource-inputs/kinds, Co: ../../../co-referrers/kinds, F: ../../kinds }
+exports: { resources: [run] }
+---
+kind: Z.Conn
+metadata: { name: conn }
+---
+kind: Co.Topic
+metadata: { name: Done }
+schema: { type: object }
+---
+kind: F.Detach
+metadata: { name: run }
+body: !ref announce
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Done
+---
+kind: Co.Listener
+metadata: { name: onDone }
+topic: !ref Done
+invoke: { kind: Z.Op, connection: !ref conn }

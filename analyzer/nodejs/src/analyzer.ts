@@ -1,3 +1,6 @@
+import { scopedImportsByModule } from "./flatten-for-analyzer.js";
+import { scopedImportKindMessage } from "./scoped-import-identity.js";
+import { scopedImportNameCollisions } from "./validate-scoped-imports.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import {
   canonicalTypeSchemaId,
@@ -370,6 +373,9 @@ import { keyedTranslationsOf } from "./keyed-translations.js";
 import { importNeedsSlotSchema, needTableDiagnostics, registeredNeedTable } from "./validate-needs.js";
 import { observesProblems } from "./observing-slot.js";
 import { outputToProblems } from "./output-to-slot.js";
+import { canonicalKindOf, coReferrerCallProblems } from "./co-referrer-slot.js";
+import { coReferrerScopedDiagnostics } from "./validate-co-referrers.js";
+import { coReferrerStandIns } from "./co-referrer-stand-ins.js";
 import { validateResourceInputs } from "./validate-resource-inputs.js";
 import { validateExports } from "./validate-exports.js";
 import { validateTemplateBody } from "./validate-template-body.js";
@@ -4353,7 +4359,7 @@ export class StaticAnalyzer {
     // run keeps the others in a layer of its own, and outside a run they are
     // withheld — a key reaches one only through its door.
     const scopeDefs = scopeRegistry._context().definitions!;
-    const isNamedShape = (m: ResourceManifest): boolean => definitionOf(m, m)?.capability === "Telo.Type";
+    const isNamedShape = (m: ResourceManifest): boolean => inheritedCapability(definitionOf(m, m), (k) => scopeDefs.resolve(k)) === "Telo.Type";
     // A warm boot (`skipValidation`) judges nothing, but promotes the same
     // shapes a cold one does: classified over the union all the same.
     const shapeUnion =
@@ -7318,7 +7324,7 @@ export class StaticAnalyzer {
       }
       const scope = declaringModuleScope(ownModule, aliases, { aliasesByModule, rootModules });
       const canonicalKind = scope.resolveKind(m.kind as string) ?? (m.kind as string);
-      if (defs.resolve(canonicalKind)?.capability !== "Telo.Type") return undefined;
+      if (inheritedCapability(defs.resolve(canonicalKind), (k) => defs.resolve(k)) !== "Telo.Type") return undefined;
       return { ownModule, typeName: m.metadata.name as string, scope };
     };
 
@@ -7734,6 +7740,12 @@ export class StaticAnalyzer {
       }
     }
 
+    // The `callsCoReferrers` fan-out is closed-world at the assembly root: each
+    // imported library's co-referrers, holders and the paths reaching them join
+    // the set as that library's code.
+    const standIns = coReferrerStandIns(manifests, options?.moduleDocuments ?? [], { defs, aliases, aliasesByModule });
+    if (standIns.length > 0) manifests = [...manifests, ...standIns];
+
     // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
     const allManifests = normalizeInlineResources(manifests, defs, aliases, aliasesByModule, (definition, entry, keys) => {
       const expansion = templateVariants.get(templateKeyOf(definition))?.variant.expansion;
@@ -7759,6 +7771,7 @@ export class StaticAnalyzer {
       ...collectedMembers.kindDocuments,
     ]);
     allManifests.push(...collectedMembers.analysed.map((member) => member.declaration));
+    diagnostics.push(...scopedImportNameCollisions(allManifests as unknown as ResourceManifest[], rootModules));
 
     // Every consumer of a template body holding an expansion construct, with
     // that body as the consumer expands it in this configuration.
@@ -7874,6 +7887,7 @@ export class StaticAnalyzer {
       (callGraphMemo ??= buildCallGraph(allManifests as unknown as ResourceManifest[], defs, {
         aliases,
         aliasesByModule,
+        libraries: options?.moduleDocuments,
       }));
 
     /**
@@ -7913,6 +7927,7 @@ export class StaticAnalyzer {
       if (!node) return [];
       const out: Referrer[] = [];
       for (const edge of graph.edgesTo(node.id)) {
+        if (edge.coReferrer) continue;
         const from = graph.nodes.get(edge.from);
         if (!from) continue;
         const owner = from.type === "step" ? graph.nodes.get(from.owner) : from;
@@ -7943,6 +7958,19 @@ export class StaticAnalyzer {
         if (ownModule && !rootModules.has(ownModule)) continue;
         diagnostics.push(refSlotIssueDiagnostic(issue));
       }
+
+      // A co-referrer declared in a scope exists only while the scope runs, so
+      // no dispatch through a `callsCoReferrers` slot can reach it.
+      diagnostics.push(
+        ...coReferrerScopedDiagnostics(getCallGraph(), defs, rootModules, reach, (m) => {
+          const kind = m.kind as string;
+          const canonical = defs.resolve(kind)
+            ? kind
+            : moduleAliasScope(m.metadata, aliases, aliasesByModule)?.resolveKind(kind);
+          const definition = canonical ? defs.resolve(canonical) : undefined;
+          return definition ? canonicalKindOf(definition) : undefined;
+        }),
+      );
 
       // Zone requirements — a projection over the same graph: propagate along
       // `call` edges, discharge at providing slots under correlation, fire at
@@ -8819,6 +8847,14 @@ export class StaticAnalyzer {
       }
     };
 
+    // A kind spelled through a scoped `Telo.Import`, which names no module.
+    let scopedImports: ReturnType<typeof scopedImportsByModule> | undefined;
+    const scopedImportNamed = (m: ResourceManifest) => {
+      const dot = m.kind.indexOf(".");
+      if (dot <= 0) return undefined;
+      scopedImports ??= scopedImportsByModule(allManifests as ResourceManifest[]);
+      return scopedImports.get((m.metadata as { module?: string } | undefined)?.module ?? "")?.get(m.kind.slice(0, dot));
+    };
     // Validate each non-definition, non-system resource; its rules are this
     // configuration's.
     for (const m of allManifests) {
@@ -8903,6 +8939,17 @@ export class StaticAnalyzer {
         continue;
       }
       if (declared.status === "undefined") {
+        const scopedImport = scopedImportNamed(m);
+        if (scopedImport) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "UNDEFINED_KIND",
+            source: SOURCE,
+            message: scopedImportKindMessage(m.kind, scopedImport),
+            data: { resource, filePath, path: "kind" },
+          });
+          continue;
+        }
         const suggestedKind = computeSuggestKind(m.kind, aliases, defs);
         const hint = suggestedKind ? ` Did you mean '${suggestedKind}'?` : "";
         diagnostics.push({
@@ -9692,6 +9739,8 @@ export class StaticAnalyzer {
           code: "PATH_PARAMS_FOR_INVALID",
           ...problem,
         })),
+        ...coReferrerCallProblems(m as unknown as ResourceDefinition, m.schema, (kind) => defs.resolve(kind), true)
+          .problems,
       ];
       for (const problem of kindProblems) pushKindDocumentProblem(m, ownModule, problem);
     }

@@ -18,6 +18,7 @@ import {
   type DeclaredScope,
 } from "./scope-declarations.js";
 import { declarationOf, type RefResolution } from "./reference-resolution.js";
+import { isScopedImport, scopedImportReach } from "./scoped-import-identity.js";
 import { addressOf, importPathOf, importPathThrough, scopeSiteAt } from "./scoped-name-resolver.js";
 
 /** The slice of the definition registry this pass needs: a resource's concrete
@@ -132,7 +133,40 @@ function resolveReferences(
       // written, resolved by name and judged by kind by no pass.
       return t.status === "resolved" ? resolvedReference(t.declaration.kind as string, name, undefined, indexes) : undefined;
     }
+    // A `Telo.Import` a scope of the chain declares gives the scope its exports,
+    // innermost first, ahead of the module's own imports.
+    const scoped = scopedImportAt(alias, at);
+    if (scoped) return resolveScopedExport(scoped, alias, name, at.writer);
     return resolveExported(alias, name, aliases, at.writer);
+  };
+
+  /** The scoped `Telo.Import` named `alias` read from `at`, when a scope of the
+   *  chain declares one. */
+  const scopedImportAt = (
+    alias: string,
+    at: { module: string | undefined; within: ScopeSite | undefined },
+  ): ResourceManifest | undefined => {
+    if (!at.within) return undefined;
+    const t = names.locate(alias, at.module, at.within);
+    return t.status === "resolved" && t.address.scope && isScopedImport(t.declaration) ? t.declaration : undefined;
+  };
+
+  /** `Member.name` → the instance a scoped import's library instance exports. */
+  const resolveScopedExport = (
+    member: ResourceManifest,
+    alias: string,
+    name: string,
+    writer: ResourceManifest | undefined,
+  ): ResolvedRef | undefined => {
+    const reach = scopedImportReach(member, writer);
+    if (!reach) return undefined;
+    const found = exportedBy.inModule(name, reach.module, reach.importPath);
+    if (found.status !== "resolved") return undefined;
+    const rawKind = found.declaration.kind as string;
+    const foreignKind = rawKind.startsWith("Self.")
+      ? `${reach.module}.${rawKind.slice("Self.".length)}`
+      : aliasesByModule?.get(reach.module)?.resolveKind(rawKind) ?? rawKind;
+    return resolvedReference(foreignKind, name, alias);
   };
 
   /** `Alias.name` → the instance the import aliased `Alias` exports, read through

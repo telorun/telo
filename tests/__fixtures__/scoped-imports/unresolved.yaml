@@ -1,0 +1,11 @@
+# A scope imports a source that names no module.
+kind: Telo.Application
+metadata: { name: ScopedUnresolvedImport }
+targets: [!ref seq]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./missing }
+steps:
+  - { name: noop, value: 1 }

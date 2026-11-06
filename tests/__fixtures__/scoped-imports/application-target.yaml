@@ -1,0 +1,11 @@
+# A scope imports an application.
+kind: Telo.Application
+metadata: { name: ScopedApplicationTarget }
+targets: [!ref seq]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./own-event.yaml }
+steps:
+  - { name: noop, value: 1 }

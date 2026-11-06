@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata: { name: PlainSchema, version: 1.0.0 }
+imports: { Domain: ../../ }
+---
+kind: Telo.JsonSchema
+metadata: { name: Shape }
+schema: { type: object }
+---
+kind: Telo.Sequence
+metadata: { name: target }
+steps: []
+---
+kind: Domain.Emit
+metadata: { name: announce }
+event: !ref Shape
+---
+kind: Domain.Handler
+metadata: { name: handle }
+event: !ref Shape
+invoke: !ref target

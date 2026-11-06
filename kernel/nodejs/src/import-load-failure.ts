@@ -21,9 +21,9 @@ export function importLoadFailure(graph: LoadedGraph): RuntimeError {
 }
 
 /**
- * The same refusal for import failures no graph recorded — a `Telo.Import`
- * the graph walk never reached, refused by the import controller when it loads
- * the target. `entrySource` is the file a failure with no `fromSource` is
+ * The same refusal for import failures no graph recorded — a `Telo.Import` no
+ * load walked (one in a scope a controller builds programmatically), refused by
+ * the import controller when it loads the target. `entrySource` is the file a failure with no `fromSource` is
  * reported against.
  */
 export function importFailure(

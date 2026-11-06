@@ -1,0 +1,32 @@
+# A durable wait in a handler of an emit inside a transaction.
+kind: Telo.Application
+metadata: { name: DurableWaitInHandler, version: 1.0.0 }
+imports:
+  Sql: ../../../sql
+  SQLite: ../../../sqlite
+  Durable: ../../../durable
+  Domain: ../../
+targets: [{ invoke: !ref createUser }]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Domain.Event
+metadata: { name: UserCreated }
+schema: { type: object }
+---
+kind: Domain.Handler
+metadata: { name: waits }
+event: !ref UserCreated
+invoke: { kind: Durable.Sleep, for: 1h }
+---
+kind: Sql.Transaction
+metadata: { name: createUser }
+connection: !ref db
+steps:
+  kind: Telo.Sequence
+  steps:
+    - name: announce
+      invoke: { kind: Domain.Emit, event: !ref UserCreated }
+      inputs: {}

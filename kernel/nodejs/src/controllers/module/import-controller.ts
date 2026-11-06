@@ -96,9 +96,9 @@ export async function create(
   // manifests that somehow lack a stamped source keeps the old behaviour for edge cases.
   const base = (resource.metadata?.source as string | undefined) ?? ctx.moduleContext.source;
 
-  // The loader's own per-import step, so an import the graph walk never reached
-  // (one declared in a `with:` scope) is resolved, loaded and refused exactly as
-  // one it did reach. No alias is handed over: this one is guarded above, and an
+  // The loader's own per-import step, so an import no load walked (one in a scope
+  // a controller builds programmatically) is resolved, loaded and refused exactly
+  // as one it did reach. No alias is handed over: this one is guarded above, and an
   // import no `imports:` entry declares has no entry to locate its refusal at.
   //
   // Resolution goes through the kernel's helper — the loader's, plus the version
@@ -200,9 +200,11 @@ export async function create(
   // Where this module instance sits in the import tree, which is what names its
   // needs: beneath the importer's own path, or — for a singleton — beneath the
   // library's name directly under the root.
+  // A `Telo.Import` declared in a scope run sits beneath that run's holders.
+  const scopeRun = ctx.scopeRunContext();
   const needPath = readLibraryLifecycle(libraryDocument) === "shared"
     ? [libraryDocument.metadata.name as string]
-    : [...(ctx.moduleContext as unknown as ModuleContext).needPath, alias];
+    : [...(ctx.moduleContext as unknown as ModuleContext).needPath, ...(scopeRun?.scopeHolders ?? []), alias];
   // What fulfils each need the library declares — the need table refused every
   // defect here at load; these are its backstops for a load that never ran it.
   const { bindings: needBindings, unrequired: unrequiredNeeds } = bindNeedSupplies(
@@ -562,6 +564,21 @@ export async function create(
   // this controller should be able to produce.
   await ctx
     .effect(`import alias ${alias}`, async () => {
+      if (scopeRun) {
+        // Instance names for the scope run only — never a module alias, so no
+        // kind or module function resolves through it.
+        const unregister = scopeRun.registerScopedImport(alias, {
+          names: new Set(exportedResourceNames),
+          terminal: (name) => childCtx.getTerminalExport(name),
+        });
+        return {
+          result: undefined,
+          inverse: () => {
+            unregister();
+            if (!isShared) ctx.moduleContext.detachChild(child);
+          },
+        };
+      }
       ctx.registerModuleImport(alias, targetModule, exportedKindSuffixes);
 
       // Publish the child's exported instances to the parent so cross-module `!ref Alias.name`
@@ -635,11 +652,37 @@ export async function create(
           // inside another library borrows it during that library's init — and
           // the nested one's `init()` can then run first.
           await (entry.initialized ??= entry.build());
+          // The root owns it wherever first reached: a scope run instantiating
+          // it after boot puts it in the application's co-referrer tree.
+          if (scopeRun) ctx.reindexCoReferrers();
           // No inverse: the ROOT owns a singleton, and an import that gave it up
           // would close a library its siblings still hold.
           return { result: undefined };
         }
         await buildLibrary();
+        if (scopeRun) {
+          // This run's own instance: its co-referrers are indexed for the run.
+          let withdraw: () => void;
+          try {
+            withdraw = ctx.indexScopedLibrary(childCtx, {
+              alias,
+              holder: scopeRun.scopeHolders[scopeRun.scopeHolders.length - 1] ?? "",
+              field: scopeRun.scopeField ?? "",
+            });
+          } catch (error) {
+            await child.teardownResources();
+            throw error;
+          }
+          // A `shared` library its build first instantiated is the root's.
+          ctx.reindexCoReferrers();
+          return {
+            result: undefined,
+            inverse: () => {
+              withdraw();
+              return child.teardownResources();
+            },
+          };
+        }
         return { result: undefined, inverse: () => child.teardownResources() };
       }),
   };
@@ -699,6 +742,16 @@ function borrowSharedLibrary(
     init: (importCtx) =>
       importCtx
         .effect(`import alias ${alias}`, async () => {
+          const scopeRun = ctx.scopeRunContext();
+          if (scopeRun) {
+            return {
+              result: undefined,
+              inverse: scopeRun.registerScopedImport(alias, {
+                names: new Set(exportedResourceNames),
+                terminal: (name) => childCtx.getTerminalExport(name),
+              }),
+            };
+          }
           ctx.registerModuleImport(
             alias,
             entry.module,

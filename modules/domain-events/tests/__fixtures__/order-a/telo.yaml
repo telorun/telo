@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata: { name: OrderA, version: 0.1.0 }
+imports: { Domain: ../../../, Bus: ../bus-shared, OrderC: ../order-c }
+---
+kind: Domain.Handler
+metadata: { name: aOne }
+event: !ref Bus.Tick
+invoke: { kind: Telo.Sequence, steps: [] }
+---
+kind: Domain.Handler
+metadata: { name: aTwo }
+event: !ref Bus.Tick
+invoke: { kind: Telo.Sequence, steps: [] }
