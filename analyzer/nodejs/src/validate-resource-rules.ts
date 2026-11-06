@@ -35,6 +35,7 @@ import {
 import {
   bindingFailureReason,
   isSilentBindingFailure,
+  type EntryResult,
   type PeerBinder,
   type PeerBindingFailure,
 } from "./peer-binding.js";
@@ -45,9 +46,11 @@ import {
   celSourceOf,
   findDynamicRead,
   type DynamicLeaf,
+  isSlotPointer,
   isTaggedCondition,
   parseRulePointer,
   pointerSegments,
+  pointerToPath,
   readRawResourceRules,
   readResourceRules,
   resolveRuleSubjects,
@@ -218,12 +221,15 @@ export function ruleCollectionSchemas(
 }
 
 /** The schemas a reference slot's kind may hold — the kind's and each of its
- *  implementations'. */
-export type KindSchemas = (kind: string) => readonly Record<string, any>[];
+ *  implementations' — each with the module declaring it. */
+export type KindSchemas = (
+  kind: string,
+) => readonly { schema: Record<string, any>; module: string | undefined }[];
 
 /**
  * Whether a rule's `resolve:` pointer names something the schema declares: a
- * field at each segment (`*` for every item or value), continuing past a
+ * field at each segment (`*` for every item or value), following local
+ * references and, through `shapes`, named ones, and continuing past a
  * reference slot inside every kind the slot may hold. `unknown` where a slot's
  * kinds cannot be read here.
  */
@@ -231,21 +237,41 @@ export function rulePointerReaches(
   schema: unknown,
   pointer: string,
   kindSchemas?: KindSchemas,
+  reading?: { module: string | undefined; shapes?: RuleShapeLookup },
 ): "ok" | "absent" | "unknown" {
   const segments = pointerSegments(pointer);
   if (!segments) return "absent";
+  const shapes = reading?.shapes;
   const seen = new Set<unknown>();
-  const walk = (node: unknown, rest: readonly string[]): "ok" | "absent" | "unknown" => {
+  const following = new Set<object>();
+  const walk = (place: SchemaPlace | undefined, node: unknown, rest: readonly string[]): "ok" | "absent" | "unknown" => {
     if (!isObject(node)) return rest.length === 0 && node !== undefined ? "ok" : "absent";
     if (rest.length === 0) return "ok";
+    const at: SchemaPlace = { node, root: place?.root ?? node, module: place?.module };
     const slot = readRefSlot(node as Record<string, any>);
     if (slot) {
       if (!kindSchemas || slot.kinds.length === 0) return "unknown";
       const schemas = slot.kinds.flatMap((kind) => kindSchemas(kind));
       if (schemas.length === 0 || seen.has(node)) return "unknown";
       seen.add(node);
-      const verdicts = schemas.map((s) => walk(s, rest));
+      const verdicts = schemas.map((s) => walk({ node: s.schema, root: s.schema, module: s.module }, s.schema, rest));
       return verdicts.includes("ok") ? "ok" : verdicts.includes("unknown") ? "unknown" : "absent";
+    }
+    const verdicts: Array<"ok" | "absent" | "unknown"> = [];
+    const ref = node.$ref;
+    if (typeof ref === "string" && !following.has(node)) {
+      following.add(node);
+      if (ref.startsWith("#")) {
+        const target = resolveSchemaPointer(at.root, ref);
+        if (isObject(target)) verdicts.push(walk(at, target, rest));
+      } else if (shapes) {
+        const shape = shapes(ref, at.module);
+        if (shape) verdicts.push(walk({ node: shape.schema, root: shape.schema, module: shape.module }, shape.schema, rest));
+        else verdicts.push("unknown");
+      } else {
+        verdicts.push("unknown");
+      }
+      following.delete(node);
     }
     const [segment, ...tail] = rest;
     const properties = isObject(node.properties) ? node.properties : undefined;
@@ -255,15 +281,14 @@ export function rulePointerReaches(
         : (properties?.[segment!] ??
           (node.type === "array" ? node.items : undefined) ??
           (isObject(node.additionalProperties) ? node.additionalProperties : undefined));
-    const verdicts: Array<"ok" | "absent" | "unknown"> = [];
-    if (next !== undefined) verdicts.push(walk(next, tail));
+    if (next !== undefined) verdicts.push(walk(at, next, tail));
     for (const key of ["anyOf", "oneOf", "allOf"] as const) {
       const branches = node[key];
-      if (Array.isArray(branches)) for (const branch of branches) verdicts.push(walk(branch, rest));
+      if (Array.isArray(branches)) for (const branch of branches) verdicts.push(walk(at, branch, rest));
     }
     return verdicts.includes("ok") ? "ok" : verdicts.includes("unknown") ? "unknown" : "absent";
   };
-  return walk(schema, segments);
+  return walk(isObject(schema) ? { node: schema, root: schema, module: reading?.module } : undefined, schema, segments);
 }
 
 /** True when a schema node describes something a rule can iterate. Unknown or
@@ -314,6 +339,9 @@ export function validateResourceRuleDeclarations(
   shapes?: RuleShapeLookup,
   /** For a merge-form child, each code it inherits and the kind declaring it. */
   inherited?: ReadonlyMap<string, string>,
+  /** Whether this kind declares ONE reference slot at a `coReferrers:` pointer —
+   *  `unknown` when the kind cannot be judged here. Omit to skip the check. */
+  ownSlot?: (pointer: string) => "ok" | "absent" | "unknown",
 ): ResourceRuleIssue[] {
   const own = (manifest as unknown as Record<string, unknown>).schema;
   const schema = effectiveSchema ?? own;
@@ -418,7 +446,12 @@ export function validateResourceRuleDeclarations(
         entry.resolve.forEach((pointer: unknown, i: number) => {
           if (typeof pointer !== "string" || !pointerSegments(pointer)) {
             issue(`${at}.resolve[${i}]`, "Each 'resolve' entry must be a JSON Pointer starting with '/'.");
-          } else if (rulePointerReaches(schema, pointer, kindSchemas) === "absent") {
+          } else if (
+            rulePointerReaches(schema, pointer, kindSchemas, {
+              module: (manifest.metadata as { module?: string } | undefined)?.module,
+              shapes,
+            }) === "absent"
+          ) {
             issue(
               `${at}.resolve[${i}]`,
               `'resolve' names '${pointer}', which this kind's schema does not declare. It must ` +
@@ -427,6 +460,24 @@ export function validateResourceRuleDeclarations(
             );
           }
         });
+      }
+    }
+
+    if (entry.coReferrers !== undefined) {
+      if (!isSlotPointer(entry.coReferrers)) {
+        issue(
+          `${at}.coReferrers`,
+          "'coReferrers' is a JSON Pointer naming one reference slot of this kind (e.g. /store); the " +
+            "other resources judged by this rule whose slot there names the same declaration bind as " +
+            "'coReferrers'.",
+        );
+      } else if (ownSlot?.(entry.coReferrers) === "absent") {
+        issue(
+          `${at}.coReferrers`,
+          `'coReferrers' names '${entry.coReferrers}', which is not a reference slot this kind declares. ` +
+            "It must name one reference — not a collection of them, nor a plain field — or no other " +
+            "resource is ever found through it and the rule never sees one.",
+        );
       }
     }
 
@@ -472,12 +523,63 @@ export function resourceRuleCallIssues(
   return issues;
 }
 
+/** One declaration a `coReferrers:` rule binds, with the kind it is read as —
+ *  the same object for as long as the set it was found in stands, so it is
+ *  bound once however many resources of the set read it. */
+export interface CoReferrer {
+  readonly manifest: ResourceManifest;
+  readonly kind: string;
+}
+
+/**
+ * The declarations other than `self` that `rule` judges whose slot at `slot` (a
+ * concrete path) names `target` — supplied by the caller, which holds the
+ * referrers of every declaration and the definition registry.
+ */
+export type CoReferrerGroup = (
+  rule: ResourceRule,
+  self: ResourceManifest,
+  target: ResourceManifest,
+  slot: string,
+) => readonly CoReferrer[];
+
+const boundCoReferrers = new WeakMap<CoReferrer, EntryResult>();
+
+/**
+ * `coReferrers` for one resource: each declaration of the rule's group bound by
+ * the shared binder. What `self`'s slot holds that names no declaration binds a
+ * mark in the set's place, judged where the condition reads it.
+ */
+function coReferrersBinding(
+  manifest: ResourceManifest,
+  kind: string,
+  rule: ResourceRule & { coReferrers: string },
+  binder: PeerBinder | undefined,
+  group: CoReferrerGroup | undefined,
+): { ok: true; value: unknown } | { ok: false; failure: PeerBindingFailure } {
+  const slot = pointerToPath(rule.coReferrers);
+  if (!binder || !group) return { ok: false, failure: { reason: "unknown-shape", at: slot } };
+  const target = binder.slotTarget(manifest, kind, rule.coReferrers);
+  if (!target.ok) return target;
+  if (target.mark) return { ok: true, value: target.mark };
+  if (!target.declaration) return { ok: true, value: [] };
+  const values: unknown[] = [];
+  for (const other of group(rule, manifest, target.declaration, slot)) {
+    let bound = boundCoReferrers.get(other);
+    if (!bound) boundCoReferrers.set(other, (bound = binder.coReferrer(other.manifest, other.kind)));
+    if (!bound.ok) return bound;
+    values.push(bound.value);
+  }
+  return { ok: true, value: values };
+}
+
 /**
  * Run a kind's rules against one resource.
  *
  * `self` binds the resource, `this` the element under test — the two coexist in
  * cel-js, which is what lets a rule correlate an element against the whole
- * (`c in self.columns`) with no path language.
+ * (`c in self.columns`) with no path language — and `coReferrers`, with
+ * `coReferrers:`, the other resources the rule judges sharing `self`'s target.
  */
 export function evaluateResourceRules(
   manifest: ResourceManifest,
@@ -496,6 +598,9 @@ export function evaluateResourceRules(
   binder?: PeerBinder,
   /** The resource's kind, as the binder's reference-reach lookup spells it. */
   kind: string = manifest.kind,
+  /** The groups a `coReferrers:` rule binds. Without one such a rule reports as
+   *  unbound. */
+  coReferrersOf?: CoReferrerGroup,
 ): ResourceRuleFinding[] {
   const rules = Array.isArray(definitionSchema)
     ? (definitionSchema as readonly ResourceRule[])
@@ -511,6 +616,15 @@ export function evaluateResourceRules(
       continue;
     }
     const self = bound.self;
+    const bindings: Record<string, unknown> = {};
+    if (rule.coReferrers !== undefined) {
+      const co = coReferrersBinding(manifest, kind, rule as ResourceRule & { coReferrers: string }, binder, coReferrersOf);
+      if (!co.ok) {
+        findings.push({ kind: "unbound", rule, failure: co.failure });
+        continue;
+      }
+      bindings.coReferrers = co.value;
+    }
     const subjects =
       rule.in === undefined ? [{ path: "", value: self }] : resolveRuleSubjects(self, rule.in);
     // `undefined` means the pointer resolved to a scalar — a declaration defect
@@ -528,6 +642,7 @@ export function evaluateResourceRules(
     // The budget stops the loop, so it is asked before a subject is evaluated:
     // one slow evaluation with nothing left to judge has skipped nothing.
     const started = Date.now();
+    let unboundReported = false;
     for (const subject of subjects) {
       const elapsed = Date.now() - started;
       if (elapsed > RESOURCE_RULE_BUDGET_MS) {
@@ -542,7 +657,13 @@ export function evaluateResourceRules(
       // Only the nodes this condition READS decide whether it can run — see
       // `readNodes`. Scanning the whole subject would disable every
       // resource-wide rule on any manifest containing one unrelated expression.
-      const dynamic = findDynamicRead(chains, { self, this: subject.value });
+      const dynamic = findDynamicRead(chains, { self, this: subject.value, ...bindings });
+      if (dynamic?.failure) {
+        // About the rule rather than one subject, so reported once.
+        if (!unboundReported) findings.push({ kind: "unbound", rule, failure: dynamic.failure });
+        unboundReported = true;
+        continue;
+      }
       if (dynamic !== undefined) {
         findings.push({ kind: "skipped", rule, path: subject.path, dynamic });
         continue;
@@ -553,6 +674,7 @@ export function evaluateResourceRules(
           self,
           this: subject.value,
           key: subject.key ?? null,
+          ...bindings,
           ...(functions ? { [MODULE_CALL_DISPATCH_KEY]: functions } : {}),
         });
       } catch (err) {

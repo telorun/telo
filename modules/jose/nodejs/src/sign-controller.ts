@@ -1,13 +1,14 @@
 import { randomValue } from "@telorun/crypto";
-import { celTimestampFromMillis, toPlainJson } from "@telorun/sdk";
+import { celTimestampFromMillis, InvokeError, toPlainJson } from "@telorun/sdk";
 import { SignJWT, type JWTPayload } from "jose";
 import { durationSetting } from "./duration-setting.js";
-import { isJoseKeySet } from "./key-set-contract.js";
+import { ERR_JOSE_KEYSET_UNAVAILABLE, isJoseKeySet, type JoseKeySet } from "./key-set-contract.js";
 import { operationController, type Named } from "./operation-controller.js";
 
 interface SignResource extends Named {
   keys: unknown;
   type?: string;
+  embedPublicKey?: boolean;
   issuer?: string;
   audience?: string | string[];
   expiresIn?: unknown;
@@ -24,6 +25,17 @@ interface SignInputs {
 
 const DEFAULT_EXPIRES_IN_MS = 15 * 60 * 1000;
 
+async function publicKeyOf(keys: JoseKeySet, kid: string, describe: string) {
+  const jwk = (await keys.publicKeys()).keys.find((candidate) => candidate.kid === kid);
+  if (!jwk) {
+    throw new InvokeError(
+      ERR_JOSE_KEYSET_UNAVAILABLE,
+      `${describe}: 'embedPublicKey' needs an asymmetric key, and key '${kid}' has no public part.`,
+    );
+  }
+  return jwk;
+}
+
 export const { register, create } = operationController<SignResource, SignInputs, unknown>(
   "Jose.Sign",
   (config, ctx, describe) => {
@@ -37,8 +49,9 @@ export const { register, create } = operationController<SignResource, SignInputs
       const expiresInMs = durationSetting(inputs.expiresIn, defaultExpiresInMs, () => `${describe}: input 'expiresIn'`);
       const expiresAt = nowSeconds + Math.ceil(expiresInMs / 1000);
 
+      const jwk = config.embedPublicKey ? await publicKeyOf(keys, signer.kid, describe) : undefined;
       const jwt = new SignJWT(toPlainJson(inputs.claims ?? {}) as JWTPayload)
-        .setProtectedHeader({ alg: signer.alg, kid: signer.kid, typ: config.type ?? "JWT" })
+        .setProtectedHeader({ alg: signer.alg, kid: signer.kid, typ: config.type ?? "JWT", ...(jwk ? { jwk } : {}) })
         .setIssuedAt(nowSeconds)
         .setExpirationTime(expiresAt);
       if (notBeforeMs > 0) jwt.setNotBefore(nowSeconds + Math.floor(notBeforeMs / 1000));

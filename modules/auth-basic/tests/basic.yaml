@@ -1,0 +1,126 @@
+kind: Telo.Application
+metadata:
+  name: AuthBasicTest
+  version: 1.0.0
+  description: |
+    `AuthBasic.Verifier` from `Http.FromBasic` over `Identity.DeclaredUsers` with
+    hashes from `secrets:`: the right password passes and the handler reads
+    `request.principal`; a wrong password and an unknown user are the same 401,
+    status, body and `WWW-Authenticate` challenge alike; so is a request with no
+    credentials.
+imports:
+  AuthBasic: ../
+  Identity: ../../identity
+  Crypto: ../../crypto
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Assert: ../../assert
+secrets:
+  aliceHash: { env: AUTH_BASIC_TEST_ALICE_HASH, type: string, default: "$2a$04$bWQ5OzYiRTH.LdL6b33ZJuPX1wW1ae1I6UZ2AOsrVwTEZZpEt2lUy" }
+  bobHash: { env: AUTH_BASIC_TEST_BOB_HASH, type: string, default: "$2a$04$AM8wyNRLqw7bqDv1kYgQ0.IBj5RIn6yF63NNWUp/hnItF9TKj6Ra2" }
+targets:
+  - !ref test
+---
+kind: Crypto.PasswordHash
+metadata: { name: hasher }
+algorithm: bcrypt
+parameters: { bcrypt: { cost: 4 } }
+---
+kind: Identity.DeclaredUsers
+metadata: { name: users }
+hasher: !ref hasher
+users:
+  alice:
+    passwordHash: !cel "secrets.aliceHash"
+    roles: [admin]
+    scopes: [orders:read]
+  bob:
+    passwordHash: !cel "secrets.bobHash"
+    subject: user-bob
+---
+kind: AuthBasic.Verifier
+metadata: { name: basic }
+passwords: !ref users
+realm: Orders
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /me, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              subject: !cel "request.principal.subject"
+              roles: !cel "request.principal.roles"
+              scopes: !cel "request.principal.scopes"
+              via: !cel "request.principal.via"
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:9361
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9361 }
+    mounts:
+      - path: /api
+        mount: !ref api
+        authentication:
+          verifiers:
+            - verifier: !ref basic
+              from: { kind: Http.FromBasic }
+targets:
+  - !ref server
+steps:
+  # alice:alice-pass
+  - name: right
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { authorization: "Basic YWxpY2U6YWxpY2UtcGFzcw==" } }
+  # bob:bob-pass
+  - name: subjectDeclared
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { authorization: "Basic Ym9iOmJvYi1wYXNz" } }
+  # alice:wrong
+  - name: wrong
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { authorization: "Basic YWxpY2U6d3Jvbmc=" } }
+  # mallory:alice-pass
+  - name: unknown
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { authorization: "Basic bWFsbG9yeTphbGljZS1wYXNz" } }
+  - name: anonymous
+    invoke: !ref call
+    inputs: { url: /api/me }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        right: !cel "steps.right.result.body"
+        subjectDeclared: !cel "steps.subjectDeclared.result.body.subject"
+        wrong:
+          status: !cel "steps.wrong.result.status"
+          challenge: !cel "steps.wrong.result.headers['www-authenticate']"
+        unknown:
+          status: !cel "steps.unknown.result.status"
+          challenge: !cel "steps.unknown.result.headers['www-authenticate']"
+        sameBody: !cel "steps.wrong.result.body == steps.unknown.result.body"
+        anonymous:
+          status: !cel "steps.anonymous.result.status"
+          challenge: !cel "steps.anonymous.result.headers['www-authenticate']"
+      expected:
+        right: { subject: alice, roles: [admin], scopes: ["orders:read"], via: basic }
+        subjectDeclared: user-bob
+        wrong: { status: 401, challenge: 'Basic realm="Orders", charset="UTF-8"' }
+        unknown: { status: 401, challenge: 'Basic realm="Orders", charset="UTF-8"' }
+        sameBody: true
+        anonymous: { status: 401, challenge: 'Basic realm="Orders", charset="UTF-8"' }

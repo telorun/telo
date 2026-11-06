@@ -18,7 +18,7 @@ kind: Tavily.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18861" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18861" }
 ---
 kind: Run.Sequence
 metadata: { name: cursorRefusals }

@@ -1,0 +1,8 @@
+modules:
+  apps/authoring-agent: Added
+body: "The primer teaches inbound authentication: authentication and authorization on
+  the mount, request.principal and its nullability, credential sources versus verifiers,
+  scopes through a policy, protectedResource for MCP and the issuer a verifier declares,
+  sessions, API keys and Basic over declared users with the throttle, plus the new
+  kind-design annotations (referrer-typed and nullable-when bindings, outputTo,
+  catches-for raises, resource-rule coReferrers)."

@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata: { name: TokenIntoTrustedHeader, version: 1.0.0 }
+imports: { Auth: ../../ }
+targets:
+  - !ref test
+---
+kind: Auth.TrustedHeader
+metadata: { name: verifier }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: judge
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: abc }
+      confirmation: {}
+      resource: null

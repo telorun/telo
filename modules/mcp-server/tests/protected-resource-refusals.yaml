@@ -1,0 +1,62 @@
+kind: Telo.Application
+metadata:
+  name: McpProtectedResourceRefusalsTest
+  version: 1.0.0
+  description: |
+    An MCP endpoint mounted behind authentication that denies anonymous callers
+    needs the mount's protected-resource metadata, and a verifier declaring an
+    `issuer`. Each is reported by `telo check` where the server is written, under
+    whatever alias the server's module is imported, and refused when the endpoint
+    is mounted; a verifier of another module declaring an `issuer` is accepted.
+imports: { Assert: ../../assert }
+targets:
+  - !ref missing
+  - !ref missingAtRuntime
+  - !ref noIssuer
+  - !ref noIssuerAtRuntime
+  - !ref otherAlias
+  - !ref otherAliasAtRuntime
+  - !ref thirdPartyVerifier
+---
+kind: Assert.Manifest
+metadata: { name: missing }
+source: ./__fixtures__/protected-resource/missing/lib/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Http.Server/server at 'mounts[0].mount': required by Mcp.HttpEndpoint — serves an MCP endpoint behind authentication"
+---
+kind: Assert.Manifest
+metadata: { name: missingAtRuntime }
+source: ./__fixtures__/protected-resource/missing/telo.yaml
+expect: { errors: [], runFails: "[ERR_MCP_PROTECTED_RESOURCE_MISSING]" }
+---
+kind: Assert.Manifest
+metadata: { name: noIssuerAtRuntime }
+source: ./__fixtures__/protected-resource/no-issuer/telo.yaml
+expect: { errors: [], runFails: "[ERR_MCP_PROTECTED_RESOURCE_MISSING]" }
+---
+kind: Assert.Manifest
+metadata: { name: noIssuer }
+source: ./__fixtures__/protected-resource/no-issuer/lib/telo.yaml
+expect:
+  errors:
+    - { code: REFERRER_RULE_VIOLATED, message: "required by Mcp.HttpEndpoint" }
+---
+kind: Assert.Manifest
+metadata: { name: otherAlias }
+source: ./__fixtures__/protected-resource/other-alias/lib/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Web.Server/server at 'mounts[0].mount': required by Mcp.HttpEndpoint"
+---
+kind: Assert.Manifest
+metadata: { name: otherAliasAtRuntime }
+source: ./__fixtures__/protected-resource/other-alias/telo.yaml
+expect: { errors: [], runFails: "[ERR_MCP_PROTECTED_RESOURCE_MISSING]" }
+---
+kind: Assert.Manifest
+metadata: { name: thirdPartyVerifier }
+source: ./__fixtures__/protected-resource/third-party-verifier/lib/telo.yaml
+expect: { errors: [] }

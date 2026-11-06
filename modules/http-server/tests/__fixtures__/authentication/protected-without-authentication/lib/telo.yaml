@@ -1,0 +1,23 @@
+# `telo check` reports this here; a consumer's check sees nothing, so there the
+# server refuses itself when it is created.
+kind: Telo.Library
+metadata:
+  name: ProtectedWithoutAuthentication
+  version: 1.0.0
+  description: Test fixture exporting a server refused as PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION.
+imports: { Http: ../../../../../ }
+exports: { resources: [server] }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    returns: [{ status: 204 }]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: 8979 }
+mounts:
+  - path: /api
+    mount: !ref api
+    protectedResource: {}

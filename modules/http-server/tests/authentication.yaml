@@ -1,0 +1,443 @@
+kind: Telo.Application
+metadata:
+  name: AuthenticationTest
+  version: 1.0.0
+  description: |
+    A mount's `authentication` turns a credential into `request.principal`
+    through its verifiers in order, refuses a missing, malformed or failing
+    credential with one 401 carrying every challenge, and a policy's denial with
+    a 403 naming the missing scopes. A route overrides the mount key by key, an
+    author's `catches:` entry overrides a built-in rendering, a guard reads the
+    principal, an unreachable key set is a 503, and a non-Api mount is
+    protected the same way.
+include: [./__fixtures__/authentication/keys.yaml]
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Assert: ../../assert
+  AuthBearer: ../../auth-bearer
+  Authz: ../../authz
+  Jose: ../../jose
+  HttpDispatch: ../../http-dispatch
+  KvStoreMemory: ../../kv-store-memory
+targets:
+  - !ref test
+---
+kind: AuthBearer.Jwt
+metadata: { name: tokens }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: AuthBearer.Jwt
+metadata: { name: apiKeys }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: http://127.0.0.1:8971/api
+---
+kind: Jose.Sign
+metadata: { name: issue }
+keys: !ref issuerKeys
+type: at+jwt
+issuer: https://login.test
+audience: http://127.0.0.1:8971/api
+---
+kind: Jose.Sign
+metadata: { name: issueForGuarded }
+keys: !ref issuerKeys
+type: at+jwt
+issuer: https://login.test
+audience: http://127.0.0.1:8971/guarded
+---
+kind: Jose.Sign
+metadata: { name: issueForWeb }
+keys: !ref issuerKeys
+type: at+jwt
+issuer: https://login.test
+audience: http://127.0.0.1:8971/web
+---
+kind: Jose.Sign
+metadata: { name: issueForFiles }
+keys: !ref issuerKeys
+type: at+jwt
+issuer: https://login.test
+audience: http://127.0.0.1:8971/files
+---
+kind: Http.Api
+metadata: { name: webApi }
+routes:
+  - request: { path: /submit, method: POST }
+    returns:
+      - { status: 204 }
+---
+kind: Authz.CelPolicy
+metadata: { name: writers }
+rules:
+  - when: !cel "action != 'write' || (principal != null && 'orders:write' in principal.scopes)"
+  - when: !cel "true"
+    allow: false
+    reason: writing orders needs orders:write
+    requiredScopes: ["orders:write"]
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /me, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { subject: !cel "request.principal.subject" } } }
+  - request: { path: /optional, method: GET }
+    authentication: { anonymous: allow }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { who: !cel "request.principal != null ? request.principal.subject : 'anonymous'" }
+  - request: { path: /orders, method: POST }
+    authorization: { policy: !ref writers, action: write }
+    returns:
+      - { status: 204 }
+  - request: { path: /custom, method: GET }
+    returns:
+      - { status: 204 }
+    catches:
+      - when: !cel "error.code == 'ERR_HTTP_UNAUTHENTICATED'"
+        status: 401
+        content:
+          application/json:
+            body: { reason: !cel "error.data.reason" }
+---
+kind: Http.Api
+metadata: { name: guardedApi }
+routes:
+  - request: { path: /who, method: GET }
+    returns:
+      - { status: 204 }
+---
+kind: Http.Api
+metadata: { name: openApi }
+routes:
+  - request: { path: /ping, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { who: !cel "request.principal != null ? request.principal.subject : 'anonymous'" }
+---
+kind: Http.Api
+metadata: { name: downApi }
+routes:
+  - request: { path: /ping, method: GET }
+    returns:
+      - { status: 204 }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8971
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8971 }
+    mounts:
+      - path: /api
+        mount: !ref api
+        authentication:
+          verifiers:
+            - verifier: !ref tokens
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+            - verifier: !ref apiKeys
+              from: { kind: Http.FromHeader, header: x-api-key, scheme: ApiKey }
+      - path: /guarded
+        mount: !ref guardedApi
+        authentication:
+          verifiers:
+            - verifier: !ref tokens
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+        guard:
+          invoke:
+            kind: Telo.Sequence
+            inputType:
+              kind: Telo.JsonSchema
+              schema: { type: object, required: [who], properties: { who: { type: string } } }
+            steps:
+              - name: check
+                if: !cel "inputs.who != 'alice'"
+                then:
+                  - { name: refuse, throw: { code: ERR_NOT_ALICE, message: only alice } }
+          inputs: { who: !cel "request.principal.subject" }
+          catches:
+            - when: !cel "error.code == 'ERR_NOT_ALICE'"
+              status: 403
+              content: { application/json: { body: { guard: !cel "request.principal.subject" } } }
+      - path: /open
+        mount: !ref openApi
+        authentication:
+          anonymous: allow
+          verifiers:
+            - verifier: !ref tokens
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+      - path: /files
+        mount: { kind: Http.Static, root: !module-path ./__fixtures__/static-site }
+        authentication:
+          verifiers:
+            - verifier: !ref tokens
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+      - path: /web
+        mount: !ref webApi
+        authentication:
+          verifiers:
+            - verifier: !ref tokens
+              from:
+                kind: Http.FromCookie
+                cookie: { kind: HttpDispatch.UnprefixedCookie, name: session, secure: false }
+                scheme: Session
+                trustedOrigins: [https://app.test]
+            - verifier: !ref tokens
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+      - path: /dpop
+        mount: !ref downApi
+        authentication:
+          verifiers:
+            - verifier:
+                kind: AuthBearer.Jwt
+                keys: !ref issuerKeys
+                issuer: https://login.test
+                algorithms: [ES256]
+                audience: !cel "[resource]"
+                confirmation: { dpop: { replay: { kind: KvStoreMemory.Store }, algorithms: [ES256] } }
+              from: { kind: Http.FromAuthorization, schemes: [DPoP] }
+      - path: /down
+        mount: !ref downApi
+        authentication:
+          verifiers:
+            - verifier:
+                kind: AuthBearer.Jwt
+                keys: { kind: Jose.RemoteKeySet, url: "http://127.0.0.1:9484/jwks.json", timeout: 2s }
+                issuer: https://login.test
+                algorithms: [ES256]
+                audience: !cel "[resource]"
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+targets:
+  - !ref server
+steps:
+  - name: alice
+    invoke: !ref issue
+    inputs: { subject: alice, claims: { scope: "orders:read" } }
+  - name: writer
+    invoke: !ref issue
+    inputs: { subject: wanda, claims: { scope: "orders:read orders:write" } }
+  - name: forged
+    invoke: { kind: Jose.Sign, keys: !ref issuerKeys, type: at+jwt, issuer: https://elsewhere.test, audience: http://127.0.0.1:8971/api }
+    inputs: { subject: mallory }
+  - name: bob
+    invoke: !ref issueForGuarded
+    inputs: { subject: bob }
+  - name: aliceGuarded
+    invoke: !ref issueForGuarded
+    inputs: { subject: alice }
+  - name: webUser
+    invoke: !ref issueForWeb
+    inputs: { subject: carol }
+  - name: filesUser
+    invoke: !ref issueForFiles
+    inputs: { subject: carol }
+  - name: accepted
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { authorization: !interpolate "Bearer ${{ steps.alice.result.token }}" } }
+  - name: lowercaseScheme
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { authorization: !interpolate "bearer ${{ steps.alice.result.token }}" } }
+  - name: byApiKey
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: !cel "steps.alice.result.token" } }
+  - name: missing
+    invoke: !ref call
+    inputs: { url: /api/me }
+  - name: noFallThrough
+    invoke: !ref call
+    inputs:
+      url: /api/me
+      headers:
+        authorization: !interpolate "Bearer ${{ steps.forged.result.token }}"
+        x-api-key: !cel "steps.alice.result.token"
+  - name: optionalAnonymous
+    invoke: !ref call
+    inputs: { url: /api/optional }
+  - name: optionalAuthenticated
+    invoke: !ref call
+    inputs: { url: /api/optional, headers: { authorization: !interpolate "Bearer ${{ steps.alice.result.token }}" } }
+  - name: denied
+    invoke: !ref call
+    inputs: { url: /api/orders, method: POST, headers: { authorization: !interpolate "Bearer ${{ steps.alice.result.token }}" } }
+  - name: allowed
+    invoke: !ref call
+    inputs: { url: /api/orders, method: POST, headers: { authorization: !interpolate "Bearer ${{ steps.writer.result.token }}" } }
+  - name: customBody
+    invoke: !ref call
+    inputs: { url: /api/custom }
+  - name: guardRefuses
+    invoke: !ref call
+    inputs: { url: /guarded/who, headers: { authorization: !interpolate "Bearer ${{ steps.bob.result.token }}" } }
+  - name: guardAdmits
+    invoke: !ref call
+    inputs: { url: /guarded/who, headers: { authorization: !interpolate "Bearer ${{ steps.aliceGuarded.result.token }}" } }
+  - name: openAnonymous
+    invoke: !ref call
+    inputs: { url: /open/ping }
+  - name: openMalformed
+    invoke: !ref call
+    inputs: { url: /open/ping, headers: { authorization: "Bearer" } }
+  - name: staticRefused
+    invoke: !ref call
+    inputs: { url: /files/index.html }
+  - name: staticAdmitted
+    invoke: !ref call
+    inputs: { url: /files/index.html, headers: { authorization: !interpolate "Bearer ${{ steps.filesUser.result.token }}" } }
+  - name: dpopMissing
+    invoke: !ref call
+    inputs: { url: /dpop/ping }
+  - name: cookieCrossSite
+    invoke: !ref call
+    inputs:
+      url: /web/submit
+      method: POST
+      headers:
+        cookie: !interpolate "session=${{ steps.webUser.result.token }}"
+        origin: https://evil.test
+        sec-fetch-site: cross-site
+  - name: cookieNoOrigin
+    invoke: !ref call
+    inputs: { url: /web/submit, method: POST, headers: { cookie: !interpolate "session=${{ steps.webUser.result.token }}" } }
+  - name: cookieSameOrigin
+    invoke: !ref call
+    inputs:
+      url: /web/submit
+      method: POST
+      headers: { cookie: !interpolate "session=${{ steps.webUser.result.token }}", sec-fetch-site: same-origin }
+  - name: cookieTrustedOrigin
+    invoke: !ref call
+    inputs:
+      url: /web/submit
+      method: POST
+      headers: { cookie: !interpolate "session=${{ steps.webUser.result.token }}", origin: https://app.test }
+  - name: bearerCrossSite
+    invoke: !ref call
+    inputs:
+      url: /web/submit
+      method: POST
+      headers:
+        authorization: !interpolate "Bearer ${{ steps.webUser.result.token }}"
+        origin: https://evil.test
+        sec-fetch-site: cross-site
+  - name: unreachableKeys
+    invoke: !ref call
+    inputs: { url: /down/ping, headers: { authorization: !interpolate "Bearer ${{ steps.alice.result.token }}" } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        accepted: { status: !cel "steps.accepted.result.status", body: !cel "steps.accepted.result.body" }
+        lowercaseScheme: !cel "steps.lowercaseScheme.result.body"
+        byApiKey: !cel "steps.byApiKey.result.body"
+        missing:
+          status: !cel "steps.missing.result.status"
+          challenge: !cel "steps.missing.result.headers['www-authenticate']"
+          body: !cel "steps.missing.result.body"
+        noFallThrough:
+          status: !cel "steps.noFallThrough.result.status"
+          challenge: !cel "steps.noFallThrough.result.headers['www-authenticate']"
+        optionalAnonymous: !cel "steps.optionalAnonymous.result.body"
+        optionalAuthenticated: !cel "steps.optionalAuthenticated.result.body"
+        denied:
+          status: !cel "steps.denied.result.status"
+          challenge: !cel "steps.denied.result.headers['www-authenticate']"
+          body: !cel "steps.denied.result.body"
+        allowed: !cel "steps.allowed.result.status"
+        customBody:
+          status: !cel "steps.customBody.result.status"
+          challenge: !cel "steps.customBody.result.headers['www-authenticate']"
+          body: !cel "steps.customBody.result.body"
+        guardRefuses: { status: !cel "steps.guardRefuses.result.status", body: !cel "steps.guardRefuses.result.body" }
+        guardAdmits: !cel "steps.guardAdmits.result.status"
+        openAnonymous: !cel "steps.openAnonymous.result.body"
+        openMalformed:
+          status: !cel "steps.openMalformed.result.status"
+          challenge: !cel "steps.openMalformed.result.headers['www-authenticate']"
+          reason: !cel "steps.openMalformed.result.body.data.reason"
+        staticRefused:
+          status: !cel "steps.staticRefused.result.status"
+          challenge: !cel "steps.staticRefused.result.headers['www-authenticate']"
+        unreachableKeys: { status: !cel "steps.unreachableKeys.result.status", body: !cel "steps.unreachableKeys.result.body" }
+        staticAdmitted: !cel "steps.staticAdmitted.result.status"
+        dpopMissing:
+          status: !cel "steps.dpopMissing.result.status"
+          challenge: !cel "steps.dpopMissing.result.headers['www-authenticate']"
+        cookieCrossSite:
+          status: !cel "steps.cookieCrossSite.result.status"
+          code: !cel "steps.cookieCrossSite.result.body.code"
+        cookieNoOrigin: !cel "steps.cookieNoOrigin.result.status"
+        cookieSameOrigin: !cel "steps.cookieSameOrigin.result.status"
+        cookieTrustedOrigin: !cel "steps.cookieTrustedOrigin.result.status"
+        bearerCrossSite: !cel "steps.bearerCrossSite.result.status"
+      expected:
+        accepted: { status: 200, body: { subject: alice } }
+        lowercaseScheme: { subject: alice }
+        byApiKey: { subject: alice }
+        missing:
+          status: 401
+          challenge: Bearer, ApiKey
+          body:
+            type: about:blank
+            title: Unauthorized
+            status: 401
+            detail: Authentication is required to access this resource.
+            code: ERR_HTTP_UNAUTHENTICATED
+            data: { reason: absent }
+        noFallThrough:
+          status: 401
+          challenge: 'Bearer error="invalid_token", error_description="The access token was issued by an issuer that is not accepted", ApiKey'
+        optionalAnonymous: { who: anonymous }
+        optionalAuthenticated: { who: alice }
+        denied:
+          status: 403
+          challenge: 'Bearer error="insufficient_scope", scope="orders:write"'
+          body:
+            type: about:blank
+            title: Forbidden
+            status: 403
+            detail: You are not allowed to perform this action.
+            code: ERR_HTTP_FORBIDDEN
+            data: { requiredScopes: ["orders:write"] }
+        allowed: 204
+        customBody: { status: 401, challenge: "Bearer, ApiKey", body: { reason: absent } }
+        guardRefuses: { status: 403, body: { guard: bob } }
+        guardAdmits: 204
+        openAnonymous: { who: anonymous }
+        openMalformed: { status: 401, challenge: Bearer, reason: malformed }
+        staticRefused: { status: 401, challenge: Bearer }
+        unreachableKeys:
+          status: 503
+          body:
+            type: about:blank
+            title: Service Unavailable
+            status: 503
+            detail: The access check could not be completed. Try again later.
+            code: ERR_HTTP_ACCESS_CHECK_UNAVAILABLE
+            data: { stage: verifier }
+        staticAdmitted: 200
+        dpopMissing: { status: 401, challenge: 'DPoP algs="ES256"' }
+        cookieCrossSite: { status: 403, code: ERR_HTTP_CROSS_ORIGIN_REFUSED }
+        cookieNoOrigin: 403
+        cookieSameOrigin: 204
+        cookieTrustedOrigin: 204
+        bearerCrossSite: 204

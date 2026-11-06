@@ -43,8 +43,6 @@ texts:
   - { text: Your browser did not ask for Polish., translation: Je browser vroeg niet om Pools. }
   - { text: The Acme brand is on., translation: Het merk Acme staat aan. }
   - { text: "A text an expression computes is shown as computed, never translated.", translation: "Een tekst die een expressie berekent, wordt getoond zoals hij is berekend en nooit vertaald." }
-  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "Een link die dit verzoek ongeldig maakt, wordt vervangen door een foutknooppunt, en de rest van de pagina wordt geserveerd." }
-  - { text: Leaves the application, translation: Verlaat de applicatie }
 
   # The overview.
   - { text: Every node type, translation: Elk type knooppunt }

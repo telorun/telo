@@ -1,0 +1,126 @@
+kind: Telo.Application
+metadata:
+  name: SessionFlowTest
+  version: 1.0.0
+  description: |
+    A login route starts a session and sets the cookie; a protected route reads
+    the principal from it; a logout route ends the session and clears the
+    cookie, after which the old cookie is a 401. A remembered session's cookie
+    carries an expiry and any other ends with the browser session. A cross-site
+    POST carrying the cookie is a 403, while the same POST with the session as a
+    bearer token passes.
+include: [./__fixtures__/app.yaml]
+imports:
+  Session: ../
+  Http: ../../http-server
+  HttpDispatch: ../../http-dispatch
+  KvStoreMemory: ../../kv-store-memory
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:9341
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9341 }
+    mounts:
+      - path: /entry
+        mount: !ref entry
+        authentication: { anonymous: allow }
+      - path: /app
+        mount: !ref app
+        authentication:
+          verifiers:
+            - verifier: !ref verifier
+              from: { kind: Http.FromCookie, cookie: !ref sessionCookie, scheme: Session }
+            - verifier: !ref verifier
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+targets:
+  - !ref server
+steps:
+  - name: anonymous
+    invoke: !ref call
+    inputs: { url: /app/me }
+  - name: login
+    invoke: !ref call
+    inputs: { url: /entry/login?user=alice, method: POST }
+  - name: cookie
+    value: !cel "steps.login.result.headers['set-cookie'].split(';')[0]"
+  - name: me
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.cookie.result" } }
+  - name: crossSite
+    invoke: !ref call
+    inputs:
+      url: /app/action
+      method: POST
+      headers: { cookie: !cel "steps.cookie.result", origin: "https://evil.test", sec-fetch-site: cross-site }
+  - name: sameSite
+    invoke: !ref call
+    inputs:
+      url: /app/action
+      method: POST
+      headers: { cookie: !cel "steps.cookie.result", sec-fetch-site: same-origin }
+  - name: bearerCrossSite
+    invoke: !ref call
+    inputs:
+      url: /app/action
+      method: POST
+      headers:
+        authorization: !interpolate "Bearer ${{ steps.cookie.result.substring(15) }}"
+        origin: "https://evil.test"
+        sec-fetch-site: cross-site
+  - name: logout
+    invoke: !ref call
+    inputs: { url: /app/logout, method: POST, headers: { cookie: !cel "steps.cookie.result", sec-fetch-site: same-origin } }
+  - name: afterLogout
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.cookie.result" } }
+  - name: remembered
+    invoke: !ref call
+    inputs: { url: /entry/login?user=bob&remember=1, method: POST }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        anonymous: !cel "steps.anonymous.result.status"
+        login:
+          status: !cel "steps.login.result.status"
+          attributes: !cel "steps.login.result.headers['set-cookie'].split('; ').filter(p, !p.startsWith('__Host-session='))"
+        me:
+          subject: !cel "steps.me.result.body.subject"
+          sessionIdIsLogins: !cel "steps.me.result.body.sessionId == steps.login.result.body.sessionId"
+          amr: !cel "steps.me.result.body.amr"
+          via: !cel "steps.me.result.body.via"
+        crossSite: { status: !cel "steps.crossSite.result.status", code: !cel "steps.crossSite.result.body.code" }
+        sameSite: !cel "steps.sameSite.result.status"
+        bearerCrossSite: !cel "steps.bearerCrossSite.result.status"
+        logout:
+          status: !cel "steps.logout.result.status"
+          cookie: !cel "steps.logout.result.headers['set-cookie']"
+        afterLogout: !cel "steps.afterLogout.result.status"
+        remembered: !cel "steps.remembered.result.headers['set-cookie'].split('; ').filter(p, !p.startsWith('__Host-session=') && !p.startsWith('Expires='))"
+        rememberedHasExpiry: !cel "steps.remembered.result.headers['set-cookie'].split('; ').exists(p, p.startsWith('Expires='))"
+      expected:
+        anonymous: 401
+        login: { status: 200, attributes: [Path=/, Secure, HttpOnly, SameSite=Lax] }
+        me: { subject: alice, sessionIdIsLogins: true, amr: [pwd], via: verifier }
+        crossSite: { status: 403, code: ERR_HTTP_CROSS_ORIGIN_REFUSED }
+        sameSite: 204
+        bearerCrossSite: 204
+        logout: { status: 204, cookie: "__Host-session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax" }
+        afterLogout: 401
+        remembered: [Path=/, Secure, HttpOnly, SameSite=Lax]
+        rememberedHasExpiry: true

@@ -43,8 +43,6 @@ texts:
   - { text: Your browser did not ask for Polish., translation: "你的浏览器没有请求波兰语。" }
   - { text: The Acme brand is on., translation: "Acme 品牌已启用。" }
   - { text: "A text an expression computes is shown as computed, never translated.", translation: "由表达式计算出的文本按计算结果显示，从不翻译。" }
-  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "因本次请求而失效的链接会被替换为错误节点，页面其余部分照常返回。" }
-  - { text: Leaves the application, translation: "离开应用" }
 
   # The overview.
   - { text: Every node type, translation: "所有节点类型" }

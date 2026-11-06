@@ -1,0 +1,35 @@
+kind: Telo.Application
+metadata: { name: CatchAllNarrowed, version: 1.0.0 }
+include: [../keys.yaml]
+imports:
+  Http: ../../../../
+  AuthBearer: ../../../../../auth-bearer
+  Jose: ../../../../../jose
+---
+kind: Telo.Sequence
+metadata: { name: findOrder }
+steps:
+  - name: missing
+    throw: { code: ORDER_NOT_FOUND, message: no such order, data: { id: "42" } }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /orders, method: GET }
+    handler: !ref findOrder
+    returns: [{ status: 200 }]
+    catches:
+      - when: !cel "problem.code == 'ORDER_NOT_FOUND'"
+        status: 404
+        content: { application/json: { body: { order: !cel "problem.data != null ? problem.data.id : ''" } } }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8975 }
+mounts:
+  - path: /
+    mount: !ref api
+    authentication:
+      verifiers:
+        - verifier: { kind: AuthBearer.Jwt, keys: !ref issuerKeys, issuer: https://login.test, algorithms: [ES256], audience: !cel "[resource]" }
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }

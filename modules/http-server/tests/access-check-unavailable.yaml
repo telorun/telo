@@ -1,0 +1,102 @@
+kind: Telo.Application
+metadata:
+  name: AccessCheckUnavailableTest
+  version: 1.0.0
+  description: |
+    A verifier that cannot reach its keys is answered 503 with the server's own
+    code and only the failing stage; the verifier's code reaches the trace and
+    the log, never the response.
+logging:
+  level: info
+  sinks:
+    - kind: Telo.FileSink
+      destination: /tmp/telo-http-access-unavailable.jsonl
+      flush_interval: 20ms
+tracing:
+  sinks:
+    - { kind: Telo.LogTraceSink }
+include: [./__fixtures__/authentication/keys.yaml]
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Fs: ../../fs
+  Timer: ../../timer
+  Assert: ../../assert
+  AuthBearer: ../../auth-bearer
+  Jose: ../../jose
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    returns: [{ status: 204 }]
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - { kind: Fs.File, metadata: { name: readLog } }
+  - { kind: Fs.FileWrite, metadata: { name: truncateLog } }
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8996 }
+    mounts:
+      - path: /
+        mount: !ref api
+        authentication:
+          verifiers:
+            - verifier:
+                kind: AuthBearer.Jwt
+                keys: { kind: Jose.RemoteKeySet, url: "http://127.0.0.1:9485/jwks.json", timeout: 2s }
+                issuer: https://login.test
+                algorithms: [ES256]
+                audience: !cel "[resource]"
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+targets:
+  - !ref server
+steps:
+  # The sink appends, so an earlier run's lines are cleared and only this run's remain.
+  - name: truncate
+    invoke: !ref truncateLog
+    inputs: { path: /tmp/telo-http-access-unavailable.jsonl, content: "" }
+  - name: token
+    invoke: { kind: Jose.Sign, keys: !ref issuerKeys, type: at+jwt, issuer: https://login.test, audience: http://127.0.0.1:8996/ }
+    inputs: { subject: alice }
+  - name: request
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8996/ping, throwOnHttpError: false }
+    inputs: { headers: { authorization: !interpolate "Bearer ${{ steps.token.result.token }}" } }
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "300ms", value: {} }
+  - name: read
+    invoke: !ref readLog
+    inputs: { path: /tmp/telo-http-access-unavailable.jsonl }
+  - name: lines
+    value: !cel >-
+      steps.read.result.content.split('\n')
+        .filter(line, line.contains('ERR_JOSE_REMOTE_KEYS_UNREACHABLE'))
+        .map(line, parseJson(line))
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.request.result.status"
+        body: !cel "steps.request.result.body"
+        traced: !cel >-
+          steps.lines.result.filter(l, has(l.event_name) && l.event_name == 'telo.span')
+            .map(l, l.attributes['error.type'])
+        logged: !cel >-
+          steps.lines.result.filter(l, has(l.event_name) && l.event_name == 'http.server.access_check.unavailable')
+            .map(l, l.attributes['error.type'])
+      expected:
+        status: 503
+        body:
+          type: about:blank
+          title: Service Unavailable
+          status: 503
+          detail: The access check could not be completed. Try again later.
+          code: ERR_HTTP_ACCESS_CHECK_UNAVAILABLE
+          data: { stage: verifier }
+        traced: [ERR_JOSE_REMOTE_KEYS_UNREACHABLE]
+        logged: [ERR_JOSE_REMOTE_KEYS_UNREACHABLE]

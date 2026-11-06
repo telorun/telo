@@ -17,6 +17,8 @@ requires:
   # 0.130.0: the endpoint imports `errorValueOf` from the SDK for its error
   # event; a 0.129.0 runtime fails to load the controller (verified by execution).
   telo: ">=0.130.0"
+# The server kind an endpoint's referrer rules read.
+imports: { Http: ../http-server }
 exports: { kinds: [StdioServer, HttpEndpoint, Tools, Resources, Prompts] }
 ---
 # Mcp.Tools — passive bundle of tool entries. A transport (StdioServer or
@@ -619,6 +621,21 @@ schema:
       type: "array"
       items: { x-telo-ref: { kind: Self.Prompts, use: dependency } }
   required: ["serverInfo"]
+  # An MCP client finds the authorization server through the resource's metadata
+  # (RFC 9728), derived from the `issuer` of the mount's verifiers.
+  x-telo-referrer-rules:
+    - referrer: Http.Server
+      resolve: [/mounts/*/mount, /mounts/*/authentication/verifiers/*/verifier]
+      condition: !cel >-
+        referrer.mounts.all(m, m.mount != self || !has(m.authentication)
+        || (has(m.authentication.anonymous) && m.authentication.anonymous == 'allow')
+        || (has(m.protectedResource) && has(m.authentication.verifiers)
+        && m.authentication.verifiers.exists(v, has(v.verifier.issuer))))
+      code: MCP_PROTECTED_RESOURCE_MISSING
+      message: >-
+        serves an MCP endpoint behind authentication that denies anonymous callers, without
+        protected-resource metadata an MCP client can use to find the authorization server.
+        Declare `protectedResource:` on the mount, and use a verifier that declares an `issuer`.
   # A client addresses an entry by its name or URI alone, so the bundles one
   # transport serves must not share one.
   x-telo-resource-rules:

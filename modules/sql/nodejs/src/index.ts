@@ -102,4 +102,6 @@ export {
 } from "./schema/store-instant-values.js";
 export { readInt64Column, readTimestampColumn } from "./column-readers.js";
 export { SqlFragments, sqlComparison, sqlWhere } from "./sql-fragments.js";
+export { RowSweep, SWEEP_BATCH_ROWS, retentionCutoffShift } from "./row-sweep.js";
+export type { RowSweepOptions } from "./row-sweep.js";
 export type { PendingReclamation, SchemaRunInput, SchemaRunStatus } from "./schema/schema-run.js";

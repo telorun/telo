@@ -1,0 +1,110 @@
+kind: Telo.Application
+metadata:
+  name: StatelessSessionRecipeTest
+  version: 1.0.0
+  description: |
+    A stateless session needs no session kind: a login route signs a JWT into the
+    cookie, and a mount reads it back with `AuthBearer.Jwt` fed by `Http.FromCookie`,
+    because both speak `token` presentations. The cookie is checked like any
+    session cookie: a tampered one is a 401.
+imports:
+  AuthBearer: ../../auth-bearer
+  Jose: ../../jose
+  Http: ../../http-server
+  HttpDispatch: ../../http-dispatch
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+# Static ES256 test keys. Real keys come from `secrets:`.
+kind: Jose.KeySet
+metadata: { name: keys }
+algorithm: ES256
+keys:
+  - { kty: EC, x: J0k_d62PT7Wrl6emr3vrA1nHnWablWaHx2SIXDPK148, y: I44mAUi1zEMRdhTxiNNckPyaLTWoCb5_hyLFno2Dl7I, crv: P-256, d: 1Lj0H3tsR83jEeDaIbYTW3LrXjpOBxw-Uit_-j0Ai9k, kid: es1 }
+---
+kind: HttpDispatch.HostCookie
+metadata: { name: sessionCookie }
+name: session
+---
+kind: AuthBearer.Jwt
+metadata: { name: sessionJwt }
+keys: !ref keys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: Http.Api
+metadata: { name: entry }
+catches:
+  - when: !cel "error.code == 'ERR_JOSE_KEYSET_UNAVAILABLE'"
+    status: 503
+routes:
+  - request: { path: /login, method: POST }
+    handler:
+      kind: Jose.Sign
+      keys: !ref keys
+      type: at+jwt
+      issuer: https://login.test
+      audience: http://127.0.0.1:9343/app
+    inputs: { subject: alice, expiresIn: 1800s }
+    returns:
+      - status: 204
+        cookies: [{ cookie: !ref sessionCookie, value: !cel "result.token" }]
+---
+kind: Http.Api
+metadata: { name: app }
+routes:
+  - request: { path: /me, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { subject: !cel "request.principal.subject" } } }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:9343
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9343 }
+    mounts:
+      - path: /entry
+        mount: !ref entry
+        authentication: { anonymous: allow }
+      - path: /app
+        mount: !ref app
+        authentication:
+          verifiers:
+            - verifier: !ref sessionJwt
+              from: { kind: Http.FromCookie, cookie: !ref sessionCookie, scheme: Session }
+targets:
+  - !ref server
+steps:
+  - name: login
+    invoke: !ref call
+    inputs: { url: /entry/login, method: POST }
+  - name: cookie
+    value: !cel "steps.login.result.headers['set-cookie'].split(';')[0]"
+  - name: me
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.cookie.result" } }
+  - name: tampered
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !interpolate "${{ steps.cookie.result }}x" } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        login: !cel "steps.login.result.status"
+        me: { status: !cel "steps.me.result.status", body: !cel "steps.me.result.body" }
+        tampered: !cel "steps.tampered.result.status"
+      expected: { login: 204, me: { status: 200, body: { subject: alice } }, tampered: 401 }

@@ -1,0 +1,4 @@
+modules:
+  modules/idempotency-sql: Added
+body: The ledger's background sweep of expired keys now runs on the shared RowSweep from
+  @telorun/sql; its behaviour is unchanged.

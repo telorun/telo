@@ -18,7 +18,7 @@ import {
   type DeclaredScope,
 } from "./scope-declarations.js";
 import { declarationOf, type RefResolution } from "./reference-resolution.js";
-import { addressOf, importPathThrough, scopeSiteAt } from "./scoped-name-resolver.js";
+import { addressOf, importPathOf, importPathThrough, scopeSiteAt } from "./scoped-name-resolver.js";
 
 /** The slice of the definition registry this pass needs: a resource's concrete
  *  sites, from which its `x-telo-scope` slots are read. */
@@ -142,11 +142,14 @@ function resolveReferences(
     name: string,
     scope: Pick<AliasResolver, "moduleForAlias"> | undefined,
     writer: ResourceManifest | undefined,
+    /** A dependency's own document is no instance of its module, so its import
+     *  path is unknown: a shape it names is its module's, whichever instance. */
+    anyInstance = false,
   ): ResolvedRef | undefined => {
     const module = scope?.moduleForAlias(alias);
     if (module) {
       // The export of the module instance this writer's import reaches.
-      const found = exportedBy.inModule(name, module, importPathThrough(writer, alias));
+      const found = exportedBy.inModule(name, module, anyInstance ? undefined : importPathThrough(writer, alias));
       if (found.status === "resolved") {
         // The foreign instance's `kind` is authored in ITS module's scope (e.g.
         // `Self.WriteLine`); canonicalize to a scope-independent `<module>.<Kind>` for the
@@ -179,7 +182,7 @@ function resolveReferences(
         const t = declarationOf(declaredBy.inModule(name, module));
         return t ? resolvedReference(t.kind as string, name, undefined, indexes) : undefined;
       }
-      return resolveExported(alias, name, scope, doc);
+      return resolveExported(alias, name, scope, doc, importPathOf(doc) === undefined);
     };
   };
 

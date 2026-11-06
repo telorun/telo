@@ -1382,6 +1382,9 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     const named = new Set<string>();
     const shapes = new Set<string>();
     const calls = new Set<string>();
+    /** The declarations whose referrers a hop read: each one's referrers are
+     *  covered, wherever along the reads it was reached. */
+    const referred = new Set<string>();
     let condition = TRUE;
     const seen = new Map<ConditionedDeclaration, Set<unknown>>();
     const identified = new Set<string>();
@@ -1469,7 +1472,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
           found.holder,
           [
             { kind: "value", keys: [...found.at, "metadata"] },
-            ...places.map((place) => ({ ...place, keys: [...found.at, ...place.keys] })),
+            ...places.map((place) => (place.kind === "referrers" ? place : { ...place, keys: [...found.at, ...place.keys] })),
           ],
           next.transitive ? { reads: next.reads, transitive: true } : undefined,
         );
@@ -1489,6 +1492,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       if ("referred" in next) {
         const name = next.referred.manifest.metadata?.name;
         if (typeof name !== "string") continue;
+        referred.add(name);
         for (const referrer of referrerNames(next.referred)) {
           for (const target of identify(referrer)) {
             if (!once(target, `referrers ${readsIdOf(next.reads)} ${name}`)) continue;
@@ -1540,7 +1544,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
             [
               { kind: "value", keys: [...body.keys, "kind"] },
               { kind: "value", keys: [...body.keys, "metadata"] },
-              ...places.map((place) => ({ ...place, keys: [...body.keys!, ...place.keys] })),
+              ...places.map((place) => (place.kind === "referrers" ? place : { ...place, keys: [...body.keys!, ...place.keys] })),
             ],
             next.transitive ? { reads: next.reads, transitive: true } : undefined,
           );
@@ -1557,7 +1561,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         }
       }
     }
-    classes.unshift({ text: textOf(["named", texts]), condition, covers: { named } });
+    classes.unshift({ text: textOf(["named", texts]), condition, covers: { named, referrers: referred } });
     if (calls.size > 0) {
       const found = nameReadClasses(calls, wit, callablePlaces, true, ownReads?.own);
       classes.push(...found.classes);
@@ -3914,8 +3918,10 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         shapeOf: (shape) => input.shapeOf(shape, wit),
         definition: input.definitionOf(value, declaration.manifest),
       });
-      if (places.some((place) => place.keys.length === 0)) continue;
-      for (const place of places) kept.add(place.keys[0]!);
+      // A referrers read keeps no member of the declaration it reads at.
+      const keyed = places.filter((place) => place.kind !== "referrers");
+      if (keyed.some((place) => place.keys.length === 0)) continue;
+      for (const place of keyed) kept.add(place.keys[0]!);
       for (const member of Object.keys(at.node as Record<string, unknown>)) {
         if (!kept.has(member)) out.push([...at.unionKeys, member]);
       }

@@ -1,8 +1,9 @@
 /**
  * The `peers:` / `entry` bindings of a referrer rule — a rule's view of the
  * SIBLING declarations a referrer lists beside the one that reached it — and
- * the `coReferrers:` binding, the OTHER declarations reaching the same resource
- * through the same slot, whose references resolve by the same rule.
+ * the `coReferrers:` binding of both rule families, the OTHER declarations
+ * reaching the same resource through the same slot, whose references resolve by
+ * the same rule.
  *
  * A rename marker is wrong only in relation to the *other* declarations a schema
  * lists, and an enum a column names is unlisted only in relation to the same set.
@@ -37,15 +38,14 @@
  *   quadratic in the number of entries — at the editor's keystroke-time analysis,
  *   and with the rule budget then reporting a correct rule as a defective one.
  *
- * A bound element is scanned for `!cel` here, where it is known to be a
- * declaration. The evaluator's own scan cannot do it: `findDynamicLeaf` stops at
- * any nested `{kind}` object — the guard that keeps an inline resource's
- * expressions out of an enclosing rule's verdict — and every resolved peer is
- * exactly that shape, so the whole peer set was exempt and a duplicate hidden
- * behind an expression compared against a sentinel and silently held. See
- * `dynamicInDeclaration` for how far the scan reaches and why it stops there.
- * Both halves classify through `dynamicNode`, so a `!ref` is a reference here
- * and a reference there rather than an expression to one of them.
+ * **Nothing the condition does not read can fail a binding.** An entry is bound
+ * as written, a reference naming nothing loaded or a kind-only input is a mark
+ * in its place (`rule-binding-marks.ts`), and each resolved declaration is
+ * recorded as one; the read-narrowed check (`findDynamicRead`) then judges only
+ * what a condition reads — an expression, a mark — and reads a resolved
+ * declaration read whole with everything it holds, since `findDynamicLeaf`
+ * otherwise stops at a nested `{kind}`. A `!module-path` inside a resolved
+ * declaration compares as written. Only `kind-refused` still fails a binding.
  *
  * **A slot that REFUSES the kind it names binds nothing, and is reported by
  * nothing.** Where a reference resolves to a declaration the slot does not
@@ -98,8 +98,10 @@ import {
   rulePointerReaches,
   schemaAtPointer,
   type KindSchemas,
+  type RuleShapeLookup,
 } from "./validate-resource-rules.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import { markBoundDeclaration, unboundMember } from "./rule-binding-marks.js";
 import { importPathOf, importPathThrough, scopeReadAt } from "./scoped-name-resolver.js";
 
 /**
@@ -111,7 +113,7 @@ import { importPathOf, importPathThrough, scopeReadAt } from "./scoped-name-reso
  */
 export interface PeerBinderRegistry {
   effectiveSchema(kind: string): Record<string, any> | undefined;
-  resolve(kind: string): { kind?: string } | undefined;
+  resolve(kind: string): { kind?: string; metadata?: { module?: string } } | undefined;
   getByExtends(kind: string): { metadata: { module?: string; name?: unknown } }[];
   declaredReachOf(
     resource: { kind: string; metadata?: { module?: unknown } },
@@ -369,32 +371,6 @@ function entryShapeOf(
     : undefined;
 }
 
-/**
- * The first `!cel` among the fields of a resolved DECLARATION that a peer rule
- * can actually COMPARE — its own top-level scalars.
- *
- * Which fields a condition reads off an element cannot be recovered from the
- * parse: cel-js emits no access chain for a comprehension variable, so
- * `peers.exists(p, p.table == …)` yields only `peers` and nothing about `table`.
- * The bound is drawn structurally instead, and top-level scalars are the honest
- * line: a physical name, a type name, a marker — the identities a peer rule
- * compares. Reaching deeper needs a comprehension over nested config, and a rule
- * of that shape has an unbounded subject anyway.
- *
- * Scanning the whole declaration was tried first and is what this replaced: it
- * disabled every rule over a table the moment any nested field held an
- * expression — a seed's `when:`, a column default — which is noise where the
- * rule was about a physical name.
- */
-function dynamicInDeclaration(declaration: ResourceManifest): DynamicLeaf | undefined {
-  for (const [key, value] of Object.entries(declaration as Record<string, unknown>)) {
-    if (key === "metadata" || isModulePath(value)) continue;
-    const dynamic = dynamicNode(value, key);
-    if (dynamic) return dynamic;
-  }
-  return undefined;
-}
-
 /** A `!module-path` names a file by the path its author wrote, which is fixed in
  *  the manifest; only its absolute location waits for creation. Two declarations
  *  naming one path name one file, so it compares as written. Without this, every
@@ -433,11 +409,8 @@ function resolveEntry(value: unknown, at: string, resolver: EntryResolver): Entr
     const site = resolver.siteAt(`${at}.${key}`);
     if (!site) {
       // The author's OWN entry data beside the reference (`prefix` next to
-      // `mount`) — small, and read directly by a rule, so it is scanned whole.
-      const dynamic = findDynamicLeaf(child, `${at}.${key}`);
-      if (dynamic !== undefined) {
-        return { ok: false, failure: { reason: "dynamic", at: dynamic.path, what: dynamic.what } };
-      }
+      // `mount`), as written: an expression in it is judged where a condition
+      // reads it.
       out[key] = child;
       continue;
     }
@@ -460,23 +433,17 @@ function resolveReference(
   at: string,
   resolver: EntryResolver,
 ): EntryResult {
+  // A member that cannot be bound is marked, judged only where a condition reads it.
   const declaration = resolver.lookup(reference, { referrer: resolver.referrer, path: at });
-  if (!declaration) return { ok: false, failure: { reason: "unresolved", at } };
-  if (isInjectedDeclaration(declaration)) return { ok: false, failure: { reason: "kind-only", at } };
+  if (!declaration) return { ok: true, value: unboundMember({ reason: "unresolved", at }) };
+  if (isInjectedDeclaration(declaration)) return { ok: true, value: unboundMember({ reason: "kind-only", at }) };
   // The slot refuses the kind this names, so the manifest is already refused
   // HERE. The rule would read fields off a shape it was never shown, and
   // whatever it then did is not a fact about the rule.
   if (resolver.refuses(site, declaration)) {
     return { ok: false, failure: { reason: "kind-refused", at } };
   }
-  const dynamic = dynamicInDeclaration(declaration);
-  if (dynamic) {
-    return {
-      ok: false,
-      failure: { reason: "dynamic", at: `${at} → ${dynamic.path}`, what: dynamic.what },
-    };
-  }
-  return { ok: true, value: declaration };
+  return { ok: true, value: markBoundDeclaration(declaration, isModulePath) };
 }
 
 type ResolvedCollection =
@@ -723,9 +690,9 @@ export class PeerBinder {
   /**
    * One co-referrer as a `coReferrers:` rule reads it: the declaration (through
    * {@link view}) with each of its reference sites resolved one level, by the
-   * same per-reference resolution `peers:` applies — an unresolved reference,
-   * a library's kind-only input, a slot refusing the kind it names, or a
-   * resolved declaration holding an expression fails the binding. The
+   * same per-reference resolution `peers:` applies — a slot refusing the kind
+   * it names fails the binding, and an unresolved reference or a library's
+   * kind-only input is a mark judged only where a condition reads it. The
    * declaration's own data is bound as written: which of it a condition reads
    * is the evaluator's read-narrowed scan, so an unrelated expression in a
    * co-referrer does not switch the rule off.
@@ -756,6 +723,38 @@ export class PeerBinder {
       value = replaceAt(value, pathSegments(path), resolved.value);
     }
     return { ok: true, value };
+  }
+
+  /**
+   * The declaration the single reference slot at `pointer` of `manifest` names,
+   * as written — never a view, since it is the key co-referrers are grouped by.
+   * A slot holding nothing names nothing; one the binder cannot resolve — a
+   * value known only at creation, a reference naming nothing loaded, a library's
+   * kind-only input — is a mark in the binding, judged where a condition reads
+   * it. Only a slot refusing the kind it names fails.
+   */
+  slotTarget(
+    manifest: ResourceManifest,
+    kind: string,
+    pointer: string,
+  ):
+    | { readonly ok: true; readonly declaration?: ResourceManifest; readonly mark?: Record<string, unknown> }
+    | { readonly ok: false; readonly failure: PeerBindingFailure } {
+    const path = pointerToPath(pointer);
+    const raw = resolvePointer(this.view(manifest), pointer);
+    if (raw === undefined || raw === null) return { ok: true };
+    const dynamic = dynamicNode(raw, path);
+    if (dynamic) return { ok: true, mark: unboundMember({ reason: "dynamic", at: path, what: dynamic.what }) };
+    const site = this.env.refSitesOf(manifest, kind)?.get(path);
+    const reference = site ? referenceValueOf(raw) : undefined;
+    if (!site || !reference) return { ok: true, mark: unboundMember({ reason: "unknown-shape", at: path }) };
+    const declaration = this.env.declarationOf(reference, { referrer: manifest, path });
+    if (!declaration) return { ok: true, mark: unboundMember({ reason: "unresolved", at: path }) };
+    if (isInjectedDeclaration(declaration)) return { ok: true, mark: unboundMember({ reason: "kind-only", at: path }) };
+    if (this.resolver(manifest, () => site).refuses(site, declaration)) {
+      return { ok: false, failure: { reason: "kind-refused", at: path } };
+    }
+    return { ok: true, declaration };
   }
 
   /** True when the rule has something to compare — the input to the
@@ -1140,6 +1139,7 @@ export function analyzerReferrerSlot(
  */
 export function analyzerReferrerDeclares(
   registry: PeerBinderRegistry,
+  shapes?: RuleShapeLookup,
 ): (referrerKind: string, pointer: string) => "ok" | "absent" | "unknown" {
   return (referrerKind, pointer) => {
     const implementations = registry
@@ -1154,7 +1154,10 @@ export function analyzerReferrerDeclares(
       const schema = registry.effectiveSchema(kind);
       if (!schema) continue;
       sawSchema = true;
-      const verdict = rulePointerReaches(schema, pointer, kindSchemas);
+      const verdict = rulePointerReaches(schema, pointer, kindSchemas, {
+        module: registry.resolve(kind)?.metadata?.module,
+        shapes,
+      });
       if (verdict === "ok") return "ok";
       if (verdict === "unknown") unknown = true;
     }
@@ -1175,8 +1178,11 @@ export function analyzerKindSchemas(registry: PeerBinderRegistry): KindSchemas {
         .getByExtends(kind)
         .map((d) => (d.metadata.module ? `${d.metadata.module}.${d.metadata.name}` : String(d.metadata.name))),
     ];
-    return kinds
-      .map((k) => registry.effectiveSchema(k))
-      .filter((s): s is Record<string, any> => !!s && typeof s === "object");
+    return kinds.flatMap((k) => {
+      const schema = registry.effectiveSchema(k);
+      return schema && typeof schema === "object"
+        ? [{ schema, module: registry.resolve(k)?.metadata?.module }]
+        : [];
+    });
   };
 }

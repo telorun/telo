@@ -43,8 +43,6 @@ texts:
   - { text: Your browser did not ask for Polish., translation: Ваш браузер не запрашивал польский. }
   - { text: The Acme brand is on., translation: Бренд Acme включён. }
   - { text: "A text an expression computes is shown as computed, never translated.", translation: "Текст, вычисленный выражением, показывается как есть и никогда не переводится." }
-  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "Ссылка, которую этот запрос делает недействительной, заменяется узлом ошибки, а остальная часть страницы отдаётся как обычно." }
-  - { text: Leaves the application, translation: Уводит из приложения }
 
   # The overview.
   - { text: Every node type, translation: Все типы узлов }

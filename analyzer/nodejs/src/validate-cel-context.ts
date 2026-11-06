@@ -17,7 +17,7 @@ import {
   parseCanonicalTypeSchemaId,
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
-import { CONTEXT_FROM_REFERRER } from "./context-from-referrer.js";
+import { CONTEXT_FROM_REFERRER, fromReferrerOwnKeywords, TYPING_ANNOTATIONS } from "./context-from-referrer.js";
 import { ELEMENT_FROM_ITEM } from "./element-from-item.js";
 import { kindDeclarationOf } from "./kind-declaration.js";
 import { scopeReadAt } from "./scoped-name-resolver.js";
@@ -246,10 +246,9 @@ export function resolveTypeFieldToSchema(
       // from a library's export — answered by the host holding its shapes.
       const registered = declarations.shapes?.(obj.$ref);
       if (registered) return registered;
-      // A module that is not in this set — a single-file analysis, or an import
-      // whose library was not forwarded. Fall through to the bare name, which is
-      // what this resolved before the canonical form existed.
-      return resolveTypeFieldToSchema(canonical.typeName, declarations, reader, ancestry);
+      // A module this analysis holds nothing of: the id names a shape it cannot
+      // see, never one of the same name in another module.
+      return undefined;
     }
     // Inline type resource: { kind: "Type.JsonSchema", schema: {...} }
     if (obj.schema && typeof obj.schema === "object") {
@@ -519,9 +518,16 @@ export function resolveContextAnnotations(
     const asType = resolveTypeFieldToSchema(navigated, declarations ?? NO_DECLARATIONS, manifestRoot);
     const resolved = openDynamicProperties(asType?.properties ?? navigated);
     const required = Array.isArray(asType?.required) ? asType.required : undefined;
+    // A member typed by an annotation of its own is the kind's, never the
+    // merged map's.
+    const typedOwn = Object.fromEntries(
+      Object.entries((schema.properties ?? {}) as Record<string, any>)
+        .filter(([, member]) => carriesOwnTyping(member))
+        .map(([key, member]) => [key, resolveContextAnnotations(member, manifestItem, normalizedOpts)]),
+    );
     return {
       ...schema,
-      properties: { ...(schema.properties ?? {}), ...(resolved ?? {}) },
+      properties: { ...(schema.properties ?? {}), ...(resolved ?? {}), ...typedOwn },
       ...(required ? { required } : {}),
       additionalProperties: false,
     };
@@ -576,10 +582,7 @@ export function resolveContextAnnotations(
 
   // Typed by the scope rule from each referrer's scope (`cel-scope.ts`); with no
   // referrer it is what it declares itself.
-  if (schema[CONTEXT_FROM_REFERRER] !== undefined) {
-    const { [CONTEXT_FROM_REFERRER]: _referrer, ...own } = schema;
-    return own;
-  }
+  if (schema[CONTEXT_FROM_REFERRER] !== undefined) return fromReferrerOwnKeywords(schema);
 
   const fromRoot = schema["x-telo-context-from-root"] as string | undefined;
   const fromRefKindRaw = schema["x-telo-context-from-ref-kind"] as
@@ -741,6 +744,12 @@ export function resolveContextAnnotations(
   return schema;
 }
 
+/** Whether a context node is typed by an annotation of its own. */
+function carriesOwnTyping(node: unknown): boolean {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return false;
+  return CONTEXT_FROM_REFERRER in node || TYPING_ANNOTATIONS.some((key) => key in node);
+}
+
 /** True when a binding node declares that its value may be null — `type` naming
  *  `null` (alone or in a list) or `nullable: true`. */
 function declaresNull(node: Record<string, any>): boolean {
@@ -861,17 +870,22 @@ export function getContextHolder(
   scope: string,
   manifest: Record<string, any>,
 ): Record<string, any> {
-  const match = scopeMatchOf(exprPath, scope);
-  if (!match) return manifest;
-  const tail = match.prefix.slice(match.itemEnd);
-  const cut = tail.lastIndexOf(".");
-  const holder = navigateConcretePath(
-    manifest,
-    match.prefix.slice(0, cut > 0 ? match.itemEnd + cut : match.itemEnd),
-  );
+  const path = getContextHolderPath(exprPath, scope);
+  if (path === undefined) return manifest;
+  const holder = navigateConcretePath(manifest, path);
   return holder && typeof holder === "object" && !Array.isArray(holder)
     ? (holder as Record<string, any>)
     : manifest;
+}
+
+/** The concrete path of {@link getContextHolder}'s holder (`""` the manifest),
+ *  or undefined where the scope does not cover `exprPath`. */
+export function getContextHolderPath(exprPath: string, scope: string): string | undefined {
+  const match = scopeMatchOf(exprPath, scope);
+  if (!match) return undefined;
+  const tail = match.prefix.slice(match.itemEnd);
+  const cut = tail.lastIndexOf(".");
+  return match.prefix.slice(0, cut > 0 ? match.itemEnd + cut : match.itemEnd);
 }
 
 /** Walk a concrete dotted path with `[N]` indices (`resources[4].routes[2]`). */

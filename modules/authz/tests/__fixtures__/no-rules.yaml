@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: NoRules, version: 1.0.0 }
+imports: { Authz: ../../ }
+targets:
+  - !ref policy
+---
+kind: Authz.CelPolicy
+metadata: { name: policy }
+rules: []

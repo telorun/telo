@@ -33,6 +33,8 @@ import { checkSchemaCompatibility } from "./schema-compat.js";
 import { valueDerivedContract } from "./value-derived-contract.js";
 import { callSiteContext, type CallScopes } from "./validate-step-inputs.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import { outputToRefusal } from "./output-to-slot.js";
+import { enclosingKeys, placeAt } from "./read-place.js";
 
 /**
  * What a target returns, resolved exactly as `steps.<name>.result` is typed:
@@ -143,6 +145,56 @@ export function referenceOutputIssuesAt(
       `${targetLabel(target)} does not return what this slot reads from it. The slot requires ` +
       `an output of ${JSON.stringify(slot.outputType)}; its declared output contract disagrees: ` +
       `${issues.join("; ")}.`;
+    if (reported.has(message)) continue;
+    reported.add(message);
+    out.push({ path: site.path, message });
+  }
+  return out;
+}
+
+/** The keys of the sibling slot `outputTo` names from the slot at `keys`. */
+export function outputToTargetKeys(keys: readonly (string | number)[], pointer: string): (string | number)[] {
+  return [...placeAt(enclosingKeys(keys), pointer)];
+}
+
+/**
+ * `x-telo-ref` `outputTo` at one site of `manifest`: the source's declared
+ * output, null removed, against the member it fills of the input contract of
+ * the target the sibling slot holds — one message per slot when they cannot
+ * fit. `sibling` is the value the sibling slot holds; both references are
+ * resolved by `resolveTarget` as written at their own places.
+ */
+export function outputToIssuesAt(
+  manifest: Record<string, any>,
+  site: ReachSite,
+  sibling: unknown,
+  siblingPath: string,
+  types: DeclarationRequests,
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  scopes: CallScopes,
+  resolveTarget: (reference: Record<string, any>, path?: string) => Record<string, any> | undefined,
+): ReferenceOutputIssue[] {
+  const out: ReferenceOutputIssue[] = [];
+  const source = site.data;
+  if (!isResolvedReference(source) || !isResolvedReference(sibling)) return out;
+  const contractScope = analyzerContractScope(defs, aliases, scopes, types);
+  const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
+  const sourceTarget = resolveTarget(source as Record<string, any>, site.path);
+  const siblingTarget = resolveTarget(sibling as Record<string, any>, siblingPath);
+  if (!sourceTarget || !siblingTarget) return out;
+  const sourceDefinition = contractScope.resolveIn((source as Record<string, any>).kind, readingModule);
+  const siblingDefinition = contractScope.resolveIn((sibling as Record<string, any>).kind, readingModule);
+  const produced = producedOutputContract(sourceTarget, sourceDefinition, contractScope, defs);
+  const consumed = resolveContract("inputType", siblingTarget, siblingDefinition, contractScope)?.schema;
+  const reported = new Set<string>();
+  for (const { slot } of site.refs) {
+    if (!slot.outputTo) continue;
+    const issues = outputToRefusal(produced, consumed, slot.outputTo.member, (id) => defs.schemaForId(id));
+    if (issues.length === 0) continue;
+    const message =
+      `${targetLabel(sourceTarget)} produces what ${targetLabel(siblingTarget)} at '${siblingPath}' cannot take as ` +
+      `its '${slot.outputTo.member}' input: ${issues.join("; ")}.`;
     if (reported.has(message)) continue;
     reported.add(message);
     out.push({ path: site.path, message });

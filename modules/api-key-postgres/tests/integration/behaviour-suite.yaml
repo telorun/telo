@@ -1,0 +1,67 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeyPostgresSuite
+  version: 1.0.0
+  description: |
+    The API-key store's behaviour suite against a real PostgreSQL: the same
+    sequences the SQLite run executes, two stores sharing one table.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  Suite:
+    source: ../../../api-key-sql/tests/__fixtures__/store-suite
+    variables: { port: 9333 }
+    resources:
+      store: !ref store
+      boundedStore: !ref boundedStore
+  Postgres: ../../../postgres
+  Keys: ../..
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref appSchema
+  - !ref Suite.listing
+  - !ref Suite.revocation
+  - !ref Suite.rotation
+  - !ref Suite.refusals
+  - !ref Suite.verification
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: store }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: main
+prefix: tk
+scopes: [read, write]
+retention: 1h
+---
+kind: Keys.Store
+metadata: { name: boundedStore }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: bounded
+prefix: tk
+scopes: [read, write]
+maxLifetime: 1h
+retention: 1h

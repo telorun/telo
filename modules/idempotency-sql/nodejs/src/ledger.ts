@@ -1,5 +1,4 @@
 import {
-  celDurationFromNanos,
   durationNanos,
   getRefIdentity,
   isCelDuration,
@@ -13,7 +12,10 @@ import {
   rendersInstantArithmetic,
   rendersLockSkipping,
   resolveSqlConnection,
+  retentionCutoffShift,
+  RowSweep,
   SqlFragments,
+  SWEEP_BATCH_ROWS,
   type SqlConnection,
   type SqlInstantArithmeticSchema,
   type SqlLockSchema,
@@ -40,13 +42,6 @@ export type RecordOutcome =
   /** The key is recorded under a different fingerprint. */
   | { readonly state: "conflict" };
 
-/** Rows one sweep statement removes at most. */
-const SWEEP_BATCH = 500;
-/** Statements one sweep runs at most before waiting for the next. */
-const SWEEP_BATCHES_PER_PASS = 20;
-const SWEEP_MIN_INTERVAL_MS = 1_000;
-const SWEEP_MAX_INTERVAL_MS = 60_000;
-
 type LedgerSchema = SqlInstantArithmeticSchema & SqlLockSchema;
 
 /**
@@ -65,12 +60,7 @@ export class IdempotencyLedger implements ResourceInstance {
   private readonly table: string;
   private readonly columns: LedgerColumns;
   private readonly expiry: CelDuration;
-  private readonly sweepIntervalMs: number;
-  private sweepTimer: ReturnType<typeof setTimeout> | undefined;
-  private sweeping: Promise<void> | undefined;
-  private stopped = true;
-  /** Whether the sweep was ever started, by `run()` or by a write. */
-  private sweepStarted = false;
+  private readonly sweep: RowSweep;
 
   constructor(
     readonly describe: string,
@@ -84,16 +74,15 @@ export class IdempotencyLedger implements ResourceInstance {
     const declaration = tableResource.declaration;
     this.columns = ledgerColumns(describe, declaration, connection.dialect);
     this.table = schema.qualifiedTableName(declaration);
-    const expiry = celDurationFromNanos(-durationNanos(retention));
-    if (!isCelDuration(expiry)) {
-      throw new Error(`${describe}: 'retention' is outside the range a duration can be negated in.`);
-    }
-    this.expiry = expiry;
-    const retentionMs = Number(durationNanos(retention) / 1_000_000n);
-    this.sweepIntervalMs = Math.min(
-      SWEEP_MAX_INTERVAL_MS,
-      Math.max(SWEEP_MIN_INTERVAL_MS, retentionMs),
-    );
+    this.expiry = retentionCutoffShift(retention, describe);
+    this.sweep = new RowSweep({
+      ctx,
+      connection,
+      retention,
+      batchStatement: () => this.sweepStatement(),
+      failureMessage: "Sweeping expired idempotency keys failed; the next pass tries again",
+      logAttributes: { "idempotency.ledger": name },
+    });
   }
 
   init(ctx: ResourceContext) {
@@ -112,7 +101,7 @@ export class IdempotencyLedger implements ResourceInstance {
   run() {
     return this.ctx.effect("expired-key sweep", async () => ({
       result: undefined,
-      inverse: this.startSweep(0),
+      inverse: this.sweep.startAt(0),
     }));
   }
 
@@ -132,7 +121,7 @@ export class IdempotencyLedger implements ResourceInstance {
     zone: ZoneEntry,
     ctx: InvokeContext | undefined,
   ): Promise<RecordOutcome> {
-    await this.ensureSweep();
+    await this.sweep.ensureStarted();
     // An expired row that no sweep has reclaimed yet is reclaimed by the write
     // itself, so a key older than retention always reads as absent. The second
     // pass covers the one interleaving where the row the first pass met is swept
@@ -208,75 +197,9 @@ export class IdempotencyLedger implements ResourceInstance {
     return typeof found.fingerprint === "string" ? found.fingerprint : null;
   }
 
-  /**
-   * Starts the sweep once; the returned closure stops it. A second start is a
-   * no-op whose closure stops nothing, since the first start's owner — `run()`'s
-   * frame, or the effect a write performed — already stops it at teardown.
-   */
-  private startSweep(delayMs: number): () => Promise<void> {
-    if (this.sweepStarted) return async () => {};
-    this.sweepStarted = true;
-    this.stopped = false;
-    this.scheduleSweep(delayMs);
-    return () => this.stopSweep();
-  }
-
-  /** Starts the sweep from a write when `run()` never did, registered on the
-   *  ledger's own frame so teardown stops it. */
-  private async ensureSweep(): Promise<void> {
-    if (this.sweepStarted) return;
-    await this.ctx
-      .effect("expired-key sweep", async () => ({
-        result: undefined,
-        inverse: this.startSweep(this.sweepIntervalMs),
-      }))
-      .perform();
-  }
-
-  private scheduleSweep(delayMs: number): void {
-    if (this.stopped) return;
-    this.sweepTimer = setTimeout(() => {
-      this.sweepTimer = undefined;
-      this.sweeping = this.sweep().finally(() => {
-        this.sweeping = undefined;
-        this.scheduleSweep(this.sweepIntervalMs);
-      });
-    }, delayMs);
-    // The sweep is housekeeping: it never keeps the process alive.
-    this.sweepTimer.unref?.();
-  }
-
-  private async stopSweep(): Promise<void> {
-    this.stopped = true;
-    if (this.sweepTimer) clearTimeout(this.sweepTimer);
-    this.sweepTimer = undefined;
-    await this.sweeping;
-  }
-
-  /**
-   * Removes expired keys in bounded batches, each its own short transaction
-   * that skips rows another transaction holds. A failed pass is reported and the
-   * next one tries again: until a sweep succeeds, expired rows only cost space,
-   * since every write already reads them as absent.
-   */
-  private async sweep(): Promise<void> {
-    try {
-      for (let batch = 0; batch < SWEEP_BATCHES_PER_PASS && !this.stopped; batch++) {
-        const removed = await this.sweepBatch();
-        if (removed < SWEEP_BATCH) return;
-      }
-    } catch (error) {
-      this.ctx.log.warn(
-        "Sweeping expired idempotency keys failed; the next pass tries again",
-        { "idempotency.ledger": this.name },
-        { error },
-      );
-    }
-  }
-
-  private async sweepBatch(): Promise<number> {
+  private sweepStatement(): SqlFragments {
     const c = this.columns;
-    const statement = new SqlFragments()
+    return new SqlFragments()
       .text(`DELETE FROM ${this.table} WHERE ${c.ledgerName} = `)
       .value(this.name)
       .text(` AND ${c.key} IN (SELECT ${c.key} FROM ${this.table} WHERE ${c.ledgerName} = `)
@@ -284,14 +207,8 @@ export class IdempotencyLedger implements ResourceInstance {
       .text(` AND ${c.recordedAt} < `)
       .append(this.schema.currentInstantPlus(this.expiry))
       .text(` ORDER BY ${c.recordedAt} LIMIT `)
-      .value(SWEEP_BATCH)
+      .value(SWEEP_BATCH_ROWS)
       .text(` ${this.schema.skipLockedClause()})`);
-    const zone: ZoneEntry = { kind: this.ctx.self.ref.kind, provider: this.ctx.self };
-    const result = await this.connection.runInTransaction((bind) => {
-      bind(zone);
-      return this.connection.executeTemplate(statement.fragments, statement.boundValues, zone);
-    });
-    return this.connection.toRowCount(result);
   }
 }
 

@@ -1,0 +1,35 @@
+# A choice decides one claim's name and another's bucket: the duplicate holds
+# in some configurations only.
+kind: Telo.Application
+metadata: { name: CoReferrerChoice }
+imports: { Co: ./kinds }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+---
+kind: Co.Bucket
+metadata: { name: shared }
+---
+kind: Co.Bucket
+metadata: { name: apart }
+---
+kind: Co.Claim
+metadata: { name: first }
+bucket: !ref shared
+name: main
+---
+kind: Co.Claim
+metadata: { name: second }
+bucket: !ref shared
+name: !if
+  if: !cel "variables.flag1"
+  then: main
+  else: other
+---
+kind: Co.Claim
+metadata: { name: third }
+bucket: !if
+  if: !cel "variables.flag2"
+  then: !ref shared
+  else: !ref apart
+name: main

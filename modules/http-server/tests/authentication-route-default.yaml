@@ -1,0 +1,64 @@
+kind: Telo.Application
+metadata:
+  name: AuthenticationRouteDefaultTest
+  version: 1.0.0
+  description: |
+    A route writing `authentication` under a mount declaring none denies
+    anonymous callers by default and answers 401 with the challenge. This is its
+    own application because a second, authentication-free mount beside the
+    others would be MOUNT_IMPLICITLY_PUBLIC.
+include: [./__fixtures__/authentication/keys.yaml]
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Assert: ../../assert
+  AuthBearer: ../../auth-bearer
+  Jose: ../../jose
+targets:
+  - !ref test
+---
+kind: AuthBearer.Jwt
+metadata: { name: tokens }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /secret, method: GET }
+    authentication:
+      verifiers:
+        - verifier: !ref tokens
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+    returns:
+      - status: 200
+        content: { application/json: { body: { who: !cel "request.principal != null ? request.principal.subject : 'anonymous'" } } }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8995
+throwOnHttpError: false
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8995 }
+    mounts:
+      - path: /api
+        mount: !ref api
+targets: [!ref server]
+steps:
+  - name: anonymous
+    invoke: { kind: HttpClient.Request, client: !ref client }
+    inputs: { url: /api/secret }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.anonymous.result.status"
+        challenge: !cel "steps.anonymous.result.headers['www-authenticate']"
+      expected: { status: 401, challenge: Bearer }

@@ -1,0 +1,5 @@
+modules:
+  modules/auth-bearer: Added
+body: "`AuthBearer.Jwt` and `AuthBearer.Introspection` publish `challenges` in their
+  readings: `Bearer`, plus `DPoP` with `algs` when DPoP proofs are verified, for a
+  transport answering a request that presented no token."

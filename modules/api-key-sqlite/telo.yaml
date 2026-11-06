@@ -1,0 +1,132 @@
+kind: Telo.Library
+metadata:
+  name: ApiKeySqlite
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security, Data]
+  description: >-
+    Stores API keys in a SQLite table beside the application's own data, so
+    every replica sees an issued, revoked or rotated key at its next request.
+    Keys are stored as digests only, listed per owner with a cursor, and
+    forgotten after a retention window once revoked or expired.
+requires:
+  # The table kind's duplicate-name rule binds `coReferrers:`, which 0.128.0
+  # evaluates unbound and reports as a defect in this module.
+  telo: ">=0.129.0"
+imports: { ApiKeySql: ../api-key-sql, Sqlite: ../sqlite }
+exports: { kinds: [Table, Store] }
+---
+# ApiKeySqlite.Table — a `Sqlite.Table` holding the keys of every store that names
+# it. The author names only the physical table; every column and index is the
+# store's own, added by `base:` as internal, so no row contract sees them. List
+# it in the `Sqlite.Schema` that creates and migrates it.
+#
+# The duplicate-name rule is declared here, on the engine table kind, and not
+# once in `api-key-sql`: this kind must extend `Sqlite.Table` to be listed in a
+# `Sqlite.Schema`, a kind has one parent, and a `base:`-form kind inherits no
+# rule — so an engine-neutral table kind the rule could live on would be one no
+# table could ever be.
+kind: Telo.Definition
+metadata:
+  name: Table
+  description: >-
+    The SQLite table an API-key store keeps its keys in, shared by any number
+    of stores under different names. The application names the table; its
+    columns and indexes belong to the store and appear in no contract. Created
+    and migrated by the schema that lists it.
+extends: Sqlite.Table
+schema:
+  type: object
+  additionalProperties: false
+  required: [table]
+  examples:
+    - { table: api_keys }
+  properties:
+    table:
+      title: Table
+      description: The physical table name.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+  x-telo-referrer-rules:
+    - referrer: ApiKeySql.Store
+      coReferrers: /table
+      condition: !cel "!coReferrers.exists(o, o.name == referrer.name)"
+      code: API_KEY_STORE_NAME_DUPLICATE
+      message: >-
+        claims a store name another store in this table already claims. Two
+        stores with one name in one table would read and revoke each other's
+        keys — give each store a name of its own.
+base:
+  table: !cel "self.table"
+  columns: {}
+  # `ends_at` is the earlier of `revoked_at` and `expires_at`, kept by issue,
+  # revoke and rotate: the one column retention and the sweep read.
+  internalColumns:
+    store_name: { type: text, nullable: false }
+    key_id: { type: text, nullable: false }
+    digest: { type: text, nullable: false }
+    owner_type: { type: text, nullable: false }
+    owner_id: { type: text, nullable: false }
+    scopes: { type: text, nullable: false }
+    label: { type: text }
+    # Fixed-width UTC text, the form the schema's instant members write, so a
+    # plain comparison is chronological.
+    created_at: { type: text, nullable: false }
+    expires_at: { type: text }
+    revoked_at: { type: text }
+    revoked_by: { type: text }
+    last_used_at: { type: text }
+    rotated_from: { type: text }
+    ends_at: { type: text }
+  # The lookup is one read on the unique index; an owner's keys list in key
+  # order through the owner index; retention and the sweep read the ended keys
+  # of one store through `ends_at`.
+  indexes: !cel >-
+    { 'api_key_' + self.table + '_id':
+        { 'columns': ['store_name', 'key_id'], 'unique': true },
+      'api_key_' + self.table + '_owner':
+        { 'columns': ['store_name', 'owner_type', 'owner_id', 'key_id'] },
+      'api_key_' + self.table + '_ends':
+        { 'columns': ['store_name', 'ends_at'] } }
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: >-
+    A durable store of API keys in a SQLite table on the application's
+    connection. Issue, list, revoke and rotate are atomic and take effect on
+    every replica at once; last use is recorded at most once per interval. Keys
+    revoked or expired longer ago than the retention window read as unknown.
+extends: ApiKeySql.Store
+controllers: [pkg:telo/local/js?path=./nodejs/api-key-sqlite.mjs&local_path=./nodejs/src/index.ts#Store]
+# Narrows the three storage slots to this engine's own kinds; `name`,
+# `retention`, `prefix`, `scopes` and `maxLifetime` are the abstract's,
+# merged in unchanged.
+schema:
+  type: object
+  required: [connection, schema, table]
+  additionalProperties: false
+  examples:
+    - connection: !ref db
+      schema: !ref appSchema
+      table: !ref apiKeys
+      name: main
+      prefix: sk
+      scopes: [read, write]
+      retention: 720h
+  properties:
+    connection:
+      title: Connection
+      description: The connection the store's table lives on.
+      x-telo-ref: { kind: Sqlite.Connection, use: dependency }
+    schema:
+      title: Schema
+      description: >-
+        The schema that lists the store's table, on the same connection. It
+        creates and migrates the table; the store issues no DDL.
+      x-telo-ref: { kind: Sqlite.Schema, use: dependency }
+    table:
+      title: Table
+      description: The table the keys are stored in.
+      x-telo-ref: { kind: Self.Table, use: dependency }

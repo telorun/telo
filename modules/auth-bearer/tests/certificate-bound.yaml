@@ -1,0 +1,86 @@
+kind: Telo.Application
+metadata:
+  name: AuthBearerCertificateBoundTest
+  version: 1.0.0
+  description: |
+    A token bound to a client certificate (`cnf.x5t#S256`) is accepted over the
+    connection presenting that certificate and refused over another or over none.
+    With `certificateBound` a token carrying no binding is refused too.
+include: [./__fixtures__/keys.yaml]
+imports: { AuthBearer: ../, Jose: ../../jose, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: AuthBearer.Jwt
+metadata: { name: verifier }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: https://api.test/
+---
+kind: AuthBearer.Jwt
+metadata: { name: requireBinding }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: https://api.test/
+confirmation: { certificateBound: true }
+---
+kind: Jose.Sign
+metadata: { name: issue }
+keys: !ref issuerKeys
+type: at+jwt
+issuer: https://login.test
+audience: https://api.test/
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: bound
+    invoke: !ref issue
+    inputs:
+      subject: alice
+      claims: { cnf: { x5t#S256: bwcK0esc3ACC3DB2Y5_lESsXE8o9ltc05O89jdN-dg2 } }
+  - name: plain
+    invoke: !ref issue
+    inputs: { subject: bob }
+  - name: sameCertificate
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.bound.result.token" }
+      confirmation: { certificateThumbprint: bwcK0esc3ACC3DB2Y5_lESsXE8o9ltc05O89jdN-dg2 }
+      resource: null
+  - name: otherCertificate
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.bound.result.token" }
+      confirmation: { certificateThumbprint: 3VkwlLW0ZVj_xa5nTqEcDGg9-7M14YU-XJm5EQbL0nA }
+      resource: null
+  - name: noCertificate
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.bound.result.token" }
+      confirmation: {}
+      resource: null
+  - name: unboundRefused
+    invoke: !ref requireBinding
+    inputs:
+      presentation: { type: token, token: !cel "steps.plain.result.token" }
+      confirmation: { certificateThumbprint: bwcK0esc3ACC3DB2Y5_lESsXE8o9ltc05O89jdN-dg2 }
+      resource: null
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        sameCertificate: !cel "steps.sameCertificate.result.principal.subject"
+        otherCertificate: !cel "steps.otherCertificate.result.reason"
+        noCertificate: !cel "steps.noCertificate.result.reason"
+        unboundRefused: !cel "steps.unboundRefused.result"
+      expected:
+        sameCertificate: alice
+        otherCertificate: confirmationMismatch
+        noCertificate: confirmationMismatch
+        unboundRefused:
+          refused: true
+          reason: confirmationMismatch
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: "The access token is not bound to the presenter's key or certificate" } }

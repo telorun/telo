@@ -1,0 +1,349 @@
+kind: Telo.Library
+metadata:
+  name: Auth
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    The shared vocabulary of inbound authentication and authorization: the
+    authenticated caller (subject, issuer, scopes, roles, permissions, methods
+    used), the credential material a request presented by what it is, and the
+    contracts for deciding whether a credential is valid, whether a password is
+    right and whether an action is allowed. Includes verification of an identity
+    asserted by a trusted reverse proxy.
+exports:
+  kinds: [Verifier, PasswordVerifier, Policy, TrustedHeader]
+  resources: [Principal, Presentation, TokenPresentation, BasicPresentation, CertificatePresentation, AssertedPresentation, Confirmation, VerifierOutput, PasswordOutput, PolicyDecision, Issuer]
+---
+# The authenticated caller. Every member is present: a verifier fills what it
+# does not know with an empty list or null, so a policy or handler reads any
+# member without a presence check. "No principal" is a null `request.principal`,
+# never a principal of some anonymous kind.
+kind: Telo.JsonSchema
+metadata:
+  name: Principal
+  description: >-
+    The authenticated caller of a request: who they are (`subject`, `issuer`,
+    `kind` user or service), what they may do (`scopes`, `roles`, `permissions`,
+    `org`), how and when they signed in (`amr`, `acr`, `sessionId`,
+    `authenticatedAt`), the raw `claims` and the verifier that accepted them
+    (`via`). Every member is always present; unknown ones are empty or null.
+schema:
+  type: object
+  additionalProperties: false
+  required: [subject, issuer, kind, claims, scopes, roles, permissions, org, amr, acr, sessionId, authenticatedAt, via]
+  properties:
+    subject:
+      description: The caller's stable identifier, exported on traces as `enduser.id`.
+      type: string
+      x-telo-span-attribute: enduser.id
+    issuer: { description: The authority that vouched for the caller; null when there is none., type: [string, "null"] }
+    kind: { description: Whether the caller is a person or a service., type: string, enum: [user, service] }
+    claims: { description: "The verifier's raw claims, for what the other members do not name.", type: object, additionalProperties: true }
+    scopes: { description: OAuth scopes the credential grants., type: array, items: { type: string } }
+    roles: { description: Roles the caller holds., type: array, items: { type: string } }
+    permissions: { description: Fine-grained permissions the caller holds., type: array, items: { type: string } }
+    org: { description: The organization the caller acts for; null when none., type: [string, "null"] }
+    amr: { description: Authentication methods used (RFC 8176 values such as `pwd` or `otp`)., type: array, items: { type: string } }
+    acr: { description: The authentication context class reached; null when unknown., type: [string, "null"] }
+    sessionId: { description: The session the request belongs to; null when there is none., type: [string, "null"] }
+    authenticatedAt:
+      description: When the caller last authenticated; null when unknown.
+      anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }]
+    via: { description: The name of the verifier that accepted the credential., type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: TokenPresentation
+  description: >-
+    An opaque bearer secret: a JWT, an API key sent as a bearer, a session
+    identifier or a cookie value. What the token is, a verifier decides.
+schema:
+  type: object
+  additionalProperties: false
+  required: [type, token]
+  properties:
+    type: { const: token }
+    token: { description: The secret as presented., type: string, x-telo-sensitive: true }
+    scheme: { description: "The authentication scheme it arrived under (`Bearer`, `DPoP`), when it arrived under one.", type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: BasicPresentation
+  description: A user identifier and password, as sent with HTTP Basic authentication.
+schema:
+  type: object
+  additionalProperties: false
+  required: [type, username, password]
+  properties:
+    type: { const: basic }
+    username: { type: string, x-telo-sensitive: true }
+    password: { type: string, x-telo-sensitive: true }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: CertificatePresentation
+  description: A TLS client certificate, with whether the listener or a trusted proxy verified it.
+schema:
+  type: object
+  additionalProperties: false
+  required: [type, subject, issuer, serialNumber, fingerprint256, validFrom, validTo, subjectAltNames, pem, verified, via]
+  properties:
+    type: { const: certificate }
+    subject: { type: object, additionalProperties: { type: string }, x-telo-sensitive: true }
+    issuer: { type: object, additionalProperties: { type: string }, x-telo-sensitive: true }
+    serialNumber: { type: string, x-telo-sensitive: true }
+    fingerprint256: { type: string, x-telo-sensitive: true }
+    validFrom: { x-telo-type: Telo.Timestamp }
+    validTo: { x-telo-type: Telo.Timestamp }
+    subjectAltNames: { type: array, items: { type: string }, x-telo-sensitive: true }
+    pem: { type: string, x-telo-sensitive: true }
+    verified: { type: boolean }
+    via: { type: string, enum: [listener, proxy] }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: AssertedPresentation
+  description: >-
+    An identity a trusted reverse proxy vouches for, with no secret to check: the
+    subject and the claims it forwarded. Honoured only behind a trusted proxy.
+schema:
+  type: object
+  additionalProperties: false
+  required: [type, subject, claims]
+  properties:
+    type: { const: asserted }
+    subject: { type: string, x-telo-sensitive: true }
+    claims: { type: object, additionalProperties: true, x-telo-sensitive: true }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Presentation
+  description: >-
+    The credential material a request carried, by what it is and never by where
+    it was found: an opaque token, a user and password, a client certificate or
+    an identity asserted by a trusted proxy, told apart by `type`. Every secret
+    member is kept out of traces and logs.
+schema:
+  anyOf:
+    - !ref TokenPresentation
+    - !ref BasicPresentation
+    - !ref CertificatePresentation
+    - !ref AssertedPresentation
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Confirmation
+  description: >-
+    Proof the transport built that a credential is held by its presenter rather
+    than replayed: the client certificate's SHA-256 thumbprint and a DPoP proof
+    with the method and absolute URI it was sent to. Either is absent when the
+    request carried none.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    certificateThumbprint: { description: The SHA-256 thumbprint of the TLS client certificate., type: string }
+    dpop:
+      description: A DPoP proof header with the request it arrived on.
+      type: object
+      additionalProperties: false
+      required: [proof, method, uri]
+      properties:
+        proof: { description: The compact DPoP proof JWT., type: string, x-telo-sensitive: true }
+        method: { description: The request's HTTP method., type: string }
+        uri: { description: "The request's absolute target URI, without query or fragment.", type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: VerifierOutput
+  description: >-
+    A verifier's answer: the accepted principal, or a refusal with its reason and
+    the challenge to send back. Refusing a credential is an answer; failing to
+    reach what is needed to judge it is a thrown error.
+schema:
+  anyOf:
+    - type: object
+      additionalProperties: false
+      required: [principal]
+      properties:
+        principal: !ref Principal
+    - type: object
+      additionalProperties: false
+      required: [refused, reason, challenge]
+      properties:
+        refused: { const: true }
+        reason: { description: "Why the credential was refused, for logs and operators; never for the caller.", type: string }
+        challenge:
+          description: The `WWW-Authenticate` challenge this verifier contributes; null when it has none.
+          type: [object, "null"]
+          additionalProperties: false
+          required: [scheme, parameters]
+          properties:
+            scheme: { type: string }
+            parameters: { type: object, additionalProperties: { type: string } }
+---
+# The authorization server a verifier trusts. Normative: docs/verifiers.md.
+kind: Telo.JsonSchema
+metadata:
+  name: Issuer
+  description: >-
+    The authorization server whose tokens this verifier accepts, advertised in
+    protected-resource metadata.
+schema: { x-telo-type: { name: Telo.Url, scheme: { enum: [http, https] } } }
+---
+# The key `issuer` is reserved for the authorization server whose tokens a verifier accepts (an `Auth.Issuer`),
+# published in its reading as configured; a transport derives protected-resource metadata from it.
+# Normative: docs/verifiers.md.
+kind: Telo.Abstract
+metadata:
+  name: Verifier
+  description: >-
+    Judges one presented credential against the confirmation the transport built
+    and the protected resource's address, and answers with the authenticated
+    caller or a refusal carrying the reason and the challenge to send back. An
+    unreachable key source or endpoint is a thrown error, not a refusal.
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [presentation, confirmation, resource]
+    properties:
+      presentation: !ref Presentation
+      confirmation: !ref Confirmation
+      resource:
+        description: The canonical URI of the protected resource; null on a transport that has none.
+        type: [string, "null"]
+outputType: !ref VerifierOutput
+---
+kind: Telo.JsonSchema
+metadata:
+  name: PasswordOutput
+  description: >-
+    A password check's answer: the principal whose password matched, or a refusal
+    saying whether the identifier is unknown, the password wrong, the account
+    disabled or the identifier throttled.
+schema:
+  anyOf:
+    - type: object
+      additionalProperties: false
+      required: [principal]
+      properties:
+        principal: !ref Principal
+    - type: object
+      additionalProperties: false
+      required: [refused, reason]
+      properties:
+        refused: { const: true }
+        reason: { type: string, enum: [unknown, mismatch, disabled, throttled] }
+---
+kind: Telo.Abstract
+metadata:
+  name: PasswordVerifier
+  description: >-
+    Checks a user identifier and password and answers with the principal or a
+    refusal saying whether the identifier is unknown, the password wrong, the
+    account disabled or the identifier throttled. Gives an unknown identifier the
+    same cost as a wrong password.
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [identifier, password]
+    properties:
+      identifier: { type: string }
+      password: { type: string, x-telo-sensitive: true }
+outputType: !ref PasswordOutput
+---
+kind: Telo.JsonSchema
+metadata:
+  name: PolicyDecision
+  description: >-
+    An authorization decision: whether the action is allowed, an optional reason
+    for logs, and the scopes whose absence caused a denial, so a transport can
+    ask the caller to obtain them.
+schema:
+  type: object
+  additionalProperties: false
+  required: [allow]
+  properties:
+    allow: { type: boolean }
+    reason: { type: string }
+    requiredScopes: { type: array, items: { type: string } }
+---
+kind: Telo.Abstract
+metadata:
+  name: Policy
+  description: >-
+    Decides whether a caller, or an anonymous request, may perform an action on a
+    resource, given the request's context. Answers allow or deny with an optional
+    reason and the scopes a denied caller would need.
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [principal, action, resource, context]
+    properties:
+      principal:
+        description: The authenticated caller; null for an anonymous request.
+        anyOf: [!ref Principal, { type: "null" }]
+      action: { description: What is being attempted., type: string }
+      resource: { description: What it is attempted on; null when nothing in particular. }
+      context: { description: Request facts for the decision., type: object, additionalProperties: true }
+outputType: !ref PolicyDecision
+---
+kind: Telo.Definition
+metadata:
+  name: TrustedHeader
+  description: >-
+    Accepts the identity a trusted reverse proxy or gateway has already
+    authenticated and forwarded, turning the asserted subject and claims into the
+    request's principal. Names which claims carry roles, scopes, permissions and
+    organization. Meant only behind a proxy the server is told to trust.
+capability: Telo.Invocable
+extends: Self.Verifier
+controllers: [pkg:telo/local/js?path=./nodejs/auth.mjs&local_path=./nodejs/src/index.ts#TrustedHeaderController]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    principalIssuer:
+      title: Principal issuer
+      description: Recorded as the principal's issuer, typically the proxy or identity provider behind it; null when omitted. It is not a token issuer, so it is never advertised.
+      type: string
+    principalKind:
+      title: Principal kind
+      description: Whether the forwarded identities are users or services; user when omitted.
+      type: string
+      enum: [user, service]
+      default: user
+    claimNames:
+      title: Claim names
+      description: >-
+        The forwarded claim holding each list; a claim is a list of strings or one
+        whitespace-separated string. `roles`, `scopes`, `permissions` and `org`
+        when omitted. A claim that is absent leaves the member empty.
+      type: object
+      additionalProperties: false
+      properties:
+        roles: { type: string }
+        scopes: { type: string }
+        permissions: { type: string }
+        org: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [presentation, confirmation, resource]
+    properties:
+      presentation: !ref AssertedPresentation
+      confirmation: !ref Confirmation
+      resource: { type: [string, "null"] }

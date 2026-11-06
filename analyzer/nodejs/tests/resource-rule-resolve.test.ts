@@ -271,7 +271,7 @@ describe("resource rules — resolve across references", () => {
       { kind: "Telo.Definition", metadata: { name: "Form" }, schema: schemas["std.Form"] } as unknown as ResourceManifest,
       undefined,
       undefined,
-      (kind) => (schemas[kind] ? [schemas[kind]!] : []),
+      (kind) => (schemas[kind] ? [{ schema: schemas[kind]!, module: "std" }] : []),
     );
     expect(issues).toEqual([]);
     const misspelled = {
@@ -282,9 +282,49 @@ describe("resource rules — resolve across references", () => {
       { kind: "Telo.Definition", metadata: { name: "Form" }, schema: misspelled } as unknown as ResourceManifest,
       undefined,
       undefined,
-      (kind) => (schemas[kind] ? [schemas[kind]!] : []),
+      (kind) => (schemas[kind] ? [{ schema: schemas[kind]!, module: "std" }] : []),
     );
     expect(refused.map((i) => i.path)).toEqual(["schema.x-telo-resource-rules[0].resolve[0]"]);
+  });
+});
+
+/** A `resolve:` pointer reaching a slot inside a named shape the kind's schema
+ *  `$ref`s, as a local `$defs` entry or another document. */
+describe("resource rules — resolve through referenced shapes", () => {
+  const tableRef = { "x-telo-ref": { kind: "std.Table", use: "dependency" } };
+  const shape = {
+    type: "object",
+    properties: { verifiers: { type: "array", items: { type: "object", properties: { verifier: tableRef } } } },
+  };
+  const holder = (resolve: string, mount: Record<string, unknown>) =>
+    ({
+      kind: "Telo.Definition",
+      metadata: { name: "Server", module: "Http" },
+      schema: {
+        type: "object",
+        $defs: { Local: shape },
+        properties: { mounts: { type: "array", items: { type: "object", properties: { auth: mount } } } },
+        "x-telo-resource-rules": [{ resolve: [resolve], condition: cel("true"), code: "R", message: "m" }],
+      },
+    }) as unknown as ResourceManifest;
+  const shapes = (ref: string, module: string | undefined) =>
+    ref === "telo://Self/Auth" && module === "Http" ? { schema: shape, module: "Http" } : undefined;
+  const judge = (resolve: string, mount: Record<string, unknown>) =>
+    validateResourceRuleDeclarations(holder(resolve, mount), undefined, undefined, undefined, shapes).map((i) => i.path);
+
+  it("accepts a slot inside a named shape and refuses a field it does not declare", () => {
+    expect(judge("/mounts/*/auth/verifiers/*/verifier", { $ref: "telo://Self/Auth" })).toEqual([]);
+    expect(judge("/mounts/*/auth/verifiers/*/verifer", { $ref: "telo://Self/Auth" })).toEqual([
+      "schema.x-telo-resource-rules[0].resolve[0]",
+    ]);
+  });
+
+  it("accepts a slot inside a local definition", () => {
+    expect(judge("/mounts/*/auth/verifiers/*/verifier", { $ref: "#/$defs/Local" })).toEqual([]);
+  });
+
+  it("does not refuse a pointer through a named shape it cannot read", () => {
+    expect(judge("/mounts/*/auth/verifiers/*/verifier", { $ref: "telo://Other/Auth" })).toEqual([]);
   });
 });
 

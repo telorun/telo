@@ -1,0 +1,6 @@
+modules:
+  modules/identity: Added
+body: "New module: Identity.DeclaredUsers, an Auth.PasswordVerifier over users written
+  in the manifest with password hashes from secrets, checked through
+  Crypto.PasswordHash. An unknown identifier is verified against a dummy hash so it
+  takes as long as a wrong password."

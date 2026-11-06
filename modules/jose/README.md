@@ -9,7 +9,7 @@ JSON Web Tokens and keys for manifests: sign and verify JWTs, keep signing keys 
 | `Jose.Keys` | Abstract: a source of verification keys. |
 | `Jose.KeySet` | This application's signing keys — **managed** (`store`, `name`, `wrapKey`, `rotation`) or **static** (`keys:` JWKs from `secrets:`). `algorithm`: `ES256` (default), `RS256`, `EdDSA`, `HS256`. See [key sets](./docs/key-sets.md). |
 | `Jose.RemoteKeySet` | Another issuer's keys, by `url` (a JWKS) or `issuer` (discovery), with `cacheTtl`, `cooldown` and `timeout`. |
-| `Jose.Sign` | `{ claims?, subject?, audience?, expiresIn?, jwtId? }` → `{ token, kid, expiresAt }`. Configured with `keys`, `type` (`JWT` \| `at+jwt` \| `logout+jwt`), `issuer`, `audience`, `expiresIn` (15m), `notBefore`. `jwtId: auto` generates one. |
+| `Jose.Sign` | `{ claims?, subject?, audience?, expiresIn?, jwtId? }` → `{ token, kid, expiresAt }`. Configured with `keys`, `type` (`JWT` \| `at+jwt` \| `logout+jwt` \| `dpop+jwt`), `embedPublicKey` (carry the signing key's public JWK in the `jwk` header, for a DPoP proof), `issuer`, `audience`, `expiresIn` (15m), `notBefore`. `jwtId: auto` generates one. |
 | `Jose.Verify` | `{ token, audience? }` → `{ valid: true, payload, header }` or `{ valid: false, reason }`. Configured with `keys`, `algorithms` (required), `issuer`, `audience`, `type`, `clockTolerance`, `maxTokenAge`, `requiredClaims`. See [verification](./docs/verification.md). |
 | `Jose.Rotate` | `{ force? }` → `{ rotated, currentKid, retiredKids }`, on a managed set. |
 | `Jose.PublicKeys` | `{}` → `{ keys }`, the public JWKS of the current and retiring keys. |

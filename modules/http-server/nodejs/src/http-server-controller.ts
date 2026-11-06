@@ -72,8 +72,22 @@ import { publishRequestHost, requestHostReader, type RequestHostReader } from ".
 import { headerReads, type HeaderReads } from "./request-header-reads.js";
 import { acceptedLanguages, RequestLanguage, withLang } from "./request-language.js";
 import { fastifyValidationIssues, requestValidation } from "./request-validation-problem.js";
+import { accessRefusalOf } from "./access-refusal.js";
+import type { CredentialRequest } from "./credential-source.js";
+import { metadataPath, protectedResourceDocument, type ProtectedResourceSetting } from "./protected-resource.js";
+import {
+  mountAccessHook,
+  liveEntries,
+  protectedResourceReadings,
+  readingOf,
+  resourceOf,
+  ROUTE_ACCESS,
+  type AccessEntry,
+  type AuthorizationSetting,
+  type RouteAccess,
+} from "./mount-access.js";
 
-/** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
+/** A mounted Telo.Mount instance (Http.Api, or another module's mount). The kernel injects the
  *  live instance into a mount's `mount` slot (x-telo-ref `Telo.Mount`) — cross-module refs
  *  resolve to an imported library's exported mount — and every mountable exposes register().
  *  `requestScope` gives each request's span context to whatever the mount dispatches. */
@@ -82,8 +96,19 @@ interface Mountable {
     app: FastifyInstance,
     prefix: string,
     requestScope: RequestScope<FastifyRequest>,
+    access: MountAccess,
   ): void | Promise<void>;
 }
+
+/** What the server tells a mounted kind about the authentication in front of it. */
+type MountAccess = {
+  /** The mount's authentication refuses a caller presenting no credential. */
+  deniesAnonymous: boolean;
+  /** The mount publishes protected-resource metadata, which its 401s name. */
+  protectedResource: boolean;
+  /** The issuers the mount's verifiers publish. */
+  issuers: readonly string[];
+};
 
 type CorsOptions = {
   origin?: string | boolean | string[];
@@ -113,10 +138,27 @@ type ResolvedGuard = {
   catches?: CatchEntry[];
 };
 
+/** A mount's `authentication` / `authorization` as written; Phase 5 injects the
+ *  live instance into each reference slot. */
+type MountAuthentication = {
+  verifiers?: Array<{ verifier: unknown; from: unknown }>;
+  anonymous?: "allow" | "deny";
+};
+type MountAuthorization = { policy: unknown; action: unknown; resource?: unknown };
+
+/** The kind and name of each access-check slot, captured before injection. */
+type AccessRefs = {
+  verifiers: Array<{ verifier: { kind: string; name: string }; from: { kind: string; name: string } }>;
+  policy?: { kind: string; name: string };
+};
+
 type HttpMount = {
   path?: string;
+  authentication?: MountAuthentication;
+  authorization?: MountAuthorization;
+  protectedResource?: ProtectedResourceSetting;
   // x-telo-ref `Telo.Mount`: Phase 5 replaces this slot with the live mounted
-  // instance (Http.Api, Mcp.HttpEndpoint, …), local or imported.
+  // instance (Http.Api, another module's mount), local or imported.
   mount?: Mountable;
   logging?: { level?: LevelName };
   /** Expanded at startup (`x-telo-eval: compile`); `false` leaves the mount out. */
@@ -199,7 +241,13 @@ class HttpServer implements ResourceInstance {
   private readonly ctx: ResourceContext;
   private readonly resolvedNotFoundHandler: ResolvedHandler | null;
   private readonly resolvedGuards: WeakMap<HttpMount, ResolvedGuard>;
-  private readonly requestTraces = new WeakMap<FastifyRequest, RequestTrace>();
+  private readonly accessRefs: WeakMap<HttpMount, AccessRefs>;
+  /** The origin of each mount's first `Telo.PublicUrl`, read at init. */
+  private mountOrigins = new Map<HttpMount, string>();
+  private readonly requestTraces = new WeakMap<
+    FastifyRequest,
+    RequestTrace & { principal: Readonly<Record<string, unknown>> | null }
+  >();
   private readonly requestIntakes = new WeakMap<FastifyRequest, RequestIntake>();
   private readonly requestConnections = new WeakMap<FastifyRequest, RequestConnection>();
   private readonly requestScope: RequestScope<FastifyRequest> = {
@@ -220,10 +268,12 @@ class HttpServer implements ResourceInstance {
     ctx: ResourceContext,
     resolvedNotFoundHandler: ResolvedHandler | null,
     resolvedGuards: WeakMap<HttpMount, ResolvedGuard>,
+    accessRefs: WeakMap<HttpMount, AccessRefs>,
   ) {
     this.resource = resource;
     this.ctx = ctx;
     this.resolvedGuards = resolvedGuards;
+    this.accessRefs = accessRefs;
     this.preferenceReads = headerReads(resource.preferredLanguages);
     this.address = resource.listen?.address || "0.0.0.0";
     this.port = Number(resource.listen?.port || 0);
@@ -440,6 +490,9 @@ class HttpServer implements ResourceInstance {
           );
         }
         matchers.push(matcher);
+        if (!this.mountOrigins.has(mount) && typeof url?.host === "string") {
+          this.mountOrigins.set(mount, urlOrigin(url as Record<string, unknown>));
+        }
         if (parameters.customDomains === true) entry.customDomains = true;
       });
       customDomains ||= entry.customDomains;
@@ -600,6 +653,7 @@ class HttpServer implements ResourceInstance {
         get clientCertificate() {
           return connection.clientCertificate;
         },
+        principal: null,
         reject: (error) => {
           decidedBy = { error };
         },
@@ -1006,9 +1060,8 @@ class HttpServer implements ResourceInstance {
     //
     // A route renders what its own `catches:` claims, then its router's; what
     // neither claims is rethrown and arrives here. That is what makes a
-    // server-level list reach every mount — including a third-party one and an
-    // Mcp.HttpEndpoint, whose escaping errors genuinely are this server's to
-    // render — without widening the mount contract, which could only carry HTTP
+    // server-level list reach every mount — including a third-party one, whose
+    // escaping errors genuinely are this server's to render — without widening the mount contract, which could only carry HTTP
     // outcome entries onto seams that have no use for them.
     //
     // A non-InvokeError has no `error.code` for a `when:` to key on, so it is
@@ -1049,6 +1102,7 @@ class HttpServer implements ResourceInstance {
               ip: request.ip,
               headers: normalizedHeaders,
               cookies: parseCookieHeader(request.headers.cookie),
+              principal: this.requestTraces.get(request)?.principal ?? null,
             },
             () => language.lang,
           ),
@@ -1065,6 +1119,14 @@ class HttpServer implements ResourceInstance {
         fastifyReplySink(reply),
       );
       if (rendered) return;
+
+      // An access refusal no rung claimed is answered with its own status.
+      const access = accessRefusalOf(error);
+      if (access) {
+        reply.code(access.status);
+        reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
+        return reply.send(problemDetails(access.status, invokeError));
+      }
 
       // No rung claimed it. The message stays off the wire, so the log keeps it.
       reply.log.error({ err: error }, error.message);
@@ -1152,9 +1214,23 @@ class HttpServer implements ResourceInstance {
           if (restricted) route.constraints = { ...(route.constraints ?? {}), teloHost: hosts.id };
           this.hostRoutes.record(route.url, route.method, hosts);
         });
+        // Authentication, then authorization, then the guard: hooks run in the
+        // order they are added.
+        scope.addHook("onRequest", await this.accessHook(mount, index));
+        scope.addHook("onRoute", (route) => this.checkRouteAccess(mount, index, route.config));
         if (guard) scope.addHook("onRequest", this.guardHook(guard, `/mounts/${index}/guard/invoke`));
-        await api.register(scope, prefix, this.requestScope);
+        await api.register(scope, prefix, this.requestScope, await this.mountAccess(mount, index));
       });
+      if (mount.protectedResource) {
+        // Outside the mount's scope: its access hook never runs on the document.
+        await this.app.register(async (scope) => {
+          scope.addHook("onRoute", (route) => {
+            if (restricted) route.constraints = { ...(route.constraints ?? {}), teloHost: hosts.id };
+            this.hostRoutes.record(route.url, route.method, hosts);
+          });
+          await this.registerProtectedResource(scope, mount, index);
+        });
+      }
     }
 
     if (this.resolvedNotFoundHandler) {
@@ -1252,6 +1328,141 @@ class HttpServer implements ResourceInstance {
     }
   }
 
+  /** The mount's verifiers as the seam dispatches them. */
+  private mountEntries(mount: HttpMount, index: number): AccessEntry[] {
+    const verifiers = mount.authentication?.verifiers;
+    if (!verifiers) return [];
+    return liveEntries(verifiers, this.accessRefs.get(mount)!.verifiers, `/mounts/${index}/authentication/verifiers`);
+  }
+
+  private async mountAccess(mount: HttpMount, index: number): Promise<MountAccess> {
+    return {
+      deniesAnonymous: mount.authentication !== undefined && mount.authentication.anonymous !== "allow",
+      protectedResource: mount.protectedResource !== undefined,
+      issuers: (await protectedResourceReadings(this.mountEntries(mount, index))).issuers,
+    };
+  }
+
+  /** `GET /.well-known/oauth-protected-resource<mount path>` (RFC 9728), unauthenticated. */
+  private async registerProtectedResource(scope: FastifyInstance, mount: HttpMount, index: number): Promise<void> {
+    const written = mount.protectedResource!;
+    const readings = await protectedResourceReadings(this.mountEntries(mount, index));
+    const path = mount.path ?? "";
+    const publicOrigin = this.mountOrigins.get(mount);
+    scope.route({
+      method: "GET",
+      url: metadataPath(path),
+      handler: async (request, reply) => {
+        reply.header("Content-Type", "application/json");
+        return reply.send(
+          protectedResourceDocument(resourceOf({ path, ...(publicOrigin ? { publicOrigin } : {}) }, request), written, readings),
+        );
+      },
+    });
+  }
+
+  /** The mount's authentication and authorization hook, its slots read off the
+   *  live instances Phase 5 injected. */
+  private async accessHook(mount: HttpMount, index: number) {
+    const refs = this.accessRefs.get(mount);
+    const at = `/mounts/${index}`;
+    const label = `Http.Server[${this.resource.metadata.name}] mounts[${index}]`;
+    const authentication = mount.authentication
+      ? {
+          ...(mount.authentication.verifiers
+            ? { verifiers: liveEntries(mount.authentication.verifiers, refs!.verifiers, `${at}/authentication/verifiers`) }
+            : {}),
+          ...(mount.authentication.anonymous ? { anonymous: mount.authentication.anonymous } : {}),
+        }
+      : undefined;
+    for (const entry of authentication?.verifiers ?? []) {
+      if ((await readingOf(entry.from.instance)).requiresTrustedProxy === true && !this.trustsProxy) {
+        throw proxySourceUntrusted(label, entry);
+      }
+    }
+    const written = mount.authorization;
+    const authorization: AuthorizationSetting | undefined = written
+      ? {
+          policy: {
+            ...refs!.policy!,
+            instance: written.policy as ResourceInstance,
+            calledAt: `${at}/authorization/policy`,
+          },
+          evaluate: (request, principal) =>
+            this.ctx.moduleContext.expandWith(
+              { action: written.action, resource: written.resource ?? null },
+              { request: this.accessRequestContext(request, principal) },
+            ) as { action: unknown; resource: unknown },
+        }
+      : undefined;
+    return mountAccessHook({
+      ctx: this.ctx,
+      label,
+      ...(authentication ? { authentication } : {}),
+      ...(authorization ? { authorization } : {}),
+      path: mount.path ?? "",
+      ...(this.mountOrigins.has(mount) ? { publicOrigin: this.mountOrigins.get(mount)! } : {}),
+      protectedResource: mount.protectedResource !== undefined,
+      trace: (request) => this.requestTraces.get(request)!,
+      credentialRequest: (request) => this.credentialRequest(request),
+      declaredDisplayMessage: (code, data) => this.ctx.declaredDisplayMessage(code, data),
+    });
+  }
+
+  /**
+   * A route a mount registers with access settings of its own: a route whose
+   * effective authentication denies anonymous callers with no verifier serves
+   * nothing, and a forwarded identity belongs to a mount only.
+   */
+  private checkRouteAccess(mount: HttpMount, index: number, config: unknown): void {
+    const route = (config as Record<string, unknown> | undefined)?.[ROUTE_ACCESS] as RouteAccess | undefined;
+    const own = route?.authentication;
+    if (!own) return;
+    const verifiers = own.verifiers ?? mount.authentication?.verifiers ?? [];
+    const anonymous = own.anonymous ?? mount.authentication?.anonymous ?? "deny";
+    if (verifiers.length === 0 && anonymous === "deny") {
+      throw new RuntimeError(
+        "ERR_AUTHENTICATION_UNSATISFIABLE",
+        `Http.Server[${this.resource.metadata.name}] mounts[${index}] mounts a route whose authentication denies ` +
+          `anonymous callers while neither the route nor the mount names a verifier, so no request can be served there.`,
+      );
+    }
+  }
+
+  /** What a credential source reads: the request before its body. */
+  private credentialRequest(request: FastifyRequest): CredentialRequest {
+    const connection = this.connectionOf(request);
+    return {
+      method: request.method,
+      path: request.url,
+      host: this.requestHost(request.raw),
+      headers: normalizeHeaders(request.headers),
+      query: requestBag(request.query),
+      cookies: parseCookieHeader(request.headers.cookie),
+      ip: request.ip,
+      tls: connection.tls,
+      clientCertificate: connection.clientCertificate as Record<string, unknown> | null,
+    };
+  }
+
+  /** `request` as a mount's `authorization` reads it. */
+  private accessRequestContext(request: FastifyRequest, principal: Readonly<Record<string, unknown>> | null) {
+    const language = this.languageOf(request);
+    return withLang(
+      {
+        headers: normalizeHeaders(request.headers),
+        query: requestBag(request.query),
+        path: request.url,
+        host: this.requestHost(request.raw),
+        cookies: parseCookieHeader(request.headers.cookie),
+        method: request.method,
+        ip: request.ip,
+        principal,
+      },
+      () => language.lang,
+    );
+  }
+
   /**
    * `onRequest` runs after the root context's hooks (the request span, CORS) and
    * before the body is parsed; the guard dispatches on the request's context, so
@@ -1274,6 +1485,7 @@ class HttpServer implements ResourceInstance {
               host: this.requestHost(request.raw),
               method: request.method,
               ip: request.ip,
+              principal: this.requestScope.forRequest(request).principal,
             },
             () => language.lang,
           ),
@@ -1449,6 +1661,43 @@ export async function create(
       catches: resource.notFoundHandler.catches,
     };
   }
+  const mounts = resource.mounts ?? [];
+  if (mounts.some((mount) => mount.authentication) && !mounts.every((mount) => mount.authentication)) {
+    const open = mounts.findIndex((mount) => !mount.authentication);
+    throw new RuntimeError(
+      "ERR_MOUNT_IMPLICITLY_PUBLIC",
+      `${label} declares \`authentication\` on some mounts and not on mounts[${open}], so that mount is open ` +
+        `to anyone. Declare \`authentication\` on every mount — \`{ anonymous: allow }\` for a public one.`,
+    );
+  }
+  mounts.forEach((mount, index) => {
+    const authentication = mount.authentication;
+    if (mount.protectedResource && !authentication?.verifiers) {
+      throw new RuntimeError(
+        "ERR_PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION",
+        `${label} mounts[${index}] declares \`protectedResource\` on a mount whose \`authentication\` names no verifier, ` +
+          `so the metadata would describe no authentication. List the mount's \`verifiers\`, or remove \`protectedResource\`.`,
+      );
+    }
+    if (authentication && !authentication.verifiers && authentication.anonymous !== "allow") {
+      throw new RuntimeError(
+        "ERR_AUTHENTICATION_UNSATISFIABLE",
+        `${label} mounts[${index}] denies anonymous callers and names no verifier, so no request can be served there.`,
+      );
+    }
+  });
+  // Kind and name of each access-check slot, captured before injection.
+  const accessRefs = new WeakMap<HttpMount, AccessRefs>();
+  for (const mount of mounts) {
+    if (!mount.authentication && !mount.authorization) continue;
+    accessRefs.set(mount, {
+      verifiers: (mount.authentication?.verifiers ?? []).map((entry) => ({
+        verifier: ctx.ensureKindRef(entry.verifier),
+        from: ctx.ensureKindRef(entry.from),
+      })),
+      ...(mount.authorization ? { policy: ctx.ensureKindRef(mount.authorization.policy) } : {}),
+    });
+  }
   // Captured before Phase 5 injection replaces each `invoke` ref with the live
   // instance: dispatch goes by kind and name, like the not-found handler's.
   const resolvedGuards = new WeakMap<HttpMount, ResolvedGuard>();
@@ -1462,7 +1711,7 @@ export async function create(
       catches: mount.guard.catches,
     });
   }
-  return new HttpServer(resource, ctx, resolvedNotFoundHandler, resolvedGuards);
+  return new HttpServer(resource, ctx, resolvedNotFoundHandler, resolvedGuards, accessRefs);
 }
 
 /** A header's value when it arrived exactly once; a repeated one is not a W3C
@@ -1596,4 +1845,20 @@ function preferredLanguagesInvalid(produced: string): InvokeError {
     "ERR_PREFERRED_LANGUAGES_INVALID",
     `'preferredLanguages' must evaluate to a list of strings, but the expression ${produced}.`,
   );
+}
+
+/** A forwarded identity read on a server that trusts no proxy. */
+export function proxySourceUntrusted(label: string, entry: AccessEntry): RuntimeError {
+  return new RuntimeError(
+    "ERR_HTTP_PROXY_SOURCE_UNTRUSTED",
+    `${label} reads a forwarded identity at '${entry.from.calledAt}' but trusts no proxy, so any client ` +
+      `could send that header. Set \`trustProxy\` to the proxy in front of this server.`,
+  );
+}
+
+/** A public URL's origin: its scheme, host and port. */
+function urlOrigin(url: Record<string, unknown>): string {
+  const host = String(url.host);
+  const port = url.port === undefined || url.port === null ? "" : `:${String(url.port)}`;
+  return `${String(url.scheme)}://${host.includes(":") ? `[${host}]` : host}${port}`;
 }

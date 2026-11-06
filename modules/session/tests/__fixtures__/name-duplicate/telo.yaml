@@ -1,0 +1,23 @@
+# Two session sets claiming one name on one store: refused by `telo check` at
+# both resources, and by the controller when the second is created.
+kind: Telo.Library
+metadata: { name: NameDuplicate }
+imports: { Session: ../../.., KvStoreMemory: ../../../../kv-store-memory }
+exports: { resources: [web, admin] }
+---
+kind: KvStoreMemory.Store
+metadata: { name: store }
+---
+kind: Session.Sessions
+metadata: { name: web }
+store: !ref store
+name: main
+idleTimeout: 1800s
+absoluteLifetime: 43200s
+---
+kind: Session.Sessions
+metadata: { name: admin }
+store: !ref store
+name: main
+idleTimeout: 600s
+absoluteLifetime: 3600s

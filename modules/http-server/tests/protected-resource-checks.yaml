@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: ProtectedResourceChecks
+  version: 1.0.0
+  description: |
+    A mount declaring `protectedResource` must name a verifier in its
+    `authentication`: with anonymous callers allowed and no verifier, with an
+    empty `authentication`, or with none at all, the metadata would describe no
+    authentication. Each is refused by `telo check` where it is written, and by
+    the server when it is created, before it listens.
+imports: { Assert: ../../assert }
+targets:
+  - !ref withoutAllow
+  - !ref withoutAllowAtRuntime
+  - !ref withoutVerifiers
+  - !ref withoutVerifiersAtRuntime
+  - !ref withoutAuthentication
+  - !ref withoutAuthenticationAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: withoutAllow }
+source: ./__fixtures__/authentication/protected-without-allow/lib/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "declares `protectedResource` on a mount whose `authentication` names no verifier" }
+---
+kind: Assert.Manifest
+metadata: { name: withoutAllowAtRuntime }
+source: ./__fixtures__/authentication/protected-without-allow/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION] RuntimeError: Http.Server[server] mounts[0] declares `protectedResource`"
+---
+kind: Assert.Manifest
+metadata: { name: withoutVerifiers }
+source: ./__fixtures__/authentication/protected-without-verifiers/lib/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "denies anonymous callers and names no verifier" }
+    - { code: RESOURCE_RULE_VIOLATED, message: "declares `protectedResource` on a mount whose `authentication` names no verifier" }
+---
+kind: Assert.Manifest
+metadata: { name: withoutVerifiersAtRuntime }
+source: ./__fixtures__/authentication/protected-without-verifiers/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION] RuntimeError: Http.Server[server] mounts[0] declares `protectedResource`"
+---
+kind: Assert.Manifest
+metadata: { name: withoutAuthentication }
+source: ./__fixtures__/authentication/protected-without-authentication/lib/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "declares `protectedResource` on a mount whose `authentication` names no verifier" }
+---
+kind: Assert.Manifest
+metadata: { name: withoutAuthenticationAtRuntime }
+source: ./__fixtures__/authentication/protected-without-authentication/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION] RuntimeError: Http.Server[server] mounts[0] declares `protectedResource`"

@@ -1,0 +1,58 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeySqliteSuite
+  version: 1.0.0
+  description: |
+    The API-key store's behaviour suite on an in-memory SQLite database: two
+    stores sharing one table, keys issued, listed, revoked, rotated and
+    presented to a verifier on an HTTP mount.
+imports:
+  Suite:
+    source: ../../api-key-sql/tests/__fixtures__/store-suite
+    variables: { port: 9331 }
+    resources:
+      store: !ref store
+      boundedStore: !ref boundedStore
+  SQLite: ../../sqlite
+  Keys: ../
+targets:
+  - !ref appSchema
+  - !ref Suite.listing
+  - !ref Suite.revocation
+  - !ref Suite.rotation
+  - !ref Suite.refusals
+  - !ref Suite.verification
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: store }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: main
+prefix: tk
+scopes: [read, write]
+retention: 1h
+---
+kind: Keys.Store
+metadata: { name: boundedStore }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: bounded
+prefix: tk
+scopes: [read, write]
+maxLifetime: 1h
+retention: 1h

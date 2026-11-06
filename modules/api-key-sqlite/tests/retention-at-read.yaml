@@ -1,0 +1,184 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeySqliteRetentionAtReadTest
+  version: 1.0.0
+  description: |
+    Retention is judged by every statement, not by the sweep. Three rows are
+    written straight into the table: a key revoked two hours ago (past the
+    one-hour retention), one revoked half an hour ago, and a live one. With the
+    sweep's first pass a minute away, the first reads as unknown everywhere —
+    missing from a listing, unknown to revoke and rotate, refused by the
+    verifier — while the second is still found and reported as revoked, and the
+    row itself is still in the table.
+imports:
+  Keys: ../
+  SQLite: ../../sqlite
+  Sql: ../../sql
+  ApiKey: ../../api-key
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: store }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: main
+prefix: tk
+scopes: [read]
+retention: 1h
+---
+kind: ApiKey.Verifier
+metadata: { name: verifier }
+sources: [!ref store]
+---
+kind: ApiKey.List
+metadata: { name: list }
+store: !ref store
+---
+kind: ApiKey.Revoke
+metadata: { name: revoke }
+store: !ref store
+---
+kind: ApiKey.Rotate
+metadata: { name: rotate }
+store: !ref store
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /me, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { subject: !cel "request.principal.subject" }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:9332
+throwOnHttpError: false
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9332 }
+    mounts:
+      - path: /api
+        mount: !ref api
+        authentication:
+          verifiers:
+            - verifier: !ref verifier
+              from: { kind: Http.FromHeader, header: x-api-key, scheme: ApiKey }
+targets:
+  - !ref server
+steps:
+  - name: owner
+    value: !cel "'retention-' + uuidv4()"
+  # Keys 1 and 2 are `apk_000000002dwHTRTFRxWLTN` and `…TO`, 3 is `…TP`.
+  - name: endedLongAgo
+    invoke: !ref write
+    inputs:
+      sql: !sql >-
+        INSERT INTO api_keys (store_name, key_id, digest, owner_type, owner_id, scopes, created_at, revoked_at, ends_at)
+        VALUES ('main', '00000000-0000-7000-8000-000000000001', 'u2Scbii6AMEKroDwRPJ5XFVoR2cv3wPXsAXPM8ZVjl8', 'user', ${{ steps.owner.result }}, '["read"]',
+          strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 hours'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours'))
+  - name: endedRecently
+    invoke: !ref write
+    inputs:
+      sql: !sql >-
+        INSERT INTO api_keys (store_name, key_id, digest, owner_type, owner_id, scopes, created_at, revoked_at, ends_at)
+        VALUES ('main', '00000000-0000-7000-8000-000000000002', '55XTsCvTPv5WObFyd2DD-9bI1bu8s7Hul3MyPyN_gHM', 'user', ${{ steps.owner.result }}, '["read"]',
+          strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 hours'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 minutes'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 minutes'))
+  - name: live
+    invoke: !ref write
+    inputs:
+      sql: !sql >-
+        INSERT INTO api_keys (store_name, key_id, digest, owner_type, owner_id, scopes, created_at)
+        VALUES ('main', '00000000-0000-7000-8000-000000000003', 'H3yE8u9ZGCR47w0QvUfXo1qMVzAxrHkxXPdtJo5ILWI', 'user', ${{ steps.owner.result }}, '["read"]',
+          strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 hours'))
+  - name: listed
+    invoke: !ref list
+    inputs: { owner: { type: user, id: !cel "steps.owner.result" } }
+  - name: revokeForgotten
+    try:
+      - name: revokeEnded
+        invoke: !ref revoke
+        inputs: { id: apk_000000002dwHTRTFRxWLTN }
+    catch:
+      - name: forgottenRevoke
+        value: !cel "error.code"
+  - name: rotateForgotten
+    try:
+      - name: rotateEnded
+        invoke: !ref rotate
+        inputs: { id: apk_000000002dwHTRTFRxWLTN }
+    catch:
+      - name: forgottenRotate
+        value: !cel "error.code"
+  - name: revokeRemembered
+    invoke: !ref revoke
+    inputs: { id: apk_000000002dwHTRTFRxWLTO, by: nobody }
+  - name: rotateRemembered
+    try:
+      - name: rotateRevoked
+        invoke: !ref rotate
+        inputs: { id: apk_000000002dwHTRTFRxWLTO }
+    catch:
+      - name: rememberedRotate
+        value: !cel "error.code"
+  - name: forgottenCall
+    invoke: { kind: HttpClient.Request, client: !ref client, url: /api/me }
+    inputs: { headers: { x-api-key: tk_000000002dwHTRTFRxWLTN0El6XFXwsUFD8J2vGxsaboW7rZYnQRBP5d9erwRwd292D5WEy } }
+  - name: revokedCall
+    invoke: { kind: HttpClient.Request, client: !ref client, url: /api/me }
+    inputs: { headers: { x-api-key: tk_000000002dwHTRTFRxWLTO0TWD4V5tkyUQGc5qXvlBDd2Fj97aqsMoBGJJjsttG4I3Wg1ht } }
+  - name: liveCall
+    invoke: { kind: HttpClient.Request, client: !ref client, url: /api/me }
+    inputs: { headers: { x-api-key: tk_000000002dwHTRTFRxWLTP0iHJbkdqdSjdOv8lotdlpRYNaigOHJYDGtSybpLpt6R3IwvEW } }
+  - name: rows
+    invoke: !ref read
+    inputs:
+      sql: !sql "SELECT CAST(count(*) AS INTEGER) AS n FROM api_keys WHERE owner_id = ${{ steps.owner.result }}"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        listed: !cel "steps.listed.result.keys.map(k, [k.id, k.revokedBy])"
+        revoke: !cel "[steps.forgottenRevoke.result, steps.revokeRemembered.result.revokedBy]"
+        rotate: !cel "[steps.forgottenRotate.result, steps.rememberedRotate.result]"
+        calls: !cel "[steps.forgottenCall.result.status, steps.revokedCall.result.status, steps.liveCall.result.status]"
+        rows: !cel "steps.rows.result.rows"
+      expected:
+        listed: [[apk_000000002dwHTRTFRxWLTO, null], [apk_000000002dwHTRTFRxWLTP, null]]
+        revoke: [ERR_API_KEY_NOT_FOUND, null]
+        rotate: [ERR_API_KEY_NOT_FOUND, ERR_API_KEY_REVOKED]
+        calls: [401, 401, 200]
+        rows: [{ n: 3 }]

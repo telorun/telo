@@ -1,0 +1,6 @@
+modules:
+  modules/auth: Added
+body: "New module: the shared vocabulary of inbound authentication — the authenticated
+  principal, credential presentations (token, basic, certificate, asserted), verifier,
+  password-verifier and policy contracts — and a verifier for identities asserted by a
+  trusted reverse proxy."

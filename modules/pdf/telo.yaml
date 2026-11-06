@@ -22,7 +22,9 @@ requires:
 # publishes. The wrapper's JavaScript inlines into the bundle; only the addon is
 # staged, and the controller hands its path to the wrapper the way sqlite hands
 # better-sqlite3 its `nativeBinding` — the package's own search walks up from a
-# `__filename` a bundle does not have.
+# `__filename` a bundle does not have. On Windows Skia's text layout also reads
+# ICU data from `icudtl.dat` beside the addon and aborts the process without it,
+# so that file is staged next to the addon.
 #
 # pdf.js's fonts, CMaps and wasm decoders are staged as the module's own assets
 # for the same reason: pdf.js resolves them beside its package, which a bundle
@@ -36,6 +38,8 @@ native:
   - { name: canvas, format: napi, os: linux, arch: arm64, libc: musl, path: ./native/linux-arm64-musl/skia.node }
   - { name: canvas, format: napi, os: windows, arch: amd64, path: ./native/windows-amd64/skia.node }
   - { name: canvas, format: napi, os: windows, arch: arm64, path: ./native/windows-arm64/skia.node }
+  - { name: canvas-icu, format: napi, os: windows, arch: amd64, path: ./native/windows-amd64/icudtl.dat }
+  - { name: canvas-icu, format: napi, os: windows, arch: arm64, path: ./native/windows-arm64/icudtl.dat }
 assets: [./assets/]
 sources:
   # The addon staged here and the `@napi-rs/canvas` wrapper the lockfile holds are
@@ -63,8 +67,12 @@ sources:
         { upstream: canvas-linux-arm64-musl, member: package/skia.linux-arm64-musl.node, sha256: 7787bf4bff18a279dfdba877e8af113eddc57da10f14ef2fb2e5a9ab4d9bed01, executable: false }
       ./native/windows-amd64/skia.node:
         { upstream: canvas-win32-x64-msvc, member: package/skia.win32-x64-msvc.node, sha256: c067e5d5df2abd36789c4d371efc60ce0a29d204575f316345b57dcd2f4b74e7, executable: false }
+      ./native/windows-amd64/icudtl.dat:
+        { upstream: canvas-win32-x64-msvc, member: package/icudtl.dat, sha256: 9f48c7f9c7c94d516a14870707e910ab94d75ae640ff6842c4af53276cd26ebe, executable: false }
       ./native/windows-arm64/skia.node:
         { upstream: canvas-win32-arm64-msvc, member: package/skia.win32-arm64-msvc.node, sha256: 8d931edf8d0933abae7609c584cbda240a12211bb3fa7149f04badfe7dbd98e8, executable: false }
+      ./native/windows-arm64/icudtl.dat:
+        { upstream: canvas-win32-arm64-msvc, member: package/icudtl.dat, sha256: 9f48c7f9c7c94d516a14870707e910ab94d75ae640ff6842c4af53276cd26ebe, executable: false }
   pdfjs:
     version: 6.0.227
     url: https://registry.npmjs.org/{upstream}/-/{upstream}-{version}.tgz

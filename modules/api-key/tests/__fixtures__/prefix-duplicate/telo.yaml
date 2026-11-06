@@ -1,0 +1,23 @@
+# Two sources of one verifier sharing a prefix, so a key could not be routed:
+# refused by `telo check` at the entry, and by the controller when the
+# verifier is created.
+kind: Telo.Library
+metadata: { name: PrefixDuplicate }
+imports: { ApiKey: ../../.. }
+exports: { resources: [keys] }
+---
+kind: ApiKey.DeclaredKeys
+metadata: { name: first }
+prefix: tk
+scopes: [read]
+keys: []
+---
+kind: ApiKey.DeclaredKeys
+metadata: { name: second }
+prefix: tk
+scopes: [write]
+keys: []
+---
+kind: ApiKey.Verifier
+metadata: { name: keys }
+sources: [!ref first, !ref second]

@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeyGenerateTest
+  version: 1.0.0
+  description: ApiKey.Generate mints a key in the documented format, its public id and a digest, without a store.
+imports: { ApiKey: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - { name: minted, invoke: { kind: ApiKey.Generate }, inputs: { prefix: tk } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        key: !cel "steps.minted.result.key.matches('^tk_[0-9A-Za-z]{71}$')"
+        id: !cel "steps.minted.result.id.matches('^apk_[0-9A-Za-z]{22}$')"
+        idIsKeysId: !cel "steps.minted.result.key.substring(3, 25) == steps.minted.result.id.substring(4)"
+        digest: !cel "steps.minted.result.digest.matches('^[A-Za-z0-9_-]{43}$')"
+      expected: { key: true, id: true, idIsKeysId: true, digest: true }

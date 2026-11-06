@@ -1,0 +1,76 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeySqliteReplicasTest
+  version: 1.0.0
+  description: |
+    Two application instances over one SQLite file: a key issued through the
+    first is accepted by the second, and once revoked through the first it is
+    refused by the second at its next request — nothing is cached.
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
+variables:
+  # The DIRECTORY each run's database goes in.
+  dbDir:
+    env: API_KEY_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: first }
+baseUrl: http://127.0.0.1:9335
+throwOnHttpError: false
+---
+kind: HttpClient.Client
+metadata: { name: second }
+baseUrl: http://127.0.0.1:9336
+throwOnHttpError: false
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: firstReplica }
+    source: ./__fixtures__/replica/telo.yaml
+    variables: { dbFile: !cel "variables.dbDir.joinPath('api-key-replicas.db')" }
+    ports: { http: 9335 }
+  - kind: App.Instance
+    metadata: { name: secondReplica }
+    source: ./__fixtures__/replica/telo.yaml
+    variables: { dbFile: !cel "variables.dbDir.joinPath('api-key-replicas.db')" }
+    ports: { http: 9336 }
+targets:
+  - !ref firstReplica
+  - !ref secondReplica
+steps:
+  - name: issued
+    invoke: { kind: HttpClient.Request, client: !ref first, url: /admin/issue, method: POST }
+    inputs: { body: { owner: !cel "'replicas-' + uuidv4()" } }
+  - name: throughSecond
+    invoke: { kind: HttpClient.Request, client: !ref second, url: /api/me }
+    inputs: { headers: { x-api-key: !cel "steps.issued.result.body.key" } }
+  - name: revoked
+    invoke: { kind: HttpClient.Request, client: !ref first, url: /admin/revoke, method: POST }
+    inputs: { body: { id: !cel "steps.issued.result.body.id" } }
+  - name: refusedBySecond
+    invoke: { kind: HttpClient.Request, client: !ref second, url: /api/me }
+    inputs: { headers: { x-api-key: !cel "steps.issued.result.body.key" } }
+  - name: refusedByFirst
+    invoke: { kind: HttpClient.Request, client: !ref first, url: /api/me }
+    inputs: { headers: { x-api-key: !cel "steps.issued.result.body.key" } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        issued: !cel "steps.issued.result.status"
+        accepted: !cel "steps.throughSecond.result.status"
+        revoked: !cel "[steps.revoked.result.status, steps.revoked.result.body.id == steps.issued.result.body.id]"
+        refusedBySecond: !cel "steps.refusedBySecond.result.status"
+        refusedByFirst: !cel "steps.refusedByFirst.result.status"
+      expected:
+        issued: 200
+        accepted: 200
+        revoked: [200, true]
+        refusedBySecond: 401
+        refusedByFirst: 401

@@ -1,0 +1,20 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "files": [],
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ],
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "paths": {
+      "@telorun/jose": ["../../jose/nodejs/src/index.ts"]
+    }
+  },
+  "references": [
+    {
+      "path": "tsconfig.lib.json"
+    }
+  ]
+}

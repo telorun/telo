@@ -19,7 +19,7 @@ kind: SearXNG.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18841" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18841" }
 ---
 kind: Run.Value
 metadata: { name: canned }

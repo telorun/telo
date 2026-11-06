@@ -1,0 +1,30 @@
+# A plain SQLite table has none of the store's columns.
+kind: Telo.Application
+metadata: { name: PlainTable }
+imports: { Keys: ../../, SQLite: ../../../sqlite }
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: plain }
+table: plain_keys
+columns: { id: { type: text, nullable: false } }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref plain]
+---
+kind: Keys.Store
+metadata: { name: store }
+connection: !ref db
+schema: !ref appSchema
+table: !ref plain
+name: main
+prefix: tk
+scopes: [read]
+retention: 1h

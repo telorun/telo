@@ -1,0 +1,6 @@
+# Static ES256 test keys: the issuer's signing key. Real keys come from `secrets:`.
+kind: Jose.KeySet
+metadata: { name: issuerKeys }
+algorithm: ES256
+keys:
+  - { kty: EC, x: J0k_d62PT7Wrl6emr3vrA1nHnWablWaHx2SIXDPK148, y: I44mAUi1zEMRdhTxiNNckPyaLTWoCb5_hyLFno2Dl7I, crv: P-256, d: 1Lj0H3tsR83jEeDaIbYTW3LrXjpOBxw-Uit_-j0Ai9k, kid: es1 }

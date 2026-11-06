@@ -33,6 +33,7 @@ const X_TELO_PATH_PARAMS_FOR = "x-telo-path-params-for" as const;
 /** Read on a binding of an `x-telo-context` alone. */
 const X_TELO_CONTEXT_EVAL = "x-telo-context-eval" as const;
 const X_TELO_CONTEXT_FROM_REFERRER = "x-telo-context-from-referrer" as const;
+const X_TELO_CONTEXT_NULLABLE_WHEN = "x-telo-context-nullable-when" as const;
 const X_TELO_CONTEXT_ITEM_FILLS = "x-telo-context-item-fills" as const;
 const X_TELO_CAUGHT_MEMBER = "x-telo-caught-member" as const;
 import { ANNOTATION_KEYWORDS } from "./value-type-keyword.js";
@@ -75,6 +76,7 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       | typeof X_TELO_TEXT_CONTEXT
       | typeof X_TELO_CONTEXT_EVAL
       | typeof X_TELO_CONTEXT_FROM_REFERRER
+      | typeof X_TELO_CONTEXT_NULLABLE_WHEN
       | typeof X_TELO_CONTEXT_ITEM_FILLS
       | typeof X_TELO_CAUGHT_MEMBER
     >
@@ -333,14 +335,60 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
     type: "boolean",
     const: true,
   },
+  "x-telo-raises": {
+    title: "Raises",
+    description:
+      "On a field: wherever a resource holds a value here, the kind raises these codes itself, " +
+      "each declared in its `throws.codes`. They reach the catch lists of the object holding the " +
+      "field, every list of what it reaches through a `throwsThrough` slot and every scope list " +
+      "above those — each list receiving the codes its own `x-telo-catches-for.raises` names — and " +
+      "type a catch-all there.",
+    type: "array",
+    items: { type: "string" },
+  },
   "x-telo-catches-for": {
     title: "Catches for",
     description:
       "Whose failures this catch list renders: a sibling field naming the handler, " +
       "or the EMPTY string for everything this resource drives — a scope-level list, " +
-      "which owes coverage of nothing itself and answers for every site it encloses.",
-    type: "string",
+      "which owes coverage of nothing itself and answers for every site it encloses. " +
+      "The object form `{ slot, raises }` also names the codes the kind raises into the " +
+      "list itself, each declared in its own `throws.codes`: entries here and on every " +
+      "list above may name them, and no site owes their coverage.",
+    oneOf: [
+      { type: "string" },
+      {
+        type: "object",
+        additionalProperties: false,
+        required: ["slot"],
+        properties: {
+          slot: { type: "string" },
+          raises: { type: "array", items: { type: "string" } },
+        },
+      },
+    ],
   },
+};
+
+const FROM_REFERRER_ENTRY = {
+  title: "Context from referrer",
+  description:
+    "Type this node from what the path (`<binding>[/<member>…]`) names in the scope at each slot referencing the resource — a field's record from the form holding it, a route's `request/principal` from its mounts — read at the site's own eval mode. Each referrer's type replaces the node's own keywords; judged once per distinct referrer type; with no referrer, or one whose scope lacks the path, the node is what it declares itself.",
+  type: "string",
+};
+
+const NULLABLE_WHEN_ENTRY = {
+  title: "Context nullable when",
+  description:
+    "This node may be null where the resource's value at `at` — a relative JSON pointer from the context holder, schema defaults filling a member whose object is present — is one of `equals`, or, with `absent: true`, where nothing is there. A computed or undecided value counts as a match. Null is added to whatever type the node resolves to.",
+  type: "object",
+  required: ["at", "equals", "absent"],
+  properties: {
+    at: { type: "string" },
+    equals: { type: "array" },
+    absent: { type: "boolean" },
+  },
+  additionalProperties: false,
 };
 
 /**
@@ -348,15 +396,14 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
  * nowhere else, offered there alone.
  */
 export const TELO_CONTEXT_BINDING_ANNOTATIONS: Record<
-  typeof X_TELO_CONTEXT_EVAL | typeof X_TELO_CONTEXT_FROM_REFERRER | typeof X_TELO_CONTEXT_ITEM_FILLS,
+  | typeof X_TELO_CONTEXT_EVAL
+  | typeof X_TELO_CONTEXT_FROM_REFERRER
+  | typeof X_TELO_CONTEXT_NULLABLE_WHEN
+  | typeof X_TELO_CONTEXT_ITEM_FILLS,
   Record<string, unknown>
 > = {
-  [X_TELO_CONTEXT_FROM_REFERRER]: {
-    title: "Context from referrer",
-    description:
-      "Type this binding from the binding of the named name in scope at each slot referencing the resource — a field's record from the form holding it. Only on a binding marked `x-telo-context-eval: accessor`. Judged once per distinct referrer type; with no referrer the binding is what it declares itself.",
-    type: "string",
-  },
+  [X_TELO_CONTEXT_FROM_REFERRER]: FROM_REFERRER_ENTRY,
+  [X_TELO_CONTEXT_NULLABLE_WHEN]: NULLABLE_WHEN_ENTRY,
   [X_TELO_CONTEXT_ITEM_FILLS]: {
     title: "Context item fills",
     description:
@@ -380,7 +427,12 @@ export const TELO_CONTEXT_BINDING_ANNOTATIONS: Record<
  * Annotations read on a MEMBER of a context binding — a node reached through
  * `properties` from a binding of an `x-telo-context` — and offered there alone.
  */
-export const TELO_CONTEXT_MEMBER_ANNOTATIONS: Record<typeof X_TELO_CAUGHT_MEMBER, Record<string, unknown>> = {
+export const TELO_CONTEXT_MEMBER_ANNOTATIONS: Record<
+  typeof X_TELO_CAUGHT_MEMBER | typeof X_TELO_CONTEXT_FROM_REFERRER | typeof X_TELO_CONTEXT_NULLABLE_WHEN,
+  Record<string, unknown>
+> = {
+  [X_TELO_CONTEXT_FROM_REFERRER]: FROM_REFERRER_ENTRY,
+  [X_TELO_CONTEXT_NULLABLE_WHEN]: NULLABLE_WHEN_ENTRY,
   [X_TELO_CAUGHT_MEMBER]: {
     title: "Caught member",
     description:

@@ -20,7 +20,7 @@ content:
       ref:
         kind: Ui.Action
         inputModel: !ref NoInput
-        source: { path: /api/unblock }
+        request: { target: /api/unblock }
         label: Unblock TEL-42
         onSuccess: { refreshes: [ /api/tasks, /api/task-counts ] }
 
@@ -38,7 +38,7 @@ content:
         kind: Ui.Action
         inputModel: !ref EstimateRequest
         outputModel: !ref EstimateAnswer
-        source: { path: /api/estimate }
+        request: { target: /api/estimate }
         label: { text: Estimate, context: verb }
         groups:
           - { name: scope, label: What to count }
@@ -98,7 +98,7 @@ content:
         kind: Ui.Action
         inputModel: !ref EstimateRequest
         outputModel: !ref EstimateInDays
-        source: { path: /api/estimate }
+        request: { target: /api/estimate }
         label: Estimate in days
         fields:
           - { kind: Ui.ChoiceField, property: projectCode, options: !ref projectOptions }
@@ -129,19 +129,19 @@ content:
             kind: Ui.Action
             inputModel: !ref ProjectPick
             outputModel: !ref ProjectPage
-            source: { path: /api/project-page }
+            request: { target: /api/project-page }
             label: Open its tasks
             fields:
               - { kind: Ui.ChoiceField, property: code, options: !ref projectOptions }
-            onSuccess: { navigate: !cel "result.page" }
+            onSuccess: { navigate: { path: !cel "result.page" } }
         - type: composite
           ref:
             kind: Ui.Action
             inputModel: !ref NoInput
             outputModel: !ref Homepage
-            source: { path: /api/homepage }
+            request: { target: /api/homepage }
             label: Visit the homepage
-            onSuccess: { navigate: !cel "result.homepage" }
+            onSuccess: { navigate: { path: !cel "result.homepage" } }
 
     # ---- Reading again after a success ----
     - { type: text, text: Reading again after a success, style: heading }
@@ -154,7 +154,7 @@ content:
       ref:
         kind: Ui.Data
         model: !ref TaskCounts
-        source: { path: /api/task-counts, params: { code: TEL-42 } }
+        source: { path: /api/task-counts, queryParams: { code: TEL-42 } }
         content:
           type: text
           style: strong
@@ -172,7 +172,7 @@ content:
         kind: Ui.Action
         inputModel: !ref StatusChange
         outputModel: !ref StatusAnswer
-        source: { path: /api/task-status }
+        request: { target: /api/task-status }
         label: Move
         onSuccess: { refreshes: [ /api/task-counts, /api/tasks ] }
         result:
@@ -197,7 +197,7 @@ content:
         kind: Ui.Action
         inputModel: !ref NewComment
         outputModel: !ref CommentAnswer
-        source: { path: /api/comments }
+        request: { target: /api/comments }
         label: Add the comment
         concurrency: serial
         clearAnswerOn: [ taskId ]
@@ -244,7 +244,7 @@ content:
           - action:
               kind: Ui.Action
               inputModel: !ref StatusChange
-              source: { path: /api/task-status }
+              request: { target: /api/task-status }
               label: { text: Start, context: verb }
               result: { type: badge, style: accent, text: Started }
               onSuccess: { refreshes: [ /api/task-counts ] }
@@ -256,7 +256,7 @@ content:
           - action:
               kind: Ui.Action
               inputModel: !ref StatusChange
-              source: { path: /api/task-status }
+              request: { target: /api/task-status }
               label: Close
               result: { type: badge, style: success, text: Closed }
               onSuccess: { refreshes: [ /api/task-counts ] }
@@ -296,7 +296,7 @@ content:
             - action:
                 kind: Ui.Action
                 inputModel: !ref CommentRef
-                source: { path: /api/comments/pin }
+                request: { target: /api/comments/pin }
                 label: Pin
                 onSuccess: { refreshes: [ /api/comments ] }
               inputs: { id: !cel "row.id" }
@@ -307,7 +307,7 @@ content:
             - action:
                 kind: Ui.Action
                 inputModel: !ref CommentRef
-                source: { path: /api/comments/delete }
+                request: { target: /api/comments/delete }
                 label: Delete
                 onSuccess: { refreshes: [ /api/comments ] }
               inputs: { id: !cel "row.id" }
@@ -315,7 +315,7 @@ content:
             - action:
                 kind: Ui.Action
                 inputModel: !ref CommentEdit
-                source: { path: /api/comments/edit }
+                request: { target: /api/comments/edit }
                 label: Edit
                 onSuccess: { refreshes: [ /api/comments ] }
               inputs: { id: !cel "row.id" }
@@ -337,7 +337,7 @@ content:
           ref:
             kind: Ui.Action
             inputModel: !ref TaskDraft
-            source: { path: /api/tasks }
+            request: { target: /api/tasks }
             label: Add it and open the tables
             fields:
               - title
@@ -348,17 +348,17 @@ content:
             kind: Ui.Action
             inputModel: !ref NoInput
             outputModel: !ref TeamLinks
-            source: { path: /api/team-links }
+            request: { target: /api/team-links }
             label: Open the handbook
-            onSuccess: { navigate: !cel "result.handbook" }
+            onSuccess: { navigate: { path: !cel "result.handbook" } }
         - type: composite
           ref:
             kind: Ui.Action
             inputModel: !ref NoInput
             outputModel: !ref TeamLinks
-            source: { path: /api/team-links }
+            request: { target: /api/team-links }
             label: Open the mirror
-            onSuccess: { navigate: !cel "result.mirror" }
+            onSuccess: { navigate: { path: !cel "result.mirror" } }
             result:
               type: text
               style: warning
@@ -380,7 +380,7 @@ content:
         kind: Ui.Action
         inputModel: !ref ProjectPick
         outputModel: !ref ProjectStatus
-        source: { path: /api/private/pause }
+        request: { target: /api/private/pause }
         label: Pause the project
         fields:
           - { kind: Ui.ChoiceField, property: code, options: !ref projectOptions }
@@ -400,7 +400,7 @@ content:
       ref:
         kind: Ui.Action
         inputModel: !ref NoInput
-        source: { path: /api/loop }
+        request: { target: /api/loop }
         label: Call a route that never answers
         failure:
           type: stack
@@ -455,7 +455,7 @@ content:
               kind: Ui.Action
               inputModel: !ref StatusChange
               outputModel: !ref StatusAnswer
-              source: { path: /api/task-status }
+              request: { target: /api/task-status }
               label: Move
               result:
                 type: columns
@@ -478,7 +478,7 @@ kind: Ui.Action
 metadata: { name: assignTask }
 inputModel: !ref Assignment
 outputModel: !ref AssignAnswer
-source: { path: /api/assign }
+request: { target: /api/assign }
 label: Assign
 onSuccess: { refreshes: [ /api/tasks ] }
 result:

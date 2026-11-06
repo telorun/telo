@@ -1,0 +1,41 @@
+# A claim names a bucket and a name; two claims of one name on one bucket are
+# refused. `Tagged` inherits the rule, `Renamed` (a `base:` child) does not.
+kind: Telo.Library
+metadata: { name: CoKinds }
+exports: { kinds: [Bucket, Claim, Tagged, Renamed] }
+---
+kind: Telo.Definition
+metadata: { name: Bucket }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema: { type: object, properties: { label: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Claim }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties:
+    bucket: { x-telo-ref: { kind: Self.Bucket, use: dependency } }
+    name: { type: string }
+  x-telo-resource-rules:
+    - coReferrers: /bucket
+      condition: !cel "!coReferrers.exists(o, o.name == self.name)"
+      code: CLAIM_NAME_DUPLICATE
+      message: claims a name another claim on this bucket claims.
+---
+kind: Telo.Definition
+metadata: { name: Tagged }
+extends: Self.Claim
+schema: { type: object, properties: { tag: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Renamed }
+extends: Self.Claim
+schema:
+  type: object
+  properties:
+    bucket: { x-telo-ref: { kind: Self.Bucket, use: dependency } }
+    alias: { type: string }
+base: { bucket: !cel "self.bucket", name: !cel "self.alias" }

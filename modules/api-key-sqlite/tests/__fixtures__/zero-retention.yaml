@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata: { name: ZeroRetention }
+imports: { Keys: ../../, SQLite: ../../../sqlite }
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: store }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: main
+prefix: tk
+scopes: [read]
+retention: 0s

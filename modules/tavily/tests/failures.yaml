@@ -19,20 +19,20 @@ kind: Tavily.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18862" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18862" }
 ---
 kind: Tavily.WebSearchEngine
 metadata: { name: throwingEngine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18862", throwOnHttpError: true }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18862", throwOnHttpError: true }
 ---
 # Nothing listens on this port.
 kind: Tavily.WebSearchEngine
 metadata: { name: unreachableEngine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18863", timeout: 2000 }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18863", timeout: 2000 }
 ---
 kind: Run.Value
 metadata: { name: errors }

@@ -1,0 +1,7 @@
+modules:
+  modules/sqlite: Fixed
+body: Two connections to one database file inside one process (for example applications
+  started with App.Instance) no longer fail with 'database is locked' when their writes
+  overlap. A statement that finds the file locked now waits for up to 5 seconds between
+  event-loop turns instead of blocking the thread in the driver, which had stopped the
+  connection holding the lock from ever releasing it.

@@ -1,0 +1,88 @@
+kind: Telo.Application
+metadata:
+  name: DevTokenIssuer
+  version: 1.0.0
+  description: |
+    A stand-in for the login service that signs the access tokens `telo.yaml`
+    accepts: it publishes its public keys at `/.well-known/jwks.json` and mints
+    a signed token for whatever subject, audience and scope it is asked for at
+    `POST /token`. It authenticates nobody, so run it only on a developer's
+    machine to get a token to call the API with.
+
+        ISSUER_WRAP_KEY=$(openssl rand -hex 32) pnpm run telo examples/api-key-microservice/issuer.yaml
+        curl -s localhost:9100/token -H 'content-type: application/json' \
+          -d '{"subject":"alice","audience":"http://localhost:8080/api","scope":"orders:read"}'
+imports:
+  Http: ../../modules/http-server
+  Jose: ../../modules/jose
+  KvStoreMemory: ../../modules/kv-store-memory
+variables:
+  issuer:
+    env: ISSUER_URL
+    type: string
+    default: https://issuer.example.test
+    description: The `iss` claim of every token; `telo.yaml` accepts the issuer `https://issuer.example.test`.
+secrets:
+  wrapKey:
+    env: ISSUER_WRAP_KEY
+    type: string
+    description: High-entropy secret the signing keys are sealed under in the store.
+ports: { http: { env: ISSUER_PORT, protocol: tcp, default: 9100 } }
+targets:
+  - !ref server
+---
+kind: KvStoreMemory.Store
+metadata: { name: keyStore }
+---
+kind: Jose.KeySet
+metadata: { name: signing }
+store: !ref keyStore
+name: dev-issuer
+wrapKey: !cel "secrets.wrapKey"
+algorithm: ES256
+rotation: { every: 720h, retireAfter: 24h }
+---
+kind: Http.Api
+metadata: { name: issuerApi }
+routes:
+  - request: { path: /.well-known/jwks.json, method: GET }
+    handler: { kind: Jose.PublicKeys, keys: !ref signing }
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - { status: 503, content: { application/problem+json: {} } }
+  - request:
+      path: /token
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [subject, audience, scope]
+          properties:
+            subject: { type: string, minLength: 1 }
+            audience: { type: string, minLength: 1 }
+            scope: { type: string }
+            jwtId: { type: string, minLength: 1 }
+    handler:
+      kind: Jose.Sign
+      keys: !ref signing
+      type: at+jwt
+      issuer: !cel "variables.issuer"
+    inputs:
+      subject: !cel "request.body.subject"
+      audience: !cel "request.body.audience"
+      claims: { scope: !cel "request.body.scope" }
+      jwtId: !cel "has(request.body.jwtId) ? request.body.jwtId : 'auto'"
+    returns:
+      - status: 200
+        content: { application/json: { body: { token: !cel "result.token" } } }
+    catches:
+      - { status: 503, content: { application/problem+json: {} } }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - path: /
+    mount: !ref issuerApi

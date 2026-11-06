@@ -77,11 +77,12 @@ sets the cookie `showcase-lang` when the value is a well-formed language tag
 (or clears it for any other value) and goes back to the page it was pressed on —
 the `Referer`'s path and query when the `Referer` is of the request's own
 origin, the mount's home otherwise.
-**Theme** offers the four mounts' home pages — another mount's by an absolute
-address built from the request's `Host` and `X-Forwarded-Proto` (the function
-`Self.origin`: the first scheme a proxy chain lists, read as `http` unless it
-is `http` or `https`), since an app-relative link resolves
-under the mount it is drawn in — and on the root application the brand
+**Theme** offers the four mounts' home pages — another mount's through
+`/api/mount?to=<mount>`, since an app-relative link resolves under the mount it
+is drawn in and a link is not evaluated per request: the route redirects to an
+absolute address built from the request's `Host` and `X-Forwarded-Proto` (the
+function `Self.origin`: the first scheme a proxy chain lists, read as `http`
+unless it is `http` or `https`) — and on the root application the brand
 switch, each of its two items delivered only while it changes something. The
 language in effect is the server's to choose: its `preferredLanguages` names the
 `showcase-lang` cookie first, and the negotiation then tries `Accept-Language`
@@ -122,7 +123,7 @@ brand switch, `/api/brand`, is the root's alone.
 
 | Path | Shows |
 | --- | --- |
-| `/` Overview | every node type and style, links of each address form, images and SVG; values presented by their schema, a list, texts with plurals and values over the team record; style rules on the projects table, one word told apart by context in two column headers and in two nodes' own texts; an inline view and the example's own composite kind; tabs whose chosen tab is in the page's address; on `/`, nodes evaluated per request and an error node |
+| `/` Overview | every node type and style, links of each address form, images and SVG; values presented by their schema, a list, texts with plurals and values over the team record; style rules on the projects table, one word told apart by context in two column headers and in two nodes' own texts; an inline view and the example's own composite kind; tabs whose chosen tab is in the page's address; on `/`, nodes evaluated per request |
 | `/conditions` | `when` against `shown`, a placement's condition around a composite's own, every keyword of a condition over a project's summary, missing against null, query parameters set by links, and a button enabled by its form's values |
 | `/data` | a reader whose parameter follows the address, with loading and failure trees and a nested reader; readers that fail three ways; a reader read again on focus; a sign-in gate over real sessions |
 | `/tables` | listings drawn as tables: columns derived from the model and written by hand, sorting, style rules on rows and cells, members nested behind references, the pager, a filter from the page address and a fixed one, and create, edit and delete opening on every kind of surface — dialogs of each size, drawers from each edge, popovers, in line, panels and a page of its own — with addresses, compact replacements, `afterSubmit` and `unsaved` |
@@ -240,7 +241,7 @@ why it is not shown.
 | A8, A9 | `translations:` on the application, the request language negotiated by the server (`preferredLanguages`, `Accept-Language`), `Content-Language`, `Vary` | every mount |
 | A10 | eleven pages, one nav link each | every mount; the path refusals are out of scope |
 | A11 | `pages[].query` | `/conditions` on `/` |
-| A12 | `when` and text per request; an error node for an invalid computed `href` | Overview and Themes on `/`; `REF_SLOT_COMPUTED` is out of scope |
+| A12 | `when` and text per request | Overview and Themes on `/` |
 | A13 | mounts at `/radix`, `/brand` and `/sidebar`; files and the API served under each mount, where each application's `source` paths are read; `fetch` paths from the origin | `telo.yaml`, `/components` |
 | A14 | `font.*` tokens with faces served as `@font-face` | `/brand`, shown on `/themes`; `ERR_UI_FONT_FORMAT_UNKNOWN` is out of scope |
 | A15 | a guard answering 401; 401 and 403 drawn as `ERR_UI_UNAUTHORIZED` / `ERR_UI_FORBIDDEN`, anything else as `ERR_UI_REQUEST_FAILED` | `/data`, `/actions` |
@@ -251,7 +252,7 @@ why it is not shown.
 | B25, B26 | `style` lists, `when`, `shown`, both on one node | Overview, `/conditions` |
 | B27 | style rules: `rowStyle`, column `style` with `default` | Overview, `/tables` |
 | B28 | a placement's `shown` around a composite's own | `/conditions` |
-| B29, B30 | the address rule and the error node | Overview, `/actions` (the mirror) |
+| B29, B30 | the address rule | Overview, `/actions` (the mirror) |
 | C31 | `{$name}` placeholders | every page |
 | C32 | one word told apart by context | Overview (two column headers, a badge and a link), `/actions` (verbs) |
 | C33, C34 | plural selection, `Ui.BoundText` over data | Overview, `/data`, `/actions` |
@@ -266,7 +267,7 @@ why it is not shown.
 | D46 | query parameters: a string, a list, a pattern | `/conditions`, `/data`, `/actions` |
 | D47 | `Ui.Enablement` with `disabledText`, on an action and on row actions | `/conditions`, `/actions` |
 | E48–E50 | `Ui.View`, a view providing no node, the `Callout` composite kind, nodes carrying their assets | Overview, `/conditions`, `/components`, `/themes` |
-| F51–F55 | readers: params from `query`, `loading`, `failure`, `reloadOn` focus and unauthorized, a refresh by an action, 404 / 401 / refused answers, a sign-in gate, nesting | `/data`, `/actions` |
+| F51–F55 | readers: `queryParams` from `query`, `loading`, `failure`, `reloadOn` focus and unauthorized, a refresh by an action, 404 / 401 / refused answers, a sign-in gate, nesting | `/data`, `/actions` |
 | G56–G60 | the collection contract: declared query with every operator, paging, sorting, `in`, the 400 validation problem, item routes; a `Crud.Collection` at every `collection` slot | `/api/projects`, `/api/tasks`, `/api/people`, `/api/task-board` |
 | G61 | labelling chosen values by `in` | `/forms` |
 | H62–H64, H66–H70 | tables: derived and written columns, headers, presentation by type, sorting, members behind references, `rowStyle` and cell style rules, `pageSize` and the pager, `filters` from `query` and fixed, `create` / `edit` / `delete` | Overview, `/tables`, `/filters`, `/crud` |

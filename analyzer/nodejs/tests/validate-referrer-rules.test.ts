@@ -789,7 +789,7 @@ describe("peer rules — binding", () => {
     ).toMatchObject([{ kind: "violation" }]);
   });
 
-  it("skips and reports when a peer declaration holds a `!cel`", () => {
+  it("skips and reports when the condition reads a peer field holding a `!cel`", () => {
     const a = table({ name: "a", table: "a" });
     const b = table({ name: "b", table: cel("variables.suffix") });
     const listing = {
@@ -804,7 +804,40 @@ describe("peer rules — binding", () => {
       matches,
       binder(a, b),
     );
-    expect(findings).toMatchObject([{ kind: "unbound", failure: { reason: "dynamic" } }]);
+    expect(findings).toMatchObject([{ kind: "skipped", dynamic: { what: "a CEL expression" } }]);
+  });
+
+  it("judges a member only where the condition reads it", () => {
+    // `b` holds an expression in a field the condition never reads: it runs.
+    const a = table({ name: "a", table: "same" });
+    const b = table({ name: "b", table: "same", seed: cel("variables.rows") });
+    const listing = (...names: string[]) =>
+      ({ kind: "SQL.Schema", metadata: { name: "s" }, tables: names.map(ref) }) as unknown as ResourceManifest;
+    const at = (names: string[]) => [{ manifest: listing(...names), kind: "SQL.Schema", name: "s", path: "tables[0]" }];
+    expect(evaluateReferrerRules(a, DUPLICATE, at(["a", "b"]), matches, binder(a, b))).toMatchObject([{ kind: "violation" }]);
+    // A peer naming nothing loaded is reported where the condition reads it.
+    expect(evaluateReferrerRules(a, DUPLICATE, at(["a", "missing"]), matches, binder(a, b))).toMatchObject([
+      { kind: "unbound", failure: { reason: "unresolved" } },
+    ]);
+  });
+
+  it("reads a peer read whole with everything it holds, nested declarations included", () => {
+    const a = table({ name: "a", table: "a" });
+    const b = table({
+      name: "b",
+      table: "b",
+      columns: { id: { type: { kind: "SQL.Type", default: cel("uuidv4()") } } },
+    });
+    const listing = { kind: "SQL.Schema", metadata: { name: "s" }, tables: [ref("a"), ref("b")] } as unknown as ResourceManifest;
+    const at = [{ manifest: listing, kind: "SQL.Schema", name: "s", path: "tables[0]" }];
+    const rule = (condition: string) => ({
+      ...DUPLICATE,
+      "x-telo-referrer-rules": [{ ...DUPLICATE["x-telo-referrer-rules"][0]!, condition: cel(condition) }],
+    });
+    expect(evaluateReferrerRules(a, rule("!peers.exists(p, p.table == self.table)"), at, matches, binder(a, b))).toEqual([]);
+    expect(evaluateReferrerRules(a, rule("!peers.exists(p, p == self)"), at, matches, binder(a, b))).toMatchObject([
+      { kind: "skipped", dynamic: { what: "a CEL expression" } },
+    ]);
   });
 
   it("does not read author data shaped like a reference as one", () => {
@@ -1004,12 +1037,18 @@ describe("co-referrer rules", () => {
     expect(findings).toEqual([]);
   });
 
-  it("reports rather than passes when a co-referrer's reference resolves to nothing", () => {
+  it("reports rather than passes when the condition reads a co-referrer's reference resolving to nothing", () => {
     const a = store("emails");
     const b = store("reports", { archive: resolvedReference("Q.Table", "missing") });
+    const reading = (condition: string) => ({
+      ...NAME_UNIQUE,
+      "x-telo-referrer-rules": [{ ...NAME_UNIQUE["x-telo-referrer-rules"][0]!, condition: cel(condition) }],
+    });
+    // The unresolved member is not read: the rule runs.
+    expect(evaluateReferrerRules(table, NAME_UNIQUE, [through(a), through(b)], matches, context(table))).toEqual([]);
     const findings = evaluateReferrerRules(
       table,
-      NAME_UNIQUE,
+      reading("!coReferrers.exists(o, has(o.archive) && o.archive.name == referrer.name)"),
       [through(a), through(b)],
       matches,
       context(table),

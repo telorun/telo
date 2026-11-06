@@ -75,7 +75,8 @@ export function setCookieLine(cookie: CookieAttributes, write: CookieWrite): str
   const parts = [`${cookie.name}=${value}`, `Path=${cookie.path}`];
   if (cookie.domain !== null) parts.push(`Domain=${cookie.domain}`);
   if (maxAge !== undefined) parts.push(`Max-Age=${clears ? 0n : maxAge}`);
-  if (write.expires !== undefined) parts.push(`Expires=${expiresText(cookie.name, write.expires)}`);
+  // A null expiry writes none: the cookie ends with the browser session.
+  if (write.expires !== undefined && write.expires !== null) parts.push(`Expires=${expiresText(cookie.name, write.expires)}`);
   else if (clears) parts.push(`Expires=${CLEARED_EXPIRES}`);
   if (cookie.secure) parts.push("Secure");
   if (cookie.httpOnly) parts.push("HttpOnly");

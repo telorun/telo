@@ -184,6 +184,9 @@ import {
 } from "./validate-ref-slots.js";
 import { retryForProblems } from "./retry-for-slot.js";
 import { pathParamsAnnotationProblems, pathParamsProblems } from "./path-params-slot.js";
+import { catchesForProblems } from "./catches-for-slot.js";
+import { raisesProblems } from "./raises-slot.js";
+import { effectiveThrows } from "./throws-ceiling.js";
 import { serializableAnnotationProblems, serializableProblems } from "./serializable-slot.js";
 import { scopeSlotProblems } from "./validate-scope-slots.js";
 import { topologyRoleProblems } from "./validate-topology-roles.js";
@@ -347,7 +350,7 @@ import {
   type CallSiteArguments,
   type StepInputIssue,
 } from "./validate-step-inputs.js";
-import { referenceOutputIssuesAt } from "./validate-reference-output.js";
+import { outputToIssuesAt, outputToTargetKeys, referenceOutputIssuesAt } from "./validate-reference-output.js";
 import { nestedInlineAnchors, validateNestedInline } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { kindSatisfies, validateReferences } from "./validate-references.js";
@@ -366,6 +369,7 @@ import { needTableReportsFinding, needTypeOf } from "./need-type.js";
 import { keyedTranslationsOf } from "./keyed-translations.js";
 import { importNeedsSlotSchema, needTableDiagnostics, registeredNeedTable } from "./validate-needs.js";
 import { observesProblems } from "./observing-slot.js";
+import { outputToProblems } from "./output-to-slot.js";
 import { validateResourceInputs } from "./validate-resource-inputs.js";
 import { validateExports } from "./validate-exports.js";
 import { validateTemplateBody } from "./validate-template-body.js";
@@ -1485,7 +1489,7 @@ function directRelationFindings(group: RelationalGroup, m: ResourceManifest, env
         return enclosingOf(m, instance.anchor);
       },
       narrowing: env.narrowing,
-      importInputsSchema: (importDoc) => importInputsJoinSchema(importDoc, env.moduleDocuments),
+      importInputsSchema: (importDoc) => importInputsJoinSchema(importDoc, env.moduleDocuments, aliasesByModule),
       applicationInputsSchema: (resource, authorSchema) =>
         applicationInputsSlotSchema(resource, authorSchema, env.applicationSources, (kind) => needTypeOf(defs.resolve(kind))),
       steps: () => {
@@ -1770,29 +1774,60 @@ const RELATION_READERS: RelationReaderTable = {
       ).map((diagnostic) => ({ diagnostic, judgedAt: path }));
     },
   },
-  // What a reference slot's target returns against what the slot reads: the
-  // slot, reading its target.
+  // What a reference slot's target returns against what the slot reads, and
+  // against the input member of the sibling target an `outputTo` feeds: the
+  // slot, reading its target (and the sibling's).
   referenceOutputs: {
     instances: (region, scope) => {
       if (!namedDeclarationDefinition(region.identity, scope)) return [];
       const sites = scope.defs.referenceSites(region.holder as ResourceManifest, scope.aliases, scope.aliasesByModule);
-      return uniqueAnchors(
-        sites.filter((site) => site.refs.some((ref) => ref.slot.outputType)).map((site) => site.keys),
-        region.at,
-      );
+      const out: RelationInstance[] = [];
+      const seen = new Set<string>();
+      for (const site of sites) {
+        if (!site.refs.some((ref) => ref.slot.outputType || ref.slot.outputTo)) continue;
+        if (seen.has(site.path) || !isAtOrAbove(region.at, site.keys)) continue;
+        seen.add(site.path);
+        const outputTo = site.refs.find((ref) => ref.slot.outputTo)?.slot.outputTo;
+        out.push({ anchor: site.keys, ...(outputTo ? { related: [outputToTargetKeys(site.keys, outputTo.slot)] } : {}) });
+      }
+      return out;
     },
     reads: (instance, region, scope) => {
       const target = dispatchTarget(region.valueAt(instance.anchor), instance.anchor, "outputType", scope);
-      return { places: [], scopes: true, ...(target ? { targets: [target] } : {}) };
+      const sibling = instance.related?.[0];
+      return {
+        places: instance.related ?? [],
+        scopes: true,
+        ...(target ? { targets: [target] } : {}),
+        ...(sibling
+          ? {
+              dependent: (place) => {
+                const fed = dispatchTarget(place(sibling), sibling, "inputType", scope);
+                return { places: [], ...(fed ? { targets: [fed] } : {}) };
+              },
+            }
+          : {}),
+      };
     },
     judge: (instance, { identity, value, door }) => {
       const holder = anchorHolder(identity, instance.anchor, value);
       const path = pathText(instance.anchor);
       const site = door.defs.referenceSites(holder, door.aliases, door.aliasesByModule).find((each) => each.path === path);
       if (!site) return [];
-      return referenceOutputIssuesAt(holder, site, door.requests, door.defs, door.aliases, doorScopes(door), (reference, at) =>
-        door.resolveTarget(reference, at === undefined ? instance.anchor : parseKeys(at)),
-      ).map((issue) => relationFindingAt(identity, "REFERENCE_OUTPUT_MISMATCH", `at '${issue.path}', ${issue.message}`, issue.path, false, issue.path));
+      const resolve = (reference: Record<string, any>, at?: string) =>
+        door.resolveTarget(reference, at === undefined ? instance.anchor : parseKeys(at));
+      const findings = referenceOutputIssuesAt(holder, site, door.requests, door.defs, door.aliases, doorScopes(door), resolve).map(
+        (issue) => relationFindingAt(identity, "REFERENCE_OUTPUT_MISMATCH", `at '${issue.path}', ${issue.message}`, issue.path, false, issue.path),
+      );
+      const sibling = instance.related?.[0];
+      if (sibling) {
+        findings.push(
+          ...outputToIssuesAt(holder, site, door.place(sibling), pathText(sibling), door.requests, door.defs, door.aliases, doorScopes(door), resolve).map(
+            (issue) => relationFindingAt(identity, "CONTRACT_INPUTS_MISMATCH", `at '${issue.path}', ${issue.message}`, issue.path, false, issue.path),
+          ),
+        );
+      }
+      return findings;
     },
   },
   // The arguments a reference slot's `inputs:` pointer names against its
@@ -6435,7 +6470,8 @@ export class StaticAnalyzer {
         return enclosingOf(found.manifest, found.instance.anchor);
       },
       narrowing: narrowingAt(setup.choices, witness),
-      importInputsSchema: (importDoc) => importInputsJoinSchema(importDoc, setup.options?.moduleDocuments ?? []),
+      importInputsSchema: (importDoc) =>
+        importInputsJoinSchema(importDoc, setup.options?.moduleDocuments ?? [], aliasesByModule),
       applicationInputsSchema: (resource, authorSchema) =>
         applicationInputsSlotSchema(resource, authorSchema, setup.options?.applicationSources ?? {}, (kind) =>
           needTypeOf(defs.resolve(kind)),
@@ -7113,6 +7149,11 @@ export class StaticAnalyzer {
       declarations: listRequests(manifests),
       modules: projectionModules(defs, aliases, { aliasesByModule, rootModules, libraries }),
     };
+    // A definition registered as a copy of its document (its `extends`
+    // canonicalized) holds the document's fields by reference, so a shape
+    // reference at a contract's root, replaced on the document, is resolved
+    // on the copy too.
+    const registeredCopies: ResourceManifest[] = [];
     for (const m of manifests) {
       const declared = kindDeclarationOf(m);
       if (!declared) continue;
@@ -7225,6 +7266,7 @@ export class StaticAnalyzer {
         : def.extends;
       const normalized =
         resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def;
+      if (normalized !== def) registeredCopies.push(normalized as unknown as ResourceManifest);
       defs.register(normalized);
     }
 
@@ -7347,7 +7389,6 @@ export class StaticAnalyzer {
      * data — the two shapes where the rule would see no declaration at all.
      */
     const peersTarget = analyzerPeersTarget(defs);
-    const referrerDeclares = analyzerReferrerDeclares(defs);
     const referrerSlot = analyzerReferrerSlot(defs);
 
     // Checked against the MERGED schema, so an `in:` pointer naming an
@@ -7356,6 +7397,7 @@ export class StaticAnalyzer {
     const kindSchemas = analyzerKindSchemas(defs);
     const ruleShapes = (ref: string, module: string | undefined) =>
       defs.namedShapeAt(ref, module, moduleAliasScope({ module }, aliases, aliasesByModule));
+    const referrerDeclares = analyzerReferrerDeclares(defs, ruleShapes);
     // A merge-form child's rules join its ancestors', so a code it inherits is
     // one it may not declare again: the inherited rules, read off the
     // registered parent, whose `extends` is canonical.
@@ -7379,6 +7421,40 @@ export class StaticAnalyzer {
       }
       return { resource, referrer };
     };
+    // A code raised into a catch list is read off the kind's effective
+    // `throws.codes`, whose parent may be registered after the kind.
+    for (const declarer of ownRuleDeclarers) {
+      const name = declarer.metadata?.name as string;
+      const module = (declarer.metadata as { module?: string } | undefined)?.module;
+      const registered = defs.resolve(module ? `${module}.${name}` : name) ?? (declarer as unknown as ResourceDefinition);
+      const declared = new Set(Object.keys(effectiveThrows(registered, (k) => defs.resolve(k))?.codes ?? {}));
+      for (const problem of raisesProblems(declarer as { metadata?: { name?: unknown }; schema?: unknown }, declared)) {
+        scopeSlotDiagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "RAISES_INVALID",
+          source: SOURCE,
+          message: problem.message,
+          data: {
+            resource: { kind: declarer.kind, name },
+            filePath: (declarer.metadata as { source?: string } | undefined)?.source,
+            path: problem.path,
+          },
+        });
+      }
+      for (const problem of catchesForProblems(declarer as { metadata?: { name?: unknown }; schema?: unknown }, declared)) {
+        scopeSlotDiagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "CATCHES_FOR_INVALID",
+          source: SOURCE,
+          message: problem.message,
+          data: {
+            resource: { kind: declarer.kind, name },
+            filePath: (declarer.metadata as { source?: string } | undefined)?.source,
+            path: problem.path,
+          },
+        });
+      }
+    }
     for (const declarer of ownRuleDeclarers) {
       resourceRuleIssues.push(
         ...validateResourceRuleDeclarations(
@@ -7388,6 +7464,13 @@ export class StaticAnalyzer {
           kindSchemas,
           ruleShapes,
           inheritedRules(declarer).resource,
+          (pointer) => {
+            const module = (declarer.metadata as { module?: string } | undefined)?.module;
+            const name = declarer.metadata?.name as string;
+            const reach = defs.declaredReachOf({ kind: module ? `${module}.${name}` : name }, aliases);
+            if (!reach) return "unknown";
+            return reach.references.some((reference) => reference.path === pointerToPath(pointer)) ? "ok" : "absent";
+          },
         ),
       );
     }
@@ -7412,6 +7495,20 @@ export class StaticAnalyzer {
           refSlotIssues.push({ ...problem, manifest: declarer });
         }
       }
+      // `outputTo` on a reference slot, judged once every kind is registered:
+      // the sibling slot's kinds and their input contracts may be declared anywhere.
+      const outputToScope = analyzerContractScope(defs, aliases, { aliasesByModule, rootModules, libraries }, namedShapes.declarations);
+      for (const declarer of ownRuleDeclarers) {
+        for (const problem of outputToProblems(
+          declarer as unknown as ResourceDefinition,
+          (declarer as Record<string, unknown>).schema,
+          resolveDef,
+          (target) => resolveContract("inputType", undefined, target, outputToScope)?.schema,
+          (id) => defs.schemaForId(id),
+        )) {
+          refSlotIssues.push({ ...problem, manifest: declarer });
+        }
+      }
     }
 
     if (!options?.skipValidation) {
@@ -7426,6 +7523,7 @@ export class StaticAnalyzer {
                 effectiveAuthorSchema(declarer as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
                 pointer,
                 kindSchemas,
+                { module: (declarer.metadata as { module?: string } | undefined)?.module, shapes: ruleShapes },
               ),
             moduleNames: moduleCallNamesOf(moduleCallNames, declarer),
             inherited: inheritedRules(declarer).referrer,
@@ -8036,8 +8134,11 @@ export class StaticAnalyzer {
     // — a canonical id parses as no authority and is left alone — so running it
     // over both is the whole repair. The shapes a kind's contract or signature
     // names are resolved there first, for the same reason.
-    resolveShapeRefs(manifests, aliases, aliasesByModule, listResolution(manifests));
+    const resolution = listResolution(manifests);
+    resolveShapeRefs(manifests, aliases, aliasesByModule, resolution);
+    resolveShapeRefs(registeredCopies, aliases, aliasesByModule, resolution);
     resolveSchemaTypeRefs(manifests, aliases, aliasesByModule, defs);
+    resolveSchemaTypeRefs(registeredCopies, aliases, aliasesByModule, defs);
 
     // Trusted-input fast path: when the caller has already attested that
     // this exact manifest set passes analysis (e.g. via the kernel's
@@ -8463,6 +8564,7 @@ export class StaticAnalyzer {
         rootModules,
         options?.moduleDocuments ?? [],
         defs,
+        aliasesByModule,
       ),
     );
 

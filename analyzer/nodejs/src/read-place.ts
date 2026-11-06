@@ -26,9 +26,10 @@ export interface Referrer extends Referent {
   readonly slots: readonly ReadKeys[];
 }
 
-/** A place read in a declaration a reference names. */
+/** A place read in a declaration a reference names — a referrers read there
+ *  reads every declaration referencing THAT declaration. */
 export type ReferentPlace =
-  | Exclude<ReadPlace, { readonly kind: "referrers" }>
+  | ReadPlace
   /** What a CEL site at a data path reads through the annotations on the way
    *  to it — the scope in force there. */
   | { readonly kind: "scope"; readonly keys: ReadKeys };

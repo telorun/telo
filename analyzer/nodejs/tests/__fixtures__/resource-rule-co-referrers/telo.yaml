@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata: { name: CoReferrers }
+imports: { Co: ./kinds }
+---
+kind: Co.Bucket
+metadata: { name: shared }
+---
+kind: Co.Bucket
+metadata: { name: apart }
+---
+kind: Co.Claim
+metadata: { name: first }
+bucket: !ref shared
+name: main
+---
+kind: Co.Tagged
+metadata: { name: second }
+bucket: !ref shared
+name: main
+tag: t
+---
+kind: Co.Claim
+metadata: { name: distinct }
+bucket: !ref shared
+name: other
+---
+kind: Co.Claim
+metadata: { name: elsewhere }
+bucket: !ref apart
+name: main
+---
+kind: Co.Renamed
+metadata: { name: renamed }
+bucket: !ref shared
+alias: other
+---
+# Malformed: a plain field, and a collection of slots.
+kind: Telo.Definition
+metadata: { name: ByField }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties: { name: { type: string } }
+  x-telo-resource-rules:
+    - { coReferrers: /name, condition: !cel "coReferrers.size() == 0", code: C, message: m }
+---
+kind: Telo.Definition
+metadata: { name: ByList }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties:
+    buckets: { type: array, items: { x-telo-ref: { kind: Co.Bucket, use: dependency } } }
+  x-telo-resource-rules:
+    - { coReferrers: /buckets, condition: !cel "coReferrers.size() == 0", code: C, message: m }

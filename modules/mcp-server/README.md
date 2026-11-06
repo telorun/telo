@@ -68,7 +68,7 @@ value:
 ## Reference
 
 - [`Mcp.StdioServer`](docs/stdio-server.md) — stdin/stdout transport, instructions, lifecycle.
-- [`Mcp.HttpEndpoint`](docs/http-endpoint.md) — Streamable HTTP transport, stateful/stateless modes.
+- [`Mcp.HttpEndpoint`](docs/http-endpoint.md) — Streamable HTTP transport, stateful/stateless modes, and serving it behind authentication with protected-resource discovery.
 - [`Mcp.Tools`](docs/tools.md) — tool-entry fields, `inputs:` / `result:` / `catches:` semantics.
 - [`Mcp.Resources`](docs/resources.md) — fixed URIs and templates, binary contents, unknown-URI errors.
 - [`Mcp.Prompts`](docs/prompts.md) — prompt arguments and the rendered message list.
@@ -84,5 +84,5 @@ value:
 - Resource subscriptions, `listChanged` notifications and `completion/complete` — the listings are fixed at boot.
 - Streaming tool content / progress notifications.
 - Streamable HTTP idle-session GC and max-sessions cap (sessions live until `Http.Server` shuts down).
-- Server-initiated `sampling`, `roots`, OAuth.
-- A polymorphic `Telo.Mount` dispatch protocol — `Mcp.HttpEndpoint` duck-types `register(app, prefix, requestScope)` to satisfy `Http.Server`'s mount loop today.
+- Server-initiated `sampling`, `roots`; the OAuth authorization server itself (the endpoint is a protected resource and publishes its metadata, it does not issue tokens).
+- A polymorphic `Telo.Mount` dispatch protocol — `Mcp.HttpEndpoint` duck-types `register(app, prefix, requestScope, access)` to satisfy `Http.Server`'s mount loop today.

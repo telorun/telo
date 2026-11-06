@@ -1,0 +1,37 @@
+# Two stores claiming one name in one table.
+kind: Telo.Library
+metadata: { name: StoreNameDuplicate }
+imports: { Keys: ../../.., SQLite: ../../../../sqlite }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: orders }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: orders
+prefix: tk
+scopes: [read]
+retention: 1h
+---
+kind: Keys.Store
+metadata: { name: ordersAgain }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: orders
+prefix: uk
+scopes: [read]
+retention: 1h

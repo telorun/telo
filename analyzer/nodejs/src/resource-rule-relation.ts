@@ -16,6 +16,8 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { ModuleCallDispatch } from "@telorun/templating";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { nodeIdFor } from "./call-graph.js";
+import type { DeclarationRequests } from "./declaration-requests.js";
 import { reportRuleEvaluation } from "./cel-site-judgements.js";
 import { governedCelEvalSites, type CelEvalSites } from "./eval-paths.js";
 import type { DefResolver } from "./extends-resolution.js";
@@ -25,7 +27,7 @@ import { withQuotedPath } from "./quoted-place.js";
 import { RuleFailureLedger } from "./rule-condition.js";
 import { RuleDeclarationViews, type ForwardedReference } from "./rule-declaration-view.js";
 import { resolvedReference } from "./resolved-reference.js";
-import { RESOURCE_RULES_ANNOTATION, declaredResourceRules, readResourceRules } from "./resource-rule.js";
+import { RESOURCE_RULES_ANNOTATION, declaredResourceRules, readResourceRules, type ResourceRule } from "./resource-rule.js";
 import type { RelationDoor, RelationFinding, DeclarationIdentity } from "./relation-sites.js";
 import { importPathOf, importPathThrough } from "./scoped-name-resolver.js";
 import {
@@ -33,6 +35,8 @@ import {
   reportResourceRules,
   reportUnexercisedRule,
   ruleExercised,
+  type CoReferrer,
+  type CoReferrerGroup,
   type ResourceRuleDiagnostic,
 } from "./validate-resource-rules.js";
 import { kindSatisfies } from "./validate-references.js";
@@ -116,6 +120,58 @@ function binderOf(door: RuleDoor): PeerBinder {
   );
 }
 
+/** The groups a `coReferrers:` rule binds, built once per (declaring kind and
+ *  rule, slot, target) for every request set — one per analysis, or per key. */
+const coReferrerGroupsOf = new WeakMap<DeclarationRequests, Map<string, readonly CoReferrer[]>>();
+
+const kindOf = (definition: ResourceDefinition): string => {
+  const module = (definition.metadata as { module?: string } | undefined)?.module;
+  return module ? `${module}.${definition.metadata?.name}` : String(definition.metadata?.name);
+};
+
+/**
+ * The declarations a rule of `declarer` judges that reach a target through a
+ * slot: the target's referrers through exactly that slot whose kind is judged
+ * by that rule — the declaring kind, or a descendant inheriting its rules.
+ */
+function coReferrerGroups(door: RuleDoor, declarer: ResourceDefinition, ruleDef: DefResolver): CoReferrerGroup {
+  let cache = coReferrerGroupsOf.get(door.requests);
+  if (!cache) coReferrerGroupsOf.set(door.requests, (cache = new Map()));
+  const groups = cache;
+  const declaring = kindOf(declarer);
+  const judged = new Map<string, boolean>();
+  const judgedBy = (m: ResourceManifest, rule: ResourceRule): boolean => {
+    // A kind is spelled in its declaring module's aliases.
+    const key = `${(m.metadata as { module?: string } | undefined)?.module ?? ""}\0${m.kind}\0${rule.code}`;
+    const known = judged.get(key);
+    if (known !== undefined) return known;
+    const declared = door.declared({ identityOnly: true, kind: m.kind, metadata: (m.metadata ?? {}) as Record<string, unknown> });
+    const holds =
+      declared.status === "ok" &&
+      declaredResourceRules(declared.definition, ruleDef).some(
+        (group) => kindOf(group.declarer) === declaring && group.rules.some((each) => each.code === rule.code),
+      );
+    judged.set(key, holds);
+    return holds;
+  };
+  return (rule, self, target, slot) => {
+    const key = `${declaring}#${rule.code}\0${slot}\0${nodeIdFor(target)}`;
+    let group = groups.get(key);
+    if (!group) {
+      const seen = new Set<ResourceManifest>();
+      const found: CoReferrer[] = [];
+      for (const referrer of door.requests.referrersOf(target)) {
+        if (referrer.path !== slot || seen.has(referrer.manifest) || !judgedBy(referrer.manifest, rule)) continue;
+        seen.add(referrer.manifest);
+        found.push({ manifest: referrer.manifest, kind: referrer.manifest.kind });
+      }
+      groups.set(key, (group = found));
+    }
+    const own = nodeIdFor(self);
+    return group.filter((other) => nodeIdFor(other.manifest) !== own);
+  };
+}
+
 function carrier(subject: ResourceManifest, report: RuleReport): AnalysisDiagnostic {
   return {
     severity: DiagnosticSeverity.Hint,
@@ -187,6 +243,8 @@ export function resourceRuleFindings(identity: DeclarationIdentity, door: RuleDo
       door.moduleNames(declarerIdentity),
       door.functions(group.declarer),
       binder,
+      subject.kind,
+      coReferrerGroups(door, group.declarer, ruleDef),
     );
     for (const report of reportResourceRules(subject, declarer, findings, !declarerModule || door.rootModules.has(declarerModule))) {
       if (report.evaluationFailure) {

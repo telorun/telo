@@ -1,0 +1,223 @@
+kind: Telo.Application
+metadata:
+  name: OrdersApiKeyMicroservice
+  version: 1.0.0
+  categories: [Security, Transport]
+  description: |
+    A small orders microservice with no login of its own: callers present either
+    an access token signed by an external issuer, checked against that issuer's
+    published keys, or an API key this service issues and revokes itself. Reads
+    and writes need their own scopes, and an admin mount issues and revokes API
+    keys and revokes a token by its id.
+
+    Start the stand-in issuer (`issuer.yaml`) for a token to call it with:
+
+        ISSUER_WRAP_KEY=$(openssl rand -hex 32) pnpm run telo examples/api-key-microservice/issuer.yaml
+        pnpm run telo examples/api-key-microservice/telo.yaml
+        curl -s localhost:9100/token -H 'content-type: application/json' \
+          -d '{"subject":"alice","audience":"http://localhost:8080/api","scope":"orders:read"}'
+        curl -s localhost:8080/api/orders -H "Authorization: Bearer $TOKEN"
+requires:
+  # 0.130.0: `request.principal` typed per route and the mount `authentication:`.
+  telo: ">=0.130.0"
+imports:
+  Http: ../../modules/http-server
+  Jose: ../../modules/jose
+  AuthBearer: ../../modules/auth-bearer
+  Authz: ../../modules/authz
+  ApiKey: ../../modules/api-key
+  Keys: ../../modules/api-key-sqlite
+  SQLite: ../../modules/sqlite
+  KvStoreSql: ../../modules/kv-store-sql
+variables:
+  jwksUrl:
+    env: JWKS_URL
+    type: string
+    default: http://127.0.0.1:9100/.well-known/jwks.json
+    description: Where that issuer publishes its public keys.
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: file }
+    default: ./tmp/orders-api.db
+ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
+targets:
+  - !ref schema
+  - !ref server
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: Keys.Table
+metadata: { name: apiKeyTable }
+table: api_keys
+---
+kind: SQLite.Schema
+metadata: { name: schema }
+connection: !ref db
+tables: [!ref apiKeyTable]
+---
+kind: Keys.Store
+metadata: { name: apiKeys }
+connection: !ref db
+schema: !ref schema
+table: !ref apiKeyTable
+name: orders
+prefix: ord
+scopes: ["orders:read", "orders:write"]
+retention: 24h
+---
+# Revoked token ids outlive a restart, so they sit beside the keys.
+kind: KvStoreSql.Store
+metadata: { name: revokedTokens }
+connection: !ref db
+table: revoked_tokens
+---
+kind: AuthBearer.Jwt
+metadata: { name: accessTokens }
+keys: { kind: Jose.RemoteKeySet, url: !cel "variables.jwksUrl" }
+issuer: https://issuer.example.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+revocation: { store: !ref revokedTokens }
+---
+kind: ApiKey.Verifier
+metadata: { name: keyVerifier }
+sources: [!ref apiKeys]
+---
+# The action is the scope it needs, so one rule allows and one denial per scope
+# names what was missing in the 403's challenge.
+kind: Authz.CelPolicy
+metadata: { name: scopes }
+rules:
+  - when: !cel "principal != null && action in principal.scopes"
+  - when: !cel "action == 'orders:read'"
+    allow: false
+    reason: reading orders needs orders:read
+    requiredScopes: ["orders:read"]
+  - when: !cel "action == 'orders:write'"
+    allow: false
+    reason: writing orders needs orders:write
+    requiredScopes: ["orders:write"]
+  - when: !cel "action == 'keys:admin'"
+    allow: false
+    reason: administering keys needs keys:admin
+    requiredScopes: ["keys:admin"]
+  - when: !cel "true"
+    allow: false
+    reason: unknown action
+---
+kind: Http.Api
+metadata: { name: ordersApi }
+routes:
+  - request: { path: /orders, method: GET }
+    authorization: { policy: !ref scopes, action: "orders:read" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              caller: !cel "request.principal.subject"
+              via: !cel "request.principal.via"
+              orders: []
+  - request: { path: /orders, method: POST }
+    authorization: { policy: !ref scopes, action: "orders:write" }
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body:
+              id: !cel "uuidv4()"
+              createdBy: !cel "request.principal.subject"
+---
+kind: Http.Api
+metadata: { name: adminApi }
+routes:
+  - request:
+      path: /api-keys
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [service, scopes]
+          properties:
+            service: { type: string, minLength: 1 }
+            scopes: { type: array, items: { type: string } }
+    handler: { kind: ApiKey.Issue, store: !ref apiKeys }
+    inputs:
+      owner: { type: service, id: !cel "request.body.service" }
+      scopes: !cel "request.body.scopes"
+    returns:
+      - status: 201
+        content: { application/json: { body: { id: !cel "result.id", key: !cel "result.key" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_API_KEY_SCOPE_UNKNOWN'"
+        status: 400
+        content: { application/problem+json: {} }
+      - when: !cel "error.code == 'ERR_API_KEY_LIFETIME_EXCEEDED'"
+        status: 400
+        content: { application/problem+json: {} }
+      - when: !cel "error.code == 'ERR_API_KEY_STORE_INCONSISTENT' || error.code == 'ERR_API_KEY_STORE_UNAVAILABLE'"
+        status: 503
+        content: { application/problem+json: {} }
+  - request:
+      path: /api-keys/{id}/revoke
+      method: POST
+      schema:
+        params: { type: object, required: [id], properties: { id: { type: string } } }
+    handler: { kind: ApiKey.Revoke, store: !ref apiKeys }
+    inputs:
+      id: !cel "request.params.id"
+      by: !cel "request.principal.subject"
+    returns:
+      - status: 200
+        content: { application/json: { body: { id: !cel "result.id", revokedAt: !cel "string(result.revokedAt)" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_API_KEY_NOT_FOUND'"
+        status: 404
+        content: { application/problem+json: {} }
+      - when: !cel "error.code == 'ERR_API_KEY_STORE_INCONSISTENT' || error.code == 'ERR_API_KEY_STORE_UNAVAILABLE'"
+        status: 503
+        content: { application/problem+json: {} }
+  - request:
+      path: /token-revocations
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [jti, until]
+          properties:
+            jti: { type: string, minLength: 1 }
+            until: { type: string, format: date-time }
+    handler: { kind: AuthBearer.Revoke, store: !ref revokedTokens }
+    inputs:
+      jti: !cel "request.body.jti"
+      until: !cel "timestamp(request.body.until)"
+    returns:
+      - status: 200
+        content: { application/json: { body: { revoked: !cel "result.revoked" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_AUTH_BEARER_REVOKE_CONTENDED'"
+        status: 503
+        content: { application/problem+json: {} }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - path: /api
+    mount: !ref ordersApi
+    authentication:
+      verifiers:
+        - verifier: !ref accessTokens
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+        - verifier: !ref keyVerifier
+          from: { kind: Http.FromHeader, header: x-api-key, scheme: ApiKey }
+  - path: /admin
+    mount: !ref adminApi
+    authentication:
+      verifiers:
+        - verifier: !ref accessTokens
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+    authorization: { policy: !ref scopes, action: "keys:admin" }

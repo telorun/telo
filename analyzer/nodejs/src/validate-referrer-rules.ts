@@ -551,6 +551,10 @@ export function evaluateReferrerRules(
       // whole manifest, so scanning all of it would disable the rule for any
       // server carrying one unrelated expression.
       const dynamic = findDynamicRead(chains, scope);
+      if (dynamic?.failure) {
+        findings.push({ kind: "unbound", rule, referrer, failure: dynamic.failure });
+        continue;
+      }
       if (dynamic !== undefined) {
         findings.push({ kind: "skipped", rule, referrer, dynamic });
         continue;

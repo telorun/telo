@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: ImplicitlyPublicApp, version: 1.0.0 }
+imports: { Lib: ./lib }

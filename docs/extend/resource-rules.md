@@ -94,6 +94,7 @@ two independent claims, and a rule anchored `/indexes` while filtering
 | `self` | the whole resource |
 | `this` | the element `in:` iterates — an array item, or a map entry's **value** |
 | `key` | the map key, when the collection is a map (`null` for an array) |
+| `coReferrers` | *(with `coReferrers:`)* the other resources this rule judges whose slot names the declaration mine names |
 
 `self` stays in scope inside the loop, which is how a rule correlates an element
 against the whole (`c in self.columns`) with no path language. Correlating an
@@ -168,6 +169,45 @@ kind's author for the manifest author's mistake.
 
 It is opt-in so that no existing rule changes what it reads.
 
+### Others claiming the same target: `coReferrers:`
+
+Some conflicts exist only between two resources of one kind that share what they
+reference: two session sets with one `name` on one store write the same records,
+while the same name on two stores never meets. A rule over one resource cannot see
+the other, and a [referrer rule](./referrer-rules.md#coreferrers--the-others-reaching-me-through-the-same-slot)
+must be declared on the referenced kind — the store — which another module owns
+and which must not name its consumers. `coReferrers:` lets the claimant declare it:
+
+```yaml
+x-telo-resource-rules:
+  - coReferrers: /store
+    condition: !cel "!coReferrers.exists(o, o.name == self.name)"
+    code: SESSION_NAME_DUPLICATE
+    message: claims a name another session set on this store already claims.
+```
+
+`coReferrers:` is a JSON Pointer to ONE reference slot of this kind. `coReferrers`
+binds every other resource, anywhere in the analysis, of this kind or of a
+descendant that inherits its rules, whose slot at that pointer resolves to the same
+declaration mine does. Each binds as written with its references resolved one
+level — the binding `peers:` and a referrer rule's `coReferrers:` use — so
+`o.store` is the store's declaration. The rule still runs once per resource (or
+per `in:` element); an empty set is the ordinary case and a pass. A `base:` child
+inherits no rule, so it joins no set; the controller's runtime guard covers it.
+
+When my own slot names nothing the analysis can compare — a library's
+`resources:` input known only by its kind, a reference naming nothing loaded, an
+expression — the binding is a mark, and the rule is `RESOURCE_RULE_SKIPPED`
+wherever the condition reads `coReferrers`; a co-referrer's own unresolved member
+or expression skips it only where the condition reads that member. A pointer
+naming a plain field or a collection of references is `RESOURCE_RULE_INVALID` at
+the kind. Every set is built once per kind, slot and target, so the cost stays
+linear in the resources the analysis holds.
+
+An analyzer released before `coReferrers:` evaluates the condition with the name
+unbound and reports a defect against the module that wrote it, so that module
+declares a `requires: telo:` floor at the release that carries the binding.
+
 ### Polarity
 
 `condition` is true when the rule **holds** — the same polarity as
@@ -192,6 +232,8 @@ written rather than on somebody's manifest:
   points at nothing.
 - **Each `resolve:` pointer must name a field this kind declares** — or, past a
   reference slot, a field a kind the slot may hold declares.
+- **`coReferrers:` must name one reference slot this kind declares** — a plain
+  field or a collection reaches no other resource.
 - **The condition must parse and type-check.** One expression, one verdict: the
   templating engine's.
 - **`condition:` must carry the `!cel` tag.** The reader is lenient and a bare
@@ -266,7 +308,7 @@ reported:
 | --- | --- | --- |
 | `RESOURCE_RULE_VIOLATED` | the rule's `severity` | a resource broke the rule; `data.rule` names it, `data.path` anchors it |
 | `RESOURCE_RULE_INVALID` | error for a malformed declaration, and for an evaluation failure in a rule this workspace declares; warning for an evaluation failure in a dependency's | the rule itself is malformed, throws, or exceeded its budget |
-| `RESOURCE_RULE_SKIPPED` | information | the rule could not run here |
+| `RESOURCE_RULE_SKIPPED` | information | the rule could not run here: a value it reads is not known until creation, or a reference it reads through — `resolve:`, or the `coReferrers:` slot — names nothing it can compare |
 | `RESOURCE_RULE_UNEXERCISED` | information | the rule never ran anywhere |
 
 Every violation reports under the one `RESOURCE_RULE_VIOLATED` code, with your

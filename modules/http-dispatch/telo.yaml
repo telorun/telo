@@ -178,8 +178,8 @@ schema:
                   x-telo-type: Telo.Duration
                 expires:
                   title: Expires
-                  description: When the cookie expires.
-                  x-telo-type: Telo.Timestamp
+                  description: When the cookie expires. Null writes no expiry, so the cookie ends with the browser session.
+                  anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }]
           content:
             title: Content
             description: Per-MIME response shape. Map key is the canonical Content-Type. Required when status carries a body; omit for 204/304-style empty responses.
@@ -300,8 +300,8 @@ schema:
                   x-telo-type: Telo.Duration
                 expires:
                   title: Expires
-                  description: When the cookie expires.
-                  x-telo-type: Telo.Timestamp
+                  description: When the cookie expires. Null writes no expiry, so the cookie ends with the browser session.
+                  anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }]
           content:
             title: Content
             description: >-

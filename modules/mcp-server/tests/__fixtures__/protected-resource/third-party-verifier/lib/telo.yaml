@@ -1,0 +1,28 @@
+# Accepted by `telo check`: the verifier belongs to another module and declares an
+# `issuer` from `Auth.Issuer`, which is all the endpoint's rule asks for.
+kind: Telo.Library
+metadata:
+  name: McpProtectedResourceThirdParty
+  version: 1.0.0
+  description: Test fixture exporting a server that mounts an MCP endpoint behind another module's verifier.
+imports:
+  Mcp: ../../../../../
+  Http: ../../../../../../http-server
+  Other: ../../../../../../http-server/tests/__fixtures__/third-party-verifier
+exports: { resources: [server] }
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: endpoint }
+serverInfo: { name: fixture, version: 1.0.0 }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: 8973 }
+mounts:
+  - path: /mcp
+    mount: !ref endpoint
+    authentication:
+      verifiers:
+        - verifier: { kind: Other.Verifier, issuer: "https://sso.third.test" }
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+    protectedResource: {}

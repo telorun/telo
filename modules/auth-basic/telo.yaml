@@ -1,0 +1,43 @@
+kind: Telo.Library
+metadata:
+  name: AuthBasic
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    HTTP Basic authentication for an API: checks the user identifier and password
+    a request carries against any password checker and answers with the
+    authenticated caller, or a refusal that challenges the client to send
+    credentials again. Every failure looks the same to the client, so a caller
+    cannot tell an unknown user from a wrong password.
+imports: { Auth: ../auth }
+exports: { kinds: [Verifier] }
+---
+# Normative: docs/verifier.md.
+kind: Telo.Definition
+metadata:
+  name: Verifier
+  description: >-
+    Authenticates a request carrying a user identifier and password: hands them to
+    a password checker and answers with its principal, or with a refusal that
+    carries the Basic challenge for the configured realm. Any other kind of
+    credential is refused as malformed. The reason for a refusal is for logs only.
+capability: Telo.Invocable
+extends: Auth.Verifier
+controllers: [pkg:telo/local/js?path=./nodejs/auth-basic.mjs&local_path=./nodejs/src/index.ts#VerifierController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [passwords, realm]
+  properties:
+    passwords:
+      title: Passwords
+      description: The password checker the identifier and password are handed to.
+      x-telo-ref: { kind: Auth.PasswordVerifier, use: call }
+    realm:
+      title: Realm
+      description: The protection space named in the challenge; printable ASCII without quotes or backslashes.
+      type: string
+      pattern: '^[\x20\x21\x23-\x5B\x5D-\x7E]+$'
+      x-telo-eval: compile

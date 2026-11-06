@@ -6,8 +6,9 @@ metadata:
   license: MIT
   categories: [Transport]
   description: >-
-    Serving HTTP: a listener bound to a port with CORS, per-mount request guards for
-    authentication and access checks, and a generated OpenAPI document, routers whose
+    Serving HTTP: a listener bound to a port with CORS, per-mount authentication
+    of the caller through bearer tokens, API keys, cookies or client certificates,
+    authorization policies, request guards and a generated OpenAPI document, routers whose
     routes validate the request against a schema, map it into a handler with CEL, and
     render conditional typed responses buffered or streamed, a browsable API reference
     router, and a static file router with SPA fallback for shipping a frontend
@@ -55,7 +56,10 @@ requires:
   #
   # 0.130.0: the controllers import `errorValueOf` from the SDK to write the
   # failure trace into `Http.Api.streamFailed`; a 0.129.0 runtime fails to load
-  # the controller (verified by execution).
+  # the controller (verified by execution). The same release first reads
+  # `x-telo-context-from-referrer` on an evaluated binding,
+  # `x-telo-context-nullable-when`, `x-telo-ref.outputTo` and the object form of
+  # `x-telo-catches-for`, which the mount authentication schema uses.
   telo: ">=0.130.0"
 lang: en
 imports:
@@ -67,7 +71,11 @@ imports:
   HttpDispatch: ../http-dispatch
   # The response-encoder contract this module's own encoder slots pin.
   Codec: ../codec
-exports: { kinds: [Server, Api, Reference, Static] }
+  # The caller, credential and verifier contracts mount authentication speaks.
+  Auth: ../auth
+exports:
+  kinds: [Server, Api, Reference, Static, CredentialSource, FromAuthorization, FromBasic, FromHeader, FromQuery, FromCookie, FromClientCertificate, FromForwardedIdentity]
+  resources: [Authentication, Authorization, AuthScheme, CredentialRequest]
 # Scalar's browser bundle, served by Reference. Lazily fetched: an app that
 # declares no Reference never downloads it. `sources.scalar.version` must be the
 # @scalar/fastify-api-reference release whose @scalar/core and
@@ -92,8 +100,8 @@ metadata:
   name: "Server"
   description: >-
     Listens on a TCP port and serves HTTP through the routers mounted on it, with
-    CORS, a per-mount request guard for authentication and access checks, a
-    generated OpenAPI document and custom content-type parsers. Request bodies are
+    CORS, per-mount authentication of the caller and authorization policies,
+    request guards, a generated OpenAPI document and custom content-type parsers. Request bodies are
     bounded in bytes: a larger one is answered 413, and a body nobody reads to its
     end closes the connection.
 capability: Telo.Service
@@ -125,6 +133,46 @@ throws:
         additionalProperties: false
         required: [host]
         properties: { host: { type: string, description: The host the request was sent to. } }
+    ERR_HTTP_UNAUTHENTICATED:
+      description: >-
+        A mount's authentication refused the request: no credential where anonymous
+        callers are denied, or a credential that is malformed or refused. Answered
+        401 with every challenge in one `WWW-Authenticate`.
+      displayMessage: "Authentication is required to access this resource."
+      data:
+        type: object
+        additionalProperties: false
+        required: [reason]
+        properties:
+          reason: { type: string, enum: [absent, malformed, refused], description: Why the request is not authenticated. }
+    ERR_HTTP_FORBIDDEN:
+      description: >-
+        The authorization policy denied the action. Answered 403, with
+        `WWW-Authenticate: <scheme> error="insufficient_scope"` when the policy
+        names the scopes the caller lacks.
+      displayMessage: "You are not allowed to perform this action."
+      data:
+        type: object
+        additionalProperties: false
+        properties:
+          requiredScopes: { type: array, items: { type: string }, description: The scopes that would allow the action. }
+    ERR_HTTP_CROSS_ORIGIN_REFUSED:
+      description: >-
+        A request that changes state, authenticated by a credential the browser
+        sends on its own (a cookie), came from another site. Answered 403.
+      displayMessage: "This request came from another site and was refused."
+    ERR_HTTP_ACCESS_CHECK_UNAVAILABLE:
+      description: >-
+        A credential source, verifier or policy could not decide — its keys or
+        endpoint unreachable. Answered 503; the failure is the cause in the trace
+        and the log, never in the response.
+      displayMessage: "The access check could not be completed. Try again later."
+      data:
+        type: object
+        additionalProperties: false
+        required: [stage]
+        properties:
+          stage: { type: string, enum: [source, verifier, policy], description: The step that failed. }
 schema:
   type: "object"
   properties:
@@ -172,14 +220,9 @@ schema:
     unknownHosts:
       title: Unknown Hosts
       description: >-
-        What the server does with a request whose host no mount's `hostnames`
-        names. `serve` (the default) hands it to the mounts that declare no
-        `hostnames`. `reject` answers it `421 Misdirected Request` with a
-        problem (`application/problem+json`), code `ERR_HOST_NOT_SERVED`,
-        before any guard, route or body read — except a host that is an IP
-        literal, which reaches the unrestricted mounts, so a probe sent to the
-        server's address keeps working. A hostname is a routing selector, not an
-        access boundary: protect a sub-tree with its mount's `guard`.
+        `serve` (the default) hands a request whose host no mount's `hostnames` names to the mounts
+        without `hostnames`; `reject` answers it 421 with the problem `ERR_HOST_NOT_SERVED`, except
+        an IP-literal host. See docs/host-routing.md.
       type: "string"
       enum: [ "serve", "reject" ]
       default: "serve"
@@ -334,13 +377,9 @@ schema:
     maxBodyBytes:
       title: Max Body Bytes
       description: >-
-        Most of a request body that is buffered or handed to a handler, in
-        bytes, for every mount — buffered, streamed and multipart bodies alike.
-        A larger one is answered 413 with
-        `Connection: close` and a problem (`application/problem+json`), code
-        `ERR_REQUEST_BODY_TOO_LARGE`. The answer is the server's own: no
-        `catches:` list sees it. A route's `maxBodyBytes` replaces this value
-        for that route. There is no way to switch the limit off.
+        Most of a request body buffered or handed to a handler, in bytes, for every mount; a larger
+        one is answered 413 (`ERR_REQUEST_BODY_TOO_LARGE`), which no `catches:` list sees. A
+        route's `maxBodyBytes` replaces it.
       type: "integer"
       x-telo-eval: compile
       minimum: 1
@@ -402,6 +441,29 @@ schema:
         type: "object"
         additionalProperties: false
         required: [ "mount" ]
+        # What a request on this mount reads once it is authenticated: the
+        # `authorization` CEL, and — through the `mount` slot — the routes of
+        # the router mounted here, which type `request.principal` from it.
+        x-telo-context:
+          type: object
+          properties:
+            request:
+              type: object
+              x-telo-context-eval: runtime
+              additionalProperties: false
+              properties:
+                headers: { type: object, additionalProperties: true }
+                query: { type: object, additionalProperties: true }
+                path: { type: string }
+                host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
+                method: { type: string }
+                ip: { type: string }
+                principal:
+                  $ref: "telo://Auth/Principal"
+                  description: The authenticated caller; null where the mount allows anonymous callers or declares no authentication.
+                  x-telo-context-nullable-when: { at: "0/authentication/anonymous", equals: [allow], absent: true }
         properties:
           path:
             title: Path
@@ -412,16 +474,9 @@ schema:
           hostnames:
             title: Hostnames
             description: >-
-              The hosts this mount answers: references to the application's
-              public address needs, never domain names, so the same manifest runs
-              wherever the needs are supplied. A `Telo.PublicUrl` matches its
-              URL's host exactly (and, with `customDomains: true`, every host no
-              other entry of the server claims), a `Telo.PublicHostPattern` every
-              host its pattern matches. Each need must name the port this server
-              listens on. A request is answered by a mount whose entry is an
-              exact host first, then the pattern with the longest literal suffix,
-              then the mounts with no `hostnames`. Omitted, the mount answers
-              every host.
+              The hosts this mount answers: references to the application's public address needs,
+              never domain names. Each need must name the port this server listens on; omitted, the
+              mount answers every host. Precedence is in docs/host-routing.md.
             type: "array"
             minItems: 1
             x-telo-topology-role: matcher
@@ -429,8 +484,8 @@ schema:
           mount:
             title: Mount
             description: >-
-              Mount resource to attach — a reference to a Telo.Mount (Http.Api,
-              Mcp.HttpEndpoint, …). Use a `!ref` to the resource by name; an
+              Mount resource to attach — a reference to a Telo.Mount (Http.Api
+              or any other mountable kind). Use a `!ref` to the resource by name; an
               `!ref <Alias>.<name>` reaches a mount exported by an imported
               library.
             x-telo-topology-role: handler
@@ -445,37 +500,71 @@ schema:
               # nothing below claimed it — so the throws closure and the catch
               # scope both cross here, and nowhere else a `dependency` leads.
               throwsThrough: true
+          authentication:
+            title: Authentication
+            description: >-
+              Who may call this mount's routes: the verifiers tried in order, each
+              with where its credential is read, and whether a request presenting
+              none is served anonymously. A credential that is presented and fails
+              is a 401; it never falls through to a later verifier or to anonymous.
+            $ref: "telo://Self/Authentication"
+            x-telo-raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
+          authorization:
+            title: Authorization
+            description: >-
+              The policy deciding, after authentication, whether the request may
+              perform `action` on `resource`; a denial is a 403. A route's own
+              `authorization` replaces this one.
+            $ref: "telo://Self/Authorization"
+            x-telo-raises: [ERR_HTTP_FORBIDDEN, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
+          protectedResource:
+            title: Protected resource
+            description: >-
+              Publishes this mount's OAuth 2.0 protected-resource metadata (RFC 9728) at
+              `/.well-known/oauth-protected-resource<path>`, unauthenticated, on the mount's
+              hostnames, and names it in every 401. The resource, authorization servers and bearer
+              methods are derived from the mount's address, verifiers and sources.
+            type: object
+            additionalProperties: false
+            properties:
+              scopesSupported:
+                title: Scopes supported
+                description: The scopes the resource documents as supported.
+                type: array
+                items: { type: string, minLength: 1 }
+              resourceName:
+                title: Resource name
+                description: A human-readable name for the resource.
+                type: string
+              resourceDocumentation:
+                title: Resource documentation
+                description: URL of documentation for developers using the resource.
+                type: string
+                format: uri
+              resourcePolicyUri:
+                title: Resource policy URI
+                description: URL of the resource's data-use policy.
+                type: string
+                format: uri
+              resourceTosUri:
+                title: Resource terms of service URI
+                description: URL of the resource's terms of service.
+                type: string
+                format: uri
           when:
             title: When
             description: >-
-              Attach this mount only when the condition holds. Resolved once at
-              startup with the rest of the server's configuration, so an excluded
-              mount registers no routes at all rather than answering 404 — which
-              is what lets an API reference or a debug router be left out of a
-              production deployment:
-
-                  when: !cel "variables.env != 'production'"
-
-              The mounted resource itself is still created and initialized; only
-              its attachment is skipped.
+              Attach this mount only when the condition holds, resolved once at startup. An
+              excluded mount registers no routes; the mounted resource is still created.
             type: "boolean"
             x-telo-eval: compile
             default: true
           guard:
             title: Guard
             description: >-
-              Inbound check run for every request that matches a route of THIS
-              mount, before the request body is read — authentication, an
-              origin allowlist, a tenant check. A normal return lets the request
-              through to its route (the returned value is discarded); a throw
-              refuses it, rendered by the guard's own `catches:`, then the
-              server's. A throw no entry claims is a 500, so a failing guard
-              never lets a request through.
-
-              CORS preflight is answered by the server's `cors` and never
-              reaches a guard; a request matching no route goes to the
-              not-found handler unguarded; a sibling mount without a guard is
-              unaffected.
+              An invocable run for every request matching a route of this mount, after
+              authentication and authorization and before the body is read; a throw refuses the
+              request through `guard.catches`, then the server's. See docs/mount-guard.md.
             type: object
             additionalProperties: false
             required: [ "invoke" ]
@@ -529,6 +618,7 @@ schema:
                         lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                         method: { type: string }
                         ip: { type: string }
+                        principal: { $ref: "telo://Auth/Principal", description: "The authenticated caller; null where the mount allows anonymous callers.", x-telo-context-nullable-when: { at: "1/authentication/anonymous", equals: [allow], absent: true } }
               catches:
                 title: Catches
                 description: >-
@@ -575,6 +665,7 @@ schema:
                         lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                         method: { type: string }
                         ip: { type: string }
+                        principal: { $ref: "telo://Auth/Principal", description: "The authenticated caller; null where the mount allows anonymous callers.", x-telo-context-nullable-when: { at: "1/authentication/anonymous", equals: [allow], absent: true } }
                     error:
                       type: object
                       additionalProperties: false
@@ -599,20 +690,8 @@ schema:
           logging:
             title: Logging
             description: >-
-              Access-log threshold for requests served by THIS mount, overriding
-              the level the server resolved from its scope. The import-scoped
-              level governs a whole module instance, so it cannot quieten one
-              path and not another — this can.
-
-              Access records are `info`, so `level: warn` is how a mount goes
-              quiet: a health check polled every second, or a static mount
-              serving a built SPA, stops producing a record per hit. A failing
-              request still surfaces, because a 5xx response is logged at
-              `error` regardless of status.
-
-              It gates only the records the SERVER emits for the mount (the
-              request and request-received records). A handler's own records
-              follow its own module's level.
+              Access-log threshold for requests this mount serves, overriding the server's level; a
+              5xx is still logged at `error`. It gates only the server's own access records.
             type: object
             x-telo-eval: compile
             additionalProperties: false
@@ -636,8 +715,11 @@ schema:
         belong to a route's own list.
       x-telo-outcome-list: catches
       # The EMPTY pointer: this list covers everything the server drives, not one
-      # sibling field's target.
-      x-telo-catches-for: ""
+      # sibling field's target. The four access refusals are raised by the server
+      # itself and answered by default.
+      x-telo-catches-for:
+        slot: ""
+        raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
       x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
       x-telo-context:
         type: object
@@ -673,6 +755,7 @@ schema:
               lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
               method: { type: string }
               ip: { type: string }
+              principal: { description: "The authenticated caller; null when the request was refused before authenticating, or is anonymous.", anyOf: [{ $ref: "telo://Auth/Principal" }, { type: "null" }] }
           error:
             type: object
             additionalProperties: false
@@ -1020,6 +1103,26 @@ schema:
         reads a forwarded client certificate but trusts no proxy, so any client could send
         that header. Set `trustProxy` to the proxy in front of this server, or drop
         `forwardedClientCertificate`.
+    - condition: !cel "!self.mounts.exists(m, has(m.authentication)) || self.mounts.all(m, has(m.authentication))"
+      code: MOUNT_IMPLICITLY_PUBLIC
+      message: >-
+        declares `authentication` on some mounts and not on others, so a mount without it is open to
+        anyone. Declare `authentication` on every mount — `{ anonymous: allow }` for a public one.
+    - condition: !cel >-
+        self.mounts.all(m, !has(m.authentication) || has(m.authentication.verifiers)
+        || (has(m.authentication.anonymous) && m.authentication.anonymous == 'allow'))
+      code: AUTHENTICATION_UNSATISFIABLE
+      message: >-
+        has a mount whose `authentication` denies anonymous callers and names no verifier, so no
+        request can ever be served there. List its `verifiers`, or allow anonymous callers.
+    - condition: !cel >-
+        self.mounts.all(m, !has(m.protectedResource)
+        || (has(m.authentication) && has(m.authentication.verifiers)))
+      code: PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION
+      message: >-
+        declares `protectedResource` on a mount whose `authentication` names no verifier, so the
+        metadata would describe no authentication. List the mount's `verifiers`, or remove
+        `protectedResource`.
     - condition: !cel "!has(self.unknownHosts) || self.unknownHosts != 'reject' || self.mounts.exists(m, has(m.hostnames))"
       code: HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES
       message: >-
@@ -1048,6 +1151,50 @@ metadata:
 capability: Telo.Mount
 topology: Router
 controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpApiController]
+# The server's access refusals, which reach this router's catch lists. Restated
+# from `Http.Server`'s and held equal to them by `nodejs/tests/access-codes.test.ts`.
+throws:
+  codes:
+    ERR_HTTP_UNAUTHENTICATED:
+      description: >-
+        A mount's authentication refused the request: no credential where anonymous
+        callers are denied, or a credential that is malformed or refused. Answered
+        401 with every challenge in one `WWW-Authenticate`.
+      displayMessage: "Authentication is required to access this resource."
+      data:
+        type: object
+        additionalProperties: false
+        required: [reason]
+        properties:
+          reason: { type: string, enum: [absent, malformed, refused], description: Why the request is not authenticated. }
+    ERR_HTTP_FORBIDDEN:
+      description: >-
+        The authorization policy denied the action. Answered 403, with
+        `WWW-Authenticate: <scheme> error="insufficient_scope"` when the policy
+        names the scopes the caller lacks.
+      displayMessage: "You are not allowed to perform this action."
+      data:
+        type: object
+        additionalProperties: false
+        properties:
+          requiredScopes: { type: array, items: { type: string }, description: The scopes that would allow the action. }
+    ERR_HTTP_CROSS_ORIGIN_REFUSED:
+      description: >-
+        A request that changes state, authenticated by a credential the browser
+        sends on its own (a cookie), came from another site. Answered 403.
+      displayMessage: "This request came from another site and was refused."
+    ERR_HTTP_ACCESS_CHECK_UNAVAILABLE:
+      description: >-
+        A credential source, verifier or policy could not decide — its keys or
+        endpoint unreachable. Answered 503; the failure is the cause in the trace
+        and the log, never in the response.
+      displayMessage: "The access check could not be completed. Try again later."
+      data:
+        type: object
+        additionalProperties: false
+        required: [stage]
+        properties:
+          stage: { type: string, enum: [source, verifier, policy], description: The step that failed. }
 schema:
   type: "object"
   properties:
@@ -1070,7 +1217,9 @@ schema:
       x-telo-outcome-list: catches
       # The EMPTY pointer: this list covers every route of this router, not one
       # sibling field's target.
-      x-telo-catches-for: ""
+      x-telo-catches-for:
+        slot: ""
+        raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
       x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
       x-telo-context:
         type: object
@@ -1106,6 +1255,7 @@ schema:
               lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
               method: { type: string }
               ip: { type: string }
+              principal: { description: "The authenticated caller; null when the request was refused before authenticating, or is anonymous.", anyOf: [{ $ref: "telo://Auth/Principal" }, { type: "null" }] }
           error:
             type: object
             additionalProperties: false
@@ -1166,6 +1316,36 @@ schema:
               `examples` so the OpenAPI spec is complete.
             x-telo-topology-role: matcher
             x-telo-schema-from: "HttpDispatch.Request/$defs/Matcher"
+          authentication:
+            title: Authentication
+            description: >-
+              This route's authentication, each key replacing the mount's: an
+              absent key is inherited. `{ anonymous: allow }` makes one route
+              optional through the mount's verifiers.
+            $ref: "telo://Self/Authentication"
+            x-telo-raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
+          authorization:
+            title: Authorization
+            description: This route's authorization, replacing the mount's.
+            $ref: "telo://Self/Authorization"
+            x-telo-raises: [ERR_HTTP_FORBIDDEN, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
+            x-telo-context:
+              type: object
+              properties:
+                request:
+                  x-telo-context-from: "request/schema"
+                  type: object
+                  properties:
+                    query: { type: object, additionalProperties: true }
+                    headers: { type: object, additionalProperties: true }
+                    params: { type: object, additionalProperties: true }
+                    path: { type: string }
+                    host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                    cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                    lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
+                    method: { type: string }
+                    ip: { type: string }
+                    principal: { description: "The authenticated caller, as the mounts reaching this route authenticate it; null where anonymous callers are allowed.", x-telo-context-from-referrer: request/principal, type: [object, "null"], x-telo-context-nullable-when: { at: "0/authentication/anonymous", equals: [allow], absent: false } }
           maxBodyBytes:
             title: Max Body Bytes
             description: >-
@@ -1223,6 +1403,7 @@ schema:
                     lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                     method: { type: string }
                     ip: { type: string }
+                    principal: { description: "The authenticated caller, as the mounts reaching this route authenticate it; null where anonymous callers are allowed.", x-telo-context-from-referrer: request/principal, type: [object, "null"], x-telo-context-nullable-when: { at: "0/authentication/anonymous", equals: [allow], absent: false } }
           handler:
             title: Handler
             description: Route handler — Invocable or Runnable.
@@ -1282,6 +1463,7 @@ schema:
                     lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                     method: { type: string }
                     ip: { type: string }
+                    principal: { description: "The authenticated caller, as the mounts reaching this route authenticate it; null where anonymous callers are allowed.", x-telo-context-from-referrer: request/principal, type: [object, "null"], x-telo-context-nullable-when: { at: "0/authentication/anonymous", equals: [allow], absent: false } }
                 result:
                   x-telo-context-ref-from: "handler/outputType"
                   type: object
@@ -1292,7 +1474,9 @@ schema:
             description: Rendering rules for structured (InvokeError) throws from the handler. Buffer-mode only — by the time a catch fires there is no upstream iterable to feed an encoder.
             type: "array"
             x-telo-outcome-list: catches
-            x-telo-catches-for: handler
+            x-telo-catches-for:
+              slot: handler
+              raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
             x-telo-context:
               type: object
               additionalProperties: false
@@ -1327,6 +1511,7 @@ schema:
                     lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                     method: { type: string }
                     ip: { type: string }
+                    principal: { description: "The authenticated caller; null when the request was refused before authenticating, or is anonymous.", anyOf: [{ $ref: "telo://Auth/Principal" }, { type: "null" }] }
                 error:
                   type: object
                   additionalProperties: false
@@ -1385,6 +1570,19 @@ schema:
                       id: !cel "result.rows[0].id"
                       email: !cel "result.rows[0].email"
   required: [ "routes" ]
+  x-telo-referrer-rules:
+    - referrer: Self.Server
+      peers: /mounts
+      condition: !cel >-
+        !has(self.routes) || self.routes.all(r, !has(r.authentication) || has(r.authentication.verifiers)
+        || (has(entry.authentication) && has(entry.authentication.verifiers))
+        || (has(r.authentication.anonymous) ? r.authentication.anonymous == 'allow'
+        : has(entry.authentication) && has(entry.authentication.anonymous) && entry.authentication.anonymous == 'allow'))
+      code: AUTHENTICATION_UNSATISFIABLE
+      message: >-
+        mounts this router with a route whose `authentication` denies anonymous callers while neither
+        the route nor this mount names a verifier, so no request can ever be served there. List
+        `verifiers` on the route or the mount, or allow anonymous callers.
   examples:
     - routes:
         - request:
@@ -1534,3 +1732,322 @@ schema:
       spaFallback: true
       maxAge: 3600
       immutable: true
+---
+kind: Telo.JsonSchema
+metadata:
+  name: AuthScheme
+  description: >-
+    An HTTP authentication scheme name, as it appears in `Authorization` and
+    `WWW-Authenticate` — `Bearer`, `Basic`, `DPoP`, `ApiKey`. An RFC 9110 token.
+schema: { type: string, pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$" }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Authentication
+  description: >-
+    Who may call an HTTP mount or route: an ordered list of credential verifiers,
+    each with where its credential is read — a header, the query, a cookie, a
+    client certificate — and whether a request presenting no credential is served
+    anonymously. A presented credential that fails is refused, never served as
+    anonymous.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    verifiers:
+      title: Verifiers
+      description: >-
+        Tried in order. An entry whose source finds no credential is skipped; the
+        first presented credential decides, accepted or refused.
+      type: array
+      minItems: 1
+      items:
+        type: object
+        additionalProperties: false
+        required: [verifier, from]
+        properties:
+          verifier:
+            title: Verifier
+            description: Judges the credential and answers with the caller or a refusal.
+            x-telo-ref: { kind: Auth.Verifier, use: trigger.inbound }
+          from:
+            title: From
+            description: Where the credential is read; null when the request carries none there.
+            x-telo-ref:
+              kind: Self.CredentialSource
+              use: trigger.inbound
+              outputTo: { slot: /verifier, member: presentation }
+    anonymous:
+      title: Anonymous
+      description: >-
+        `deny` (the default) answers a request presenting no credential 401;
+        `allow` serves it with a null `request.principal`.
+      type: string
+      enum: [allow, deny]
+      default: deny
+      x-telo-eval: compile
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Authorization
+  description: >-
+    The policy deciding whether an authenticated, or anonymous, caller may perform
+    an action on a resource, both written as expressions over the request and its
+    principal. A denial is a 403, naming the scopes the caller lacks when the
+    policy says.
+schema:
+  type: object
+  additionalProperties: false
+  required: [policy, action]
+  properties:
+    policy:
+      title: Policy
+      description: The policy asked for every request.
+      x-telo-ref: { kind: Auth.Policy, use: trigger.inbound }
+    action:
+      title: Action
+      description: What the request attempts, e.g. `request.method + ' ' + request.path`; evaluated per request.
+      type: string
+    resource:
+      title: Resource
+      description: What it is attempted on, evaluated per request; null when omitted.
+---
+kind: Telo.JsonSchema
+metadata:
+  name: CredentialRequest
+  description: >-
+    What a credential source reads from an HTTP request before its body: method,
+    path, host, headers, query, cookies, client address, TLS session and client
+    certificate.
+schema:
+  type: object
+  required: [method, path, host, headers, query, cookies, ip, tls, clientCertificate]
+  properties:
+    method: { type: string }
+    path: { type: string }
+    host: { type: string }
+    headers: { type: object, additionalProperties: true, description: Header values by lower-case name., x-telo-sensitive: true }
+    query: { type: object, additionalProperties: true, x-telo-sensitive: true }
+    cookies: { type: object, additionalProperties: { type: string }, x-telo-sensitive: true }
+    ip: { type: string }
+    tls: { type: [object, "null"], properties: { protocol: { type: string } } }
+    clientCertificate:
+      description: The client certificate the listener received or a trusted proxy forwarded; null when there is none.
+      type: [object, "null"]
+      x-telo-sensitive: true
+---
+# A source's reading publishes `schemes` (the authentication schemes a request
+# lacking its credential is challenged with), and may publish `originCheck:
+# { trustedOrigins }` (a credential the browser sends on its own) and
+# `requiresTrustedProxy: true`, and `bearerMethod` (`header` or `query`, the RFC 6750
+# method it reads a Bearer token by). Normative: docs/authentication.md.
+kind: Telo.Abstract
+metadata:
+  name: CredentialSource
+  description: >-
+    Reads one credential from where an HTTP request carries it — a header, the
+    query, a cookie, the client certificate — and answers with the presentation,
+    or null when the request carries none there. A credential that is present but
+    unreadable is refused as malformed, never read as absent.
+capability: Telo.Invocable
+inputType: !ref CredentialRequest
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.Presentation, { type: "null" }] }
+throws:
+  codes:
+    ERR_HTTP_CREDENTIAL_MALFORMED:
+      description: The request carries the credential, but it cannot be read; the transport refuses it 401.
+---
+kind: Telo.Definition
+metadata:
+  name: FromAuthorization
+  description: >-
+    Reads a token from the `Authorization` header under the listed schemes,
+    matched case-insensitively — `Bearer`, `DPoP`. A header under another scheme
+    is no credential for this source; a listed scheme with no readable token is
+    refused as malformed.
+capability: Telo.Invocable
+extends: Self.CredentialSource
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#FromAuthorizationController]
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.TokenPresentation, { type: "null" }] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [schemes]
+  properties:
+    schemes:
+      title: Schemes
+      description: The schemes a token is read under, in the spelling challenges use.
+      type: array
+      minItems: 1
+      x-telo-eval: compile
+      items: { $ref: "telo://Self/AuthScheme" }
+---
+kind: Telo.Definition
+metadata:
+  name: FromBasic
+  description: >-
+    Reads a user identifier and password from an `Authorization: Basic` header.
+    Credentials that do not decode are refused as malformed.
+capability: Telo.Invocable
+extends: Self.CredentialSource
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#FromBasicController]
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.BasicPresentation, { type: "null" }] }
+schema: { type: object, additionalProperties: false, properties: {} }
+---
+kind: Telo.Definition
+metadata:
+  name: FromHeader
+  description: >-
+    Reads a token from a named request header, such as an API key in
+    `X-Api-Key`. An empty or repeated header is refused as malformed.
+capability: Telo.Invocable
+extends: Self.CredentialSource
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#FromHeaderController]
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.TokenPresentation, { type: "null" }] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [header, scheme]
+  properties:
+    header: { title: Header, description: The header name; matched case-insensitively., type: string, minLength: 1, x-telo-eval: compile }
+    scheme:
+      title: Scheme
+      description: The scheme a request lacking the header is challenged with.
+      $ref: "telo://Self/AuthScheme"
+      x-telo-eval: compile
+---
+kind: Telo.Definition
+metadata:
+  name: FromQuery
+  description: >-
+    Reads a token from a named query parameter. An empty or repeated parameter
+    is refused as malformed.
+capability: Telo.Invocable
+extends: Self.CredentialSource
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#FromQueryController]
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.TokenPresentation, { type: "null" }] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [parameter, scheme]
+  properties:
+    parameter: { title: Parameter, description: The query parameter name., type: string, minLength: 1, x-telo-eval: compile }
+    scheme:
+      title: Scheme
+      description: The scheme a request lacking the parameter is challenged with.
+      $ref: "telo://Self/AuthScheme"
+      x-telo-eval: compile
+---
+kind: Telo.Definition
+metadata:
+  name: FromCookie
+  description: >-
+    Reads a token from a declared cookie, such as a session identifier. Because
+    a browser sends the cookie on its own, a request authenticated through it
+    that changes state must come from this site or a trusted origin.
+capability: Telo.Invocable
+extends: Self.CredentialSource
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#FromCookieController]
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.TokenPresentation, { type: "null" }] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [cookie, scheme]
+  properties:
+    cookie:
+      title: Cookie
+      description: The cookie declaration, so its prefixed name is read.
+      x-telo-ref: { kind: HttpDispatch.Cookie, use: dependency }
+    scheme:
+      title: Scheme
+      description: The scheme a request lacking the cookie is challenged with.
+      $ref: "telo://Self/AuthScheme"
+      x-telo-eval: compile
+    trustedOrigins:
+      title: Trusted origins
+      description: Other origins (`https://app.example`, no path) whose state-changing requests this cookie may authenticate.
+      type: array
+      x-telo-eval: compile
+      items: { type: string }
+  x-telo-resource-rules:
+    - in: /trustedOrigins
+      condition: !cel "this.matches('^https?://[^/?#@]+$')"
+      code: HTTP_TRUSTED_ORIGIN_INVALID
+      message: >-
+        lists a trusted origin that is not an origin. Write the scheme and host, with a port when it is
+        not the default, and nothing after it — `https://app.example`.
+---
+kind: Telo.Definition
+metadata:
+  name: FromClientCertificate
+  description: >-
+    Presents the TLS client certificate the listener received, or a trusted
+    proxy forwarded, for a verifier to judge.
+capability: Telo.Invocable
+extends: Self.CredentialSource
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#FromClientCertificateController]
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.CertificatePresentation, { type: "null" }] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [scheme]
+  properties:
+    scheme:
+      title: Scheme
+      description: The scheme a request without a certificate is challenged with.
+      $ref: "telo://Self/AuthScheme"
+      x-telo-eval: compile
+---
+kind: Telo.Definition
+metadata:
+  name: FromForwardedIdentity
+  description: >-
+    Reads the identity a trusted reverse proxy or gateway authenticated and
+    forwarded in a header. Declared only on a mount of a server that trusts the
+    proxy in front of it, since any client could send the header otherwise.
+capability: Telo.Invocable
+extends: Self.CredentialSource
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#FromForwardedIdentityController]
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.AssertedPresentation, { type: "null" }] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [header, scheme]
+  properties:
+    header: { title: Header, description: The header holding the subject; matched case-insensitively., type: string, minLength: 1, x-telo-eval: compile }
+    scheme:
+      title: Scheme
+      description: The scheme a request without the header is challenged with.
+      $ref: "telo://Self/AuthScheme"
+      x-telo-eval: compile
+  x-telo-referrer-rules:
+    - referrer: Self.Server
+      condition: !cel >-
+        has(referrer.trustProxy) ? referrer.trustProxy == true || (referrer.trustProxy != false && referrer.trustProxy > 0)
+        : has(referrer.trustForwardedHeaders) && referrer.trustForwardedHeaders
+      code: HTTP_PROXY_SOURCE_UNTRUSTED
+      message: >-
+        reads a forwarded identity but trusts no proxy, so any client could send that header and be
+        served as anyone. Set `trustProxy` to the proxy in front of this server.
+    - referrer: Self.Api
+      condition: !cel "false"
+      code: HTTP_PROXY_SOURCE_ON_ROUTE
+      message: >-
+        reads a forwarded identity in a route's `authentication`. Only a mount's can: whether the
+        proxy is trusted is the server's. Move the entry to the mount.

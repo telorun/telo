@@ -3,8 +3,7 @@
 # against null, query parameters and an enabled button. Every application
 # places this view on its `/conditions` page.
 kind: Ui.View
-metadata:
-  name: conditionsPage
+metadata: { name: conditionsPage }
 content:
   type: stack
   children:
@@ -21,7 +20,7 @@ content:
           mode: { type: string, enum: [ compact, detailed ] }
           tag: { type: array, items: { type: string } }
           ticket: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
-        source: { path: /api/project-summary, params: { code: TEL-42 } }
+        source: { path: /api/project-summary, queryParams: { code: TEL-42 } }
         content:
           type: stack
           children:
@@ -58,9 +57,7 @@ content:
               style: muted
               text: A view whose content is switched off by its own when provides no node, so the composite placing it is left out.
             - type: composite
-              ref:
-                kind: Ui.View
-                content: { type: text, text: Never provided., when: false }
+              ref: { kind: Ui.View, content: { type: text, text: Never provided., when: false } }
 
             # ---- Every keyword ----
             - { type: text, text: Every keyword of a condition, style: heading }
@@ -128,7 +125,7 @@ content:
         kind: Ui.Action
         inputModel: !ref NewTag
         outputModel: !ref TagAnswer
-        source: { path: /api/tags }
+        request: { target: /api/tags }
         label: Tag TEL-42
         enabled:
           at: !cel "values.tag"
@@ -148,8 +145,7 @@ content:
 ---
 # The page every application lists at /conditions, placing the view.
 kind: Ui.Page
-metadata:
-  name: conditionsScreen
+metadata: { name: conditionsScreen }
 path: /conditions
 title: Conditions
 children:

@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata:
+  name: TrustedOriginInvalid
+  version: 1.0.0
+  description: A trusted origin is a scheme and host with nothing after it.
+imports: { Http: ../../../, HttpDispatch: ../../../../http-dispatch }
+---
+kind: Http.FromCookie
+metadata: { name: session }
+cookie: { kind: HttpDispatch.HostCookie, name: session }
+scheme: Session
+trustedOrigins: [https://app.test, https://app.test/path]

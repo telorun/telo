@@ -1,0 +1,200 @@
+kind: Telo.Application
+metadata:
+  name: AuthBearerDpopTest
+  version: 1.0.0
+  description: |
+    A DPoP-bound access token is accepted with a proof from its key and refused
+    for a wrong method or URI, a missing access-token hash, a missing proof, a
+    proof from another key and a verifier that cannot check proofs. A proof used
+    twice is refused on a second verifier sharing the replay store, and a
+    verifier requiring DPoP refuses a plain bearer token with a DPoP challenge.
+include: [./__fixtures__/keys.yaml]
+imports:
+  AuthBearer: ../
+  Jose: ../../jose
+  Crypto: ../../crypto
+  KvStoreMemory: ../../kv-store-memory
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: KvStoreMemory.Store
+metadata: { name: replay }
+---
+# Two replicas of one verifier: separate resources sharing a replay store.
+kind: AuthBearer.Jwt
+metadata: { name: replicaA }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+confirmation: { dpop: { replay: !ref replay, algorithms: [ES256] } }
+---
+kind: AuthBearer.Jwt
+metadata: { name: replicaB }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+confirmation: { dpop: { replay: !ref replay, algorithms: [ES256] } }
+---
+kind: AuthBearer.Jwt
+metadata: { name: strict }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+confirmation: { dpop: { required: true, replay: !ref replay, algorithms: [ES256, ES384] } }
+---
+kind: AuthBearer.Jwt
+metadata: { name: noDpop }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: Jose.Sign
+metadata: { name: issue }
+keys: !ref issuerKeys
+type: at+jwt
+issuer: https://login.test
+audience: https://api.test/
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: boundToken
+    invoke: !ref issue
+    inputs: { subject: alice, claims: { cnf: { jkt: "-CEBTneaZcwb0qMRincVrWF6NtuK0Tmc1IbqzzM-4Gg" } } }
+  - name: plainToken
+    invoke: !ref issue
+    inputs: { subject: bob }
+  - name: athOfBound
+    invoke: { kind: Crypto.Digest }
+    inputs: { input: !cel "steps.boundToken.result.token", encoding: base64url }
+  - name: goodProof
+    invoke: { kind: Jose.Sign, keys: !ref clientKeys, type: dpop+jwt, embedPublicKey: true, expiresIn: 1m }
+    inputs:
+      jwtId: auto
+      claims: { htm: GET, htu: "https://api.test/orders", ath: !cel "steps.athOfBound.result.value" }
+  - name: wrongMethodProof
+    invoke: { kind: Jose.Sign, keys: !ref clientKeys, type: dpop+jwt, embedPublicKey: true, expiresIn: 1m }
+    inputs:
+      jwtId: auto
+      claims: { htm: POST, htu: "https://api.test/orders", ath: !cel "steps.athOfBound.result.value" }
+  - name: wrongUriProof
+    invoke: { kind: Jose.Sign, keys: !ref clientKeys, type: dpop+jwt, embedPublicKey: true, expiresIn: 1m }
+    inputs:
+      jwtId: auto
+      claims: { htm: GET, htu: "https://api.test/other", ath: !cel "steps.athOfBound.result.value" }
+  - name: noAthProof
+    invoke: { kind: Jose.Sign, keys: !ref clientKeys, type: dpop+jwt, embedPublicKey: true, expiresIn: 1m }
+    inputs: { jwtId: auto, claims: { htm: GET, htu: "https://api.test/orders" } }
+  - name: otherKeyProof
+    invoke: { kind: Jose.Sign, keys: !ref otherClientKeys, type: dpop+jwt, embedPublicKey: true, expiresIn: 1m }
+    inputs:
+      jwtId: auto
+      claims: { htm: GET, htu: "https://api.test/orders", ath: !cel "steps.athOfBound.result.value" }
+  - name: accepted
+    invoke: !ref replicaA
+    inputs:
+      presentation: { type: token, token: !cel "steps.boundToken.result.token", scheme: DPoP }
+      confirmation: { dpop: { proof: !cel "steps.goodProof.result.token", method: GET, uri: "https://api.test/orders" } }
+      resource: https://api.test/
+  - name: replayed
+    invoke: !ref replicaB
+    inputs:
+      presentation: { type: token, token: !cel "steps.boundToken.result.token", scheme: DPoP }
+      confirmation: { dpop: { proof: !cel "steps.goodProof.result.token", method: GET, uri: "https://api.test/orders" } }
+      resource: https://api.test/
+  - name: wrongMethod
+    invoke: !ref replicaA
+    inputs:
+      presentation: { type: token, token: !cel "steps.boundToken.result.token", scheme: DPoP }
+      confirmation: { dpop: { proof: !cel "steps.wrongMethodProof.result.token", method: GET, uri: "https://api.test/orders" } }
+      resource: https://api.test/
+  - name: wrongUri
+    invoke: !ref replicaA
+    inputs:
+      presentation: { type: token, token: !cel "steps.boundToken.result.token", scheme: DPoP }
+      confirmation: { dpop: { proof: !cel "steps.wrongUriProof.result.token", method: GET, uri: "https://api.test/orders" } }
+      resource: https://api.test/
+  - name: noAth
+    invoke: !ref replicaA
+    inputs:
+      presentation: { type: token, token: !cel "steps.boundToken.result.token", scheme: DPoP }
+      confirmation: { dpop: { proof: !cel "steps.noAthProof.result.token", method: GET, uri: "https://api.test/orders" } }
+      resource: https://api.test/
+  - name: otherKey
+    invoke: !ref replicaA
+    inputs:
+      presentation: { type: token, token: !cel "steps.boundToken.result.token", scheme: DPoP }
+      confirmation: { dpop: { proof: !cel "steps.otherKeyProof.result.token", method: GET, uri: "https://api.test/orders" } }
+      resource: https://api.test/
+  - name: noProof
+    invoke: !ref replicaA
+    inputs:
+      presentation: { type: token, token: !cel "steps.boundToken.result.token", scheme: DPoP }
+      confirmation: {}
+      resource: https://api.test/
+  - name: unsupported
+    invoke: !ref noDpop
+    inputs:
+      presentation: { type: token, token: !cel "steps.boundToken.result.token", scheme: DPoP }
+      confirmation: { dpop: { proof: !cel "steps.goodProof.result.token", method: GET, uri: "https://api.test/orders" } }
+      resource: https://api.test/
+  - name: plainRequired
+    invoke: !ref strict
+    inputs:
+      presentation: { type: token, token: !cel "steps.plainToken.result.token" }
+      confirmation: {}
+      resource: https://api.test/
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        accepted: !cel "steps.accepted.result.principal.subject"
+        replayed: !cel "steps.replayed.result"
+        wrongMethod: !cel "steps.wrongMethod.result"
+        wrongUri: !cel "steps.wrongUri.result"
+        noAth: !cel "steps.noAth.result"
+        otherKey: !cel "steps.otherKey.result"
+        noProof: !cel "steps.noProof.result"
+        unsupported: !cel "steps.unsupported.result"
+        plainRequired: !cel "steps.plainRequired.result"
+        challenges: !cel "resources.strict.challenges"
+      expected:
+        accepted: alice
+        replayed:
+          refused: true
+          reason: dpopReplayed
+          challenge: { scheme: DPoP, parameters: { error: invalid_dpop_proof, error_description: The DPoP proof has already been used, algs: ES256 } }
+        wrongMethod:
+          refused: true
+          reason: dpopInvalid
+          challenge: { scheme: DPoP, parameters: { error: invalid_dpop_proof, error_description: The DPoP proof is missing or invalid, algs: ES256 } }
+        wrongUri:
+          refused: true
+          reason: dpopInvalid
+          challenge: { scheme: DPoP, parameters: { error: invalid_dpop_proof, error_description: The DPoP proof is missing or invalid, algs: ES256 } }
+        noAth:
+          refused: true
+          reason: dpopInvalid
+          challenge: { scheme: DPoP, parameters: { error: invalid_dpop_proof, error_description: The DPoP proof is missing or invalid, algs: ES256 } }
+        otherKey:
+          refused: true
+          reason: dpopInvalid
+          challenge: { scheme: DPoP, parameters: { error: invalid_dpop_proof, error_description: The DPoP proof is missing or invalid, algs: ES256 } }
+        noProof:
+          refused: true
+          reason: dpopInvalid
+          challenge: { scheme: DPoP, parameters: { error: invalid_dpop_proof, error_description: The DPoP proof is missing or invalid, algs: ES256 } }
+        unsupported:
+          refused: true
+          reason: confirmationMismatch
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: "The access token is not bound to the presenter's key or certificate" } }
+        plainRequired:
+          refused: true
+          reason: dpopRequired
+          challenge: { scheme: DPoP, parameters: { error: invalid_token, error_description: The access token must be bound to a DPoP key, algs: ES256 ES384 } }
+        challenges: [{ scheme: Bearer, parameters: {} }, { scheme: DPoP, parameters: { algs: ES256 ES384 } }]

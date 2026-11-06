@@ -1,0 +1,31 @@
+# One name on two stores, and two names on one store: nothing collides.
+kind: Telo.Application
+metadata: { name: NamesDistinct }
+imports: { Session: ../.., KvStoreMemory: ../../../kv-store-memory }
+---
+kind: KvStoreMemory.Store
+metadata: { name: first }
+---
+kind: KvStoreMemory.Store
+metadata: { name: second }
+---
+kind: Session.Sessions
+metadata: { name: web }
+store: !ref first
+name: main
+idleTimeout: 1800s
+absoluteLifetime: 43200s
+---
+kind: Session.Sessions
+metadata: { name: admin }
+store: !ref first
+name: admin
+idleTimeout: 600s
+absoluteLifetime: 3600s
+---
+kind: Session.Sessions
+metadata: { name: other }
+store: !ref second
+name: main
+idleTimeout: 600s
+absoluteLifetime: 3600s

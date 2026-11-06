@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: PrincipalTyping
+  version: 1.0.0
+  description: |
+    `request.principal` is non-null on a route every mount reaching it
+    authenticates, nullable on a route allowing anonymous callers and in every
+    catch list; the four access codes may be named and their data is typed.
+include: [./keys.yaml]
+imports: { Http: ../../../, AuthBearer: ../../../../auth-bearer, Jose: ../../../../jose }
+---
+kind: AuthBearer.Jwt
+metadata: { name: tokens }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: Http.Api
+metadata: { name: api }
+catches:
+  - when: !cel "error.code == 'ERR_HTTP_FORBIDDEN'"
+    status: 403
+    content: { application/json: { body: { scopes: !cel "error.data.requiredScopes" } } }
+routes:
+  - request: { path: /required, method: GET }
+    inputs: { who: !cel "request.principal.subject" }
+    returns:
+      - status: 200
+        content: { application/json: { body: { who: !cel "request.principal.subject" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_HTTP_UNAUTHENTICATED'"
+        status: 401
+        content: { application/json: { body: { reason: !cel "error.data.reasn" } } }
+  - request: { path: /optional, method: GET }
+    authentication: { anonymous: allow }
+    returns:
+      - status: 200
+        content: { application/json: { body: { who: !cel "request.principal.subject" } } }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8973 }
+catches:
+  - when: !cel "error.code == 'ERR_HTTP_ACCESS_CHECK_UNAVAILABLE'"
+    status: 503
+    content: { application/json: { body: { stage: !cel "error.data.stage" } } }
+mounts:
+  - path: /
+    mount: !ref api
+    authentication:
+      verifiers:
+        - verifier: !ref tokens
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }

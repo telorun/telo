@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: AuthPresentationVariantsTest
+  version: 1.0.0
+  description: |
+    A verifier that accepts only asserted identities is given a token: `telo check`
+    refuses the call, and run without checking the contract refuses it at dispatch.
+imports: { Assert: ../../assert }
+targets:
+  - !ref tokenRefused
+---
+kind: Assert.Manifest
+metadata: { name: tokenRefused }
+source: ./__fixtures__/token-into-trusted-header.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/presentation/type must be equal to constant" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "('token' is not allowed)" }

@@ -1,0 +1,15 @@
+# The bucket is the importer's: which claims share it is not known here.
+kind: Telo.Library
+metadata: { name: CoInput }
+imports: { Co: ../kinds }
+resources: { bucket: { kind: Co.Bucket } }
+---
+kind: Co.Claim
+metadata: { name: first }
+bucket: !ref bucket
+name: main
+---
+kind: Co.Claim
+metadata: { name: second }
+bucket: !ref bucket
+name: main

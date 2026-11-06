@@ -1,0 +1,107 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeySqliteSweepTest
+  version: 1.0.0
+  description: |
+    Ended keys older than the retention are deleted in the background, and
+    nothing else is. Two stores share a table: `short` (retention one second)
+    is only read from, and `unused` (retention one hour) is declared but never
+    called. Rows are written straight into the table: `short` has two keys
+    that ended two hours ago and a live one; `unused` has one that ended half
+    an hour ago. After two sweep intervals only the two `short` keys are gone
+    — the live one, and the other store's rows (whose store was never called,
+    so never swept), stay.
+imports:
+  Keys: ../
+  SQLite: ../../sqlite
+  Sql: ../../sql
+  ApiKey: ../../api-key
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: short }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: short
+prefix: tk
+scopes: [read]
+retention: 1s
+---
+kind: Keys.Store
+metadata: { name: unused }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: unused
+prefix: uk
+scopes: [read]
+retention: 1h
+---
+kind: ApiKey.List
+metadata: { name: list }
+store: !ref short
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: run
+    value: !cel "uuidv4()"
+  - name: seed
+    invoke: !ref write
+    inputs:
+      sql: !sql >-
+        INSERT INTO api_keys (store_name, key_id, digest, owner_type, owner_id, scopes, created_at, revoked_at, ends_at)
+        VALUES
+          ('short', ${{ 'ended-1-' + steps.run.result }}, 'x', 'user', 'sweep', '[]', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 hours'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours')),
+          ('short', ${{ 'ended-2-' + steps.run.result }}, 'x', 'user', 'sweep', '[]', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 hours'), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours')),
+          ('unused', ${{ 'ended-3-' + steps.run.result }}, 'x', 'user', 'sweep', '[]', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 hours'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 minutes'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 minutes'))
+  - name: live
+    invoke: !ref write
+    inputs:
+      sql: !sql >-
+        INSERT INTO api_keys (store_name, key_id, digest, owner_type, owner_id, scopes, created_at)
+        VALUES ('short', ${{ 'live-' + steps.run.result }}, 'x', 'user', 'sweep', '[]', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  # The first call of `short` starts its sweep.
+  - name: firstCall
+    invoke: !ref list
+    inputs: { owner: { type: user, id: sweeper } }
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 2500ms }
+  - name: rows
+    invoke: !ref read
+    inputs:
+      sql: !sql "SELECT store_name, substr(key_id, 1, 4) AS key FROM api_keys ORDER BY store_name, key"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.rows.result.rows"
+      expected:
+        - { store_name: short, key: live }
+        - { store_name: unused, key: ende }

@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: McpProtectedResourceNoIssuerApp, version: 1.0.0 }
+imports: { Lib: ./lib }

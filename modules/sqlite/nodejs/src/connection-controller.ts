@@ -1,12 +1,13 @@
 import type { ResourceContext } from "@telorun/sdk";
 import { quoteAnsiIdentifier, SqlConnectionBase, type SqlDialect } from "@telorun/sql";
-import { Kysely, SqliteAdapter, SqliteDialect } from "kysely";
+import { Kysely, SqliteAdapter, SqliteDialect, type Driver } from "kysely";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDatabase as openBunDatabase } from "./sqlite-driver-bun.js";
 import type { SqliteDb } from "./sqlite-driver-interface.js";
 import { openDatabase as openNodeDatabase } from "./sqlite-driver-node.js";
+import { LOCK_WAIT_MS, LockWaitingSqliteDriver } from "./sqlite-lock-wait.js";
 
 interface SqliteConnectionManifest {
   metadata: { name: string; module: string };
@@ -40,7 +41,13 @@ class SqliteConnection extends SqlConnectionBase {
   /** The driver's native multi-statement entry point — kysely binds one
    *  statement per call. */
   override async executeScript(sql: string): Promise<void> {
-    this.sqlite.exec(sql);
+    // A script cannot be retried half-way, so it waits natively, blocking.
+    this.sqlite.busyTimeout(LOCK_WAIT_MS);
+    try {
+      this.sqlite.exec(sql);
+    } finally {
+      this.sqlite.busyTimeout(0);
+    }
   }
 }
 
@@ -55,8 +62,19 @@ class TransactionalSqliteAdapter extends SqliteAdapter {
 }
 
 class TransactionalSqliteDialect extends SqliteDialect {
+  readonly #database: SqliteDb;
+
+  constructor(database: SqliteDb) {
+    super({ database: database });
+    this.#database = database;
+  }
+
   override createAdapter(): SqliteAdapter {
     return new TransactionalSqliteAdapter();
+  }
+
+  override createDriver(): Driver {
+    return new LockWaitingSqliteDriver({ database: this.#database });
   }
 }
 
@@ -107,7 +125,7 @@ export async function create(
   const sqlite = await openSqliteDatabase(resource.file ?? ":memory:", ctx);
   assertForeignKeysEnforced(sqlite, resource.metadata.name);
   const db = new Kysely<any>({
-    dialect: new TransactionalSqliteDialect({ database: sqlite }),
+    dialect: new TransactionalSqliteDialect(sqlite),
   });
   return new SqliteConnection(db, sqlite, ctx);
 }

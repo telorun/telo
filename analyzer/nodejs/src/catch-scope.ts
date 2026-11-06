@@ -43,6 +43,8 @@ import {
   intersectDataSchemas,
 } from "./caught-member.js";
 import { enclosingKeys, fieldPlace, type ReadReporter } from "./read-place.js";
+import { readCatchesFor } from "./catches-for-slot.js";
+import { raiseSites, withinHolder } from "./raises-slot.js";
 
 /** One entry of an outcome list, as written. */
 export interface OutcomeEntry {
@@ -98,6 +100,9 @@ export interface CatchList {
   /** `x-telo-catches-for: ""` — the list covers everything its resource drives
    *  and owes coverage of nothing on its own. */
   isScope: boolean;
+  /** The codes the kind raises into this list itself (`raises:`), with the
+   *  data its `throws.codes` declares for each: nameable, owed by no site. */
+  raises: ReadonlyMap<string, ThrowsCodeMeta>;
 }
 
 /** What every scope enclosing a resource renders for one code. */
@@ -221,7 +226,7 @@ function walkSchemaData(
           // Only present arrays — a missing `returns` is the schema's to report.
           if (Array.isArray(child)) onReturns(entries, nextPath);
         } else {
-          const catchesFor = propSchema["x-telo-catches-for"] as string | undefined;
+          const catchesFor = readCatchesFor(propSchema)?.slot;
           // The EMPTY pointer names the resource the list is written on, so the
           // test is presence, never truthiness. Reported even when absent, so a
           // site whose union is non-empty but whose list is missing is judged.
@@ -342,11 +347,20 @@ export function answerFor(readings: readonly CatchEntryReading[], code: string |
 /** Which resources each resource's scope list encloses, along the slots that
  *  declare `throwsThrough` — one fact stated once, since the edge a throws
  *  closure crosses is the edge a catch scope encloses through. */
+/** One `throwsThrough` edge: the holder, the concrete path of its slot, and the
+ *  resource the slot names. */
+interface ThroughEdge {
+  holder: ResourceManifest;
+  path: string;
+  target: ResourceManifest;
+}
+
 function buildEnclosers(
   manifests: ResourceManifest[],
   definitionOf: (m: ResourceManifest) => ResourceDefinition | undefined,
   moduleOf: (m: ResourceManifest) => string | undefined,
   ctx: ResolveCtx,
+  edges: ThroughEdge[],
 ): Map<ResourceManifest, ResourceManifest[]> {
   const enclosers = new Map<ResourceManifest, ResourceManifest[]>();
   for (const manifest of manifests) {
@@ -364,6 +378,7 @@ function buildEnclosers(
           : { module: moduleOf(manifest), within: scopeReadAt(manifest, driven.path) },
       );
       if (!target || target === manifest) return;
+      edges.push({ holder: manifest, path: driven.path, target });
       const list = enclosers.get(target);
       if (list) list.push(manifest);
       else enclosers.set(target, [manifest]);
@@ -402,6 +417,13 @@ export class CatchLadder {
   /** Each dispatch site's own list, by manifest and handler path. */
   private readonly sites = new Map<ResourceManifest, Map<string, CatchList>>();
   private readonly enclosers: Map<ResourceManifest, ResourceManifest[]>;
+  /** What each resource encloses through a `throwsThrough` slot — the inverse
+   *  of {@link enclosers}. */
+  private readonly enclosed = new Map<ResourceManifest, ResourceManifest[]>();
+  private readonly throughEdges: ThroughEdge[] = [];
+  private readonly denominators = new Map<CatchList, ThrowsUnion>();
+  private received?: Map<CatchList, Set<string>>;
+  private readonly declarations: DeclarationRequests;
   private readonly rungs = new Map<string | null, Map<ResourceManifest, ScopeRung>>();
   private readonly unions = new Map<CatchList, ThrowsUnion>();
   private readonly listsByManifest = new Map<ResourceManifest, CatchList[]>();
@@ -429,18 +451,28 @@ export class CatchLadder {
       rootModules,
       moduleManifests,
     );
+    this.declarations = declarations;
     this.enclosers = buildEnclosers(
       this.allManifests,
       (m) => this.definitionOf(m),
       (m) => this.moduleOf(m),
       this.resolveCtx,
+      this.throughEdges,
     );
+    for (const [target, holders] of this.enclosers) {
+      for (const holder of holders) {
+        const list = this.enclosed.get(holder);
+        if (list) list.push(target);
+        else this.enclosed.set(holder, [target]);
+      }
+    }
 
     for (const manifest of this.allManifests) {
       if (!manifest.kind || !manifest.metadata?.name) continue;
       if (isKindDocument(manifest)) continue;
       const definition = this.definitionOf(manifest);
       if (!definition) continue;
+      const declaredCodes = throwsBlockOf(definition, this.resolveCtx)?.codes ?? {};
       // A scoped declaration is reported against the document it is WRITTEN
       // in — its owner's — at its own position inside that owner's scope array,
       // because position lookup finds a TOP-LEVEL doc by (kind, name).
@@ -457,6 +489,12 @@ export class CatchLadder {
         (entries, arrayPath, siblingData, parentPath, catchesFor, listSchema) => {
           const isScope = catchesFor === "";
           const codeChains = caughtCodeChains(catchListContext(listSchema));
+          const raises = new Map<string, ThrowsCodeMeta>();
+          for (const code of readCatchesFor(listSchema)?.raises ?? []) {
+            const meta = (declaredCodes as Record<string, { data?: Record<string, any> } | undefined>)[code];
+            // An undeclared code is `CATCHES_FOR_INVALID` at the kind.
+            if (meta) raises.set(code, meta.data ? { data: meta.data } : {});
+          }
           const list: CatchList = {
             manifest,
             definition,
@@ -472,6 +510,7 @@ export class CatchLadder {
             handler: isScope ? undefined : siblingData[catchesFor],
             ...(isScope ? {} : { handlerPath: parentPath ? `${parentPath}.${catchesFor}` : catchesFor }),
             isScope,
+            raises,
           };
           this.lists.push(list);
           const own = this.listsByManifest.get(manifest);
@@ -600,7 +639,10 @@ export class CatchLadder {
     const known = byEntry[index];
     if (known !== undefined) return known ?? undefined;
     const reading = list.readings[index];
-    const union = this.unionOf(list);
+    // A catch-all or an undecided entry renders what the handler throws and
+    // every code raised where this list receives it; an entry naming a code is
+    // typed from that code wherever it may arrive.
+    const union = reading && (reading.catchAll || !reading.proven) ? this.catchAllUnionOf(list) : this.denominatorOf(list);
     let schema: Record<string, any> | null = null;
     if (reading && !union.unbounded && union.codes.size > 0) {
       const codes =
@@ -631,6 +673,128 @@ export class CatchLadder {
       this.unions.set(list, union);
     }
     return union;
+  }
+
+  /**
+   * What a list's entries may name and are typed against: what it is checked
+   * against ({@link unionOf}) plus the codes raised into it — the list's own
+   * and, for a scope list, those raised into every list of its resource and of
+   * each resource it encloses through a `throwsThrough` slot. Coverage reads
+   * {@link unionOf} alone: a raised code is rendered by default.
+   */
+  denominatorOf(list: CatchList): ThrowsUnion {
+    let denominator = this.denominators.get(list);
+    if (!denominator) {
+      const union = this.unionOf(list);
+      const codes = new Map(union.codes);
+      const raise = (from: CatchList) => {
+        for (const [code, meta] of from.raises) if (!codes.has(code)) codes.set(code, meta);
+      };
+      raise(list);
+      if (list.isScope) {
+        const seen = new Set<ResourceManifest>();
+        const walk = (manifest: ResourceManifest) => {
+          if (seen.has(manifest)) return;
+          seen.add(manifest);
+          for (const other of this.listsByManifest.get(manifest) ?? []) raise(other);
+          for (const target of this.enclosed.get(manifest) ?? []) walk(target);
+        };
+        walk(list.manifest);
+      }
+      denominator = { codes, unbounded: union.unbounded };
+      this.denominators.set(list, denominator);
+    }
+    return denominator;
+  }
+
+  /** What a catch-all of `list` renders: the handler's union and the codes
+   *  raised where the list receives them. */
+  private catchAllUnionOf(list: CatchList): ThrowsUnion {
+    const union = this.unionOf(list);
+    const received = this.receivedOf(list);
+    if (received.size === 0) return union;
+    const codes = new Map(union.codes);
+    for (const code of received) if (!codes.has(code)) codes.set(code, list.raises.get(code)!);
+    return { codes, unbounded: union.unbounded };
+  }
+
+  /**
+   * The raised codes that reach `list` (`x-telo-raises`): each present raising
+   * field's codes reach the lists of the object holding it, every list of each
+   * resource that object reaches through a `throwsThrough` slot, and every
+   * scope list above those — each list keeping what its own `raises` names. A
+   * declaration whose referrers the analysis cannot all see (one an
+   * `exports.resources` lists, or one such a declaration reaches) receives
+   * every code its lists declare.
+   */
+  receivedOf(list: CatchList): ReadonlySet<string> {
+    if (!this.received) this.received = this.buildReceived();
+    return this.received.get(list) ?? NOTHING;
+  }
+
+  private buildReceived(): Map<CatchList, Set<string>> {
+    const received = new Map<CatchList, Set<string>>();
+    const give = (list: CatchList, codes: Iterable<string>) => {
+      for (const code of codes) {
+        if (!list.raises.has(code)) continue;
+        let set = received.get(list);
+        if (!set) received.set(list, (set = new Set()));
+        set.add(code);
+      }
+    };
+    const scopesAbove = (manifest: ResourceManifest, out: Set<CatchList>, seen = new Set<ResourceManifest>()) => {
+      if (seen.has(manifest)) return;
+      seen.add(manifest);
+      const scope = this.scopeOf.get(manifest);
+      if (scope) out.add(scope);
+      for (const encloser of this.enclosers.get(manifest) ?? []) scopesAbove(encloser, out, seen);
+    };
+    for (const manifest of this.allManifests) {
+      if (!manifest.kind || isKindDocument(manifest)) continue;
+      const definition = this.definitionOf(manifest);
+      if (!definition) continue;
+      for (const site of raiseSites(this.defs.effectiveSchemaOf(definition), manifest)) {
+        const targets = new Set<CatchList>();
+        for (const list of this.listsByManifest.get(manifest) ?? []) {
+          if (withinHolder(list.ownPath, site.holder)) targets.add(list);
+        }
+        scopesAbove(manifest, targets);
+        for (const edge of this.throughEdges) {
+          if (edge.holder !== manifest || !withinHolder(edge.path, site.holder)) continue;
+          for (const list of this.listsByManifest.get(edge.target) ?? []) targets.add(list);
+          scopesAbove(edge.target, targets);
+        }
+        for (const list of targets) give(list, site.codes);
+      }
+    }
+    for (const manifest of this.openWorld()) {
+      for (const list of this.listsByManifest.get(manifest) ?? []) give(list, list.raises.keys());
+    }
+    return received;
+  }
+
+  /** Every declaration an importer may reach: those an `exports.resources`
+   *  lists, and what they enclose through a `throwsThrough` slot. */
+  private openWorld(): Set<ResourceManifest> {
+    const open = new Set<ResourceManifest>();
+    const exported = new Map<string, Set<string>>();
+    for (const doc of this.declarations.moduleDocuments()) {
+      const names = (doc as { exports?: { resources?: unknown } }).exports?.resources;
+      const module = doc.metadata?.name as string | undefined;
+      if (!Array.isArray(names) || !module) continue;
+      exported.set(module, new Set(names.filter((n): n is string => typeof n === "string" && !n.includes("."))));
+    }
+    const visit = (manifest: ResourceManifest) => {
+      if (open.has(manifest)) return;
+      open.add(manifest);
+      for (const target of this.enclosed.get(manifest) ?? []) visit(target);
+    };
+    for (const manifest of this.allManifests) {
+      const module = this.moduleOf(manifest);
+      const name = manifest.metadata?.name as string | undefined;
+      if (module && name && exported.get(module)?.has(name)) visit(manifest);
+    }
+    return open;
   }
 
   /** A handler's effective throw union. Prefers the named manifest (so an
@@ -697,12 +861,16 @@ export class CatchLadder {
   }
 }
 
+const NOTHING: ReadonlySet<string> = new Set();
+
 /** What `x-telo-catches-for` reads: the sibling naming the handler whose
  *  failures the list renders — and what it reaches — or, for the empty string,
  *  everything the resource drives. */
-export const catchesForReads: ReadReporter = ({ value, at }) => {
-  if (value === "") return [{ kind: "reference", keys: [], transitive: true, reads: drivenReads }];
-  const keys = fieldPlace(enclosingKeys(at), value);
+export const catchesForReads: ReadReporter = ({ node, at }) => {
+  const slot = readCatchesFor(node)?.slot;
+  if (slot === undefined) return [];
+  if (slot === "") return [{ kind: "reference", keys: [], transitive: true, reads: drivenReads }];
+  const keys = fieldPlace(enclosingKeys(at), slot);
   return keys ? [{ kind: "reference", keys, transitive: true, reads: drivenReads }] : [];
 };
 

@@ -1,0 +1,48 @@
+# A forwarded identity read in a route's own authentication. `telo check` reports it here; a consumer's check sees nothing, so there
+# the server refuses itself when it is created.
+kind: Telo.Library
+metadata:
+  name: ForwardedOnRoute
+  version: 1.0.0
+  description: Test fixture exporting a server refused as HTTP_PROXY_SOURCE_ON_ROUTE.
+imports: { Http: ../../../../../, Auth: ../../../../../../auth }
+exports: { resources: [server] }
+---
+kind: Auth.TrustedHeader
+metadata: { name: gateway }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    returns: [{ status: 204 }]
+---
+kind: Http.FromForwardedIdentity
+metadata: { name: proxied }
+header: x-user
+scheme: Proxy
+---
+kind: Http.Api
+metadata: { name: routed }
+routes:
+  - request: { path: /inline, method: GET }
+    authentication:
+      verifiers:
+        - verifier: !ref gateway
+          from: { kind: Http.FromForwardedIdentity, header: x-user, scheme: Proxy }
+    returns: [{ status: 204 }]
+  - request: { path: /named, method: GET }
+    authentication:
+      verifiers:
+        - verifier: !ref gateway
+          from: !ref proxied
+    returns: [{ status: 204 }]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8972 }
+trustProxy: true
+mounts:
+  - path: /
+    mount: !ref routed
+    authentication: { anonymous: allow }

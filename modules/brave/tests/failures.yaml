@@ -20,20 +20,20 @@ kind: Brave.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18850" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18850" }
 ---
 kind: Brave.WebSearchEngine
 metadata: { name: throwingEngine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18850", throwOnHttpError: true }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18850", throwOnHttpError: true }
 ---
 # Nothing listens on this port.
 kind: Brave.WebSearchEngine
 metadata: { name: unreachableEngine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18851", timeout: 2000 }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18851", timeout: 2000 }
 ---
 kind: Run.Value
 metadata: { name: errors }

@@ -4,9 +4,10 @@
  * state: an index naming a column its table does not declare, a foreign key
  * whose two sides differ in length, a rename whose source is still declared.
  *
- * The predicate is CEL over `self` (the whole resource) and `this` (the element
- * under test), so correlating two collections is a comprehension closure rather
- * than a path language with wildcard bindings to design. `in:` names the
+ * The predicate is CEL over `self` (the whole resource), `this` (the element
+ * under test) and, with `coReferrers:`, `coReferrers`, so correlating two
+ * collections is a comprehension closure rather than a path language with
+ * wildcard bindings to design. `in:` names the
  * collection to iterate and IS the diagnostic anchor: iterating what the pointer
  * names is what makes a reported path exist by construction.
  *
@@ -31,14 +32,20 @@ import {
 } from "@telorun/templating";
 import {
   crossingPlace,
+  kindPlaces,
   placeAt,
   pointerPlaces,
+  READS_IDENTITY,
   READS_WHOLE,
   type ReadKeys,
   type ReferentPlace,
   type ReferentReads,
+  type ReferrerReads,
 } from "./read-place.js";
+import { readRefSlot } from "./ref-slot.js";
 import { compileRuleCondition } from "./rule-condition.js";
+import { isBoundDeclaration, isComparableTag, unboundFailureOf } from "./rule-binding-marks.js";
+import type { PeerBindingFailure } from "./peer-binding.js";
 import type { ResourceDefinition } from "@telorun/sdk";
 import { authorSchemaChain, type DefResolver } from "./extends-resolution.js";
 import { RESOURCE_RULES_ANNOTATION } from "./rule-inheritance.js";
@@ -59,6 +66,10 @@ export interface ResourceRule {
    *  Opt-in, because rewriting `self` for every rule would change what existing
    *  rules read. */
   readonly resolve?: readonly string[];
+  /** JSON Pointer to ONE reference slot of this kind. Binds `coReferrers`: every
+   *  other declaration judged by this rule whose slot there resolves to the
+   *  declaration `self`'s does, each with its references resolved one level. */
+  readonly coReferrers?: string;
   /** CEL source. TRUE when the rule holds. */
   readonly condition: string;
   /** The rule's own name, carried in `data.rule`. Never a diagnostic code —
@@ -170,9 +181,12 @@ export function readResourceRules(schema: unknown): ResourceRule[] {
     ) {
       return;
     }
+    const coReferrers = entry.coReferrers;
+    if (coReferrers !== undefined && !isSlotPointer(coReferrers)) return;
     rules.push({
       ...(pointer === undefined ? {} : { in: pointer }),
       ...(resolve === undefined ? {} : { resolve: resolve as string[] }),
+      ...(coReferrers === undefined ? {} : { coReferrers: coReferrers as string }),
       condition,
       code,
       message,
@@ -207,6 +221,12 @@ export function declaredResourceRules(
     if (rules.length > 0) out.push({ declarer, rules });
   }
   return out;
+}
+
+/** Whether `value` is a JSON Pointer naming a member, never the root — the
+ *  shape a `coReferrers:` slot pointer takes. */
+export function isSlotPointer(value: unknown): value is string {
+  return typeof value === "string" && value !== "" && value !== "/" && pointerSegments(value) !== undefined;
 }
 
 /** Split a JSON Pointer into its unescaped segments. `/` alone is the root. */
@@ -455,6 +475,22 @@ function subjectsOf(collection: unknown, base: string): RuleSubject[] | undefine
 export interface DynamicLeaf {
   readonly path: string;
   readonly what: string;
+  /** Set when what is read is a member a rule binding could not bind: the rule
+   *  is reported unbound, for that reason, rather than skipped. */
+  readonly failure?: PeerBindingFailure;
+}
+
+/** The first member a binding could not bind inside a value read. */
+function findUnboundMember(value: unknown, seen = new Set<object>()): PeerBindingFailure | undefined {
+  if (!value || typeof value !== "object" || seen.has(value as object)) return undefined;
+  seen.add(value as object);
+  const own = unboundFailureOf(value);
+  if (own) return own;
+  for (const child of Array.isArray(value) ? value : Object.values(value as Record<string, unknown>)) {
+    const found = findUnboundMember(child, seen);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 /** Classify ONE node, without descending. Exported because a caller that draws
@@ -483,20 +519,24 @@ export function dynamicNode(value: unknown, path: string): DynamicLeaf | undefin
  * Stops at nested inline `{ kind }` declarations for the reason every other walk
  * does: that CEL belongs to the nested kind, evaluated in its own scope.
  */
-export function findDynamicLeaf(value: unknown, base = ""): DynamicLeaf | undefined {
+export function findDynamicLeaf(value: unknown, base = "", whole = false): DynamicLeaf | undefined {
   if (isObject(value)) {
+    if (isComparableTag(value)) return undefined;
     const own = dynamicNode(value, base);
     if (own) return own;
-    if (typeof value.kind === "string" && base !== "") return undefined;
+    // A declaration a rule binding resolved is read with everything it holds,
+    // nested declarations included.
+    const deep = whole || isBoundDeclaration(value);
+    if (typeof value.kind === "string" && base !== "" && !deep) return undefined;
     for (const [key, child] of Object.entries(value)) {
-      const found = findDynamicLeaf(child, base === "" ? key : `${base}.${key}`);
+      const found = findDynamicLeaf(child, base === "" ? key : `${base}.${key}`, deep);
       if (found) return found;
     }
     return undefined;
   }
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
-      const found = findDynamicLeaf(value[i], `${base}[${i}]`);
+      const found = findDynamicLeaf(value[i], `${base}[${i}]`, whole);
       if (found) return found;
     }
   }
@@ -544,6 +584,9 @@ export function readNodes(
     let path = at;
     for (let i = from; i < chain.length; i++) {
       const segment = chain[i]!;
+      // A member a binding could not bind is read the moment anything is read
+      // through it.
+      if (unboundFailureOf(current)) break;
       if (segment === INDEX_SEGMENT) break;
       // A presence test depends on the keys of what was reached: on its values
       // only when it is itself not yet known.
@@ -592,6 +635,8 @@ export function findDynamicRead(
   roots: Record<string, unknown>,
 ): DynamicLeaf | undefined {
   for (const read of readNodes(chains, roots)) {
+    const failure = findUnboundMember(read.node);
+    if (failure) return { path: read.path, what: "a member that could not be bound", failure };
     const leaf = findDynamicLeaf(read.node);
     if (!leaf) continue;
     const own = dynamicNode(read.node, "") !== undefined;
@@ -670,6 +715,50 @@ export function ruleReferentReads(
   return () => out;
 }
 
+/**
+ * What a `coReferrers:` rule reads in each declaration referencing the one
+ * `self`'s slot names: every place its kind's schema may hold a reference at,
+ * by identity — a co-referrer is bound with its references resolved — and,
+ * with what each reference there names, every member its condition reads
+ * through a co-referrer, or the whole declaration where it reads one whole.
+ */
+function coReferrerReads(rule: ResourceRule, moduleNames?: ReadonlySet<string>): ReferrerReads {
+  const compiled = compileRuleCondition(rule.condition, moduleNames);
+  const members = new Set<string>();
+  let whole = "reason" in compiled;
+  if (!("reason" in compiled)) {
+    for (const chain of compiled.chains) {
+      if (chain[0] !== "coReferrers" || chain.length === 1) {
+        if (chain[0] === "coReferrers") whole = true;
+        continue;
+      }
+      const element = chain[1]!;
+      const iterated = element === EACH_SEGMENT;
+      if (!iterated && element !== INDEX_SEGMENT && !/^\d+$/.test(element)) {
+        whole = true;
+        continue;
+      }
+      // A range that is only iterated reads none of its elements.
+      if (chain.length === 2) {
+        if (!iterated) whole = true;
+        continue;
+      }
+      const member = chain[2]!;
+      if (member === EACH_SEGMENT || member === INDEX_SEGMENT || member === PRESENCE_SEGMENT) whole = true;
+      else members.add(member);
+    }
+  }
+  const read: ReferentPlace[] = whole
+    ? [{ kind: "reference", keys: [], transitive: false, reads: READS_WHOLE }]
+    : [...members].map((member) => ({ kind: "reference", keys: [member], transitive: false, reads: READS_WHOLE }));
+  return (referrer) => [
+    ...kindPlaces(referrer, (node) => readRefSlot(node) !== undefined).map(
+      (keys): ReferentPlace => ({ kind: "reference", keys, transitive: false, reads: READS_IDENTITY }),
+    ),
+    ...read,
+  ];
+}
+
 /** What a resource-rule instance reads beside its anchor: the places of its
  *  own declaration its rules read, and — by name — in the declarations each
  *  `resolve:` pointer reaches, the places the rules read there. */
@@ -698,7 +787,8 @@ function concretePrefix(path: readonly string[]): (string | number)[] {
  * wildcard reading the collection it ranges over, `this` the place `in:` names
  * (a repeated group's list) — a declaration whole only for a root read
  * (`self` itself, or an `in:` ranging over the root), and the reference place
- * of each `resolve:` pointer with the places read past it.
+ * of each `resolve:` pointer with the places read past it — and of a
+ * `coReferrers:` slot, with the referrers of what it names.
  */
 export function resourceRuleReads(rules: readonly ResourceRule[], moduleNames?: ReadonlySet<string>): ResourceRuleReads {
   const places = new Map<string, ReadKeys>();
@@ -730,6 +820,12 @@ export function resourceRuleReads(rules: readonly ResourceRule[], moduleNames?: 
       const at = crossingPlace(pointer);
       read(at);
       targets.push({ at, reads: ruleReferentReads([rule], [pointer], "self") });
+    }
+    if (rule.coReferrers !== undefined) {
+      const at = crossingPlace(rule.coReferrers);
+      read(at);
+      const referrers: ReferentPlace = { kind: "referrers", reads: coReferrerReads(rule, moduleNames) };
+      targets.push({ at, reads: () => [referrers] });
     }
   }
   const all = [...places.values()];

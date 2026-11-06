@@ -11,5 +11,7 @@ export interface SqliteStatement {
 export interface SqliteDb {
   prepare(sql: string): SqliteStatement;
   exec(sql: string): void;
+  /** How long the engine itself waits on another connection's lock, blocking the thread. */
+  busyTimeout(ms: number): void;
   close(): void;
 }

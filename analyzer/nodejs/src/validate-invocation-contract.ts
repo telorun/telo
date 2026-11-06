@@ -119,7 +119,7 @@ export function validateInvocationContract(
     if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") {
       checkMappingRequired(m, resource, filePath, resolveDef, diagnostics);
       checkContractResolves(m, md, manifests, resource, filePath, diagnostics);
-      checkAncestorSubstitutability(m, md, manifests, resource, filePath, resolveDef, diagnostics);
+      checkAncestorSubstitutability(m, md, manifests, resource, filePath, resolveDef, (ref) => registry.schemaForId(ref), diagnostics);
       checkSignatureSubstitutability(
         m,
         md,
@@ -437,6 +437,8 @@ function checkAncestorSubstitutability(
   resource: { kind: string; name: string },
   filePath: string | undefined,
   resolveDef: DefResolver,
+  /** What a canonical shape id names, so a nested shape is compared through. */
+  resolveRef: (ref: string) => Record<string, any> | undefined,
   diagnostics: AnalysisDiagnostic[],
 ): void {
   const def = m as unknown as ResourceDefinition;
@@ -474,8 +476,8 @@ function checkAncestorSubstitutability(
 
     const { compatible, issues } =
       direction === "outputType"
-        ? checkSchemaCompatibility(ownSchema, ancestorSchema)
-        : checkSchemaCompatibility(ancestorSchema, ownSchema);
+        ? checkSchemaCompatibility(ownSchema, ancestorSchema, resolveRef)
+        : checkSchemaCompatibility(ancestorSchema, ownSchema, resolveRef);
     if (compatible) continue;
 
     const ancestorName = `${(ancestor.metadata as { module?: string } | undefined)?.module ?? ""}.${

@@ -1,0 +1,20 @@
+# One key id declared by two entries: refused by `telo check` at the entry, and
+# by the controller when the resource is created.
+kind: Telo.Library
+metadata: { name: IdDuplicate }
+imports: { ApiKey: ../../.. }
+exports: { resources: [keys] }
+---
+kind: ApiKey.DeclaredKeys
+metadata: { name: keys }
+prefix: tk
+scopes: [read]
+keys:
+  - id: apk_01tRy6czI6jAOLpZvq3hw1
+    digest: WVcUd8T3Sn3cezCILhJsrGfWoKvVMHMtViI8qtcidak
+    owner: { type: user, id: alice }
+    scopes: [read]
+  - id: apk_01tRy6czI6jAOLpZvq3hw1
+    digest: FHg16LDLiasoGXBZ2Wh2GPlDwBOrYeMVLDjStSx9tPk
+    owner: { type: user, id: bob }
+    scopes: [read]

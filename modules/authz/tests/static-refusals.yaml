@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: AuthzStaticRefusalsTest
+  version: 1.0.0
+  description: |
+    A rule reading the principal without a null guard is refused by `telo check`,
+    as is a policy with no rules.
+imports: { Assert: ../../assert }
+targets:
+  - !ref unguardedPrincipal
+  - !ref noRules
+---
+kind: Assert.Manifest
+metadata: { name: unguardedPrincipal }
+source: ./__fixtures__/unguarded-principal.yaml
+expect:
+  errors:
+    - { code: CEL_NULLABLE_ACCESS, message: "'principal' may be null" }
+---
+kind: Assert.Manifest
+metadata: { name: noRules }
+source: ./__fixtures__/no-rules.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION }

@@ -38,8 +38,7 @@ with:
     source: ../telo.yaml
     variables:
       dbFile: !cel "variables.dbFile.joinPath('ui-showcase-records-' + uuidv4() + '.db')"
-    ports:
-      http: 8157
+    ports: { http: 8157 }
 targets:
   - !ref app
 steps:
@@ -101,7 +100,7 @@ steps:
       actual:
         present: !cel "steps.nodes.result[5].fields.map(f, [f.property, f.values])"
         cards: !cel "cel.bind(l, steps.nodes.result[5].content, [l.paging, l.layout.size, l.compact.type, l.layout.reads])"
-        board: !cel "cel.bind(l, steps.nodes.result[8].layout, [l.reads.groups.property, l.reads.groups.values, l.reads.groups.enum, l.move.action.path, l.move.inputs])"
+        board: !cel "cel.bind(l, steps.nodes.result[8].layout, [l.reads.groups.property, l.reads.groups.values, l.reads.groups.enum, l.move.action.request.target.path.value, l.move.inputs])"
         calendar: !cel "cel.bind(l, steps.nodes.result[11].layout, [l.period, l.reads.span])"
         authors: !cel "[steps.nodes.result[14].content.basePath, steps.nodes.result[14].content.layout.type]"
         tree: !cel "cel.bind(l, steps.nodes.result[17], [l.layout.reads.parent, l.relations.managerId.basePath, l.create.form.fields.filter(f, f.property == 'managerId').map(f, f.type)])"

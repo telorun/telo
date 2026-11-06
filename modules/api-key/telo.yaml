@@ -1,0 +1,423 @@
+kind: Telo.Library
+metadata:
+  name: ApiKey
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    API keys for authenticating callers of an API: long-lived secrets handed to
+    users, services and organizations, checked on every request without a
+    password hash or a cache. A checksum refuses a mistyped key before any
+    lookup; owner, scopes, expiry and last use are tracked, and keys are issued,
+    listed, revoked and rotated with an overlap, or declared as digests.
+requires:
+  # A bounded `Telo.Duration` (`exclusiveMinimum: 0s`) is first read in 0.129.0.
+  telo: ">=0.129.0"
+imports: { Auth: ../auth }
+exports:
+  kinds: [KeySource, Store, DeclaredKeys, Verifier, Issue, List, Revoke, Rotate, Generate]
+  resources: [Owner, KeyRecord]
+  # The store interface a backend implements and the helpers it may reuse.
+  # A store is recognised by its methods, never by having imported this.
+  code:
+    - specifier: "@telorun/api-key"
+      format: js
+      path: ./nodejs/api-key.mjs
+      source: ./nodejs/src/index.ts
+---
+# Normative: docs/*.md.
+kind: Telo.JsonSchema
+metadata:
+  name: Owner
+  description: >-
+    Who a key belongs to: a user, a service or an organization, and its
+    identifier. The key's caller is that owner.
+schema:
+  type: object
+  additionalProperties: false
+  required: [type, id]
+  properties:
+    type: { description: What kind of owner the key belongs to., type: string, enum: [user, service, organization] }
+    id: { description: The owner's identifier in the application's own scheme., type: string, minLength: 1, maxLength: 256 }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: KeyRecord
+  description: >-
+    A key as it is reported: its public id, owner, scopes, label, when it was
+    created, expires, was revoked and last used, and the key it replaced. The
+    secret and its digest are never reported.
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, owner, scopes, label, createdAt, expiresAt, revokedAt, revokedBy, lastUsedAt, rotatedFrom]
+  properties:
+    id: { description: "The public id, `apk_` and 22 characters.", type: string }
+    owner: !ref Owner
+    scopes: { type: array, items: { type: string } }
+    label: { description: A name the key was given for people; null when none., type: [string, "null"] }
+    createdAt: { x-telo-type: Telo.Timestamp }
+    expiresAt: { description: When the key stops being accepted; null when it never does., anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+    revokedAt: { description: When the key was revoked; null while it is not., anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+    revokedBy: { description: Who revoked it; null when nobody was named., type: [string, "null"] }
+    lastUsedAt: { description: "When a request last used the key, to within the verifier's `lastUsedResolution`; null when never or not tracked.", anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+    rotatedFrom: { description: The public id of the key this one replaced; null when it replaced none., type: [string, "null"] }
+---
+kind: Telo.Abstract
+metadata:
+  name: KeySource
+  description: >-
+    Where API keys are looked up by id: one key family under a prefix, with a
+    closed vocabulary of scopes its keys may carry. A lookup answers with the
+    stored digest, owner, scopes and expiry, or that there is no such key.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [prefix, scopes]
+  properties:
+    prefix:
+      title: Prefix
+      description: >-
+        The text every key of this family starts with, before its underscore: lower-case
+        letters and digits, two to fifteen. A verifier routes a presented key to its source
+        by this prefix, so two sources of one verifier cannot share one.
+      type: string
+      pattern: "^[a-z][a-z0-9]{1,14}$"
+    scopes:
+      title: Scopes
+      description: The closed vocabulary of scopes a key of this family may carry. A key naming another scope is refused.
+      type: array
+      uniqueItems: true
+      items: { type: string, pattern: "^[!-~]+$" }
+---
+kind: Telo.Abstract
+metadata:
+  name: Store
+  description: >-
+    A durable record of API keys that can be managed as well as looked up:
+    issuing a key for an owner, listing an owner's keys, revoking, rotating with
+    an overlap, and recording last use at most once per interval across all
+    replicas. Optionally bounds how long a key may live.
+extends: Self.KeySource
+schema:
+  type: object
+  properties:
+    maxLifetime:
+      title: Max lifetime
+      description: The longest a key may live from the moment it is issued. When set, every issued key must state an `expiresAt` within it.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+---
+kind: Telo.Definition
+metadata:
+  name: DeclaredKeys
+  description: >-
+    A fixed set of API keys written in the manifest as SHA-256 digests, each
+    with its owner, scopes and optional expiry, so the plaintext key never enters
+    the application. Keys are withdrawn by removing their entry. Nothing is
+    stored, revoked or recorded as used.
+capability: Telo.Provider
+extends: Self.KeySource
+controllers: [pkg:telo/local/js?path=./nodejs/api-key.mjs&local_path=./nodejs/src/index.ts#DeclaredKeysController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [keys]
+  properties:
+    keys:
+      title: Keys
+      description: The declared keys. Each `id` is declared once, and each key's scopes are within this source's `scopes`.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [id, digest, owner, scopes]
+        properties:
+          id:
+            title: Id
+            description: "The key's public id (`apk_` and 22 characters), printed by `ApiKey.Generate`."
+            type: string
+            pattern: "^apk_[0-9A-Za-z]{22}$"
+          digest:
+            title: Digest
+            description: The base64url SHA-256 of the whole key, printed by `ApiKey.Generate`; typically read from `secrets:`.
+            type: string
+            pattern: "^[A-Za-z0-9_-]{43}$"
+          owner: { $ref: "telo://Self/Owner" }
+          scopes: { description: The scopes the key grants., type: array, uniqueItems: true, items: { type: string } }
+          expiresAt: { description: When the key stops being accepted; it never does when omitted., x-telo-type: Telo.Timestamp }
+  x-telo-resource-rules:
+    - in: /keys
+      condition: !cel "this.scopes.all(s, s in self.scopes)"
+      code: API_KEY_SCOPE_UNKNOWN
+      message: grants a scope outside this source's `scopes`.
+    - in: /keys
+      condition: !cel "size(self.keys.filter(k, k.id == this.id)) == 1"
+      code: API_KEY_ID_DUPLICATE
+      message: declares a key id that another entry declares too.
+---
+kind: Telo.Definition
+metadata:
+  name: Verifier
+  description: >-
+    Authenticates a request carrying an API key. The checksum is checked first,
+    so a mistyped key is refused without a lookup; then the key's source is
+    chosen by its prefix, the digest compared in constant time, and revocation
+    and expiry judged. Answers with the key's owner and scopes as the caller, or
+    a refusal. An unreachable store throws.
+capability: Telo.Invocable
+extends: Auth.Verifier
+controllers: [pkg:telo/local/js?path=./nodejs/api-key.mjs&local_path=./nodejs/src/index.ts#VerifierController]
+throws:
+  codes:
+    ERR_API_KEY_STORE_UNAVAILABLE: { description: "A key source could not be reached or failed, so the key could not be judged." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [sources]
+  properties:
+    sources:
+      title: Sources
+      description: >-
+        The key families this verifier accepts. A presented key is routed to the source
+        whose prefix it starts with; a prefix is unique among the sources.
+      type: array
+      minItems: 1
+      items: { x-telo-ref: { kind: Self.KeySource, use: dependency } }
+    lastUsedResolution:
+      title: Last used resolution
+      description: >-
+        How often a key's last use is recorded, at most: one conditional write per key per
+        interval across all replicas, and only for a source that tracks last use. 1h when omitted.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+  x-telo-resource-rules:
+    - resolve: [/sources]
+      in: /sources
+      condition: !cel "size(self.sources.filter(s, s.prefix == this.prefix)) == 1"
+      code: API_KEY_PREFIX_DUPLICATE
+      message: has the same prefix as another source, so a key could not be routed to one.
+---
+kind: Telo.Definition
+metadata:
+  name: Issue
+  description: >-
+    Issues a new API key for an owner with a set of scopes and an optional
+    expiry, storing only its digest. The key is returned once and cannot be read
+    again. Refuses scopes outside the store's vocabulary and expiries beyond its
+    maximum lifetime.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/api-key.mjs&local_path=./nodejs/src/index.ts#IssueController]
+throws:
+  codes:
+    ERR_API_KEY_SCOPE_UNKNOWN: { description: A requested scope is outside the store's `scopes`. Nothing was stored. }
+    ERR_API_KEY_LIFETIME_EXCEEDED: { description: "The key has no expiry or one beyond the store's `maxLifetime`. Nothing was stored." }
+    ERR_API_KEY_STORE_UNAVAILABLE: { description: The store could not be reached or failed. The key may or may not be stored. }
+    ERR_API_KEY_STORE_INCONSISTENT: { description: "The store answered in a way its interface rules out. Terminal: the storage needs attention." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store the key is issued into.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [owner, scopes]
+    properties:
+      owner: !ref Owner
+      scopes: { description: The scopes the key grants., type: array, uniqueItems: true, items: { type: string } }
+      label: { description: A name for people to recognise the key by., type: string, maxLength: 128 }
+      expiresAt: { description: When the key stops being accepted., x-telo-type: Telo.Timestamp }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key, id, owner, scopes, label, createdAt, expiresAt]
+    properties:
+      key: { description: The key to hand to its holder. It is not stored and cannot be read again., type: string, x-telo-sensitive: true }
+      id: { description: "The key's public id.", type: string }
+      owner: !ref Owner
+      scopes: { type: array, items: { type: string } }
+      label: { type: [string, "null"] }
+      createdAt: { x-telo-type: Telo.Timestamp }
+      expiresAt: { anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+---
+kind: Telo.Definition
+metadata:
+  name: List
+  description: >-
+    Lists an owner's API keys, oldest first, one page at a time with an opaque
+    cursor and a bounded default page size. Revoked and expired keys are
+    included with their state; the secret and its digest are never returned.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/api-key.mjs&local_path=./nodejs/src/index.ts#ListController]
+throws:
+  codes:
+    ERR_API_KEY_CURSOR_INVALID: { description: "The cursor was not returned by a listing of this owner's keys, or the store can no longer read it." }
+    ERR_API_KEY_STORE_UNAVAILABLE: { description: The store could not be reached or failed. }
+    ERR_API_KEY_STORE_INCONSISTENT: { description: "The store answered in a way its interface rules out. Terminal: the storage needs attention." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store the keys are listed from.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [owner]
+    properties:
+      owner: !ref Owner
+      limit: { description: "How many keys at most, 1 to 200; 50 when omitted.", type: integer, minimum: 1, maximum: 200 }
+      cursor: { description: The `next` of the previous page., type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [keys]
+    properties:
+      keys: { type: array, items: !ref KeyRecord }
+      next: { description: The cursor of the next page; present only when more keys exist., type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Revoke
+  description: >-
+    Revokes an API key by its public id from the moment of the call, so every
+    replica refuses it from its next request. Revoking a revoked key succeeds
+    and keeps the first revocation; an unknown id is refused.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/api-key.mjs&local_path=./nodejs/src/index.ts#RevokeController]
+throws:
+  codes:
+    ERR_API_KEY_NOT_FOUND: { description: No key has the id. }
+    ERR_API_KEY_STORE_UNAVAILABLE: { description: The store could not be reached or failed. The key may or may not be revoked; repeating the call is safe. }
+    ERR_API_KEY_STORE_INCONSISTENT: { description: "The store answered in a way its interface rules out. Terminal: the storage needs attention." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store holding the key.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id: { description: The key's public id., type: string, pattern: "^apk_[0-9A-Za-z]{22}$" }
+      by: { description: "Who revokes it, recorded with the revocation.", type: string, maxLength: 256 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id, revokedAt, revokedBy]
+    properties:
+      id: { type: string }
+      revokedAt: { description: "When the key was first revoked.", x-telo-type: Telo.Timestamp }
+      revokedBy: { type: [string, "null"] }
+---
+kind: Telo.Definition
+metadata:
+  name: Rotate
+  description: >-
+    Replaces an API key with a successor that has the same owner, scopes and
+    label, in one atomic step: the old key keeps working for an overlap and
+    then stops, so a holder can switch over without an outage. Returns the
+    successor key once. A revoked or unknown key is refused.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/api-key.mjs&local_path=./nodejs/src/index.ts#RotateController]
+throws:
+  codes:
+    ERR_API_KEY_NOT_FOUND: { description: No key has the id. Nothing changed. }
+    ERR_API_KEY_REVOKED: { description: The key is revoked and cannot be rotated. Nothing changed. }
+    ERR_API_KEY_LIFETIME_EXCEEDED: { description: "The successor has no expiry or one beyond the store's `maxLifetime`. Nothing changed." }
+    ERR_API_KEY_STORE_UNAVAILABLE: { description: The store could not be reached or failed. The rotation happened entirely or not at all. }
+    ERR_API_KEY_STORE_INCONSISTENT: { description: "The store answered in a way its interface rules out. Terminal: the storage needs attention." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store holding the key.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id: { description: The public id of the key to replace., type: string, pattern: "^apk_[0-9A-Za-z]{22}$" }
+      overlap: { description: "How long the old key keeps working: its expiry becomes the earlier of its own and now plus this. 0s when omitted.", x-telo-type: { name: Telo.Duration, minimum: 0s } }
+      expiresAt: { description: When the successor stops being accepted; it never does when omitted., x-telo-type: Telo.Timestamp }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key, id, owner, scopes, label, createdAt, expiresAt, previous]
+    properties:
+      key: { description: The successor key to hand to its holder. It is not stored and cannot be read again., type: string, x-telo-sensitive: true }
+      id: { description: "The successor's public id.", type: string }
+      owner: !ref Owner
+      scopes: { type: array, items: { type: string } }
+      label: { type: [string, "null"] }
+      createdAt: { x-telo-type: Telo.Timestamp }
+      expiresAt: { anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+      previous:
+        description: The replaced key and when it now stops working.
+        type: object
+        additionalProperties: false
+        required: [id, expiresAt]
+        properties:
+          id: { type: string }
+          expiresAt: { anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+---
+kind: Telo.Definition
+metadata:
+  name: Generate
+  description: >-
+    Mints an API key for a prefix without any store, returning the key, its
+    public id and its digest. Used once to write a declared key into a manifest:
+    the digest and id go in the manifest, the key goes to its holder.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/api-key.mjs&local_path=./nodejs/src/index.ts#GenerateController]
+schema: { type: object, additionalProperties: false }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [prefix]
+    properties:
+      prefix: { description: "The key family's prefix.", type: string, pattern: "^[a-z][a-z0-9]{1,14}$" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key, id, digest]
+    properties:
+      key: { description: The key to hand to its holder. It is not stored anywhere., type: string, x-telo-sensitive: true }
+      id: { description: "The public id, the `id` of a declared key.", type: string }
+      digest: { description: "The base64url SHA-256 of the key, the `digest` of a declared key.", type: string }

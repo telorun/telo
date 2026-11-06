@@ -1,0 +1,78 @@
+kind: Telo.Library
+metadata:
+  name: ApiKeySql
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security, Data]
+  description: >-
+    Durable storage for API keys in a table of the application's own database,
+    shared by every replica: issuing, lookup, listing an owner's keys with a
+    cursor, revoking, rotating with an overlap and recording last use at most
+    once per interval. Only digests are stored. Keys that ended long ago are
+    forgotten and reclaimed in the background.
+requires:
+  # 0.129.0 first reads a bounded `Telo.Duration` (`exclusiveMinimum: 0s`),
+  # which 0.128.0 rejects (verified by execution).
+  telo: ">=0.129.0"
+imports: { Sql: ../sql, ApiKey: ../api-key }
+exports:
+  kinds: [Store]
+  # The controller every engine module re-exports under its own kind, so the
+  # implementation is one module scope across engines.
+  code:
+    - specifier: "@telorun/api-key-sql"
+      format: js
+      path: ./nodejs/api-key-sql.mjs
+      source: ./nodejs/src/index.ts
+---
+# ApiKeySql.Store — one named store in a table. An engine module's Store narrows
+# `connection` and `table` to its own kinds; the table is listed in the engine
+# Schema, which creates and migrates it, so the store issues no DDL. There is no
+# engine-neutral table kind: an engine table kind must extend its engine's Table
+# with `base:` to be listed in that engine's Schema, and a kind has one parent,
+# so it cannot also extend a table kind declared here.
+kind: Telo.Abstract
+metadata:
+  name: Store
+  description: >-
+    A durable record of API keys kept in a table of the application's own
+    database, readable and writable from every replica at once. A key is judged
+    on every request from the table, never a cache, so a revocation holds at the
+    next request. Keys that ended past the retention window read as absent and
+    are reclaimed in the background.
+extends: ApiKey.Store
+schema:
+  type: object
+  required: [connection, schema, table, name, retention]
+  properties:
+    connection:
+      title: Connection
+      description: The connection the store's table lives on.
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
+    schema:
+      title: Schema
+      description: >-
+        The engine schema that lists the store's table. It creates and migrates
+        the table and renders its name; the store issues no DDL.
+      x-telo-ref: { kind: Sql.Schema, use: dependency }
+    table:
+      title: Table
+      description: The store's table, declared with the engine module's own key table kind.
+      x-telo-ref: { kind: Sql.Table, use: dependency }
+    name:
+      title: Name
+      description: >-
+        The store's durable identity inside its table, written into every row it
+        stores. Several stores may share one table under different names. Never
+        derived from the resource's name, so renaming the resource keeps its keys.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      x-telo-eval: compile
+    retention:
+      title: Retention
+      description: >-
+        How long a revoked or expired key is still found, to be reported as such.
+        Past it the key reads as unknown and its row is deleted.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: "0s" }
+      x-telo-eval: compile

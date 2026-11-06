@@ -44,7 +44,35 @@ clientInfo:                            # optional; advertised during initialize
   name: my-client
   version: 1.0.0
 protocolVersion: "2024-11-05"          # optional; defaults to the pinned constant ("2024-11-05" at v0.1.0)
+retry:                                 # optional; omitted means no retry
+  attempts: 3
+  initialDelay: 250ms
+  jitter: full
 ```
+
+## `retry:`
+
+`retry:` is the shared retry policy (`attempts`, `initialDelay`, `factor`,
+`maxDelay`, `jitter`, `nonRetryable`, `retryAfter`) that a step's `retry:` takes.
+It re-attempts a whole invocation, handshake included, when it fails with
+`ERR_MCP_TRANSPORT` in one of two ways:
+
+- **No response arrived** — the network layer failed (connection reset or
+  refused, DNS or TLS failure).
+- **A gateway answered 502, 503 or 504.**
+
+Everything else surfaces at once: other HTTP statuses, an unexpected content
+type, JSON-RPC and tool errors, protocol errors, `ERR_MCP_SESSION_INVALID`
+(which the client already handles with its one re-handshake), a code listed in
+`nonRetryable`, and cancellation — a cancelled backoff ends with
+`ERR_INVOKE_CANCELLED`. An exhausted budget raises the last failure. `retryAfter`
+sees the failure as `error` (code `ERR_MCP_TRANSPORT`).
+
+**A retried request may reach the server more than once.** When the connection
+dies after the request was sent, the server may already have run the tool. Enable
+`retry:` for servers whose tools are safe to repeat (read-only ones, for instance).
+`Mcp.StdioClient` has no `retry:`: its child process is the session, so there is
+nothing to reconnect.
 
 ## Session modes
 

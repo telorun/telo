@@ -1,0 +1,21 @@
+# The PostgreSQL key table kind declares the duplicate-name rule itself (a table
+# kind has one parent, its engine's Table), so it is pinned here at `telo check`.
+# The refusal at creation is the shared store code's, run by the SQLite module's
+# suite and identical on every engine.
+kind: Telo.Application
+metadata:
+  name: ApiKeyPostgresStaticRefusals
+  version: 1.0.0
+  description: The PostgreSQL key store's refusals, as `telo check` reports them.
+imports: { Assert: ../../assert }
+targets:
+  - !ref storeNameDuplicate
+---
+kind: Assert.Manifest
+metadata: { name: storeNameDuplicate }
+source: ./__fixtures__/store-name-duplicate/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Keys.Store/orders at 'table': required by Keys.Table — claims a store name"
+    - { code: REFERRER_RULE_VIOLATED, message: "Keys.Store/ordersAgain at 'table'" }

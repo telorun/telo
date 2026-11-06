@@ -59,6 +59,8 @@ The connection's bind-placeholder style is fixed to SQLite anonymous `?`, so inl
 
 SQLite has no boolean storage class, so a bound `true` or `false` is written as `1` or `0` in an `integer` column — the same convention a declared column `default: true` renders. It reads back as the number, and a predicate bound with a boolean matches accordingly. Both drivers do this identically.
 
+Several connections may share one file, in other processes or in this one (a child application started with `App.Instance`). SQLite has one writer, so a statement that finds the file locked retries between event-loop turns for up to 5 seconds and then fails with `database is locked`; the wait never blocks the thread, so a connection in this process can release the lock being waited for. The engine's own blocking wait is off on both drivers.
+
 ## Declarative schema
 
 `SQLite.Table` declares a table in SQLite's own vocabulary — the five storage

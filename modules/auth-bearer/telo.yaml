@@ -1,0 +1,294 @@
+kind: Telo.Library
+metadata:
+  name: AuthBearer
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    Verifies OAuth 2.0 access tokens presented to an API: signed JWTs checked
+    against an issuer's keys, or opaque tokens checked at its introspection
+    endpoint. Enforces audience, issuer, expiry, revocation and sender-
+    constrained tokens bound to a DPoP key or client certificate, and maps
+    claims to the caller's scopes and roles. A bad token is refused with a
+    challenge.
+requires:
+  # 0.129.0 first reads a bounded `Telo.Duration` (`exclusiveMinimum: 0s`).
+  telo: ">=0.129.0"
+imports: { Auth: ../auth, Jose: ../jose, KvStore: ../kv-store, Cache: ../cache, Http: ../http-client }
+exports: { kinds: [AccessTokenVerifier, Jwt, Introspection, Revoke] }
+---
+# Settings every access-token verifier shares. Normative: docs/*.md.
+kind: Telo.Abstract
+metadata:
+  name: AccessTokenVerifier
+  description: >-
+    Judges an OAuth 2.0 access token presented as a bearer or DPoP token: it
+    must be for this resource, from the trusted issuer and unexpired, and, when
+    configured, not revoked and bound to its sender's key or client certificate.
+    Answers with the caller or a refusal carrying the challenge; an unreachable
+    key source or endpoint is a thrown error.
+capability: Telo.Invocable
+extends: Auth.Verifier
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [presentation, confirmation, resource]
+    properties:
+      presentation: !ref Auth.TokenPresentation
+      confirmation: !ref Auth.Confirmation
+      resource: { type: [string, "null"] }
+schema:
+  type: object
+  required: [audience, issuer]
+  properties:
+    issuer:
+      title: Issuer
+      description: >-
+        The authorization server whose tokens are accepted: a token or response naming
+        another `iss` is refused. Advertised to clients as the authorization server.
+      $ref: "telo://Auth/Issuer"
+    audience:
+      title: Audience
+      description: >-
+        The audience the token's `aud` must include: a literal, or an expression
+        over `resource`, the protected resource the transport names
+        (`!cel "[resource]"` binds the token to the resource it is presented to).
+        A token for another audience is refused.
+      x-telo-eval: runtime
+      x-telo-context: { type: object, properties: { resource: { type: string } } }
+      anyOf:
+        - { type: string }
+        - { type: array, minItems: 1, items: { type: string } }
+    confirmation:
+      title: Confirmation
+      description: >-
+        Sender-constrained tokens. A `cnf.jkt` or `cnf.x5t#S256` on a token is always
+        enforced against what the transport proved; this block adds the DPoP settings
+        needed to check a proof and can require binding.
+      type: object
+      additionalProperties: false
+      properties:
+        dpop:
+          title: DPoP
+          description: Verifies DPoP proofs (RFC 9449) for tokens bound to a key. A DPoP-bound token is refused when this is absent.
+          type: object
+          additionalProperties: false
+          required: [replay, algorithms]
+          properties:
+            required:
+              title: Required
+              description: Refuse every token that is not DPoP-bound. False when omitted.
+              type: boolean
+            replay:
+              title: Replay store
+              description: >-
+                Durable store recording each accepted proof's `jti`, so a proof is
+                accepted once across every replica sharing it. Must not evict, so it is
+                a key/value store and not a cache.
+              x-telo-ref: { kind: KvStore.Store, use: dependency }
+            maxProofAge:
+              title: Max proof age
+              description: How far a proof's `iat` may lie from now, in either direction; 60s when omitted.
+              x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+            algorithms:
+              title: Algorithms
+              description: The only signature algorithms a proof may use.
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items:
+                type: string
+                enum: [ES256, ES384, ES512, RS256, RS384, RS512, PS256, PS384, PS512, EdDSA]
+        certificateBound:
+          title: Certificate bound
+          description: Refuse every token that is not bound to a client certificate (`cnf.x5t#S256`). False when omitted.
+          type: boolean
+    revocation:
+      title: Revocation
+      description: >-
+        Refuses tokens whose `jti` was revoked with `AuthBearer.Revoke`. A token
+        without a `jti` is then refused for its claims, since it could never be
+        revoked.
+      type: object
+      additionalProperties: false
+      required: [store]
+      properties:
+        store:
+          title: Store
+          description: The durable store holding the revoked `jti` records, shared with `AuthBearer.Revoke`.
+          x-telo-ref: { kind: KvStore.Store, use: dependency }
+    principal:
+      title: Principal
+      description: >-
+        Expressions over `claims` (the token's claims, or the introspection
+        response) for the principal's members. A member left out is read from the
+        standard claim: scopes from `scope` else `scp`, roles from `roles`,
+        permissions from `permissions`, and `service` as the kind when `sub` equals
+        `client_id`, else `user`.
+      type: object
+      additionalProperties: false
+      x-telo-context:
+        type: object
+        properties: { claims: { type: object, additionalProperties: true } }
+      properties:
+        kind:
+          title: Kind
+          description: Whether the caller is a `user` or a `service`.
+          type: string
+          enum: [user, service]
+          x-telo-eval: runtime
+        scopes: { title: Scopes, description: A list of strings., type: array, items: { type: string }, x-telo-eval: runtime }
+        roles: { title: Roles, description: A list of strings., type: array, items: { type: string }, x-telo-eval: runtime }
+        permissions: { title: Permissions, description: A list of strings., type: array, items: { type: string }, x-telo-eval: runtime }
+        org: { title: Organization, description: "The organization the caller acts for, or null.", type: [string, "null"], x-telo-eval: runtime }
+---
+kind: Telo.Definition
+metadata:
+  name: Jwt
+  description: >-
+    Verifies a JWT access token (RFC 9068) against an issuer's signing keys:
+    signature, the configured algorithms, issuer, audience, expiry and token
+    type, with optional revocation and DPoP or certificate binding. Answers with
+    the caller built from the token's claims, or a refusal naming why and the
+    challenge to send back. Unreachable keys are a thrown error.
+capability: Telo.Invocable
+extends: Self.AccessTokenVerifier
+controllers: [pkg:telo/local/js?path=./nodejs/auth-bearer.mjs&local_path=./nodejs/src/index.ts#JwtController]
+throws:
+  codes:
+    ERR_JOSE_REMOTE_KEYS_UNREACHABLE: { description: "A remote key set could not be fetched, so the token could not be judged." }
+    ERR_JOSE_KEYSET_UNAVAILABLE: { description: A local key set's store failed or its keys will not unwrap. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [keys, algorithms]
+  properties:
+    keys:
+      title: Keys
+      description: The keys tokens are verified against.
+      x-telo-ref: { kind: Jose.Keys, use: dependency }
+    algorithms:
+      title: Algorithms
+      description: >-
+        The only signature algorithms accepted. The algorithm is never taken from
+        the token, and `none` is never accepted.
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        type: string
+        enum: [ES256, ES384, ES512, RS256, RS384, RS512, PS256, PS384, PS512, EdDSA]
+    types:
+      title: Types
+      description: The `typ` headers accepted; `[at+jwt]` (RFC 9068) when omitted.
+      type: array
+      minItems: 1
+      items: { type: string }
+    clockTolerance:
+      title: Clock tolerance
+      description: Leeway for `exp`, `nbf` and `iat` against this host's clock.
+      x-telo-eval: compile
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+    maxTokenAge:
+      title: Max token age
+      description: The oldest `iat` accepted; a token without `iat` is then refused for its claims.
+      x-telo-eval: compile
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+    requiredClaims:
+      title: Required claims
+      description: Claims the token must carry besides `exp` and `sub`, which are always required.
+      type: array
+      items: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Introspection
+  description: >-
+    Verifies an opaque access token by asking the issuer's token introspection
+    endpoint (RFC 7662), authenticating with a client credential. An inactive
+    token is refused; an active one is checked for issuer, audience, expiry and
+    optionally revocation and DPoP or certificate binding. Answers may be cached
+    up to the token's expiry. An unreachable endpoint is a thrown error.
+capability: Telo.Invocable
+extends: Self.AccessTokenVerifier
+controllers: [pkg:telo/local/js?path=./nodejs/auth-bearer.mjs&local_path=./nodejs/src/index.ts#IntrospectionController]
+throws:
+  codes:
+    ERR_AUTH_BEARER_INTROSPECTION_UNREACHABLE:
+      description: The introspection endpoint could not be reached, answered with a status other than 200, or did not answer with a JSON object.
+schema:
+  type: object
+  additionalProperties: false
+  required: [endpoint]
+  properties:
+    endpoint:
+      title: Endpoint
+      description: The introspection endpoint's address, called with a form-encoded POST.
+      x-telo-type: { name: Telo.Url, scheme: { enum: [http, https] } }
+    client:
+      title: Client
+      description: Authenticates this application at the endpoint, for example HTTP Basic client credentials or a bearer token; none when omitted.
+      x-telo-ref: { kind: Http.Credential, use: call }
+    cache:
+      title: Cache
+      description: >-
+        Remembers active answers, each no longer than the token's expiry or
+        `maxAge`. An evicted entry only costs a new request; omitted, every request
+        asks the endpoint. An inactive answer is never cached.
+      x-telo-ref: { kind: Cache.Store, use: dependency }
+    maxAge:
+      title: Max age
+      description: The longest an answer is reused; 60s when omitted.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+    timeout:
+      title: Timeout
+      description: How long one call to the endpoint may take; 10s when omitted.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+    clockTolerance:
+      title: Clock tolerance
+      description: Leeway for the response's `exp` and `nbf` against this host's clock.
+      x-telo-eval: compile
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+---
+kind: Telo.Definition
+metadata:
+  name: Revoke
+  description: >-
+    Revokes an access token by its `jti` until a given time, so every verifier
+    reading the same store refuses it from its next request. The record lives
+    until the token would have expired anyway; a later revocation never shortens
+    an earlier one.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/auth-bearer.mjs&local_path=./nodejs/src/index.ts#RevokeController]
+throws:
+  codes:
+    ERR_AUTH_BEARER_REVOKE_CONTENDED: { description: "Concurrent writers kept changing the record, so the revocation could not be written." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The durable store the verifiers' `revocation.store` reads.
+      x-telo-ref: { kind: KvStore.Store, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [jti, until]
+    properties:
+      jti: { title: JWT ID, description: The token's `jti` claim., type: string, minLength: 1 }
+      until: { title: Until, description: "When the revocation can end, normally the token's `exp`.", x-telo-type: Telo.Timestamp }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [revoked]
+    properties:
+      revoked: { title: Revoked, description: "False when `until` had already passed, so nothing needed recording.", type: boolean }

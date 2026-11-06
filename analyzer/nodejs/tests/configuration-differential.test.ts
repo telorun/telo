@@ -435,8 +435,12 @@ async function judge(loaded: Loaded): Promise<void> {
   }
 }
 
+/** Fixtures of this package's own tests that write a choice, outside the
+ *  repository corpus `fileCorpus` walks. */
+const PACKAGE_FIXTURES = ["analyzer/nodejs/tests/__fixtures__/resource-rule-co-referrers/choice.yaml"];
+
 describe("each fixture projects as its configurations", () => {
-  for (const file of fileCorpus()) {
+  for (const file of [...fileCorpus(), ...PACKAGE_FIXTURES]) {
     it(file, async () => projects(await loadFile(join(ROOT, file))), 120_000);
   }
   for (const [name, text] of generatedCorpus(SWEPT_CHOICES)) {
@@ -485,7 +489,7 @@ describe("each fixture projects as its configurations", () => {
 });
 
 describe("each configuration's findings equal its own analysis", () => {
-  for (const file of fileCorpus()) {
+  for (const file of [...fileCorpus(), ...PACKAGE_FIXTURES]) {
     it(file, async () => judge(await loadFile(join(ROOT, file))), 120_000);
   }
   for (const [name, text] of generatedCorpus(SWEPT_CHOICES)) {

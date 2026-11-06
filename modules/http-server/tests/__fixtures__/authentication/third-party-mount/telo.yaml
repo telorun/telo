@@ -1,0 +1,37 @@
+# A mount kind of another module stating what it needs of the mount entry
+# holding it, judged though the entry holds expressions it does not read.
+kind: Telo.Library
+metadata:
+  name: ThirdPartyMount
+  version: 1.0.0
+  description: Test fixture declaring a mount kind with a referrer rule over its mount entry.
+imports: { Http: ../../../../ }
+exports: { kinds: [Gate] }
+---
+kind: Telo.Definition
+metadata: { name: Gate }
+capability: Telo.Mount
+controllers: [pkg:telo/local/js?path=./gate.mjs#Gate]
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+  x-telo-referrer-rules:
+    - referrer: Http.Server
+      peers: /mounts
+      condition: !cel "has(entry.authentication)"
+      code: GATE_UNAUTHENTICATED
+      message: mounts a gate with no `authentication`, which every gate needs.
+---
+kind: Self.Gate
+metadata: { name: gate }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8972 }
+mounts:
+  - path: /gate
+    mount: !ref gate
+    guard:
+      invoke: { kind: Telo.Sequence, steps: [{ name: pass, value: 1 }] }
+      inputs: { path: !cel "request.path" }

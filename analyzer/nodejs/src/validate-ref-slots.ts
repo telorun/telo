@@ -35,7 +35,7 @@ import { buildCallGraph, type CallGraph } from "./call-graph.js";
 import { CALLABLE_CAPABILITY, isCallableKind, resolveSignature } from "./callable-signature.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { DefResolver } from "./extends-resolution.js";
-import { isRefUse, readRefSlot, REF_USES, type RefUse } from "./ref-slot.js";
+import { isRefUse, readOutputTo, readRefSlot, REF_USES, type RefUse } from "./ref-slot.js";
 import { argumentMapDefaultProblems } from "./argument-map-default.js";
 
 export interface RefSlotIssue {
@@ -48,6 +48,7 @@ export interface RefSlotIssue {
     | "X_TELO_REF_UNKNOWN_KEY"
     | "X_TELO_REF_INVALID_THROWS_THROUGH"
     | "X_TELO_REF_INVALID_OUTPUT_TYPE"
+    | "X_TELO_REF_INVALID_OUTPUT_TO"
     | "X_TELO_REF_INVALID_OBSERVES"
     | "ARGUMENT_MAP_DEFAULT_INVALID";
   /** The definition (schema issues) or resource (selector issues) at fault. */
@@ -188,6 +189,33 @@ function checkAnnotation(
     });
   }
 
+  // Read only in its exact shape, so anything else is silently absent and the
+  // output would feed its sibling unchecked.
+  if (obj.outputTo !== undefined && !readOutputTo(obj.outputTo)) {
+    issues.push({
+      code: "X_TELO_REF_INVALID_OUTPUT_TO",
+      manifest,
+      path,
+      message:
+        `x-telo-ref at '${path}' declares 'outputTo: ${JSON.stringify(obj.outputTo)}', which is not ` +
+        `'{ slot: <JSON Pointer to a sibling reference slot>, member: <input member> }' ` +
+        `(e.g. '{ slot: /verifier, member: presentation }'); anything else reads as absent, so the ` +
+        `target's output would feed that slot unchecked.`,
+    });
+  } else if (obj.outputTo !== undefined) {
+    const extra = Object.keys(obj.outputTo as object).filter((key) => key !== "slot" && key !== "member");
+    if (extra.length > 0) {
+      issues.push({
+        code: "X_TELO_REF_INVALID_OUTPUT_TO",
+        manifest,
+        path,
+        message:
+          `x-telo-ref at '${path}' declares 'outputTo' with unrecognized key${extra.length === 1 ? "" : "s"} ` +
+          `${extra.map((key) => `'${key}'`).join(", ")}. It takes only 'slot' and 'member'.`,
+      });
+    }
+  }
+
   // Closed, for the reason the token sets are: a misspelled key is indexed by
   // nothing and read by nothing, so it validates, ships, and does exactly what
   // omitting it would.
@@ -215,6 +243,7 @@ const REF_ANNOTATION_KEYS = new Set([
   "inputs",
   "throwsThrough",
   "outputType",
+  "outputTo",
   "observes",
 ]);
 

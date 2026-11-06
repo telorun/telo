@@ -56,6 +56,9 @@ export interface RequestTrace {
   /** The client certificate the listener received or a trusted proxy forwarded;
    *  null when there is none. */
   readonly clientCertificate: ClientCertificate | null;
+  /** The caller the mount's authentication accepted (an `Auth.Principal`); null
+   *  before authentication, for an anonymous request and on a mount with none. */
+  readonly principal: Readonly<Record<string, unknown>> | null;
   /** Report the error that decided the response, when the mount renders it
    *  itself (a `catches:` rung, a request-validation refusal). An error the mount
    *  rethrows reaches the transport, which reports it. */

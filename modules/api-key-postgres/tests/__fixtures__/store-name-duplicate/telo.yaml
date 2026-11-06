@@ -1,0 +1,43 @@
+# Two stores claiming one name in one table. Checked only: nothing connects.
+kind: Telo.Library
+metadata:
+  name: StoreNameDuplicate
+imports:
+  Keys: ../../..
+  Postgres: ../../../../postgres
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url: postgres://postgres:postgres@localhost:5432/postgres
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: orders }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: orders
+prefix: tk
+scopes: [read]
+retention: 1h
+---
+kind: Keys.Store
+metadata: { name: ordersAgain }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: orders
+prefix: uk
+scopes: [read]
+retention: 1h

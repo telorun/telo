@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: ProtectedResourceThirdPartyTest
+  version: 1.0.0
+  description: |
+    A verifier of another module that extends `Auth.Verifier` and declares its
+    `issuer` from `Auth.Issuer` is advertised as an authorization server in the
+    mount's protected-resource metadata, with no change to the server.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Assert: ../../assert
+  Other: ./__fixtures__/third-party-verifier
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /me, method: GET }
+    returns: [{ status: 204 }]
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8981
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8981 }
+    mounts:
+      - path: /api
+        mount: !ref api
+        authentication:
+          verifiers:
+            - verifier: { kind: Other.Verifier, issuer: "https://sso.third.test" }
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+        protectedResource: {}
+targets:
+  - !ref server
+steps:
+  - name: document
+    invoke: !ref call
+    inputs: { url: /.well-known/oauth-protected-resource/api }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.document.result.body"
+      expected:
+        resource: http://127.0.0.1:8981/api
+        authorization_servers: ["https://sso.third.test"]
+        bearer_methods_supported: [header]

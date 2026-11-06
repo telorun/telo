@@ -34,6 +34,8 @@ so running it needs no package manager and no build step.
 
 Requires telo 0.91.0 or newer.
 
+**Windows needs ICU data.** Skia's text layout reads `icudtl.dat` from beside the addon and aborts the process without it, so the module stages it next to `skia.node` for both Windows tuples and resolves it with the addon.
+
 **One Skia per process.** The renderer's library is located through
 `NAPI_RS_NATIVE_LIBRARY_PATH`, which is the wrapper's only override and is
 process-wide. It is set once, before the wrapper first loads, and left: another

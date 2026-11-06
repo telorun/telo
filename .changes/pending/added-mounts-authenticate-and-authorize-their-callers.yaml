@@ -1,0 +1,16 @@
+modules:
+  modules/http-server: Added
+body: Mounts authenticate and authorize their callers. A mount's `authentication` tries
+  verifiers in order, each with a credential source (`Http.FromAuthorization`,
+  `FromBasic`, `FromHeader`, `FromQuery`, `FromCookie`, `FromClientCertificate`,
+  `FromForwardedIdentity`), and `authorization` asks a policy; an `Http.Api` route
+  overrides either. Handlers read the caller as `request.principal`, non-null where
+  every mount reaching the route denies anonymous callers. A missing, malformed or
+  refused credential is a 401 with every challenge, a denial a 403 naming the missing
+  scopes, a cookie-authenticated cross-site request that changes state a 403, and a
+  failed check a 503, each through the `catches:` ladder (`ERR_HTTP_UNAUTHENTICATED`,
+  `ERR_HTTP_FORBIDDEN`, `ERR_HTTP_CROSS_ORIGIN_REFUSED`,
+  `ERR_HTTP_ACCESS_CHECK_UNAVAILABLE`), and a catch-all where they can arrive is typed
+  by them. A server leaving one mount open while others authenticate is refused
+  (`MOUNT_IMPLICITLY_PUBLIC`), as are an unsatisfiable authentication and a forwarded
+  identity behind no trusted proxy or on a route.

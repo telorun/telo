@@ -85,7 +85,7 @@ The `method` set is closed — `tools/call`, `tools/list`, `prompts/list`, `prom
 
 | Code | When |
 | --- | --- |
-| `ERR_MCP_TRANSPORT` | Network failure, non-2xx HTTP, unexpected Content-Type, child-process exit. |
+| `ERR_MCP_TRANSPORT` | Network failure, non-2xx HTTP, unexpected Content-Type, child-process exit. An `Mcp.HttpClient` with `retry:` re-attempts a network failure and a 502/503/504 first. |
 | `ERR_MCP_PROTOCOL` | Malformed JSON-RPC envelope (missing `jsonrpc`, neither `result` nor `error`). |
 | `ERR_MCP_JSON_RPC_ERROR` | Server returned a JSON-RPC error envelope (`error.code`, `error.message`). |
 | `ERR_MCP_TOOL_ERROR` | Server returned `isError: true` in the success envelope (soft tool failure). |
