@@ -1,4 +1,0 @@
-modules:
-  modules/http-dispatch: Added
-body: "A cookies: entry whose expires is null writes a browser-session cookie, with no
-  Expires or Max-Age, so a login route can pass an optional expiry straight through."

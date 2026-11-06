@@ -1,5 +1,0 @@
-modules:
-  blueprints/workflow-app: Added
-body: "A workflow's `inputs` declares `default: {}`, so a workflow written without
-  `inputs:` sends `{}` to its handler, and `telo check` refuses one whose handler
-  requires an argument."

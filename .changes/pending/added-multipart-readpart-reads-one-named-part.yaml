@@ -1,8 +1,0 @@
-modules:
-  modules/multipart: Added
-body: "Multipart.ReadPart reads one named part of a multipart payload as a stream:
-  earlier parts are discarded and still count toward the limits, later parts are never
-  read, and the part's content pulls the payload only as it is read and releases it
-  however it ends. A payload with no such part is ERR_MULTIPART_PART_MISSING with data {
-  name }. The exported Multipart.Part shape types ReadPart's result and
-  Multipart.Reader's parts."

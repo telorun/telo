@@ -1,4 +1,0 @@
-modules:
-  modules/jose: Added
-body: "Jose.Sign gains embedPublicKey and the dpop+jwt type, so it can mint a DPoP
-  proof: a token whose protected header carries the signing key's public JWK."

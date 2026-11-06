@@ -1,5 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: Draws the controls of ui_react_controls-3, its Icon control gaining the attach,
-  copy, export, regenerate, send and stop glyphs, and styles the chat composer's frame
-  when the buttons sit inside the message box.

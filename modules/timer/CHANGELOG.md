@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-11-06
+### Added
+* `Timer.Delay`'s `duration` input is a `Telo.Duration`: `250ms`, `2s`, `1h30m`, `2d` and `1w` are read, a malformed literal is refused by `telo check`, an integer is milliseconds, and a computed value must be a duration (`!cel "duration(string(ms) + 'ms')"`). Breaking for a `duration` computed as a string. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.129.0.
+
 ## 0.9.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

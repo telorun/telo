@@ -1,5 +1,0 @@
-modules:
-  modules/record-stream: Added
-body: RecordStream.JournalCancel asks a key's writer to stop from any replica through
-  the store alone (requested, ended, unknown or removed); JournalSink sees the request,
-  fails the key with ERR_JOURNAL_CANCELLED and raises it, and readers see that code.

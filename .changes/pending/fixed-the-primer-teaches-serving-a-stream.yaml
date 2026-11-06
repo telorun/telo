@@ -1,4 +1,0 @@
-modules:
-  apps/authoring-agent: Fixed
-body: The primer teaches serving a stream over SSE as a Stream.Map into Sse.Frame
-  records piped through Sse.Encoder, and the new chat surface.

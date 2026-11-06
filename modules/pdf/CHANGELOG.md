@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.4 - 2026-11-06
+### Fixed
+* Windows: stage Skia's icudtl.dat beside the canvas addon, so laying out text no longer aborts the process with an illegal instruction.
+
 ## 0.11.3 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

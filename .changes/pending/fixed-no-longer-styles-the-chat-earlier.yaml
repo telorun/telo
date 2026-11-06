@@ -1,4 +1,0 @@
-modules:
-  modules/ui-react-radix: Fixed
-body: "No longer styles the chat-earlier part, which the renderer no longer draws:
-  earlier messages are read as the transcript is scrolled."

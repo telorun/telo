@@ -1,5 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: Draws the go, panel-close and panel-open glyphs, draws expand and collapse as
-  chevrons, and styles the frame of a split view's aside and of a list layout, the split
-  toggle's mirrored glyph and a link drawn as a button in the Radix theme.

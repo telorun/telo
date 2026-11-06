@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.0 - 2026-11-06
+### Added
+* RecordStream.JournalCancel asks a key's writer to stop from any replica through the store alone (requested, ended, unknown or removed); JournalSink sees the request, fails the key with ERR_JOURNAL_CANCELLED and raises it, and readers see that code.
+
 ## 0.20.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

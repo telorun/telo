@@ -1,5 +1,0 @@
-modules:
-  modules/scheduler: Added
-body: "`Scheduler.Interval` and `Scheduler.Cron` declare `inputs` with `default: {}`, so
-  `telo check` judges a body wired without `inputs:` as receiving `{}`, and refuses one
-  whose contract requires an argument."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0 - 2026-11-06
+### Added
+* `Lease.Critical.ttl` is a `Telo.Duration`: `30s`, `10m`, `1h30m`, `2d` and `1w` are read, a malformed literal is refused by `telo check`, an integer is milliseconds, and a computed value must be a duration (`!cel "duration('10m')"`). Breaking for a `ttl` computed as a string. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.130.0.
+
 ## 0.14.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

@@ -1,6 +1,0 @@
-modules:
-  modules/http-server: Added
-body: 'A route handler and the not-found handler are dispatched exactly the map their
-  `inputs:` evaluates to: a route writing none dispatches `{}` (it used to be handed the
-  request), a written `{}` is `{}`, and nothing is spread or nested into the map. A
-  handler that needs the request writes `inputs: { request: !cel "request" }`.'

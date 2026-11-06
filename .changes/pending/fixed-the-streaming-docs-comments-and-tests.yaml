@@ -1,5 +1,0 @@
-modules:
-  modules/ai: Fixed
-body: The streaming docs, comments and tests now show serving a stream over SSE as a
-  Stream.Map into Sse.Frame records piped through Sse.Encoder, which no longer takes
-  bare parts.

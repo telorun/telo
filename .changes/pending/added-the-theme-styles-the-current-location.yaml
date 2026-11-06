@@ -1,4 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: 'The theme styles the current location: a link with aria-current="page" is
-  emphasised and a record with data-selected is filled.'

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.0 - 2026-11-06
+### Added
+* Mcp.HttpClient takes an optional retry policy that re-attempts a request which failed with no answer from the server or with a 502, 503 or 504; a retried tools/call may reach the server more than once, so enable it only for servers whose tools are safe to repeat.
+
 ## 0.17.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

@@ -1,6 +1,0 @@
-modules:
-  modules/ui-react: Added
-body: Draws a chat message's buttons under its card rather than inside the bubble,
-  rounds and clips a flush split view's content to the split's outer corners so embedded
-  content never paints over its border, and keeps a split view's rail beside the content
-  below the breakpoint, its toggle opening the compact surface.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-11-06
+### Added
+* `Durable.Sleep.for` and `Durable.Await.timeout`, and the `timeout` an await call takes as an input, are durations: `30d`, `1w`, `1h30m` and `250ms` are read, an integer is milliseconds, and a malformed literal is refused by `telo check`. A computed value must now be a duration (`!cel "duration(inputs.delay)"`), not a string, and a negative one is refused when the sleep or await runs, so a manifest passing a computed string must change. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.130.0.
+
 ## 0.3.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

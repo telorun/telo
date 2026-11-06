@@ -1,5 +1,0 @@
-modules:
-  modules/otlp: Added
-body: A record's error exports the Telo trace as exception.stacktrace, and a host
-  JavaScript stack, present only for an uncoded failure, as
-  telo.exception.host_stacktrace.

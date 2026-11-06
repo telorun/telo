@@ -1,5 +1,0 @@
-modules:
-  modules/ai: Fixed
-body: Ai.AgentStream aborts the model call or the tools a pending read waits on as soon
-  as its consumer stops reading, instead of letting them run until their next part; no
-  further model call is made.

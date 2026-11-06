@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.0 - 2026-11-06
+### Added
+* A tool, resource or prompt handler is dispatched exactly the map its `inputs:` evaluates to: nothing is spread into it and no copy of it is nested as an `inputs` member, so a closed `inputType` no longer refuses the extra member and an author's own `inputs` member is no longer overwritten.
+* Mcp.HttpEndpoint refuses to be served behind authentication that denies anonymous callers unless the mount declares protectedResource: and one of its verifiers declares an issuer (MCP_PROTECTED_RESOURCE_MISSING at check, ERR_MCP_PROTECTED_RESOURCE_MISSING when mounted), so an MCP client can discover the authorization server.
+* The HTTP endpoint's SessionCloseFailed event carries the failure's error value (type, message, Telo stack and frames, hostStack only for an uncoded failure) instead of a raw JavaScript stack. Requires telo >=0.130.0.
+
 ## 0.20.2 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

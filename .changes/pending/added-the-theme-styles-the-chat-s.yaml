@@ -1,4 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: The theme styles the chat's picture thumbnails (chat-attachment-thumbnail) and the
-  media viewer's parts.

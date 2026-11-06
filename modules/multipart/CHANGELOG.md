@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-11-06
+### Added
+* Multipart.ReadPart reads one named part of a multipart payload as a stream: earlier parts are discarded and still count toward the limits, later parts are never read, and the part's content pulls the payload only as it is read and releases it however it ends. A payload with no such part is ERR_MULTIPART_PART_MISSING with data { name }. The exported Multipart.Part shape types ReadPart's result and Multipart.Reader's parts.
+
 ## 0.4.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

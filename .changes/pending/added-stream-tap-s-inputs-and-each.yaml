@@ -1,5 +1,0 @@
-modules:
-  modules/stream: Added
-body: "`Stream.Tap`'s `inputs` and each `Stream.Concat` source's `inputs` declare
-  `default: {}`, so `telo check` judges a handler or source wired without `inputs:` as
-  receiving `{}`, and refuses one whose contract requires an argument."

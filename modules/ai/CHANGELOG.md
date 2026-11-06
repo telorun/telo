@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.34.0 - 2026-11-06
+### Added
+* Models declare what content they accept: `Ai.Model` and `Ai.ModelStream` gain `accepts`, a list of `{ type, mediaTypes, maxBytes? }` (shape `Ai.AcceptedContent`), absent meaning text only. `Ai.Agent`, `Ai.AgentStream` and `Ai.Buffered` publish their model's as `resources.<name>.accepts`; `Ai.Buffered` is now a controller of its own and rejects a value written on it. The shared `requireAccepted` check is exported for providers. Breaking for an application that sends media to a model without declaring `accepts`: a provider now refuses that part with `ERR_MODEL_CONTENT_UNSUPPORTED`.
+### Fixed
+* Ai.AgentStream aborts the model call or the tools a pending read waits on as soon as its consumer stops reading, instead of letting them run until their next part; no further model call is made.
+* The streaming docs, comments and tests now show serving a stream over SSE as a Stream.Map into Sse.Frame records piped through Sse.Encoder, which no longer takes bare parts.
+
 ## 0.32.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
