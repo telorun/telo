@@ -1436,7 +1436,7 @@ those relationships as CEL so `telo check` reports them instead of the boot.
           condition: !cel "this.columns.all(c, c in self.columns)"
           code: SQL_INDEX_UNKNOWN_COLUMN
           message: names a column this table does not declare.
-        - condition: !cel "!has(self.reclaim) || self.reclaim.afterDuration != '0ms'"
+        - condition: !cel "!has(self.reclaim) || (type(dyn(self.reclaim.afterDuration)) == string ? !string(dyn(self.reclaim.afterDuration)).matches('^[+-]?(0|([0.]+(ns|us|µs|μs|ms|s|m|h|d|w))+)$') : dyn(self.reclaim.afterDuration) != 0)"
           code: SQL_RECLAIM_DURATION_DISABLED
           severity: warning
           message: switches off the time backstop on an irreversible drop.
@@ -1882,7 +1882,7 @@ One annotation says what the value at a slot is, beyond what JSON Schema's
     digits read; UTC `Z` written, with the fraction absent when the instant is
     whole and otherwise carrying no trailing zero — `2026-01-15T07:30:00Z`,
     `…:00.25Z`, `…:00.000000001Z`), a CEL duration string for a duration
-    (`1h30m` read, `5400s` written) — or, for a duration, an integer literal,
+    (`1h30m`, `1.5d`, `30d` read — units `ns`, `us`, `ms`, `s`, `m`, `h`, `d`, `w`, a day 24 hours, no months or years — `5400s` written) — or, for a duration, an integer literal,
     read as that many milliseconds (`250` is `250ms`; a STRING `"250"` is not).
     A CEL `int` is never a duration: compute one with `duration('250ms')`. A
     duration slot may be BOUNDED — `x-telo-type: { name: Telo.Duration,

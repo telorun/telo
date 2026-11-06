@@ -1,12 +1,13 @@
 import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError, parseDurationMs } from "@telorun/sdk";
+import { InvokeError } from "@telorun/sdk";
 import { type CacheStore, isCacheStore } from "./cache-store.js";
+import { windowMs } from "./freshness-window.js";
 
 interface EntryResource {
   metadata: { name: string; module?: string };
   store?: CacheStore | KindRef<CacheStore>;
-  ttl?: string;
-  staleTtl?: string;
+  ttl?: unknown;
+  staleTtl?: unknown;
 }
 
 interface EntryInputs {
@@ -22,8 +23,9 @@ class CacheEntry implements ResourceInstance<EntryInputs, { key: string }> {
     private readonly resource: EntryResource,
     private readonly ctx: ResourceContext,
   ) {
-    this.ttlMs = parseDurationMs(resource.ttl);
-    this.staleTtlMs = parseDurationMs(resource.staleTtl);
+    const label = `Cache.Entry "${resource.metadata.name}"`;
+    this.ttlMs = windowMs(resource.ttl, `${label}: 'ttl'`);
+    this.staleTtlMs = windowMs(resource.staleTtl, `${label}: 'staleTtl'`);
   }
 
   async invoke(inputs: EntryInputs): Promise<{ key: string }> {

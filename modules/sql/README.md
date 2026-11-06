@@ -65,6 +65,8 @@ tables: [ !ref users ]
 reclaim: { afterVersions: 3, afterDuration: 30d }
 ```
 
+`afterDuration` is a duration (`30d`, `12h`, `1w`); a malformed literal is refused by `telo check` and an integer is milliseconds.
+
 ## Connections
 
 `Sql.Connection` is an abstract contract; pick the concrete kind for your driver. Every other kind references the connection by name (`connection: !ref Db`) and stays driver-agnostic.

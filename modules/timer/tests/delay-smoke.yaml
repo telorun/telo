@@ -14,7 +14,7 @@ kind: Run.Sequence
 metadata: { name: testDelay }
 steps:
   - name: wait
-    inputs: { duration: "50ms", value: { hello: "world" } }
+    inputs: { duration: 50ms, value: { hello: "world" } }
     invoke: { kind: Timer.Delay }
   - name: assertPassthrough
     inputs:

@@ -18,7 +18,7 @@
  */
 import {
   InvokeError,
-  parseDurationMs,
+  durationMs,
   parkRun,
   assertMaySuspend,
   stepPath,
@@ -106,7 +106,13 @@ class AwaitController {
     const fromCall = (input as { timeout?: unknown } | undefined)?.timeout;
     const raw = fromCall ?? this.resource.timeout;
     if (raw === undefined) return undefined;
-    return parseDurationMs(String(raw));
+    const ms = durationMs(raw);
+    if (ms === undefined || ms < 0) {
+      throw new Error(
+        `Durable.Await '${String(this.resource.metadata.name)}': 'timeout' is ${JSON.stringify(raw)}, which is not a non-negative duration.`,
+      );
+    }
+    return ms;
   }
 
   snapshot(): Record<string, unknown> {

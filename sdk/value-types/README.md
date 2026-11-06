@@ -148,7 +148,7 @@ error.
 | -------------- | ----------------------------------- | --------------------------------- |
 | `base64url`    | base64url without padding           | the same form                     |
 | `rfc3339`      | RFC 3339 in UTC with a trailing `Z`, fraction trimmed | RFC 3339 with any offset and one to nine fractional digits |
-| `cel-duration` | seconds with an `s` suffix (`5400s`) | any CEL duration string (`1h30m`) within ±315576000000s; through `Telo.Duration`'s integer form, an integer number of milliseconds |
+| `cel-duration` | seconds with an `s` suffix (`5400s`) | any CEL duration string (`1h30m`, `30d`; units `ns` to `w`) within ±315576000000s; through `Telo.Duration`'s integer form, an integer number of milliseconds |
 | `url-text`     | the scheme in lower case; each component's bytes that are not RFC 3986 unreserved percent-encoded with upper-case hex, a path keeping its `/`; an IPv6 host in brackets; the query ordered by key | any absolute URL RFC 3986 reads, with no fragment and no repeated query key |
 
 `url-text` is pinned for every runtime by `encodings/url-text.json` beside the
@@ -162,9 +162,10 @@ through `cel-duration`, and `string(timestamp)` through `rfc3339`, so each reads
 same interpolated as serialized.
 
 `cel-duration` is not the grammar of the string duration fields many kinds still
-declare, which a controller reads with the SDK's `parseDurationMs`: that one reads
-a single number and unit and accepts days (`30d`), where CEL's grammar reads
-`1h30m` and has no `d`. Moving such a field to `Telo.Duration` changes which
+declare, which a controller reads with the SDK's deprecated `parseDurationMs`: that
+one reads a single number and unit (`30d`), where CEL's grammar also reads compounds
+(`1h30m`, `1d12h`) and fractions per term, and has the units `ns`, `us`, `µs`, `ms`,
+`s`, `m`, `h`, `d` and `w`. Moving such a field to `Telo.Duration` changes which
 literals it accepts, so it is a breaking change for the kind.
 
 A value is decoded from its encoding only where it arrives from outside, and at

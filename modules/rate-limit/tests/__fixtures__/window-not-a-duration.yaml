@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata: { name: RateLimitWindowNotADuration, version: 1.0.0 }
+imports: { RateLimit: ../../, CacheMemory: ../../../cache-memory }
+---
+kind: CacheMemory.Store
+metadata: { name: counters }
+---
+kind: RateLimit.Guard
+metadata: { name: limiter }
+store: !ref counters
+limit: 60
+window: one minute

@@ -15,7 +15,7 @@
  */
 import {
   InvokeError,
-  parseDurationMs,
+  durationMs,
   type InvokeContext,
   type ResourceContext,
   type ResourceManifest,
@@ -24,11 +24,14 @@ import { recordedRunResult } from "./journal-codec.js";
 import { journalOf } from "./journal-ref.js";
 import { runIdOf } from "./run-id.js";
 
+/** How often a waiting result is re-read when `poll` is omitted. */
+const DEFAULT_POLL_MS = 100;
+
 interface ResultManifest extends ResourceManifest {
   journal: unknown;
   run?: string;
-  wait?: string;
-  poll?: string;
+  wait?: unknown;
+  poll?: unknown;
 }
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
@@ -41,16 +44,24 @@ class ResultController {
 
   async init(): Promise<void> {}
 
+  private durationField(field: string, value: unknown): number {
+    const ms = durationMs(value);
+    if (ms === undefined) {
+      throw new Error(
+        `DurableLocal.Result "${String(this.resource.metadata.name)}": '${field}' must be a duration`,
+      );
+    }
+    return ms;
+  }
+
   async invoke(input: unknown, invokeCtx?: InvokeContext): Promise<unknown> {
     const name = String(this.resource.metadata.name);
     const run = runIdOf(this.ctx, this.resource.run, input, `DurableLocal.Result '${name}'`);
     const journal = journalOf(this.ctx, this.resource.journal, `DurableLocal.Result "${name}"`);
 
-    const deadline =
-      this.resource.wait === undefined
-        ? 0
-        : Date.now() + parseDurationMs(String(this.resource.wait));
-    const poll = parseDurationMs(String(this.resource.poll ?? "100ms"));
+    const wait = this.resource.wait === undefined ? undefined : this.durationField("wait", this.resource.wait);
+    const deadline = wait === undefined ? 0 : Date.now() + wait;
+    const poll = this.resource.poll === undefined ? DEFAULT_POLL_MS : this.durationField("poll", this.resource.poll);
 
     for (;;) {
       const record = await journal.readRun(run);

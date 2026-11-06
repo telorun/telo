@@ -11,9 +11,11 @@ metadata:
     shutdown, so they order against migrations and other start-up work, and each tick
     can be gated on current state rather than firing blindly.
 requires:
-  # Controllers return their effects from `init()` / `run()`; a runtime that does
-  # not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=0.82.0"
+  # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime that
+  # does not execute a returned chain allocates nothing and undoes nothing.
+  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
+  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
+  telo: ">=0.130.0"
 exports: { kinds: [Interval, Cron] }
 ---
 # Schedule.Interval — fire the body every `every`. The first tick lands one
@@ -34,11 +36,11 @@ schema:
   properties:
     every:
       title: Every
-      type: string
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
       x-telo-eval: compile
       # Labels the `invoke` trigger: what a reader recognises this schedule by.
       x-telo-topology-role: matcher
-      description: Tick period as a duration (`30s`, `1m`, `1h`).
+      description: Tick period; must be positive.
     invoke:
       title: Invoke
       description: The body fired on each tick.

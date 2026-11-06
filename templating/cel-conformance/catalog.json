@@ -4678,6 +4678,308 @@
       }
     },
     {
+      "id": "catalog/duration/days",
+      "tag": "cel",
+      "source": "duration('1d') == duration('86400s')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 18,
+              "end": 36,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 36
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/duration/weeks",
+      "tag": "cel",
+      "source": "duration('1w') == duration('7d')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 18,
+              "end": 32,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 32
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/duration/compound",
+      "tag": "cel",
+      "source": "string(duration('1d12h30m'))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "string",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 28,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 7,
+              "end": 27,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 28
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "131400s"
+      }
+    },
+    {
+      "id": "catalog/duration/fraction",
+      "tag": "cel",
+      "source": "duration('1.5d') == duration('36h')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 20,
+              "end": 35,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/duration/negative_week",
+      "tag": "cel",
+      "source": "string(duration('-1w'))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "string",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 23,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 7,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 23
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "-604800s"
+      }
+    },
+    {
+      "id": "catalog/duration/years_refused",
+      "tag": "cel",
+      "source": "duration('1y')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Duration",
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "\"1y\" is not a duration"
+        }
+      }
+    },
+    {
+      "id": "catalog/duration/months_refused",
+      "tag": "cel",
+      "source": "duration('2M')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Duration",
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "\"2M\" is not a duration"
+        }
+      }
+    },
+    {
+      "id": "catalog/duration/space_refused",
+      "tag": "cel",
+      "source": "duration('1d 30m')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Duration",
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "\"1d 30m\" is not a duration"
+        }
+      }
+    },
+    {
       "id": "catalog/int/timestamp",
       "tag": "cel",
       "source": "int(timestamp('2009-02-13T23:31:30Z'))",

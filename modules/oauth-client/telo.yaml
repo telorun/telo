@@ -13,9 +13,11 @@ metadata:
     its issuer URL alone, and covers browser, terminal, headless-device and
     machine-to-machine sign-in.
 requires:
-  # Controllers return their effects from `init()` / `run()`; a runtime that does
-  # not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=0.82.0"
+  # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime that
+  # does not execute a returned chain allocates nothing and undoes nothing.
+  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
+  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
+  telo: ">=0.130.0"
 imports: { Http: ../http-client, KvStore: ../kv-store }
 exports:
   kinds: [AccessToken, Authorization, AuthorizationServer, Callback, Client, ClientCredentials, Credential, DeviceAuthorization, DeviceToken, GrantClear, GrantRead, GrantWrite, RedirectAwait, RedirectListener, TokenExchange, TokenRefresh, TokenSource]
@@ -123,13 +125,11 @@ schema:
       description: Where a device grant is started. Discovered when omitted; required only for the device flow.
     timeout:
       title: Timeout
-      type: string
-      default: 30s
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       description: >-
         How long to wait for any single request to this server — the metadata
-        document, a token exchange, a device poll — before giving up. Without one,
-        a server that accepts the connection and never answers hangs the operation
-        indefinitely.
+        document, a token exchange, a device poll — before giving up; `30s` when
+        omitted.
 ---
 # OAuthClient.Client — this application's registration at one server.
 #
@@ -236,29 +236,23 @@ schema:
         own per call.
     grantTtl:
       title: Grant TTL
-      type: string
-      default: 8760h
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       description: >-
-        How long a stored grant is retained without being touched. Every refresh
-        rewrites it and restarts the clock, so this bounds only how long an
-        abandoned account stays signed in — a year by default, which is roughly
-        where providers expire an unused refresh token anyway.
+        How long a stored grant is retained without being touched; a year (`8760h`)
+        when omitted. Every refresh rewrites it and restarts the clock, so this bounds
+        only how long an abandoned account stays signed in.
     refreshSkew:
       title: Refresh Skew
-      type: string
-      default: 60s
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       description: >-
-        How far before expiry an access token is treated as already expired. Covers
-        clock difference between this host and the server, plus the time the call
-        itself takes.
+        How far before expiry an access token is treated as already expired, covering
+        clock difference and the call's own time; `60s` when omitted.
     claimTtl:
       title: Claim TTL
-      type: string
-      default: 30s
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       description: >-
-        How long one refresh may hold its key before another caller may take over.
-        Set it above the slowest expected token-endpoint response — a holder that
-        dies frees the key on expiry.
+        How long one refresh may hold its key before another caller may take over;
+        `30s` when omitted. Set it above the slowest expected token-endpoint response.
 ---
 # OAuthClient.Authorization — builds the consent URL and records the pending flow.
 #
@@ -334,13 +328,11 @@ schema:
       x-telo-ref: { kind: Self.TokenSource, use: dependency }
     pendingTtl:
       title: Pending TTL
-      type: string
-      default: 10m
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
       description: >-
         How long the user has to finish consenting before the pending request
-        expires and their callback is refused. Long enough to read a consent screen,
-        short enough that an abandoned attempt does not linger.
+        expires and their callback is refused; `10m` when omitted.
 ---
 # OAuthClient.RedirectListener — a loopback socket for terminal sign-in.
 #
@@ -455,10 +447,9 @@ schema:
       x-telo-ref: { kind: Self.RedirectListener, use: dependency }
     timeout:
       title: Timeout
-      type: string
-      default: 5m
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
-      description: How long to wait for the user to finish before giving up.
+      description: How long to wait for the user to finish before giving up; `5m` when omitted.
 ---
 # OAuthClient.Callback — the browser-served counterpart to the loopback pair.
 #

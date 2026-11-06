@@ -8,7 +8,7 @@ A channel is a running program you can read from and write to as text. Three ope
 | `Channel.SendLine` | `text` — the line, without its newline | — |
 | `Channel.End` | — | — |
 
-`Channel.ReadUntil` also declares `timeout` on the resource (default `30s`), so every read is bounded.
+`Channel.ReadUntil` also declares `timeout` on the resource (a duration, default `30s`), so every read is bounded.
 
 ## Reading consumes
 

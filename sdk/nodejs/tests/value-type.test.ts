@@ -195,7 +195,7 @@ describe("a value type's integer form", () => {
         description: "x",
         ...extra,
       });
-    expect(entry({ unit: "d" })).toThrow(/'0d' does not decode/);
+    expect(entry({ unit: "y" })).toThrow(/'0y' does not decode/);
     expect(entry({ unit: "ms", base: 1 })).toThrow(/exactly 'unit'|takes no 'base'/);
     expect(entry({ units: "ms" })).toThrow(/exactly 'unit'/);
     expect(entry({ unit: "ms" }, { live: true, encoding: undefined })).toThrow(
@@ -268,6 +268,11 @@ describe("plain encodings", () => {
 
     expect(celDuration.encode(celDuration.decode("1h30m"))).toBe("5400s");
     expect(celDuration.encode(celDurationFromNanos(-1_500_000_000n))).toBe("-1.5s");
+    expect(celDuration.encode(celDuration.decode("30d"))).toBe("2592000s");
+    expect(celDuration.encode(celDuration.decode("1w"))).toBe("604800s");
+    expect(celDuration.encode(celDuration.decode("1d12h30m"))).toBe("131400s");
+    expect(celDuration.encode(celDuration.decode("1.5d"))).toBe("129600s");
+    expect(celDuration.encode(celDuration.decode("-1w"))).toBe("-604800s");
   });
 
   it("read nothing outside the encoding", () => {
@@ -280,6 +285,9 @@ describe("plain encodings", () => {
     expect(rfc3339!.decode("2026-01-15T07:30:00.0000000001Z")).toBeUndefined();
     expect(rfc3339!.decode("10000-01-01T00:00:00Z")).toBeUndefined();
     expect(celDuration.decode("90 minutes")).toBeUndefined();
+    for (const refused of ["30x", "1y", "2M", "1d 30m"]) {
+      expect(celDuration.decode(refused), refused).toBeUndefined();
+    }
     // **This encoding's range is protobuf's, which is WIDER than CEL's own.** A duration
     // here reaches ±10,000 years, because a journal entry, a transport's payload and a
     // controller's value all do; CEL's duration is one int64 of nanoseconds (~±292

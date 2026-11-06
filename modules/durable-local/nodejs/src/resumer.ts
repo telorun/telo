@@ -17,7 +17,7 @@
 import {
   SEVERITY,
   isSuspension,
-  parseDurationMs,
+  durationMs,
   type EffectChain,
   type ResourceContext,
   type ResourceManifest,
@@ -27,8 +27,11 @@ import type { WorkflowController } from "./workflow.js";
 
 interface ResumerManifest extends ResourceManifest {
   workflow: unknown;
-  interval?: string;
+  interval?: unknown;
 }
+
+/** How often a resumer sweeps when `interval` is omitted. */
+const DEFAULT_INTERVAL_MS = 5_000;
 
 /** How long a poller owns a run it claimed. Bounded so a poller that dies frees
  *  the run rather than wedging it — the same self-healing shape a lease has, and
@@ -63,13 +66,23 @@ export class ResumerController {
    *  lapses, and reported once rather than on every sweep. */
   readonly #unreadable = new Set<string>();
 
+  readonly intervalMs: number;
+
   constructor(
     private readonly resource: ResumerManifest,
     private readonly ctx: ResourceContext,
-  ) {}
+  ) {
+    const ms = resource.interval === undefined ? DEFAULT_INTERVAL_MS : durationMs(resource.interval);
+    if (ms === undefined) {
+      throw new Error(
+        `DurableLocal.Resumer "${String(resource.metadata.name)}": 'interval' must be a duration`,
+      );
+    }
+    this.intervalMs = ms;
+  }
 
   async run(): Promise<EffectChain<unknown>> {
-    const interval = parseDurationMs(this.resource.interval ?? "5s");
+    const interval = this.intervalMs;
     // A store that can push gets to: a delivery that wakes a run should be
     // picked up now rather than at the next tick. It SUPPLEMENTS the interval
     // and never replaces it — a missed notification (a dropped connection, a
@@ -197,8 +210,9 @@ export async function create(
   resource: ResumerManifest,
   ctx: ResourceContext,
 ): Promise<ResumerController> {
+  const controller = new ResumerController(resource, ctx);
   if (ctx.log.enabled(SEVERITY.debug)) {
-    ctx.log.debug("Resumer created", { "durable.interval": resource.interval ?? "5s" });
+    ctx.log.debug("Resumer created", { "durable.interval": `${controller.intervalMs}ms` });
   }
-  return new ResumerController(resource, ctx);
+  return controller;
 }

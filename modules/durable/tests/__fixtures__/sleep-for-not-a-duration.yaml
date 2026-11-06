@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: SleepForNotADuration, version: 1.0.0 }
+imports: { Durable: ../../ }
+---
+kind: Durable.Sleep
+metadata: { name: cooldown }
+for: a while

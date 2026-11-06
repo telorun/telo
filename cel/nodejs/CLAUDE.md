@@ -675,7 +675,7 @@ could have been the one asked for, rather than an entry that is absent.
 with a different range — protobuf's `google.protobuf.Duration` reaches ±10,000 years, which cannot be
 held in an int64 of nanoseconds at all — so a reader that must carry one (a journal entry, a value off
 a transport, the `cel-duration` plain encoding) would otherwise restate this grammar. It does not: it
-takes the total and applies its own bound. `celDurationFromNanos` is what applies CEL's.
+takes the total and applies its own bound. `celDurationFromNanos` is what applies CEL's. The units are `ns`, `us`, `µs`, `μs`, `ms`, `s`, `m`, `h`, `d` (24 hours) and `w` (7 days); `d` and `w` extend cel-spec on purpose, months and years having no fixed length. Output stays seconds (`86400s`).
 
 **Nanosecond precision and the declared ranges are the domain's**, not a host type's. An instant is
 seconds plus nanos in `0001-01-01T00:00:00Z … 9999-12-31T23:59:59.999999999Z`. **A duration is the signed
@@ -1013,7 +1013,7 @@ one. **The list is empty**, and is meant to stay that way — it exists so that 
 kind is written down and measured rather than absorbed into an exclusion.
 
 **A fourth driver answers the dialect files** (`conformance/dialect-replay.ts`, with the positions each
-file needs in `catalog-replay.ts` and `types-replay.ts`): `catalog.json`'s 178 rows and `types.json`'s
+file needs in `catalog-replay.ts` and `types-replay.ts`): `catalog.json`'s 186 rows and `types.json`'s
 74, replayed in place, under the same completeness rule — every row answered, corrected with a cited
 authority, or excluded with one of the same five reasons, which **do not grow**. **Each file's row
 count is pinned** (`CATALOG_ROWS`, `TYPES_ROWS`), because a row that is DELETED leaves every other

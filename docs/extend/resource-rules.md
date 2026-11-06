@@ -58,7 +58,7 @@ element — `indexes[1]`, `columns.email`. Without it, the rule runs once and
 reports at the resource, which is what a discouraged-value warning wants:
 
 ```yaml
-    - condition: !cel "!has(self.reclaim) || self.reclaim.afterDuration != '0ms'"
+    - condition: !cel "!has(self.reclaim) || (type(dyn(self.reclaim.afterDuration)) == string ? !string(dyn(self.reclaim.afterDuration)).matches('^[+-]?(0|([0.]+(ns|us|µs|μs|ms|s|m|h|d|w))+)$') : dyn(self.reclaim.afterDuration) != 0)"
       code: SQL_RECLAIM_DURATION_DISABLED
       severity: warning
       message: sets reclaim.afterDuration to 0ms, switching off the time backstop.

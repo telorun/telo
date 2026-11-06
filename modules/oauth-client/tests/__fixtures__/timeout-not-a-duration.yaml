@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: OAuthTimeoutNotADuration, version: 1.0.0 }
+imports: { OAuth: ../../ }
+---
+kind: OAuth.AuthorizationServer
+metadata: { name: server }
+issuer: https://issuer.example.com
+timeout: 30 seconds

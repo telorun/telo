@@ -10,6 +10,12 @@ metadata:
     call fits — between pipeline steps, in a retry backoff, in a handler. A pending
     wait is abandoned when the work around it is cancelled, so a disconnected client
     or an elapsed deadline does not hold it open.
+requires:
+  # 0.129.0: the controller reads a `Telo.Duration` slot with `durationMs` from `@telorun/sdk`,
+  # which is external and collapsed to the runtime's own copy; a runtime without that export
+  # fails at controller load ("does not provide an export named 'durationMs'"). Verified by
+  # execution against the published 0.128.0.
+  telo: ">=0.129.0"
 exports: { kinds: [Delay] }
 ---
 # Delay: wait `duration`, then complete. Optionally echoes a `value` through
@@ -34,9 +40,8 @@ inputType:
       - { duration: "2s", value: { any: thing } }
     properties:
       duration:
-        type: string
-        pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
-        description: How long to wait before completing, e.g. "250ms", "2s", "1.5m", "1h".
+        x-telo-type: { name: Telo.Duration, minimum: 0s }
+        description: How long to wait before completing.
       value:
         description: Optional value echoed back unchanged after the delay (pipeline passthrough).
     required: [ duration ]

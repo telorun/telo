@@ -13,7 +13,7 @@ sidebar_label: Timer.Delay
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `duration` | string | yes | How long to wait, as a number + unit: `ms`, `s`, `m`, `h` (e.g. `"250ms"`, `"2s"`, `"1.5m"`, `"1h"`). |
+| `duration` | duration | yes | How long to wait (`250ms`, `2s`, `1.5m`, `1h30m`, `1d`). A malformed literal is refused by `telo check`, an integer is milliseconds, and a computed value must already be a duration. |
 | `value` | any | no | Echoed back unchanged once the delay elapses — a pipeline passthrough. |
 
 ## Output
@@ -37,7 +37,7 @@ steps:
   - name: First
     invoke: { kind: Sql.Command, name: DoWork }
   - name: Wait
-    inputs: { duration: "2s" }
+    inputs: { duration: 2s }
     invoke: { kind: Timer.Delay }
   - name: Second
     invoke: { kind: Sql.Command, name: DoMoreWork }
@@ -48,7 +48,7 @@ Delay-then-forward — carry a value through the wait:
 ```yaml
 - name: Hold
   inputs:
-    duration: "500ms"
+    duration: 500ms
     value: !cel "steps.compute.result"
   invoke: { kind: Timer.Delay }
 - name: Use
@@ -57,11 +57,11 @@ Delay-then-forward — carry a value through the wait:
   invoke: { kind: Sql.Command, name: Persist }
 ```
 
-A dynamic duration is just CEL on the caller's side — the value reaching `duration` must be a duration string:
+A dynamic duration is just CEL on the caller's side — the value reaching `duration` must be a duration, so build it with `duration(...)`:
 
 ```yaml
 - name: Backoff
   inputs:
-    duration: !cel "string(steps.attempt.result.backoffMs) + 'ms'"
+    duration: !cel "duration(string(steps.attempt.result.backoffMs) + 'ms')"
   invoke: { kind: Timer.Delay }
 ```

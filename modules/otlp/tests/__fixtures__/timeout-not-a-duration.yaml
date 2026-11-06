@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: OtlpTimeoutNotADuration, version: 1.0.0 }
+imports: { Otlp: ../../ }
+logging:
+  sinks:
+    - { kind: Otlp.Sink, endpoint: http://127.0.0.1:4318/v1/logs, timeout: 5 seconds }

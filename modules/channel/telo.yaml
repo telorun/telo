@@ -12,9 +12,13 @@ metadata:
     fails with what arrived instead, so a stuck exchange reports why rather than
     hanging.
 requires:
-  # Controllers return their effects from `init()` / `run()`; a runtime that does
-  # not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=0.82.0"
+  # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime that
+  # does not execute a returned chain allocates nothing and undoes nothing.
+  # 0.129.0: the controllers read a `Telo.Duration` slot with `durationMs` from `@telorun/sdk`,
+  # which is external and collapsed to the runtime's own copy; a runtime without that export
+  # fails at controller load ("does not provide an export named 'durationMs'"). Verified by
+  # execution against the published 0.128.0.
+  telo: ">=0.129.0"
 exports: { kinds: [Text, SendLine, ReadUntil, End] }
 ---
 # Channel.Text — what something on the other end of a text conversation IS.
@@ -120,12 +124,9 @@ schema:
     timeout:
       title: Timeout
       description: >-
-        How long a read waits for its marker. There is deliberately no unbounded
-        spelling: a read that waits forever is the hang this kind exists to
-        replace with a report.
-      type: string
-      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
-      default: 30s
+        How long a read waits for its marker; `30s` when omitted. There is no
+        unbounded spelling, so a read cannot hang.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
 inputType:
   kind: Telo.JsonSchema

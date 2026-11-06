@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: OtlpTimeoutNotADuration
+  version: 1.0.0
+  description: |
+    A `timeout` that is not a duration is refused by `telo check` at the line that
+    writes it.
+imports: { Assert: ../../assert }
+targets: [!ref refusedAtCheck]
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCheck }
+source: ./__fixtures__/timeout-not-a-duration.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/logging/sinks/0/timeout must be a Telo.Duration" }

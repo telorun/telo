@@ -11,6 +11,10 @@ metadata:
     tokens, bytes, any metered spend — reserving up front and settling to the actual
     amount. Both return a verdict with what remains and when to retry, rather than
     raising.
+requires:
+  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
+  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
+  telo: ">=0.130.0"
 imports: { Cache: ../cache }
 exports: { kinds: [Guard, Budget] }
 ---
@@ -66,8 +70,8 @@ schema:
       x-telo-eval: compile
     window:
       title: Window
-      type: string
-      description: Sliding window as a duration (`60s`, `1m`, `1h`).
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+      description: Sliding window.
       x-telo-eval: compile
 ---
 # RateLimit.Budget — a windowed, WEIGHTED spend budget over a Cache.Store.
@@ -160,6 +164,6 @@ schema:
       x-telo-eval: compile
     window:
       title: Window
-      type: string
-      description: Budget window as a duration (`60s`, `1m`, `1h`).
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+      description: Budget window.
       x-telo-eval: compile

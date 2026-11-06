@@ -1,3 +1,4 @@
+import { slotMs } from "./duration-slot.js";
 import { toOtlpTracePayload } from "./encode-otlp-traces.js";
 import {
   bufferPolicyOf,
@@ -6,7 +7,6 @@ import {
   type OtlpExportConfig,
 } from "./otlp-exporter.js";
 import {
-  parseDurationMs,
   RecordBuffer,
   TEARDOWN_LAST,
   type AnyValue,
@@ -42,9 +42,7 @@ class OtlpTraceSink implements TraceSinkInstance {
     policy: SinkBufferPolicy,
     private readonly ctx: ResourceContext,
   ) {
-    this.#timeoutMs = config.timeout
-      ? parseDurationMs(config.timeout, DEFAULT_TIMEOUT_MS)
-      : DEFAULT_TIMEOUT_MS;
+    this.#timeoutMs = slotMs(config.timeout, DEFAULT_TIMEOUT_MS, `Sink "${sinkId}": 'timeout'`);
     this.#buffer = new RecordBuffer<SpanRecord>(policy, () =>
       ctx.logging.recordDrop(sinkId, "buffer_full"),
     );

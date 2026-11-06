@@ -222,6 +222,16 @@ describe("evaluation", () => {
     expect(evaluate("int(-9223372036854774784.0)")).toBe(-9223372036854774784n);
   });
 
+  it("reads days and weeks in a duration, and refuses months and years", () => {
+    expect(evaluate("duration('1d') == duration('86400s')")).toBe(true);
+    expect(evaluate("duration('1w') == duration('7d')")).toBe(true);
+    expect(evaluate("duration('1.5d') == duration('36h')")).toBe(true);
+    expect(evaluate("string(duration('1d12h30m'))")).toBe("131400s");
+    expect(evaluate("string(duration('-1w'))")).toBe("-604800s");
+    for (const refused of ["1y", "2M", "1d 30m"]) {
+      expect(() => evaluate(`duration('${refused}')`)).toThrow("is not a duration");
+    }
+  });
   it("splits a duration's getters: the whole span, but getMilliseconds is the component", () => {
     // cel-spec's split, and the only one under which the engine does not contradict itself —
     // a timestamp's getMilliseconds has always answered the component.

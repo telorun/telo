@@ -2,8 +2,7 @@
 # Included by the application beside it and by the library under lib/, so every
 # case is checked at the entry and created through an import.
 kind: Telo.JsonSchema
-metadata:
-  name: Row
+metadata: { name: Row }
 schema:
   type: object
   additionalProperties: false
@@ -13,8 +12,7 @@ schema:
     code: { type: string, pattern: "^[A-Z]{3}$" }
 ---
 kind: Run.Value
-metadata:
-  name: consume
+metadata: { name: consume }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -32,19 +30,16 @@ inputType:
 value: { ok: true }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Seconds
+metadata: { name: Seconds }
 schema: { type: string, pattern: "^\\d+s$" }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Count
+metadata: { name: Count }
 schema: { type: integer }
 ---
 # Unions whose branches are all references, and a list of distinct items.
 kind: Run.Value
-metadata:
-  name: consumeUnions
+metadata: { name: consumeUnions }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -60,14 +55,11 @@ inputType:
           - !ref Seconds
           - !ref Count
       tags: { type: array, uniqueItems: true, items: { type: string } }
-    $defs:
-      Seconds: { type: string, pattern: "^\\d+s$" }
-      Count: { type: integer }
+    $defs: { Seconds: { type: string, pattern: "^\\d+s$" }, Count: { type: integer } }
 value: { ok: true }
 ---
 kind: Run.Value
-metadata:
-  name: consumeRow
+metadata: { name: consumeRow }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -79,54 +71,45 @@ inputType:
 value: { ok: true }
 ---
 kind: Run.Value
-metadata:
-  name: consumeRowMap
+metadata: { name: consumeRowMap }
 inputType: !ref Row
 value: { ok: true }
 ---
 kind: Kinds.Timed
-metadata:
-  name: interpolatedTimeout
+metadata: { name: interpolatedTimeout }
 timeout: !interpolate "${{ variables.seconds }}s"
 ---
 kind: Kinds.Timed
-metadata:
-  name: computedTimeout
+metadata: { name: computedTimeout }
 timeout: !cel "variables.seconds + 's'"
 ---
 kind: Kinds.Timed
-metadata:
-  name: literalTimeout
+metadata: { name: literalTimeout }
 timeout: !literal "5s"
 ---
 kind: Kinds.Waiting
-metadata:
-  name: interpolatedWait
+metadata: { name: interpolatedWait }
 wait: !interpolate "${{ variables.seconds }}s"
 ---
 kind: Kinds.Retrying
-metadata:
-  name: interpolatedRetry
+metadata: { name: interpolatedRetry }
 retry:
   base: !interpolate "${{ variables.seconds }}s"
 ---
 kind: Kinds.Branched
-metadata:
-  name: interpolatedBranch
+metadata: { name: interpolatedBranch }
 cfg:
   kind: b
   t: !interpolate "${{ variables.seconds }}s"
 ---
 kind: Kinds.Tagged
-metadata:
-  name: distinctTags
+metadata: { name: distinctTags }
 tags:
   - !cel "'a-' + variables.word"
   - !cel "'b-' + variables.word"
 ---
 kind: Run.Sequence
-metadata:
-  name: standIns
+metadata: { name: standIns }
 steps:
   - name: callSite
     invoke: !ref consume
@@ -152,7 +135,7 @@ steps:
   - name: delay
     invoke: { kind: Timer.Delay }
     inputs:
-      duration: !interpolate "${{ variables.millis }}ms"
+      duration: !cel "duration(string(variables.millis) + 'ms')"
   - name: rows
     invoke:
       kind: Run.Iteration

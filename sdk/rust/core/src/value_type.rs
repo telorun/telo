@@ -636,7 +636,7 @@ mod tests {
                 "representation": "instance",
                 "binding": "duration",
                 "encoding": "cel-duration",
-                "integerForm": { "unit": "d" },
+                "integerForm": { "unit": "y" },
                 "description": "x"
             }),
         );

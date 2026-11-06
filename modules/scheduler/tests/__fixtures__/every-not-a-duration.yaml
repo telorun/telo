@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: ScheduleEveryNotADuration, version: 1.0.0 }
+imports: { Schedule: ../../, Run: ../../../run }
+---
+kind: Schedule.Interval
+metadata: { name: tick }
+every: every minute
+invoke: { kind: Run.Value, value: { ok: 1 } }

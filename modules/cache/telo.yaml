@@ -10,6 +10,10 @@ metadata:
     entry is fresh for its TTL, then stale for a grace period, then gone. Read or
     write entries directly, or wrap an expensive call in a read-through cache that
     serves the cached value and refreshes in the background or on demand.
+requires:
+  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
+  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
+  telo: ">=0.130.0"
 exports:
   kinds: [Store, Lookup, Entry, View]
   # The entry point a dependent module's controller bundle resolves
@@ -115,18 +119,12 @@ schema:
       x-telo-ref: { kind: Self.Store, use: dependency }
     ttl:
       title: TTL
-      type: string
-      default: "0s"
-      description: >-
-        Fresh window as a duration (`300s`, `5m`, `1h`, `50ms`). A lookup within
-        this window reports `fresh`. `0s` means the entry is never fresh.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+      description: Fresh window. A lookup within it reports `fresh`; `0s` when omitted, which means the entry is never fresh.
     staleTtl:
       title: Stale TTL
-      type: string
-      default: "0s"
-      description: >-
-        Additional grace window past `ttl` during which a lookup reports
-        `stale` instead of `miss`. `0s` disables the stale window.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+      description: Grace window past `ttl` in which a lookup reports `stale` instead of `miss`; `0s` when omitted, which disables it.
 ---
 # Cache.View — read-through cache decorator. Wraps an invocable (`invoke:`) and
 # serves its result from `store`, refreshing per `revalidate`. Stacks as a
@@ -193,14 +191,12 @@ schema:
           cases: { background: [call, detached], sync: call, off: call }
     ttl:
       title: TTL
-      type: string
-      default: "0s"
-      description: Fresh window (duration). A lookup within this window is `fresh`.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+      description: Fresh window. A lookup within it is `fresh`; `0s` when omitted.
     staleTtl:
       title: Stale TTL
-      type: string
-      default: "0s"
-      description: Grace window past `ttl` during which the value is served `stale`.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+      description: Grace window past `ttl` in which the value is served `stale`; `0s` when omitted.
     revalidate:
       title: Revalidate
       type: string

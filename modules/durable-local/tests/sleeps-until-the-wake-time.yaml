@@ -1,0 +1,106 @@
+kind: Telo.Application
+metadata:
+  name: DurableLocalSleepTest
+  version: 1.0.0
+  description: |
+    A sleep's `for` is a duration, written as a literal or computed with `duration()`;
+    a computed negative one is refused.
+    Each wait parks the run with its wake time recorded; submitting the same run id
+    again once the time has passed replays the finished waits and continues.
+imports:
+  Durable: ../../durable
+  Local: ../
+  Journal: ../../durable-journal-file
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_SLEEP_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/durable-sleep-test
+targets: [!ref test]
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+kind: Durable.Sleep
+metadata: { name: shortPause }
+for: 1ms
+---
+kind: Durable.Sleep
+metadata: { name: computedPause }
+for: !cel "duration(inputs.pause)"
+---
+kind: Local.Workflow
+metadata: { name: nap }
+journal: !ref journal
+runId: !cel "'nap:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - name: first
+    invoke: !ref shortPause
+  - name: second
+    invoke: !ref computedPause
+    inputs: { pause: 1ms }
+---
+kind: Local.Workflow
+metadata: { name: napBackwards }
+journal: !ref journal
+runId: !cel "'back:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - name: pause
+    invoke: !ref computedPause
+    inputs: { pause: -1h }
+---
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 15s
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: ticket
+    value: !cel "'t' + string(nowMillis())"
+  - name: start
+    invoke: !ref nap
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: resumeFirst
+    invoke: !ref nap
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: resumeSecond
+    invoke: !ref nap
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: finished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: assertCompleted
+    inputs:
+      actual: !cel "steps.finished.result.status"
+      expected: completed
+    invoke: { kind: Assert.Equals }
+
+  - name: negative
+    invoke: !ref napBackwards
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: negativeFinished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.negative.result.runId"
+  - name: assertNegativeRefused
+    inputs:
+      actual:
+        status: !cel "steps.negativeFinished.result.status"
+        code: !cel "steps.negativeFinished.result.error.code"
+      expected: { status: failed, code: ERR_DURABLE_SLEEP_INVALID }
+    invoke: { kind: Assert.Equals }

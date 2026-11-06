@@ -13,7 +13,7 @@
  */
 import {
   InvokeError,
-  parseDurationMs,
+  durationMs,
   type InvokeContext,
   type ResourceContext,
   type ResourceManifest,
@@ -24,7 +24,7 @@ import type { WorkflowController } from "./workflow.js";
 interface ScheduleManifest extends ResourceManifest {
   workflow: unknown;
   runId?: string;
-  after?: string;
+  after?: unknown;
   at?: string;
   inputs?: Record<string, unknown>;
 }
@@ -83,7 +83,16 @@ class ScheduleController {
       }
       return at;
     }
-    return Date.now() + parseDurationMs(String(this.ctx.expandValue(this.resource.after, cel)));
+    const raw = this.ctx.expandValue(this.resource.after, cel);
+    const ms = durationMs(raw);
+    if (ms === undefined || ms < 0) {
+      throw new InvokeError(
+        "ERR_DURABLE_SCHEDULE_INVALID",
+        `DurableLocal.Schedule '${name}': 'after' evaluated to ${JSON.stringify(raw)}, which is not a non-negative duration.`,
+        { resource: name, value: raw },
+      );
+    }
+    return Date.now() + ms;
   }
 
   private workflow(): WorkflowController {

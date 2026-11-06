@@ -1,6 +1,6 @@
 import {
   InvokeError,
-  parseDurationMs,
+  durationMs,
   type ResourceContext,
   type ResourceInstance,
   type TextChannel,
@@ -21,10 +21,13 @@ const BUFFER_LIMIT = 1024 * 1024;
 /** How long the drain pauses while a full buffer has no reader. */
 const BACK_PRESSURE_PAUSE_MS = 10;
 
+/** The bound of a read that names none. */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 interface ReadUntilResource {
   metadata: { name: string };
   channel: unknown;
-  timeout?: string;
+  timeout?: unknown;
 }
 
 interface ReadUntilInputs {
@@ -175,5 +178,9 @@ export async function create(
     () => `Channel.ReadUntil "${resource.metadata.name}" channel`,
     "Channel.Text",
   );
-  return new ReadUntil(resource, channel, parseDurationMs(resource.timeout ?? "30s"));
+  const timeoutMs = resource.timeout === undefined ? DEFAULT_TIMEOUT_MS : durationMs(resource.timeout);
+  if (timeoutMs === undefined) {
+    throw new Error(`Channel.ReadUntil "${resource.metadata.name}": 'timeout' must be a duration`);
+  }
+  return new ReadUntil(resource, channel, timeoutMs);
 }

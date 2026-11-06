@@ -1,3 +1,4 @@
+import { slotMs } from "./duration-slot.js";
 import { toOtlpPayload } from "./encode-otlp.js";
 import {
   bufferPolicyOf,
@@ -6,7 +7,6 @@ import {
   type OtlpExportConfig,
 } from "./otlp-exporter.js";
 import {
-  parseDurationMs,
   parseLevelName,
   RecordBuffer,
   SEVERITY,
@@ -63,9 +63,7 @@ class OtlpSink implements LogSinkInstance {
     this.level = config.level ? (parseLevelName(config.level) ?? SEVERITY.info) : SEVERITY.info;
     this.#endpoint = config.endpoint;
     this.#headers = config.headers ?? {};
-    this.#timeoutMs = config.timeout
-      ? parseDurationMs(config.timeout, DEFAULT_TIMEOUT_MS)
-      : DEFAULT_TIMEOUT_MS;
+    this.#timeoutMs = slotMs(config.timeout, DEFAULT_TIMEOUT_MS, `Sink "${sinkId}": 'timeout'`);
     this.#resourceAttributes = config.resourceAttributes ?? {};
     this.#ctx = ctx;
     this.#buffer = new RecordBuffer(policy, () => ctx.logging.recordDrop(sinkId, "buffer_full"));

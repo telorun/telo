@@ -46,8 +46,8 @@ Called from a step, with a **deterministic** key so a retry targets the same log
 | Field | Purpose |
 | --- | --- |
 | `store` | The `KvStore.Store` holding claims and settled results. |
-| `claimTtl` | How long one caller may hold the key while its body runs. Renewed on a heartbeat while in flight, so this bounds a **dead** holder, not a slow one. |
-| `ttl` | How long a completed result is remembered and replayed. |
+| `claimTtl` | A duration: how long one caller may hold the key while its body runs. Renewed on a heartbeat while in flight, so this bounds a **dead** holder, not a slow one. |
+| `ttl` | A duration: how long a completed result is remembered and replayed. |
 | `invoke` | The body run at most once per key. |
 
 ## Result

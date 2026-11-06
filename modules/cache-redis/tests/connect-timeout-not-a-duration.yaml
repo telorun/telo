@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: CacheRedisConnectTimeoutNotADurationTest
+  version: 1.0.0
+  description: A `connectTimeout` that is not a duration is refused by `telo check` at the line that writes it.
+imports: { Assert: ../../assert }
+targets: [!ref refusedAtCheck]
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCheck }
+source: ./__fixtures__/connect-timeout-not-a-duration.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/connectTimeout must be a Telo.Duration" }

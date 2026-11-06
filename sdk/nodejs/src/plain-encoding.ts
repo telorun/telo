@@ -114,7 +114,7 @@ export const NANOS_PER_SECOND = 1_000_000_000n;
 export const MAX_DURATION_SECONDS = 315_576_000_000n;
 
 const celDuration: PlainEncoding = {
-  form: `a CEL duration string within ±${MAX_DURATION_SECONDS}s (1h30m, 250ms, 5400s)`,
+  form: `a CEL duration string within ±${MAX_DURATION_SECONDS}s (1h30m, 250ms, 30d)`,
   schema: { type: "string" },
   decode(text) {
     // **CEL's grammar, protobuf's range.** The two are separate questions and this encoding

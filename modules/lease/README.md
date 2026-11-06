@@ -19,6 +19,8 @@
 | --- | --- | --- |
 | `Lease.Critical` | Invocable | Run a body under a keyed lease, auto-managing acquire/release. |
 
+`ttl` is a duration (`30s`, `10m`, `1h30m`); a malformed literal is refused by `telo check`, an integer is milliseconds, and a computed value is written `!cel "duration('10m')"`.
+
 ## Two modes
 
 **Synchronous (default)** — acquire → run `invoke` inline → release on return **or** error. Returns `{ acquired: true, result }`, or `{ acquired: false, holder }` if the lease is held.

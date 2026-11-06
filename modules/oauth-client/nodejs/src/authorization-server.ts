@@ -1,9 +1,9 @@
 import {
-  parseDurationMs,
   RuntimeError,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
+import { slotMs } from "./duration-slot.js";
 
 /** The endpoints an operation needs, however they were obtained. */
 export interface ServerEndpoints {
@@ -26,7 +26,7 @@ interface AuthorizationServerManifest {
   authorizationEndpoint?: string;
   tokenEndpoint?: string;
   deviceAuthorizationEndpoint?: string;
-  timeout?: string;
+  timeout?: unknown;
 }
 
 /** OIDC Discovery appends to the issuer; RFC 8414 inserts before its path. Both
@@ -58,7 +58,7 @@ export class AuthorizationServerResource implements ResourceInstance {
   /** Endpoints given explicitly win, and a complete set suppresses discovery
    *  entirely — a pinned or air-gapped deployment never reaches the network. */
   get timeoutMs(): number {
-    return parseDurationMs(this.manifest.timeout, 30_000);
+    return slotMs(this.manifest.timeout, 30_000, `${this.describe()}: 'timeout'`);
   }
 
   private declared(): ServerEndpoints | null {

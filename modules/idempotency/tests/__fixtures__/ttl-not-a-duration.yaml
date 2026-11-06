@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata: { name: IdempotencyTtlNotADuration, version: 1.0.0 }
+imports:
+  Idempotency: ../../
+  KvStoreMemory: ../../../kv-store-memory
+  Run: ../../../run
+---
+kind: KvStoreMemory.Store
+metadata: { name: store }
+---
+kind: Run.Value
+metadata: { name: body }
+value: done
+---
+kind: Idempotency.Once
+metadata: { name: once }
+store: !ref store
+claimTtl: 30s
+ttl: a day
+invoke: !ref body

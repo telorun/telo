@@ -64,7 +64,7 @@ describe("telo describe", () => {
     expect(indentOf(lines[then]!)).toBeGreaterThan(indentOf(lines[predicate]!));
     expect(indentOf(lines[otherwise]!)).toBe(indentOf(lines[then]!));
 
-    expect(lines.some((line) => /invoke every=!cel "variables\.sweepEvery" : string → shipPending/.test(line))).toBe(true);
+    expect(lines.some((line) => /invoke every=!cel "duration\(variables\.sweepEvery\)" : google\.protobuf\.Duration → shipPending/.test(line))).toBe(true);
     // A resource reached again is named, not expanded twice.
     expect(lines.filter((line) => /→ db {2}SQLite\.Connection {2}\[dependency\]$/.test(line))).toHaveLength(1);
     expect(lines.some((line) => /→ db {2}SQLite\.Connection {2}\[dependency\] {2}\(see above\)$/.test(line))).toBe(true);
@@ -85,7 +85,7 @@ describe("telo describe", () => {
       readBy: [{ resource: "OrderWebhook\u0000Run.Sequence\u0000handleDelivery", path: "steps[0].if" }],
     });
     expect(outline.entryPoints.find((e: any) => e.handlerName === "shipPending").match).toEqual({
-      every: { tag: "cel", source: "variables.sweepEvery", type: "string" },
+      every: { tag: "cel", source: "duration(variables.sweepEvery)", type: "google.protobuf.Duration" },
     });
     expect(outline.unreached.map((u: any) => u.name)).toEqual(["audit"]);
 

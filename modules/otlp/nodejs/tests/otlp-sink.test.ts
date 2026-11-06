@@ -163,4 +163,13 @@ describe("Otlp.Sink", () => {
       ),
     ).rejects.toThrow(/Sink "shipped": 'buffer' must be an integer/);
   });
+
+  it("refuses a timeout that is not a duration, naming the sink", async () => {
+    await expect(
+      create(
+        { endpoint: "https://collector.invalid/v1/logs", timeout: "5s", metadata: { name: "shipped" } },
+        stubContext(),
+      ),
+    ).rejects.toThrow(/Sink "shipped": 'timeout' must be a duration/);
+  });
 });

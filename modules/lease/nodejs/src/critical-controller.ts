@@ -6,7 +6,7 @@ import {
   type ResourceInstance,
   SEVERITY,
   isCancellationError,
-  parseDurationMs,
+  durationMs,
   resolveInvocableDispatcher,
 } from "@telorun/sdk";
 import type { KvStore } from "@telorun/kv-store";
@@ -27,7 +27,7 @@ function isKvStore(value: unknown): value is KvStore {
 interface CriticalResource {
   metadata: { name: string; module?: string };
   store?: unknown;
-  ttl: string;
+  ttl: unknown;
   detach?: boolean;
   invoke?: unknown;
 }
@@ -75,7 +75,11 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
     private readonly resource: CriticalResource,
     private readonly ctx: ResourceContext,
   ) {
-    this.ttlMs = parseDurationMs(resource.ttl);
+    const ttlMs = durationMs(resource.ttl);
+    if (ttlMs === undefined) {
+      throw new Error(`Lease.Critical "${resource.metadata.name}": 'ttl' must be a duration`);
+    }
+    this.ttlMs = ttlMs;
   }
 
   async invoke(inputs: CriticalInputs, invokeCtx?: InvokeContext): Promise<CriticalResult> {

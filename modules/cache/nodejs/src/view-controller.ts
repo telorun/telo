@@ -2,10 +2,10 @@ import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } fr
 import {
   InvokeError,
   SEVERITY,
-  parseDurationMs,
   resolveInvocableDispatcher,
 } from "@telorun/sdk";
 import { type CacheLookupResult, type CacheStore, isCacheStore } from "./cache-store.js";
+import { windowMs } from "./freshness-window.js";
 
 type RevalidateMode = "background" | "sync" | "off";
 
@@ -13,8 +13,8 @@ interface ViewResource {
   metadata: { name: string; module?: string };
   store?: CacheStore | KindRef<CacheStore>;
   invoke?: unknown;
-  ttl?: string;
-  staleTtl?: string;
+  ttl?: unknown;
+  staleTtl?: unknown;
   revalidate?: RevalidateMode;
 }
 
@@ -42,8 +42,9 @@ class CacheView implements ResourceInstance<ViewInputs, CacheLookupResult> {
     private readonly resource: ViewResource,
     private readonly ctx: ResourceContext,
   ) {
-    this.ttlMs = parseDurationMs(resource.ttl);
-    this.staleTtlMs = parseDurationMs(resource.staleTtl);
+    const label = `Cache.View "${resource.metadata.name}"`;
+    this.ttlMs = windowMs(resource.ttl, `${label}: 'ttl'`);
+    this.staleTtlMs = windowMs(resource.staleTtl, `${label}: 'staleTtl'`);
     this.revalidate = resource.revalidate ?? "sync";
   }
 

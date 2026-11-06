@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata: { name: LeaseTtlNotADuration, version: 1.0.0 }
+imports: { Lease: ../../, KvStoreMemory: ../../../kv-store-memory, Run: ../../../run }
+---
+kind: KvStoreMemory.Store
+metadata: { name: mem }
+---
+kind: Lease.Critical
+metadata: { name: lock }
+store: !ref mem
+ttl: 10 minutes
+invoke: { kind: Run.Value, value: { ok: 1 } }

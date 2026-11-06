@@ -62,6 +62,7 @@ value: { stage: after }
 kind: Durable.Await
 metadata: { name: approval }
 token: !cel "'approve:' + inputs.ticket"
+timeout: 30d
 outputType:
   kind: Telo.JsonSchema
   schema:

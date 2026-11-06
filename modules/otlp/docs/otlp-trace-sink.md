@@ -46,10 +46,10 @@ tracing:
 | `endpoint` | yes | The collector's OTLP/JSON traces endpoint (typically `…/v1/traces`). |
 | `headers` | no | Extra request headers, typically credentials — read them from `secrets:`. |
 | `resourceAttributes` | no | OTel resource attributes on every batch. `service.name` falls back to `unknown_service:<executable>`. |
-| `timeout` | no | Per-request timeout (default `10s`). |
+| `timeout` | no | A duration: per-request timeout (default `10s`). |
 | `buffer` | no | Spans held before the drop policy applies (default `8192`). |
 | `on_full` | no | `drop_new` (default) or `drop_old`. `block` is refused at load. |
-| `flush_interval` | no | Max time a span sits buffered (default `1s`). |
+| `flush_interval` | no | A duration: max time a span sits buffered (default `1s`). |
 
 ## What is exported
 

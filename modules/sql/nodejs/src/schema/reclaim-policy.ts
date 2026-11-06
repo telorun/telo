@@ -1,4 +1,4 @@
-import { parseDurationMs } from "@telorun/sdk";
+import { durationMs } from "@telorun/sdk";
 import type { TombstoneRecord, VersionRecord } from "./schema-ledger.js";
 
 /**
@@ -13,7 +13,14 @@ import type { TombstoneRecord, VersionRecord } from "./schema-ledger.js";
  */
 export interface ReclaimPolicy {
   readonly afterVersions: number;
-  readonly afterDuration: string;
+  readonly afterDuration: unknown;
+}
+
+/** The time backstop in milliseconds; refuses a policy whose `afterDuration` is not a duration. */
+export function afterDurationMs(policy: ReclaimPolicy): number {
+  const ms = durationMs(policy.afterDuration);
+  if (ms === undefined) throw new Error("Schema 'reclaim': 'afterDuration' must be a duration");
+  return ms;
 }
 
 export interface Eligibility {
@@ -60,7 +67,7 @@ export function assessTombstone(
 
   const versionsObserved = counted.size;
   const msElapsed = Math.max(0, nowMs - Date.parse(baselineAt));
-  const requiredMs = parseDurationMs(policy.afterDuration);
+  const requiredMs = afterDurationMs(policy);
   const versionsRemaining = Math.max(0, policy.afterVersions - versionsObserved);
   const msRemaining = Math.max(0, requiredMs - msElapsed);
   return {
