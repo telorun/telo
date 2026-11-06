@@ -1,5 +1,18 @@
 # @telorun/sdk
 
+## 0.130.0
+
+### Minor Changes
+
+- 6aa9a85: An omitted argument map is now checked. Where a call through a reference slot paired by `x-telo-ref` `inputs:`, or a step, writes no `inputs:`, `telo check` judges it as the `default:` its property declares against the target's input contract and reports `CONTRACT_INPUTS_MISMATCH` at the reference, naming the default and asking for `inputs:`. A kind whose paired argument-map property may be omitted without a literal object `default:` (or whose pointer names no declared property) is refused at the declaring module as `ARGUMENT_MAP_DEFAULT_INVALID`, so `telo publish` refuses it. The built-in invoke step (a `Telo.Sequence` step and an Application's inline boot target) declares `inputs` with `default: {}`.
+- 6aa9a85: A controller can name the kernel instance that owns its resource: `ctx.kernelInstanceId` is an opaque string, unique in the process, fixed for the kernel's whole life (a reconcile keeps it) and never reused, and a child manifest started through `ctx.runtime.run` or `App.Instance` has one of its own. In-process state every resource of one application must share is keyed by it rather than held module-global, since one process may run several kernels over the same controller bundle. The Rust SDK reads it as `ResourceContext::kernel_instance_id()`, `None` from a host that carries none (a kernel released before it, and the Rust kernel, whose `abi=telo-3` carries no session). The controller protocol now states that a session is one kernel instance for its whole life and is what a controller keys such state by.
+- ba87b7a: A failure written to a log from the Node runtime carries a Telo stack trace instead of the JavaScript stack. The record's `error` gains `frames` (the resources and manifest positions the failure passed through, innermost first, bounded at 64 with `dropped_frames_count` counting the cut) and its `stack` is those frames as text with files relative to the entry module's directory; `pretty` shows the same lines with files relative to the working directory. A host stack is written as `host_stack` only for an uncoded failure (a `TypeError`, a library's exception, `ERR_FATAL`), on the entry that is one. The step engine and the boot runner state where each call is made (`calledAt` on the dispatch context), a `throw` step starts a fresh trace whose `cause` keeps the caught failure's frames, and `telo: failed to start` prints the Telo trace. The SDK exports the frame type, `errorValueOf` and the trace helpers; frames never reach a catch context, a durable record or a trace payload.
+
+### Patch Changes
+
+- @telorun/cel@0.130.0
+- @telorun/message-format@0.130.0
+
 ## 0.129.0
 
 ### Minor Changes
