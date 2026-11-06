@@ -1,0 +1,22 @@
+# A route writing an empty `authentication` under a mount declaring none: anonymous callers are denied by default and no verifier exists.
+kind: Telo.Library
+metadata:
+  name: UnsatisfiableRouteBare
+  version: 1.0.0
+  description: Test fixture exporting a server refused as AUTHENTICATION_UNSATISFIABLE.
+imports: { Http: ../../../../../ }
+exports: { resources: [server] }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    authentication: {}
+    returns: [{ status: 204 }]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8973 }
+mounts:
+  - path: /
+    mount: !ref api

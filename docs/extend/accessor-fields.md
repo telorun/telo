@@ -296,9 +296,10 @@ declares itself, untyped when it declares nothing, so a field nothing lists yet
 is not refused. The editor offers a member only when every referrer's type
 declares it.
 
-The annotation is legal only on a binding marked `x-telo-context-eval: accessor`
-and nothing else, and never beside another `x-telo-context-from*`
-(`CONTEXT_FROM_REFERRER_INVALID`).
+The annotation is not limited to accessor bindings: it types an evaluated
+binding, or a member beneath one, from a path through the referrer's scope, and
+`x-telo-context-nullable-when` says where such a node may be null — see
+[Referrer-typed bindings](./referrer-typed-bindings.md).
 
 ### Entries that fill a record
 

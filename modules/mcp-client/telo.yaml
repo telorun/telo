@@ -12,9 +12,9 @@ metadata:
     sessions, or by spawning the server as a child process and speaking JSON-RPC over
     its stdio — the calls are the same either way.
 requires:
-  # Controllers return their effects from `init()` / `run()`; a runtime that does
-  # not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=0.82.0"
+  # 0.129.0 first exports the SDK retry helpers `HttpClient.retry` runs on; 0.128.0
+  # fails at controller load (no `isRetryable`) and `check` reports the floor.
+  telo: ">=0.129.0"
 exports:
   kinds: [Client, SessionProvider, HttpClient, StdioClient, ToolsCall, ToolsList]
 ---
@@ -147,6 +147,16 @@ schema:
         auto-track the @modelcontextprotocol/sdk dependency. Override only
         when targeting a server that requires a different protocol revision.
       type: string
+    retry:
+      title: Retry
+      description: >-
+        Re-attempts a request that failed with no answer from the server (a reset
+        or refused connection, DNS or TLS failure) or with a 502, 503 or 504. Other
+        failures, cancellation and a code in `nonRetryable` are never re-attempted.
+        A retried `tools/call` may reach the server more than once when the failure
+        came after the request was sent, so enable it for servers whose tools are
+        safe to repeat. Omitted means no retry.
+      $ref: "telo://manifest#/$defs/RetryPolicy"
 ---
 # Mcp.StdioClient — stdio child-process transport for MCP.
 #

@@ -115,6 +115,13 @@ guessed from the item schema, and there is no second pointer to write.
 One level only. References inside a resolved declaration stay references, because
 a self-referencing foreign key and a mutual pair are both cycles.
 
+**Only what the condition reads is judged.** A member holding an expression, or a
+reference the binding cannot resolve, does not stop the rule unless the condition
+reads it. A server whose mount entries carry a guard's `inputs: !cel …` is still
+judged by a rule reading `entry.authentication`. A peer read whole (`p == x`) is
+read with everything it holds, nested declarations included, so an expression
+anywhere in it skips the rule.
+
 ### One evaluation per entry
 
 A rule declaring `peers:` evaluates **once per entry**, anchored at that entry's
@@ -197,15 +204,21 @@ only to referrers reaching me **through that slot**, each judged once, itself
 excluded. A table named by two stores is judged per table, so one name claimed in
 two different tables is no conflict.
 
+This form is declared on the REFERENCED kind. Where that kind is another module's
+— a shared store every consumer names — the claimant declares the same check on
+itself instead, as a resource rule's
+[`coReferrers:`](./resource-rules.md#others-claiming-the-same-target-coreferrers),
+with the same binding.
+
 `coReferrers:` requires `referrer:`, and must name one reference slot that kind
 (or an implementation of it) declares — a pointer naming none, or a collection,
 matches no referrer, and is `REFERRER_RULE_INVALID` at the kind that wrote the
-rule. A co-referrer whose reference cannot be resolved (or names a library's
+rule. A co-referrer's reference that cannot be resolved (or names a library's
 `resources:` input, known by its kind alone) skips the rule for every referrer
-seeing it, reported as `REFERRER_RULE_SKIPPED`: a duplicate check over a set
-missing a member would answer wrongly in silence. A value the condition reads
-from a co-referrer that holds a `!cel` skips it the same way; one it does not read
-does not.
+whose condition reads it, reported as `REFERRER_RULE_SKIPPED`: a duplicate check
+over a set missing a member would answer wrongly in silence. A value the
+condition reads from a co-referrer that holds a `!cel` skips it the same way. A
+member the condition does not read skips nothing.
 
 Like `peers:`, the key is unknown to an analyzer released before it, which then
 evaluates the condition with `coReferrers` unbound and reports a defect against
@@ -232,7 +245,8 @@ x-telo-referrer-rules:
 A slot that names a collection binds each reference in it the same way. The
 binding is the one `peers:` and a resource rule's `resolve:` use, so a reference
 that does not resolve — or names a library's kind-only `resources:` input —
-makes the rule `REFERRER_RULE_SKIPPED` for that referrer, a slot refusing the kind
+makes the rule `REFERRER_RULE_SKIPPED` for that referrer where the condition
+reads it, a slot refusing the kind
 it names reports nothing, and a pointer resolving to nothing leaves the field
 absent. `resolve:` requires `referrer:`, and each pointer must name a field that
 kind (or one of its implementations) declares — `REFERRER_RULE_INVALID` at the
@@ -259,7 +273,8 @@ x-telo-referrer-rules:
 ```
 
 Each pointer must name a field this kind declares (`REFERRER_RULE_INVALID`
-otherwise); a reference that does not resolve skips the rule for that referrer.
+otherwise); a reference that does not resolve skips the rule for that referrer
+where the condition reads it.
 
 **A code names one rule per `referrer:` filter.** The same judgement declared
 once per owner kind — `referrer: Self.Form` and `referrer: Self.Action` — keeps
@@ -338,8 +353,9 @@ completion or hover — so the strict half reports it while the rule keeps worki
   from the outside — silence that reads exactly like passing.
 - **A peer resolved to nothing, or the collection is absent.** A reference in the
   `peers:` collection naming a declaration the analysis does not hold would bind a
-  peer to nothing, so the entry is skipped and the skip is reported
-  (`REFERRER_RULE_SKIPPED`).
+  peer to nothing. The entry is skipped and the skip is reported
+  (`REFERRER_RULE_SKIPPED`) when the condition reads that peer — iterating
+  `peers` reads every one.
 - **Every peer set was empty.** A peer rule that only ever ran against an empty
   set proved nothing, and reports as `REFERRER_RULE_UNEXERCISED` — which is what a
   typo in `peers:` looks like from the outside.

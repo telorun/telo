@@ -523,7 +523,7 @@ export function validateThrowsCoverage(
     diagnostics.push(
       ...checkUndeclaredCodes(
         site.readings,
-        union,
+        ladder.denominatorOf(site),
         site.filePath,
         site.arrayPath,
         site.isScope

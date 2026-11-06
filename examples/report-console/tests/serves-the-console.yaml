@@ -137,7 +137,7 @@ steps:
         loading: !cel "steps.nodes.result.gate.loading"
         branches: !cel "steps.nodes.result.gate.content.children.map(c, [c.type, c.shown])"
         connect:
-          path: !cel "steps.nodes.result.connect.path"
+          path: !cel "steps.nodes.result.connect.request.target.path.value"
           label: !cel "steps.nodes.result.connect.label"
           onSuccess: !cel "steps.nodes.result.connect.onSuccess"
         account:
@@ -145,14 +145,14 @@ steps:
           source: !cel "steps.nodes.result.account.source"
           email: !cel "steps.nodes.result.account.content.children[0].value"
           signOut:
-            path: !cel "steps.nodes.result.account.content.children[1].path"
+            path: !cel "steps.nodes.result.account.content.children[1].request.target.path.value"
             onSuccess: !cel "steps.nodes.result.account.content.children[1].onSuccess"
       expected:
         type: data
-        source: { path: /api/auth, params: {} }
+        source: { path: { value: /api/auth }, pathParams: {}, queryParams: {} }
         query: { signin: { type: string, enum: [denied, expired] } }
         reloadOn: [ focus, unauthorized ]
-        loading: { type: text, text: { lang: en, message: [ Checking your sign-in… ] }, style: muted }
+        loading: { type: text, fill: false, text: { lang: en, message: [ Checking your sign-in… ] }, style: muted }
         branches:
           - [ text, { at: { root: query, path: [ signin ] }, matches: { const: denied } } ]
           - [ text, { at: { root: data, path: [ failure ] }, matches: { const: expired } } ]
@@ -161,12 +161,12 @@ steps:
         connect:
           path: /api/auth/connect
           label: { lang: en, message: [ Connect Google ] }
-          onSuccess: { navigate: { root: result, path: [ url ] }, refreshes: [] }
+          onSuccess: { navigate: { path: { root: result, path: [ url ] }, pathParams: {}, queryParams: {} }, refreshes: [] }
         account:
           type: data
-          source: { path: /api/auth/user, params: {} }
+          source: { path: { value: /api/auth/user }, pathParams: {}, queryParams: {} }
           email: { root: data, path: [ email ] }
-          signOut: { path: /api/auth/signout, onSuccess: { refreshes: [/api/auth] } }
+          signOut: { path: /api/auth/signout, onSuccess: { refreshes: [ { path: { value: /api/auth }, pathParams: {}, queryParams: {} } ] } }
 
   # The report form: its fields by kind and group, each option source, the
   # date range, the columns' fixed order and default, the remembered sheet
@@ -176,7 +176,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        path: !cel "steps.nodes.result.form.path"
+        path: !cel "steps.nodes.result.form.request.target.path.value"
         label: !cel "steps.nodes.result.form.label"
         fields: !cel "steps.nodes.result.form.fields.map(f, [f.type, f.property, f.group, 'control' in f ? f.control : '-'])"
         hints: !cel "steps.nodes.result.form.fields.map(f, f.description == null ? '-' : f.description.message[0])"
@@ -220,7 +220,7 @@ steps:
             value: &rowId { root: row, path: [ id ] }
             label: &rowName { root: row, path: [ name ] }
             hint: { root: row, path: [ owner ] }
-            href: &rowUrl { root: row, path: [ url ] }
+            href: &rowUrl { path: { root: row, path: [ url ] }, pathParams: {}, queryParams: {} }
             search: &byName { property: name, operator: contains }
           - basePath: /api/drive/files
             filters: { kind: { value: folder } }
@@ -301,8 +301,10 @@ steps:
         failure:
           type: stack
           style: danger
+          fill: false
           children:
             - type: text
+              fill: false
               style: strong
               text:
                 lang: en
@@ -310,13 +312,14 @@ steps:
                 values: { status: { root: error, path: [status] }, code: { root: error, path: [code] } }
               shown: { at: { root: error, path: [] }, matches: { required: [ status ] } }
             - type: text
+              fill: false
               style: strong
               text:
                 lang: en
                 message: [ "No answer · ", { placeholder: code } ]
                 values: { code: { root: error, path: [code] } }
               shown: { at: { root: error, path: [] }, matches: { not: { required: [ status ] } } }
-            - { type: value, value: { root: error, path: [ message ] }, present: { type: string }, labels: [] }
+            - { type: value, fill: false, value: { root: error, path: [ message ] }, present: { type: string }, labels: [] }
 
   # The files list: an amount and a currency only on a billing report, the
   # PDF as a link, and on each row a draft that needs the project's address
@@ -329,7 +332,7 @@ steps:
         columns: !cel "steps.nodes.result.files.columns.map(c, [c.header.message[0], c.value, c.present, 'shown' in c ? c.shown : null])"
         rowActions: !cel >-
           steps.nodes.result.files.rowActions.map(r, {
-            'path': r.action.path, 'label': r.action.label.message[0], 'concurrency': r.action.concurrency,
+            'path': r.action.request.target.path.value, 'label': r.action.label.message[0], 'concurrency': r.action.concurrency,
             'inputs': r.inputs, 'enabled': r.enabled, 'result': r.action.result})
       expected:
         rows: { root: result, path: [ files ] }
@@ -354,6 +357,7 @@ steps:
               disabledText: { lang: en, message: [ The project has no billing e-mail. ] }
             result:
               type: value
+              fill: false
               value: { root: result, path: [ url ] }
               text: { lang: en, message: [ Open the draft ] }
               present: { type: string, format: uri }
@@ -372,6 +376,7 @@ steps:
               disabledText: { lang: en, message: [ Choose an upload folder first. ] }
             result:
               type: value
+              fill: false
               value: { root: result, path: [ link ] }
               text:
                 lang: en
@@ -394,7 +399,7 @@ steps:
           query: !cel "steps.nodes.result.listing.query"
           filters: !cel "steps.nodes.result.listing.filters"
           remind:
-            path: !cel "steps.nodes.result.listing.rowActions[0].action.path"
+            path: !cel "steps.nodes.result.listing.rowActions[0].action.request.target.path.value"
             inputs: !cel "steps.nodes.result.listing.rowActions[0].inputs"
             confirm: !cel "steps.nodes.result.listing.rowActions[0].confirm"
             enabled: !cel "steps.nodes.result.listing.rowActions[0].enabled"

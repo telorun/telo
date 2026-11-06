@@ -19,7 +19,7 @@ kind: SearXNG.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18842" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18842" }
 ---
 # Page 10000 has items so that reading it would show: no position names it, so
 # the engine must never ask for it.

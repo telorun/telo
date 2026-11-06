@@ -1,0 +1,78 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeySqliteNoPlaintextTest
+  version: 1.0.0
+  description: |
+    A table dump yields no usable key: after issuing a key, no column of the
+    raw table holds the key or its secret part, and the digest column holds the
+    key's SHA-256 as base64url.
+imports:
+  Keys: ../
+  SQLite: ../../sqlite
+  Sql: ../../sql
+  ApiKey: ../../api-key
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: store }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: main
+prefix: tk
+scopes: [read]
+retention: 1h
+---
+kind: ApiKey.Issue
+metadata: { name: issue }
+store: !ref store
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: owner
+    value: !cel "'plaintext-' + uuidv4()"
+  - name: issued
+    invoke: !ref issue
+    inputs:
+      owner: { type: user, id: !cel "steps.owner.result" }
+      scopes: [read]
+      label: ci
+  # `tk_` + 22 id characters, then the 43-character secret, then the checksum.
+  - name: secret
+    value: !cel "steps.issued.result.key.substring(25, 68)"
+  - name: row
+    invoke: !ref read
+    inputs:
+      sql: !sql >-
+        SELECT
+          instr(store_name || '|' || key_id || '|' || digest || '|' || owner_type || '|' || owner_id || '|' || scopes || '|' || coalesce(label, '') || '|' || coalesce(revoked_by, '') || '|' || coalesce(rotated_from, ''), ${{ steps.secret.result }}) AS secret_at,
+          instr(digest, ${{ steps.issued.result.key }}) AS key_at,
+          length(digest) AS digest_length,
+          digest NOT GLOB '*[^A-Za-z0-9_-]*' AS digest_is_base64url
+        FROM api_keys WHERE owner_id = ${{ steps.owner.result }}
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.row.result.rows"
+      expected: [{ secret_at: 0, key_at: 0, digest_length: 43, digest_is_base64url: 1 }]

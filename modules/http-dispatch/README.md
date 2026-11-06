@@ -46,6 +46,8 @@ so another implementation of `Cookie` needs only to publish the record as its
 reading.
 
 - `setCookieLine(attributes, { value, maxAge, expires })` — one `Set-Cookie` line.
+  A null `expires` writes no `Expires` (nor, with no `maxAge`, any lifetime), so
+  the cookie ends with the browser session; a remembered cookie passes a timestamp.
   A max age of zero or less clears the cookie (`Max-Age=0`, a past `Expires`
   unless one is given, an empty value unless one is given). A value that is not
   RFC 6265 cookie-octets, or a max age or expiry of the wrong type, throws the

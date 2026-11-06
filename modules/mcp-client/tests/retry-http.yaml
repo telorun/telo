@@ -1,0 +1,141 @@
+kind: Telo.Application
+metadata:
+  name: McpClientRetryHttpTest
+  version: 1.0.0
+  description: |
+    Two servers whose gateway answers 503 to the first request of each and lets
+    every later one through. The client with `retry:` re-attempts and lists the
+    tools; the same call without `retry:` fails with ERR_MCP_TRANSPORT.
+imports:
+  Mcp: ../../mcp-server
+  McpClient: ../
+  Http: ../../http-server
+  RateLimit: ../../rate-limit
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Run: ../../run
+  Assert: ../../assert
+targets: [ !ref testRun ]
+---
+kind: Run.Value
+metadata: { name: pingImpl }
+value: { pong: true }
+---
+kind: Mcp.Tools
+metadata: { name: ListedTools }
+entries:
+  - name: ping
+    description: Synthetic ping.
+    argumentsSchema: { type: object, properties: {}, additionalProperties: false }
+    handler: !ref pingImpl
+    inputs: {}
+    result:
+      content:
+        - { type: text, text: pong }
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpRetried }
+serverInfo: { name: telo-test-retried, version: 1.0.0 }
+tools: [ !ref ListedTools ]
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpPlain }
+serverInfo: { name: telo-test-plain, version: 1.0.0 }
+tools: [ !ref ListedTools ]
+---
+# The first request of a key is the only one the limit allows, so a gateway that
+# refuses exactly the requests this allows fails once and then admits everything.
+kind: CacheMemory.Store
+metadata: { name: mem }
+---
+kind: RateLimit.Guard
+metadata: { name: firstOnly }
+store: !ref mem
+limit: 1
+window: "60s"
+---
+kind: McpClient.HttpClient
+metadata: { name: retrying }
+url: http://127.0.0.1:9391/mcp
+clientInfo: { name: telo-test, version: 1.0.0 }
+retry: { attempts: 2, initialDelay: 10ms, jitter: none }
+---
+kind: McpClient.HttpClient
+metadata: { name: plain }
+url: http://127.0.0.1:9392/mcp
+clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: McpClient.ToolsList
+metadata: { name: listRetrying }
+client: !ref retrying
+---
+kind: McpClient.ToolsList
+metadata: { name: listPlain }
+client: !ref plain
+---
+kind: Telo.Sequence
+metadata: { name: testRun }
+with:
+  - kind: Http.Server
+    metadata: { name: retriedServer }
+    listen: { address: 127.0.0.1, port: 9391 }
+    mounts:
+      - path: /mcp
+        mount: !ref mcpRetried
+        guard:
+          invoke:
+            kind: Telo.Sequence
+            steps:
+              - name: take
+                invoke: !ref firstOnly
+                inputs: { key: retried }
+              - name: gateway
+                if: !cel "steps.take.result.allowed"
+                then:
+                  - name: refuse
+                    throw: { code: ERR_GATEWAY_UNAVAILABLE, message: "gateway unavailable" }
+          catches:
+            - when: !cel "error.code == 'ERR_GATEWAY_UNAVAILABLE'"
+              status: 503
+  - kind: Http.Server
+    metadata: { name: plainServer }
+    listen: { address: 127.0.0.1, port: 9392 }
+    mounts:
+      - path: /mcp
+        mount: !ref mcpPlain
+        guard:
+          invoke:
+            kind: Telo.Sequence
+            steps:
+              - name: take
+                invoke: !ref firstOnly
+                inputs: { key: plain }
+              - name: gateway
+                if: !cel "steps.take.result.allowed"
+                then:
+                  - name: refuse
+                    throw: { code: ERR_GATEWAY_UNAVAILABLE, message: "gateway unavailable" }
+          catches:
+            - when: !cel "error.code == 'ERR_GATEWAY_UNAVAILABLE'"
+              status: 503
+targets: [ !ref retriedServer, !ref plainServer ]
+steps:
+  - name: listWithRetry
+    inputs: {}
+    invoke: !ref listRetrying
+  - name: withoutRetry
+    try:
+      - name: listWithoutRetry
+        inputs: {}
+        invoke: !ref listPlain
+    catch:
+      - name: verifyFailure
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_TRANSPORT
+  - name: verifyRetried
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.listWithRetry.result.tools[0].name"
+      expected: ping

@@ -97,7 +97,7 @@ content:
             action:
               kind: Ui.Action
               inputModel: !ref PostMove
-              source: { path: /api/post-status }
+              request: { target: /api/post-status }
               label: Move
             inputs: { id: !cel "row.id", status: !cel "to.status" }
 

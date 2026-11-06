@@ -35,7 +35,7 @@ variables:
     default: .telo/ai-chat-tests
 targets: [!ref test]
 ---
-# A model that writes one delta, then takes three seconds to finish.
+# A model that writes one delta, then stays unfinished far longer than a slow host can stall the test, so the turn is still live when its record is removed.
 kind: Telo.Definition
 metadata: { name: PausingModel }
 capability: Telo.Invocable
@@ -45,7 +45,7 @@ resources:
   - kind: Telo.Sequence
     metadata: { name: rest }
     steps:
-      - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 3s } }
+      - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 10s } }
       - name: finish
         invoke:
           kind: Stream.Of

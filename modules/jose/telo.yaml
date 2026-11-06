@@ -202,8 +202,15 @@ schema:
       title: Type
       description: The `typ` header, naming what the token is for.
       type: string
-      enum: [JWT, at+jwt, logout+jwt]
+      enum: [JWT, at+jwt, logout+jwt, dpop+jwt]
       default: JWT
+    embedPublicKey:
+      title: Embed public key
+      description: >-
+        Carry the signing key's public JWK in the `jwk` header, as a DPoP proof
+        (`dpop+jwt`, RFC 9449) does. The key set must hold an asymmetric key.
+      type: boolean
+      default: false
     issuer: { title: Issuer, description: The `iss` claim., type: string, x-telo-eval: compile }
     audience:
       title: Audience

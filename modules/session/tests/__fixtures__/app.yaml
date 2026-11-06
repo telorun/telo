@@ -1,0 +1,120 @@
+# A sign-in application over sessions: the entry router signs in, the app router
+# is behind the session cookie (and a bearer token carrying the same session).
+kind: KvStoreMemory.Store
+metadata: { name: store }
+---
+kind: Session.Sessions
+metadata: { name: sessions }
+store: !ref store
+name: web
+idleTimeout: 1800s
+absoluteLifetime: 43200s
+persistent: { idleTimeout: 604800s, absoluteLifetime: 2592000s }
+maxPerSubject: 3
+---
+kind: HttpDispatch.HostCookie
+metadata: { name: sessionCookie }
+name: session
+---
+kind: Session.Verifier
+metadata: { name: verifier }
+sessions: !ref sessions
+---
+kind: Http.Api
+metadata: { name: entry }
+catches:
+  - when: !cel "error.code in ['ERR_SESSION_CONTENDED', 'ERR_SESSION_STORE_UNAVAILABLE']"
+    status: 503
+  - when: !cel "error.code == 'ERR_SESSION_STORE_INCONSISTENT'"
+    status: 500
+routes:
+  - request: { path: /login, method: POST }
+    handler: { kind: Session.Start, sessions: !ref sessions }
+    inputs:
+      principal:
+        subject: !cel "request.query.user"
+        issuer: null
+        kind: user
+        claims: {}
+        scopes: [read]
+        roles: []
+        permissions: []
+        org: null
+        amr: [pwd]
+        acr: null
+        sessionId: null
+        authenticatedAt: null
+        via: login
+      persistent: !cel "'remember' in request.query"
+      userAgent: !cel "'user-agent' in request.headers ? request.headers['user-agent'] : null"
+      address: !cel "request.ip"
+    returns:
+      - status: 200
+        cookies:
+          - cookie: !ref sessionCookie
+            value: !cel "result.token"
+            expires: !cel "result.cookieExpiresAt"
+        content: { application/json: { body: { sessionId: !cel "result.sessionId", ended: !cel "result.ended" } } }
+---
+kind: Http.Api
+metadata: { name: app }
+catches:
+  - when: !cel "error.code in ['ERR_SESSION_CONTENDED', 'ERR_SESSION_STORE_UNAVAILABLE']"
+    status: 503
+  - when: !cel "error.code == 'ERR_SESSION_STORE_INCONSISTENT'"
+    status: 500
+  - when: !cel "error.code == 'ERR_SESSION_NOT_FOUND'"
+    status: 404
+routes:
+  - request: { path: /me, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              subject: !cel "request.principal.subject"
+              sessionId: !cel "request.principal.sessionId"
+              amr: !cel "request.principal.amr"
+              via: !cel "request.principal.via"
+  - request: { path: /action, method: POST }
+    returns:
+      - { status: 204 }
+  - request: { path: /logout, method: POST }
+    handler: { kind: Session.End, sessions: !ref sessions }
+    inputs:
+      sessionId: !cel "request.principal.sessionId != null ? request.principal.sessionId : ''"
+      subject: !cel "request.principal.subject"
+    returns:
+      - status: 204
+        cookies: [{ cookie: !ref sessionCookie, maxAge: 0s }]
+  - request: { path: /logout-all, method: POST }
+    handler: { kind: Session.EndAll, sessions: !ref sessions }
+    inputs:
+      subject: !cel "request.principal.subject"
+      except: !cel "'keep' in request.query ? request.principal.sessionId : null"
+    returns:
+      - status: 200
+        content: { application/json: { body: { ended: !cel "result.ended" } } }
+  - request: { path: /rotate, method: POST }
+    handler: { kind: Session.Rotate, sessions: !ref sessions }
+    inputs:
+      sessionId: !cel "request.principal.sessionId != null ? request.principal.sessionId : ''"
+      subject: !cel "request.principal.subject"
+    returns:
+      - status: 200
+        cookies:
+          - cookie: !ref sessionCookie
+            value: !cel "result.token"
+            expires: !cel "result.cookieExpiresAt"
+        content: { application/json: { body: { sessionId: !cel "result.sessionId" } } }
+  - request: { path: /sessions, method: GET }
+    handler: { kind: Session.List, sessions: !ref sessions }
+    catches:
+      - when: !cel "error.code == 'ERR_SESSION_STORE_UNAVAILABLE'"
+        status: 503
+    inputs: { subject: !cel "request.principal.subject" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.sessions.map(s, {'id': s.id, 'amr': s.amr, 'persistent': s.persistent})"

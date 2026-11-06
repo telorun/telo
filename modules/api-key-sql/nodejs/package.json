@@ -1,0 +1,41 @@
+{
+  "name": "@telorun/api-key-sql",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Telo api-key-sql module — the SQL family's shared half of the durable API-key store: one engine-neutral store written against the Sql contracts, never an engine.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@telorun/api-key": "workspace:*",
+    "@telorun/sql": "workspace:*"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

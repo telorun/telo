@@ -1,0 +1,272 @@
+kind: Telo.Application
+metadata:
+  name: AuthBearerJwtTest
+  version: 1.0.0
+  description: |
+    AuthBearer.Jwt turns a valid access token into a principal and refuses a
+    tampered signature, a wrong audience, a wrong issuer, an expired token and a
+    wrong type, each as an answer carrying the Bearer challenge. It maps `scp`
+    arrays and `client_id` to scopes and the service kind, applies configured
+    claim mappings, refuses a revoked `jti`, and throws when the issuer's keys
+    cannot be reached.
+include: [./__fixtures__/keys.yaml]
+imports:
+  AuthBearer: ../
+  Jose: ../../jose
+  KvStoreMemory: ../../kv-store-memory
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: AuthBearer.Jwt
+metadata: { name: verifier }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: AuthBearer.Jwt
+metadata: { name: mapped }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: https://api.test/
+principal:
+  kind: service
+  scopes: !cel "claims.grants"
+  roles: !cel "claims.realm_access.roles"
+  permissions: []
+  org: !cel "claims.tenant"
+---
+kind: KvStoreMemory.Store
+metadata: { name: revocations }
+---
+kind: AuthBearer.Jwt
+metadata: { name: revocable }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: https://api.test/
+revocation: { store: !ref revocations }
+---
+kind: AuthBearer.Revoke
+metadata: { name: revoke }
+store: !ref revocations
+---
+kind: Jose.Sign
+metadata: { name: issue }
+keys: !ref issuerKeys
+type: at+jwt
+issuer: https://login.test
+audience: https://api.test/
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: user
+    invoke: !ref issue
+    inputs:
+      subject: alice
+      claims: { scope: "orders:read orders:write", roles: [admin], permissions: [orders.refund], amr: [pwd, otp], acr: loa2, auth_time: 1700000000 }
+  - name: accepted
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.user.result.token" }
+      confirmation: {}
+      resource: https://api.test/
+  - name: tamperedToken
+    value: !cel "steps.user.result.token.substring(0, size(steps.user.result.token) - 10) + (steps.user.result.token.substring(size(steps.user.result.token) - 10, size(steps.user.result.token) - 9) == 'A' ? 'B' : 'A') + steps.user.result.token.substring(size(steps.user.result.token) - 9)"
+  - name: tampered
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.tamperedToken.result" }
+      confirmation: {}
+      resource: https://api.test/
+  - name: wrongAudience
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.user.result.token" }
+      confirmation: {}
+      resource: https://other.test/
+  - name: foreignIssuer
+    invoke: { kind: Jose.Sign, keys: !ref issuerKeys, type: at+jwt, issuer: https://elsewhere.test, audience: https://api.test/ }
+    inputs: { subject: alice }
+  - name: wrongIssuer
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.foreignIssuer.result.token" }
+      confirmation: {}
+      resource: https://api.test/
+  # Signed by the issuer's key with `exp` in November 2023.
+  - name: expired
+    invoke: !ref verifier
+    inputs:
+      presentation:
+        type: token
+        token: eyJhbGciOiJFUzI1NiIsImtpZCI6ImVzMSIsInR5cCI6ImF0K2p3dCJ9.eyJpc3MiOiJodHRwczovL2xvZ2luLnRlc3QiLCJhdWQiOiJodHRwczovL2FwaS50ZXN0LyIsInN1YiI6ImFsaWNlIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDM2MDB9.SPZlmo9_XGBAs9Ck7VyF1WDx2md0kKhYR51fQC_br2gLkFJPX1BulzeIIeJSDyLEJYjetPxGi5Io7AP-kLc3UQ
+      confirmation: {}
+      resource: https://api.test/
+  - name: idToken
+    invoke: { kind: Jose.Sign, keys: !ref issuerKeys, issuer: https://login.test, audience: https://api.test/ }
+    inputs: { subject: alice }
+  - name: wrongType
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.idToken.result.token" }
+      confirmation: {}
+      resource: https://api.test/
+  - name: forged
+    invoke: { kind: Jose.Sign, keys: !ref rogueKeys, type: at+jwt, issuer: https://login.test, audience: https://api.test/ }
+    inputs: { subject: alice }
+  - name: wrongKey
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.forged.result.token" }
+      confirmation: {}
+      resource: https://api.test/
+  - name: service
+    invoke: !ref issue
+    inputs: { subject: billing-job, claims: { client_id: billing-job, scp: [invoices.read, invoices.write] } }
+  - name: scpAndService
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: token, token: !cel "steps.service.result.token" }
+      confirmation: {}
+      resource: https://api.test/
+  - name: custom
+    invoke: !ref issue
+    inputs:
+      subject: alice
+      claims: { grants: [orders.read], realm_access: { roles: [admin] }, tenant: acme }
+  - name: mappedClaims
+    invoke: !ref mapped
+    inputs:
+      presentation: { type: token, token: !cel "steps.custom.result.token" }
+      confirmation: {}
+      resource: null
+  - name: revocableToken
+    invoke: !ref issue
+    inputs: { subject: alice, jwtId: token-1 }
+  - name: beforeRevoke
+    invoke: !ref revocable
+    inputs:
+      presentation: { type: token, token: !cel "steps.revocableToken.result.token" }
+      confirmation: {}
+      resource: null
+  - name: revoked
+    invoke: !ref revoke
+    inputs: { jti: token-1, until: !cel "steps.revocableToken.result.expiresAt" }
+  - name: afterRevoke
+    invoke: !ref revocable
+    inputs:
+      presentation: { type: token, token: !cel "steps.revocableToken.result.token" }
+      confirmation: {}
+      resource: null
+  - name: unreachableKeys
+    try:
+      - name: attempt
+        invoke:
+          kind: AuthBearer.Jwt
+          keys: { kind: Jose.RemoteKeySet, url: "http://127.0.0.1:9482/jwks.json", timeout: 2s }
+          issuer: https://login.test
+          algorithms: [ES256]
+          audience: https://api.test/
+        inputs:
+          presentation: { type: token, token: !cel "steps.user.result.token" }
+          confirmation: {}
+          resource: null
+    catch:
+      - name: caught
+        value: !cel "error.code"
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        accepted:
+          subject: !cel "steps.accepted.result.principal.subject"
+          issuer: !cel "steps.accepted.result.principal.issuer"
+          kind: !cel "steps.accepted.result.principal.kind"
+          scopes: !cel "steps.accepted.result.principal.scopes"
+          roles: !cel "steps.accepted.result.principal.roles"
+          permissions: !cel "steps.accepted.result.principal.permissions"
+          org: !cel "steps.accepted.result.principal.org"
+          amr: !cel "steps.accepted.result.principal.amr"
+          acr: !cel "steps.accepted.result.principal.acr"
+          sessionId: !cel "steps.accepted.result.principal.sessionId"
+          authenticatedAt: !cel "string(steps.accepted.result.principal.authenticatedAt)"
+          via: !cel "steps.accepted.result.principal.via"
+          claimScope: !cel "steps.accepted.result.principal.claims.scope"
+        tampered: !cel "steps.tampered.result"
+        wrongAudience: !cel "steps.wrongAudience.result"
+        wrongIssuer: !cel "steps.wrongIssuer.result"
+        expired: !cel "steps.expired.result"
+        wrongType: !cel "steps.wrongType.result"
+        wrongKey: !cel "steps.wrongKey.result"
+        scpAndService:
+          kind: !cel "steps.scpAndService.result.principal.kind"
+          scopes: !cel "steps.scpAndService.result.principal.scopes"
+        mappedClaims:
+          kind: !cel "steps.mappedClaims.result.principal.kind"
+          scopes: !cel "steps.mappedClaims.result.principal.scopes"
+          roles: !cel "steps.mappedClaims.result.principal.roles"
+          org: !cel "steps.mappedClaims.result.principal.org"
+        beforeRevoke: !cel "has(steps.beforeRevoke.result.principal)"
+        revoked: !cel "steps.revoked.result"
+        afterRevoke: !cel "steps.afterRevoke.result"
+        unreachableKeys: !cel "steps.caught.result"
+        issuer: !cel "resources.verifier.issuer"
+        challenges: !cel "resources.verifier.challenges"
+      expected:
+        accepted:
+          subject: alice
+          issuer: https://login.test
+          kind: user
+          scopes: [orders:read, orders:write]
+          roles: [admin]
+          permissions: [orders.refund]
+          org: null
+          amr: [pwd, otp]
+          acr: loa2
+          sessionId: null
+          authenticatedAt: "2023-11-14T22:13:20Z"
+          via: verifier
+          claimScope: orders:read orders:write
+        tampered:
+          refused: true
+          reason: signature
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: The access token signature is invalid } }
+        wrongAudience:
+          refused: true
+          reason: audience
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: The access token is not for this resource } }
+        wrongIssuer:
+          refused: true
+          reason: issuer
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: The access token was issued by an issuer that is not accepted } }
+        expired:
+          refused: true
+          reason: expired
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: The access token has expired } }
+        wrongType:
+          refused: true
+          reason: type
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: The access token has the wrong type } }
+        wrongKey:
+          refused: true
+          reason: signature
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: The access token signature is invalid } }
+        scpAndService: { kind: service, scopes: [invoices.read, invoices.write] }
+        mappedClaims:
+          kind: service
+          scopes: [orders.read]
+          roles: [admin]
+          org: acme
+        beforeRevoke: true
+        revoked: { revoked: true }
+        afterRevoke:
+          refused: true
+          reason: revoked
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: The access token has been revoked } }
+        unreachableKeys: ERR_JOSE_REMOTE_KEYS_UNREACHABLE
+        issuer: https://login.test
+        challenges: [{ scheme: Bearer, parameters: {} }]

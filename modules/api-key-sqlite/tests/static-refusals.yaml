@@ -1,0 +1,51 @@
+# What the store kinds refuse: two stores claiming one name in one table, which a
+# consumer's entry-scoped check cannot see and the store refuses at creation; a
+# retention that is not positive; a table that is not the store's own kind. And
+# what they accept: an engine store at a verifier's `sources` and an
+# operation's `store`, declared and never called.
+kind: Telo.Application
+metadata:
+  name: ApiKeySqliteStaticRefusals
+  version: 1.0.0
+  description: The SQLite key store's refusals, as `telo check` and the kernel report them.
+imports: { Assert: ../../assert }
+targets:
+  - !ref storeNameDuplicate
+  - !ref storeNameDuplicateAtRuntime
+  - !ref zeroRetention
+  - !ref plainTable
+  - !ref declaredNeverCalled
+---
+kind: Assert.Manifest
+metadata: { name: storeNameDuplicate }
+source: ./__fixtures__/store-name-duplicate/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Keys.Store/orders at 'table': required by Keys.Table — claims a store name"
+    - { code: REFERRER_RULE_VIOLATED, message: "Keys.Store/ordersAgain at 'table'" }
+---
+kind: Assert.Manifest
+metadata: { name: storeNameDuplicateAtRuntime }
+source: ./__fixtures__/store-name-duplicate-app.yaml
+expect: { errors: [], runFails: "ERR_API_KEY_STORE_NAME_DUPLICATE" }
+---
+kind: Assert.Manifest
+metadata: { name: zeroRetention }
+source: ./__fixtures__/zero-retention.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/retention must be a Telo.Duration greater than 0s"
+---
+kind: Assert.Manifest
+metadata: { name: plainTable }
+source: ./__fixtures__/plain-table.yaml
+expect:
+  errors:
+    - { code: REFERENCE_KIND_MISMATCH }
+---
+kind: Assert.Manifest
+metadata: { name: declaredNeverCalled }
+source: ./__fixtures__/declared-never-called.yaml
+expect: { errors: [], runs: true }

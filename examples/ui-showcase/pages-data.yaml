@@ -4,8 +4,7 @@
 # sign-in gate over real sessions. Every application places this view on its
 # `/data` page.
 kind: Ui.View
-metadata:
-  name: dataPage
+metadata: { name: dataPage }
 content:
   type: stack
   children:
@@ -25,11 +24,10 @@ content:
       ref:
         kind: Ui.Data
         model: !ref ProjectSummary
-        query:
-          project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+        query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
         source:
           path: /api/project-summary
-          params: { code: !cel "query.project" }
+          queryParams: { code: !cel "query.project" }
         loading: { type: text, text: Reading the project…, style: muted }
         content:
           type: stack
@@ -46,11 +44,10 @@ content:
               ref:
                 kind: Ui.Data
                 model: !ref ProjectPeople
-                query:
-                  project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+                query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
                 source:
                   path: /api/project-people
-                  params: { code: !cel "query.project" }
+                  queryParams: { code: !cel "query.project" }
                 content:
                   type: list
                   heading: Working on it
@@ -88,7 +85,7 @@ content:
           ref:
             kind: Ui.Data
             model: !ref ProjectSummary
-            source: { path: /api/project-summary, params: { code: NOPE-1 } }
+            source: { path: /api/project-summary, queryParams: { code: NOPE-1 } }
             content: { type: text, text: "Never drawn: there is no such project." }
         - type: composite
           ref:
@@ -142,7 +139,7 @@ content:
                   ref:
                     kind: Ui.Action
                     inputModel: !ref SignIn
-                    source: { path: /api/session/signin }
+                    request: { target: /api/session/signin }
                     label: Sign in
                     onSuccess: { refreshes: [ /api/session ] }
             - type: stack
@@ -174,27 +171,26 @@ content:
                       ref:
                         kind: Ui.Action
                         inputModel: !ref NoInput
-                        source: { path: /api/private/ping }
+                        request: { target: /api/private/ping }
                         label: Check the session
                         onSuccess: { refreshes: [ /api/private/account ] }
                     - type: composite
                       ref:
                         kind: Ui.Action
                         inputModel: !ref NoInput
-                        source: { path: /api/session/signout }
+                        request: { target: /api/session/signout }
                         label: End the session quietly
                     - type: composite
                       ref:
                         kind: Ui.Action
                         inputModel: !ref NoInput
-                        source: { path: /api/session/signout }
+                        request: { target: /api/session/signout }
                         label: Sign out
                         onSuccess: { refreshes: [ /api/session ] }
 ---
 # The page every application lists at /data, placing the view.
 kind: Ui.Page
-metadata:
-  name: dataScreen
+metadata: { name: dataScreen }
 path: /data
 title: Data
 children:

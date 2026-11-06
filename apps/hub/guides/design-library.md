@@ -393,6 +393,32 @@ throws:
   table (two claiming one `name`) is a referrer rule declared on EACH engine's
   table kind, with `coReferrers:` binding the other stores that reach the same
   table through their `table` slot.
+- When the shared resource is another module's (a key/value store every
+  consumer names), its kind must not name its consumers, so the claimant states
+  the check on itself: a RESOURCE rule with `coReferrers: /store` binds the
+  other resources of its kind whose `store` names the same declaration
+  (`!coReferrers.exists(o, o.name == self.name)`), and its controller keeps the
+  runtime twin keyed on the store instance.
+- A rule's binding is read narrowly: a member of a declaration the condition
+  does not read cannot fail the binding, so one unresolved neighbour does not
+  disable a rule about another member.
+- A mount kind of your own that refuses callers itself (a login wall) declares
+  the codes it raises: `x-telo-raises: [<CODE>…]` on the field whose presence
+  raises them, `x-telo-catches-for: { slot, raises: [<CODE>…] }` on each catch
+  list that renders them, each code in the kind's `throws.codes`. A catch-all
+  there is then typed by them, and no handler owes their coverage.
+- A kind whose resources are referenced from another (a route's inputs) can
+  take a binding's type from whoever references it:
+  `x-telo-context-from-referrer: <binding>[/<member>]` on the binding or a
+  member. Add `x-telo-context-nullable-when: { at, equals, absent }` to make it
+  nullable only where the holder's own field says so (anonymous callers
+  allowed), so an unguarded read is refused exactly where it can be null.
+- `x-telo-ref: { …, outputTo: { slot, member } }` says a slot's target output
+  feeds a member of the input of the target in a sibling slot (a credential
+  source feeding a verifier); a source that cannot fit is refused at the source.
+- A verifier backed by an authorization server declares `issuer`, typed from
+  `Auth.Issuer`. The key is reserved: a transport reads it from the reading to
+  derive discovery metadata, so write it once, never on the transport.
 
 ## The importer contract
 

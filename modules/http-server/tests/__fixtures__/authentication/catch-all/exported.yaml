@@ -1,0 +1,27 @@
+kind: Telo.Library
+metadata:
+  name: CatchAllExported
+  version: 1.0.0
+  description: Test fixture exporting a router an importer may mount behind authentication.
+include: [../keys.yaml]
+imports:
+  Http: ../../../../
+  AuthBearer: ../../../../../auth-bearer
+  Jose: ../../../../../jose
+exports: { resources: [api] }
+---
+kind: Telo.Sequence
+metadata: { name: findOrder }
+steps:
+  - name: missing
+    throw: { code: ORDER_NOT_FOUND, message: no such order, data: { id: "42" } }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /orders, method: GET }
+    handler: !ref findOrder
+    returns: [{ status: 200 }]
+    catches:
+      - status: 404
+        content: { application/json: { body: { order: !cel "problem.data != null ? problem.data.id : ''" } } }

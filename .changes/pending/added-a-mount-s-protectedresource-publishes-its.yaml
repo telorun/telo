@@ -1,0 +1,7 @@
+modules:
+  modules/http-server: Added
+body: "A mount's protectedResource: publishes its RFC 9728 protected-resource metadata
+  at /.well-known/oauth-protected-resource<path>, unauthenticated and on the mount's
+  hostnames, derived from its verifiers' issuers and its sources' bearer methods, and
+  names the document as resource_metadata in every challenge of the mount's 401s. A
+  mounted kind receives the mount's access as a fourth register argument."

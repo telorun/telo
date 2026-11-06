@@ -53,6 +53,8 @@ let canvasModule: Promise<typeof import("@napi-rs/canvas")> | undefined;
 export function loadCanvas(ctx: ResourceContext): Promise<typeof import("@napi-rs/canvas")> {
   canvasModule ??= (async () => {
     const addon = fileURLToPath(await ctx.resolveNativeFile("canvas"));
+    // Skia reads ICU data from beside the addon on Windows; without it text layout aborts.
+    if (process.platform === "win32") await ctx.resolveNativeFile("canvas-icu");
     process.env.NAPI_RS_NATIVE_LIBRARY_PATH = addon;
     return import("@napi-rs/canvas");
   })();

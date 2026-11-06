@@ -36,6 +36,7 @@ import { requestBodyRefused } from "./request-body-limit.js";
 import { requestHostOf } from "./request-host.js";
 import { withConnection } from "./request-connection.js";
 import { withLang } from "./request-language.js";
+import { liveEntries, readingOf, ROUTE_ACCESS, type AuthorizationSetting, type RouteAccess } from "./mount-access.js";
 import {
   plainEncodedIssues,
   textPartValidator,
@@ -57,6 +58,8 @@ const HttpApiRouteManifest = Type.Object({
     ),
   }),
   maxBodyBytes: Type.Optional(Type.Integer({ minimum: 1 })),
+  authentication: Type.Optional(Type.Any()),
+  authorization: Type.Optional(Type.Any()),
   handler: Type.Optional(Type.Unsafe<KindRef<Invocable>>(Ref("telo#Invocable"))),
   inputs: Type.Optional(Type.Record(Type.String(), Type.Any())),
   returns: Type.Array(ReturnEntry),
@@ -80,15 +83,35 @@ export type { CatchEntry, ContentEntry, ReturnEntry };
 
 type HandlerRef = { kind: string; name: string };
 
+/** The kind and name of each of a route's access-check slots, captured before injection. */
+type RouteAccessRefs = {
+  verifiers: Array<{ verifier: HandlerRef; from: HandlerRef }>;
+  policy?: HandlerRef;
+};
+
 export class HttpServerApi implements ResourceInstance {
   constructor(
     private readonly ctx: ResourceContext,
     readonly manifest: HttpApiManifest,
     private readonly handlerRefs: WeakMap<object, HandlerRef>,
     private readonly apiName: string,
+    private readonly accessRefs: WeakMap<object, RouteAccessRefs>,
   ) {}
 
-  async init() {}
+  /** A forwarded identity is a mount's alone: whether the proxy is trusted is the server's. */
+  async init() {
+    for (const [index, route] of (this.manifest.routes ?? []).entries()) {
+      for (const entry of (route.authentication?.verifiers ?? []) as Array<{ from: ResourceInstance }>) {
+        if ((await readingOf(entry.from)).requiresTrustedProxy === true) {
+          throw new RuntimeError(
+            "ERR_HTTP_PROXY_SOURCE_ON_ROUTE",
+            `Http.Api[${this.apiName}] routes[${index}] reads a forwarded identity in its own \`authentication\`. ` +
+              `Only a mount's can: whether the proxy is trusted is the server's. Move the entry to the mount.`,
+          );
+        }
+      }
+    }
+  }
 
   /** `requestScope` is the transport's: each route dispatches on the span the
    *  transport opened for the request, which also carries its cancellation. */
@@ -107,6 +130,97 @@ export class HttpServerApi implements ResourceInstance {
     routes.forEach((route, index) => {
       this.registerRoute(app, route, index, normalizeMountPrefix(prefix), requestScope);
     });
+  }
+
+  /**
+   * What the server's access hook reads off this route: the route's own
+   * authentication and authorization, each replacing the mount's, and the
+   * route's and router's catch lists for a refusal.
+   */
+  private routeAccess(
+    route: HttpApiRouteManifest,
+    routeIndex: number,
+    requestScope: RequestScope<FastifyRequest>,
+  ): RouteAccess {
+    const refs = this.accessRefs.get(route as unknown as object);
+    const at = `/routes/${routeIndex}`;
+    const written = route.authentication as
+      | { verifiers?: Array<{ verifier: unknown; from: unknown }>; anonymous?: "allow" | "deny" }
+      | undefined;
+    const policy = route.authorization as { policy: unknown; action: unknown; resource?: unknown } | undefined;
+    const authorization: AuthorizationSetting | undefined = policy
+      ? {
+          policy: { ...refs!.policy!, instance: policy.policy as ResourceInstance, calledAt: `${at}/authorization/policy` },
+          evaluate: (request, principal) =>
+            this.ctx.moduleContext.expandWith(
+              { action: policy.action, resource: policy.resource ?? null },
+              { request: this.refusalContext(request, requestScope, principal).request },
+            ) as { action: unknown; resource: unknown },
+        }
+      : undefined;
+    return {
+      ...(written
+        ? {
+            authentication: {
+              ...(written.verifiers
+                ? { verifiers: liveEntries(written.verifiers, refs!.verifiers, `${at}/authentication/verifiers`) }
+                : {}),
+              ...(written.anonymous ? { anonymous: written.anonymous } : {}),
+            },
+          }
+        : {}),
+      ...(authorization ? { authorization } : {}),
+      render: async (error, request, reply) => {
+        if (!isInvokeError(error)) return false;
+        const trace = requestScope.forRequest(request);
+        const invokeError = {
+          code: error.code,
+          message: error.message,
+          data: error.data,
+          displayMessage: error.displayMessage
+            ? this.ctx.translations.translate(trace.lang, error.displayMessage)
+            : error.displayMessage,
+        };
+        const args = [
+          invokeError,
+          this.refusalContext(request, requestScope, trace.principal),
+          request.headers.accept?.toString(),
+          this.ctx.moduleContext,
+          this.ctx.validateSchema.bind(this.ctx),
+          fastifyReplySink(reply),
+        ] as const;
+        return (await dispatchCatches(route.catches, ...args)) || (await dispatchCatches(this.manifest.catches, ...args));
+      },
+    };
+  }
+
+  /** `request` before its body: what a route's authorization and a refusal's catch entries read. */
+  private refusalContext(
+    request: FastifyRequest,
+    requestScope: RequestScope<FastifyRequest>,
+    principal: Readonly<Record<string, unknown>> | null,
+  ) {
+    const trace = requestScope.forRequest(request);
+    return {
+      request: withConnection(
+        withLang(
+          {
+            method: request.method,
+            path: request.url,
+            host: requestHostOf(request.server, request),
+            params: requestBag(request.params),
+            query: requestBag(request.query),
+            headers: normalizeHeaders(request.headers),
+            cookies: parseCookieHeader(request.headers.cookie),
+            body: null,
+            ip: request.ip,
+            principal,
+          },
+          () => trace.lang,
+        ),
+        trace,
+      ),
+    };
   }
 
   private registerRoute(
@@ -178,13 +292,15 @@ export class HttpServerApi implements ResourceInstance {
     }
 
     const cookieStatuses = statusesSettingCookies(route);
+    const access = requestScope ? this.routeAccess(route, routeIndex, requestScope) : undefined;
     app.route({
       method: route.request.method as any,
       url: translatedPath,
       schema,
-      ...(cookieStatuses.size === 0
-        ? {}
-        : { config: { swaggerTransform: documentingSetCookie(cookieStatuses) } }),
+      config: {
+        ...(cookieStatuses.size === 0 ? {} : { swaggerTransform: documentingSetCookie(cookieStatuses) }),
+        ...(access ? { [ROUTE_ACCESS]: access } : {}),
+      } as never,
       // Replaces the server's `maxBodyBytes` for this route, larger or smaller.
       ...(route.maxBodyBytes === undefined ? {} : { bodyLimit: Number(route.maxBodyBytes) }),
       handler: async (request: FastifyRequest, reply: FastifyReply) => {
@@ -253,6 +369,7 @@ export class HttpServerApi implements ResourceInstance {
             // Canonical client address — honours X-Forwarded-For per the
             // server's `trustProxy` setting (Fastify resolves it).
             ip: request.ip,
+            principal: trace.principal,
           }, () => trace.lang), trace),
         };
         const acceptHeader = (
@@ -365,6 +482,19 @@ export async function create(resource: any, ctx: ResourceContext): Promise<HttpS
   // with a live Invocable instance. invokeResolved() needs the kind/name to
   // emit properly-scoped Invoked / InvokeRejected events.
   const handlerRefs = new WeakMap<object, HandlerRef>();
+  // Kind and name of each access-check slot, captured before injection.
+  const accessRefs = new WeakMap<object, RouteAccessRefs>();
+  for (const route of resource.routes ?? []) {
+    if (route.authentication || route.authorization) {
+      accessRefs.set(route, {
+        verifiers: (route.authentication?.verifiers ?? []).map((entry: { verifier: unknown; from: unknown }) => ({
+          verifier: ctx.ensureKindRef(entry.verifier),
+          from: ctx.ensureKindRef(entry.from),
+        })),
+        ...(route.authorization ? { policy: ctx.ensureKindRef(route.authorization.policy) } : {}),
+      });
+    }
+  }
   for (const route of resource.routes ?? []) {
     const h = route.handler;
     if (!h) continue;
@@ -377,7 +507,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<HttpS
       handlerRefs.set(route, { kind: "", name: h });
     }
   }
-  return new HttpServerApi(ctx, resource, handlerRefs, resource?.metadata?.name ?? "");
+  return new HttpServerApi(ctx, resource, handlerRefs, resource?.metadata?.name ?? "", accessRefs);
 }
 
 /** Each status a route's entries set cookies with, and whether that entry has a body. */

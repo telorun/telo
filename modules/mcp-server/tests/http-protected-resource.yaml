@@ -1,0 +1,102 @@
+kind: Telo.Application
+metadata:
+  name: McpHttpProtectedResourceTest
+  version: 1.0.0
+  description: |
+    An MCP endpoint behind a bearer verifier whose issuer is written once, on the
+    verifier. A client's first unauthenticated request is a 401 naming the
+    protected-resource metadata, the document lists the issuer as the
+    authorization server, and a valid token is then served.
+include: [../../http-server/tests/__fixtures__/authentication/keys.yaml]
+imports:
+  Mcp: ../
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  AuthBearer: ../../auth-bearer
+  Jose: ../../jose
+  Assert: ../../assert
+targets: [ !ref test ]
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: endpoint }
+serverInfo: { name: telo-test-mcp, version: 1.0.0 }
+---
+kind: Jose.Sign
+metadata: { name: issue }
+keys: !ref issuerKeys
+type: at+jwt
+issuer: https://login.test
+audience: http://127.0.0.1:8977/mcp
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8977
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8977 }
+    mounts:
+      - path: /mcp
+        mount: !ref endpoint
+        authentication:
+          verifiers:
+            - verifier:
+                kind: AuthBearer.Jwt
+                keys: !ref issuerKeys
+                issuer: https://login.test
+                algorithms: [ES256]
+                audience: !cel "[resource]"
+              from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+        protectedResource: { scopesSupported: [tools] }
+targets:
+  - !ref server
+steps:
+  - name: token
+    invoke: !ref issue
+    inputs: { subject: alice }
+  - name: first
+    invoke: !ref call
+    inputs:
+      url: /mcp
+      method: POST
+      headers: { accept: "application/json, text/event-stream" }
+      body: { jsonrpc: "2.0", id: 1, method: initialize, params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: test, version: 1.0.0 } } }
+  - name: metadata
+    invoke: !ref call
+    inputs: { url: /.well-known/oauth-protected-resource/mcp }
+  - name: authorized
+    invoke: !ref call
+    inputs:
+      url: /mcp
+      method: POST
+      headers:
+        accept: "application/json, text/event-stream"
+        authorization: !interpolate "Bearer ${{ steps.token.result.token }}"
+      body: { jsonrpc: "2.0", id: 1, method: initialize, params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: test, version: 1.0.0 } } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first:
+          status: !cel "steps.first.result.status"
+          challenge: !cel "steps.first.result.headers['www-authenticate']"
+        metadata: !cel "steps.metadata.result.body"
+        authorized: !cel "steps.authorized.result.status"
+      expected:
+        first:
+          status: 401
+          challenge: 'Bearer resource_metadata="http://127.0.0.1:8977/.well-known/oauth-protected-resource/mcp"'
+        metadata:
+          resource: http://127.0.0.1:8977/mcp
+          authorization_servers: ["https://login.test"]
+          bearer_methods_supported: [header]
+          scopes_supported: [tools]
+        authorized: 200

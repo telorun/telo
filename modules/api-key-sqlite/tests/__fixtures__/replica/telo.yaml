@@ -1,0 +1,113 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeyReplica
+  version: 1.0.0
+  description: >-
+    One replica of a key-guarded API over a shared SQLite file: `GET /api/me`
+    answers for a valid key, and the unauthenticated `/admin` routes issue and
+    revoke keys through the replica's own store. A test starts two on one file.
+imports:
+  Keys: ../../..
+  SQLite: ../../../../sqlite
+  ApiKey: ../../../../api-key
+  Http: ../../../../http-server
+ports: { http: { env: PORT, protocol: tcp, default: 9335 } }
+variables:
+  dbFile: { env: REPLICA_DB_FILE, type: string, x-telo-type: Telo.HostPath, default: ./.telo/replica.db }
+targets:
+  - !ref appSchema
+  - !ref server
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: store }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: main
+prefix: tk
+scopes: [read]
+retention: 1h
+---
+kind: ApiKey.Verifier
+metadata: { name: verifier }
+sources: [!ref store]
+---
+kind: ApiKey.Issue
+metadata: { name: issue }
+store: !ref store
+---
+kind: ApiKey.Revoke
+metadata: { name: revoke }
+store: !ref store
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /me, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { subject: !cel "request.principal.subject" }
+---
+kind: Http.Api
+metadata: { name: admin }
+routes:
+  - request:
+      path: /issue
+      method: POST
+      schema:
+        body: { type: object, required: [owner], properties: { owner: { type: string } } }
+    handler: !ref issue
+    inputs:
+      owner: { type: user, id: !cel "request.body.owner" }
+      scopes: [read]
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { key: !cel "result.key", id: !cel "result.id" }
+    catches:
+      - status: 500
+        content: { application/json: { body: { code: !cel "problem.code" } } }
+  - request:
+      path: /revoke
+      method: POST
+      schema: { body: { type: object, required: [id], properties: { id: { type: string } } } }
+    handler: !ref revoke
+    inputs: { id: !cel "request.body.id" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { id: !cel "result.id" }
+    catches:
+      - status: 500
+        content: { application/json: { body: { code: !cel "problem.code" } } }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: !cel "ports.http" }
+mounts:
+  - path: /api
+    mount: !ref api
+    authentication:
+      verifiers:
+        - verifier: !ref verifier
+          from: { kind: Http.FromHeader, header: x-api-key, scheme: ApiKey }
+  - path: /admin
+    mount: !ref admin
+    authentication: { anonymous: allow }

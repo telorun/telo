@@ -1,0 +1,26 @@
+{
+  "name": "@telorun/api-key",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "description": "Telo api-key module — the API-key contracts, the manifest-declared key source, the verifier, the key-management operations and the store interface every backend implements. Never published: the controllers ship inside the module artifact as a pkg:telo/local/js bundle, and a backend reaches the store interface through the module's exports.code specifier.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

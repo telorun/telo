@@ -136,7 +136,7 @@ invoke:
         output: { x-telo-type: Telo.Stream }
 ```
 
-A kind constraint says what a target is, never what it returns: `Telo.Executable` admits every sequence. With `outputType:`, `telo check` resolves the target's output contract the way a step's `steps.<name>.result` is typed — the target's own `outputType`, then its kind's, then the keys of its `outputs:` map — and reports `REFERENCE_OUTPUT_MISMATCH` at the slot when it definitely cannot be that shape (a closed contract without a required field, a field of another type). A target that declares no output contract gets no verdict, so the controller's own check at dispatch stays the backstop. A value that is not a schema object is `X_TELO_REF_INVALID_OUTPUT_TYPE`.
+A kind constraint says what a target is, never what it returns: `Telo.Executable` admits every sequence. With `outputType:`, `telo check` resolves the target's output contract the way a step's `steps.<name>.result` is typed — the target's own `outputType`, then its kind's, then the keys of its `outputs:` map — and reports `REFERENCE_OUTPUT_MISMATCH` at the slot when it definitely cannot be that shape (a closed contract without a required field, a field of another type). A target that declares no output contract gets no verdict, so the controller's own check at dispatch stays the backstop. A value that is not a schema object is `X_TELO_REF_INVALID_OUTPUT_TYPE`. With `outputTo: { slot: /verifier, member: presentation }` the target's output, null removed, must fit that member of the sibling slot's target's input contract (`CONTRACT_INPUTS_MISMATCH` at the slot; a misdirected one is `X_TELO_REF_INVALID_OUTPUT_TO`).
 
 #### `x-telo-scope`
 

@@ -1,0 +1,100 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeyMicroserviceAcceptsTest
+  version: 1.0.0
+  description: |
+    Calls `examples/api-key-microservice` with a token minted by the stand-in issuer,
+    whose keys the service fetches from the issuer's JWKS, and with an API key the
+    service issues itself; both reach the handler as a typed principal naming the
+    verifier that accepted them.
+variables:
+  dbFile:
+    env: API_KEY_MICROSERVICE_ACCEPTS_DB
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo/api-key-microservice-accepts.db
+imports:
+  App: ../../../modules/app
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: api }
+baseUrl: http://127.0.0.1:8601
+throwOnHttpError: false
+---
+kind: HttpClient.Client
+metadata: { name: issuerClient }
+baseUrl: http://127.0.0.1:8602
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref api
+---
+kind: HttpClient.Request
+metadata: { name: mint }
+client: !ref issuerClient
+method: POST
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: issuer }
+    source: ../issuer.yaml
+    ports: { http: 8602 }
+    secrets: { wrapKey: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef }
+  - kind: App.Instance
+    metadata: { name: service }
+    source: ../telo.yaml
+    ports: { http: 8601 }
+    variables:
+      jwksUrl: http://127.0.0.1:8602/.well-known/jwks.json
+      dbFile: !cel "variables.dbFile"
+targets:
+  - !ref issuer
+  - !ref service
+steps:
+  - name: adminToken
+    invoke: !ref mint
+    inputs:
+      url: /token
+      body: { subject: ops, audience: http://127.0.0.1:8601/admin, scope: keys:admin }
+  - name: readerToken
+    invoke: !ref mint
+    inputs:
+      url: /token
+      body: { subject: alice, audience: http://127.0.0.1:8601/api, scope: orders:read }
+  - name: withToken
+    invoke: !ref call
+    inputs:
+      url: /api/orders
+      headers: { authorization: !interpolate "Bearer ${{ steps.readerToken.result.body.token }}" }
+  - name: owner
+    value: !cel "'billing-' + replace(uuidv4(), '-', '')"
+  - name: issueKey
+    invoke: !ref call
+    inputs:
+      url: /admin/api-keys
+      method: POST
+      headers: { authorization: !interpolate "Bearer ${{ steps.adminToken.result.body.token }}" }
+      body:
+        service: !cel "steps.owner.result"
+        scopes: ["orders:read"]
+  - name: withKey
+    invoke: !ref call
+    inputs:
+      url: /api/orders
+      headers: { x-api-key: !cel "steps.issueKey.result.body.key" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        token: { status: !cel "steps.withToken.result.status", caller: !cel "steps.withToken.result.body.caller", via: !cel "steps.withToken.result.body.via" }
+        key: { status: !cel "steps.withKey.result.status", caller: !cel "steps.withKey.result.body.caller", via: !cel "steps.withKey.result.body.via" }
+      expected:
+        token: { status: 200, caller: alice, via: accessTokens }
+        key: { status: 200, caller: !cel "steps.owner.result", via: keyVerifier }

@@ -41,7 +41,8 @@ metadata:
 # 0.125.0: the chat library ships inside this artifact; an older runtime resolves
 # the published `./chat#sha256-…` to the separate chat artifact, unpinned.
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-requires: { telo: ">=0.128.0" }
+# 0.129.0: the hub's `retry:` durations, which 0.128.0 refuses (verified by execution).
+requires: { telo: ">=0.129.0" }
 imports:
   Chat:
     source: ./chat
@@ -66,7 +67,8 @@ imports:
       maxAttachmentBytes: !cel "variables.maxAttachmentBytes"
   Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
   # `Mcp` and `Run` come from where the chat library takes them, so every
-  # module in this graph has one origin.
+  # module in this graph has one origin. The hub's `retry:` needs the next
+  # release; the import sync moves this pin to it.
   Mcp: oci://ghcr.io/telorun/mcp-client@0.17.1#sha256-LxWVCjnZGCTVBvOppTCDpikWwPK6E1zzEw6c5bXtmOY
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.1#sha256-w44c87Kw1Q94mg9JKdLMlDiAZ_PEwzHyM640DRgLqLo
@@ -239,6 +241,8 @@ kind: Mcp.HttpClient
 metadata: { name: hub }
 url: https://telo.sh/mcp
 clientInfo: { name: authoring-agent, version: 0.0.0 }
+# The hub's tools only read, so a dropped request is safe to resend.
+retry: { attempts: 3, initialDelay: 250ms, maxDelay: 4s, jitter: full }
 ---
 # Retention hourly: every conversation idle for `RETENTION_DAYS` is deleted.
 kind: Scheduler.Interval

@@ -84,7 +84,7 @@ kind: RecordStream.Journal
 metadata: { name: journal }
 store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
 markerRetention: 1h
-writerTimeout: 600ms
+writerTimeout: 3s
 ---
 kind: Chat.Conversation
 metadata: { name: chat }
@@ -203,7 +203,7 @@ steps:
       - { name: blockedOutcome, value: admitted }
     catch:
       - { name: blockedOutcome, value: !cel "error.code" }
-  - { name: stale, invoke: { kind: Timer.Delay }, inputs: { duration: 900ms } }
+  - { name: stale, invoke: { kind: Timer.Delay }, inputs: { duration: 3300ms } }
   - name: after
     invoke: !ref startTurn
     inputs: { conversation: !cel "steps.first.result.conversation", message: after, attachments: [] }

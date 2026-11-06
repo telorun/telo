@@ -43,8 +43,6 @@ texts:
   - { text: Your browser did not ask for Polish., translation: Tarayıcınız Lehçe istemedi. }
   - { text: The Acme brand is on., translation: Acme markası etkin. }
   - { text: "A text an expression computes is shown as computed, never translated.", translation: "Bir ifadenin hesapladığı metin hesaplandığı gibi gösterilir, asla çevrilmez." }
-  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "Bu isteğin geçersiz kıldığı bir bağlantının yerini bir hata düğümü alır ve sayfanın geri kalanı sunulur." }
-  - { text: Leaves the application, translation: Uygulamadan çıkar }
 
   # The overview.
   - { text: Every node type, translation: Her düğüm türü }

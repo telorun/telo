@@ -1,0 +1,112 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeyMicroserviceScopeTest
+  version: 1.0.0
+  description: |
+    A caller authenticated by a token or an API key that lacks the scope a route
+    needs is refused 403 with an `insufficient_scope` challenge naming that scope.
+variables:
+  dbFile:
+    env: API_KEY_MICROSERVICE_SCOPE_DB
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo/api-key-microservice-scope.db
+imports:
+  App: ../../../modules/app
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: api }
+baseUrl: http://127.0.0.1:8605
+throwOnHttpError: false
+---
+kind: HttpClient.Client
+metadata: { name: issuerClient }
+baseUrl: http://127.0.0.1:8606
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref api
+---
+kind: HttpClient.Request
+metadata: { name: mint }
+client: !ref issuerClient
+method: POST
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: issuer }
+    source: ../issuer.yaml
+    ports: { http: 8606 }
+    secrets: { wrapKey: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef }
+  - kind: App.Instance
+    metadata: { name: service }
+    source: ../telo.yaml
+    ports: { http: 8605 }
+    variables:
+      jwksUrl: http://127.0.0.1:8606/.well-known/jwks.json
+      dbFile: !cel "variables.dbFile"
+targets:
+  - !ref issuer
+  - !ref service
+steps:
+  - name: adminToken
+    invoke: !ref mint
+    inputs:
+      url: /token
+      body: { subject: ops, audience: http://127.0.0.1:8605/admin, scope: keys:admin }
+  - name: readerToken
+    invoke: !ref mint
+    inputs:
+      url: /token
+      body: { subject: alice, audience: http://127.0.0.1:8605/api, scope: orders:read }
+  - name: weakAdminToken
+    invoke: !ref mint
+    inputs:
+      url: /token
+      body: { subject: alice, audience: http://127.0.0.1:8605/admin, scope: orders:read }
+  - name: tokenWrite
+    invoke: !ref call
+    inputs:
+      url: /api/orders
+      method: POST
+      headers: { authorization: !interpolate "Bearer ${{ steps.readerToken.result.body.token }}" }
+  - name: issueKey
+    invoke: !ref call
+    inputs:
+      url: /admin/api-keys
+      method: POST
+      headers: { authorization: !interpolate "Bearer ${{ steps.adminToken.result.body.token }}" }
+      body:
+        service: !cel "'billing-' + replace(uuidv4(), '-', '')"
+        scopes: ["orders:read"]
+  - name: keyWrite
+    invoke: !ref call
+    inputs:
+      url: /api/orders
+      method: POST
+      headers: { x-api-key: !cel "steps.issueKey.result.body.key" }
+  - name: adminWithoutScope
+    invoke: !ref call
+    inputs:
+      url: /admin/api-keys
+      method: POST
+      headers: { authorization: !interpolate "Bearer ${{ steps.weakAdminToken.result.body.token }}" }
+      body: { service: nobody, scopes: [] }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        tokenWrite: { status: !cel "steps.tokenWrite.result.status", challenge: !cel "steps.tokenWrite.result.headers['www-authenticate']" }
+        keyWrite: { status: !cel "steps.keyWrite.result.status", challenge: !cel "steps.keyWrite.result.headers['www-authenticate']" }
+        adminWithoutScope: { status: !cel "steps.adminWithoutScope.result.status", challenge: !cel "steps.adminWithoutScope.result.headers['www-authenticate']" }
+      expected:
+        tokenWrite: { status: 403, challenge: 'Bearer error="insufficient_scope", scope="orders:write"' }
+        keyWrite: { status: 403, challenge: 'ApiKey error="insufficient_scope", scope="orders:write"' }
+        adminWithoutScope: { status: 403, challenge: 'Bearer error="insufficient_scope", scope="keys:admin"' }

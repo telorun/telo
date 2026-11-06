@@ -8,9 +8,8 @@ const BUN_SQLITE: string = "bun:sqlite";
 export async function openDatabase(file: string): Promise<SqliteDb> {
   const { Database } = (await import(BUN_SQLITE)) as typeof import("bun:sqlite");
   const db = new Database(file);
-  // See the Node driver: wait for a lock instead of failing on it, and say so
-  // here because the two drivers' defaults differ.
-  db.exec("PRAGMA busy_timeout = 5000");
+  // Zero, as in the Node driver, and stated because the two drivers' defaults differ.
+  db.exec("PRAGMA busy_timeout = 0");
   // Off by default under bun:sqlite; see the Node driver.
   db.exec("PRAGMA foreign_keys = ON");
 
@@ -43,6 +42,9 @@ export async function openDatabase(file: string): Promise<SqliteDb> {
     },
     exec(sql: string) {
       db.exec(sql);
+    },
+    busyTimeout(ms: number) {
+      db.exec(`PRAGMA busy_timeout = ${ms}`);
     },
     close() {
       db.close();

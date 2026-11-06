@@ -27,6 +27,7 @@ import { resolveSchemaPointer, propertySchemas } from "./manifest-navigation.js"
 import { CONTEXT_EVAL, contextEvalValueProblem } from "./context-eval.js";
 import { CONTEXT_FROM_REFERRER, fromReferrerProblem } from "./context-from-referrer.js";
 import { ITEM_FILLS, itemFillsValueProblem } from "./context-fill-cycle.js";
+import { NULLABLE_WHEN, nullableWhenTarget, nullableWhenValueProblem, readNullableWhen } from "./context-nullable-when.js";
 import { ELEMENT_FROM_ITEM, readRelativePointer, relativePointerRefusal, type SchemaLevel } from "./element-from-item.js";
 import { pointerSegments, renderValuePath, type ValuePath } from "./text-slot.js";
 import { dispatchReads } from "./invocation-contract.js";
@@ -44,6 +45,7 @@ export interface AnnotationProblem {
     | "CONTEXT_EVAL_MISPLACED"
     | "ELEMENT_FROM_ITEM_INVALID"
     | "CONTEXT_FROM_REFERRER_INVALID"
+    | "CONTEXT_NULLABLE_WHEN_INVALID"
     | "CONTEXT_ITEM_FILLS_INVALID";
   readonly warning?: true;
   /** Where the annotation is written, from the document root. */
@@ -77,12 +79,15 @@ export function annotationDeclarationProblems(
   const seen = new Set<object>();
   /** `levels` is the instance-level walk from the document root to `node`, or
    *  undefined where the walk cannot tell (a `$defs` entry, a context schema). */
+  /** `binding` is the binding `node` is, or sits beneath through `properties`:
+   *  the instance-level walk to the field its region is declared on. */
   const visit = (
     node: unknown,
     path: ValuePath,
     role: Role,
     underAccessor: boolean,
     levels: readonly SchemaLevel[] | undefined,
+    binding?: { field: readonly SchemaLevel[] | undefined },
   ): void => {
     if (!isSchema(node) || seen.has(node)) return;
     seen.add(node);
@@ -136,8 +141,47 @@ export function annotationDeclarationProblems(
 
     if (CONTEXT_FROM_REFERRER in node) {
       const where = renderValuePath([...path, CONTEXT_FROM_REFERRER]);
-      const problem = fromReferrerProblem(node, where, role.kind === "binding");
+      const problem = fromReferrerProblem(node, where, binding !== undefined);
       if (problem) problems.push({ code: problem.code, path: where, message: problem.message });
+    }
+
+    if (NULLABLE_WHEN in node) {
+      const where = renderValuePath([...path, NULLABLE_WHEN]);
+      const problem = nullableWhenValueProblem(node[NULLABLE_WHEN]);
+      const rule = readNullableWhen(node);
+      if (problem !== undefined) {
+        problems.push({
+          code: "SCHEMA_VIOLATION",
+          path: where,
+          message: `'${where}' says where the node may be null, and ${problem}.`,
+        });
+      } else if (!binding) {
+        problems.push({
+          code: "CONTEXT_NULLABLE_WHEN_INVALID",
+          warning: true,
+          path: where,
+          message: `'${where}' is read only on a binding — a property of an 'x-telo-context' — or a member beneath one, so here it marks nothing.`,
+        });
+      } else if (rule && binding.field) {
+        const found = nullableWhenTarget(binding.field, rule, root, shapes, isResource);
+        const refusal =
+          "refusal" in found
+            ? found.refusal
+            : rule.equals
+                .map((value) => {
+                  const reason = constRefusal(value, found.target);
+                  return reason ? `${describe(value)} can never be there: ${reason}` : undefined;
+                })
+                .find((reason) => reason !== undefined);
+        if (refusal) {
+          problems.push({
+            code: "CONTEXT_NULLABLE_WHEN_INVALID",
+            warning: true,
+            path: where,
+            message: `'${where}' at '${rule.pointer}' never decides anything: ${refusal}.`,
+          });
+        }
+      }
     }
 
     if (ITEM_FILLS in node) {
@@ -199,6 +243,7 @@ export function annotationDeclarationProblems(
           map === "properties" ? { kind: "property", enclosing: node } : other,
           accessorHere,
           deeper(map === "properties" ? key : "*", child),
+          map === "properties" ? binding : undefined,
         );
       }
     }
@@ -224,7 +269,7 @@ export function annotationDeclarationProblems(
       // Its bindings first, so the walk of the context below meets each as seen.
       if (isSchema(context.properties)) {
         for (const [key, binding] of Object.entries(context.properties as Schema)) {
-          visit(binding, [...path, "x-telo-context", "properties", key], { kind: "binding", field: here }, false, undefined);
+          visit(binding, [...path, "x-telo-context", "properties", key], { kind: "binding", field: here }, false, undefined, { field: here });
         }
       }
       visit(context, [...path, "x-telo-context"], other, false, undefined);

@@ -99,6 +99,11 @@ const table = definition("Table", {
       message: "previews an action whose list is not read from the row.",
     },
     {
+      condition: cel("!has(self.rowActions) || self.rowActions.all(r, !has(r.note) || r.note != '')"),
+      code: "ROW_NOTE_EMPTY",
+      message: "offers a row action with an empty note.",
+    },
+    {
       resolve: ["/rowActions"],
       in: "/rowActions",
       condition: cel("!has(this.action.lists) || size(this.action.lists) == 0"),
@@ -160,7 +165,21 @@ describe("a rule reads an accessor field as its binding", () => {
     ]);
   });
 
-  it("still skips for an evaluated expression beside the accessor, naming its path", () => {
+  it("no longer skips for an evaluated expression beside the accessor that no condition reads", () => {
+    expect(
+      ruleReports(
+        plain,
+        tableOf({
+          rowActions: [{ action: ref("plain"), inputs: { id: cel("row.id") } }].map((entry) => ({
+            ...entry,
+            note: cel("variables.note"),
+          })),
+        }),
+      ).filter((report) => report.rule !== "ROW_NOTE_EMPTY"),
+    ).toEqual([]);
+  });
+
+  it("skips a rule that reads the evaluated expression, naming its path", () => {
     expect(
       ruleReports(
         plain,
@@ -169,19 +188,13 @@ describe("a rule reads an accessor field as its binding", () => {
             { action: ref("plain"), inputs: { id: cel("row.id") }, note: cel("variables.note") },
           ],
         }),
-      ),
+      ).filter((report) => report.rule === "ROW_NOTE_EMPTY"),
     ).toEqual([
       {
-        code: "REFERRER_RULE_SKIPPED",
-        rule: "INPUT_NAMES_ID",
-        path: "rowActions[0].action",
-        dynamicAt: "rowActions[0].note",
-      },
-      {
         code: "RESOURCE_RULE_SKIPPED",
-        rule: "ROW_ACTION_DRAWS_LISTS",
-        path: "rowActions[0].note",
-        dynamicAt: "rowActions[0].note",
+        rule: "ROW_NOTE_EMPTY",
+        path: undefined,
+        dynamicAt: "self.rowActions[0].note",
       },
     ]);
   });

@@ -1,0 +1,28 @@
+# Static ES256 test keys. Real keys come from `secrets:`.
+# The issuer's signing key.
+kind: Jose.KeySet
+metadata: { name: issuerKeys }
+algorithm: ES256
+keys:
+  - { kty: EC, x: J0k_d62PT7Wrl6emr3vrA1nHnWablWaHx2SIXDPK148, y: I44mAUi1zEMRdhTxiNNckPyaLTWoCb5_hyLFno2Dl7I, crv: P-256, d: 1Lj0H3tsR83jEeDaIbYTW3LrXjpOBxw-Uit_-j0Ai9k, kid: es1 }
+---
+# A different key under the issuer's key id: its tokens carry a known kid and fail the signature.
+kind: Jose.KeySet
+metadata: { name: rogueKeys }
+algorithm: ES256
+keys:
+  - { kty: EC, x: elMiKQKv2v1EZNCLFlSXVhgqx9Oh8ktFsllbcb3Kl0w, y: oSDb1DNQOtCDMduKZ8ynLsxTjLcuuVC52CMXdxMT1Wk, crv: P-256, d: 9MMAW0x9cnK9MSQ6O6gx8mqITi6uwq0RwgBzXBTjz-g, kid: es1 }
+---
+# The client's DPoP key. Without a `kid` its id is its RFC 7638 thumbprint, which is the `cnf.jkt` of a token bound to it.
+kind: Jose.KeySet
+metadata: { name: clientKeys }
+algorithm: ES256
+keys:
+  - { kty: EC, x: Rf-D_yHTukbnyKQqJB1vscgduN3lRfWS9VF81sk42Ls, y: fPsxoc9c2bUjQramfFretVdbQbygP5191rLY-mLbqfs, crv: P-256, d: nuSqoXT32YFn4dZ-zMU4MGowavEi4q_KK-jhrLsXmG8 }
+---
+# Another client key, for a proof made by a key the token is not bound to.
+kind: Jose.KeySet
+metadata: { name: otherClientKeys }
+algorithm: ES256
+keys:
+  - { kty: EC, x: elMiKQKv2v1EZNCLFlSXVhgqx9Oh8ktFsllbcb3Kl0w, y: oSDb1DNQOtCDMduKZ8ynLsxTjLcuuVC52CMXdxMT1Wk, crv: P-256, d: 9MMAW0x9cnK9MSQ6O6gx8mqITi6uwq0RwgBzXBTjz-g }

@@ -18,6 +18,7 @@ import { caughtMemberReads } from "./caught-member.js";
 import { bindingsFromReads } from "./cel-bindings.js";
 import { itemFillsReads } from "./context-fill-cycle.js";
 import { fromReferrerReads } from "./context-from-referrer.js";
+import { nullableWhenReads } from "./context-nullable-when.js";
 import { elementFromItemReads } from "./element-from-item.js";
 import { pathParamsForReads } from "./path-params-slot.js";
 import type { ReadReporter } from "./read-place.js";
@@ -38,6 +39,7 @@ import {
   contextRefFromReads,
 } from "./validate-cel-context.js";
 import { matchForReads } from "./validate-match-for.js";
+import { raisesReads } from "./raises-slot.js";
 import { schemaFromReads, valueSchemaFromReads } from "./value-schema-slot.js";
 import type { ANNOTATION_KEYWORDS } from "./value-type-keyword.js";
 import { providesZoneReads, requiresZoneReads } from "./zone-slot.js";
@@ -68,6 +70,7 @@ export const ANNOTATION_READS: AnnotationReadTable = {
   "x-telo-context-from-ref-kind": contextFromRefKindReads,
   "x-telo-context-from-referrer": fromReferrerReads,
   "x-telo-context-from-root": contextFromRootReads,
+  "x-telo-context-nullable-when": nullableWhenReads,
   "x-telo-context-parameters-from": contextParametersFromReads,
   "x-telo-context-ref-from": contextRefFromReads,
   "x-telo-error-context": READS_NOTHING,
@@ -77,6 +80,7 @@ export const ANNOTATION_READS: AnnotationReadTable = {
   "x-telo-outcome-list": outcomeListReads,
   "x-telo-path-params-for": pathParamsForReads,
   "x-telo-provides-zone": providesZoneReads,
+  "x-telo-raises": raisesReads,
   "x-telo-ref": refSlotReads,
   "x-telo-requires-zone": requiresZoneReads,
   // Judged by the `resourceRules` relation group, which declares what its rules read.

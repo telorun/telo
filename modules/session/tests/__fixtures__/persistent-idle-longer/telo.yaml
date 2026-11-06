@@ -1,0 +1,16 @@
+# The remembered-session pair has its idle timeout past its absolute lifetime.
+kind: Telo.Library
+metadata: { name: PersistentIdleLonger }
+imports: { Session: ../../.., KvStoreMemory: ../../../../kv-store-memory }
+exports: { resources: [sessions] }
+---
+kind: KvStoreMemory.Store
+metadata: { name: store }
+---
+kind: Session.Sessions
+metadata: { name: sessions }
+store: !ref store
+name: web
+idleTimeout: 1800s
+absoluteLifetime: 43200s
+persistent: { idleTimeout: 7200s, absoluteLifetime: 3600s }

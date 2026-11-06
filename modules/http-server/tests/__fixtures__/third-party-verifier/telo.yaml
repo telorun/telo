@@ -1,0 +1,24 @@
+# A verifier of another module: it extends `Auth.Verifier` and declares `issuer` from
+# `Auth.Issuer`, which is all a server needs to advertise it.
+kind: Telo.Library
+metadata:
+  name: ThirdPartyVerifier
+  version: 1.0.0
+  description: Test fixture of a verifier kind that declares an issuer, owned by a module the server and the endpoint know nothing of.
+imports: { Auth: ../../../../auth }
+exports: { kinds: [Verifier] }
+---
+kind: Telo.Definition
+metadata: { name: Verifier, description: "Accepts every token, and trusts one issuer." }
+capability: Telo.Invocable
+extends: Auth.Verifier
+controllers: [pkg:telo/local/js?path=./nodejs/third-party-verifier.mjs&local_path=./nodejs/src/index.ts#VerifierController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [issuer]
+  properties:
+    issuer:
+      title: Issuer
+      description: The authorization server this verifier trusts.
+      $ref: "telo://Auth/Issuer"

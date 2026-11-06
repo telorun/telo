@@ -1,0 +1,69 @@
+kind: Telo.Library
+metadata:
+  name: Authz
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    Authorization policies for requests: decide whether a caller may perform an
+    action on a resource by evaluating an ordered list of rules written as typed
+    expressions over the caller, the action, the resource and the request
+    context. The first matching rule decides, anything unmatched is denied, and a
+    denial can name the scopes the caller lacks.
+imports: { Auth: ../auth }
+exports: { kinds: [CelPolicy] }
+---
+kind: Telo.Definition
+metadata:
+  name: CelPolicy
+  description: >-
+    Decides an action with ordered rules, each a condition over the caller,
+    action, resource and context, an allow or deny verdict, an optional reason
+    and the scopes a denied caller would need. The first rule whose condition
+    holds decides; when none does the action is denied. The caller is null for an
+    anonymous request, so reading it needs a guard.
+capability: Telo.Invocable
+extends: Auth.Policy
+controllers: [pkg:telo/local/js?path=./nodejs/authz.mjs&local_path=./nodejs/src/index.ts#CelPolicyController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [rules]
+  properties:
+    rules:
+      title: Rules
+      description: >-
+        Tried in order; the first whose `when` is true decides. Each `when` sees
+        `principal` (null when anonymous), `action`, `resource` and `context`.
+      type: array
+      minItems: 1
+      x-telo-context:
+        type: object
+        properties:
+          principal:
+            anyOf: [{ $ref: "telo://Auth/Principal" }, { type: "null" }]
+          action: { type: string }
+          resource: {}
+          context: { type: object }
+      items:
+        type: object
+        additionalProperties: false
+        required: [when]
+        properties:
+          when:
+            title: When
+            description: A boolean expression; the rule applies when it is true.
+            type: boolean
+            x-telo-eval: runtime
+          allow:
+            title: Allow
+            description: Whether a matching rule allows the action or denies it; allows when omitted.
+            type: boolean
+            default: true
+          reason: { title: Reason, description: "Why, for logs and the denial's explanation.", type: string }
+          requiredScopes:
+            title: Required scopes
+            description: The scopes a caller would need for this rule to allow; passed through on a denial.
+            type: array
+            items: { type: string }

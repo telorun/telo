@@ -19,20 +19,20 @@ kind: SearXNG.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18844" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18844" }
 ---
 kind: SearXNG.WebSearchEngine
 metadata: { name: throwingEngine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18844", throwOnHttpError: true }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18844", throwOnHttpError: true }
 ---
 # Nothing listens on this port.
 kind: SearXNG.WebSearchEngine
 metadata: { name: unreachableEngine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18845", timeout: 2000 }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18845", timeout: 2000 }
 ---
 kind: Run.Value
 metadata: { name: noop }

@@ -43,6 +43,13 @@ interface SessionRecord {
   dispatchContexts: Map<RequestId, InvokeContext>;
 }
 
+/** What the server says of the authentication in front of a mounted endpoint. */
+interface MountAccess {
+  readonly deniesAnonymous: boolean;
+  readonly protectedResource: boolean;
+  readonly issuers: readonly string[];
+}
+
 export async function register(_ctx: ControllerContext): Promise<void> {}
 
 export class McpHttpEndpoint {
@@ -75,7 +82,9 @@ export class McpHttpEndpoint {
     app: FastifyInstance,
     prefix: string,
     requestScope: RequestScope<FastifyRequest> | undefined,
+    access?: MountAccess,
   ) {
+    this.requireProtectedResource(access);
     const handler = async (request: FastifyRequest, reply: FastifyReply) => {
       if (!requestScope) {
         // Dispatching without one would root each tool call in a trace of its
@@ -104,6 +113,26 @@ export class McpHttpEndpoint {
     app.addHook("onClose", async () => {
       await this.closeAllSessions();
     });
+  }
+
+  /** A client finds the authorization server through the resource's metadata, so a protected endpoint needs it. */
+  private requireProtectedResource(access: MountAccess | undefined): void {
+    if (!access?.deniesAnonymous) return;
+    const label = `${this.resource.kind}[${this.resource.metadata.name}]`;
+    if (!access.protectedResource) {
+      throw new RuntimeError(
+        "ERR_MCP_PROTECTED_RESOURCE_MISSING",
+        `${label} is mounted behind authentication that denies anonymous callers, without \`protectedResource:\` ` +
+          `on the mount, so an MCP client cannot discover the authorization server. Declare \`protectedResource:\` on the mount.`,
+      );
+    }
+    if (access.issuers.length === 0) {
+      throw new RuntimeError(
+        "ERR_MCP_PROTECTED_RESOURCE_MISSING",
+        `${label} is mounted behind authentication whose verifiers publish no issuer, so its protected-resource ` +
+          `metadata names no authorization server for an MCP client to use. Use a verifier that trusts an issuer.`,
+      );
+    }
   }
 
   private async handleRequest(

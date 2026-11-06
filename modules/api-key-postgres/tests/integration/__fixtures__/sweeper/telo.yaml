@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeySweeper
+  version: 1.0.0
+  description: >-
+    One process of the concurrent-sweep test: a store named `main` with a
+    one-second retention over a shared table, called once after a pause and
+    kept alive long enough for its sweep to run several passes.
+imports:
+  Keys: ../../../..
+  ApiKey: ../../../../../api-key
+  Postgres: ../../../../../postgres
+  Timer: ../../../../../timer
+variables:
+  dbHost: { env: DB_HOST, type: string }
+  dbPort: { env: DB_PORT, type: integer }
+targets:
+  - !ref appSchema
+  - { name: pause, invoke: !ref pause, inputs: { duration: 1s } }
+  - { name: firstCall, invoke: !ref list, inputs: { owner: { type: user, id: nobody } } }
+  - { name: alive, invoke: !ref pause, inputs: { duration: 4s } }
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: postgres
+      password: postgres
+      path: /postgres
+      query: { options: "-c search_path=public" }
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Keys.Store
+metadata: { name: store }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: main
+prefix: tk
+scopes: [read]
+retention: 1s
+---
+kind: ApiKey.List
+metadata: { name: list }
+store: !ref store
+---
+kind: Timer.Delay
+metadata: { name: pause }

@@ -18,7 +18,7 @@ kind: Tavily.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18860" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18860" }
 ---
 # More results than Tavily's maximum exist for `deep`; the mock serves as many as
 # `max_results` asks for.

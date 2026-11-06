@@ -1,0 +1,16 @@
+# An idle timeout longer than the absolute lifetime: refused by `telo check` at
+# the resource, and by the controller when the resource is created.
+kind: Telo.Library
+metadata: { name: IdleLonger }
+imports: { Session: ../../.., KvStoreMemory: ../../../../kv-store-memory }
+exports: { resources: [sessions] }
+---
+kind: KvStoreMemory.Store
+metadata: { name: store }
+---
+kind: Session.Sessions
+metadata: { name: sessions }
+store: !ref store
+name: web
+idleTimeout: 7200s
+absoluteLifetime: 3600s

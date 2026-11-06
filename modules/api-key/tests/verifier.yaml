@@ -1,0 +1,120 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeyVerifierTest
+  version: 1.0.0
+  description: |
+    `ApiKey.Verifier` over declared keys on an Http.Server mount: a key from
+    either of two sources, told apart by prefix, passes with its owner, scopes
+    and key id as `request.principal`; a key with one checksum character
+    changed, an unknown key and an expired one are each a 401.
+imports:
+  ApiKey: ../
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Assert: ../../assert
+secrets:
+  aliceDigest: { env: API_KEY_TEST_ALICE_DIGEST, type: string, default: WVcUd8T3Sn3cezCILhJsrGfWoKvVMHMtViI8qtcidak }
+  expiredDigest: { env: API_KEY_TEST_EXPIRED_DIGEST, type: string, default: FHg16LDLiasoGXBZ2Wh2GPlDwBOrYeMVLDjStSx9tPk }
+  acmeDigest: { env: API_KEY_TEST_ACME_DIGEST, type: string, default: dqtBT2i0yemAQ82iuoLAU8Lt2KXiMMBRaVhLOhGkoCg }
+targets:
+  - !ref test
+---
+kind: ApiKey.DeclaredKeys
+metadata: { name: userKeys }
+prefix: tk
+scopes: [read, write]
+keys:
+  - id: apk_01tRy6czI6jAOLpZvq3hw1
+    digest: !cel "secrets.aliceDigest"
+    owner: { type: user, id: alice }
+    scopes: [read]
+  - id: apk_03mtwDFyaDSKmhf9rg7Ps2
+    digest: !cel "secrets.expiredDigest"
+    owner: { type: user, id: alice }
+    scopes: [read]
+    expiresAt: "2020-01-01T00:00:00Z"
+---
+kind: ApiKey.DeclaredKeys
+metadata: { name: orgKeys }
+prefix: ck
+scopes: [read, write]
+keys:
+  - id: apk_05gLuJsxsKBVB3UjnWB7o3
+    digest: !cel "secrets.acmeDigest"
+    owner: { type: organization, id: acme }
+    scopes: [read, write]
+---
+kind: ApiKey.Verifier
+metadata: { name: keys }
+sources: [!ref userKeys, !ref orgKeys]
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /me, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              subject: !cel "request.principal.subject"
+              kind: !cel "request.principal.kind"
+              org: !cel "request.principal.org"
+              scopes: !cel "request.principal.scopes"
+              apiKeyId: !cel "request.principal.claims.apiKeyId"
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8994
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8994 }
+    mounts:
+      - path: /api
+        mount: !ref api
+        authentication:
+          verifiers:
+            - verifier: !ref keys
+              from: { kind: Http.FromHeader, header: x-api-key, scheme: ApiKey }
+targets:
+  - !ref server
+steps:
+  - name: user
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: tk_01tRy6czI6jAOLpZvq3hw1O2jeAKIulGmOX1lIdXvdbIKoGvgW4HZsAmjZsDWVaUf1EQbkq } }
+  - name: organization
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: ck_05gLuJsxsKBVB3UjnWB7o3OWFrEpOoWFGondr9BTgoovN404o6v9wgM32tc6QOqYx3CMMer } }
+  - name: tampered
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: tk_01tRy6czI6jAOLpZvq3hw1O2jeAKIulGmOX1lIdXvdbIKoGvgW4HZsAmjZsDWVaUf1EQbk0 } }
+  - name: unknown
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: tk_07ZnsQVxAQufZPKJjMEpk4Ol0xm4wlOjW1vwu4SRZPQjtBreMuLb85RgCYU2sLTb63d9FB3 } }
+  - name: expired
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: tk_03mtwDFyaDSKmhf9rg7Ps2OHUkhZqrdl1bfKoDuVoED6qw8VFJUilHGPtEk9ySDWo1shWam } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        user: !cel "steps.user.result.body"
+        organization: !cel "steps.organization.result.body"
+        tampered: !cel "steps.tampered.result.status"
+        unknown: !cel "steps.unknown.result.status"
+        expired: !cel "steps.expired.result.status"
+      expected:
+        user: { subject: alice, kind: user, org: null, scopes: [read], apiKeyId: apk_01tRy6czI6jAOLpZvq3hw1 }
+        organization: { subject: acme, kind: service, org: acme, scopes: [read, write], apiKeyId: apk_05gLuJsxsKBVB3UjnWB7o3 }
+        tampered: 401
+        unknown: 401
+        expired: 401

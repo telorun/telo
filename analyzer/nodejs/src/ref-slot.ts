@@ -23,6 +23,7 @@
  *     use: call
  *     inputs: /inputs
  *     outputType: { … }                         # optional: what the target must return
+ *     outputTo: { slot: /verifier, member: x }  # optional: where the target's output goes
  *     observes: [version, features]             # optional: need constraints it reports
  */
 
@@ -132,6 +133,12 @@ export interface RefSlot {
    *  consumes. Same vocabulary as a kind-schema node (`x-telo-type`, named
    *  shapes). Absent: the slot asks nothing of the result. */
   outputType?: Record<string, any>;
+  /** Where the declaring resource hands this target's output: the member
+   *  `member` of the input contract of the target at the sibling slot `slot`
+   *  (a JSON Pointer with {@link RefUseCases.by}'s anchoring). The output, null
+   *  removed — null meaning "nothing" — must fit that member. Absent: the
+   *  output feeds nothing the analyzer checks. */
+  outputTo?: RefOutputTo;
   /** `x-telo-inline: true` on the slot or any `anyOf` branch — accepts an inline
    *  `{kind, ...config}` definition, not only a `!ref`. */
   inline: boolean;
@@ -153,6 +160,22 @@ export interface RefSlot {
    *  compares them with the outermost need. Absent: the slot observes nothing.
    *  Only recognised tokens are read; `observing-slot.ts` reports the rest. */
   observes?: NeedConstraint[];
+}
+
+/** See {@link RefSlot.outputTo}. */
+export interface RefOutputTo {
+  readonly slot: string;
+  readonly member: string;
+}
+
+/** The `outputTo` an annotation declares, or undefined for anything else —
+ *  which `validate-ref-slots.ts` reports. */
+export function readOutputTo(value: unknown): RefOutputTo | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const { slot, member } = value as Record<string, unknown>;
+  if (typeof slot !== "string" || !/^(\/([^/~]|~[01])+)+$/.test(slot)) return undefined;
+  if (typeof member !== "string" || member.length === 0) return undefined;
+  return { slot, member };
 }
 
 /** A constraint a need may state and a reference slot may observe. */
@@ -289,6 +312,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   let inputs: string | undefined;
   let throwsThrough = false;
   let outputType: Record<string, any> | undefined;
+  let outputTo: RefOutputTo | undefined;
   const observes = new Set<NeedConstraint>();
 
   for (const carrier of nodes) {
@@ -303,6 +327,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
     if (typeof obj.inputs === "string") inputs ??= obj.inputs;
     if (obj.throwsThrough === true) throwsThrough = true;
     if (isSchemaObject(obj.outputType)) outputType ??= obj.outputType;
+    outputTo ??= readOutputTo(obj.outputTo);
     if (Array.isArray(obj.observes)) {
       for (const token of obj.observes) if (isNeedConstraint(token)) observes.add(token);
     }
@@ -318,6 +343,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   if (inputs !== undefined) slot.inputs = inputs;
   if (throwsThrough) slot.throwsThrough = true;
   if (outputType) slot.outputType = outputType;
+  if (outputTo) slot.outputTo = outputTo;
   if (observes.size > 0) slot.observes = NEED_CONSTRAINTS.filter((c) => observes.has(c));
   return slot;
 }
@@ -350,6 +376,7 @@ export function refSlotAnnotation(slot: RefSlot): Record<string, unknown> {
   if (slot.inputs !== undefined) annotation.inputs = slot.inputs;
   if (slot.throwsThrough) annotation.throwsThrough = true;
   if (slot.outputType) annotation.outputType = slot.outputType;
+  if (slot.outputTo) annotation.outputTo = { ...slot.outputTo };
   if (slot.observes) annotation.observes = [...slot.observes];
   return annotation;
 }
@@ -386,8 +413,9 @@ export function rewriteRefSlotKinds(
 }
 
 /** What `x-telo-ref` reads: the reference at the slot, its target held as its
- *  identity, the call's argument map its `inputs` pointer names, and the
- *  sibling a case map's `by` selects on, both from the enclosing object. */
+ *  identity, the call's argument map its `inputs` pointer names, the sibling a
+ *  case map's `by` selects on, and the sibling slot `outputTo` feeds, all from
+ *  the enclosing object. */
 export const refSlotReads: ReadReporter = ({ value, at }) => {
   const out: ReadPlace[] = [{ kind: "reference", keys: at, transitive: false, reads: READS_IDENTITY }];
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -395,6 +423,10 @@ export const refSlotReads: ReadReporter = ({ value, at }) => {
     if (typeof inputs === "string") out.push({ kind: "value", keys: placeAt(enclosingKeys(at), inputs) });
     const by = (use as { by?: unknown } | undefined)?.by;
     if (typeof by === "string") out.push({ kind: "value", keys: placeAt(enclosingKeys(at), by) });
+    const outputTo = readOutputTo((value as { outputTo?: unknown }).outputTo);
+    if (outputTo) {
+      out.push({ kind: "reference", keys: placeAt(enclosingKeys(at), outputTo.slot), transitive: false, reads: READS_IDENTITY });
+    }
   }
   return out;
 };

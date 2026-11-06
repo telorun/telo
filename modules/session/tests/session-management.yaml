@@ -1,0 +1,165 @@
+kind: Telo.Application
+metadata:
+  name: SessionManagementTest
+  version: 1.0.0
+  description: |
+    Ending every session of a user refuses every copy of their cookies at once
+    and leaves other users alone; `except` keeps the named session. Rotating
+    replaces a session's token. Past `maxPerSubject` the oldest session is
+    ended and reported, and the user's sessions are listed oldest first.
+include: [./__fixtures__/app.yaml]
+imports:
+  Session: ../
+  Http: ../../http-server
+  HttpDispatch: ../../http-dispatch
+  KvStoreMemory: ../../kv-store-memory
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:9342
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9342 }
+    mounts:
+      - path: /entry
+        mount: !ref entry
+        authentication: { anonymous: allow }
+      - path: /app
+        mount: !ref app
+        authentication:
+          verifiers:
+            - verifier: !ref verifier
+              from: { kind: Http.FromCookie, cookie: !ref sessionCookie, scheme: Session }
+targets:
+  - !ref server
+steps:
+  - name: carolA
+    invoke: !ref call
+    inputs: { url: "/entry/login?user=carol", method: POST }
+  - name: carolACookie
+    value: !cel "steps.carolA.result.headers['set-cookie'].split(';')[0]"
+  - name: carolB
+    invoke: !ref call
+    inputs: { url: "/entry/login?user=carol", method: POST }
+  - name: carolBCookie
+    value: !cel "steps.carolB.result.headers['set-cookie'].split(';')[0]"
+  - name: carolC
+    invoke: !ref call
+    inputs: { url: "/entry/login?user=carol", method: POST }
+  - name: carolCCookie
+    value: !cel "steps.carolC.result.headers['set-cookie'].split(';')[0]"
+  - name: bob
+    invoke: !ref call
+    inputs: { url: "/entry/login?user=bob", method: POST }
+  - name: bobCookie
+    value: !cel "steps.bob.result.headers['set-cookie'].split(';')[0]"
+  - name: endOthers
+    invoke: !ref call
+    inputs: { url: /app/logout-all?keep=1, method: POST, headers: { cookie: !cel "steps.carolBCookie.result", sec-fetch-site: same-origin } }
+  - name: carolAAfter
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.carolACookie.result" } }
+  - name: carolBAfter
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.carolBCookie.result" } }
+  - name: carolCAfter
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.carolCCookie.result" } }
+  - name: bobAfter
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.bobCookie.result" } }
+  - name: endAll
+    invoke: !ref call
+    inputs: { url: /app/logout-all, method: POST, headers: { cookie: !cel "steps.carolBCookie.result", sec-fetch-site: same-origin } }
+  - name: carolBAfterAll
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.carolBCookie.result" } }
+  - name: dave
+    invoke: !ref call
+    inputs: { url: "/entry/login?user=dave", method: POST }
+  - name: daveCookie
+    value: !cel "steps.dave.result.headers['set-cookie'].split(';')[0]"
+  - name: rotate
+    invoke: !ref call
+    inputs: { url: /app/rotate, method: POST, headers: { cookie: !cel "steps.daveCookie.result", sec-fetch-site: same-origin } }
+  - name: rotatedCookie
+    value: !cel "steps.rotate.result.headers['set-cookie'].split(';')[0]"
+  - name: daveOld
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.daveCookie.result" } }
+  - name: daveNew
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.rotatedCookie.result" } }
+  - name: erin1
+    invoke: !ref call
+    inputs: { url: "/entry/login?user=erin", method: POST }
+  - name: erin1Cookie
+    value: !cel "steps.erin1.result.headers['set-cookie'].split(';')[0]"
+  - name: erin2
+    invoke: !ref call
+    inputs: { url: "/entry/login?user=erin", method: POST }
+  - name: erin2Cookie
+    value: !cel "steps.erin2.result.headers['set-cookie'].split(';')[0]"
+  - name: erin3
+    invoke: !ref call
+    inputs: { url: "/entry/login?user=erin", method: POST }
+  - name: erin3Cookie
+    value: !cel "steps.erin3.result.headers['set-cookie'].split(';')[0]"
+  - name: erin4
+    invoke: !ref call
+    inputs: { url: "/entry/login?user=erin", method: POST }
+  - name: erin4Cookie
+    value: !cel "steps.erin4.result.headers['set-cookie'].split(';')[0]"
+  - name: erin1After
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.erin1Cookie.result" } }
+  - name: erin2After
+    invoke: !ref call
+    inputs: { url: /app/me, headers: { cookie: !cel "steps.erin2Cookie.result" } }
+  - name: erinList
+    invoke: !ref call
+    inputs: { url: /app/sessions, headers: { cookie: !cel "steps.erin4Cookie.result" } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        exceptKept:
+          ended: !cel "steps.endOthers.result.body.ended.size()"
+          endedAreTheOthers: !cel "steps.endOthers.result.body.ended.all(id, id == steps.carolA.result.body.sessionId || id == steps.carolC.result.body.sessionId)"
+          carolA: !cel "steps.carolAAfter.result.status"
+          carolB: !cel "steps.carolBAfter.result.status"
+          carolC: !cel "steps.carolCAfter.result.status"
+          bob: !cel "steps.bobAfter.result.status"
+        endAll:
+          carolB: !cel "steps.carolBAfterAll.result.status"
+          carolBEnded: !cel "steps.endAll.result.body.ended == [steps.carolB.result.body.sessionId]"
+        rotate:
+          status: !cel "steps.rotate.result.status"
+          newId: !cel "steps.rotate.result.body.sessionId != steps.dave.result.body.sessionId"
+          old: !cel "steps.daveOld.result.status"
+          new: !cel "steps.daveNew.result.status"
+        cap:
+          endedIsTheFirst: !cel "steps.erin4.result.body.ended == [steps.erin1.result.body.sessionId]"
+          first: !cel "steps.erin1After.result.status"
+          second: !cel "steps.erin2After.result.status"
+          listedAreTheNewest: !cel >-
+            steps.erinList.result.body.map(s, s.id) ==
+            [steps.erin2.result.body.sessionId, steps.erin3.result.body.sessionId, steps.erin4.result.body.sessionId]
+      expected:
+        exceptKept: { ended: 2, endedAreTheOthers: true, carolA: 401, carolB: 200, carolC: 401, bob: 200 }
+        endAll: { carolB: 401, carolBEnded: true }
+        rotate: { status: 200, newId: true, old: 401, new: 200 }
+        cap: { endedIsTheFirst: true, first: 401, second: 200, listedAreTheNewest: true }

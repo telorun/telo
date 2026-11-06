@@ -1,0 +1,39 @@
+# `telo check` reports this here; a consumer's check sees nothing, so there the
+# endpoint refuses itself when the server mounts it.
+kind: Telo.Library
+metadata:
+  name: McpProtectedResourceOtherAlias
+  version: 1.0.0
+  description: Test fixture exporting a server that mounts an MCP endpoint behind authentication without protected-resource metadata.
+imports:
+  Mcp: ../../../../../
+  Web: ../../../../../../http-server
+  AuthBearer: ../../../../../../auth-bearer
+  Jose: ../../../../../../jose
+exports: { resources: [server] }
+---
+kind: Jose.KeySet
+metadata: { name: issuerKeys }
+algorithm: ES256
+keys:
+  - { kty: EC, x: J0k_d62PT7Wrl6emr3vrA1nHnWablWaHx2SIXDPK148, y: I44mAUi1zEMRdhTxiNNckPyaLTWoCb5_hyLFno2Dl7I, crv: P-256, d: 1Lj0H3tsR83jEeDaIbYTW3LrXjpOBxw-Uit_-j0Ai9k, kid: es1 }
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: endpoint }
+serverInfo: { name: fixture, version: 1.0.0 }
+---
+kind: Web.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: 8973 }
+mounts:
+  - path: /mcp
+    mount: !ref endpoint
+    authentication:
+      verifiers:
+        - verifier:
+            kind: AuthBearer.Jwt
+            keys: !ref issuerKeys
+            issuer: https://login.test
+            algorithms: [ES256]
+            audience: !cel "[resource]"
+          from: { kind: Web.FromAuthorization, schemes: [Bearer] }

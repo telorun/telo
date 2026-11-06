@@ -57,7 +57,14 @@ import {
   plainChainOf,
 } from "@telorun/templating";
 import { bindingExistsAt, bindingsAbsentAt } from "./context-eval.js";
-import { readFromReferrer } from "./context-from-referrer.js";
+import { fromReferrerOwnKeywords, readFromReferrer } from "./context-from-referrer.js";
+import {
+  nullableWhenHolds,
+  readNullableWhen,
+  schemaAtData,
+  withNull,
+  type DataToken,
+} from "./context-nullable-when.js";
 import { capabilityExtendsExecutable } from "./executable-capability.js";
 import {
   type ContractDirection,
@@ -108,6 +115,7 @@ import {
   elementOfCollection,
   extractContextsFromSchema,
   getContextHolder,
+  getContextHolderPath,
   getManifestItem,
   navigateConcretePath,
   isParameterScope,
@@ -668,6 +676,8 @@ export interface CelScopeInputs {
  * that give it. A site whose referrers all agree has one.
  */
 export interface ReferrerVariant {
+  /** Each node its referrers type, keyed by its location in the context — the
+   *  binding, then each member beneath it, joined by {@link LOCATION_SEPARATOR}. */
   readonly bindings: Readonly<Record<string, Record<string, any>>>;
   /** Who gives this typing: `label` the resource whose scope declares it (the
    *  outermost of a chain), `manifest` / `path` the slot referencing the
@@ -675,10 +685,20 @@ export interface ReferrerVariant {
   readonly referrers: ReadonlyArray<{ manifest: ResourceManifest; path: string; label: string }>;
 }
 
+/** Joins the steps of a context node's location in {@link ReferrerVariant.bindings}. */
+export const LOCATION_SEPARATOR = "\u0000";
+
+/** What the referrers of one resource give one node: its type, or nothing
+ *  where their scope lacks the node's path. */
+interface ReferrerTyping {
+  readonly schema?: Record<string, any>;
+  readonly referrers: ReferrerVariant["referrers"];
+}
+
 /** What the resolvers of one analysis share: the types each resource's
- *  referrers give a binding, and which are being computed. */
+ *  referrers give a node, and which are being computed. */
 interface ReferrerTypeIndex {
-  readonly types: WeakMap<ResourceManifest, Map<string, ReferrerVariant[]>>;
+  readonly types: WeakMap<ResourceManifest, Map<string, ReferrerTyping[]>>;
   readonly inProgress: Set<string>;
   readonly ids: WeakMap<ResourceManifest, number>;
   next: number;
@@ -690,6 +710,33 @@ const stableJson = (value: unknown): string =>
       ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, (v as Record<string, unknown>)[k]]))
       : v,
   );
+
+/** `schema` with the node at `location` — the binding, then each member
+ *  through `properties` — replaced by `replace`, copied on the way; `schema`
+ *  itself where it holds nothing there. */
+function replacedAt(
+  schema: Record<string, any>,
+  location: readonly string[],
+  replace: (node: Record<string, any>) => Record<string, any>,
+): Record<string, any> {
+  const [step, ...rest] = location;
+  if (step === undefined) return replace(schema);
+  const properties = schema.properties;
+  if (!properties || typeof properties !== "object") return schema;
+  const node = (properties as Record<string, any>)[step];
+  if (!node || typeof node !== "object" || Array.isArray(node)) return schema;
+  const next = replacedAt(node, rest, replace);
+  return next === node ? schema : { ...schema, properties: { ...properties, [step]: next } };
+}
+
+/** A concrete path (`mounts[0].auth`) as its steps. */
+function tokensOfPath(path: string): DataToken[] {
+  const tokens: DataToken[] = [];
+  for (const match of path.matchAll(/\[(\d+)\]|([^.[\]]+)/g)) {
+    tokens.push(match[1] !== undefined ? Number(match[1]) : match[2]!);
+  }
+  return tokens;
+}
 
 /** One CEL site, as the manifest visitor reports it. Structural on purpose —
  *  the resolver takes the fields it reads, not the visitor's event type, so a
@@ -751,7 +798,12 @@ export class CelScopeResolver {
     errorScopes: Map<string, Record<string, any>>;
     contexts: ReadonlyArray<{ scope: string; schema: Record<string, any> }>;
     sites: CelEvalSites;
+    /** The entry's kind's author schema, inheritance folded. */
+    schema: Record<string, any> | undefined;
   }> = [];
+  /** The current resource's kind's author schema, inheritance folded — what a
+   *  `x-telo-context-nullable-when` rule reads defaults from. */
+  private authorSchema: Record<string, any> | undefined;
   /** The regions and eval sites of the current resource's kind — what types a
    *  chain an `x-telo-context-element-from-item` pointer names, at its own site. */
   private kindContexts: ReadonlyArray<{ scope: string; schema: Record<string, any> }> = [];
@@ -804,19 +856,34 @@ export class CelScopeResolver {
       if (!properties || typeof properties !== "object") continue;
       for (const [name, binding] of Object.entries(properties as Record<string, unknown>)) owners.set(name, binding);
     }
+    // Every node typed from the referrers: a binding, or a member beneath one.
+    const typedNodes: Array<{ location: string; from: readonly string[]; own: Record<string, any> }> = [];
+    const collect = (node: unknown, location: readonly string[]): void => {
+      if (!node || typeof node !== "object" || Array.isArray(node)) return;
+      const from = readFromReferrer(node);
+      if (from !== undefined) {
+        typedNodes.push({ location: location.join(LOCATION_SEPARATOR), from, own: fromReferrerOwnKeywords(node as Record<string, any>) });
+        return;
+      }
+      const properties = (node as { properties?: unknown }).properties;
+      if (!properties || typeof properties !== "object") return;
+      for (const [key, child] of Object.entries(properties as Record<string, unknown>)) collect(child, [...location, key]);
+    };
+    for (const [name, binding] of owners) {
+      if (bindingExistsAt(binding, site.mode)) collect(binding, [name]);
+    }
     // What each referrer — a slot, and the outermost scope of its chain — gives
-    // every binding it types.
+    // every node it types; a referrer whose scope lacks the path gives the
+    // node's own keywords.
     type Referrer = ReferrerVariant["referrers"][number];
     const byReferrer = new Map<string, { referrer: Referrer; bindings: Record<string, Record<string, any>> }>();
-    for (const [name, binding] of owners) {
-      const from = readFromReferrer(binding);
-      if (from === undefined || !bindingExistsAt(binding, site.mode)) continue;
-      for (const typed of this.typesFromReferrers(site.source, from)) {
+    for (const { location, from, own } of typedNodes) {
+      for (const typed of this.typesFromReferrers(site.source, from, site.mode)) {
         for (const referrer of typed.referrers) {
           const key = `${this.referrerId(referrer.manifest)}\0${referrer.path}\0${referrer.label}`;
           let entry = byReferrer.get(key);
           if (!entry) byReferrer.set(key, (entry = { referrer, bindings: {} }));
-          entry.bindings[name] = typed.bindings[from]!;
+          entry.bindings[location] = typed.schema ?? own;
         }
       }
     }
@@ -839,10 +906,16 @@ export class CelScopeResolver {
     return id;
   }
 
-  /** The types the resources referencing `m` give the binding `name` at their
-   *  referencing slots, one per distinct type. */
-  private typesFromReferrers(m: ResourceManifest, name: string): ReferrerVariant[] {
+  /** The types the resources referencing `m` give the node `path` names at
+   *  their referencing slots, read at `mode`, one per distinct type — `schema`
+   *  undefined for the referrers whose scope lacks it. */
+  private typesFromReferrers(
+    m: ResourceManifest,
+    path: readonly string[],
+    mode: CelEvalMode | undefined,
+  ): ReferrerTyping[] {
     const index = this.referrerTypes;
+    const name = `${mode ?? ""}\0${path.join("/")}`;
     let byName = index.types.get(m);
     const known = byName?.get(name);
     if (known) return known;
@@ -851,38 +924,39 @@ export class CelScopeResolver {
     if (index.inProgress.has(key)) return [];
     index.inProgress.add(key);
     try {
-      const distinct = new Map<string, { schema: Record<string, any>; referrers: ReferrerVariant["referrers"][number][] }>();
+      const distinct = new Map<string, ReferrerTyping & { referrers: ReferrerVariant["referrers"][number][] }>();
       const { defs } = this.inputs;
-      for (const { manifest: referrer, path } of this.inputs.declarations.referrersOf(m)) {
+      for (const { manifest: referrer, path: slot } of this.inputs.declarations.referrersOf(m)) {
         const definition = this.inputs.definitionOf?.(referrer);
         const authorSchema = defs.effectiveSchemaOf(definition) as Record<string, any> | undefined;
         if (!authorSchema) continue;
-        const regions = contextChainAt(extractContextsFromSchema(authorSchema, this.inputs.shapes), path);
+        const regions = contextChainAt(extractContextsFromSchema(authorSchema, this.inputs.shapes), slot);
         const innermost = regions[regions.length - 1];
         const sub = new CelScopeResolver(this.inputs, index);
         sub.enterResource(referrer, definition);
         const site: CelSiteRef = {
           source: referrer,
-          path,
+          path: slot,
           ...(innermost ? { contextSchema: innermost.schema, matchedScope: innermost.scope } : {}),
           contexts: regions,
-          mode: "accessor",
+          ...(mode !== undefined ? { mode } : {}),
         };
         const label = `${referrer.kind}/${String(referrer.metadata?.name ?? "")}`;
         for (const variant of sub.siteVariants(site)) {
-          const schema = sub.resolveContextFor({ ...site, variant }, false)?.properties?.[name];
-          if (!schema || typeof schema !== "object") continue;
-          const json = stableJson(schema);
+          let schema: unknown = sub.resolveContextFor({ ...site, variant }, false);
+          for (const step of path) {
+            const properties = schema && typeof schema === "object" ? (schema as Record<string, any>).properties : undefined;
+            schema = properties && typeof properties === "object" ? properties[step] : undefined;
+          }
+          const typed = schema && typeof schema === "object" && !Array.isArray(schema) ? (schema as Record<string, any>) : undefined;
+          const json = typed ? stableJson(typed) : "";
           let entry = distinct.get(json);
-          if (!entry) distinct.set(json, (entry = { schema, referrers: [] }));
+          if (!entry) distinct.set(json, (entry = { ...(typed ? { schema: typed } : {}), referrers: [] }));
           const labels = variant.referrers.length > 0 ? [...new Set(variant.referrers.map((r) => r.label))] : [label];
-          for (const each of labels) entry.referrers.push({ manifest: referrer, path, label: each });
+          for (const each of labels) entry.referrers.push({ manifest: referrer, path: slot, label: each });
         }
       }
-      const out: ReferrerVariant[] = [...distinct.values()].map((entry) => ({
-        bindings: { [name]: entry.schema },
-        referrers: entry.referrers,
-      }));
+      const out = [...distinct.values()];
       if (!byName) index.types.set(m, (byName = new Map()));
       byName.set(name, out);
       return out;
@@ -925,6 +999,7 @@ export class CelScopeResolver {
     // declares is in force on the child. All three consumers share one memo so
     // they cannot come to disagree about which schema a kind means.
     const authorSchema = defs.effectiveSchemaOf(definition) as Record<string, any> | undefined;
+    this.authorSchema = authorSchema;
     this.stepContext = authorSchema
       ? buildStepContextSchema(
           m as Record<string, any>,
@@ -1000,6 +1075,7 @@ export class CelScopeResolver {
         errorScopes: collectErrorContextScopes(bodySchema),
         contexts: bodySchema ? extractContextsFromSchema(bodySchema, shapes) : [],
         sites: celEvalSites(bodySchema, shapes),
+        schema: bodySchema,
       };
     });
   }
@@ -1233,13 +1309,14 @@ export class CelScopeResolver {
         );
 
     // Each region resolves against the item its own scope names.
+    const localScopeOf = (scope: string | undefined) =>
+      body && scope?.startsWith(`${body.scopePrefix}.`)
+        ? `$.${scope.slice(body.scopePrefix.length + 1)}`
+        : body
+          ? undefined
+          : scope;
     const resolveRegion = (schema: Record<string, any>, scope: string | undefined) => {
-      const localScope =
-        body && scope?.startsWith(`${body.scopePrefix}.`)
-          ? `$.${scope.slice(body.scopePrefix.length + 1)}`
-          : body
-            ? undefined
-            : scope;
+      const localScope = localScopeOf(scope);
       const own =
         body && this.selfSchema && schema.properties?.self
           ? { ...schema, properties: { ...schema.properties, self: this.selfSchema } }
@@ -1294,11 +1371,12 @@ export class CelScopeResolver {
       resolved,
       body,
     );
-    // A binding its referrers type takes the type this site's variant gives it.
+    // A node its referrers type takes the type this site's variant gives it.
     const variant = site.variant ?? this.siteVariants(site)[0];
-    if (variant && resolved.properties) {
-      const typed = Object.entries(variant.bindings).filter(([name]) => name in resolved.properties!);
-      if (typed.length > 0) resolved = { ...resolved, properties: { ...resolved.properties, ...Object.fromEntries(typed) } };
+    if (variant) {
+      for (const [location, schema] of Object.entries(variant.bindings)) {
+        resolved = replacedAt(resolved, location.split(LOCATION_SEPARATOR), () => schema);
+      }
     }
     const absent = bindingsAbsentAt([...outer.map((ctx) => ctx.schema), matched], site.mode);
     if (absent.length > 0 && resolved.properties) {
@@ -1321,16 +1399,69 @@ export class CelScopeResolver {
     // validators on the schema's identity.
     const expand = (schema: Record<string, any>) =>
       inlineNamedShapes(schema, this.inputs.shapes);
-    if (parameterScope) return expand(resolved);
-    return expand(
-      mergeKernelGlobalsIntoContext(
-        resolved,
-        // Typed in the module that DECLARED this resource — for a manifest
-        // forwarded from an imported library, that is its `moduleGlobals` stamp,
-        // not the consuming application's block.
-        kernelGlobals.forResource(m, path),
+    // A node marked `x-telo-context-nullable-when` admits null wherever its
+    // rule holds, on top of whatever typed it.
+    const nullable = (schema: Record<string, any>) => {
+      let out = schema;
+      const regions = [...outer, { scope: site.matchedScope, schema: declaredInnermost }];
+      for (const location of this.nullableLocations(regions, localPath, rootManifest, body?.schema ?? this.authorSchema, localScopeOf)) {
+        out = replacedAt(out, location, withNull);
+      }
+      return out;
+    };
+    if (parameterScope) return nullable(expand(resolved));
+    return nullable(
+      expand(
+        mergeKernelGlobalsIntoContext(
+          resolved,
+          // Typed in the module that DECLARED this resource — for a manifest
+          // forwarded from an imported library, that is its `moduleGlobals` stamp,
+          // not the consuming application's block.
+          kernelGlobals.forResource(m, path),
+        ),
       ),
     );
+  }
+
+  /**
+   * The locations, in the context, of every node the regions mark
+   * `x-telo-context-nullable-when` whose rule holds at `localPath` — each
+   * binding as the innermost region declaring its name declares it, the rule
+   * read from that region's holder.
+   */
+  private nullableLocations(
+    regions: ReadonlyArray<{ scope: string | undefined; schema: Record<string, any> | undefined }>,
+    localPath: string,
+    root: Record<string, any>,
+    schema: Record<string, any> | undefined,
+    localScopeOf: (scope: string | undefined) => string | undefined,
+  ): string[][] {
+    const owners = new Map<string, { binding: unknown; scope: string | undefined }>();
+    for (const region of regions) {
+      const properties = region.schema?.properties;
+      if (!properties || typeof properties !== "object") continue;
+      for (const [name, binding] of Object.entries(properties as Record<string, unknown>)) {
+        owners.set(name, { binding, scope: region.scope });
+      }
+    }
+    const out: string[][] = [];
+    const schemaAt = (tokens: readonly DataToken[]) => schemaAtData(schema, tokens, this.inputs.shapes);
+    for (const [name, { binding, scope }] of owners) {
+      const local = localScopeOf(scope);
+      const holderPath = local === undefined ? "" : getContextHolderPath(localPath, local);
+      if (holderPath === undefined) continue;
+      const holder = tokensOfPath(holderPath);
+      const visit = (node: unknown, location: string[]): void => {
+        if (!node || typeof node !== "object" || Array.isArray(node)) return;
+        const rule = readNullableWhen(node);
+        if (rule && nullableWhenHolds(rule, root, holder, schemaAt)) out.push(location);
+        const properties = (node as { properties?: unknown }).properties;
+        if (!properties || typeof properties !== "object") return;
+        for (const [key, child] of Object.entries(properties as Record<string, unknown>)) visit(child, [...location, key]);
+      };
+      visit(binding, [name]);
+    }
+    return out;
   }
 
   /**

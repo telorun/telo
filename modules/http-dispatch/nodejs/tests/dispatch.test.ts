@@ -149,6 +149,16 @@ describe("dispatchReturns", () => {
     ]);
   });
 
+  it("writes no Expires or Max-Age for a null expiry, a browser-session cookie", async () => {
+    const session = await HostCookieController.create({ name: "session" });
+    const returns = [
+      { status: 204, cookies: [{ cookie: session, value: "abc", expires: null }] },
+    ] as unknown as ReturnEntry[];
+    const { sink, result } = makeInMemorySink();
+    await dispatchReturns(returns, {}, {}, undefined, makeModuleContext(), noopValidate, sink);
+    expect((await result).headers["set-cookie"]).toEqual(["__Host-session=abc; Path=/; Secure; HttpOnly; SameSite=Lax"]);
+  });
+
   it("renders a buffered body and sets Content-Type from the matched mime", async () => {
     const returns: ReturnEntry[] = [
       {

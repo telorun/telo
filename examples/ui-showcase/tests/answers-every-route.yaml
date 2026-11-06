@@ -401,6 +401,28 @@ steps:
         - [ 302, /themes, "showcase-brand=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax" ]
         - 400
 
+  # ---- The theme menu's links ----
+  # Another mount's home as an absolute address of the request's own origin,
+  # the scheme the first of an X-Forwarded-Proto chain names.
+  - name: mountRadix
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/mount?to=radix" }
+  - name: mountProxied
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/mount?to=root" }
+    inputs: { headers: { x-forwarded-proto: "https,http" } }
+  - name: mountUnknown
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/mount?to=elsewhere" }
+  - name: verifyMount
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - [ !cel "steps.mountRadix.result.status", !cel "steps.mountRadix.result.headers['location']" ]
+        - [ !cel "steps.mountProxied.result.status", !cel "steps.mountProxied.result.headers['location']" ]
+        - !cel "steps.mountUnknown.result.status"
+      expected:
+        - [ 302, "http://127.0.0.1:8152/radix/" ]
+        - [ 302, "https://127.0.0.1:8152/" ]
+        - 400
+
   # ---- The same API under the other three mounts ----
   # Their pages read and write under their own mount, so every route the root
   # serves is served under `/radix`, `/brand` and `/sidebar` too — guarded the same way —

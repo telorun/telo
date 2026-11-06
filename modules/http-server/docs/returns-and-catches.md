@@ -144,7 +144,7 @@ When a `returns:` entry's `content:` map has multiple keys, the dispatcher picks
 - **Matching.** Both lists are scanned top-to-bottom. The first entry whose `when:` evaluates truthy wins. The first entry with no `when:` is the list's catch-all; entries following it are unreachable and rejected by the analyzer.
 - **`returns:` is required.** Every route must define at least one `returns:` entry. `catches:` is optional when the handler's declared throw union is empty, or when a scope list covers it.
 - **Streams on `returns:` only.** `mode: stream` is forbidden on `catches:` entries.
-- **Unmatched `InvokeError`.** When no `catches:` entry at any level matches and no catch-all is present, the server answers `500` with the error's problem.
+- **Unmatched `InvokeError`.** When no `catches:` entry at any level matches and no catch-all is present, the server answers `500` with the error's problem — except an access refusal, answered with its own status (below).
 
 ## Scope lists: the router and the server
 
@@ -227,6 +227,27 @@ routes:
   the server's own answer: no rung of the ladder sees it, a catch-all included, and an entry
   naming the code is `UNDECLARED_THROW_CODE`. See [Request bodies](request-bodies.md).
 
+### The server's access refusals
+
+A mount's [authentication and authorization](authentication.md) refuse a request
+with one of four codes, which the server raises into the route's, the router's
+and its own `catches:` (`x-telo-catches-for: { slot, raises }`):
+`ERR_HTTP_UNAUTHENTICATED` (401, `data: { reason }`), `ERR_HTTP_FORBIDDEN` (403,
+`data: { requiredScopes? }`), `ERR_HTTP_CROSS_ORIGIN_REFUSED` (403) and
+`ERR_HTTP_ACCESS_CHECK_UNAVAILABLE` (503, `data: { stage }`).
+
+- **Any list may name them** in a proving `when:`, and `error.data` / `problem.data`
+  are typed from their `data` in an entry naming them.
+- **A catch-all renders them where they can arrive**, so there it is typed by them
+  too: on a route whose own or whose mount's `authentication` / `authorization`
+  is present, on the router's and the server's list above it, and on every list
+  of an exported router. Elsewhere it keeps the typing of what the handler throws.
+- **No route owes their coverage**: a code no entry claims is answered with its
+  own status and problem, not with the 500.
+- **They are rendered before the body is read**, so `request.body` is null in an
+  entry rendering one, and `request.principal` is null for a 401. In every
+  `catches:` list `request.principal` is nullable.
+
 ### Coverage
 
 `UNCOVERED_THROW_CODE` is asked **once per route** (and once per `guard` and
@@ -262,6 +283,9 @@ trace. Members appear in this order.
 
 **When the server answers with a problem:**
 
+- **An access refusal no rung claims** — `401`, `403` or `503`, code `ERR_HTTP_UNAUTHENTICATED`,
+  `ERR_HTTP_FORBIDDEN`, `ERR_HTTP_CROSS_ORIGIN_REFUSED` or `ERR_HTTP_ACCESS_CHECK_UNAVAILABLE`
+  ([Authentication and authorization](authentication.md#refusals)).
 - **A throw no rung claims** — `500`, all six members the error has.
 - **A `catches:` entry with no `body:`** — the entry's status, the error's problem.
 - **A body over `maxBodyBytes`** — `413`, code `ERR_REQUEST_BODY_TOO_LARGE`, `data:

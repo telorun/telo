@@ -121,7 +121,7 @@ content:
               value: !cel "row.email"
               label: !cel "row.name"
               hint: !cel "row.location"
-              href: !cel "row.contact"
+              href: { path: !cel "row.contact" }
               source: !ref peopleSource
               filters: { role: !cel "values.leadRole", active: true }
               search: { property: name, operator: contains }
@@ -194,7 +194,7 @@ model: !ref Person
 value: !cel "row.email"
 label: !cel "row.name"
 hint: !cel "row.location"
-href: !cel "row.contact"
+href: { path: !cel "row.contact" }
 source: !ref peopleSource
 filters: { active: true }
 search: { property: name, operator: contains }

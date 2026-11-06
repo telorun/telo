@@ -1,0 +1,5 @@
+modules:
+  apps/authoring-agent: Fixed
+body: The hub client retries a request that failed with no answer (a reset or refused
+  connection) or with a 502, 503 or 504, so a dropped hub connection no longer fails a
+  turn.

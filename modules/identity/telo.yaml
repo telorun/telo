@@ -1,0 +1,63 @@
+kind: Telo.Library
+metadata:
+  name: Identity
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    Where an application's users come from. Holds the users written in a
+    manifest, each with a password hash, roles, scopes and claims, and checks a
+    presented identifier and password against them without the plaintext password
+    ever entering the application. An unknown identifier costs as much as a wrong
+    password, so the two cannot be told apart by timing.
+imports: { Auth: ../auth, Crypto: ../crypto }
+exports: { kinds: [DeclaredUsers] }
+---
+# Normative: docs/declared-users.md.
+kind: Telo.Definition
+metadata:
+  name: DeclaredUsers
+  description: >-
+    A fixed set of users written in the manifest by identifier, each with a
+    password hash and optional subject, roles, scopes and claims. Checks an
+    identifier and password and answers with the user as the caller, or a
+    refusal saying the identifier is unknown or the password wrong. An unknown
+    identifier costs as much time as a wrong password.
+capability: Telo.Invocable
+extends: Auth.PasswordVerifier
+controllers: [pkg:telo/local/js?path=./nodejs/identity.mjs&local_path=./nodejs/src/index.ts#DeclaredUsersController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [hasher, users]
+  properties:
+    hasher:
+      title: Hasher
+      description: Verifies each password against its stored hash; its algorithm also sets the cost of the dummy check.
+      x-telo-ref: { kind: Crypto.PasswordHash, use: call }
+    users:
+      title: Users
+      description: The users by identifier. A hash is typically read from `secrets:`, so no password is written in the manifest.
+      type: object
+      minProperties: 1
+      propertyNames: { minLength: 1 }
+      x-telo-eval: compile
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [passwordHash]
+        properties:
+          passwordHash:
+            title: Password hash
+            description: The stored hash, as `Crypto.PasswordHash` writes it; any format it verifies is accepted.
+            type: string
+            minLength: 1
+          subject:
+            title: Subject
+            description: The caller's stable identifier; the user's identifier when omitted.
+            type: string
+            minLength: 1
+          roles: { description: Roles the user holds; none when omitted., type: array, items: { type: string } }
+          scopes: { description: Scopes the user is granted; none when omitted., type: array, items: { type: string } }
+          claims: { description: Further claims carried on the principal; none when omitted., type: object, additionalProperties: true }

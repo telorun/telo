@@ -1,34 +1,43 @@
 /**
- * `x-telo-context-from-referrer: "<binding>"` — a binding of a referent kind's
- * `x-telo-context` typed by whoever references the resource: at each slot that
- * references it, the binding of that name in scope there. A field kind's
- * `values` is its form's record, an option source's `values` the record of the
- * form its field sits in, though neither kind knows the form.
+ * `x-telo-context-from-referrer: "<binding>[/<member>…]"` — a node of a
+ * referent kind's `x-telo-context`, a binding or a member beneath one, typed by
+ * whoever references the resource: at each slot that references it, the node
+ * the path names in the scope in force there, read at the site's own eval
+ * mode. A field kind's `values` is its form's record, a route's
+ * `request.principal` the principal its mounts type, though neither kind knows
+ * its referrer.
  *
- * Legal only on a binding marked `x-telo-context-eval: accessor` alone: the
- * type is the referrer's, which an expression the resource itself evaluates
- * could not read. This file is the one reader of the value and its strict half;
- * the typing is the scope rule's (`CelScopeResolver.siteVariants`), since it
- * needs each referrer's scope at its slot.
+ * Each referrer's type REPLACES the node's own keywords; with no referrer, or
+ * where a referrer's scope lacks the path at that mode, the node keeps them.
+ * This file is the one reader of the value and its strict half; the typing is
+ * the scope rule's (`CelScopeResolver.siteVariants`), since it needs each
+ * referrer's scope at its slot.
  *
  * Browser-safe: no Node built-ins.
  */
-import { CONTEXT_EVAL, contextEvalModes } from "./context-eval.js";
 import { READS_SLOT_SCOPES, type ReadReporter } from "./read-place.js";
 
 export const CONTEXT_FROM_REFERRER = "x-telo-context-from-referrer";
 
-const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const PATH = /^[A-Za-z_][A-Za-z0-9_]*(\/[A-Za-z_][A-Za-z0-9_]*)*$/;
 
-/** The referrer binding `binding` is typed from, or undefined. */
-export function readFromReferrer(binding: unknown): string | undefined {
-  if (!binding || typeof binding !== "object") return undefined;
-  const value = (binding as Record<string, unknown>)[CONTEXT_FROM_REFERRER];
-  return typeof value === "string" && NAME.test(value) ? value : undefined;
+/** The path through the referrer's scope `node` is typed from — the binding,
+ *  then each member beneath it — or undefined. */
+export function readFromReferrer(node: unknown): readonly string[] | undefined {
+  if (!node || typeof node !== "object") return undefined;
+  const value = (node as Record<string, unknown>)[CONTEXT_FROM_REFERRER];
+  return typeof value === "string" && PATH.test(value) ? value.split("/") : undefined;
 }
 
-/** The other annotations that type a binding — one binding is typed one way. */
-const TYPING_ANNOTATIONS = [
+/** The keywords a node typed from its referrers declares itself — what it is
+ *  where no referrer types it. */
+export function fromReferrerOwnKeywords(node: Record<string, any>): Record<string, any> {
+  const { [CONTEXT_FROM_REFERRER]: _referrer, ...own } = node;
+  return own;
+}
+
+/** The other annotations that type a context node — one node is typed one way. */
+export const TYPING_ANNOTATIONS = [
   "x-telo-context-from",
   "x-telo-context-from-root",
   "x-telo-context-from-ref-kind",
@@ -45,34 +54,30 @@ export type FromReferrerProblem =
 
 /**
  * Why the annotation on `node` is malformed or misplaced, or undefined. `where`
- * names it as the diagnostic does; `onBinding` says the node is a property of an
- * `x-telo-context`.
+ * names it as the diagnostic does; `inBinding` says the node is a binding — a
+ * property of an `x-telo-context` — or a member reached from one through
+ * `properties`.
  */
 export function fromReferrerProblem(
   node: Record<string, unknown>,
   where: string,
-  onBinding: boolean,
+  inBinding: boolean,
 ): FromReferrerProblem | undefined {
   const value = node[CONTEXT_FROM_REFERRER];
-  if (typeof value !== "string" || !NAME.test(value)) {
+  if (typeof value !== "string" || !PATH.test(value)) {
     return {
       code: "SCHEMA_VIOLATION",
-      message: `'${where}' names the binding a referrer's scope types this one from, so it must be a binding name.`,
+      message:
+        `'${where}' names what a referrer's scope types this node from — a binding, then each member ` +
+        `beneath it, joined by '/' ('values', 'request/principal').`,
     };
   }
-  if (!onBinding) {
-    return {
-      code: "CONTEXT_FROM_REFERRER_INVALID",
-      message: `'${where}' is read only on a binding — a property of an 'x-telo-context' — so here it types nothing.`,
-    };
-  }
-  const modes = contextEvalModes(node);
-  if (!modes || modes.length !== 1 || modes[0] !== "accessor") {
+  if (!inBinding) {
     return {
       code: "CONTEXT_FROM_REFERRER_INVALID",
       message:
-        `'${where}' types a binding from the resource that references this one, which only an ` +
-        `accessor field can name: mark the binding '${CONTEXT_EVAL}: accessor' and nothing else.`,
+        `'${where}' is read only on a binding — a property of an 'x-telo-context' — or a member beneath ` +
+        `one, so here it types nothing.`,
     };
   }
   const beside = TYPING_ANNOTATIONS.find((key) => key in node);

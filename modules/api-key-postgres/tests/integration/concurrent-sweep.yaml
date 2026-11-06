@@ -1,0 +1,88 @@
+kind: Telo.Application
+metadata:
+  name: ApiKeyPostgresConcurrentSweepTest
+  version: 1.0.0
+  description: |
+    Two processes sweep one table at once. Each of two application instances
+    declares a store over the same table and name with a one-second retention;
+    the test writes 1,200 keys that ended two hours ago straight into the table,
+    then calls each store once. Within a few passes both processes have swept the
+    rows in bounded batches that skip each other's locked rows — the table is
+    empty, and neither failed.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  App: ../../../app
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  Keys: ../..
+  Assert: ../../../assert
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref appSchema
+  - name: seed
+    invoke: !ref write
+    inputs:
+      sql: !sql >-
+        INSERT INTO api_keys (store_name, key_id, digest, owner_type, owner_id, scopes, created_at, revoked_at, ends_at)
+        SELECT 'main', 'seed-' || n, 'x', 'user', 'sweep', '[]', now() - interval '3 hours', now() - interval '2 hours', now() - interval '2 hours'
+        FROM generate_series(1, 1200) AS n
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Keys.Table
+metadata: { name: keys }
+table: api_keys
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: first }
+    source: ./__fixtures__/sweeper/telo.yaml
+    variables:
+      dbHost: !cel "resources.Pg.endpoint.status.host"
+      dbPort: !cel "resources.Pg.endpoint.status.port"
+  - kind: App.Instance
+    metadata: { name: second }
+    source: ./__fixtures__/sweeper/telo.yaml
+    variables:
+      dbHost: !cel "resources.Pg.endpoint.status.host"
+      dbPort: !cel "resources.Pg.endpoint.status.port"
+targets:
+  - !ref first
+  - !ref second
+steps:
+  - name: left
+    invoke: !ref read
+    inputs: { sql: "SELECT count(*)::int AS n FROM api_keys" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        left: !cel "steps.left.result.rows"
+      expected:
+        left: [{ n: 0 }]

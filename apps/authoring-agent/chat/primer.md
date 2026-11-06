@@ -281,9 +281,23 @@ binding only the consumer has (a row a page renders in the browser) is marked
 `request`) is marked `runtime`: an accessor chain rooted at it is
 `CEL_UNKNOWN_IDENTIFIER`. A binding of a kind whose resources are referenced
 from another (a form's field) may take its type from whoever references it:
-`x-telo-context-from-referrer: <name>` on an `accessor`-only binding types it
-as the binding of that name in scope at each referencing slot, judged once per
-distinct type. `x-telo-context-item-fills: ["", "/property"]` on a binding of a
+`x-telo-context-from-referrer: <binding>[/<member>…]` on a binding, or a member
+beneath one (`request/principal`), types it from what that path names in scope at
+each referencing slot, at the site's own eval mode, judged once per distinct type;
+with no referrer the node keeps its own keywords.
+`x-telo-context-nullable-when: { at, equals, absent }` makes a binding or member
+nullable only where the resource's own value at the relative pointer `at` is one of
+`equals` (or, with `absent: true`, missing), so an unguarded read is
+`CEL_NULLABLE_ACCESS` exactly where it can be null.
+`x-telo-ref: { …, outputTo: { slot, member } }` says the slot's target output (null
+removed) feeds input member `member` of the target in the sibling slot `slot`; one
+that cannot fit is `CONTRACT_INPUTS_MISMATCH` at the source.
+A kind that renders failures through a catch list (`x-telo-outcome-list: catches`)
+and raises codes itself (a transport's refusals) declares `x-telo-raises:
+[<CODE>…]` on the field whose presence raises them, and `x-telo-catches-for: {
+slot, raises: [<CODE>…] }` on each list that receives them, every code in the
+kind's `throws.codes`: they join the list's names, type its catch-all and are
+owed by no handler. `x-telo-context-item-fills: ["", "/property"]` on a binding of a
 region over a list says which member each entry fills; entries reading each
 other's members in a cycle are `CONTEXT_FILL_CYCLE`. A
 field holding a JSON Schema matched against what an accessor names carries
@@ -1508,6 +1522,13 @@ level, as `peers`), judged once per referrer — so a table can refuse two store
 claiming one name in it: `condition: !cel "!coReferrers.exists(o, o.name ==
 referrer.name)"`. It requires `referrer:` and must name a single reference slot
 of that kind.
+
+The same `coReferrers: /<slot>` is legal on `x-telo-resource-rules` for a kind
+whose shared resource belongs to another module (a `KvStore.Store` every session
+set names): it binds the OTHER resources of this kind whose slot names the same
+declaration, so a claimant states the duplicate check on itself, with the runtime
+twin in its controller. A rule binding a declaration is judged only on the members
+its condition reads — an unresolved neighbour member never disables it.
 
 `resolve: [/model]` binds `referrer` with each named reference slot of the
 referrer replaced by the declaration it names, one level deep — so
@@ -2917,6 +2938,65 @@ guard's `inputType`, and add `authorization` to `cors.allowedHeaders`:
 CORS only decides whether a BROWSER may read an answer — the request still
 runs — so an origin allowlist that must refuse is a guard step too (403 when
 `request.headers.origin` is present and not listed).
+
+## Authenticating inbound callers — `authentication:` on the mount
+
+Prefer this over a hand-written guard. A mount entry of `Http.Server` takes
+`authentication: { verifiers: [{ verifier: !ref v, from: <source> }], anonymous: deny | allow }`
+and `authorization: { policy: !ref p, action: !cel "request.method + ' ' + request.path" }`;
+it covers every mount kind (`Http.Api`, `Http.Static`, `Mcp.HttpEndpoint`) and runs
+before the body is read. A route of an `Http.Api` may override either key.
+
+- **Sources read, verifiers judge.** A source is written inline in `from:` and names
+  where the credential is: `Http.FromAuthorization { schemes }`, `FromBasic`,
+  `FromHeader { header, scheme }`, `FromQuery`, `FromCookie { cookie, scheme }`,
+  `FromClientCertificate`, `FromForwardedIdentity` (a trusted proxy; server mounts only).
+  A verifier (`Auth.Verifier`) turns the presentation into an `Auth.Principal` or a
+  refusal: `AuthBearer.Jwt` (keys from `Jose.KeySet` / `Jose.RemoteKeySet`, `algorithms`
+  and `audience: !cel "[resource]"` required), `AuthBearer.Introspection`,
+  `ApiKey.Verifier`, `Session.Verifier`, `AuthBasic.Verifier`, `Auth.TrustedHeader`.
+  The first credential presented decides: a refused one is a 401 and never falls
+  through or becomes anonymous. A source the verifier cannot take is
+  `CONTRACT_INPUTS_MISMATCH`.
+- **`request.principal`** is the only way a handler sees the caller. It is non-null
+  exactly where every mount reaching the route denies anonymous callers (the default)
+  and the route does not allow them; otherwise nullable, and an unguarded member read
+  is `CEL_NULLABLE_ACCESS` (`request.principal != null && …`). A server where one
+  mount authenticates and another declares nothing is `MOUNT_IMPLICITLY_PUBLIC`: give
+  a public mount `authentication: { anonymous: allow }`.
+- **Scopes are a policy, not a verifier.** `Authz.CelPolicy` (ordered CEL rules over
+  `principal`, `action`, `resource`, `context`) answers `{ allow, reason?,
+  requiredScopes? }`; a denial is a 403 and naming `requiredScopes` makes it an RFC 6750
+  `insufficient_scope` challenge. Refusals (`ERR_HTTP_UNAUTHENTICATED`,
+  `ERR_HTTP_FORBIDDEN`, `ERR_HTTP_CROSS_ORIGIN_REFUSED`, `ERR_HTTP_ACCESS_CHECK_UNAVAILABLE`)
+  go through the route, router and server `catches:`; a verifier, source or policy that
+  throws a coded error is a 503, never an allow.
+- **MCP and discovery.** A mount with `protectedResource: { scopesSupported, resourceName }`
+  serves RFC 9728 metadata whose `authorization_servers` come from the verifiers'
+  `issuer`, never written twice; an `Mcp.HttpEndpoint` served without it, or without a
+  verifier declaring an issuer, is `MCP_PROTECTED_RESOURCE_MISSING`. A verifier backed
+  by an authorization server declares `issuer` (typed `Auth.Issuer`, the key
+  `Auth.Verifier` reserves); a password, API-key or trusted-header verifier declares none.
+- **Sessions.** `Session.Sessions` over a `KvStore.Store` (durable `name`, `idleTimeout`,
+  `absoluteLifetime`, `persistent`, `maxPerSubject`); the login route runs
+  `Session.Start` and sets the cookie of an `HttpDispatch.HostCookie` (a null `expires`
+  is a browser-session cookie), the mount reads it with `Http.FromCookie` into
+  `Session.Verifier`, `Session.EndAll` logs out everywhere. A request authenticated by
+  a cookie that changes state is origin-checked by the server (403 otherwise); there are
+  no CSRF tokens to write.
+- **API keys.** `ApiKey.DeclaredKeys` (digests in the manifest, minted with
+  `ApiKey.Generate`) or an `ApiKeySql.Store` through `ApiKeyPostgres` / `ApiKeySqlite`,
+  read from `Http.FromHeader` into `ApiKey.Verifier { sources }`; manage with
+  `ApiKey.Issue` / `List` / `Rotate` / `Revoke`. A store that reclaims its own rows
+  stays a `Telo.Provider` (its abstract's capability) and starts its sweep at its first
+  call, not at boot.
+- **Basic over declared users.** `AuthBasic.Verifier { passwords }` over
+  `Identity.DeclaredUsers` (`Crypto.PasswordHash` hashes from `secrets:`), wrapped by
+  `Protection.PasswordThrottle` on a `RateLimit.Budget` to answer `throttled` after
+  repeated failures.
+- A revoked token is `AuthBearer.Revoke { jti, until }` into the verifier's
+  `revocation` store; run the JWKS the tests need from an `Http.Server` and sign with
+  `Jose.Sign`.
 
 ## Authenticating outbound HTTP
 

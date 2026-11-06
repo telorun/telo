@@ -15,7 +15,7 @@ targets:
 ---
 kind: Http.Request
 metadata: { name: request }
-client: { kind: Http.Client, baseUrl: "http://localhost:18846" }
+client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18846" }
 ---
 kind: Brave.WebSearchEngine
 metadata: { name: strict }

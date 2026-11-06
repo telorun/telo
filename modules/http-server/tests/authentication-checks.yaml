@@ -1,0 +1,165 @@
+kind: Telo.Application
+metadata:
+  name: AuthenticationChecks
+  version: 1.0.0
+  description: |
+    The static half of mount authentication, each refusal the server's own
+    controller also raises pinned both ways: refused by `telo check` where it is
+    written, and failing the run of a consumer whose own check is silent.
+imports: { Assert: ../../assert }
+targets:
+  - !ref implicitlyPublic
+  - !ref implicitlyPublicAtRuntime
+  - !ref unsatisfiable
+  - !ref unsatisfiableAtRuntime
+  - !ref unsatisfiableRoute
+  - !ref unsatisfiableRouteAtRuntime
+  - !ref unsatisfiableRouteBare
+  - !ref unsatisfiableRouteBareAtRuntime
+  - !ref forwardedUntrusted
+  - !ref forwardedUntrustedAtRuntime
+  - !ref forwardedOnRoute
+  - !ref forwardedOnRouteAtRuntime
+  - !ref principalTyping
+  - !ref basicIntoJwt
+  - !ref trustedOriginInvalid
+  - !ref thirdPartyMount
+  - !ref catchAllAuthenticated
+  - !ref catchAllNarrowed
+  - !ref catchAllExported
+---
+kind: Assert.Manifest
+metadata: { name: implicitlyPublic }
+source: ./__fixtures__/authentication/implicitly-public/lib/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "declares `authentication` on some mounts and not on others" }
+---
+kind: Assert.Manifest
+metadata: { name: implicitlyPublicAtRuntime }
+source: ./__fixtures__/authentication/implicitly-public/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_MOUNT_IMPLICITLY_PUBLIC] RuntimeError: Http.Server[server] declares `authentication` on some mounts and not on mounts[1]"
+---
+kind: Assert.Manifest
+metadata: { name: unsatisfiable }
+source: ./__fixtures__/authentication/unsatisfiable/lib/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "denies anonymous callers and names no verifier" }
+---
+kind: Assert.Manifest
+metadata: { name: unsatisfiableAtRuntime }
+source: ./__fixtures__/authentication/unsatisfiable/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_AUTHENTICATION_UNSATISFIABLE] RuntimeError: Http.Server[server] mounts[0] denies anonymous callers and names no verifier"
+---
+kind: Assert.Manifest
+metadata: { name: unsatisfiableRoute }
+source: ./__fixtures__/authentication/unsatisfiable-route/lib/telo.yaml
+expect:
+  errors:
+    - { code: REFERRER_RULE_VIOLATED, message: "neither the route nor this mount names a verifier" }
+---
+kind: Assert.Manifest
+metadata: { name: unsatisfiableRouteAtRuntime }
+source: ./__fixtures__/authentication/unsatisfiable-route/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_AUTHENTICATION_UNSATISFIABLE] RuntimeError: Http.Server[server] mounts[0] mounts a route whose authentication denies anonymous callers"
+---
+kind: Assert.Manifest
+metadata: { name: unsatisfiableRouteBare }
+source: ./__fixtures__/authentication/unsatisfiable-route-bare/lib/telo.yaml
+expect:
+  errors:
+    - { code: REFERRER_RULE_VIOLATED, message: "neither the route nor this mount names a verifier" }
+---
+kind: Assert.Manifest
+metadata: { name: unsatisfiableRouteBareAtRuntime }
+source: ./__fixtures__/authentication/unsatisfiable-route-bare/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_AUTHENTICATION_UNSATISFIABLE] RuntimeError: Http.Server[server] mounts[0] mounts a route whose authentication denies anonymous callers"
+---
+kind: Assert.Manifest
+metadata: { name: forwardedUntrusted }
+source: ./__fixtures__/authentication/forwarded-untrusted/lib/telo.yaml
+expect:
+  errors:
+    - { code: REFERRER_RULE_VIOLATED, message: "reads a forwarded identity but trusts no proxy" }
+---
+kind: Assert.Manifest
+metadata: { name: forwardedUntrustedAtRuntime }
+source: ./__fixtures__/authentication/forwarded-untrusted/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_HTTP_PROXY_SOURCE_UNTRUSTED] RuntimeError: Http.Server[server] mounts[0] reads a forwarded identity"
+---
+kind: Assert.Manifest
+metadata: { name: forwardedOnRoute }
+source: ./__fixtures__/authentication/forwarded-on-route/lib/telo.yaml
+expect:
+  errors:
+    - { code: REFERRER_RULE_VIOLATED, message: "at 'routes[1].authentication.verifiers[0].from': required by Http.FromForwardedIdentity" }
+    - { code: REFERRER_RULE_VIOLATED, message: "at 'routes[0].authentication.verifiers[0].from': required by Http.FromForwardedIdentity" }
+---
+kind: Assert.Manifest
+metadata: { name: forwardedOnRouteAtRuntime }
+source: ./__fixtures__/authentication/forwarded-on-route/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_HTTP_PROXY_SOURCE_ON_ROUTE] RuntimeError: Http.Api[routed] routes[0] reads a forwarded identity"
+---
+kind: Assert.Manifest
+metadata: { name: principalTyping }
+source: ./__fixtures__/authentication/principal-typing.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_FIELD, message: "'error.data.reasn' is not defined (available: reason)" }
+    - { code: CEL_NULLABLE_ACCESS, message: "'request.principal' may be null" }
+---
+kind: Assert.Manifest
+metadata: { name: basicIntoJwt }
+source: ./__fixtures__/authentication/basic-into-jwt.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "the inline Http.FromBasic produces what the inline AuthBearer.Jwt" }
+---
+kind: Assert.Manifest
+metadata: { name: trustedOriginInvalid }
+source: ./__fixtures__/authentication/trusted-origin-invalid.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "at 'trustedOrigins[1]': lists a trusted origin that is not an origin" }
+---
+kind: Assert.Manifest
+metadata: { name: thirdPartyMount }
+source: ./__fixtures__/authentication/third-party-mount/telo.yaml
+expect:
+  errors:
+    - { code: REFERRER_RULE_VIOLATED, message: "mounts a gate with no `authentication`" }
+---
+# A catch-all renders the server's access refusals wherever a mount reaching the
+# route authenticates, so its `problem.data` is typed by them too.
+kind: Assert.Manifest
+metadata: { name: catchAllAuthenticated }
+source: ./__fixtures__/authentication/catch-all/authenticated.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_FIELD, message: "'problem.data.id' is not defined" }
+---
+kind: Assert.Manifest
+metadata: { name: catchAllNarrowed }
+source: ./__fixtures__/authentication/catch-all/narrowed.yaml
+expect: { errors: [] }
+---
+# A router an importer may mount is typed as receiving every refusal.
+kind: Assert.Manifest
+metadata: { name: catchAllExported }
+source: ./__fixtures__/authentication/catch-all/exported.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_FIELD, message: "'problem.data.id' is not defined" }

@@ -1,0 +1,100 @@
+kind: Telo.Application
+metadata:
+  name: AuthzCelPolicyTest
+  version: 1.0.0
+  description: |
+    Authz.CelPolicy lets the first matching rule decide, denies when none matches,
+    passes a denial's required scopes through, and sees a null principal as anonymous.
+imports: { Authz: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Authz.CelPolicy
+metadata: { name: policy }
+rules:
+  - when: !cel "principal == null"
+    allow: false
+    reason: sign in first
+  - when: !cel "principal != null && action == 'DELETE /orders' && !('orders:write' in principal.scopes)"
+    allow: false
+    reason: write scope needed
+    requiredScopes: [orders:write]
+  - when: !cel "principal != null && 'admin' in principal.roles"
+    reason: admins may do anything
+  - when: !cel "principal != null && action.startsWith('GET ') && context.tenant == principal.org"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: anonymous
+    invoke: !ref policy
+    inputs: { principal: null, action: GET /orders, resource: null, context: {} }
+  - name: scopeMissing
+    invoke: !ref policy
+    inputs:
+      principal: &reader
+        subject: bob
+        issuer: null
+        kind: user
+        claims: {}
+        scopes: [orders:read]
+        roles: []
+        permissions: []
+        org: acme
+        amr: []
+        acr: null
+        sessionId: null
+        authenticatedAt: null
+        via: jwt
+      action: DELETE /orders
+      resource: null
+      context: {}
+  - name: adminBeforeScope
+    invoke: !ref policy
+    inputs:
+      principal:
+        subject: root
+        issuer: null
+        kind: user
+        claims: {}
+        scopes: [orders:write]
+        roles: [admin]
+        permissions: []
+        org: null
+        amr: []
+        acr: null
+        sessionId: null
+        authenticatedAt: null
+        via: jwt
+      action: DELETE /orders
+      resource: null
+      context: {}
+  - name: ownTenantRead
+    invoke: !ref policy
+    inputs:
+      principal: *reader
+      action: GET /orders
+      resource: { id: 1 }
+      context: { tenant: acme }
+  - name: otherTenantWrite
+    invoke: !ref policy
+    inputs:
+      principal: *reader
+      action: PUT /orders
+      resource: null
+      context: { tenant: acme }
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        anonymous: !cel "steps.anonymous.result"
+        scopeMissing: !cel "steps.scopeMissing.result"
+        adminBeforeScope: !cel "steps.adminBeforeScope.result"
+        ownTenantRead: !cel "steps.ownTenantRead.result"
+        otherTenantWrite: !cel "steps.otherTenantWrite.result"
+      expected:
+        anonymous: { allow: false, reason: sign in first }
+        scopeMissing: { allow: false, reason: write scope needed, requiredScopes: [orders:write] }
+        adminBeforeScope: { allow: true, reason: admins may do anything }
+        ownTenantRead: { allow: true }
+        otherTenantWrite: { allow: false, reason: no rule matched }

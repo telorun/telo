@@ -1,0 +1,34 @@
+# `telo check` reports this here: the only verifier declares no `issuer`, whatever it
+# records as the principal's issuer. A consumer's check sees nothing, so there the
+# endpoint refuses itself when the server mounts it.
+kind: Telo.Library
+metadata:
+  name: McpProtectedResourceNoIssuer
+  version: 1.0.0
+  description: Test fixture exporting a server that mounts an MCP endpoint behind a verifier trusting no issuer.
+imports:
+  Mcp: ../../../../../
+  Http: ../../../../../../http-server
+  Auth: ../../../../../../auth
+exports: { resources: [server] }
+---
+kind: Auth.TrustedHeader
+metadata: { name: gateway }
+principalIssuer: https://sso.example.com
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: endpoint }
+serverInfo: { name: fixture, version: 1.0.0 }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: 8973 }
+trustProxy: true
+mounts:
+  - path: /mcp
+    mount: !ref endpoint
+    protectedResource: {}
+    authentication:
+      verifiers:
+        - verifier: !ref gateway
+          from: { kind: Http.FromForwardedIdentity, header: x-user, scheme: Proxy }

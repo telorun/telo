@@ -85,7 +85,7 @@ returns:
   fails its `schema` does. Nothing is escaped silently: a value carrying arbitrary
   text is encoded first, for example with base64url.
 - `maxAge` — a `Telo.Duration`, sent as whole seconds.
-- `expires` — a `Telo.Timestamp`, sent as an HTTP date.
+- `expires` — a `Telo.Timestamp`, sent as an HTTP date, or null for no expiry: the cookie then ends with the browser session.
 
 Each cookie is one `Set-Cookie` header line, in the order listed; the same
 declaration listed twice is written twice, in that order. Every line carries the

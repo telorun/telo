@@ -1,0 +1,5 @@
+# Consumes the library beside it; its entry-scoped check does not reach the
+# library internals, so the controller refusal is what remains here.
+kind: Telo.Application
+metadata: { name: NameDuplicateApp }
+imports: { Lib: ./name-duplicate }

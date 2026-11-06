@@ -11,8 +11,7 @@ metadata:
     chosen by a cookie and marked whichever chose it — and
     the page documents: every node
     type, values presented by their schema, a list, style rules, texts and
-    composites on the overview with its nodes evaluated per request and its
-    error node; every condition keyword, missing against null, query
+    composites on the overview with its nodes evaluated per request; every condition keyword, missing against null, query
     parameters and an enabled button; readers with parameters, loading and
     failure trees, nesting, focus reloads and a sign-in gate; tables with
     derived and written columns, style rules, members behind references,
@@ -87,9 +86,6 @@ steps:
   - name: unservedCookieApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
     inputs: { headers: { accept-language: pl, cookie: showcase-lang=xx } }
-  - name: proxiedApp
-    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
-    inputs: { headers: { x-forwarded-proto: "https,http" } }
   - name: radixApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /radix/_telo/ui/app }
   - name: radixPolishApp
@@ -332,14 +328,14 @@ steps:
           - *radixControls
           - []
         vary:
-          - &vary "Accept-Language, Cookie, Host, X-Forwarded-Proto"
+          - &vary "Accept-Language, Cookie"
           - *vary
           - *vary
           - *vary
 
   # The header every application draws on every page: the mark, then two
   # menus — Language, the language in effect marked, and Theme, the four
-  # mounts' home pages, another mount's by an absolute address, this mount
+  # mounts' home pages, another mount's through `/api/mount`, this mount
   # marked. The root's Theme menu adds the brand switch, each item delivered
   # only while it changes something.
   - name: verifyHeader
@@ -349,23 +345,20 @@ steps:
         start: !cel "steps.app.result.body.header.start"
         end: !cel >-
           steps.app.result.body.header.end.map(n, [n.type, n.text.message[0],
-            n.items.map(i, [i.text.message[0], i.href, has(i.style) ? i.style : null])])
+            n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
         acmeTheme: !cel "steps.acmeApp.result.body.header.end[1].items.map(i, i.text.message[0])"
         radixStart: !cel "steps.radixApp.result.body.header.start == steps.app.result.body.header.start"
         radixEnd: !cel >-
           steps.radixApp.result.body.header.end.map(n, [n.text.message[0],
-            n.items.map(i, [i.text.message[0], i.href, has(i.style) ? i.style : null])])
+            n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
         brandEnd: !cel >-
           steps.brandApp.result.body.header.end.map(n, [n.text.message[0],
-            n.items.map(i, [i.text.message[0], i.href, has(i.style) ? i.style : null])])
+            n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
         sidebarEnd: !cel >-
           steps.sidebarApp.result.body.header.end.map(n, [n.text.message[0],
-            n.items.map(i, [i.text.message[0], i.href, has(i.style) ? i.style : null])])
-        # Behind a proxy chain the first scheme X-Forwarded-Proto lists is the
-        # client's.
-        proxiedTheme: !cel "steps.proxiedApp.result.body.header.end[1].items.map(i, i.href)"
+            n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
       expected:
-        start: [ { type: image, src: /files/mark.svg, alt: { lang: en, message: [ UI showcase logo ] } } ]
+        start: [ { type: image, src: /files/mark.svg, fill: false, alt: { lang: en, message: [ UI showcase logo ] } } ]
         end:
           - - menu
             - Language
@@ -388,34 +381,33 @@ steps:
           - - menu
             - Theme
             - - [ Default, /, strong ]
-              - [ Radix, "http://127.0.0.1:8151/radix/", null ]
-              - [ Brand, "http://127.0.0.1:8151/brand/", null ]
-              - [ Sidebar, "http://127.0.0.1:8151/sidebar/", null ]
+              - [ Radix, "/api/mount?to=radix", null ]
+              - [ Brand, "/api/mount?to=brand", null ]
+              - [ Sidebar, "/api/mount?to=sidebar", null ]
               - [ Use the Acme brand, "/api/brand?set=acme", null ]
         acmeTheme: [ Default, Radix, Brand, Sidebar, "Use the theme's own values" ]
         radixStart: true
         radixEnd:
           - [ Language, *languages ]
           - - Theme
-            - - [ Default, "http://127.0.0.1:8151/", null ]
+            - - [ Default, "/api/mount?to=root", null ]
               - [ Radix, /, strong ]
-              - [ Brand, "http://127.0.0.1:8151/brand/", null ]
-              - [ Sidebar, "http://127.0.0.1:8151/sidebar/", null ]
+              - [ Brand, "/api/mount?to=brand", null ]
+              - [ Sidebar, "/api/mount?to=sidebar", null ]
         brandEnd:
           - [ Language, *languages ]
           - - Theme
-            - - [ Default, "http://127.0.0.1:8151/", null ]
-              - [ Radix, "http://127.0.0.1:8151/radix/", null ]
+            - - [ Default, "/api/mount?to=root", null ]
+              - [ Radix, "/api/mount?to=radix", null ]
               - [ Brand, /, strong ]
-              - [ Sidebar, "http://127.0.0.1:8151/sidebar/", null ]
+              - [ Sidebar, "/api/mount?to=sidebar", null ]
         sidebarEnd:
           - [ Language, *languages ]
           - - Theme
-            - - [ Default, "http://127.0.0.1:8151/", null ]
-              - [ Radix, "http://127.0.0.1:8151/radix/", null ]
-              - [ Brand, "http://127.0.0.1:8151/brand/", null ]
+            - - [ Default, "/api/mount?to=root", null ]
+              - [ Radix, "/api/mount?to=radix", null ]
+              - [ Brand, "/api/mount?to=brand", null ]
               - [ Sidebar, /, strong ]
-        proxiedTheme: [ /, "https://127.0.0.1:8151/radix/", "https://127.0.0.1:8151/brand/", "https://127.0.0.1:8151/sidebar/", "/api/brand?set=acme" ]
 
   # The language in effect is the `showcase-lang` cookie's, read before the
   # Accept-Language header, under every mount; the Language menu marks it
@@ -521,7 +513,7 @@ steps:
         containers: !cel "steps.nodes.result.overview[2].children.map(c, c.type)"
         styles: !cel "steps.nodes.result.overview[5].children.map(c, c.style)"
         badges: !cel "steps.nodes.result.overview[6].children.map(c, [c.type, 'style' in c ? c.style : '-'])"
-        links: !cel "steps.nodes.result.overview[9].children.map(c, [c.type, c.href])"
+        links: !cel "steps.nodes.result.overview[9].children.map(c, [c.type, c.href.path.value])"
         images: !cel "steps.nodes.result.overview[12].children.map(c, [c.type, 'src' in c ? c.src : '-', c.alt.message])"
         markup: !cel "steps.nodes.result.overview[12].children[2].markup.startsWith('<svg')"
         tabs: !cel >-
@@ -569,7 +561,7 @@ steps:
         plural: !cel "steps.nodes.result.record[9].text"
         values: !cel "steps.nodes.result.record[10].text"
       expected:
-        source: { path: /api/team, params: {} }
+        source: { path: { value: /api/team }, pathParams: {}, queryParams: {} }
         presented:
           - [ homepage, { type: string, format: uri } ]
           - [ guide, { type: string, format: uri-reference } ]
@@ -644,34 +636,33 @@ steps:
         callout: !cel "steps.nodes.result.overview[22]"
         polishCallout: !cel "steps.polishOverview.result.body.children[0].children[22].children[0].text"
       expected:
-        inline: { type: text, text: { lang: en, message: [ A view declared inline at the node that places it. ] } }
+        inline: { type: text, fill: false, text: { lang: en, message: [ A view declared inline at the node that places it. ] } }
         callout:
           type: box
           style: accent
+          fill: false
           children:
-            - { type: text, style: subheading, text: { lang: en, message: [ A callout ] } }
+            - { type: text, fill: false, style: subheading, text: { lang: en, message: [ A callout ] } }
             - type: text
+              fill: false
               text: { lang: en, message: [ "Declared once as a kind that extends Ui.Composite and provides a view, and placed with fields of its own." ] }
         polishCallout: { lang: pl, message: [ Wyróżniona uwaga ] }
 
   # The overview's own nodes, evaluated per request: delivered by the
-  # negotiated language and the brand cookie, a computed text, and a link this
-  # request makes invalid standing as an error node.
+  # negotiated language and the brand cookie, and a computed text.
   - name: verifyPerRequest
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        english: !cel "steps.nodes.result.perRequest.map(c, c.type == 'error' ? c.code : c.text.message[0])"
+        english: !cel "steps.nodes.result.perRequest.map(c, c.text.message[0])"
         polish: !cel "steps.nodes.result.polishPerRequest[2].text"
         acme: !cel "steps.nodes.result.acmePerRequest.filter(c, c.type == 'badge').map(c, c.text.message[0])"
-        errorMessage: !cel "steps.nodes.result.perRequest[6].message.startsWith(\"A 'link' node is not valid for this request\")"
         vary: !cel "steps.overview.result.headers['vary']"
       expected:
-        english: [Per request, "These nodes are the page's own, so their when and their text are evaluated for every request.", Your browser did not ask for Polish., "A text an expression computes is shown as computed, never translated.", "User-Agent: showcase-test", "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", ERR_UI_NODE_INVALID]
+        english: [Per request, "These nodes are the page's own, so their when and their text are evaluated for every request.", Your browser did not ask for Polish., "A text an expression computes is shown as computed, never translated.", "User-Agent: showcase-test"]
         polish: { lang: pl, message: [ Twoja przeglądarka poprosiła o polski. ] }
         acme: [ The Acme brand is on. ]
-        errorMessage: true
-        vary: Accept-Language, Cookie, Host, User-Agent
+        vary: Accept-Language, Cookie, User-Agent
 
   # Conditions: delivered against drawn, a placement's condition around a
   # composite that has its own, every keyword of the profile over one record,
@@ -688,11 +679,11 @@ steps:
         wrapped: !cel "steps.nodes.result.reader.content.children[5]"
         keywords: !cel "steps.nodes.result.reader.content.children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'data').map(c, [c.shown.at.path, c.shown.matches])"
         byQuery: !cel "steps.nodes.result.reader.content.children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'query').map(c, [c.shown.at.path, c.shown.matches])"
-        links: !cel "steps.nodes.result.reader.content.children[37].children.map(c, c.href)"
+        links: !cel "steps.nodes.result.reader.content.children[37].children.map(c, c.href.path.value)"
         pageQuery: !cel "steps.conditions.result.body.query"
         pageOwn: !cel "steps.conditions.result.body.children[1].children[2].shown"
       expected:
-        source: { path: /api/project-summary, params: { code: { value: TEL-42 } } }
+        source: { path: { value: /api/project-summary }, pathParams: {}, queryParams: { code: { value: TEL-42 } } }
         query:
           mode: { type: string, enum: [ compact, detailed ] }
           tag: { type: array, items: { type: string } }
@@ -702,9 +693,11 @@ steps:
         hidden: { at: { root: data, path: [ status ] }, matches: { const: paused } }
         wrapped:
           type: box
+          fill: false
           shown: { at: { value: true }, matches: { const: true } }
           children:
             - type: text
+              fill: false
               style: success
               text: { lang: en, message: [ Both conditions hold. ] }
               shown: { at: { value: 2 }, matches: { minimum: 1 } }
@@ -750,7 +743,7 @@ steps:
     inputs:
       actual:
         type: !cel "steps.nodes.result.enablement.type"
-        path: !cel "steps.nodes.result.enablement.path"
+        path: !cel "steps.nodes.result.enablement.request.target.path.value"
         label: !cel "steps.nodes.result.enablement.label"
         fields: !cel "steps.nodes.result.enablement.fields.map(f, f.property)"
         enabled: !cel "steps.nodes.result.enablement.enabled"
@@ -765,7 +758,7 @@ steps:
           at: { root: values, path: [ tag ] }
           matches: { minLength: 3 }
           disabledText: { lang: en, message: [ Type a tag of three letters or more. ] }
-        onSuccess: { refreshes: [ /api/project-summary ] }
+        onSuccess: { refreshes: [ { path: { value: /api/project-summary }, pathParams: {}, queryParams: {} } ] }
         result:
           lang: en
           message:
@@ -792,33 +785,34 @@ steps:
           source: !cel "steps.nodes.result.data[3].content.children[2].source"
           content: !cel "steps.nodes.result.data[3].content.children[2].content.columns.map(c, c.header.message[0])"
         failing: !cel "steps.nodes.result.data[6].children.map(c, [c.source, c.failure.children.map(f, f.value.path[0])])"
-        clock: !cel "[steps.nodes.result.data[9].source.path, steps.nodes.result.data[9].reloadOn]"
+        clock: !cel "[steps.nodes.result.data[9].source.path.value, steps.nodes.result.data[9].reloadOn]"
         gate:
-          source: !cel "steps.nodes.result.data[12].source.path"
+          source: !cel "steps.nodes.result.data[12].source.path.value"
           reloadOn: !cel "steps.nodes.result.data[12].reloadOn"
           branches: !cel "steps.nodes.result.data[12].content.children.map(c, c.shown)"
-          signIn: !cel "[steps.nodes.result.data[12].content.children[0].children[1].path, steps.nodes.result.data[12].content.children[0].children[1].fields.map(f, f.property), steps.nodes.result.data[12].content.children[0].children[1].onSuccess]"
-          account: !cel "[steps.nodes.result.data[12].content.children[1].children[0].source.path, steps.nodes.result.data[12].content.children[1].children[0].reloadOn]"
-          actions: !cel "steps.nodes.result.data[12].content.children[1].children[1].children.map(a, [a.path, a.label.message[0], a.onSuccess])"
+          signIn: !cel "[steps.nodes.result.data[12].content.children[0].children[1].request.target.path.value, steps.nodes.result.data[12].content.children[0].children[1].fields.map(f, f.property), steps.nodes.result.data[12].content.children[0].children[1].onSuccess]"
+          account: !cel "[steps.nodes.result.data[12].content.children[1].children[0].source.path.value, steps.nodes.result.data[12].content.children[1].children[0].reloadOn]"
+          actions: !cel "steps.nodes.result.data[12].content.children[1].children[1].children.map(a, [a.request.target.path.value, a.label.message[0], a.onSuccess])"
       expected:
         project:
           source:
-            path: /api/project-summary
-            params: { code: { root: query, path: [ project ] } }
+            path: { value: /api/project-summary }
+            pathParams: {}
+            queryParams: { code: { root: query, path: [ project ] } }
           query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
-          loading: { type: text, style: muted, text: { lang: en, message: [ Reading the project… ] } }
+          loading: { type: text, fill: false, style: muted, text: { lang: en, message: [ Reading the project… ] } }
           failure:
             - [ text, { at: { root: error, path: [] }, matches: { required: [ status ] } } ]
             - [ text, { at: { root: error, path: [] }, matches: { not: { required: [ status ] } } } ]
             - [ value, null ]
           reloadOn: []
         nested:
-          source: { path: /api/project-people, params: { code: { root: query, path: [ project ] } } }
+          source: { path: { value: /api/project-people }, pathParams: {}, queryParams: { code: { root: query, path: [ project ] } } }
           content: [ Name, Role, E-mail ]
         failing:
-          - [ { path: /api/project-summary, params: { code: { value: NOPE-1 } } }, [ code, message ] ]
-          - [ { path: /api/private/account, params: {} }, [ code, message ] ]
-          - [ { path: /api/projects, params: {} }, [ code, message ] ]
+          - [ { path: { value: /api/project-summary }, pathParams: {}, queryParams: { code: { value: NOPE-1 } } }, [ code, message ] ]
+          - [ { path: { value: /api/private/account }, pathParams: {}, queryParams: {} }, [ code, message ] ]
+          - [ { path: { value: /api/projects }, pathParams: {}, queryParams: {} }, [ code, message ] ]
         clock: [ /api/clock, [ focus ] ]
         gate:
           source: /api/session
@@ -826,12 +820,12 @@ steps:
           branches:
             - { at: { root: data, path: [ signedIn ] }, matches: { const: false } }
             - { at: { root: data, path: [ signedIn ] }, matches: { const: true } }
-          signIn: [ /api/session/signin, [ email ], { refreshes: [ /api/session ] } ]
+          signIn: [ /api/session/signin, [ email ], { refreshes: [ { path: { value: /api/session }, pathParams: {}, queryParams: {} } ] } ]
           account: [ /api/private/account, [ focus ] ]
           actions:
-            - [ /api/private/ping, Check the session, { refreshes: [ /api/private/account ] } ]
+            - [ /api/private/ping, Check the session, { refreshes: [ { path: { value: /api/private/account }, pathParams: {}, queryParams: {} } ] } ]
             - [ /api/session/signout, End the session quietly, { refreshes: [] } ]
-            - [ /api/session/signout, Sign out, { refreshes: [ /api/session ] } ]
+            - [ /api/session/signout, Sign out, { refreshes: [ { path: { value: /api/session }, pathParams: {}, queryParams: {} } ] } ]
 
   # Tables: listings drawn as tables, columns derived from the model with the
   # default page size and dialog; written columns with style rules and the
@@ -856,7 +850,7 @@ steps:
           source: !cel "[steps.nodes.result.tables[8].basePath, steps.nodes.result.tables[8].pageSize]"
           columns: !cel "steps.nodes.result.tables[8].layout.columns.map(c, [c.header.message[0], c.value.path, c.present])"
         byQuery:
-          links: !cel "steps.nodes.result.tables[11].children.map(c, c.href)"
+          links: !cel "steps.nodes.result.tables[11].children.map(c, c.href.path.value)"
           query: !cel "steps.nodes.result.tables[12].query"
           filters: !cel "steps.nodes.result.tables[12].filters"
           fixed: !cel "steps.nodes.result.tables[15].filters"
@@ -1225,7 +1219,7 @@ steps:
           fields: [ [ title, auto ], [ kind, options ], [ channels, select ], [ seats, slider ], [ urgent, toggle ], [ keywords, tags ] ]
           state: { key: quickRequest, address: false, store: { type: session }, fields: [ title, kind, channels, seats, urgent, keywords ] }
         requests:
-          - { path: /api/requests, params: {} }
+          - { path: { value: /api/requests }, pathParams: {}, queryParams: {} }
           - [ Title, Kind of work, People needed, Start, Urgent, Received ]
         booking:
           basePath: /api/bookings
@@ -1260,7 +1254,7 @@ steps:
             - { root: row, path: [ email ] }
             - { root: row, path: [ name ] }
             - { root: row, path: [ location ] }
-            - { root: row, path: [ contact ] }
+            - { path: { root: row, path: [ contact ] }, pathParams: {}, queryParams: {} }
             - { property: name, operator: contains }
           surfaces:
             - { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
@@ -1282,7 +1276,7 @@ steps:
             - The studio books a year at most.
           state: { address: false, store: { type: memory }, fields: [ projectCode, leadRole, leadEmail, reviewerEmails, sponsorEmail, helperEmails, period, onSite, site, notes ] }
         bookings:
-          - { path: /api/bookings, params: {} }
+          - { path: { value: /api/bookings }, pathParams: {}, queryParams: {} }
           - [ Project, Lead, Sponsor, From, To ]
         polish: [ Każda kontrolka z modelu, Tytuł, Budowa, Wokół prowadzącego, Przyszły miesiąc, Od ]
 
@@ -1296,7 +1290,7 @@ steps:
     inputs:
       actual:
         kinds: !cel "steps.nodes.result.actions.map(c, c.type)"
-        bare: !cel "cel.bind(a, steps.nodes.result.actions[2], [a.path, a.label.message[0], a.fields, a.onSuccess, 'result' in a, 'answer' in a])"
+        bare: !cel "cel.bind(a, steps.nodes.result.actions[2], [a.request.target.path.value, a.label.message[0], a.fields, a.onSuccess, 'result' in a, 'answer' in a])"
         estimate:
           fields: !cel "steps.nodes.result.actions[5].fields.map(f, [f.type, f.property, has(f.control) ? f.control : '-', f.group])"
           groups: !cel "steps.nodes.result.actions[5].groups.map(g, [g.name, g.label.message[0]])"
@@ -1307,16 +1301,16 @@ steps:
           value: !cel "[steps.nodes.result.actions[5].result.children[2].value, steps.nodes.result.actions[5].result.children[2].present]"
           list: !cel "cel.bind(l, steps.nodes.result.actions[5].result.children[3], [l.heading.message[0], l.rows, l.columns.map(c, [c.header.message[0], c.value.path[0], c.labels.size()])])"
         failure:
-          assign: !cel "cel.bind(a, steps.nodes.result.actions[8], [a.path, a.label.message[0], a.fields.map(f, f.property), a.failure.style, a.failure.children.map(c, [c.type, 'shown' in c ? c.shown : null]), a.failure.children[0].text.values, a.result.text.values])"
-          refused: !cel "cel.bind(a, steps.nodes.result.actions[10], [a.path, a.answer.required, a.result, a.failure.style, a.failure.children[0].text.values, a.failure.children[1].value])"
-        navigate: !cel "steps.nodes.result.actions[13].children.map(a, [a.path, a.fields.map(f, f.type), a.onSuccess])"
+          assign: !cel "cel.bind(a, steps.nodes.result.actions[8], [a.request.target.path.value, a.label.message[0], a.fields.map(f, f.property), a.failure.style, a.failure.children.map(c, [c.type, 'shown' in c ? c.shown : null]), a.failure.children[0].text.values, a.result.text.values])"
+          refused: !cel "cel.bind(a, steps.nodes.result.actions[10], [a.request.target.path.value, a.answer.required, a.result, a.failure.style, a.failure.children[0].text.values, a.failure.children[1].value])"
+        navigate: !cel "steps.nodes.result.actions[13].children.map(a, [a.request.target.path.value, a.fields.map(f, f.type), a.onSuccess])"
         counts: !cel "[steps.nodes.result.actions[16].source, steps.nodes.result.actions[16].content.text.values.code]"
-        move: !cel "cel.bind(a, steps.nodes.result.actions[17], [a.path, a.fields.map(f, f.property), a.onSuccess, a.result.children.map(c, c.type)])"
-        comment: !cel "cel.bind(a, steps.nodes.result.actions[20], [a.path, a.concurrency, a.clearAnswerOn, a.enabled, a.onSuccess, a.result.text.values])"
+        move: !cel "cel.bind(a, steps.nodes.result.actions[17], [a.request.target.path.value, a.fields.map(f, f.property), a.onSuccess, a.result.children.map(c, c.type)])"
+        comment: !cel "cel.bind(a, steps.nodes.result.actions[20], [a.request.target.path.value, a.concurrency, a.clearAnswerOn, a.enabled, a.onSuccess, a.result.text.values])"
         table:
           source: !cel "[steps.nodes.result.actions[23].basePath, steps.nodes.result.actions[23].filters, steps.nodes.result.actions[23].pageSize]"
           rowActions: !cel >-
-            steps.nodes.result.actions[23].rowActions.map(r, [r.action.path, r.action.label.message[0], r.inputs,
+            steps.nodes.result.actions[23].rowActions.map(r, [r.action.request.target.path.value, r.action.label.message[0], r.inputs,
               has(r.confirm) ? r.confirm.message[0] : '-', has(r.prompt) ? r.prompt.fields.map(f, f.property) : [],
               has(r.enabled) ? [r.enabled.matches, r.enabled.disabledText.message[0]] : [],
               r.action.result.text.message])
@@ -1324,23 +1318,23 @@ steps:
           source: !cel "steps.nodes.result.actions[26].source"
           rows: !cel "steps.nodes.result.actions[26].content.rows"
           rowActions: !cel >-
-            steps.nodes.result.actions[26].content.rowActions.map(r, [r.action.path, r.action.label.message[0], r.inputs,
+            steps.nodes.result.actions[26].content.rowActions.map(r, [r.action.request.target.path.value, r.action.label.message[0], r.inputs,
               has(r.confirm) ? r.confirm.message[0] : '-', has(r.prompt) ? r.prompt.fields.map(f, f.property) : [],
               has(r.enabled) ? [r.enabled.at, r.enabled.matches] : [], r.action.onSuccess])
         more: !cel >-
-          steps.nodes.result.actions[29].children.map(a, [a.path, a.label.message[0], a.fields.map(f, [f.type, f.property]),
+          steps.nodes.result.actions[29].children.map(a, [a.request.target.path.value, a.label.message[0], a.fields.map(f, [f.type, f.property]),
             a.onSuccess, 'answer' in a])
         mirrorResult: !cel "steps.nodes.result.actions[29].children[2].result.text.values"
         pause: !cel >-
-          cel.bind(a, steps.nodes.result.actions[32], [a.path, a.fields.map(f, [f.type, f.property]), a.answer.required,
+          cel.bind(a, steps.nodes.result.actions[32], [a.request.target.path.value, a.fields.map(f, [f.type, f.property]), a.answer.required,
             a.onSuccess, a.failure.children.map(c, c.value)])
-        loop: !cel "cel.bind(a, steps.nodes.result.actions[34], [a.path, 'answer' in a, a.failure.children.map(c, 'shown' in c ? c.shown.matches : null)])"
+        loop: !cel "cel.bind(a, steps.nodes.result.actions[34], [a.request.target.path.value, 'answer' in a, a.failure.children.map(c, 'shown' in c ? c.shown.matches : null)])"
         byAddress:
-          links: !cel "steps.nodes.result.actions[37].children.map(c, c.href)"
+          links: !cel "steps.nodes.result.actions[37].children.map(c, c.href.path.value)"
           query: !cel "steps.nodes.result.actions[38].query"
           filters: !cel "steps.nodes.result.actions[38].filters"
           rowActions: !cel >-
-            steps.nodes.result.actions[38].rowActions.map(r, [r.action.path, r.action.label.message[0], r.inputs,
+            steps.nodes.result.actions[38].rowActions.map(r, [r.action.request.target.path.value, r.action.label.message[0], r.inputs,
               r.confirm.message[0], r.prompt.fields, r.enabled])
         polish: !cel >-
           cel.bind(a, steps.polishActions.result.body.children[0].children, [
@@ -1355,7 +1349,7 @@ steps:
             data, action, text, text, action, text, text, listing, text, text, data, text, text, columns, text, text,
             action, text, action, text, text, columns, listing,
           ]
-        bare: [ /api/unblock, Unblock TEL-42, [], { refreshes: [ /api/tasks, /api/task-counts ] }, false, false ]
+        bare: [ /api/unblock, Unblock TEL-42, [], { refreshes: [ { path: { value: /api/tasks }, pathParams: {}, queryParams: {} }, { path: { value: /api/task-counts }, pathParams: {}, queryParams: {} } ] }, false, false ]
         estimate:
           fields:
             - [ choice, projectCode, auto, scope ]
@@ -1390,15 +1384,15 @@ steps:
           refused:
             - /api/estimate
             - [ days ]
-            - { type: value, value: { root: result, path: [ days ] }, labels: [], present: { type: integer } }
+            - { type: value, fill: false, value: { root: result, path: [ days ] }, labels: [], present: { type: integer } }
             - warning
             - { code: { root: error, path: [ code ] } }
             - { root: error, path: [ message ] }
         navigate:
-          - [ /api/project-page, [ choice ], { navigate: { root: result, path: [ page ] }, refreshes: [] } ]
-          - [ /api/homepage, [], { navigate: { root: result, path: [ homepage ] }, refreshes: [] } ]
-        counts: [ { path: /api/task-counts, params: { code: { value: TEL-42 } } }, { root: data, path: [ code ] } ]
-        move: [ /api/task-status, [ id, status ], { refreshes: [ /api/task-counts, /api/tasks ] }, [ text, value ] ]
+          - [ /api/project-page, [ choice ], { navigate: { path: { root: result, path: [ page ] }, pathParams: {}, queryParams: {} }, refreshes: [] } ]
+          - [ /api/homepage, [], { navigate: { path: { root: result, path: [ homepage ] }, pathParams: {}, queryParams: {} }, refreshes: [] } ]
+        counts: [ { path: { value: /api/task-counts }, pathParams: {}, queryParams: { code: { value: TEL-42 } } }, { root: data, path: [ code ] } ]
+        move: [ /api/task-status, [ id, status ], { refreshes: [ { path: { value: /api/task-counts }, pathParams: {}, queryParams: {} }, { path: { value: /api/tasks }, pathParams: {}, queryParams: {} } ] }, [ text, value ] ]
         comment:
           - /api/comments
           - serial
@@ -1406,7 +1400,7 @@ steps:
           - at: { root: values, path: [ body ] }
             matches: { minLength: 3 }
             disabledText: { lang: en, message: [ Write three characters or more. ] }
-          - { refreshes: [ /api/comments ] }
+          - { refreshes: [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ] }
           - id: { root: result, path: [ id ] }
             title: { root: result, path: [ taskTitle ] }
             count: { root: result, path: [ count ] }
@@ -1435,7 +1429,7 @@ steps:
               - []
               - [ { placeholder: title }, " is assigned to ", { placeholder: assignee }, "." ]
         list:
-          source: { path: /api/comments, params: {} }
+          source: { path: { value: /api/comments }, pathParams: {}, queryParams: {} }
           rows: { root: data, path: [ comments ] }
           rowActions:
             - - /api/comments/pin
@@ -1444,31 +1438,31 @@ steps:
               - "-"
               - []
               - [ { root: row, path: [ pinned ] }, { const: false } ]
-              - { refreshes: [ /api/comments ] }
+              - { refreshes: [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ] }
             - - /api/comments/delete
               - Delete
               - { id: { root: row, path: [ id ] } }
               - Delete this comment?
               - []
               - []
-              - { refreshes: [ /api/comments ] }
+              - { refreshes: [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ] }
             - - /api/comments/edit
               - Edit
               - { id: { root: row, path: [ id ] } }
               - Rewrite this comment?
               - [ body ]
               - []
-              - { refreshes: [ /api/comments ] }
+              - { refreshes: [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ] }
         more:
-          - [ /api/tasks, Add it and open the tables, [ [ input, title ], [ choice, projectCode ] ], { navigate: { value: /tables }, refreshes: [ /api/tasks ] }, false ]
-          - [ /api/team-links, Open the handbook, [], { navigate: { root: result, path: [ handbook ] }, refreshes: [] }, true ]
-          - [ /api/team-links, Open the mirror, [], { navigate: { root: result, path: [ mirror ] }, refreshes: [] }, true ]
+          - [ /api/tasks, Add it and open the tables, [ [ input, title ], [ choice, projectCode ] ], { navigate: { path: { value: /tables }, pathParams: {}, queryParams: {} }, refreshes: [ { path: { value: /api/tasks }, pathParams: {}, queryParams: {} } ] }, false ]
+          - [ /api/team-links, Open the handbook, [], { navigate: { path: { root: result, path: [ handbook ] }, pathParams: {}, queryParams: {} }, refreshes: [] }, true ]
+          - [ /api/team-links, Open the mirror, [], { navigate: { path: { root: result, path: [ mirror ] }, pathParams: {}, queryParams: {} }, refreshes: [] }, true ]
         mirrorResult: { mirror: { root: result, path: [ mirror ] } }
         pause:
           - /api/private/pause
           - [ [ choice, code ] ]
           - [ code, name, status ]
-          - { refreshes: [ /api/projects ] }
+          - { refreshes: [ { path: { value: /api/projects }, pathParams: {}, queryParams: {} } ] }
           - [ { root: error, path: [ code ] }, { root: error, path: [ message ] } ]
         loop: [ /api/loop, false, [ { required: [ status ] }, { not: { required: [ status ] } }, null ] ]
         byAddress:
@@ -1573,7 +1567,7 @@ steps:
         kinds: !cel "steps.nodes.result.themes.map(c, c.type)"
         mounts: !cel "steps.nodes.result.themes[2].children.map(b, b.children[0].text.message[0])"
         components: !cel "[steps.nodes.result.themes[6], steps.nodes.result.themes[9]].map(c, [c.export, c.props, c.module == steps.nodes.result.components[2].module])"
-        rootLinks: !cel "[steps.themes.result.body.children[1].children[2], steps.themes.result.body.children[1].children[4]].map(c, c.children.map(l, l.href))"
+        rootLinks: !cel "[steps.themes.result.body.children[1].children[2], steps.themes.result.body.children[1].children[4]].map(c, c.children.map(l, l.href.path.value))"
         badge: !cel "[steps.themes, steps.acmeThemes].map(p, p.result.body.children[1].children.exists(c, c.type == 'badge'))"
         polish: !cel "[steps.polishThemes.result.body.children[0].children[0].text, steps.polishThemes.result.body.children[1].children[0].text]"
       expected:

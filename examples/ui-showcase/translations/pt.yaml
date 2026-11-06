@@ -43,8 +43,6 @@ texts:
   - { text: Your browser did not ask for Polish., translation: Seu navegador não pediu polonês. }
   - { text: The Acme brand is on., translation: A marca Acme está ativada. }
   - { text: "A text an expression computes is shown as computed, never translated.", translation: "Um texto calculado por uma expressão é exibido como foi calculado, nunca traduzido." }
-  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "Um link que esta requisição torna inválido é substituído por um nó de erro, e o restante da página é servido." }
-  - { text: Leaves the application, translation: Sai do aplicativo }
 
   # The overview.
   - { text: Every node type, translation: Todos os tipos de nó }

@@ -224,7 +224,7 @@ shown: { at: !cel "values.whatever" }
     expect(found).toEqual([]);
   });
 
-  it("refuses the annotation on a binding that exists outside accessor fields", async () => {
+  it("accepts the annotation on a binding that exists outside accessor fields", async () => {
     const found = await findings({
       "/app/telo.yaml": `kind: Telo.Application
 metadata: { name: App }
@@ -247,6 +247,6 @@ schema:
         at: { x-telo-eval: accessor }
 `,
     });
-    expect(found.map(([code]) => code)).toEqual(["CONTEXT_FROM_REFERRER_INVALID"]);
+    expect(found).toEqual([]);
   });
 });

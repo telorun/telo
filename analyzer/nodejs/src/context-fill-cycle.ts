@@ -176,7 +176,7 @@ export function contextFillCycles(owner: ResourceManifest, host: FillCycleHost):
               node.manifest,
               (_name, holder) => {
                 const from = readFromReferrer(holder);
-                return from !== undefined && forwarded.has(from);
+                return from?.length === 1 && forwarded.has(from[0]!);
               },
               new Set([...seen, node.manifest]),
             );

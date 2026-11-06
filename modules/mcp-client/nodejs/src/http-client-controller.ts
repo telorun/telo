@@ -1,6 +1,10 @@
 import {
   fetchOrThrow,
   isCancellationError,
+  isRetryable,
+  retryAfterMs,
+  retryBackoffMs,
+  type InvokeStepRetry,
   type CancellationToken,
   type ControllerContext,
   type InvokeContext,
@@ -37,6 +41,7 @@ interface HttpClientManifest {
   sessionProvider?: unknown;
   clientInfo?: ClientInfo;
   protocolVersion?: string;
+  retry?: InvokeStepRetry;
 }
 
 interface InvokeInput {
@@ -142,10 +147,61 @@ export class McpHttpClient {
     }
     const token = invokeCtx?.cancellation;
     if (token?.isCancelled) throw cancelledError(this.describe(inputs), token);
+    const attempts = this.manifest.retry?.attempts ?? 0;
+    for (let resend = 0; ; resend++) {
+      try {
+        return await this.invokeOnce(inputs, token);
+      } catch (err) {
+        if (resend >= attempts || !isRetryableTransportFailure(err, this.manifest.retry)) throw err;
+        await this.waitBeforeResend(err, resend, inputs, token);
+      }
+    }
+  }
+
+  private async invokeOnce(
+    inputs: InvokeInput,
+    token: CancellationToken | undefined,
+  ): Promise<Record<string, unknown>> {
     if (this.hasSessionProvider) {
       return this.invokeExternal(inputs, token);
     }
     return this.invokeSelfHandshake(inputs, token);
+  }
+
+  /** The wait before re-attempt `resend + 1`: what `retryAfter` asks, else the
+   *  computed backoff with jitter. A cancellation during the wait ends it. */
+  private async waitBeforeResend(
+    err: unknown,
+    resend: number,
+    inputs: InvokeInput,
+    token: CancellationToken | undefined,
+  ): Promise<void> {
+    const policy = this.manifest.retry!;
+    const requested = retryAfterMs(
+      policy,
+      err,
+      (expression, error) => this.ctx.expandValue(expression, { error }),
+      { describe: this.describe(inputs) },
+    );
+    const backoff = retryBackoffMs(policy, resend);
+    const delay =
+      requested ?? ((policy.jitter ?? "full") === "full" ? Math.random() * backoff : backoff);
+    this.ctx.log.warn(
+      "MCP request failed at the transport layer; re-attempting",
+      { "mcp.transport": "http", "mcp.method": inputs.method },
+      { error: err, eventName: "mcp.request.retry" },
+    );
+    await new Promise<void>((resolve, reject) => {
+      if (token?.isCancelled) return reject(cancelledError(this.describe(inputs), token));
+      const unsubscribe = token?.onCancelled(() => {
+        clearTimeout(timer);
+        reject(cancelledError(this.describe(inputs), token));
+      });
+      const timer = setTimeout(() => {
+        unsubscribe?.();
+        resolve();
+      }, delay);
+    });
   }
 
   private async invokeExternal(
@@ -384,6 +440,21 @@ export class McpHttpClient {
       });
     }
   }
+}
+
+/** Gateway statuses that say the request never reached a handler. */
+const RETRYABLE_STATUSES = [502, 503, 504];
+
+/** A transport failure worth another attempt: no response arrived (the network
+ *  layer failed), or a gateway answered 502/503/504. Any other
+ *  `ERR_MCP_TRANSPORT` (unexpected content type, other HTTP statuses) and every
+ *  other code is final. */
+function isRetryableTransportFailure(err: unknown, policy: InvokeStepRetry | undefined): boolean {
+  if (!isInvokeErrorWithCode(err, "ERR_MCP_TRANSPORT")) return false;
+  if (!isRetryable(err, policy?.nonRetryable)) return false;
+  const data = (err as { data?: { cause?: unknown; status?: unknown } }).data;
+  if (typeof data?.cause === "string") return true;
+  return typeof data?.status === "number" && RETRYABLE_STATUSES.includes(data.status);
 }
 
 function isInvokeErrorWithCode(err: unknown, code: string): boolean {

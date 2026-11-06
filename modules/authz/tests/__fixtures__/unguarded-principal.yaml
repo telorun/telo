@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: UnguardedPrincipal, version: 1.0.0 }
+imports: { Authz: ../../ }
+targets:
+  - !ref policy
+---
+kind: Authz.CelPolicy
+metadata: { name: policy }
+rules:
+  - when: !cel "'admin' in principal.roles"

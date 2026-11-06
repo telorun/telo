@@ -43,8 +43,6 @@ texts:
   - { text: Your browser did not ask for Polish., translation: "Votre navigateur n'a pas demandé le polonais." }
   - { text: The Acme brand is on., translation: "La marque Acme est activée." }
   - { text: "A text an expression computes is shown as computed, never translated.", translation: "Un texte calculé par une expression est affiché tel qu'il a été calculé, jamais traduit." }
-  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "Un lien que cette requête rend invalide est remplacé par un nœud d'erreur, et le reste de la page est servi." }
-  - { text: Leaves the application, translation: "Quitte l'application" }
 
   # The overview.
   - { text: Every node type, translation: "Chaque type de nœud" }

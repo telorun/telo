@@ -19,7 +19,7 @@ kind: Kagi.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18854" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18854" }
 ---
 # Page 11 has items so that reading it would show; a request carrying `limit`
 # gets nothing.

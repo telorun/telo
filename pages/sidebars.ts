@@ -109,6 +109,8 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/manifest-migrations", label: "Manifest Migrations" },
         { type: "doc", id: "docs/extend/native-files", label: "Native Files" },
         { type: "doc", id: "docs/extend/accessor-fields", label: "Accessor Fields" },
+        { type: "doc", id: "docs/extend/referrer-typed-bindings", label: "Referrer-Typed Bindings" },
+        { type: "doc", id: "docs/extend/reference-slot-outputs", label: "Reference Slot Outputs" },
         { type: "doc", id: "docs/extend/browser-entries", label: "Browser Entries" },
         { type: "doc", id: "docs/extend/path-templates", label: "Path Templates" },
         { type: "doc", id: "docs/extend/controller-protocol", label: "Controller Protocol" },

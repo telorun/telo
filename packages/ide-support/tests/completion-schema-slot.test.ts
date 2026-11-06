@@ -95,6 +95,7 @@ describe("buildCompletions — JSON Schema slots", () => {
       "x-telo-context-eval",
       "x-telo-context-from-referrer",
       "x-telo-context-item-fills",
+      "x-telo-context-nullable-when",
     ]);
   });
 
@@ -115,6 +116,6 @@ describe("buildCompletions — JSON Schema slots", () => {
       "                type: string",
       "                ",
     ]);
-    expect(labels).toEqual(["x-telo-caught-member"]);
+    expect([...labels].sort()).toEqual(["x-telo-caught-member", "x-telo-context-from-referrer", "x-telo-context-nullable-when"]);
   });
 });

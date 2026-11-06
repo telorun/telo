@@ -43,8 +43,6 @@ texts:
   - { text: Your browser did not ask for Polish., translation: Twoja przeglądarka nie poprosiła o polski. }
   - { text: The Acme brand is on., translation: Marka Acme jest włączona. }
   - { text: "A text an expression computes is shown as computed, never translated.", translation: "Tekst obliczony przez wyrażenie jest pokazywany tak, jak go obliczono, i nigdy nie jest tłumaczony." }
-  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "Odnośnik, który to żądanie czyni niepoprawnym, zastępuje węzeł błędu, a reszta strony jest wysyłana." }
-  - { text: Leaves the application, translation: Opuszcza aplikację }
 
   # The overview.
   - { text: Every node type, translation: Każdy rodzaj węzła }

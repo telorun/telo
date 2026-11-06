@@ -1,7 +1,9 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import type { AliasResolver } from "./alias-resolver.js";
 import { holdsHostPath } from "./host-path-slot.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { inputValueSchema } from "./residual-schema.js";
+import { canonicalShapeSchema, withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
 
 /**
  * What a library declares for its importer to supply under `variables:` / `secrets:`,
@@ -17,11 +19,15 @@ import { inputValueSchema } from "./residual-schema.js";
 export function importInputsSchema(
   importDoc: ResourceManifest,
   documents: readonly ModuleDocuments[],
+  /** Each module's import table, so a shape an entry names resolves in the
+   *  library's own scope; absent, such a reference stays as written. */
+  aliasesByModule?: ReadonlyMap<string, Pick<AliasResolver, "moduleForAlias">>,
 ): Record<string, any> | undefined {
-  const library = libraryDocOf(importDoc, documents);
-  if (!library) return undefined;
+  const found = libraryDocOf(importDoc, documents);
+  if (!found) return undefined;
+  const { library, documentSet } = found;
   let schema = schemas.get(library);
-  if (!schema) schemas.set(library, (schema = blocksSchema(library, () => true)));
+  if (!schema) schemas.set(library, (schema = blocksSchema(library, documentSet, aliasesByModule, () => true)));
   return schema;
 }
 
@@ -33,11 +39,18 @@ export function importInputsSchema(
 export function importInputsJoinSchema(
   importDoc: ResourceManifest,
   documents: readonly ModuleDocuments[],
+  aliasesByModule?: ReadonlyMap<string, Pick<AliasResolver, "moduleForAlias">>,
 ): Record<string, any> | undefined {
-  const library = libraryDocOf(importDoc, documents);
-  if (!library) return undefined;
+  const found = libraryDocOf(importDoc, documents);
+  if (!found) return undefined;
+  const { library, documentSet } = found;
   let schema = joinSchemas.get(library);
-  if (!schema) joinSchemas.set(library, (schema = blocksSchema(library, (entry) => !holdsHostPath(entry))));
+  if (!schema) {
+    joinSchemas.set(
+      library,
+      (schema = blocksSchema(library, documentSet, aliasesByModule, (entry) => !holdsHostPath(entry))),
+    );
+  }
   return schema;
 }
 
@@ -48,10 +61,22 @@ const joinSchemas = new WeakMap<object, Record<string, any>>();
 
 const BLOCKS = ["variables", "secrets"] as const;
 
+/** A shape an entry names is the library's: its references resolve in the
+ *  library's own module and imports, never the importer's. */
 function blocksSchema(
   library: ResourceManifest,
+  documentSet: ModuleDocuments,
+  aliasesByModule: ReadonlyMap<string, Pick<AliasResolver, "moduleForAlias">> | undefined,
   keep: (entry: Record<string, any>) => boolean,
 ): Record<string, any> {
+  const moduleForAlias = (alias: string): string | undefined =>
+    aliasesByModule?.get(documentSet.module)?.moduleForAlias(alias);
+  const inLibrary = (entry: Record<string, unknown>): Record<string, any> =>
+    canonicalShapeSchema(
+      withCanonicalRefSentinels(entry, documentSet.module, moduleForAlias) as Record<string, any>,
+      documentSet.module,
+      moduleForAlias,
+    );
   const properties: Record<string, unknown> = {};
   for (const block of BLOCKS) {
     const declared = (library as Record<string, unknown>)[block];
@@ -59,7 +84,7 @@ function blocksSchema(
     if (declared && typeof declared === "object" && !Array.isArray(declared)) {
       for (const [name, entry] of Object.entries(declared as Record<string, unknown>)) {
         if (entry && typeof entry === "object" && !Array.isArray(entry) && keep(entry as Record<string, any>)) {
-          entries[name] = inputValueSchema(entry as Record<string, unknown>);
+          entries[name] = inputValueSchema(inLibrary(entry as Record<string, unknown>));
         }
       }
     }
@@ -71,7 +96,7 @@ function blocksSchema(
 function libraryDocOf(
   importDoc: ResourceManifest,
   documents: readonly ModuleDocuments[],
-): ResourceManifest | undefined {
+): { library: ResourceManifest; documentSet: ModuleDocuments } | undefined {
   if (importDoc.kind !== "Telo.Import") return undefined;
   const meta = importDoc.metadata as { resolvedSource?: string; resolvedModuleName?: string } | undefined;
   const bySource = meta?.resolvedSource
@@ -79,5 +104,6 @@ function libraryDocOf(
     : undefined;
   const byName = documents.filter((documentSet) => documentSet.module === meta?.resolvedModuleName);
   const found = bySource ?? (byName.length === 1 ? byName[0] : undefined);
-  return found?.manifests.find((manifest) => manifest.kind === "Telo.Library");
+  const library = found?.manifests.find((manifest) => manifest.kind === "Telo.Library");
+  return library && found ? { library, documentSet: found } : undefined;
 }

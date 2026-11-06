@@ -1,0 +1,94 @@
+kind: Telo.Application
+metadata:
+  name: AuthTrustedHeaderTest
+  version: 1.0.0
+  description: |
+    Auth.TrustedHeader turns an asserted identity into a complete principal,
+    reading the roles, scopes, permissions and organization from the claims
+    it is told to, and refuses an identity it cannot read as an answer, not a failure.
+imports: { Auth: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Auth.TrustedHeader
+metadata: { name: defaults }
+---
+kind: Auth.TrustedHeader
+metadata: { name: mapped }
+principalIssuer: https://sso.example.com
+principalKind: service
+claimNames: { roles: groups, org: tenant }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: plain
+    invoke: !ref defaults
+    inputs:
+      presentation: { type: asserted, subject: alice, claims: { roles: [admin, dev], scopes: orders:read orders:write } }
+      confirmation: {}
+      resource: null
+  - name: renamed
+    invoke: !ref mapped
+    inputs:
+      presentation: { type: asserted, subject: svc-1, claims: { groups: [ops], tenant: acme } }
+      confirmation: {}
+      resource: https://api.example.com/
+  - name: emptySubject
+    invoke: !ref defaults
+    inputs:
+      presentation: { type: asserted, subject: "", claims: {} }
+      confirmation: {}
+      resource: null
+  - name: malformedClaim
+    invoke: !ref defaults
+    inputs:
+      presentation: { type: asserted, subject: alice, claims: { roles: 7 } }
+      confirmation: {}
+      resource: null
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        plain: !cel "steps.plain.result"
+        renamed: !cel "steps.renamed.result"
+        emptySubject: !cel "steps.emptySubject.result"
+        malformedClaim: !cel "steps.malformedClaim.result"
+        advertisedIssuer: !cel "has(resources.mapped.issuer)"
+      expected:
+        plain:
+          principal:
+            subject: alice
+            issuer: null
+            kind: user
+            claims: { roles: [admin, dev], scopes: orders:read orders:write }
+            scopes: [orders:read, orders:write]
+            roles: [admin, dev]
+            permissions: []
+            org: null
+            amr: []
+            acr: null
+            sessionId: null
+            authenticatedAt: null
+            via: defaults
+        renamed:
+          principal:
+            subject: svc-1
+            issuer: https://sso.example.com
+            kind: service
+            claims: { groups: [ops], tenant: acme }
+            scopes: []
+            roles: [ops]
+            permissions: []
+            org: acme
+            amr: []
+            acr: null
+            sessionId: null
+            authenticatedAt: null
+            via: mapped
+        emptySubject: { refused: true, reason: the asserted subject is empty, challenge: null }
+        malformedClaim:
+          refused: true
+          reason: "the asserted claim 'roles' is neither a list of strings nor a string"
+          challenge: null
+        advertisedIssuer: false

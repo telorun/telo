@@ -1,0 +1,355 @@
+kind: Telo.Library
+metadata:
+  name: Session
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    Server-side login sessions for browsers and other clients that keep a
+    cookie: start one when someone signs in, recognise it on every request,
+    replace it when privileges change, and log a user out of one device or every
+    device. Sessions expire when idle and at an absolute deadline, can outlive
+    the browser, and are capped per user.
+requires:
+  # A resource rule's `coReferrers:` is first bound in 0.130.0; an older analyzer
+  # evaluates the name rule unbound and reports it as a defect in this module.
+  telo: ">=0.130.0"
+imports: { Auth: ../auth, KvStore: ../kv-store }
+exports:
+  kinds: [Sessions, Verifier, Start, Rotate, End, EndAll, List]
+  resources: [SessionInfo]
+---
+# Normative: docs/*.md.
+kind: Telo.JsonSchema
+metadata:
+  name: SessionInfo
+  description: >-
+    A live session as it is listed: its public id, when it was created, last
+    seen, authenticated and expires, how the user signed in, and the client
+    that started it. The token and its digest are never reported.
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, createdAt, lastSeenAt, expiresAt, authenticatedAt, amr, acr, userAgent, address, persistent]
+  properties:
+    id: { description: "The public id, `ses_` and 22 characters.", type: string }
+    createdAt: { x-telo-type: Telo.Timestamp }
+    lastSeenAt: { description: "When a request last used the session, to within a tenth of the idle timeout.", x-telo-type: Telo.Timestamp }
+    expiresAt: { description: When the session stops being accepted if no request uses it again., x-telo-type: Telo.Timestamp }
+    authenticatedAt: { description: When the user signed in., x-telo-type: Telo.Timestamp }
+    amr: { description: How the user signed in., type: array, items: { type: string } }
+    acr: { type: [string, "null"] }
+    userAgent: { description: The user agent of the client that started the session; null when none was given., type: [string, "null"] }
+    address: { description: The address of the client that started the session; null when none was given., type: [string, "null"] }
+    persistent: { description: Whether it was started as a remembered session., type: boolean }
+---
+kind: Telo.Definition
+metadata:
+  name: Sessions
+  description: >-
+    A set of server-side sessions kept in durable key/value storage under a
+    stable name. Each session expires after an idle timeout and at an absolute
+    deadline; a remembered session has its own, longer pair. A user may hold a
+    bounded number of sessions at once, and all of them can be ended in one
+    write.
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./nodejs/session.mjs&local_path=./nodejs/src/index.ts#SessionsController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [store, name, idleTimeout, absoluteLifetime]
+  properties:
+    store:
+      title: Store
+      description: >-
+        The durable storage the sessions live in. Share it between replicas for every replica to
+        honour a logout at its next request; an in-process store ends every session at a restart.
+      x-telo-ref: { kind: KvStore.Store, use: dependency }
+    name:
+      title: Name
+      description: >-
+        The durable identity of this set: part of every key it writes, so renaming the resource
+        keeps its sessions while a changed name ends them. Two sets claiming one name on one store are refused.
+      type: string
+      pattern: "^[A-Za-z0-9_.-]{1,64}$"
+    idleTimeout:
+      title: Idle timeout
+      description: >-
+        How long a session stays valid without a request. Renewed by use, at most about ten
+        writes per idle period, so it is accurate to within a tenth.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+    absoluteLifetime:
+      title: Absolute lifetime
+      description: How long a session may live from the moment it starts, however busy it is. At least the idle timeout.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+    persistent:
+      title: Persistent
+      description: >-
+        The lifetimes of a session started with `persistent: true` (remember me), whose cookie
+        carries an expiry so it survives a browser restart. Without it no session may be persistent.
+      type: object
+      additionalProperties: false
+      required: [idleTimeout, absoluteLifetime]
+      properties:
+        idleTimeout: { description: "As the set's `idleTimeout`, for a remembered session.", x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s } }
+        absoluteLifetime: { description: "As the set's `absoluteLifetime`, for a remembered session. At least its idle timeout.", x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s } }
+    maxPerSubject:
+      title: Max per subject
+      description: How many sessions one subject may hold at once, 50 when omitted. Starting another ends the oldest.
+      type: integer
+      minimum: 1
+      maximum: 1000
+      default: 50
+  x-telo-resource-rules:
+    - condition: !cel >-
+        duration(self.idleTimeout) <= duration(self.absoluteLifetime) &&
+        (!has(self.persistent) || duration(self.persistent.idleTimeout) <= duration(self.persistent.absoluteLifetime))
+      code: SESSION_LIFETIME_INVALID
+      message: has an idle timeout longer than its absolute lifetime, in the session lifetimes or in the persistent ones, so the idle timeout could never be reached.
+    - coReferrers: /store
+      condition: !cel "!coReferrers.exists(o, o.name == self.name)"
+      code: SESSION_NAME_DUPLICATE
+      message: >-
+        claims a name another session set on this store already claims. Their records would collide
+        and each set's tokens would be accepted by the other's verifier — give each set a name of its own.
+---
+kind: Telo.Definition
+metadata:
+  name: Verifier
+  description: >-
+    Authenticates a request carrying a session token, typically read from a
+    cookie. Looks the session up, compares its secret in constant time, refuses
+    ended and expired sessions, and slides the idle deadline. Answers with the
+    signed-in user as the caller, including how and when they signed in, or a
+    refusal naming why.
+capability: Telo.Invocable
+extends: Auth.Verifier
+controllers: [pkg:telo/local/js?path=./nodejs/session.mjs&local_path=./nodejs/src/index.ts#VerifierController]
+throws:
+  codes:
+    ERR_SESSION_STORE_UNAVAILABLE: { description: The sessions could not be read. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [sessions]
+  properties:
+    sessions:
+      title: Sessions
+      description: The set of sessions a token is looked up in.
+      x-telo-ref: { kind: Self.Sessions, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Start
+  description: >-
+    Starts a session for a signed-in user under a fresh identifier and returns
+    the session token once, with the session's public id, its expiry, the
+    expiry a cookie should carry for a remembered session, and the older
+    sessions it ended to stay within the per-user cap. Never reuses an
+    identifier, so a session cannot be fixed by an attacker.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/session.mjs&local_path=./nodejs/src/index.ts#StartController]
+throws:
+  codes:
+    ERR_SESSION_CONTENDED: { description: "The user's session list kept changing under the call's attempts to update it. Repeat the call." }
+    ERR_SESSION_STORE_UNAVAILABLE: { description: "The session store could not be reached or failed. Repeating is safe; a failed attempt may leave a session nobody holds a token for, ended by the cap or its lifetime." }
+    ERR_SESSION_STORE_INCONSISTENT: { description: "The store answered in a way a key/value store cannot, such as taking a freshly minted session id. Terminal: the storage needs attention." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [sessions]
+  properties:
+    sessions:
+      title: Sessions
+      description: The set the session is started in.
+      x-telo-ref: { kind: Self.Sessions, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [principal]
+    properties:
+      principal: { description: "The signed-in user, as a password check answered it. Its `amr`, `acr` and `authenticatedAt` are kept; `authenticatedAt` is now when null.", $ref: "telo://Auth/Principal" }
+      persistent: { description: "Whether to start a remembered session, with the set's `persistent` lifetimes. False when omitted.", type: boolean }
+      userAgent: { description: "The client's user agent, kept for the user to recognise the session by.", type: [string, "null"], maxLength: 512 }
+      address: { description: "The client's address, kept for the user to recognise the session by.", type: [string, "null"], maxLength: 128 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [token, sessionId, expiresAt, cookieExpiresAt, ended]
+    properties:
+      token: { description: The session token to put in the cookie. It is not stored and cannot be read again., type: string, x-telo-sensitive: true }
+      sessionId: { description: "The session's public id.", type: string }
+      expiresAt: { description: When the session stops being accepted if no request uses it., x-telo-type: Telo.Timestamp }
+      cookieExpiresAt: { description: "The expiry for the cookie of a remembered session; null for a session that ends with the browser.", anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+      ended: { description: The public ids of the oldest sessions ended to stay within `maxPerSubject`., type: array, items: { type: string } }
+---
+kind: Telo.Definition
+metadata:
+  name: Rotate
+  description: >-
+    Replaces a session by a fresh one, for use when a user's privileges change:
+    the old token stops working at once and the new token is returned once. The
+    absolute deadline is kept, so rotating never extends a login. A session the
+    user does not hold is refused.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/session.mjs&local_path=./nodejs/src/index.ts#RotateController]
+throws:
+  codes:
+    ERR_SESSION_NOT_FOUND: { description: "The subject holds no live session with this id: it ended, expired, or belongs to someone else. Nothing changed." }
+    ERR_SESSION_CONTENDED: { description: "The user's session list kept changing under the call's attempts to update it. Repeat the call." }
+    ERR_SESSION_STORE_UNAVAILABLE: { description: "The session store could not be reached or failed. The old session may already be ended; the user then signs in again." }
+    ERR_SESSION_STORE_INCONSISTENT: { description: "The store answered in a way a key/value store cannot, such as taking a freshly minted session id. Terminal: the storage needs attention." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [sessions]
+  properties:
+    sessions:
+      title: Sessions
+      description: The set the session lives in.
+      x-telo-ref: { kind: Self.Sessions, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [sessionId, subject]
+    properties:
+      sessionId: { description: "The public id of the session to replace.", type: string, pattern: "^ses_[0-9A-Za-z]{22}$" }
+      subject: { description: The user the session belongs to., type: string, minLength: 1 }
+      principal: { description: "The user as they are now. Its subject must be `subject`. The session keeps its previous principal when omitted.", $ref: "telo://Auth/Principal" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [token, sessionId, expiresAt, cookieExpiresAt]
+    properties:
+      token: { description: The new session token. It is not stored and cannot be read again., type: string, x-telo-sensitive: true }
+      sessionId: { description: "The new session's public id.", type: string }
+      expiresAt: { description: When the session stops being accepted if no request uses it., x-telo-type: Telo.Timestamp }
+      cookieExpiresAt: { description: "The expiry for the cookie of a remembered session; null for a session that ends with the browser.", anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+---
+kind: Telo.Definition
+metadata:
+  name: End
+  description: >-
+    Ends one session of a user, so its token is refused from the next request on
+    every replica. Answers that nothing was ended when the user holds no such
+    session, which includes a session belonging to someone else.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/session.mjs&local_path=./nodejs/src/index.ts#EndController]
+throws:
+  codes:
+    ERR_SESSION_CONTENDED: { description: "The user's session list kept changing under the call's attempts to update it. Repeat the call." }
+    ERR_SESSION_STORE_UNAVAILABLE: { description: The session store could not be reached or failed. Repeating the call is safe. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [sessions]
+  properties:
+    sessions:
+      title: Sessions
+      description: The set the session lives in.
+      x-telo-ref: { kind: Self.Sessions, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [sessionId, subject]
+    properties:
+      sessionId: { description: "The public id of the session to end.", type: string, pattern: "^ses_[0-9A-Za-z]{22}$" }
+      subject: { description: The user the session must belong to., type: string, minLength: 1 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ended]
+    properties:
+      ended: { description: False when the user held no such session., type: boolean }
+---
+kind: Telo.Definition
+metadata:
+  name: EndAll
+  description: >-
+    Logs a user out everywhere: ends every session of the user, or every one
+    but the session making the request, in one atomic write. Every copy of
+    every ended token is refused from the next request on every replica.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/session.mjs&local_path=./nodejs/src/index.ts#EndAllController]
+throws:
+  codes:
+    ERR_SESSION_CONTENDED: { description: "The user's session list kept changing under the call's attempts to update it. Repeat the call." }
+    ERR_SESSION_STORE_UNAVAILABLE: { description: The session store could not be reached or failed. Repeating the call is safe. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [sessions]
+  properties:
+    sessions:
+      title: Sessions
+      description: The set the sessions live in.
+      x-telo-ref: { kind: Self.Sessions, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [subject]
+    properties:
+      subject: { description: The user to log out., type: string, minLength: 1 }
+      except: { description: "The public id of the one session to keep, typically the caller's own.", type: [string, "null"], pattern: "^ses_[0-9A-Za-z]{22}$" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ended]
+    properties:
+      ended: { description: The public ids of the sessions ended., type: array, items: { type: string } }
+---
+kind: Telo.Definition
+metadata:
+  name: List
+  description: >-
+    Lists a user's live sessions, oldest first, with when each was started and
+    last used, how the user signed in and the client that started it, so the
+    user can recognise a session and end it. The set is bounded by the
+    per-user cap and returned whole.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/session.mjs&local_path=./nodejs/src/index.ts#ListController]
+throws:
+  codes:
+    ERR_SESSION_STORE_UNAVAILABLE: { description: The sessions could not be read. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [sessions]
+  properties:
+    sessions:
+      title: Sessions
+      description: The set the sessions live in.
+      x-telo-ref: { kind: Self.Sessions, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [subject]
+    properties:
+      subject: { description: The user whose sessions are listed., type: string, minLength: 1 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [sessions]
+    properties:
+      sessions: { type: array, items: !ref SessionInfo }

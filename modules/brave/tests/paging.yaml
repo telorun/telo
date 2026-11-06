@@ -19,7 +19,7 @@ kind: Brave.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18848" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18848" }
 ---
 # Offset 9 reports more results: the engine must still issue no cursor there.
 kind: Run.Value

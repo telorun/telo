@@ -1,0 +1,67 @@
+# What `telo check` refuses about a session set's lifetimes and its name, at the
+# author's own line, and the same refusals from the controller when a consumer's
+# entry-scoped check is silent (`runFails:`).
+kind: Telo.Application
+metadata:
+  name: SessionRefusalsTest
+  version: 1.0.0
+  description: >-
+    An idle timeout longer than the absolute lifetime, in either pair, and two sets claiming one
+    name on one store are refused at check and at start; distinct names or stores boot.
+imports: { Assert: ../../assert }
+targets:
+  - !ref idleLonger
+  - !ref idleLongerAtStart
+  - !ref persistentIdleLonger
+  - !ref persistentIdleLongerAtStart
+  - !ref nameDuplicate
+  - !ref nameDuplicateAtStart
+  - !ref namesDistinct
+---
+kind: Assert.Manifest
+metadata: { name: idleLonger }
+source: ./__fixtures__/idle-longer/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "Session.Sessions/sessions: has an idle timeout longer than its absolute lifetime, in the session lifetimes or in the persistent ones, so the idle timeout could never be reached." }
+---
+kind: Assert.Manifest
+metadata: { name: idleLongerAtStart }
+source: ./__fixtures__/idle-longer-app.yaml
+expect:
+  errors: []
+  runFails: "Session.Sessions \"sessions\": the idle timeout is longer than its absolute lifetime, so the idle timeout could never be reached. [ERR_SESSION_LIFETIME_INVALID]"
+---
+kind: Assert.Manifest
+metadata: { name: persistentIdleLonger }
+source: ./__fixtures__/persistent-idle-longer/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "Session.Sessions/sessions: has an idle timeout longer than its absolute lifetime, in the session lifetimes or in the persistent ones, so the idle timeout could never be reached." }
+---
+kind: Assert.Manifest
+metadata: { name: persistentIdleLongerAtStart }
+source: ./__fixtures__/persistent-idle-longer-app.yaml
+expect:
+  errors: []
+  runFails: "Session.Sessions \"sessions\": the 'persistent' idle timeout is longer than its absolute lifetime, so the idle timeout could never be reached. [ERR_SESSION_LIFETIME_INVALID]"
+---
+kind: Assert.Manifest
+metadata: { name: nameDuplicate }
+source: ./__fixtures__/name-duplicate/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "Session.Sessions/web: claims a name another session set on this store already claims. Their records would collide and each set's tokens would be accepted by the other's verifier — give each set a name of its own." }
+    - { code: RESOURCE_RULE_VIOLATED, message: "Session.Sessions/admin: claims a name another session set on this store already claims. Their records would collide and each set's tokens would be accepted by the other's verifier — give each set a name of its own." }
+---
+kind: Assert.Manifest
+metadata: { name: nameDuplicateAtStart }
+source: ./__fixtures__/name-duplicate-app.yaml
+expect:
+  errors: []
+  runFails: "Session.Sessions \"admin\" claims the name 'main' on its store, which Session.Sessions \"web\" already claims. Their records would collide and each set's tokens would be accepted by the other's verifier — give each set a name of its own. [ERR_SESSION_NAME_DUPLICATE]"
+---
+kind: Assert.Manifest
+metadata: { name: namesDistinct }
+source: ./__fixtures__/names-distinct.yaml
+expect: { errors: [], runs: true }

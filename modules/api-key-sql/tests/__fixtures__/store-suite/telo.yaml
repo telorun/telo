@@ -1,0 +1,305 @@
+# The API-key store's behaviour, once, for every engine. A run supplies two
+# stores over one table — `store` (no lifetime bound) and `boundedStore` (a
+# one-hour `maxLifetime`), both with prefix `tk` and scopes `read`, `write` —
+# and the port the suite's HTTP server listens on.
+kind: Telo.Library
+metadata:
+  name: ApiKeyStoreSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: the API-key store's behaviour over a durable store, run
+    unchanged by every engine.
+variables: { port: { type: integer } }
+imports:
+  ApiKey: ../../../../api-key
+  Http: ../../../../http-server
+  HttpClient: ../../../../http-client
+  Assert: ../../../../assert
+  Timer: ../../../../timer
+resources:
+  store:
+    kind: ApiKey.Store
+    description: A store with prefix `tk`, scopes `read` and `write` and no lifetime bound.
+  boundedStore:
+    kind: ApiKey.Store
+    description: A store with the same prefix and scopes and a `maxLifetime` of one hour.
+exports: { resources: [listing, revocation, rotation, refusals, verification] }
+---
+kind: ApiKey.Issue
+metadata: { name: issue }
+store: !ref store
+---
+kind: ApiKey.List
+metadata: { name: list }
+store: !ref store
+---
+kind: ApiKey.Revoke
+metadata: { name: revoke }
+store: !ref store
+---
+kind: ApiKey.Rotate
+metadata: { name: rotate }
+store: !ref store
+---
+kind: ApiKey.Issue
+metadata: { name: issueBounded }
+store: !ref boundedStore
+---
+kind: ApiKey.Verifier
+metadata: { name: verifier }
+sources: [!ref store]
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /me, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              subject: !cel "request.principal.subject"
+              apiKeyId: !cel "request.principal.claims.apiKeyId"
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: !interpolate "http://127.0.0.1:${{ variables.port }}"
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+# Issue three keys for one owner and page through them two at a time: `next`
+# appears only while more exist, and the cursor continues where the page ended.
+kind: Telo.Sequence
+metadata: { name: listing }
+steps:
+  - name: owner
+    value: { type: user, id: !cel "'listing-' + uuidv4()" }
+  - name: first
+    invoke: !ref issue
+    inputs: { owner: !cel "steps.owner.result", scopes: [read], label: one }
+  - { name: pause1, invoke: { kind: Timer.Delay }, inputs: { duration: 5ms } }
+  - name: second
+    invoke: !ref issue
+    inputs: { owner: !cel "steps.owner.result", scopes: [read, write] }
+  - { name: pause2, invoke: { kind: Timer.Delay }, inputs: { duration: 5ms } }
+  - name: third
+    invoke: !ref issue
+    inputs: { owner: !cel "steps.owner.result", scopes: [write] }
+  - name: page1
+    invoke: !ref list
+    inputs: { owner: !cel "steps.owner.result", limit: 2 }
+  - name: page2
+    invoke: !ref list
+    inputs: { owner: !cel "steps.owner.result", limit: 2, cursor: !cel "steps.page1.result.next" }
+  - name: other
+    invoke: !ref list
+    inputs: { owner: { type: user, id: nobody-here } }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        page1: !cel "steps.page1.result.keys.map(k, k.id)"
+        page1HasNext: !cel "'next' in steps.page1.result"
+        page2: !cel "steps.page2.result.keys.map(k, k.id)"
+        page2HasNext: !cel "'next' in steps.page2.result"
+        scopes: !cel "steps.page1.result.keys.map(k, k.scopes)"
+        label: !cel "steps.page1.result.keys[0].label"
+        other: !cel "steps.other.result.keys"
+      expected:
+        page1: [!cel "steps.first.result.id", !cel "steps.second.result.id"]
+        page1HasNext: true
+        page2: [!cel "steps.third.result.id"]
+        page2HasNext: false
+        scopes: [[read], [read, write]]
+        label: one
+        other: []
+---
+# A second revocation keeps the first one's time and author.
+kind: Telo.Sequence
+metadata: { name: revocation }
+steps:
+  - name: issued
+    invoke: !ref issue
+    inputs: { owner: { type: service, id: !cel "'revocation-' + uuidv4()" }, scopes: [read] }
+  - name: first
+    invoke: !ref revoke
+    inputs: { id: !cel "steps.issued.result.id", by: alice }
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 10ms } }
+  - name: second
+    invoke: !ref revoke
+    inputs: { id: !cel "steps.issued.result.id", by: bob }
+  - name: listed
+    invoke: !ref list
+    inputs: { owner: !cel "steps.issued.result.owner" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        sameTime: !cel "steps.first.result.revokedAt == steps.second.result.revokedAt"
+        by: !cel "[steps.first.result.revokedBy, steps.second.result.revokedBy]"
+        listed: !cel "steps.listed.result.keys.map(k, k.revokedBy)"
+      expected: { sameTime: true, by: [alice, alice], listed: [alice] }
+---
+# The successor takes the owner, scopes and label and records what it replaced;
+# the old key expires at the rotation plus the overlap.
+kind: Telo.Sequence
+metadata: { name: rotation }
+steps:
+  - name: issued
+    invoke: !ref issue
+    inputs:
+      owner: { type: organization, id: !cel "'rotation-' + uuidv4()" }
+      scopes: [read, write]
+      label: deploy
+  - name: rotated
+    invoke: !ref rotate
+    inputs: { id: !cel "steps.issued.result.id", overlap: 1h }
+  - name: again
+    try:
+      - name: rotatedAgainAfterRevoke
+        invoke: !ref revoke
+        inputs: { id: !cel "steps.rotated.result.id" }
+      - name: rotateRevoked
+        invoke: !ref rotate
+        inputs: { id: !cel "steps.rotated.result.id" }
+    catch:
+      - name: refused
+        value: !cel "error.code"
+  - name: listed
+    invoke: !ref list
+    inputs: { owner: !cel "steps.issued.result.owner" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        successor: !cel "[steps.rotated.result.owner, steps.rotated.result.scopes, steps.rotated.result.label]"
+        previous: !cel "steps.rotated.result.previous.id"
+        previousEnds: !cel "steps.rotated.result.previous.expiresAt > steps.rotated.result.createdAt && steps.rotated.result.previous.expiresAt <= steps.rotated.result.createdAt + duration('1h1s')"
+        overlapCapped: !cel "steps.listed.result.keys.map(k, k.expiresAt != null)"
+        replacedKeys: !cel "steps.listed.result.keys.map(k, k.rotatedFrom)"
+        revokedRotation: !cel "steps.refused.result"
+      expected:
+        successor: [{ type: organization, id: !cel "steps.issued.result.owner.id" }, [read, write], deploy]
+        previous: !cel "steps.issued.result.id"
+        previousEnds: true
+        overlapCapped: [true, false]
+        replacedKeys: [null, !cel "steps.issued.result.id"]
+        revokedRotation: ERR_API_KEY_REVOKED
+---
+kind: Telo.Sequence
+metadata: { name: refusals }
+steps:
+  - name: unknownKey
+    try:
+      - name: revokeUnknown
+        invoke: !ref revoke
+        inputs: { id: apk_0000000000000000000000 }
+    catch:
+      - name: caughtKey
+        value: !cel "error.code"
+  - name: unknownScope
+    try:
+      - name: issueAdmin
+        invoke: !ref issue
+        inputs: { owner: { type: user, id: refusals }, scopes: [admin] }
+    catch:
+      - name: caughtScope
+        value: !cel "error.code"
+  - name: unbounded
+    try:
+      - name: issueForever
+        invoke: !ref issueBounded
+        inputs: { owner: { type: user, id: refusals }, scopes: [read] }
+    catch:
+      - name: caughtLifetime
+        value: !cel "error.code"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.caughtKey.result"
+        - !cel "steps.caughtScope.result"
+        - !cel "steps.caughtLifetime.result"
+      expected: [ERR_API_KEY_NOT_FOUND, ERR_API_KEY_SCOPE_UNKNOWN, ERR_API_KEY_LIFETIME_EXCEEDED]
+---
+# What `ApiKey.Verifier` makes of stored keys on an HTTP mount: a live key and a
+# rotation's successor pass, a revoked, an expired and a mistyped one do not, and
+# a key's last use is recorded once.
+kind: Telo.Sequence
+metadata: { name: verification }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: !cel "variables.port" }
+    mounts:
+      - path: /api
+        mount: !ref api
+        authentication:
+          verifiers:
+            - verifier: !ref verifier
+              from: { kind: Http.FromHeader, header: x-api-key, scheme: ApiKey }
+targets:
+  - !ref server
+steps:
+  - name: owner
+    value: { type: user, id: !cel "'verification-' + uuidv4()" }
+  - name: live
+    invoke: !ref issue
+    inputs: { owner: !cel "steps.owner.result", scopes: [read], expiresAt: "2999-01-01T00:00:00Z" }
+  - name: revoked
+    invoke: !ref issue
+    inputs: { owner: !cel "steps.owner.result", scopes: [read] }
+  - name: expired
+    invoke: !ref issue
+    inputs: { owner: !cel "steps.owner.result", scopes: [read], expiresAt: "2020-01-01T00:00:00Z" }
+  - name: replaced
+    invoke: !ref issue
+    inputs: { owner: !cel "steps.owner.result", scopes: [read] }
+  - name: revocation
+    invoke: !ref revoke
+    inputs: { id: !cel "steps.revoked.result.id" }
+  - name: rotated
+    invoke: !ref rotate
+    inputs: { id: !cel "steps.replaced.result.id" }
+  - name: liveCall
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: !cel "steps.live.result.key" } }
+  - name: afterFirstUse
+    invoke: !ref list
+    inputs: { owner: !cel "steps.owner.result", limit: 10 }
+  - name: liveAgain
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: !cel "steps.live.result.key" } }
+  - name: afterSecondUse
+    invoke: !ref list
+    inputs: { owner: !cel "steps.owner.result", limit: 10 }
+  - name: revokedCall
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: !cel "steps.revoked.result.key" } }
+  - name: expiredCall
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: !cel "steps.expired.result.key" } }
+  - name: successorCall
+    invoke: !ref call
+    inputs: { url: /api/me, headers: { x-api-key: !cel "steps.rotated.result.key" } }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        live: !cel "[steps.liveCall.result.status, steps.liveCall.result.body.apiKeyId]"
+        revoked: !cel "steps.revokedCall.result.status"
+        expired: !cel "steps.expiredCall.result.status"
+        successor: !cel "steps.successorCall.result.status"
+        usedOnce: !cel >-
+          steps.afterFirstUse.result.keys.filter(k, k.id == steps.live.result.id)[0].lastUsedAt != null
+          && steps.afterFirstUse.result.keys.filter(k, k.id == steps.live.result.id)[0].lastUsedAt
+          == steps.afterSecondUse.result.keys.filter(k, k.id == steps.live.result.id)[0].lastUsedAt
+      expected:
+        live: [200, !cel "steps.live.result.id"]
+        revoked: 401
+        expired: 401
+        successor: 200
+        usedOnce: true

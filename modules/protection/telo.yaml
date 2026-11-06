@@ -1,0 +1,41 @@
+kind: Telo.Library
+metadata:
+  name: Protection
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security, Reliability]
+  description: >-
+    Defences against abuse of sign-in. Bounds password guessing per user
+    identifier: failed attempts count against a budget in a window, and once it
+    is spent the identifier is refused as throttled without the password being
+    checked at all. Successful sign-ins cost nothing, so a legitimate user is
+    never locked out by their own logins.
+imports: { Auth: ../auth, RateLimit: ../rate-limit }
+exports: { kinds: [PasswordThrottle] }
+---
+# Normative: docs/password-throttle.md.
+kind: Telo.Definition
+metadata:
+  name: PasswordThrottle
+  description: >-
+    Wraps a password checker and bounds failed attempts per user identifier. Each
+    attempt reserves one unit of a budget keyed by a digest of the identifier;
+    a success gives it back. When the budget is spent the identifier is refused as
+    throttled and the wrapped checker is not called.
+capability: Telo.Invocable
+extends: Auth.PasswordVerifier
+controllers: [pkg:telo/local/js?path=./nodejs/protection.mjs&local_path=./nodejs/src/index.ts#PasswordThrottleController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [passwords, budget]
+  properties:
+    passwords:
+      title: Passwords
+      description: The password checker whose failed attempts are counted.
+      x-telo-ref: { kind: Auth.PasswordVerifier, use: call }
+    budget:
+      title: Budget
+      description: The budget failures are counted on; its limit is the number of failures allowed per window.
+      x-telo-ref: { kind: RateLimit.Budget, use: call }

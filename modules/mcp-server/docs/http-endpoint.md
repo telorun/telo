@@ -142,8 +142,34 @@ tools) needs none of those; stateless is the right default.
 ## v1 limits
 
 - **No idle session GC** (stateful only). Sessions live until `Http.Server` closes. Long-running endpoints will accumulate sessions over time. Idle expiry / max-sessions cap is v2 work.
-- **No auth.** Authentication is the host `Http.Server`'s concern (CORS, reverse-proxy auth, future Telo middleware kinds).
 - **No resource subscriptions or `listChanged` notifications.** The tool, resource and prompt listings are fixed at boot.
+
+## Authentication
+
+Authentication is the host mount's: give the `Http.Server` mount an `authentication:` with a verifier such as `AuthBearer.Jwt` ([Http.Server authentication](../../http-server/docs/authentication.md)). An MCP client learns where to sign in from the resource's metadata (RFC 9728), so an endpoint served behind authentication that denies anonymous callers needs the mount's `protectedResource:`:
+
+```yaml
+mounts:
+  - path: /mcp
+    mount: !ref endpoint
+    authentication:
+      verifiers:
+        - verifier:
+            kind: AuthBearer.Jwt
+            keys: { kind: Jose.RemoteKeySet, url: https://login.example.com/jwks.json }
+            issuer: https://login.example.com/
+            algorithms: [RS256]
+            audience: !cel "[resource]"
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+    protectedResource: { scopesSupported: [tools] }
+```
+
+The issuer is written once, on the verifier. The client's first request is a 401 whose `WWW-Authenticate` carries `resource_metadata`, naming `/.well-known/oauth-protected-resource/mcp`; that document lists the issuer as its `authorization_servers`.
+
+Two refusals keep an endpoint from being served undiscoverable:
+
+- `MCP_PROTECTED_RESOURCE_MISSING` — `telo check` reports a server mounting the endpoint with authentication whose `anonymous` is not `allow` unless the mount declares `protectedResource:` and at least one of its verifiers declares an `issuer` (an `Auth.Issuer`, as `AuthBearer.Jwt` and `AuthBearer.Introspection` do). A verifier of any module counts, but one without an `issuer`, such as `Auth.TrustedHeader`, does not: the metadata would name no authorization server.
+- `ERR_MCP_PROTECTED_RESOURCE_MISSING` — raised when the server mounts the endpoint, for the same two causes, with a message for each.
 
 ## Soft vs hard failures
 

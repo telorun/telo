@@ -1,0 +1,76 @@
+kind: Telo.Application
+metadata:
+  name: IdentityDeclaredUsersTest
+  version: 1.0.0
+  description: |
+    `Identity.DeclaredUsers` with bcrypt hashes read from `secrets:`: the right
+    password answers the user as the principal (subject defaulting to the
+    identifier, roles, scopes and claims from the entry), a wrong password is
+    `mismatch` and an unknown identifier is `unknown`.
+imports: { Identity: ../, Crypto: ../../crypto, Assert: ../../assert }
+secrets:
+  aliceHash: { env: IDENTITY_TEST_ALICE_HASH, type: string, default: "$2a$04$bWQ5OzYiRTH.LdL6b33ZJuPX1wW1ae1I6UZ2AOsrVwTEZZpEt2lUy" }
+  bobHash: { env: IDENTITY_TEST_BOB_HASH, type: string, default: "$2a$04$AM8wyNRLqw7bqDv1kYgQ0.IBj5RIn6yF63NNWUp/hnItF9TKj6Ra2" }
+targets:
+  - !ref test
+---
+kind: Crypto.PasswordHash
+metadata: { name: hasher }
+algorithm: bcrypt
+parameters: { bcrypt: { cost: 4 } }
+---
+kind: Identity.DeclaredUsers
+metadata: { name: users }
+hasher: !ref hasher
+users:
+  alice:
+    passwordHash: !cel "secrets.aliceHash"
+    roles: [admin]
+    scopes: ["orders:read"]
+    claims: { team: billing }
+  bob:
+    passwordHash: !cel "secrets.bobHash"
+    subject: user-bob
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: right
+    invoke: !ref users
+    inputs: { identifier: alice, password: alice-pass }
+  - name: renamed
+    invoke: !ref users
+    inputs: { identifier: bob, password: bob-pass }
+  - name: wrong
+    invoke: !ref users
+    inputs: { identifier: alice, password: nope }
+  - name: unknown
+    invoke: !ref users
+    inputs: { identifier: mallory, password: alice-pass }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        right: !cel "steps.right.result"
+        renamed: !cel "steps.renamed.result.principal.subject"
+        wrong: !cel "steps.wrong.result"
+        unknown: !cel "steps.unknown.result"
+      expected:
+        right:
+          principal:
+            subject: alice
+            issuer: null
+            kind: user
+            claims: { team: billing }
+            scopes: ["orders:read"]
+            roles: [admin]
+            permissions: []
+            org: null
+            amr: [pwd]
+            acr: null
+            sessionId: null
+            authenticatedAt: null
+            via: users
+        renamed: user-bob
+        wrong: { refused: true, reason: mismatch }
+        unknown: { refused: true, reason: unknown }

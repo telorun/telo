@@ -1,0 +1,5 @@
+modules:
+  modules/auth-bearer: Added
+body: issuer moves up to AuthBearer.AccessTokenVerifier, required and typed from
+  Auth.Issuer, and AuthBearer.Jwt and AuthBearer.Introspection publish it as issuer in
+  their readings for protected-resource metadata.

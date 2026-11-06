@@ -1,0 +1,14 @@
+---
+"@telorun/analyzer": minor
+---
+
+Catch lists learn the codes a kind raises into them and where they arise, rule bindings judge only what a condition reads, and contract comparisons see through named shapes from other modules.
+
+- **`x-telo-catches-for` gains an object form, `{ slot, raises: [<CODE>…] }`.** The string form stays as shorthand for `{ slot }`. `raises` names codes the kind raises into the list itself and renders by default, each declared in the kind's own `throws.codes`.
+  - A raised code may be named in a proving `when:`, and its `data` types `error.data` / `problem.data` in an entry naming it, on that list and on every list above it on the scope ladder. A third-party mount's raised codes therefore reach the server's list. A catch-all keeps the typing of what the handler throws.
+  - No site owes a raised code's coverage.
+  - The object form beside anything but `x-telo-outcome-list: catches`, or a raised code the kind does not declare, is `CATCHES_FOR_INVALID` at the kind.
+- **`x-telo-raises: [<CODE>…]` on a field says where those codes arise.** Wherever a resource holds a value at the field, the codes reach the catch lists of the object holding it, every list of what that object reaches through a `throwsThrough` slot, and every scope list above those, each list receiving the codes its own `raises` names. A catch-all there is typed by them as well as by the handler's throws. A declaration listed in `exports.resources`, or one it reaches, receives every code its lists declare. A malformed or undeclared code is `RAISES_INVALID` at the kind.
+- **A rule binding member the condition does not read no longer fails the binding.** An expression in a `peers:` entry, an unresolved peer or co-referrer reference and a library's kind-only input are judged only where the condition reads them; a peer read whole is scanned with everything it holds. A server whose mount entries carry a guard's `inputs` is now judged by a `peers: /mounts` rule instead of skipped.
+- **A contract comparison reads a named shape in the module that wrote the reference.** A kind of an imported library whose contract names a shape of that library's own import used to compare as compatible with anything. Now `outputTo`, a step's or a reference slot's `inputs:`, `CONTRACT_NOT_SUBSTITUTABLE` and what an import supplies to a library variable typed by a shape all compare through the shape. A shape id this analysis holds nothing of no longer resolves to a same-named shape of another module.
+- **A rule's `resolve:` pointer follows the shapes the kind's schema references.** A pointer reaching a field through a local `$defs` entry or a named shape is no longer `RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID`; a field the shape does not declare still is, and a pointer through a shape this analysis cannot read is not refused.

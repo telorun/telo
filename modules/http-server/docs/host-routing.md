@@ -158,16 +158,16 @@ inputs:
 
 Any client can send any `Host`. `hostnames` decides which routes a host reaches;
 it does not stop a client from naming the admin host. A sub-tree that must be
-protected is protected by its mount's [`guard`](mount-guard.md):
+protected is protected by its mount's [`authentication`](authentication.md):
 
 ```yaml
   - hostnames: [ !ref admin ]
     path: /
     mount: !ref adminApi
-    guard:
-      invoke: !ref adminAuth
-      inputs:
-        authorization: !cel "request.headers.authorization"
+    authentication:
+      verifiers:
+        - verifier: !ref adminTokens
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
 ```
 
 ## Refusing unknown hosts
@@ -299,10 +299,10 @@ mounts:
   - hostnames: [ !ref admin ]
     path: /
     mount: !ref adminApi
-    guard:
-      invoke: !ref adminAuth
-      inputs:
-        authorization: !cel "request.headers.authorization"
+    authentication:
+      verifiers:
+        - verifier: !ref adminTokens
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
 ```
 
 - `healthApi` has no `hostnames`, so a probe sent to the pod's address reaches
@@ -350,10 +350,10 @@ listen:
 mounts:
   - path: /
     mount: !ref adminApi
-    guard:
-      invoke: !ref adminAuth
-      inputs:
-        authorization: !cel "request.headers.authorization"
+    authentication:
+      verifiers:
+        - verifier: !ref adminTokens
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
 ```
 
 - Each server has one address, so neither needs `hostnames`.
@@ -387,10 +387,10 @@ mounts:
   - hostnames: [ !ref admin ]
     path: /
     mount: !ref adminApi
-    guard:
-      invoke: !ref adminAuth
-      inputs:
-        authorization: !cel "request.headers.authorization"
+    authentication:
+      verifiers:
+        - verifier: !ref adminTokens
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
 ```
 
 - **Host:** `admin.shop.example` and `status.shop.example`, both routed to

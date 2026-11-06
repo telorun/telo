@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: BasicIntoJwt
+  version: 1.0.0
+  description: A source presenting a user and password cannot feed a verifier of tokens.
+include: [./keys.yaml]
+imports: { Http: ../../../, AuthBearer: ../../../../auth-bearer, Jose: ../../../../jose }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    returns: [{ status: 204 }]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8973 }
+mounts:
+  - path: /
+    mount: !ref api
+    authentication:
+      verifiers:
+        - verifier: { kind: AuthBearer.Jwt, keys: !ref issuerKeys, issuer: https://login.test, algorithms: [ES256], audience: !cel "[resource]" }
+          from: { kind: Http.FromBasic }

@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { VALUE_TYPES } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
+import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { alsoAccepts } from "./host-path-slot.js";
 import { importInputsSchema } from "./import-inputs.js";
@@ -34,6 +35,7 @@ export function validateImportInputs(
   rootModules: ReadonlySet<string>,
   documents: readonly ModuleDocuments[],
   defs: DefinitionRegistry,
+  aliasesByModule?: ReadonlyMap<string, Pick<AliasResolver, "moduleForAlias">>,
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   for (const manifest of manifests) {
@@ -45,7 +47,7 @@ export function validateImportInputs(
       secrets: (manifest as Record<string, unknown>).secrets ?? {},
     };
     if (isEmptyBlock(written.variables) && isEmptyBlock(written.secrets)) continue;
-    const schema = importInputsSchema(manifest, documents);
+    const schema = importInputsSchema(manifest, documents, aliasesByModule);
     if (!schema) continue;
 
     const alias = String(metadata.name ?? "");

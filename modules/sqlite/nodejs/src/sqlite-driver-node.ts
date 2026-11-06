@@ -4,12 +4,9 @@ import type { SqliteDb } from "./sqlite-driver-interface.js";
 
 export function openDatabase(file: string, addon: string): SqliteDb {
   const db = new Database(file, { nativeBinding: addon });
-  // Wait for a lock rather than failing on it. Two applications over one file is
-  // an ordinary shape — the same app run twice, a worker beside a server — and
-  // without this the second one's very first write raises "database is locked"
-  // the instant the first holds the file. Stated here rather than left to a
-  // driver default, because the two drivers do not agree on one.
-  db.pragma("busy_timeout = 5000");
+  // Zero: the engine's own wait blocks the thread, which stalls every other
+  // connection in this process; the connection waits between statements instead.
+  db.pragma("busy_timeout = 0");
   // Per connection, and ignored inside a transaction, so set at open.
   db.pragma("foreign_keys = ON");
 
@@ -36,6 +33,9 @@ export function openDatabase(file: string, addon: string): SqliteDb {
     },
     exec(sql: string) {
       db.exec(sql);
+    },
+    busyTimeout(ms: number) {
+      db.pragma(`busy_timeout = ${ms}`);
     },
     close() {
       db.close();

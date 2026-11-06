@@ -1765,6 +1765,35 @@ routes:
         headers:
           Location: !cel "result.back"
         cookies: [{ cookie: !ref langCookie, maxAge: 0s }]
+
+  # ---- The theme menu's links ----
+  # Another mount's home is an absolute address built from the request's own
+  # origin: a link is not evaluated per request, so this route answers the link
+  # with a redirect.
+  - request:
+      method: GET
+      path: /mount
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          required: [ to ]
+          properties: { to: { type: string, enum: [ root, radix, brand, sidebar ] } }
+    inputs:
+      location: !cel >-
+        Self.origin('host' in request.headers ? request.headers['host'] : '',
+        'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') +
+        {'root': '/', 'radix': '/radix/', 'brand': '/brand/', 'sidebar': '/sidebar/'}[request.query.to]
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, required: [ location ], properties: { location: { type: string } } }
+      value: { location: !cel "inputs.location" }
+    returns:
+      - status: 302
+        headers:
+          Location: !cel "result.location"
 ---
 # ---- The brand switch, under /api of the root application only ----
 # The other two mounts draw with a brand of their own, so this route is not

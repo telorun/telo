@@ -1,0 +1,176 @@
+kind: Telo.Application
+metadata:
+  name: AuthBearerIntrospectionTest
+  version: 1.0.0
+  description: |
+    AuthBearer.Introspection asks the issuer's endpoint about an opaque token,
+    authenticating with a client credential, and maps the active answer to a
+    principal. An answer is reused from the cache after the endpoint turns
+    inactive, a verifier without the cache refuses the token as inactive, and an
+    endpoint that rejects the client or cannot be reached is a thrown error.
+imports:
+  AuthBearer: ../
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Cache: ../../cache
+  CacheMemory: ../../cache-memory
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: CacheMemory.Store
+metadata: { name: flags }
+---
+kind: CacheMemory.Store
+metadata: { name: answers }
+---
+# The issuer's endpoint: it answers only to the client's Basic credentials, and
+# turns every token inactive once the `deactivated` flag is set.
+kind: Http.Api
+metadata: { name: issuer }
+routes:
+  - request:
+      path: /introspect
+      method: POST
+      schema: { headers: { type: object, properties: { authorization: { type: string } } } }
+    handler: { kind: Cache.Lookup, store: !ref flags }
+    inputs: { key: deactivated }
+    returns:
+      - status: 401
+        when: !cel "(has(request.headers.authorization) ? request.headers.authorization : '') != 'Basic Y2xpZW50OnNlY3JldA=='"
+        content: { application/json: { body: { error: invalid_client } } }
+      - status: 200
+        when: !cel "result.state == 'fresh'"
+        content: { application/json: { body: { active: false } } }
+      - status: 200
+        content:
+          application/json:
+            body:
+              active: true
+              sub: alice
+              client_id: web
+              scope: orders:read orders:write
+              aud: https://api.test/
+              iss: https://login.test
+              exp: 4102444800
+              token_type: Bearer
+---
+kind: HttpClient.BasicAuth
+metadata: { name: client }
+username: client
+password: secret
+---
+kind: AuthBearer.Introspection
+metadata: { name: cached }
+endpoint: http://127.0.0.1:9483/introspect
+client: !ref client
+issuer: https://login.test
+audience: https://api.test/
+cache: !ref answers
+---
+kind: AuthBearer.Introspection
+metadata: { name: uncached }
+endpoint: http://127.0.0.1:9483/introspect
+client: !ref client
+issuer: https://login.test
+audience: https://api.test/
+---
+kind: AuthBearer.Introspection
+metadata: { name: wrongClient }
+endpoint: http://127.0.0.1:9483/introspect
+client: { kind: HttpClient.BasicAuth, username: client, password: wrong }
+issuer: https://login.test
+audience: https://api.test/
+---
+kind: AuthBearer.Introspection
+metadata: { name: closedPort }
+endpoint: http://127.0.0.1:9484/introspect
+issuer: https://login.test
+audience: https://api.test/
+timeout: 2s
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9483 }
+    contentTypeParsers:
+      - { contentType: application/x-www-form-urlencoded, stream: true }
+    mounts: [{ mount: !ref issuer }]
+targets:
+  - !ref server
+steps:
+  - name: active
+    invoke: !ref cached
+    inputs:
+      presentation: { type: token, token: opaque-1 }
+      confirmation: {}
+      resource: null
+  - name: deactivate
+    invoke: { kind: Cache.Entry, store: !ref flags, ttl: 1h }
+    inputs: { key: deactivated, value: true }
+  - name: stillCached
+    invoke: !ref cached
+    inputs:
+      presentation: { type: token, token: opaque-1 }
+      confirmation: {}
+      resource: null
+  - name: inactive
+    invoke: !ref uncached
+    inputs:
+      presentation: { type: token, token: opaque-1 }
+      confirmation: {}
+      resource: null
+  - name: rejectedClient
+    try:
+      - name: attemptRejected
+        invoke: !ref wrongClient
+        inputs:
+          presentation: { type: token, token: opaque-1 }
+          confirmation: {}
+          resource: null
+    catch:
+      - name: caughtRejected
+        value: !cel "error.code"
+  - name: unreachable
+    try:
+      - name: attemptUnreachable
+        invoke: !ref closedPort
+        inputs:
+          presentation: { type: token, token: opaque-1 }
+          confirmation: {}
+          resource: null
+    catch:
+      - name: caughtUnreachable
+        value: !cel "error.code"
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        active:
+          subject: !cel "steps.active.result.principal.subject"
+          issuer: !cel "steps.active.result.principal.issuer"
+          kind: !cel "steps.active.result.principal.kind"
+          scopes: !cel "steps.active.result.principal.scopes"
+          via: !cel "steps.active.result.principal.via"
+        stillCached: !cel "steps.stillCached.result.principal.subject"
+        inactive: !cel "steps.inactive.result"
+        rejectedClient: !cel "steps.caughtRejected.result"
+        unreachable: !cel "steps.caughtUnreachable.result"
+        issuer: !cel "resources.cached.issuer"
+      expected:
+        active:
+          subject: alice
+          issuer: https://login.test
+          kind: user
+          scopes: [orders:read, orders:write]
+          via: cached
+        stillCached: alice
+        inactive:
+          refused: true
+          reason: inactive
+          challenge: { scheme: Bearer, parameters: { error: invalid_token, error_description: The access token is not active } }
+        rejectedClient: ERR_AUTH_BEARER_INTROSPECTION_UNREACHABLE
+        unreachable: ERR_AUTH_BEARER_INTROSPECTION_UNREACHABLE
+        issuer: https://login.test

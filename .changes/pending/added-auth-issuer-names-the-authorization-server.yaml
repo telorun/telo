@@ -1,0 +1,6 @@
+modules:
+  modules/auth: Added
+body: "Auth.Issuer names the authorization server a verifier trusts, and Auth.Verifier
+  reserves the key issuer for it: a verifier declaring one publishes it in its reading
+  as configured, which a transport advertises in protected-resource metadata.
+  Auth.TrustedHeader's recorded issuer is now principalIssuer."
