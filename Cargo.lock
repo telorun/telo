@@ -1440,6 +1440,7 @@ version = "0.0.0"
 name = "telorun-cel"
 version = "0.131.0"
 dependencies = [
+ "getrandom 0.4.3",
  "jiff-tzdb",
  "serde_json",
  "telorun-cel-value",

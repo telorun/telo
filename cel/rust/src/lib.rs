@@ -13,23 +13,27 @@
 //! fields in a time zone over the IANA database it bundles, and ECMAScript's casing — and
 //! evaluation: an expression compiled to a flat program over a snapshot of its
 //! environment, run in one loop with errors as values, its comprehensions, per-site
-//! dispatch, the compiled cache and namespaced calls. It answers as the Node engine answers.
+//! dispatch, the compiled cache and namespaced calls — and the calendar in a time zone the
+//! function catalog reads. It answers as the Node engine answers.
 //!
-//! Three rules hold for every file here: two dependencies, the value crate by path and
-//! `jiff-tzdb` for the zone database's names and bytes, neither deciding a verdict; no
-//! host vocabulary; and nothing recurses with the depth of its input.
+//! Three rules hold for every file here: three dependencies, the value crate by path,
+//! `jiff-tzdb` for the zone database's names and bytes and `getrandom` for the operating
+//! system's random bytes, none deciding a verdict; no host vocabulary; and nothing recurses
+//! with the depth of its input.
 //!
 //! Each file twins the `cel/nodejs/src` file of its name, and each header lists the
 //! Node items with no twin. The files with no Node twin each say why in their header:
 //! `json_value.rs`; the RE2 files, the matcher and the Unicode data, whose roles Node's
 //! dependency re2js and its host's V8 fill; the zone database, whose role its host's Intl
-//! fills; and the catalog's text substrate — V8's number methods and URI component coding,
-//! and d3-format's specifier grammar. The exports below are the front-end block of Node's entry, its
-//! comprehension-binding table, the type system's and the checker's items, the value
-//! domain's `cel-value.ts` items, the pattern language's and the bounded cache, the
-//! runtime library's, member read's, equality's, the timestamp file's and `value-text.ts`'s,
-//! and evaluation's: the activation, the program and its options, the compile refusal,
-//! the call-site capacity and the comprehension functions.
+//! fills; the catalog's text substrate — V8's number methods and URI component coding,
+//! and d3-format's specifier grammar; and the clock, the random source, UUIDs and their
+//! digests, the roles of Node's host and its dependency `uuid`. The exports below are the
+//! front-end block of Node's entry, its comprehension-binding table, the type system's and
+//! the checker's items, the value domain's `cel-value.ts` items, the pattern language's and
+//! the bounded cache, the runtime library's, member read's, equality's, the timestamp
+//! file's and `value-text.ts`'s, evaluation's — the activation, the program and its
+//! options, the compile refusal, the call-site capacity and the comprehension functions —
+//! and the zoned calendar's.
 //!
 //! - `reserved_words.rs`         — `reserved-words.ts`
 //! - `syntax_diagnostic.rs`      — `syntax-diagnostic.ts`
@@ -87,6 +91,11 @@
 //! - `es_number_text.rs`         — no twin: V8's number methods
 //! - `d3_format.rs`              — no twin: d3-format, the number-formatting grammar
 //! - `uri_component.rs`          — no twin: ECMAScript's URI component encoding
+//! - `zoned_calendar.rs`         — `zoned-calendar.ts`
+//! - `host_clock.rs`             — no twin: the clock Node's host reads, `Date.now()`
+//! - `host_random.rs`            — no twin: the random source Node's host reads, `crypto`
+//! - `uuid.rs`                   — no twin: `uuid` 14.0.1, the UUIDs
+//! - `uuid_digests.rs`           — no twin: MD5 and SHA-1, which `uuid` takes from `node:crypto`
 //! - `unicode_tables.rs`         — no twin: generated from the Unicode 17.0 archive
 
 mod activation;
@@ -110,6 +119,12 @@ mod comprehension_runtime;
 mod declared_chain;
 mod environment;
 mod function_registry;
+// The clock, the random source and UUIDs are crate-private and read only by the catalog,
+// which is not yet registered here; until it is, nothing outside their own tests calls them.
+#[allow(dead_code)]
+mod host_clock;
+#[allow(dead_code)]
+mod host_random;
 mod integer_arithmetic;
 mod json_schema_type;
 mod json_text_scan;
@@ -152,8 +167,13 @@ mod unicode_tables;
 #[allow(dead_code)]
 mod uri_component;
 mod value_equality;
+#[allow(dead_code)]
+mod uuid;
+#[allow(dead_code)]
+mod uuid_digests;
 mod value_text;
 mod zone_database;
+mod zoned_calendar;
 
 pub use activation::CelActivation;
 pub use backend_runtime::{CelCompileError, CALL_SITE_CACHE_CAPACITY};
@@ -244,3 +264,6 @@ pub use type_expression::{
 };
 pub use value_equality::{cel_compare, cel_equal};
 pub use value_text::{bytes_to_text, double_text, es_to_lower_case, es_to_upper_case, text_to_bytes};
+pub use zoned_calendar::{
+    civil_time_in, date_text_in, days_in_month, instant_of_civil_time, iso_text_in, known_time_zone, CivilTime,
+};
