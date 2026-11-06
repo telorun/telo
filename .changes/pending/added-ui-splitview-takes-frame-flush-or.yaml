@@ -1,7 +1,0 @@
-modules:
-  modules/ui: Added
-body: Ui.SplitView takes frame (flush or framed) and toggle (any Ui.ButtonDisplay, an
-  icon button of the look's own when omitted), Ui.ListLayout takes frame (framed or
-  flush), both declared by the new Ui.Frame shape, and a link node takes button, a
-  Ui.ButtonDisplay drawing it as a button-shaped anchor. The split, list-layout and link
-  wires carry them, every member filled by ui; button on any other node is refused.

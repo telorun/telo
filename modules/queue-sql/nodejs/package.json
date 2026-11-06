@@ -1,6 +1,6 @@
 {
   "name": "@telorun/queue-sql",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Telo queue-sql module — the SQL family's shared half of the durable work queue: the queue store and the transactional enqueue controllers, written against the Sql contracts and never an engine.",
   "license": "MIT",

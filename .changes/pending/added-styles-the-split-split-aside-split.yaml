@@ -1,4 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: Styles the split, split-aside, split-content and split-toggle parts of the split
-  view in the Radix theme.

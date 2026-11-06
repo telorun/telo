@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0 - 2026-11-06
+### Added
+* Stream.Recover passes every value through and, when the source fails part-way, logs the failure and ends the stream with a value computed from error (code, INTERNAL_ERROR for an uncoded failure, message, data, displayMessage), optionally only when a condition holds and held to an elementType. A cancellation and a suspension are always rethrown.
+* `Stream.Tap`'s `inputs` and each `Stream.Concat` source's `inputs` declare `default: {}`, so `telo check` judges a handler or source wired without `inputs:` as receiving `{}`, and refuses one whose contract requires an argument.
+
 ## 0.14.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

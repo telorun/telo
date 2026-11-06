@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-11-06
+### Added
+* `connectTimeout` is a duration (`2s` when omitted): `30d`, `1h30m` and `250ms` are read, an integer is milliseconds, a malformed or negative literal is refused by `telo check`. A computed value must now be a duration (`!cel "duration('2s')"`), not a string, so a manifest passing a computed string must change. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.130.0.
+
 ## 0.12.2 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

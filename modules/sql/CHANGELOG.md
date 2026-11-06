@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.31.0 - 2026-11-06
+### Added
+* `reclaim.afterDuration` on a schema is a `Telo.Duration`: `30d`, `12h`, `1w` and `1h30m` are read, a malformed literal is refused by `telo check`, an integer is milliseconds, and a zero value still reports the disabled-backstop warning. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.130.0.
+* `Sql.Transaction` declares `inputs` with `default: {}`, so `telo check` judges a body wired without `inputs:` as receiving `{}`, and refuses one whose contract requires an argument.
+* @telorun/sql exports RowSweep, the background reclaimer of rows whose retention has passed: bounded, lock-skipping delete batches (at most twenty of 500 per pass), each in a short transaction of its own, a pass every retention clamped to between one and sixty seconds, a failed pass logged as a warning and retried, started once at its owner's first use and stopped at teardown after any pass in flight.
+
 ## 0.30.0 - 2026-11-04
 ### Added
 * The engine schema contract gains SqlInstantArithmeticSchema beside SqlInstantSchema — currentInstantPlus(duration), the store's current instant shifted by a signed bound Telo.Duration, and instantParameter(timestamp), a bound Telo.Timestamp in the column's storage form, guarded by rendersInstantArithmetic — and SqlLockSchema, whose skipLockedClause() lets a row selection pass over rows another transaction holds, guarded by rendersLockSkipping. rendersCurrentInstant still asks for currentInstant alone. The library also exports the helpers an engine uses to read and spell a bound duration or timestamp.

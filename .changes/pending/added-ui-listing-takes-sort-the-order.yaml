@@ -1,7 +1,0 @@
-modules:
-  modules/ui: Added
-body: "Ui.Listing takes sort (the order records start in, with choosable: false drawing
-  no sort control, and a by.property the collection does not list refused), show (count:
-  false hides the pager range and group counts) and rowActionsDisplay (auto, inline or
-  menu), and the list node takes rowActionsDisplay; the rowActionsMenu text is
-  translated into the fourteen shipped languages."

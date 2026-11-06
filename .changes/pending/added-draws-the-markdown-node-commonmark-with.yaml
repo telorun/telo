@@ -1,8 +1,0 @@
-modules:
-  modules/ui-react: Added
-body: "Draws the markdown node: CommonMark with GFM tables, task lists, strikethrough
-  and autolinks as elements, raw HTML as text, links and images held to the address
-  rule, fenced code highlighted with a copy button (ui keys chatCopyCode and
-  chatCopied). The renderer is a lazy chunk fetched when a page first draws a markdown
-  node. Adds the markdown-* parts, data-level and data-token to the styling contract,
-  drawn by a conformance scene and styled by UiReact.defaultTheme."

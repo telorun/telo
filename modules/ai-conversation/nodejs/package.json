@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ai-conversation",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
   "description": "Telo ai-conversation module — the conversation store abstract, its operations and the store contract every backend implements. Never published: the controllers ship inside the module artifact as a pkg:telo/local/js bundle, and a backend reaches the contract through the module's exports.code specifier.",

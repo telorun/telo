@@ -1,5 +1,0 @@
-modules:
-  modules/mcp-server: Added
-body: The HTTP endpoint's SessionCloseFailed event carries the failure's error value
-  (type, message, Telo stack and frames, hostStack only for an uncoded failure) instead
-  of a raw JavaScript stack. Requires telo >=0.130.0.

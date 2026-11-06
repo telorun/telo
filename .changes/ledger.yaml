@@ -3,53 +3,74 @@
 # `telo release verify` reconciles it against the registry.
 modules:
   apps/authoring-agent:
-    version: 0.31.0
+    version: 0.32.0
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-9Bo_hmeWvlGkne8lXSVBqgZAFpcpS94v_CRs61zYR4g
+      image: sha256-S29XyaO90FVEslIavVs6g6fihy9DEfdQ2EMu87EmYo0
   apps/hub:
-    version: 0.21.0
+    version: 0.22.0
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-mK42lh_-_l3ySMdZdnAkToNFgxyDFmcjSy8z_YUaAZA
+      image: sha256-MPs-T7UHEQa7ndFtPQyZZR_6aefor6HC73j0QBjQVDU
   blueprints/agent-app:
-    version: 0.4.4
+    version: 0.4.5
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-tHVXVq-rir_okIw62huN96uLG4kN6XdeNeUyEqJkTNM
+      manifest: sha256-4-B1R8WmJiWcYX5TNPxk2J3fXYa4rq1RDsh_trywdpA
   blueprints/approval-app:
-    version: 0.4.4
+    version: 0.4.5
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-mSJZqaYjvdShd1ls6LRTTtvo6RWVaogpwO75rQ0XRpA
+      manifest: sha256-5wMK-Bx79FH1EDpAPXYSjTJOG_EskZTKRi1UNj1_vCc
   blueprints/scheduled-jobs-app:
-    version: 0.2.0
+    version: 0.2.1
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-wZs0pWGJBFzFvPlUXdPYMbtRLZs6O1lO2wE0M02qgpI
+      manifest: sha256-fG0hNIYvOFs4kYDlcAQEcagUesvuEylCxBkWQUL7gc8
   blueprints/workflow-app:
-    version: 0.3.8
+    version: 0.4.0
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-Mp4RjvwG1vA8mW4jp2Yd2cs8LsiqlTux66DbOWKdiug
+      manifest: sha256-vnvjet6sYrJxtofk7x2lYLyhYbvaT7z9hRL2UiGmYT8
   modules/ai:
-    version: 0.33.0
+    version: 0.34.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      library/js: sha256-a8OmTWBukX8gu3Ygf31wDAXp7LxbIsbqx1S-NFUg8tE
-      manifest: sha256-CgWLS3H_LrWZ46X-utg6z54ZxRoaXEZ0-9Qy6jbgds4
+      library/js: sha256-Vwj948OmLCy80AUGPrZ1keuvwFMq-3JCcUdPPycM6rI
+      manifest: sha256-OMREzwq04pM-zd7LKVFg1o--bsNaa9HYENepsuS2aHY
+  modules/ai-chat:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-XKCkWcUpAHoaKbbBcJArgUjk7lQ7bKVPu7aua366ozw
+      manifest: sha256-2tIR7yyW50v5Q49isZFk0dszckCKA_XNgGBdljW0b98
+  modules/ai-conversation:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      library/js: sha256-uxjOYDHWQJhSrnShKaj2kNroUpA4pLZNyEL7Kv5j8CM
+      manifest: sha256-E8-5mzgjNiL9A4BzGDbEwkUZoHDnhM3qwTnv4QgcOHw
+  modules/ai-conversation-sql:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-VbcYsKh6RLvXQ7XcElhCxtAuWs5HW8PcL-YglVw1JqY
+      manifest: sha256-8XekYOLKU49ahyJfU_uP2XL6tm_xJczG0ioSorWfwLI
   modules/ai-mcp:
-    version: 0.29.0
+    version: 0.30.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-aGrN6QB5kNftRPCzChGAenlU17KlSS25UbstlmXfmH0
-      manifest: sha256-58evaLFhUCX91FQTvZ21-UZx5Y_h3GAk85dlMUmGr5M
+      manifest: sha256-WsF3MPWLajgP0oQZElh1ypfPQkPEPVsicS7UFoY46pM
   modules/ai-openai:
     version: 0.17.0
     registry: oci://ghcr.io/telorun
@@ -57,19 +78,47 @@ modules:
       controller/js: sha256-yTc9xkdwfQ5-RZReVOIGRakqcLfpQtfYx0siBEhbUc8
       manifest: sha256-33VZDk4eZOUANRduhpUbmzk5Vix0Qcbz7TgscNHDvXk
   modules/anthropic:
-    version: 0.8.0
+    version: 0.9.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-FLyxanJKVXO9NWjAo9zEYwAHtmdhhhB8dZRIHUENFYs
-      manifest: sha256-WVJvDDeFHv-mJ89_WrOwvCH8Cr_FVbl1fkRXo_ZltIw
+      controller/js: sha256-JMh0CvoIKPdZBQoxZzcn4fC770JDPHxK3WmGEuFoZrI
+      manifest: sha256-yUF4gCidcmZKLSCmIPCfkUE82rK5ZE4ulFZwpURSrF0
+  modules/api-key:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      library/js: sha256-87RlCRgxCAyqKYCBnRuj68th1RwAjvVB1oXN88Tu394
+      manifest: sha256-A2GEJPKoViCUNFwl_GZ9dCW2R0uVk95gmoAAMcov4SI
+  modules/api-key-postgres:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-WfzKUwv6_pxF6shGfToRf8Z9Oxed-tF_tZWlh6PftRk
+      manifest: sha256-t8TWuznEObNOX5W8StmzRbI1fNXcu3Sg6RDlNoaO2JQ
+  modules/api-key-sql:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      library/js: sha256-QIhw1Ev3oID2dlLPoFC4KkQPJEO0o6-xVbb-mxad5vQ
+      manifest: sha256-BoDXE_pbesm3c94wyZ7okHWRkFIA41A_iHdanW3kGZU
+  modules/api-key-sqlite:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-j1jOTcRp6BLDH2UvrTIfX-JmzNK6pRSAGAYwmwetDKg
+      manifest: sha256-LXX__rGfxxerS5lq80h7Q5qV0f_NbU7tn_G3Snb7gPw
   modules/app:
-    version: 0.5.1
+    version: 0.6.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-6mcunr1XP34SISlVRdoZO3sLfADaEIaiUbp3P4krqfs
-      manifest: sha256-atCj6LZURqBBlG9BVWEXZ8VsnOJPtgpMZ3hMAnPOetQ
+      manifest: sha256-kQvh_sdlXu09JgUcyL5kYX-kKCnK8b9-_ol_IV9qTWo
   modules/assert:
     version: 0.22.1
     registry: oci://ghcr.io/telorun
@@ -77,6 +126,34 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-AIEtBHdlYTmb7E1YYpVnM1EpHX9iAGmLLpuJ7iLF4E4
       manifest: sha256-5zDudficvz7WCkNmTbUYvkxw0A6DNydsljN3T-Z-GmM
+  modules/auth:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-th2U_Qq5E4XBu5eq6ZpxzzpilamBZvPCqjNJ2k5PHt0
+      manifest: sha256--OYDQdpt5Ugfw1HGE9FaC-pb7wY2nhleEhK6NMIPynI
+  modules/auth-basic:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-YYtoAQCz-mhoeFJ8TVtNi6aAEGgGJ_MwtazB24Ezock
+      manifest: sha256-Rh1f4kREESr2CZv2DqyNGaYkUq_svcDVcHM2H13rs3U
+  modules/auth-bearer:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-MdydaxXqB4_X5Z2IFCMx96jA4umALJZxMe6owlljEvs
+      manifest: sha256-2imLhdYDolvE4-fLl7V8pSn_WWUGmgAzAx78qxy0oZQ
+  modules/authz:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-4STYca6DITEYo8YZTIKU6vFOf1apO4pqVT39MTgJ4lk
+      manifest: sha256-QNtANawgJze0svYsF66gwn6TWIMwa1X_xTYXIIoNiJs
   modules/benchmark:
     version: 0.11.2
     registry: oci://ghcr.io/telorun
@@ -104,34 +181,48 @@ modules:
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-t5iuzHpr8G_5bMsqIhDS3QbbmH1Mq0CW7D6IgzVNzWo
-  modules/cache:
-    version: 0.13.2
+  modules/broadcast:
+    version: 0.2.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      library/js: sha256-CNnjd6k0vT-zi8DLKU4mPCjW9exBS_1p-QaMPgcQjUI
-      manifest: sha256-nA0cHadE15U5gbMkDPlyXPKUI828TNMa2asE9O9x2Fo
+      library/js: sha256-1z58tUBk9XqdCdfaGTsfTxbS-WZFOAtyMZEg5bUqrV8
+      manifest: sha256-C70bLLqmfJ9mD5VUfzU2wXyRRaQoQyvRauFLnGRXZZA
+  modules/broadcast-postgres:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-BMiqqLzt38rkQH1simkE771yK6jVJ2q1y5P9Fj0L4Sw
+      manifest: sha256-H6ulbzHPUsFg9ccha_3cnI8bdL92Jl_pE3XImzSZWOY
+  modules/cache:
+    version: 0.14.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      library/js: sha256-znD_GKCzYTQ7k89GpHkCjMVgEcwdS2r6OFHi-JvFTEw
+      manifest: sha256-pgvrHZ12hy-XzUMFP1wy7q8xO-vlLjnbeXjzkivcj7g
   modules/cache-memory:
-    version: 0.10.2
+    version: 0.11.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-onuNZ_k0Hr2xWkGZTmvc7P0Fau8li4m2d9ZiQXOtStU
-      manifest: sha256-REx68DkYJKzlMrAfbUcZtBC8Q15XCUGgoCoPd19526A
+      manifest: sha256-o-YLA4vzX_5VxeOoyX2dej8TWeQMIp_BByvNywjhArI
   modules/cache-redis:
-    version: 0.12.2
+    version: 0.13.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-fVz4mmVjcN9Nvb12QzJdXrsqW5mYAPP2kAUG_79zKCg
-      manifest: sha256-ugz-XL8ZAOFIDaCrJKJc4-gZaH0MxZTtvdQH6lz7yNo
+      controller/js: sha256-aPJpbp3BbAyMS-mT7O9RW8W_yjmi4Py-wzJWF5vaxcI
+      manifest: sha256-Z1zecsD5vln_oIr7lcfHc7n9WimGh29GomgS6F5RONc
   modules/channel:
-    version: 0.3.1
+    version: 0.4.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-dfnE2Jcd4RkKClxiY3fUZiw9QbfMv8CxsiAVRHccl1s
-      manifest: sha256-c1LCzj3O07ZqefofXmrkOzVBRLH_PyFbl-tpVDmAaeE
+      controller/js: sha256-Fbt8r2UU-WYe1P9gfE3CEyyO_si-8kRK6c_geICc7p0
+      manifest: sha256-d6rz5cfXum9czTKGVXugB_FB3VHqMaiVUBOjxEiiUKk
   modules/codec:
     version: 0.9.1
     registry: oci://ghcr.io/telorun
@@ -166,19 +257,25 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       library/js: sha256-4nC2g7UH-VzUhNCIu17c9EdYaqGxZg5HbohZB8FeI5Y
       manifest: sha256-lXL2Yi5-TiYAQf6x5OLNaJMairQJrXtYlN-HGRLDl40
+  modules/conversation:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      manifest: sha256-ftYZMYGliD-65aXypdkvqCMb1QPVX2DCLRzw4D1hzSc
   modules/crud:
-    version: 0.34.0
+    version: 0.35.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-JneW16QNX2PxNMStH-1ZgwKhG1SiHDRLUrWvocZeAMc
-      manifest: sha256-CYATJmb1QjsjmSHH6Az82KyElaIBmbzdcXHc45GeNtE
+      manifest: sha256-kjVVAp80iTKrI4duTT35ouDKNbuxdv1LFKHcLSitidE
   modules/crud-ui:
-    version: 0.3.0
+    version: 0.4.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-ecRD4iGkRTYeo1uDT4kksDiy05fX7yoQ65xoXU7H22M
+      manifest: sha256-UXUp5YCdOQGWpwbUnGckcr7B43hVo1CVhZE5zkWs7AE
   modules/crypto:
     version: 0.2.0
     registry: oci://ghcr.io/telorun
@@ -201,33 +298,33 @@ modules:
       controller/js: sha256-QXhp5ZwvsFjtoFRqS9F_x_FekQg60VaVLWQYCF4YC_Q
       manifest: sha256-Vn9bdUM0WNp1J2-78rzMyPUANlW6RIwbH8gfeEq4hFY
   modules/durable:
-    version: 0.3.1
+    version: 0.4.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-i3Aoyk8PE3BOipLpEzHvhK7iDp-5BN6F44yYYIVsY8o
-      manifest: sha256-O-Al_gOoJ38caNzWb9gThBpI0tBQn9r9nQT0HQuZhdU
+      controller/js: sha256-yUzvu3YQ4Ct5GnQMdHom3hJJ1oAoF8VsAHYONf8iV2c
+      manifest: sha256-I016dlfSAyIvhF2pz73ho4fG9GkiHDL8ldaKz2sIGCg
   modules/durable-journal-file:
-    version: 0.7.2
+    version: 0.8.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-zbWiZ3NUPjVj8IhkDPJ1cJTOymITja03SpsqhEjbokA
-      manifest: sha256-NR5HPsOzrWLiPpg1AHhEkBRVsCw4LPaVJC_ltWlJUiE
+      manifest: sha256-FUfGKKkYw6-z_wqNNbFhO3FYxbktYE9MKeoOZMvubos
   modules/durable-journal-postgres:
-    version: 0.12.0
+    version: 0.13.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-h8GznBT3qot0HBWAf6NPeXJM3DwpEE8EgaIa8_QL4PY
-      manifest: sha256-2h9UqyJrl_VvkOsUeeGmFeSQ_daGeAgHRmgQBF3GiAY
+      manifest: sha256-5xAWMfyjx4MBdb2lJrqlYcgEk_PS2lLBbR4uzPGCgMA
   modules/durable-local:
-    version: 0.5.3
+    version: 0.6.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-yPHJO6zvGTdehE0cD9dE2Q3WITakYV1v69sMpWWS4vI
-      manifest: sha256-8n-zSRxMqJT0JPJ7fSmiqcrD2WWXU20nuvW2GeVWenY
+      controller/js: sha256-3xF1NnEphdQnr1Il8BjGtNgRYQGL4_93vRa3B52PJUU
+      manifest: sha256-9XI2TtoKJ2mJGjmScgmtGcR96Jkk8R_qp39Agh6KApg
   modules/embedding:
     version: 0.12.1
     registry: oci://ghcr.io/telorun
@@ -276,61 +373,61 @@ modules:
       library/js: sha256-LQI7Y9BBcFhjsIXzgy2ZrQ7pzol8hNNPSifG7_KY200
       manifest: sha256-70SBIaNCMlHbCM3UTEjtRcnkdzvbFgXENel0s2ykT6c
   modules/graph-layers-current-postgres:
-    version: 0.5.0
-    registry: oci://ghcr.io/telorun
-    layers:
-      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-Fs9u0dyEyOaPOeVPMvHED7nI5tj0FUBry_DWBJ_lrqk
-      manifest: sha256-BJUA0UVplSXEqK23uy0WPKQYS0jQE754sKdF2KhGpM8
-  modules/graph-layers-current-sqlite:
-    version: 0.5.0
-    registry: oci://ghcr.io/telorun
-    layers:
-      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-NSg7s4FV-b0bH2H8lglxeg_J6tkpOOhCyr18D6Lbfos
-      manifest: sha256-LV60t96pTsyjDwInUnWAsn3T7KSU79Ajr0LdmZtWoBI
-  modules/graph-layers-drafts-postgres:
-    version: 0.5.0
-    registry: oci://ghcr.io/telorun
-    layers:
-      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-U5nz-2XP6Pe4MEyFqZU2jkQxDUxAfQoU0NhaZsuP1-c
-      manifest: sha256-OTXnOOj1Lyd6Ol5_WaYB4C0tGxwkkNXZIA99G08VLVI
-  modules/graph-layers-drafts-sqlite:
-    version: 0.5.0
-    registry: oci://ghcr.io/telorun
-    layers:
-      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-SSqvzi8xABjnU3qPQbMmfIEiSHZKj_uctKTvGIJRAeI
-      manifest: sha256-rA9Ys8qB8MTaK9fWG9OKcKTC1xc4JpS2L9tQFC8Vctw
-  modules/graph-layers-revisions-postgres:
-    version: 0.5.0
-    registry: oci://ghcr.io/telorun
-    layers:
-      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-Hhz0JCOgxCRZs-nc8skacteNJlPMsHHLHyzyXknH9Oc
-      manifest: sha256-awVZXuW2HHuxRrWTWCrusEhadAanMb0I-fSRtBfiplU
-  modules/graph-layers-revisions-sqlite:
-    version: 0.5.0
-    registry: oci://ghcr.io/telorun
-    layers:
-      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-R5fFj5dt9Xf9UX9dxQrMEZCgDhxZ1Iu915PaErPcW7U
-      manifest: sha256-x5NgjRqqKsOcAdMVRvNGCXEB9rG6HxjRzu6yHrt_5kI
-  modules/graph-layers-sql:
-    version: 0.4.0
-    registry: oci://ghcr.io/telorun
-    layers:
-      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      library/js: sha256-Ru-7GzmGLO5053SO9SZtIybMD_yA_1gPAtIYd8YbIwc
-      manifest: sha256-7UETG8LwAyDQkx2Elo8THFbfnHzgflw9TOm3tGotAI0
-  modules/graph-sql:
     version: 0.6.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-Fs9u0dyEyOaPOeVPMvHED7nI5tj0FUBry_DWBJ_lrqk
+      manifest: sha256-3DCrSvuem637yPFcnK3R47W_DLso5D7lnF4y1JDdDrU
+  modules/graph-layers-current-sqlite:
+    version: 0.6.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-NSg7s4FV-b0bH2H8lglxeg_J6tkpOOhCyr18D6Lbfos
+      manifest: sha256-kTf7hmaR4G95OQl16jZh9_ezQepQ3l0UcCQze6q16T8
+  modules/graph-layers-drafts-postgres:
+    version: 0.6.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-U5nz-2XP6Pe4MEyFqZU2jkQxDUxAfQoU0NhaZsuP1-c
+      manifest: sha256-IzDQ-ucuBey0EOL4NqRwCqo_bKSaGym_5UfRrwlmoWA
+  modules/graph-layers-drafts-sqlite:
+    version: 0.6.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-SSqvzi8xABjnU3qPQbMmfIEiSHZKj_uctKTvGIJRAeI
+      manifest: sha256-agPdj4dSnB2A78gEiXdd6-4YCzII_DpFCw6JqtjQxh8
+  modules/graph-layers-revisions-postgres:
+    version: 0.6.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-Hhz0JCOgxCRZs-nc8skacteNJlPMsHHLHyzyXknH9Oc
+      manifest: sha256-PyuHFgKfr5_rtIaCaID0OaXG7RFeuwjfHEX6eFuARZU
+  modules/graph-layers-revisions-sqlite:
+    version: 0.6.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-R5fFj5dt9Xf9UX9dxQrMEZCgDhxZ1Iu915PaErPcW7U
+      manifest: sha256-IvkYX1nE3OouLkBzire1Z7OkLuBC4jVKmvy1eWm5JVE
+  modules/graph-layers-sql:
+    version: 0.5.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      library/js: sha256-Ru-7GzmGLO5053SO9SZtIybMD_yA_1gPAtIYd8YbIwc
+      manifest: sha256-OojlhAoG2Rfy8H7fLxmiLzK8OlLQNcXQ_53bM0cHugs
+  modules/graph-sql:
+    version: 0.7.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-a55Dia3MPKGrfs_pAWeNFhP9tgQaykxLRD2vk0FTz5A
-      manifest: sha256-wdsoPTu8zCAjcdfJvV__MbujgxiWGlN3Ixj-OUOrptM
+      manifest: sha256-xgshcFTG0jtFE0UGEu4cPX-O233ZVFhjVyaBbX3VqrU
   modules/gzip:
     version: 0.9.1
     registry: oci://ghcr.io/telorun
@@ -353,20 +450,20 @@ modules:
       controller/js: sha256-o8PocFmKZMUU9wGU2Y4U3H3rq6uCmaP65HY5hf7lzx8
       manifest: sha256-C8vo40KjZaeDRjFgT8wO8v7f2SXWyUH6FUjtYDo-xTA
   modules/http-dispatch:
-    version: 0.18.0
+    version: 0.19.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-kD7-oLOX_4eRGaaEIeAVbenIWpT_fbJqSucrd17pbfY
-      manifest: sha256-_vow7rrl1KUaXWMBNHXGPcNYQE_QroOwpAE8uVIWDd0
+      controller/js: sha256-_g74tZ1G6ehRfiU74XD6L7kM3aCmrtUfGBEq5l1M_80
+      manifest: sha256-YWTyGRL26Tgi1ICD0abnY6zdzQEz_Upa90CPwzetQnY
   modules/http-server:
-    version: 0.42.0
+    version: 0.43.0
     registry: oci://ghcr.io/telorun
     layers:
       assets: sha256-LECze_d4UowiHyAsJ_3lUeplxtIJhICnX7JXJgOJiDU
       common: sha256-VXUwlTSyvLhtrxzK8M_Uv69jGcw2Y2xVE1jFjx7PXq0
-      controller/js: sha256-h0vOPXLX9syyaXuwg0yxnc4I7wsWsrM6jEa9wnW3HHY
-      manifest: sha256-jqoPDPNG_jaK6JMA-YwOgmPNIOonTIEP3Cs7L1Q2hAU
+      controller/js: sha256-5TvsPtVn0TBfoAPJMInxD116fE2iHb3Ef2YlCEObyB4
+      manifest: sha256-KG5Yc95qMhZH05gGTm-QMkDP2mbtS0phZfTGsYNI0Kk
   modules/i18n:
     version: 0.3.0
     registry: oci://ghcr.io/telorun
@@ -375,33 +472,40 @@ modules:
       controller/js: sha256-20ebG4TVNUSlUbvQvivVWVTYJtGPmdxlAMiUrCj86Bg
       manifest: sha256-W1eoTPDweME2W_OSY5jMhC2MfasA0js4ZIro8VkvPRw
   modules/idempotency:
-    version: 0.11.1
+    version: 0.12.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-zpH5ygmDdwDCuQTH263qhfgevuNeIPJjj3W7SHUcp-I
-      manifest: sha256-TRC1VBEKH2GiUHSX0BqJ1nMNSvVngh6E0Xn6XbWJzMw
+      controller/js: sha256-TucUMLUsTtAfEKlMsF-rntWALJ4pH40zqOaBjizvNtY
+      manifest: sha256-tFG6KUFvEqB8GXJgJFObYR3nF68o6tcUHRxgfS3J3-w
   modules/idempotency-postgres:
-    version: 0.2.0
+    version: 0.3.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-6Zw4ciyxM6b4HlONvfVZLcz9ITsE9Xdt7_RE4IQsutc
-      manifest: sha256-yS_dheiIelYsU7U8ObD8XslYjX-r63Z90V_i-yNWW-c
+      manifest: sha256-uJjSVc-V2RwBPKO7NVz0P-LVUQmZaev7CURpVHQ9Kxo
   modules/idempotency-sql:
-    version: 0.2.0
+    version: 0.3.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      library/js: sha256-HLVGFmAHIthpcPumZiixH9wn2ajktm-CIoo6736W3kU
-      manifest: sha256-zsmQ_KlMHYE7D3IlXJZ-M7f-aUupFClaDCSimhIpQN0
+      library/js: sha256-m2svHsgc_p9oIrfEaH2S-ARUVPe2UzNRJpuBsaqgaZU
+      manifest: sha256-kDLJeD3UiZ85gpaWl-LYH4EGpxMNITRQK9olLkctR9Y
   modules/idempotency-sqlite:
-    version: 0.2.0
+    version: 0.3.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-_BqqT7y4Nn6SRXsBhW9XTj8MhGP_X5FPcnIXXfUSMUM
-      manifest: sha256--B9p_vmjkOuaF-MLvc25SEbIkbJdeGeVtbrD1sQeNXI
+      manifest: sha256-Tgw6O9PHix3lE3u_7DGVNy5gF3JcLu3gc7_eYjOhLmE
+  modules/identity:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-bMFivcDxA6eUVPgUO_6zsBT85FE6LQ-aDye7F_ejYFY
+      manifest: sha256-bDCY_nIIVD5yeIL96TaKWlg_GzJl_pxvijSVl86WH9Q
   modules/image:
     version: 0.10.2
     registry: oci://ghcr.io/telorun
@@ -416,12 +520,12 @@ modules:
       controller/js: sha256-AJ430JNwi6HtiaZ-6HjdV0boxxokV0hpm83JghRqR5U
       manifest: sha256-yR_90CE3tYHCb2Fvfvi4I81zoFvTEOr4HuEfXRTnsTk
   modules/jose:
-    version: 0.2.0
+    version: 0.3.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      library/js: sha256-gpmyb4CVAIMuiWHSig6EpikJ9tVmDxlrNvY9ZWngIyY
-      manifest: sha256-lCYLmSEfUTOQo_oUGlx5FY96B2MDdSHxdaG5KOfGTAY
+      library/js: sha256-gKcpvjxr41O_KSjZcEezCcwN1sGTILHEhM81nzyT5Nw
+      manifest: sha256-n7GE1O3rw1HyT8TyijzNi-oaBK9T2wVTkVcyBSFgPSY
   modules/kagi:
     version: 0.8.0
     registry: oci://ghcr.io/telorun
@@ -443,26 +547,26 @@ modules:
       controller/js: sha256-G1fIat-8YU30yF_Oz9KcTgxZRkz3zhMPIIQwivyFL9I
       manifest: sha256-fB1UCVuLu5kVdYYYFd91l4s0ic1MKh4AyBHFcC0L9fc
   modules/kv-store-redis:
-    version: 0.8.1
+    version: 0.9.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-gpOPUpiLeN5RTOi0X6Xk46frOF7cl6VpwfWiZNLlzpw
-      manifest: sha256-_BbgunPvdyO--0-gUrAzMl3l3vro7yY8BITywhn7iEc
+      controller/js: sha256-8zvZo_lltXXKkuSJF0ged-9lrYKyVWkSRrfoQw8JEPY
+      manifest: sha256-ZYAR1yhtVUMh1IcoZMon6MPX0WuLna3xy5sBt70OldA
   modules/kv-store-sql:
-    version: 0.16.0
+    version: 0.17.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-7OYZjItU7aZXLtl9Eyh9YMfI4F7ZPWT5QFJv2M_5SlE
-      manifest: sha256-HSljupD8JWWDtlvAyJQwH_rAxho1BoMFwZe3CwU39xA
+      manifest: sha256-YBe16W1z_00YrTRd0mm9RGl6rNfGzz73H0-Bs8NykYw
   modules/lease:
-    version: 0.14.1
+    version: 0.15.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-zVMRumJuJauSYdJmOa_awLM_iZ5brqOfCT77K0pGzWk
-      manifest: sha256-Dtq44NDvyKthzVr_D7bfbCtzyS5VZqAMQ7eDU4UDreQ
+      controller/js: sha256-4GgP2KgGm0-9h0WcqmfplgEgKg-lQj7Pn8_a9rZWyng
+      manifest: sha256-DqDOcM5jdbc3re21boK6RaU4Cs23u3f8wiehZG3OAUc
   modules/log:
     version: 0.3.1
     registry: oci://ghcr.io/telorun
@@ -484,33 +588,33 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-fYMUVfBJyVERKGSaS7YNqAdK-XjY-Dkr7VwVP_JLh2k
   modules/mcp-client:
-    version: 0.17.1
+    version: 0.18.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-AgUL6mxr092GIp0a51AaB-IjeqKAGJilOjNksCTeVe4
-      manifest: sha256-Lf5xK7TOonvKjl6qdeOK_CL4j3eagXlJUe-PeGRm4No
+      controller/js: sha256-Or3cnoECdqOWKwXNZ3ubfVJcQ41W3JrXBeIKqINpfT8
+      manifest: sha256-0EhUtlmv7q5AWS0ZgkzNK0nnUk0AU91aHyh7HtpQ1jA
   modules/mcp-server:
-    version: 0.20.2
+    version: 0.21.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-lumzPjZMf7hlMOd6W3Ya72ioIb1pJGdvtpiLkJu5JmQ
-      manifest: sha256-xUNozMJ1-o7R2lZBREAag9wJF0dDlqq2Vt0E0soDBdo
+      controller/js: sha256-1ekrXHxapDO-o8nLiKMpYUsRv8d8LtKyujD0zyQUf-E
+      manifest: sha256-W6kfjUVUPPW6Sq2PcCizFI99NFZP8by0dTabYBxuy2g
   modules/media-type:
-    version: 0.2.1
+    version: 0.3.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-XoK8BaTkmfnzFwIbCy-aQsuWrm0VVhhbpaCC5rHQY_s
-      manifest: sha256-sX7uzq4AjOdz-6VcRzQcHpNEhN0SBGRyE3qDs50zOSc
+      controller/js: sha256-psGniXTWVsqifmuRuHYaR8WcGQERamR_NQtXNAwcGXM
+      manifest: sha256-B3z8WuyAafIXCIudGbBnK1Z_SiS_hU6-KICRD4XfixA
   modules/multipart:
-    version: 0.4.1
+    version: 0.5.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-FjjMM1rVjrOyd9K9Uk8eva7EdYvSiHnXYCTAevXQYLU
-      manifest: sha256-_vD1WtFzWbGVv-lCdzQjNkzV2P4bBmAzOQzpAH4XO1o
+      controller/js: sha256-gWPxSuvxwnPhy-wR7FZDmr7BfniyaF30fWT8X-p41m0
+      manifest: sha256-faqYEi-RZeudGOVDn15qlVv74lV059JSWn3XzkZLQrU
   modules/ndjson-codec:
     version: 0.10.1
     registry: oci://ghcr.io/telorun
@@ -519,12 +623,12 @@ modules:
       controller/js: sha256-8Jp-4krhdL5UX5zk7qL0roLnoNgO4GvZXupte5TNvt4
       manifest: sha256-wKMpb4QBXhisS-uwoJnUVQwl3dGEQ4yZlX1lBR4FPwE
   modules/oauth-client:
-    version: 0.11.0
+    version: 0.12.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-dMJSMFfLimLBRmOWZGDsgzFHPT87l8vlCjRsWZ_D7lk
-      manifest: sha256-SziKqaLKq3vWxd2e2yj2OL4QJVBfUGReO_fC5fdU4ew
+      controller/js: sha256-r0NsZ7tTFWRQUiohlMX1PuH3z4xAh_Tqd3mBCjIOf1E
+      manifest: sha256-Vz6V_PpLYnmAEh3fTp1Ftwy9VdW-ksjf7apcDpdUyZc
   modules/ocr:
     version: 0.3.1
     registry: oci://ghcr.io/telorun
@@ -539,35 +643,35 @@ modules:
       controller/js: sha256-G51aOh9DHHq18qWwUokxyOYwFmMely01pNTmcsBuORY
       manifest: sha256-jBxuOILw7V02TBWLHtluBJAv97njRT1xOh5qFjzGi_4
   modules/openai:
-    version: 0.19.0
+    version: 0.20.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-nb2excJWeuHnqGZXDBQpVL0wGzwoZJpdnmEAs1GhjKw
-      manifest: sha256-r0LwaiU2jBt9qtqF8g7xJWef36-wdjQ-t4h0bKyJaTs
+      controller/js: sha256-RKyUUFcRnTgCPg7ykJ_FzBkDt0yVgCHHcTGUmSLIv7Y
+      manifest: sha256-LJmBR_D254WHbPb9XxSwCwFD5dkyGo2-_eLiPZESbtw
   modules/otlp:
-    version: 0.7.2
+    version: 0.8.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-rewiQ30yW3kv6Qyr61u5F_wv1D3CE1GbNJIqADrY3z4
-      manifest: sha256-XdAC0ZUIdmJnOa8f-n-ntTxDB5PcJv8fqguCPi4rq9A
+      controller/js: sha256-XElFIY4ZkAk829gs5yBTQ2XR5hZrosQlO6-taH1rwlk
+      manifest: sha256-nqw2rt3r8vMmrq-AVGMbUhcYzomU1M0O-PVOa70XLpc
   modules/pdf:
-    version: 0.11.3
+    version: 0.11.4
     registry: oci://ghcr.io/telorun
     layers:
       assets: sha256-i1toOoN_XqmygRoDW4YvvE55VjzjW5uABTMCojq8AsM
       common: sha256-4W2e9JInuaPm5ClGznB-0DAR1uexJwKGS_13J9d93Xk
-      controller/js: sha256-ZVjPwJzXLpcMbLPE_HFxtlAG8F-V3EZ8d_g_JaKmm8s
-      manifest: sha256-IUvPGtu8FM0gme8msafnUENrABBdHDadO4lKUNdHzDE
+      controller/js: sha256-qfzhfLQgdFlx6186sU8kpTJYO1hWa8VYcTaclGQwEfI
+      manifest: sha256-r2EBKQYEdugL5UYtpeoHC700UXQH2DG0nKRJ8XXQyFU
       native/napi+darwin+amd64: sha256-aOSCmQEXNZ3otL6arYXdpKJncn56PcsNNSWrJq9Zik0
       native/napi+darwin+arm64: sha256-PeXHG00QNp_Txq2rfbIL5xnwymMsFL91WY7dY62bwII
       native/napi+linux+amd64+gnu: sha256-BKSKSU7fUkLBIfe3gjmSaTnlj96LwNzeTf1AAwMFHj0
       native/napi+linux+amd64+musl: sha256-ADzY2SDcmkDckyfEUjqXMHM6ia78Evcgu-Bqv78h1LQ
       native/napi+linux+arm64+gnu: sha256-BeAUAlGKc8JJhUEd9MTaFaebmhvhhfn4R9_KGWAzuO0
       native/napi+linux+arm64+musl: sha256-MhyP_EdIPEVZqTs4M2ghO2LesHVQ2Ro_ASvFJB94LXI
-      native/napi+windows+amd64: sha256-HuJ0uFgGbtdRbGSqi4sAWZI00VFI2nV4OIivItQ_w6I
-      native/napi+windows+arm64: sha256-EfOlPC5ZINwZXnKp3vE-K1H1QlHcXubyzP1Z6r7MN5g
+      native/napi+windows+amd64: sha256-e0WLP0FooJ-zB_v_3qfgxtkhdFHSgX4a5aqkuC4XxXA
+      native/napi+windows+arm64: sha256-KiN0mNJwWcFnBzxT4w9MEnbrwZLE652gtdBjozafOTE
   modules/pdfmake:
     version: 0.4.2
     registry: oci://ghcr.io/telorun
@@ -583,61 +687,68 @@ modules:
       controller/js: sha256-mTN4RvGXKei9SStIWFe_AcOhq7ErMGBFaLn55N_ZhrM
       manifest: sha256-fJeOIpdZtgS6wX_hjP1hr8bQJBHrt0-_urkwxUtzZEs
   modules/postgres:
-    version: 0.11.0
+    version: 0.12.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-7mLN0KmJgevqEkHd_EENSWnNhiQoKybN1457W_0a_g0
-      manifest: sha256-WUGK5-N5QcUXkgMd9amFF1eR5Zg7Uaa36piQN3tAQ_Y
-  modules/queue:
+      controller/js: sha256-WNjGUhYPqEz2MnibfFxjafWWf8TEcjYCl0RZ569F2fU
+      manifest: sha256-hy3agJ75nth0hVNLjyFn1rRJMe1W5p2nDEaGCtRmoiw
+  modules/protection:
     version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-j2_fSeuGa6smaUyClsdSZt7xhtEsonNws5J4aUBLHuU
+      manifest: sha256-UyJY2RW2BW84cBuUw5dmG5e3GsXc5DydW9WTVamyfcA
+  modules/queue:
+    version: 0.3.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       library/js: sha256-yYv50mV9UoRE9ps763yRNi2GWHliPbCrYTayf2QsAwE
-      manifest: sha256--zwIsdCMtxPO_jx_ZlOgasWQKswIZgv_sS70-R6XBkw
+      manifest: sha256-q8TxdlwyQ2SQKexP6qh4jgSces4rsRff-jx8JokUIXg
   modules/queue-postgres:
-    version: 0.2.0
+    version: 0.3.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-rL5H4_uA0BZBxUNyyoWXSroOiULYYUn6A_kNK4qaNv8
-      manifest: sha256-eFdsOv8pXopA6-OpqocwNFarJVkKXRJZ1FYGirU6xeU
+      manifest: sha256-22Axe6c_i4btKH0JQ9ENwfSKe__6pxMbdknwxxA7-O0
   modules/queue-sql:
-    version: 0.2.0
+    version: 0.3.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       library/js: sha256-pmnIwxXjT-3TAZIqHlLad-zgQ9dC9-EIR5-00CEyJgQ
-      manifest: sha256-f22rllw-RXdu-6rRe7CcM-RnF4KrP57kIAC-FzoZqAU
+      manifest: sha256-FpEROJh8upWSgJnvnm2B5QmqAwKdqNEHFq1AjOAeyts
   modules/queue-sqlite:
-    version: 0.2.0
+    version: 0.3.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-0syvf_cIi837elVzV8XKzf1eFBOkW62BHJyPziOFCqg
-      manifest: sha256-DNHURwzmb2P-z5TfEAVomdKUZIxSFf5S5pta2op0Kik
+      manifest: sha256-oalL_Hheap6oUYtsKtKbvCDR-bycaK4VxySVa4v8q7s
   modules/rate-limit:
-    version: 0.13.2
+    version: 0.14.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-p9yJp5B1zZ8Mg3gHSdfWeP8b3r25WcSE5sTyxOK_dXA
-      manifest: sha256-zr9CaAmDIYoVjkcHJL2QquITn9FBfkhoZis6FhwXEws
+      controller/js: sha256-mKNOU7VO8Falk_HV07VyprLKNVzZ_lG3WEVeiIUMHGc
+      manifest: sha256-NR-oOl7EI93KP6ceyG5zl6hPV2OQfYxPJ8KoD9BZM7Y
   modules/record-stream:
-    version: 0.20.1
+    version: 0.21.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      library/js: sha256-2ITfyf9Fx02mLWSqLzihlAHPuzGp7WpY9txQ_bBeroA
-      manifest: sha256-SzOY6RnQoqvOvmsngp4igg3wNsOs1e4u89UQC5QEMmU
+      library/js: sha256-Mk0eiQx7WKrc6l-ahdpKzoKSPkCJmKvHnVPM5NauDR0
+      manifest: sha256-0H1jkey0zkCHGD4ZFcnhR2pKoy6XMqRsQvyyjkPG0Qw
   modules/record-stream-sql:
-    version: 0.10.0
+    version: 0.11.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-UYdkbcerEu7TB__LEacvQ2LF7sUI3XdwdAEq-YZHdUc
-      manifest: sha256-6Mek2lbjetqe7YYucB5m_t2_86rGqf4GRrnGPqEtUkQ
+      manifest: sha256-K8Uhc_bKkGe2CAnIxta3z3CEvg67hOvSur0gw-zLwP8
   modules/run:
     version: 0.32.0
     registry: oci://ghcr.io/telorun
@@ -646,12 +757,12 @@ modules:
       controller/js: sha256-manx2E_g1kotVFU6_Ges5ezLXgMh2xqDUnZBAe0Sz5U
       manifest: sha256-A3E8kUDayWVSocuZKVsX-p8mmM15bVQG_rtBm36p6PA
   modules/scheduler:
-    version: 0.11.1
+    version: 0.12.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-Y0KMzgYSXftZ6tD-fvQtseG-R9EnR8OiQ9vdCYTFoZs
-      manifest: sha256-u_qHWEdqqMiQLwVH_KRp-6HRB2FBUskpewuDvFq12K4
+      controller/js: sha256-PSbsJFDelJ7U2kugzYrx3x2Csrl5UDHUeOPf4_eMjlE
+      manifest: sha256-3LzEWyai1c5VvhewLg4TxEKZCQzRgQ0oUd7IqucUOfw
   modules/searxng:
     version: 0.8.0
     registry: oci://ghcr.io/telorun
@@ -665,6 +776,13 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-mq93hzntO75v6iWdaDeDh21PMv5KF19iZDi_b7B8sU4
       manifest: sha256-OIkUYPE17DTxicwr_5cV5YbJEvIHmVBrfuQPdVzblmM
+  modules/session:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-9IdXJLnRd0pxKjziXtgJcgdYg-70Plqw2DfU0aMHUio
+      manifest: sha256-Lq89OY7SGoEsWAeHB0kxiQZQ5bvWkH9AadTdlUNCnG0
   modules/shell:
     version: 0.13.2
     registry: oci://ghcr.io/telorun
@@ -686,25 +804,25 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-r7TIThjeOV3SILK6q40ZN7sqDb7khnUnYQexwDb8RdA
   modules/sql:
-    version: 0.30.0
+    version: 0.31.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      library/js: sha256-sdDmtFyrsRPJ2Rlu7gz5Ia9DBuggDt9qxwqs6oH33As
-      manifest: sha256-_IielhGY59DQ10sw3x8sbyBF7RTJFlOCfBnFaMwNZHA
+      library/js: sha256-cSjMJdAQsJTblJT99hCzVdMrrYAuxSP6T-Gusd_quj4
+      manifest: sha256-00GgID-Vr7VPYYaVWfSM096zYMOkekEb5pzk27MMIrY
   modules/sql-repository:
-    version: 0.20.0
+    version: 0.21.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-lwXwrEvTVbjSgV21i7Ia9qC5RwezFbzVWN2Dsp8_v4U
+      manifest: sha256-9hZTtFkld2dsEEGBcCffSU09FRHiSR-taLCg3APMDIQ
   modules/sqlite:
-    version: 0.13.0
+    version: 0.14.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-QWtfHPkkFTJUVSfGt5T5l_nOCJYjLgV6ow-VjrzRoOQ
-      controller/js: sha256-0g8MWx4tH5dt0MYZF7dqewJv-OVSPaTDf343lrWapA8
-      manifest: sha256-pKLU3AUq4HBjpxJI4c7kGglpS96yFG71yhJ19-wKpcI
+      controller/js: sha256-GjUS_kd2F5yTUYSYF9gbDODw-rYN1VCLD304zCg0xTk
+      manifest: sha256-IltVUdp-TPrA_pwI3kk0dFpQ8BiagYh9dm12d3dj0WM
       native/node+darwin+amd64+node-137: sha256-NGWTirV36YaZ40pvPooKW1jq8WCxYd3f2WI0UuvEIbs
       native/node+darwin+amd64+node-141: sha256-Ej09LuO8nhOZF-8hGYiMiJp9-IJJJEiHI0-N1HAEx7A
       native/node+darwin+arm64+node-137: sha256-BQv5qfdxzwh-OfZypybR2YsFWoAyXuf4128FSLFOZkY
@@ -726,12 +844,12 @@ modules:
       native/node+windows+arm64+node-137: sha256-NLeSjjbXPg4SdzmWzwgX4DiTUF_KKXlh5M1lcP4YjbI
       native/node+windows+arm64+node-141: sha256-47YlTxJrXh5KMrDl7zvkDCaxdUgfsvVFm3ujZPi_Shw
   modules/sse-codec:
-    version: 0.14.1
+    version: 0.15.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      library/js: sha256-A-Y4hcIwYJCdSQLF-QE96kmyY_wEljVPwpFxAbk3EUY
-      manifest: sha256-gqEes52FLyHGj9hWqMOxa9wU9zHRlnVXrDdCiosS_nc
+      library/js: sha256-Z7tEHyw1fa74mdI_bTCiFNF9LJ62Xb5zlQ5QJKLY_OA
+      manifest: sha256-oX9Tv5PE_UaVmH3c77C7Oc0-zR6EaqgHuBg62IMmuQs
   modules/starlark:
     version: 0.13.2
     registry: oci://ghcr.io/telorun
@@ -739,12 +857,12 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-OExGjaSQ6syCvJdQ0xs3bv8C3M2C4VmYJ0v594nxfUk
   modules/stream:
-    version: 0.14.1
+    version: 0.15.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-5z-h9AAPWDRtZputShS2dLxIUhD62GyA4-56ZxDZZY0
-      manifest: sha256-lLaKO6xqQsdob_RD34pFl7I0X5QVSL-EvlPwI4cHw4k
+      controller/js: sha256-gFr8iQAtnFnV5MReTgFOETW0qwnC2J6Wm_id5jqetck
+      manifest: sha256-TZ9iKIr340CbwWnf07eVeXOs2P7NCRGoxYw69eqhq0Q
   modules/svg-chart:
     version: 0.3.1
     registry: oci://ghcr.io/telorun
@@ -1649,12 +1767,12 @@ modules:
       controller/js: sha256-9bA3qZZxKcDU05wIzVAwBM6oDypXUweFKnHtxD06qTo
       manifest: sha256-me-fCSOI2AXn-wA3j-6FnqGd_mlDX5RLQnyfGJeSD-E
   modules/timer:
-    version: 0.9.1
+    version: 0.10.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-i-mWaEU2ImH9H1c07yM7_ZDm_3SbaUxotkE0xsX2MOM
-      manifest: sha256-kmCJ865PYhI3T5nvg_vZS1etX9oV3T6umk6wyaryuIc
+      controller/js: sha256-ejZvIbKjHJqhh7-vhGFE4MYoALV1kGrTMWpuw-_9zok
+      manifest: sha256-Dor3Zl-w88qMQlkzSUnLL75jHt3Wrti5MbdL7D9tH4Q
   modules/type:
     version: 0.13.1
     registry: oci://ghcr.io/telorun
@@ -1662,45 +1780,45 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-SnJb_X4jhAX6ukDcLeQWchI_S-qdBzAtuRrpzkYRxHU
   modules/ui:
-    version: 0.9.0
+    version: 0.10.0
     registry: oci://ghcr.io/telorun
     layers:
-      common: sha256-Cr4P-E-cfAtujb8W2JrRhBdPq7T-dVoaFTz1JpZSCZY
-      library/js: sha256-na1Td6WpxHviR7134DFoQpL7f8E9nvkg7X65Q7ayMg0
-      manifest: sha256-7-ojPcBfaIn6othstJKn5690vnCa47dc2tvQ6HtPLPU
+      common: sha256-l02COBRK3HmxIn_mtLmM3AP13n3zZDdRq5Dhy731XZ0
+      library/js: sha256-79tJUX--2ku4Fk_-jb4eGDBlLTatOfoQ3ubPYnHoJU4
+      manifest: sha256-H0SBgk0Z8GnE3Jg2kljhVL8_2zndevCUIdUhLiTYqso
   modules/ui-lucide:
-    version: 0.6.0
+    version: 0.7.0
     registry: oci://ghcr.io/telorun
     layers:
       assets: sha256-hRoGwU4_Whkgjzud1JoXulZFU6l__gkxim8Kgh5WYQw
       common: sha256-t41y_T9RK4MbAa4DkZ9j9BK6Eb8fe1DT1YXaIUWZV80
       controller/js: sha256-Sicm-ZAsN2BGrcNm7-NOwhhckCkxrnf0lTIIAv4VLG0
-      manifest: sha256-ZnphBO6Dq1nYsW4ExjQFdwNFVP4UwRSZwbqJUdd_Opg
+      manifest: sha256-4BT5I7osrb0QGz4BQmOtO5lrY21IcFsF5rw4dL7D2sU
   modules/ui-react:
-    version: 0.10.0
+    version: 0.11.0
     registry: oci://ghcr.io/telorun
     layers:
-      assets: sha256-JlPDXPb3_682cH8POkeVSy9Rv8Pj-GGniga4DY5WTMQ
-      browser/esm+ui_react-1: sha256-zOPWe9ufQWkzxS6jALFY8obqao2oVdoJUWWhmF1R7HA
+      assets: sha256-2RMYV2HUBxl2Y2QRjOhb0WPKcGp4OwZU51X-52ac4DI
+      browser/esm+ui_react-1: sha256-XfmcEv8mXULP0HgE_55XfbtxFl1iWjyq9I0-Hrg0gmQ
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-RkGPbS5_kwfu9sGY2x-tXIvEH1A7emeL9IuJ3RyvchU
-      library/js: sha256-skyASjj_UnzqfOnbl_RaIotHUuR-vLcdqMoyJK8aXPk
-      manifest: sha256-P686KSw1Wa_keluN3qYxCd3fBeutjlrvTPf33XYo1Z0
+      controller/js: sha256-6bFKfkIt_htowBNa36irhlfw5jNysp1svXx-lC4Ddu8
+      library/js: sha256-ZkD6ePaHPr4gRt7XR-q07lKNMK7-T8zNN1nrOG95v5k
+      manifest: sha256-Mt02xp5FFwFzy3yCKueNfC7--zlET0ozmRYzPkLkLEw
   modules/ui-react-conformance:
-    version: 0.6.0
+    version: 0.7.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-BqrOkaYv30t2M60wSZKApuSxDrYIWidUtn-dVFhWls4
-      manifest: sha256-xFHnQriiKfaU-wcm7YDe6yWv0B51rBT4kGwQkh1VAOo
+      controller/js: sha256-RiP3USp6U5LaOmgNVtgjSGy3ChYdNcSCb145VG4p3XA
+      manifest: sha256-qBHbL-dGjGYottoEHjD3kcJeJJTVU-JHClUSV0kIGLg
   modules/ui-react-radix:
-    version: 0.6.0
+    version: 0.7.0
     registry: oci://ghcr.io/telorun
     layers:
-      assets: sha256-Mcznr70zAwgz0WC-7L9V-l4egpFEq_Z9mki2lOyvdOQ
-      browser/esm+ui_react_controls-2: sha256-Cx45eK1-1dYrjfxRLkZDMn41_22kx4Of9X7jHX91j_E
+      assets: sha256-5o0FGfvQR3cYJfsVQ9vEVi4GiT8edSxkBDcDpfma-oY
+      browser/esm+ui_react_controls-3: sha256-BO2kUXmPftI1itqS-u9_YEQycx6yims_j4HHYqdQBQg
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-lfyxf8NHtehDPeZok5qsLd9AWW4ErF57u9cpcrc4BaI
+      manifest: sha256-MOKNuse_zFercKwnaevr7IxxuKMVYNiQcAq2o4_GpXk
   modules/vector-store:
     version: 0.11.1
     registry: oci://ghcr.io/telorun
@@ -1716,12 +1834,12 @@ modules:
       controller/js: sha256--UghGqBzDiR3XWbFFvlYm0jdWntG8c09_CMAFlybqm4
       manifest: sha256-wAaD-25mWwWXagN74I1WKZvtyE_GUIWVd4BahuAClNk
   modules/vector-store-pgvector:
-    version: 0.19.0
+    version: 0.20.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-kxwytPwUQg7jhBBVw1CciLYWwGr0rQC5oZOVBf_faHQ
-      manifest: sha256-lRLlbRN6KYkeGnRsG0mwh14So2avCFyY7o6P5mGwQJ0
+      manifest: sha256-A2zWqQ9jz_Y6md7XYmhnlccyNi37ETx27_9GsduhJbI
   modules/watch:
     version: 0.3.1
     registry: oci://ghcr.io/telorun

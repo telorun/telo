@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0 - 2026-11-06
+### Added
+* Sse.Encoder declares its input as a stream of Sse.Frame, so telo check refuses a stream whose producer declares an element of another shape. A stream that declares no element is judged only at run time, where a value that is not a frame ends the stream in the error frame.
+* Sse.Encoder takes frames: each record is an Sse.Frame, the exported closed shape { data, event?, id?, retry? }, written as id, event, retry and data lines in that order, with no event line when event is omitted. Breaking: the { type, id, ...rest } record and bare strings are refused with ERR_INVALID_INPUT and end the stream in the error frame, which is unchanged; make records into frames with Stream.Map declaring elementType: !ref Sse.Frame. sseFrame(frame, owner) on @telorun/sse-codec takes a frame likewise.
+
 ## 0.14.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0 - 2026-11-06
+### Added
+* A record's error exports the Telo trace as exception.stacktrace, and a host JavaScript stack, present only for an uncoded failure, as telo.exception.host_stacktrace.
+* `Otlp.Sink` and `Otlp.TraceSink` `timeout` and `flush_interval` are `Telo.Duration` slots: `5s`, `1h30m`, `2d` and `1w` are read, a malformed literal is refused by `telo check`, an integer is milliseconds, and a computed value must be a duration (`!cel "duration('5s')"`). Breaking for a value computed as a string. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.129.0.
+
 ## 0.7.2 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

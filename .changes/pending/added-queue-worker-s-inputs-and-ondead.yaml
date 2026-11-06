@@ -1,5 +1,0 @@
-modules:
-  modules/queue: Added
-body: "`Queue.Worker`'s `inputs` and `onDead.inputs` declare `default: {}`, so `telo
-  check` judges a handler or dead-letter hook wired without `inputs:` as receiving `{}`,
-  and refuses one whose contract requires an argument."

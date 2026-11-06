@@ -1,9 +1,0 @@
-modules:
-  modules/sse-codec: Added
-body: "Sse.Encoder takes frames: each record is an Sse.Frame, the exported closed shape
-  { data, event?, id?, retry? }, written as id, event, retry and data lines in that
-  order, with no event line when event is omitted. Breaking: the { type, id, ...rest }
-  record and bare strings are refused with ERR_INVALID_INPUT and end the stream in the
-  error frame, which is unchanged; make records into frames with Stream.Map declaring
-  elementType: !ref Sse.Frame. sseFrame(frame, owner) on @telorun/sse-codec takes a
-  frame likewise."

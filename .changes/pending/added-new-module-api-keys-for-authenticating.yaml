@@ -1,9 +1,0 @@
-modules:
-  modules/api-key: Added
-body: "New module: API keys for authenticating the callers of an API. A key carries a
-  checksum, so a mistyped one is refused before any lookup, and only its SHA-256 digest
-  is kept. ApiKey.Verifier routes a presented key by its prefix across key sources,
-  answering with the owner, scopes and key id as the caller; ApiKey.DeclaredKeys holds
-  keys written in the manifest as digests, minted by ApiKey.Generate; ApiKey.Issue,
-  List, Revoke and Rotate manage keys against an ApiKey.Store, whose interface a
-  database-backed store implements."

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.0 - 2026-11-06
+### Added
+* The build_ui, design_library and write_integration_tests guides are written for any reader and are published on telo.run as well: exact schemas and imports lines are pointed to on the hub, with get_kinds named as the MCP route to them.
+* The design_library guide teaches declaring the codes a mount raises, referrer-typed nullable bindings, outputTo, the reserved issuer key and coReferrers on a resource rule.
+
 ## 0.21.0 - 2026-11-04
 ### Added
 * The build_ui guide drops UiReact.App's words: and teaches translating ui's own texts by listing its shipped Ui.*Translations, and rewording one key with a Ui.Translations of the application's own.

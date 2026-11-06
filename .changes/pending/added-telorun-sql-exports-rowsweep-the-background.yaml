@@ -1,7 +1,0 @@
-modules:
-  modules/sql: Added
-body: "@telorun/sql exports RowSweep, the background reclaimer of rows whose retention
-  has passed: bounded, lock-skipping delete batches (at most twenty of 500 per pass),
-  each in a short transaction of its own, a pass every retention clamped to between one
-  and sixty seconds, a failed pass logged as a warning and retried, started once at its
-  owner's first use and stopped at teardown after any pass in flight."

@@ -1,6 +1,0 @@
-modules:
-  modules/http-server: Added
-body: Http.Api names its handler call site (/routes/<i>/handler) in a failure's Telo
-  trace, and the Http.Api.streamFailed event's error is now the failure's error value
-  (type, message, Telo stack and frames, hostStack only for an uncoded failure) instead
-  of a raw JavaScript stack. Requires telo >=0.130.0.

@@ -1,8 +1,0 @@
-modules:
-  modules/ui-react: Added
-body: "Draws the chat node's buttons as text or as a glyph (the look's own, or a file of
-  the page's own served by its digest) with the text as the accessible name and tooltip,
-  hides the export and copy buttons on request, and places the composer's buttons inside
-  the message box's frame or under it (data-actions on chat-composer). The controls
-  contract becomes ui_react_controls-3 with six glyph names for the Icon control:
-  attach, copy, export, regenerate, send and stop."

@@ -1,6 +1,0 @@
-modules:
-  modules/mcp-server: Added
-body: "Mcp.HttpEndpoint refuses to be served behind authentication that denies anonymous
-  callers unless the mount declares protectedResource: and one of its verifiers declares
-  an issuer (MCP_PROTECTED_RESOURCE_MISSING at check, ERR_MCP_PROTECTED_RESOURCE_MISSING
-  when mounted), so an MCP client can discover the authorization server."

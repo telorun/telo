@@ -1,4 +1,0 @@
-modules:
-  modules/http-dispatch: Added
-body: A request's scope (`RequestTrace`) carries `principal`, the caller its mount
-  authenticated, or null.

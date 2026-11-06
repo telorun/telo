@@ -1,7 +1,0 @@
-modules:
-  modules/ai-conversation-sql: Added
-body: Keeps the files each conversation holds in an attachments table, added by schema
-  version 3, which a version-2 database upgrades to in place; files stored before it
-  read as not found. Binding a file to a conversation and releasing it are each one
-  conditional write on its row, so of an admission and an expiry pass racing for one
-  file exactly one takes effect.

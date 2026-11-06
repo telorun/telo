@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.32.0 - 2026-11-06
+### Added
+* The primer teaches inbound authentication: authentication and authorization on the mount, request.principal and its nullability, credential sources versus verifiers, scopes through a policy, protectedResource for MCP and the issuer a verifier declares, sessions, API keys and Basic over declared users with the throttle, plus the new kind-design annotations (referrer-typed and nullable-when bindings, outputTo, catches-for raises, resource-rule coReferrers).
+### Fixed
+* The hub client retries a request that failed with no answer (a reset or refused connection) or with a 502, 503 or 504, so a dropped hub connection no longer fails a turn.
+* The primer teaches serving a stream over SSE as a Stream.Map into Sse.Frame records piped through Sse.Encoder, and the new chat surface.
+
 ## 0.31.0 - 2026-11-04
 ### Added
 * Every sequence is the built-in Telo.Sequence, and the application requires telo >=0.128.0.

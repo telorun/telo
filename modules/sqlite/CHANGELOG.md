@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 - 2026-11-06
+### Fixed
+* Two connections to one database file inside one process (for example applications started with App.Instance) no longer fail with 'database is locked' when their writes overlap. A statement that finds the file locked now waits for up to 5 seconds between event-loop turns instead of blocking the thread in the driver, which had stopped the connection holding the lock from ever releasing it.
+
 ## 0.13.0 - 2026-11-04
 ### Added
 * SQLite.Schema renders currentInstantPlus(duration) — the current instant shifted by a bound date modifier, in the same fixed-width UTC text to the millisecond, refusing a shift that leaves years 0000–9999 — and instantParameter(timestamp) — a bound Telo.Timestamp as that text, to the millisecond — and its skipLockedClause() is empty, since SQLite has a single writer.

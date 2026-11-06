@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-11-06
+### Added
+* The Messages model kinds declare `accepts`, narrowed to JPEG, PNG, GIF and WebP images and PDF and plain-text files, and refuse a part outside it (wrong type, media type not listed, bytes over `maxBytes`, tool-result media included) with `ERR_MODEL_CONTENT_UNSUPPORTED` before anything is sent; each publishes it as `resources.<name>.accepts`. Breaking for an application that sends images or files without declaring `accepts`: a model with none takes text only.
+
 ## 0.7.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

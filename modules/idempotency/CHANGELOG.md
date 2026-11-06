@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 - 2026-11-06
+### Added
+* `Idempotency.Once` reads `claimTtl` and `ttl` as durations: `30d`, `1w`, `1h30m` and `250ms` are read, an integer is milliseconds, and a malformed literal is refused by `telo check`. A computed value must now be a duration (`!cel "duration('2m')"`), not a string, so a manifest passing a computed string must change. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.130.0.
+### Fixed
+* `Idempotency.Once`'s `invoke` slot no longer claims a resource-level `inputs:` field it never had; the body's arguments still arrive through the call's `inputs`.
+
 ## 0.11.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

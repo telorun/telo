@@ -1,8 +1,0 @@
-modules:
-  modules/ui: Added
-body: Ui.Chat takes show.copy, a buttons map of Ui.TextButton and Ui.IconButton displays
-  (the new Ui.ButtonDisplay abstract) for its copy, edit, regenerate, attach, send and
-  stop buttons, and composer.actions (inside by default, or outside) placing the attach
-  and send buttons; an icon file that is not an SVG, PNG or WebP image is refused with
-  ERR_UI_ICON_FORMAT_UNKNOWN by the chat as it is by navigation, one rule now in
-  @telorun/ui.

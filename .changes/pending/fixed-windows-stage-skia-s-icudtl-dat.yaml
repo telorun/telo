@@ -1,4 +1,0 @@
-modules:
-  modules/pdf: Fixed
-body: "Windows: stage Skia's icudtl.dat beside the canvas addon, so laying out text no
-  longer aborts the process with an illegal instruction."

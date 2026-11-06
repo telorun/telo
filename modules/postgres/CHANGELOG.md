@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 - 2026-11-06
+### Added
+* Postgres.Connection's listen(channel, onNotify) takes an optional third argument { onReconnect }, called once a dropped listening connection has been re-established and every subscription replayed, so a listener learns that notifications sent in between were not delivered. Existing calls are unchanged.
+
 ## 0.11.0 - 2026-11-04
 ### Added
 * Postgres.Schema renders currentInstantPlus(duration) — clock_timestamp() plus an interval cast from a bound value in whole hours and seconds, to the microsecond — and instantParameter(timestamp) — a timestamptz cast from bound UTC text, to the microsecond — and its skipLockedClause() is FOR UPDATE SKIP LOCKED.

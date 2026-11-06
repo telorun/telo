@@ -1,6 +1,0 @@
-modules:
-  modules/ui: Added
-body: "The renderer marks the current location: ui ships
-  conformance/current-location.json, the rows every renderer's rule for when a link to
-  an address is the current location is held to, and its docs state the rule (path
-  exact, query equal once the _telo* parameters are set aside) and the selected record."

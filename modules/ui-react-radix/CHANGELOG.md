@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 - 2026-11-06
+### Added
+* Draws the controls of ui_react_controls-3, its Icon control gaining the attach, copy, export, regenerate, send and stop glyphs, and styles the chat composer's frame when the buttons sit inside the message box.
+* Draws the go, panel-close and panel-open glyphs, draws expand and collapse as chevrons, and styles the frame of a split view's aside and of a list layout, the split toggle's mirrored glyph and a link drawn as a button in the Radix theme.
+* Its Tabs control takes the fill prop, marking its root and the shown panel with data-fill and passing the room on to the panel's content, and the theme styles the bar and command parts, draws a chat header's bar at the header's height, and scopes its button, badge and bar heights and a flush split's vertical clipping to parts that do not fill.
+* Styles a flush split view as one panel with a rail when folded, the data-embedded frames, the split-bar part, the shared bar height --ui-react-bar-height and the one-line list record with its hover fill in the Radix theme.
+* Styles the chat-* parts the ui-react renderer draws for a chat node — the transcript, tool and approval cards, attachments and the message box — with the existing design tokens.
+* Styles the markdown-* parts the ui-react renderer draws for a markdown node, tables, task lists and highlighted code blocks included, with the existing design tokens.
+* Styles the split, split-aside, split-content and split-toggle parts of the split view in the Radix theme.
+* The Icon control draws the done glyph (a check mark), shown on a chat button while it confirms a press.
+* The Menu control draws disabled entries with a hint, and the theme styles the record actions menu button.
+* The theme draws a chat message's buttons under its card, and rounds and clips a flush split view's content to the split's outer corners.
+* The theme lays a split view's aside actions out under the bar as a row with a gap, and as a column in the rail.
+* The theme styles the chat's picture thumbnails (chat-attachment-thumbnail) and the media viewer's parts.
+* The theme styles the current location: a link with aria-current="page" is emphasised and a record with data-selected is filled.
+### Fixed
+* No longer styles the chat-earlier part, which the renderer no longer draws: earlier messages are read as the transcript is scrolled.
+
 ## 0.5.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

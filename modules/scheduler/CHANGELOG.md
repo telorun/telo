@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.0 - 2026-11-06
+### Added
+* `Scheduler.Interval` and `Scheduler.Cron` declare `inputs` with `default: {}`, so `telo check` judges a body wired without `inputs:` as receiving `{}`, and refuses one whose contract requires an argument.
+* `Scheduler.Interval.every` is a positive `Telo.Duration`: `30s`, `1h30m`, `2d` and `1w` are read, a malformed or non-positive literal is refused by `telo check`, an integer is milliseconds, and a computed value must be a duration (`!cel "duration(variables.every)"`). Breaking for an `every` computed as a string. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.130.0.
+
 ## 0.11.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

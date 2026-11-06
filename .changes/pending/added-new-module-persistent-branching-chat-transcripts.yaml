@@ -1,9 +1,0 @@
-modules:
-  modules/ai-conversation: Added
-body: "New module: persistent branching chat transcripts for any AI agent. A
-  conversation store abstract with operations to create, read, list, update and delete
-  conversations, append messages under a parent (editing or regenerating keeps the old
-  branch as a sibling), read a branch newest first by cursor with each row's place among
-  its siblings, and record tool-call approvals once. A listing filters by a text in the
-  title and by archived state (both kinds when it is left out) and runs newest first or
-  oldest first. Appends are fenced by the conversation's current turn id."

@@ -1,5 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: Styles the markdown-* parts the ui-react renderer draws for a markdown node,
-  tables, task lists and highlighted code blocks included, with the existing design
-  tokens.

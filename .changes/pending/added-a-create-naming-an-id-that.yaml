@@ -1,4 +1,0 @@
-modules:
-  modules/ai-conversation-sql: Added
-body: A create naming an id that already exists answers that conversation's header
-  unchanged instead of failing.

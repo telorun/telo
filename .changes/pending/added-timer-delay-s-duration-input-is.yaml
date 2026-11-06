@@ -1,7 +1,0 @@
-modules:
-  modules/timer: Added
-body: "`Timer.Delay`'s `duration` input is a `Telo.Duration`: `250ms`, `2s`, `1h30m`,
-  `2d` and `1w` are read, a malformed literal is refused by `telo check`, an integer is
-  milliseconds, and a computed value must be a duration (`!cel \"duration(string(ms) +
-  'ms')\"`). Breaking for a `duration` computed as a string. Text with a space before
-  the unit (`5 m`) or around the value is now refused. Requires telo >=0.129.0."

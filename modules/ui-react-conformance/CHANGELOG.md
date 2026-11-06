@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0 - 2026-11-06
+### Added
+* A reserved property qualified by a state (a part's, or any part's) is judged only where a theme rule matched a part carrying that state in some scene, so a rule written with :not() of the state keeps the property at rest; property-reserved names the state in its subject and message, and flex, flex-flow, block-size and place-items count as setting the longhands they set.
+* Holds control sets to the ui_react_controls-3 contract, whose Icon control draws six more glyph names.
+* The reserved-property check counts margin, margin-block, margin-block-start and margin-block-end as setting margin-top and margin-bottom, so a theme cannot set a chat message's block margins through a shorthand or a logical name.
+
 ## 0.6.0 - 2026-11-04
 ### Fixed
 * CheckTheme runs the renderer's scenes with their keyed texts (`scenes.texts`), the shape the renderer now reads.

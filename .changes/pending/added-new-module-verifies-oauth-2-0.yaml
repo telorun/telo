@@ -1,7 +1,0 @@
-modules:
-  modules/auth-bearer: Added
-body: "New module: verifies OAuth 2.0 access tokens for an API. AuthBearer.Jwt checks
-  signed JWT access tokens against an issuer's keys and AuthBearer.Introspection asks
-  the issuer's introspection endpoint, both enforcing audience, issuer, expiry and type,
-  optional revocation with AuthBearer.Revoke, and DPoP or client-certificate bound
-  tokens, and answering with the caller's principal or a refusal with its challenge."

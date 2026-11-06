@@ -1,7 +1,0 @@
-modules:
-  modules/ai-chat: Added
-body: Media a model or tool produces is registered bound to its turn's conversation
-  before its bytes are stored, so the conversations/<id>/attachments/<attachment id>
-  address a content event carries reads while the turn is still running, whether or not
-  a later message is stored, and no expiry pass removes it however long the turn runs; a
-  superseded turn's media is refused at registration.
