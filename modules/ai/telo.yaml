@@ -21,6 +21,7 @@ exports:
   resources:
     - AgentStreamPart
     - ContentPart
+    - AcceptedContent
     - Message
     # Exported so the operations' `resolver` schema resolves in an importer;
     # its `context` is typed from `resolver/contextType`, so it serves only a
@@ -235,6 +236,36 @@ schema:
         allOf:
           - { $ref: "telo:AI/ContentPart" }
           - { properties: { type: { const: text } } }
+---
+# Ai.AcceptedContent — what a model takes beside text. A media type is exact
+# (`image/png`) or every subtype of a type (`image/*`); `maxBytes` bounds a part
+# carrying its bytes.
+kind: Telo.JsonSchema
+metadata:
+  name: AcceptedContent
+  description: The media a model accepts beside text — per content type, the media types it takes and an optional size bound for a part carrying its bytes. Absent means text only. A provider refuses a part outside it before sending anything, and a chat reads it to offer an upload control.
+schema:
+  type: array
+  items:
+    type: object
+    additionalProperties: false
+    required: [type, mediaTypes]
+    properties:
+      type:
+        description: The kind of part this entry admits.
+        type: string
+        enum: [image, audio, video, file]
+      mediaTypes:
+        description: The media types admitted, each exact (`image/png`) or a whole type (`image/*`). Parameters are not part of a media type here.
+        type: array
+        minItems: 1
+        items:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9!#$&^_.+-]*/([a-z0-9][a-z0-9!#$&^_.+-]*|[*])$"
+      maxBytes:
+        description: The largest a part carrying its bytes may be. A part by reference is not measured.
+        type: integer
+        minimum: 1
 ---
 # Ai.ContentResolver — what fetches referenced content for the model: the
 # `resolver` of the four operations, one shape each references. `context` below
@@ -836,6 +867,17 @@ throws:
       description: >-
         A resource the model depends on did not resolve to a live instance. A
         wiring failure, not a request failure.
+schema:
+  type: object
+  properties:
+    accepts:
+      title: Accepted content
+      description: >-
+        The media this model takes beside text: a list of `{ type, mediaTypes,
+        maxBytes? }`. Absent means text only. A provider refuses a part outside
+        it before sending anything, and publishes it as `resources.<name>.accepts`.
+      $ref: "telo://Self/AcceptedContent"
+      x-telo-eval: compile
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1102,6 +1144,17 @@ throws:
       description: >-
         A resource the model depends on did not resolve to a live instance. A
         wiring failure, not a request failure.
+schema:
+  type: object
+  properties:
+    accepts:
+      title: Accepted content
+      description: >-
+        The media this model takes beside text: a list of `{ type, mediaTypes,
+        maxBytes? }`. Absent means text only. A provider refuses a part outside
+        it before sending anything, and publishes it as `resources.<name>.accepts`.
+      $ref: "telo://Self/AcceptedContent"
+      x-telo-eval: compile
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1273,9 +1326,9 @@ schema:
 # iterable on `result.output` per the streaming-Invocable convention. Encoding
 # (NDJSON / SSE / plain text / raw bytes) is the consumer's responsibility —
 # pipe through a format-codec encoder (Ndjson.Encoder from @telorun/ndjson-codec,
-# Sse.Encoder from @telorun/sse-codec, PlainText.Encoder from @telorun/plain-text-codec,
-# Octet.Encoder from @telorun/octet-codec), or iterate `result.output` directly
-# in a JS.Script step.
+# PlainText.Encoder from @telorun/plain-text-codec, Octet.Encoder from
+# @telorun/octet-codec), or make each part an Sse.Frame with Stream.Map and pipe the
+# frames through Sse.Encoder from @telorun/sse-codec.
 kind: Telo.Definition
 metadata:
   name: TextStream
@@ -2058,9 +2111,9 @@ schema:
 # Ai.AgentStream — the streaming tool-use agent. Same loop and config as Ai.Agent,
 # but it forwards the run as a Stream on `result.output` (per the streaming-Invocable
 # convention) instead of a buffered object: the assistant's text streams token-by-token
-# and every tool call surfaces the moment it happens. Pipe `result.output` through a
-# format-codec encoder (Sse.Encoder / Ndjson.Encoder) in an Http.Api `mode: stream`
-# route to serve it over SSE. Each record is an Ai.AgentStreamPart. The first model
+# and every tool call surfaces the moment it happens. Pipe `result.output` through
+# Ndjson.Encoder, or through a Stream.Map into Sse.Frame records and Sse.Encoder, in an
+# Http.Api `mode: stream` route to serve it over SSE. Each record is an Ai.AgentStreamPart. The first model
 # call is dispatched by the invocation itself, so a request the model refuses
 # outright fails the CALL — where a route's `catches:` can still answer it — unless
 # the run resumes pending tool calls, which are settled first, as the stream is read. Any
@@ -2715,9 +2768,8 @@ schema:
 # it — collecting a stream to hand back one answer pays a stream's latency for a
 # buffer's result.
 #
-# Written as a MANIFEST rather than a controller, which is the point: the
-# declared contract is what makes an adapter like this expressible at all. The
-# fold is a `Run.Sequence` whose steps drive the streaming model and drain it.
+# A controller rather than a manifest: the kind publishes the wrapped model's
+# `accepts`, which a template body cannot.
 kind: Telo.Definition
 metadata:
   name: Buffered
@@ -2728,6 +2780,7 @@ metadata:
     rather than a sequence.
 capability: Telo.Invocable
 extends: Self.Model
+controllers: [pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiBufferedController]
 # What the streaming model throws is what this throws: the fold catches nothing.
 throws: { inherit: true }
 schema:
@@ -2739,59 +2792,5 @@ schema:
       title: Model
       description: The streaming model to drive and collect.
       x-telo-ref: { kind: Self.ModelStream, use: [call, trigger.consumer] }
-resources:
-  - kind: Run.Sequence
-    # A literal name: the body's children live in this instance's own child
-    # context, so it is unique there, and a literal is what lets
-    # `validate-template-dispatch` check that `invoke:` names a sibling at all.
-    metadata: { name: fold }
-    steps:
-      - name: start
-        # The WHOLE input, passed through. Enumerating the fields here would be
-        # a second copy of the contract that silently drops whatever the
-        # abstract gains next — and it already dropped `tools`, which turned an
-        # agent's first turn into a plain answer with nothing to report it.
-        inputs: !cel "inputs"
-        invoke: !cel "self.model"
-      - name: parts
-        inputs:
-          input: !cel "steps.start.result.output"
-        invoke: { kind: Stream.Collect }
-      # One traversal per bucket, rather than recomputing the same
-      # filter/map/join chain inside several output expressions.
-      - name: buckets
-        value:
-          texts: !cel "steps.parts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta)"
-          reasoning: !cel "steps.parts.result.items.filter(p, p.type == 'reasoning-delta').map(p, p.delta)"
-          finishes: !cel "steps.parts.result.items.filter(p, p.type == 'finish')"
-          states: !cel "steps.parts.result.items.filter(p, p.type == 'provider-state')"
-          contentParts: !cel "steps.parts.result.items.filter(p, p.type == 'content-part').map(p, p.part)"
-          toolCalls: !cel "steps.parts.result.items.filter(p, p.type == 'tool-call').map(p, p.toolCall)"
-      # `finish` is the only terminator and a failure rejects rather than
-      # yielding, so exactly one exists by contract — but a provider that ends
-      # without one would make `[0]` a raw CEL index error, so the count is
-      # tested rather than assumed.
-      - name: folded
-        value:
-          text: !cel "steps.buckets.result.texts.join('')"
-          content: !cel >-
-            (size(steps.buckets.result.texts) == 0 ? [] : [{'type': 'text', 'text': steps.buckets.result.texts.join('')}]) +
-            (size(steps.buckets.result.reasoning) == 0 ? [] : [{'type': 'reasoning', 'text': steps.buckets.result.reasoning.join('')}]) +
-            steps.buckets.result.contentParts
-          usage: !cel >-
-            size(steps.buckets.result.finishes) == 1 ? steps.buckets.result.finishes[0].usage :
-            {'promptTokens': 0, 'completionTokens': 0, 'totalTokens': 0}
-          finishReason: !cel >-
-            size(steps.buckets.result.finishes) == 1 ? steps.buckets.result.finishes[0].finishReason : 'other'
-          toolCalls: !cel "steps.buckets.result.toolCalls"
-          providerState: !cel >-
-            size(steps.buckets.result.states) == 0 ? null :
-            steps.buckets.result.states[size(steps.buckets.result.states) - 1].providerState
-    # The fold, in two pure steps: bucket the parts once each, then assemble.
-    # Every part type the vocabulary carries is folded, not just text. Dropping
-    # `provider-state` was the serious one — it is what lets reasoning survive a
-    # tool loop, so an agent over a Buffered-wrapped provider lost the chain
-    # silently, `providerState` being optional on the output.
-    outputs: !cel "steps.folded.result"
-invoke: !ref fold
-inputs: !cel "inputs"
+    # Published from the wrapped model; a value written here would only disagree.
+    accepts: false

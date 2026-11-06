@@ -28,6 +28,7 @@ Stream operations on structured records. Format-neutral transformers, sources, a
 | `RecordStream.JournalSource` | Read a key from any id: replay, then tail live until it ends. |
 | `RecordStream.JournalRead` | Read a key's state and records in one snapshot, without waiting. |
 | `RecordStream.JournalRemoval` | Remove one key; readers are told it was removed. |
+| `RecordStream.JournalCancel` | Ask a key's writer to stop, from any replica; the key fails as cancelled. |
 | `RecordStream.JournalExpiry` | Apply the journal's retention; run it on a schedule. |
 
 ## Example
@@ -259,8 +260,10 @@ The sink raises:
 | `ERR_JOURNAL_KEY_BUSY` | The key already exists and is not this drain's to take — held live by another writer or drain, finished, or, without `resume`, failed or abandoned. Raised at the claim, before any record is pulled, or later if another writer took the key. |
 | `ERR_JOURNAL_KEY_REMOVED` | The key was removed, before the claim or while the drain ran. |
 | `ERR_JOURNAL_WRITER_LOST` | This writer's key was failed as abandoned; its next write is refused. |
+| `ERR_JOURNAL_CANCELLED` | A `JournalCancel` asked this writer to stop; the sink failed the key with this code. |
 
-On any of these the sink stops the drain and cancels its input.
+On any of these the sink stops the drain and cancels its input. On a cancel request it
+also fails the key (see [Cancelling a writer](#cancelling-a-writer--recordstreamjournalcancel)).
 
 With `writer`, the sink claims under that token instead of one of its own, and a key a
 `JournalClaim` left **open under the same token** — heartbeat within its timeout, not yet
@@ -337,6 +340,7 @@ the next reader, snapshot read or expiry pass — exactly like a writer that die
 | Finished | ends |
 | Failed | raises the recorded error, with its original code |
 | Writer abandoned | raises `ERR_JOURNAL_WRITER_LOST` — within the writer's timeout of its last heartbeat |
+| Cancelled | raises `ERR_JOURNAL_CANCELLED` (a failed key's recorded error, so a replay after a restart raises it too) |
 | Removed | raises `ERR_JOURNAL_KEY_REMOVED` — from the invoke itself when the key is already removed, so a route's `catches:` can map it (e.g. to 410) |
 | Never written | waits, then delivers once a writer claims it |
 
@@ -370,6 +374,27 @@ An open key whose writer's heartbeat is older than its timeout reads as `failed`
 `ERR_JOURNAL_WRITER_LOST`, and is failed at the version that was read — as a reader
 fails it — so a writer that is alive after all wins, and the key is read again. Records
 decode from their typed frames exactly as a reader's do.
+
+### Cancelling a writer — `RecordStream.JournalCancel`
+
+`{ key }` → `{ outcome }`, through the journal's store alone, so any replica can ask
+the writer of a key to stop wherever that writer runs.
+
+| Outcome | The key was |
+| --- | --- |
+| `requested` | open: its header now carries the request (asking again answers `requested` too) |
+| `ended` | finished or failed — or open with a stale writer, which the cancel fails as `ERR_JOURNAL_WRITER_LOST` first, so a cancel never keeps a dead writer alive |
+| `unknown` | never written, or forgotten after removal |
+| `removed` | removed (a marker) |
+
+The sink sees the request at its next refused append or heartbeat, and between
+writes through a wait on its own key, so a cancel lands within the store's wake-up
+latency even while the sink is idle waiting for input. It then stops pulling,
+cancels its input, fails the key with `ERR_JOURNAL_CANCELLED` and raises that code.
+A reader sees the key as `failed` with that code (`JournalRead`) or raises it
+(`JournalSource`); a request on a key claimed ahead stays requested when a sink
+adopts it. The request restarts the header's age, so a writer that died is judged
+lost one timeout after the request instead of at once.
 
 ### Removal and expiry
 

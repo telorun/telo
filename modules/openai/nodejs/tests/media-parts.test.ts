@@ -21,8 +21,21 @@ const RESPONSES_ANSWER = {
   usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
 };
 
+// Everything is accepted, so what is refused here is the dialect's own rule.
+const ACCEPTS = [
+  { type: "image", mediaTypes: ["image/*"] },
+  { type: "audio", mediaTypes: ["audio/*"] },
+  { type: "video", mediaTypes: ["video/*"] },
+  { type: "file", mediaTypes: ["application/*", "text/*"] },
+];
+
 const resource = () =>
-  ({ metadata: { name: "T" }, model: "gpt-test", request: { invoke: requestMock } }) as never;
+  ({
+    metadata: { name: "T" },
+    model: "gpt-test",
+    accepts: ACCEPTS,
+    request: { invoke: requestMock },
+  }) as never;
 
 const kinds = {
   chat: () => chat.create(resource(), {} as never),

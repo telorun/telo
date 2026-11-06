@@ -108,18 +108,20 @@ What comes back is handled without configuration: thinking text is a `reasoning`
 
 ## What a message can carry
 
-| Part | Sent as |
-| --- | --- |
-| text | a `text` block |
-| image by bytes — `image/jpeg`, `image/png`, `image/gif`, `image/webp` | an `image` block, base64 source |
-| image of those types by `http:` / `https:` `uri` | an `image` block, URL source — the string as written |
-| file `application/pdf` by bytes or by `http:` / `https:` `uri` | a `document` block, `name` as its title |
-| file `text/plain` by bytes | a `document` block holding the text, `name` as its title |
-| any other image or file media type; a `text/plain` file by `uri`; any other `uri` scheme (`file:`, `s3:`, …); audio; video | `ERR_MODEL_CONTENT_UNSUPPORTED` |
-| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) in a user message | `ERR_MODEL_CONTENT_UNSUPPORTED` |
-| anything but text in a system message | `ERR_MODEL_CONTENT_UNSUPPORTED` |
+A model takes only what it declares in `accepts` — a list of `{ type, mediaTypes, maxBytes? }`, none meaning text only — within what the API can carry at all: `image/jpeg`, `image/png`, `image/gif`, `image/webp` images and `application/pdf` and `text/plain` files. Audio and video are outside it.
 
-A part the API cannot carry is refused by the call, before anything is sent, with `error.data.partType`, `error.data.mediaType` when the part has one, and `error.data.scheme` when the `uri`'s scheme is the reason. A `uri` is handed to the endpoint as written and never fetched here, so the endpoint must be able to reach it.
+```yaml
+kind: Anthropic.MessagesModel
+metadata: { name: claude }
+model: claude-sonnet-4-5
+request: !ref anthropicRequest
+maxTokens: 4096
+accepts:
+  - { type: image, mediaTypes: [image/png, image/jpeg], maxBytes: 5242880 }
+  - { type: file, mediaTypes: [application/pdf] }
+```
+
+A part outside it is refused by the call, before anything is sent, as `ERR_MODEL_CONTENT_UNSUPPORTED` with `error.data.partType`, `error.data.mediaType` when the part has one, and `error.data.scheme` when the `uri`'s scheme is the reason. Beyond `accepts`, a `text/plain` file by `uri`, any `uri` scheme other than `http:` / `https:`, a part a model produces in a user message and anything but text in a system message are refused too. An accepted image is an `image` block (base64, or a URL source as written), a PDF or plain-text file a `document` block with `name` as its title. A `uri` is handed to the endpoint as written and never fetched here. The list is published as `resources.<name>.accepts`.
 
 Media a **tool** returned rides the tool's own result: its text and images inside the result, its files directly after the results of that turn.
 

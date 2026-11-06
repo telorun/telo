@@ -86,7 +86,7 @@ A route serving a browser can drop `message` parts from what it forwards — the
 
 ## Serving over SSE
 
-Pipe `result.output` through an encoder ([`Sse.Encoder`](../../sse-codec/docs/sse-encoder.md), `Ndjson.Encoder`, …) in an [`Http.Api`](../../http-server/docs/http-api.md) `mode: stream` route. The encoder maps each record's `type` to the SSE `event:` and the rest to `data:`.
+Pipe `result.output` through an encoder in an [`Http.Api`](../../http-server/docs/http-api.md) `mode: stream` route. `Ndjson.Encoder` takes the parts as they are; [`Sse.Encoder`](../../sse-codec/README.md) takes frames, so a `Stream.Map` makes each part one — its `type` as the SSE `event:` and the whole part as `data:`. Declaring `elementType: !ref Sse.Frame` checks the frame shape before the app runs. (`Stream` is the `stream` module.)
 
 ```yaml
 kind: Ai.AgentStream
@@ -99,8 +99,18 @@ maxSteps: 12
 toolProviders:
   - provider: !ref WorkspaceTools
 ---
-kind: Sse.Encoder
-metadata: { name: SseEnc }
+kind: Telo.Sequence
+metadata: { name: Chat }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [prompt], properties: { prompt: { type: string } } }
+steps:
+  - { name: turn, invoke: !ref Author, inputs: { prompt: !cel "inputs.prompt" } }
+  - name: frames
+    invoke: { kind: Stream.Map, elementType: !ref Sse.Frame, value: { event: !cel "item.type", data: !cel "item" } }
+    inputs: { input: !cel "steps.turn.result.output" }
+outputs:
+  output: !cel "steps.frames.result.output"
 ---
 kind: Http.Api
 metadata: { name: Api }
@@ -114,7 +124,7 @@ routes:
           required: [prompt]
           properties:
             prompt: { type: string }
-    handler: !ref Author
+    handler: !ref Chat
     inputs:
       prompt: !cel "request.body.prompt"
     returns:
@@ -122,41 +132,41 @@ routes:
         mode: stream
         content:
           text/event-stream:
-            encoder: !ref SseEnc
+            encoder: { kind: Sse.Encoder }
 ```
 
 Wire output for a turn that writes one file, then replies:
 
 ```
 event: tool-call
-data: {"toolCall":{"id":"call_6f1c2a9e-4b7d-4c3a-9e2f-8d5b1a7c0e34","name":"write_file","arguments":{"path":"health.yaml","content":"..."}}}
+data: {"type":"tool-call","toolCall":{"id":"call_6f1c2a9e-4b7d-4c3a-9e2f-8d5b1a7c0e34","name":"write_file","arguments":{"path":"health.yaml","content":"..."}}}
 
 event: step-finish
-data: {"usage":{"promptTokens":180,"completionTokens":40,"totalTokens":220,"unit":"tokens","total":220},"finishReason":"tool-calls"}
+data: {"type":"step-finish","usage":{"promptTokens":180,"completionTokens":40,"totalTokens":220,"unit":"tokens","total":220},"finishReason":"tool-calls"}
 
 event: message
-data: {"message":{"role":"assistant","content":"","toolCalls":[{"id":"call_6f1c2a9e-4b7d-4c3a-9e2f-8d5b1a7c0e34","name":"write_file","arguments":{"path":"health.yaml","content":"..."}}]}}
+data: {"type":"message","message":{"role":"assistant","content":"","toolCalls":[{"id":"call_6f1c2a9e-4b7d-4c3a-9e2f-8d5b1a7c0e34","name":"write_file","arguments":{"path":"health.yaml","content":"..."}}]}}
 
 event: tool-result
-data: {"toolResult":{"toolCallId":"call_6f1c2a9e-4b7d-4c3a-9e2f-8d5b1a7c0e34","name":"write_file","content":"wrote health.yaml","output":{"path":"health.yaml","bytesWritten":142}}}
+data: {"type":"tool-result","toolResult":{"toolCallId":"call_6f1c2a9e-4b7d-4c3a-9e2f-8d5b1a7c0e34","name":"write_file","content":"wrote health.yaml","output":{"path":"health.yaml","bytesWritten":142}}}
 
 event: message
-data: {"message":{"role":"tool","content":"wrote health.yaml","toolCallId":"call_6f1c2a9e-4b7d-4c3a-9e2f-8d5b1a7c0e34"}}
+data: {"type":"message","message":{"role":"tool","content":"wrote health.yaml","toolCallId":"call_6f1c2a9e-4b7d-4c3a-9e2f-8d5b1a7c0e34"}}
 
 event: text-delta
-data: {"delta":"Added "}
+data: {"type":"text-delta","delta":"Added "}
 
 event: text-delta
-data: {"delta":"a health endpoint."}
+data: {"type":"text-delta","delta":"a health endpoint."}
 
 event: step-finish
-data: {"usage":{"promptTokens":220,"completionTokens":8,"totalTokens":228,"unit":"tokens","total":228},"finishReason":"stop"}
+data: {"type":"step-finish","usage":{"promptTokens":220,"completionTokens":8,"totalTokens":228,"unit":"tokens","total":228},"finishReason":"stop"}
 
 event: message
-data: {"message":{"role":"assistant","content":"Added a health endpoint."}}
+data: {"type":"message","message":{"role":"assistant","content":"Added a health endpoint."}}
 
 event: finish
-data: {"usage":{"promptTokens":400,"completionTokens":48,"totalTokens":448,"unit":"tokens","total":448},"finishReason":"stop"}
+data: {"type":"finish","usage":{"promptTokens":400,"completionTokens":48,"totalTokens":448,"unit":"tokens","total":448},"finishReason":"stop"}
 ```
 
 ## Invocation inputs
@@ -172,9 +182,13 @@ data: {"usage":{"promptTokens":400,"completionTokens":48,"totalTokens":448,"unit
 
 The `resolver` field is [`Ai.Agent`'s](./ai-agent.md#referenced-content): a media part whose `uri` scheme it lists is replaced, in what the model is sent, by the resolver's answer — each distinct `uri` once per run, at most `concurrency` at a time — and every `message` and `tool-result` part keeps the reference as written. The messages the run is given are resolved when the agent is invoked, so a resolver failure there, and `ERR_CONTENT_RESOLUTION_INVALID`, reject **the call**; a tool result carrying a reference is resolved when its `message` part is emitted, and a failure there rejects the iteration. `maxToolResultBytes` bounds what a tool returns, not what its references resolve to: the resolver bounds the content it fetches.
 
+## Published reading
+
+`resources.<agent>.accepts` is the held model's [`accepts`](./ai-model.md#accepts--what-a-model-takes-beside-text) — `[]` for text only — so a caller can tell what media the agent takes without knowing the provider behind it.
+
 ## Cancellation
 
-The first model call is made when the agent is invoked — unless the run resumes pending tool calls, which are settled first, as the stream is read; everything after it runs as the consumer pulls the stream, and each tool call is a real side effect. A consumer that received the stream reads it to its `finish` or cancels it — cancelling it before the first read stops that first model call just as stopping mid-run stops the one in flight. The invocation's context is handed to every model call **and to every tool** (a provider passes it on — `Ai.Tools` into the tool's invocation, `AiMcp.ToolProvider` into its `tools/call`), and cancellation is re-checked after every part, between calls and before each tool. A cancelled turn therefore stops the running model call or every running tool and rejects the stream with `ERR_INVOKE_CANCELLED` — whatever `onToolError` says, since a cancellation is not a tool failure. A durable suspension (`ERR_DURABLE_SUSPENDED`) passes through the same way.
+The first model call is made when the agent is invoked — unless the run resumes pending tool calls, which are settled first, as the stream is read; everything after it runs as the consumer pulls the stream, and each tool call is a real side effect. A consumer that received the stream reads it to its `finish` or stops it — stopping it before the first read stops that first model call just as stopping mid-run stops the one in flight. Stopping is immediate even while a read is pending: the run has a cancellation of its own, linked to the invocation's, which a consumer that stops cancels — so the model request or the tools that read is waiting on are aborted at once, the pending read rejects with `ERR_INVOKE_CANCELLED`, and no further model call is made. The invocation's context is handed to every model call **and to every tool** (a provider passes it on — `Ai.Tools` into the tool's invocation, `AiMcp.ToolProvider` into its `tools/call`), and cancellation is re-checked after every part, between calls and before each tool. A cancelled turn therefore stops the running model call or every running tool and rejects the stream with `ERR_INVOKE_CANCELLED` — whatever `onToolError` says, since a cancellation is not a tool failure. A durable suspension (`ERR_DURABLE_SUSPENDED`) passes through the same way.
 
 ## Terminal & error semantics
 

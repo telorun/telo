@@ -1,0 +1,6 @@
+modules:
+  modules/ui: Added
+body: "Ui.Chat draws the buttons on a message (copy, edit, regenerate) as the look's
+  glyph unless named, with the button's text as its accessible name and tooltip; the
+  chat node's buttons carry { type: icon, icon: null, label: hidden } for them. Name a
+  Ui.TextButton on a key to keep the text."

@@ -1,4 +1,4 @@
-# The controls contract — `ui_react_controls-2`
+# The controls contract — `ui_react_controls-3`
 
 What a theme's controls are written against. The renderer draws every
 interactive leaf of a page — every text box, choice, list, overlay, menu,
@@ -49,11 +49,18 @@ control's **sub-parts** are the only other parts it may draw.
 | `Icon` | Glyph | `icon` | — |
 
 The glyph names an `Icon` is drawn with are closed too: `add`, `alert`,
-`close`, `collapse`, `delete`, `edit`, `expand`, `filter`, `loading`, `menu`,
-`more`, `next`, `previous`, `remove`, `reset`, `sort-ascending`,
-`sort-descending`, `sortable`. A glyph inside a
+`attach`, `close`, `collapse`, `copy`, `delete`, `done`, `edit`, `expand`, `export`,
+`filter`, `go`, `loading`, `menu`, `more`, `next`, `panel-close`, `panel-open`,
+`previous`, `regenerate`, `remove`, `reset`, `send`, `sort-ascending`,
+`sort-descending`, `sortable`, `stop`. A glyph inside a
 control — a select's chevron, a checkbox's mark, a tag's × — is that control's
 `icon` sub-part, not an `Icon`.
+
+`collapse` and `expand` are disclosure chevrons (open and closed);
+`panel-close` and `panel-open` draw a side panel shown and folded away; `go` is
+an arrow toward a destination; `done` is a check mark, drawn in place of a
+button's own glyph while it shows that a press succeeded. A look mirrors the two panel glyphs for a panel
+at the end edge and `go` in a right-to-left page.
 
 A `Slider` may draw its position as text — `valueText` where it is given, else
 `value` — in the optional sub-part `slider-value` under `slider` and
@@ -223,7 +230,10 @@ buttons (`role="tab"`, `aria-selected` on the chosen one), then one
 `tab-panel` (`role="tabpanel"`, reached by Tab) holding `children`, the chosen
 tab's content. The arrow keys, Home and End move the focus among the tabs and
 the chosen one is the one Tab reaches; Enter, Space or a press on a tab other
-than the chosen one is reported as `onChange` with its key. The renderer
+than the chosen one is reported as `onChange` with its key. With `fill` true
+the root and the shown `tab-panel` carry `data-fill="true"`, and the panel
+passes the room it is given on to what it holds (a flex column); with `fill`
+false neither carries it. The renderer
 draws a [`tabs` node](../../ui/docs/nodes.md#tabs) with it, keying each tab by
 the key the page document gives it and holding which one is chosen; its parts are in the
 [styling contract](styling.md#tabs)'s list.
@@ -337,6 +347,7 @@ no terms of the contract.
 | `Navigation` | `data-current` | `page`, `true` | `nav-item`, `nav-toggle` |
 | `Tabs` | `data-state` | `active`, `inactive` | `tab` |
 | `Tabs` | `data-state` | `active` | `tab-panel` |
+| `Tabs` | `data-fill` | `true` | its root, `tab-panel` |
 
 ## The declaration
 
@@ -584,10 +595,18 @@ export interface ConfirmationProps extends OverlayProps {
   describedBy: string;
 }
 
+/** One thing a menu offers. */
+export interface MenuItem extends Option {
+  /** The entry cannot be chosen: it is drawn, with `aria-disabled`, and reports nothing. */
+  disabled?: boolean;
+  /** Why or what, as finished text: the entry's `title` and its description. */
+  hint?: string;
+}
+
 export interface MenuProps {
   open: boolean;
   /** The things to do, each a key and its finished text. */
-  items: Option[];
+  items: MenuItem[];
   onOpenChange(open: boolean, reason?: CloseReason): void;
   /** An entry is chosen. */
   onChange(key: string): void;
@@ -644,6 +663,8 @@ export interface TabsProps {
   tabs: Option[];
   /** The chosen tab's key. */
   value: string;
+  /** Whether the tabs fill the room they are in: the root and the shown panel then carry `data-fill="true"`. */
+  fill: boolean;
   onChange(value: string): void;
   /** The chosen tab's content, drawn in its panel. */
   children: ReactNode;
@@ -662,28 +683,38 @@ export interface TooltipProps {
 export type IconName =
   | "add"
   | "alert"
+  | "attach"
   | "close"
   | "collapse"
+  | "copy"
   | "delete"
+  | "done"
   | "edit"
   | "expand"
+  | "export"
   | "filter"
+  | "go"
   | "loading"
   | "menu"
   | "more"
   | "next"
+  | "panel-close"
+  | "panel-open"
   | "previous"
+  | "regenerate"
   | "remove"
   | "reset"
+  | "send"
   | "sort-ascending"
   | "sort-descending"
-  | "sortable";
+  | "sortable"
+  | "stop";
 
 export interface IconProps {
   name: IconName;
 }
 
-/** The control set of `ui_react_controls-2`: a module implementing any of them
+/** The control set of `ui_react_controls-3`: a module implementing any of them
  *  exports each under its name. */
 export interface Controls {
   TextInput: ComponentType<TextInputProps>;
@@ -778,8 +809,11 @@ this module, beside the interpreter that runs it:
 A step is one of `click`, `press` (a pointer pressed down, `mouse` or
 `touch`), `hover` (a mouse pointer moved onto the element), `key` (with
 `shift`), `fill`, `focus`, `blur`, `scroll` (the element and everything in it
-scrolled to its end), `wait`, `props` (a vector's props changed), `respond` (a
-scene's answers changed) and `expect`. An element is named by its `part`,
+scrolled to its end), `drop` (files — a name, a type and a size — dragged over
+the element and, unless held over it, dropped on it), `wait`, `props` (a
+vector's props changed), `respond` (a scene's answers changed) and `expect`. A
+scene's answer is a JSON `body`, a `stream` of server-sent events as text, or
+`pending`, which never answers; an upload is answered from the same list. An element is named by its `part`,
 `text`, `role`, `tag`, `id`, `attributes`, `within` and `index`.
 An expectation names the exact intents reported since the last one, where the
 focus is, what is drawn and what is not, attributes, text, and what is drawn
@@ -803,7 +837,7 @@ implementation and its version are part of the contract's oracle.
 
 ## How the generation grows
 
-For the life of `ui_react_controls-2`:
+For the life of `ui_react_controls-3`:
 
 - the control set only grows;
 - a prop is added only where an implementation ignoring it still meets the
@@ -811,8 +845,8 @@ For the life of `ui_react_controls-2`:
 - the supplied specifiers only grow.
 
 Anything else — a new value form, a state, a required part, an intent — is
-`ui_react_controls-3`. A renderer may host several generations at once; this
-one hosts `ui_react_controls-2` alone.
+`ui_react_controls-4`. A renderer may host several generations at once; this
+one hosts `ui_react_controls-3` alone.
 
 `ui_react_controls-2` differs from `ui_react_controls-1` in:
 
@@ -824,3 +858,17 @@ one hosts `ui_react_controls-2` alone.
 - `Menu`'s entries, which carry no `current`, and its `menu-item`, which
   carries no `data-current`: a menu node is drawn by `Navigation`;
 - two interpreter terms, the `hover` step and the `tag` of a target.
+
+`ui_react_controls-3` differs from `ui_react_controls-2` in:
+
+- six glyph names, `attach`, `copy`, `export`, `regenerate`, `send` and
+  `stop` — a glyph name is a new prop value, so an `Icon` written for the
+  eighteen of generation 2 is a different generation, not a set that draws
+  nothing for a chat's icon buttons;
+- `Menu`'s entries, which may carry `disabled` and a `hint`: a listing's
+  record menu offers an action whose condition does not hold as a disabled
+  entry whose hint says why. A disabled entry has `aria-disabled="true"` and
+  reports nothing when chosen; a hint is the entry's `title` and
+  `aria-description`.
+- `Tabs`'s required `fill`, marking its root and the shown `tab-panel` with
+  `data-fill="true"` while the `tabs` node fills the room it is in.

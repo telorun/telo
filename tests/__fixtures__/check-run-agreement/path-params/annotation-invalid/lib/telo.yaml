@@ -1,0 +1,15 @@
+# The annotation on a field holding no map of path variables.
+kind: Telo.Library
+metadata: { name: PathParamsForInvalidLib }
+imports: { Run: ../../../../../../modules/run }
+exports: { kinds: [Link] }
+---
+kind: Telo.Definition
+metadata: { name: Link, description: A link whose parameter map is misdeclared. }
+extends: Run.Value
+schema:
+  type: object
+  properties:
+    path: { type: string }
+    id: { type: string, x-telo-path-params-for: { template: /path } }
+base: { value: link }

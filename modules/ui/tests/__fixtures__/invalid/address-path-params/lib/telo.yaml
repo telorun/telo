@@ -1,0 +1,18 @@
+# A link deep in a tree names a path variable its template lacks and leaves the
+# one it has unbound.
+kind: Telo.Library
+metadata:
+  name: UiInvalidAddressPathParams
+  version: 1.0.0
+  description: Test fixture exporting a view whose link binds a path variable its template does not have.
+imports: { Ui: ../../../../../ }
+exports: { resources: [misspelledVariable] }
+---
+kind: Ui.View
+metadata: { name: misspelledVariable }
+content:
+  type: stack
+  children:
+    - type: box
+      children:
+        - { type: link, text: Item, href: { path: "/x/{id}", pathParams: { idd: 7 } } }

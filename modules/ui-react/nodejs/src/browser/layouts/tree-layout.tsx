@@ -104,7 +104,7 @@ export function TreeLayout(props: LayoutProps) {
   return (
     <>
       <SortControl sort={props.sort} onSortChange={props.onSortChange} />
-      <ul data-telo-part="tree-layout" role="tree" {...(props.can.move ? drag.target(toRoot) : {})}>
+      <ul data-telo-part="tree-layout" role="tree" data-embedded={props.props.embedded ? "true" : undefined} {...(props.can.move ? drag.target(toRoot) : {})}>
         {props.records.map((record) => (
           <TreeItem key={record.key} record={record} tree={tree} above={new Set()} />
         ))}

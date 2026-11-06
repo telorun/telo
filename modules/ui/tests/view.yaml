@@ -74,23 +74,27 @@ steps:
         assets: []
         node:
           type: stack
+          fill: false
           style: [strong]
           children:
-            - { type: text, text: { text: Title, context: null, lang: und, computed: false }, style: heading }
-            - { type: badge, text: { text: New, context: null, lang: und, computed: false }, style: [accent, strong] }
-            - { type: badge, text: { text: Open, context: state, lang: und, computed: false } }
-            - { type: link, text: { text: Docs, context: null, lang: und, computed: false }, href: /docs }
+            - { type: text, fill: false, text: { text: Title, context: null, lang: und, computed: false }, style: heading }
+            - { type: badge, fill: false, text: { text: New, context: null, lang: und, computed: false }, style: [accent, strong] }
+            - { type: badge, fill: false, text: { text: Open, context: state, lang: und, computed: false } }
+            - { type: link, fill: false, text: { text: Docs, context: null, lang: und, computed: false }, href: { path: { value: /docs }, pathParams: {}, queryParams: {} }, button: null }
             - type: menu
+              fill: false
               text: { text: Language, context: null, lang: und, computed: false }
               style: muted
               items:
-                - { type: link, text: { text: English, context: null, lang: und, computed: false }, href: /lang/en, style: strong }
-                - { type: link, text: { text: Polski, context: null, lang: und, computed: false }, href: "https://example.com/pl" }
-            - { type: image, src: /logo.png, alt: { text: "", context: null, lang: und, computed: false } }
-            - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: { text: Chart, context: null, lang: und, computed: false } }
+                - { type: link, fill: false, text: { text: English, context: null, lang: und, computed: false }, href: { path: { value: /lang/en }, pathParams: {}, queryParams: {} }, button: null, style: strong }
+                - { type: link, fill: false, text: { text: Polski, context: null, lang: und, computed: false }, href: { path: { value: "https://example.com/pl" }, pathParams: {}, queryParams: {} }, button: null }
+            - { type: image, fill: false, src: /logo.png, alt: { text: "", context: null, lang: und, computed: false } }
+            - { type: svg, fill: false, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: { text: Chart, context: null, lang: und, computed: false } }
             - type: columns
+              fill: false
               children:
                 - type: box
+                  fill: false
                   children:
-                    - { type: text, text: { text: Inner, context: null, lang: und, computed: false }, style: muted }
-                - { type: text, text: { text: v1.0.0, context: null, lang: und, computed: true } }
+                    - { type: text, fill: false, text: { text: Inner, context: null, lang: und, computed: false }, style: muted }
+                - { type: text, fill: false, text: { text: v1.0.0, context: null, lang: und, computed: true } }

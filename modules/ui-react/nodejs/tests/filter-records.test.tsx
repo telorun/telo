@@ -59,7 +59,7 @@ const postsListing = listingNode({
   create: undefined,
   edit: undefined,
   delete: false,
-  sort: [],
+  sort: { sortable: [], initial: null },
   columns: [{ header: "Post", value: row("text"), present: { type: "string" }, labels: [] }],
 });
 const bar = (fields: unknown[], content: unknown = postsListing) =>

@@ -21,7 +21,7 @@ requires:
   # execution: the published 0.107.0 tarball exports none of them.
   telo: ">=0.108.0"
 exports:
-  kinds: [ExtractText, Tee, EndHandler, OnComplete, JournalStore, MemoryJournalStore, Journal, JournalSink, JournalClaim, JournalSource, JournalRead, JournalRemoval, JournalExpiry]
+  kinds: [ExtractText, Tee, EndHandler, OnComplete, JournalStore, MemoryJournalStore, Journal, JournalSink, JournalClaim, JournalSource, JournalRead, JournalRemoval, JournalCancel, JournalExpiry]
   resources: [StreamOutcome]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/record-stream` to: the store contract a backend implements and the
@@ -439,8 +439,11 @@ schema:
 # journal's writer timeout for as long as the drain does, records or not. On normal
 # completion the key is finished; on an input error it is failed (the error's
 # code, message and data recorded for readers) and the error rethrown. A refused
-# write stops the drain, cancels the input and raises its code. Invoke it
-# detached to run work in the background and hand the key to a reader.
+# write stops the drain, cancels the input and raises its code. A cancel request
+# (JournalCancel) is seen at the next refused append or heartbeat, and while the
+# drain waits for input through a wait on its own key: the drain stops pulling,
+# cancels the input, fails the key with ERR_JOURNAL_CANCELLED and raises that
+# code. Invoke it detached to run work in the background and hand the key to a reader.
 #
 # The input stream's own error is re-raised unchanged and is NOT in `throws:` —
 # it is whatever the producer raises, which no literal list can name. So a
@@ -471,6 +474,10 @@ throws:
       description: >-
         The key was failed as abandoned because this writer's heartbeat was older
         than its timeout; its next write is refused.
+    ERR_JOURNAL_CANCELLED:
+      description: >-
+        A JournalCancel asked this writer to stop: the drain stopped pulling, the
+        input was cancelled and the key was failed with this code.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -658,8 +665,9 @@ outputType:
           Async iterable of `{ id, data }` entries, then live tail until the key
           ends. Raised by the stream, not the call: ERR_JOURNAL_KEY_REMOVED when the
           key is removed or expired mid-read, ERR_JOURNAL_WRITER_LOST when its writer
-          stopped heartbeating, a failed key's recorded error with its original
-          code, and ERR_INVOKE_CANCELLED when the reading invocation is cancelled.
+          stopped heartbeating, ERR_JOURNAL_CANCELLED when a cancel request ended the
+          key, a failed key's recorded error with its original code, and
+          ERR_INVOKE_CANCELLED when the reading invocation is cancelled.
           Ends when its consumer stops.
 schema:
   type: object
@@ -722,7 +730,8 @@ outputType:
       error:
         description: >-
           A failed key's recorded error — ERR_JOURNAL_WRITER_LOST when its writer
-          stopped heartbeating — and null in every other state.
+          stopped heartbeating, ERR_JOURNAL_CANCELLED when a cancel request ended
+          it — and null in every other state.
         type: [object, "null"]
         additionalProperties: false
         required: [message]
@@ -781,6 +790,52 @@ schema:
     journal:
       title: Journal
       description: The journal to remove the key from.
+      x-telo-ref: { kind: Self.Journal, use: dependency }
+---
+# Mark an open key's header with a cancel request. A stale writer is failed as
+# lost first (`ended`); the writer's sink sees the mark at its next refused
+# append or heartbeat or through its wait on the key, and fails the key with
+# ERR_JOURNAL_CANCELLED. Asking again while requested answers `requested`.
+kind: Telo.Definition
+metadata:
+  name: JournalCancel
+  description: >-
+    Asks the writer of a recorded stream to stop, from any replica, through the
+    journal's storage alone. Reports requested for a live recording, ended when it
+    already ended or its writer had died, unknown for a key never written and
+    removed for one removed. The writer stops pulling, cancels its input and fails
+    the recording as cancelled, which readers see.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalCancelController]
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    properties: { key: { type: string, minLength: 1, description: Key whose writer to stop. } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [outcome]
+    properties:
+      outcome:
+        type: string
+        enum: [requested, ended, unknown, removed]
+        description: >-
+          `requested` — the key is open and carries the request; `ended` — it
+          finished or failed, including a stale writer's key failed as lost by this
+          call; `unknown` — never written or forgotten; `removed` — it was removed.
+schema:
+  type: object
+  additionalProperties: false
+  required: [journal]
+  properties:
+    journal:
+      title: Journal
+      description: The journal holding the key.
       x-telo-ref: { kind: Self.Journal, use: dependency }
 ---
 # One expiry pass. A provider performs no observable I/O at init and has no run(),

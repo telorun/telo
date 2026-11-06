@@ -1,0 +1,99 @@
+kind: Telo.Application
+metadata:
+  name: UiReactChatTest
+  version: 1.0.0
+  description: |
+    A page holding a chat over a conversation endpoint is served as a `chat`
+    node carrying the endpoint's spec, its base path and every presentation
+    member — the query parameter that names the conversation and the requests read again included — a button drawn from a file of its own is served by its digest, and
+    the application document carries the chat's own texts in the
+    language the request asked for.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/chat/telo.yaml
+    ports: { http: 8140 }
+targets:
+  - !ref fixture
+steps:
+  - name: page
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8140/_telo/ui/page?path=/" }
+  - name: glyph
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:8140/_telo/ui/assets/' + steps.page.result.body.children[0].buttons.regenerate.icon.digest + '/glyph.svg'"
+  - name: polishApp
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8140/_telo/ui/app
+      headers: { accept-language: pl }
+  - name: chatNode
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.page.result.body.children[0]"
+      expected:
+        type: chat
+        spec:
+          attachments:
+            accepts: [{ type: image, mediaTypes: [image/png], maxBytes: 1048576 }]
+            maxPerMessage: 2
+          operations: [branch, cancel]
+        basePath: /api/chat
+        header:
+          - type: bar
+            start: []
+            center: []
+            end:
+              - type: command
+                command: { root: chat, path: [exportTranscript] }
+                text: { set: Ui.Translations, key: chatExport }
+                button: { type: text }
+                fill: false
+            fill: false
+        placeholder: { lang: en, message: [Ask anything] }
+        starters: [{ prompt: { lang: en, message: [Summarise this] }, onChoose: send }]
+        show: { reasoning: true, toolDetail: true, usage: true, copy: true }
+        buttons:
+          copy: { type: icon, icon: null, label: hidden }
+          edit: { type: icon, icon: null, label: hidden }
+          regenerate:
+            type: icon
+            icon: { digest: fc4623b15ea93cb24bb023ca34aa2f42773be8b4761bf706f6b5e0171e032e82, name: glyph.svg }
+            label: shown
+          attach: { type: text }
+          send: { type: icon, icon: null, label: hidden }
+          stop: { type: text }
+        composer: { actions: inside }
+        conversation: { parameter: conversation }
+        refreshes: [{ path: { value: /api/chat/conversations }, pathParams: {}, queryParams: {} }]
+        fill: false
+  - name: glyphServed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.glyph.result.status"
+        type: !cel "steps.glyph.result.headers['content-type']"
+      expected: { status: 200, type: image/svg+xml }
+  - name: polishTexts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        translated: !cel "size(steps.polishApp.result.body.texts.sets['Ui.Translations'].filter(key, key.startsWith('chat') && steps.polishApp.result.body.texts.sets['Ui.Translations'][key].lang == 'pl'))"
+        message: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].chatMessage"
+        send: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].chatSend"
+        position: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].chatBranchPosition"
+      expected:
+        translated: 62
+        message: { lang: pl, message: [Wiadomość] }
+        send: { lang: pl, message: [Wyślij] }
+        position: { lang: pl, message: [{ placeholder: position }, " z ", { placeholder: total }] }

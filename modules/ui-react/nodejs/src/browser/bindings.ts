@@ -52,6 +52,9 @@ export function ruleStyle(rule: StyleRule | undefined, roots: Record<string, unk
   return rule.cases[String(value)] ?? rule.default;
 }
 
+/** `data-fill`: `true` on a node that fills the room it is in; absent otherwise. */
+export const fillAttribute = (node: { fill?: unknown }): "true" | undefined => (node.fill === true ? "true" : undefined);
+
 /** `data-style`: the names, space-separated; absent when there are none. */
 export function styleAttribute(...styles: (Style | undefined)[]): string | undefined {
   const names = [...new Set(styles.flat().filter((name): name is string => typeof name === "string"))];

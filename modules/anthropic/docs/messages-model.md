@@ -87,6 +87,21 @@ Details that matter:
 
 ### Content parts
 
+Declare what the model takes with [`accepts`](../../ai/docs/ai-model.md#accepts--what-a-model-takes-beside-text); with none it takes text only. The kinds narrow it to what the API can carry at all — JPEG, PNG, GIF and WebP images, and PDF and plain-text files — so audio, video or another media type is a `SCHEMA_VIOLATION` under `telo check`, at the line that wrote it. A part outside the declared list, or over its `maxBytes`, is refused before anything is sent.
+
+```yaml
+kind: Anthropic.MessagesModel
+metadata: { name: claude }
+model: claude-sonnet-4-5
+request: !ref anthropicRequest
+maxTokens: 4096
+accepts:
+  - { type: image, mediaTypes: [image/png, image/jpeg], maxBytes: 5242880 }
+  - { type: file, mediaTypes: [application/pdf] }
+```
+
+The model publishes its list as `resources.<name>.accepts`. An accepted part lands as follows:
+
 | Part | Block |
 | --- | --- |
 | `text` | `{type: text, text}` |
@@ -98,7 +113,7 @@ Details that matter:
 
 `title` is the part's `name`, left out when it has none. A media type is compared without its parameters (`text/plain; charset=utf-8` is `text/plain`). Bytes are sent base64-encoded whether the part held raw bytes or a base64 string.
 
-Everything else is `ERR_MODEL_CONTENT_UNSUPPORTED`, raised while the request is built and before anything is sent: audio, video, an image or file of another media type, a plain-text file by `uri`, a `uri` whose scheme is not `http:` or `https:` (`error.data.scheme` names it), a part a model produces submitted in a user message, and anything but text in a system message. `error.data` is `{ partType, mediaType?, scheme? }`, and the message says what the endpoint takes instead. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
+`ERR_MODEL_CONTENT_UNSUPPORTED` is raised while the request is built and before anything is sent, for a part outside `accepts` and for what the API cannot carry whatever `accepts` says: a plain-text file by `uri`, a `uri` whose scheme is not `http:` or `https:` (`error.data.scheme` names it), a part a model produces submitted in a user message, and anything but text in a system message. `error.data` is `{ partType, mediaType?, scheme? }`, and the message says what the endpoint takes instead. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
 
 **In a tool result**, a string or text-only content is sent as the result's text. A result holding media is sent as a block list in the tool's own part order — its text and images — and its files follow the turn's results as `document` blocks, because a result cannot hold one. The same refusals apply; a part a model produces is left out of a result rather than refused.
 

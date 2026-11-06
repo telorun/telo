@@ -140,6 +140,8 @@ export const CONTROL_MECHANICS: Readonly<Partial<Record<ControlName, string>>> =
     '[data-telo-part="tab-list"] { display: flex; flex-wrap: nowrap; align-items: stretch; overflow-x: auto; }',
     '[data-telo-part="tab"] { flex: none; white-space: nowrap; }',
     '[data-telo-part="tab-panel"] { min-width: 0; }',
+    "/* Filling, the shown panel passes the room on to what it holds. */",
+    '[data-telo-part="tab-panel"][data-fill="true"] { display: flex; flex-direction: column; }',
   ]),
   Icon: layer(['[data-telo-part="icon"] { flex: none; pointer-events: none; }']),
 };

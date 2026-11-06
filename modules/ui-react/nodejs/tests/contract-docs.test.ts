@@ -42,7 +42,15 @@ describe("the documented styling contract", () => {
   });
 
   it("lists exactly the reserved properties of the data file", () => {
-    const documented = table(section(page, "Reserved properties")).map(([part, properties, because]) => ({ part: names(part)[0], properties: names(properties), because }));
+    const documented = table(section(page, "Reserved properties")).map(([part, state, properties, because]) => {
+      const [attribute, value] = names(state)[0]?.split("=") ?? [];
+      return {
+        ...(names(part).length > 0 ? { part: names(part)[0] } : {}),
+        ...(attribute === undefined ? {} : { state: { attribute, value: JSON.parse(value) } }),
+        properties: names(properties),
+        because,
+      };
+    });
     expect(documented).toEqual(parts.reserved);
   });
 });

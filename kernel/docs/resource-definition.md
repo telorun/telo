@@ -192,6 +192,10 @@ messageType:
 
 A resource naming a shape that holds a `Telo.Stream` — in a property, an item, a map value, a union branch or a named shape it reaches — is refused by `telo check` (`SCHEMA_NOT_SERIALIZABLE`, naming the path to it) and when the kernel creates it (`ERR_SCHEMA_NOT_SERIALIZABLE`). The annotation anywhere else, or with any value but `true`, is `SERIALIZABLE_ANNOTATION_INVALID`.
 
+#### `x-telo-path-params-for`
+
+On a map of path variables (a named property declared `type: object`), `x-telo-path-params-for: { template, through? }` says the map fills the `{name}` placeholders of a path template held in a sibling field: `template` is a JSON Pointer to that field, `through` names the field holding it on a declaration a `!ref` there names. An unbound placeholder or unused entry is refused by `telo check` (`PATH_PARAMETER_UNBOUND`, `PATH_PARAMETER_UNUSED`) and when the kernel creates the resource (`ERR_PATH_PARAMETER_UNBOUND`, `ERR_PATH_PARAMETER_UNUSED`). See the [path templates guide](../../docs/extend/path-templates.md).
+
 ---
 
 ## 5. Invocation Contract (`inputs`, `outputs`)

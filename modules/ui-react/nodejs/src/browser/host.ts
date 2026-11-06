@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { Host, HostLocation } from "../contract/ui-react.js";
+import { changeKey, refreshCovers, type Refresh } from "./address-wire.js";
 import { openValue, withFiltersOf, withOpen } from "./open-address.js";
 
 export type { Host, HostLocation };
@@ -303,13 +304,23 @@ export class HostStore {
     return sameOrigin ? globalThis.fetch(input, { credentials: "same-origin", ...init }) : globalThis.fetch(input, init);
   };
 
-  private readonly notifyChanged = (basePath: string): void => {
-    for (const listener of [...(this.changes.get(basePath) ?? [])]) listener();
+  /** Readers and writers meet at the encoded app-relative path, the query left out. */
+  private readonly notifyChanged = (path: string): void => {
+    for (const listener of [...(this.changes.get(changeKey(path) ?? path) ?? [])]) listener();
   };
 
-  private readonly onChanged = (basePath: string, listener: () => void): (() => void) => {
-    const listeners = this.changes.get(basePath) ?? new Set();
-    this.changes.set(basePath, listeners);
+  /** Say that every reader a refresh covers changed: the one at its path, or each whose path its wildcards match. */
+  readonly notifyRefresh = (refresh: Refresh): void => {
+    if (!refresh.wildcard) return this.notifyChanged(refresh.path);
+    for (const [key, listeners] of [...this.changes]) {
+      if (refreshCovers(refresh, key)) for (const listener of [...listeners]) listener();
+    }
+  };
+
+  private readonly onChanged = (path: string, listener: () => void): (() => void) => {
+    const key = changeKey(path) ?? path;
+    const listeners = this.changes.get(key) ?? new Set();
+    this.changes.set(key, listeners);
     listeners.add(listener);
     return () => listeners.delete(listener);
   };

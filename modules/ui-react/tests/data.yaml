@@ -42,33 +42,39 @@ steps:
         query: { signin: { type: string, enum: [denied, expired] } }
         visitor:
           - type: text
+            fill: false
             text: { lang: und, message: [Your sign-in was refused.] }
             shown: { at: { root: query, path: [signin] }, matches: { const: denied } }
           - type: data
+            fill: false
             schema:
               type: object
               required: [authorized]
               properties: { authorized: { type: boolean }, email: { type: string, title: Email } }
-            source: { path: /api/auth, params: {} }
+            source: { path: { value: /api/auth }, pathParams: {}, queryParams: {} }
             query: {}
             content:
               type: stack
+              fill: false
               children:
                 - type: value
+                  fill: false
                   value: { root: data, path: [email] }
                   present: { type: string }
                   shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
                   labels: []
                 - type: text
+                  fill: false
                   text: { lang: und, message: [Sign in first.] }
                   shown: { at: { root: data, path: [authorized] }, matches: { const: false } }
-            loading: { type: text, text: { set: Ui.Translations, key: loading }, style: muted }
+            loading: { type: text, fill: false, text: { set: Ui.Translations, key: loading }, style: muted }
             failure:
               type: stack
+              fill: false
               style: danger
               children:
-                - { type: value, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
-                - { type: value, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+                - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
+                - { type: value, fill: false, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
             reloadOn: [focus, unauthorized]
         staff: [ { lang: und, message: [ Your sign-in was refused. ] }, { lang: und, message: [Staff] }, data ]
   - name: answer

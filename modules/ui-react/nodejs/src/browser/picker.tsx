@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useControls } from "./effective-controls.js";
 import { useHostStore } from "./host.js";
+import { CurrentAnchor } from "./current-location.js";
 import { linkAddress } from "./link-address.js";
 import { optionKey, useChosenOptions, useOptionPages, type ChoiceOption, type OptionSourceSpec } from "./option-source.js";
 import { Surface, type SurfaceSpec } from "./surface.js";
@@ -25,9 +26,9 @@ function ChosenLabel({ option }: { option: ChoiceOption }) {
   const store = useHostStore();
   const href = option.href === undefined ? undefined : linkAddress(store, option.href);
   return href ? (
-    <a data-telo-part="picker-chosen" href={href}>
+    <CurrentAnchor address={option.href} data-telo-part="picker-chosen" href={href}>
       {option.label}
-    </a>
+    </CurrentAnchor>
   ) : (
     <span data-telo-part="picker-chosen">{option.label}</span>
   );

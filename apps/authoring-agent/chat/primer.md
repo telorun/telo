@@ -630,43 +630,47 @@ literal part is CONTRACT_INPUTS_MISMATCH at `telo check`, on the key at fault,
 and a malformed computed one is `ERR_INPUT_INVALID` at dispatch. A tool that
 returns media returns the same parts from its `result:` mapping.
 
-WHETHER A MODEL CAN CARRY A WELL-FORMED PART IS THE PROVIDER'S ANSWER, raised
-before any request as `ERR_MODEL_CONTENT_UNSUPPORTED`, with
-`error.data.partType`, `error.data.mediaType` when the part has one and, when
-the `uri`'s scheme is the reason, `error.data.scheme`. For the four OpenAI chat
-kinds:
+WHAT A MODEL CAN CARRY IS ITS `accepts`: a list of `{ type, mediaTypes,
+maxBytes? }` (type `image`, `audio`, `video` or `file`; a media type exact,
+`image/png`, or a whole type, `image/*`) written on the model resource, absent
+meaning TEXT ONLY — with no `accepts`, an image part is refused. The provider
+refuses any part outside it — wrong type, media type not listed, bytes over
+`maxBytes`, tool-result media included — before any request, as
+`ERR_MODEL_CONTENT_UNSUPPORTED`, with `error.data.partType`,
+`error.data.mediaType` when the part has one and, when the `uri`'s scheme is
+the reason, `error.data.scheme`. Each provider narrows `accepts` to what its
+API can carry at all, so an entry beyond that is SCHEMA_VIOLATION at
+`telo check`: the OpenAI chat and responses kinds take `image` (any
+`image/…`) and `file` (any type); the Anthropic Messages kinds take `image`
+(`image/jpeg`, `image/png`, `image/gif`, `image/webp`) and `file`
+(`application/pdf`, `text/plain`); neither takes audio or video. An agent and
+`Ai.Buffered` publish their model's list as `resources.<name>.accepts`.
 
-- image by bytes, or by an `http:` / `https:` `uri` — carried by both the
-  completions pair and the responses pair; the `uri` is sent as written and
-  never fetched, so the endpoint must be able to reach it.
-- file by bytes, with `name` — carried by both, `name` sent as its filename. A
-  file by bytes with NO `name` is `ERR_MODEL_CONTENT_UNSUPPORTED` on both
-  (`error.data.partType: file`, no `scheme`), also inside a tool result. No
-  media type is gated here: at OpenAI's own endpoint a file by bytes on the
-  completions pair is a PDF, and any other type is the endpoint's to accept or
-  refuse (usually `ERR_MODEL_REQUEST_REJECTED`).
-- file by `http(s)` `uri` — the RESPONSES pair only; on the completions pair it
-  is `ERR_MODEL_CONTENT_UNSUPPORTED`, so read the bytes and send `data` instead.
-- any other `uri` scheme (`file:`, `s3:`), audio, video, and a model-produced
-  part sent as input — `ERR_MODEL_CONTENT_UNSUPPORTED` on both.
-- media a TOOL returned — on the responses pair it rides the tool result
-  itself, in the tool's own part order, under the same rules as a user
-  message's parts; on the completions pair, whose tool message is text only, it
-  rides a `user` message after the run of tool messages.
+```yaml
+kind: OpenAI.ChatModel
+metadata: { name: vision }
+model: gpt-4o
+request: !ref openaiRequest
+accepts:
+  - { type: image, mediaTypes: [image/png, image/jpeg], maxBytes: 5242880 }
+  - { type: file, mediaTypes: [application/pdf] }
+```
 
-For `Anthropic.MessagesModel` and `Anthropic.MessagesModelStream`:
+Beyond `accepts`, each dialect keeps its own call-time rules, all
+`ERR_MODEL_CONTENT_UNSUPPORTED`:
 
-- image by bytes or by an `http(s)` `uri` — `image/jpeg`, `image/png`,
-  `image/gif` and `image/webp` only; any other image type is
-  `ERR_MODEL_CONTENT_UNSUPPORTED`.
-- file — `application/pdf` by bytes or by an `http(s)` `uri`, and `text/plain`
-  by bytes only; `name` is optional and becomes the document's title. Any other
-  file type, and a plain-text file by `uri`, is `ERR_MODEL_CONTENT_UNSUPPORTED`.
-- any other `uri` scheme, audio, video, a model-produced part in a user
-  message, and anything but text in a `system` message —
-  `ERR_MODEL_CONTENT_UNSUPPORTED`.
-- media a TOOL returned — text and images ride the tool result itself, files
-  follow the results of that turn.
+- OpenAI: a file by bytes needs `name` (sent as its filename; also inside a
+  tool result); a file by `http(s)` `uri` is for the RESPONSES pair only (on
+  the completions pair read the bytes and send `data`); any other `uri` scheme
+  (`file:`, `s3:`); a model-produced part sent as input. The `uri` is sent as
+  written and never fetched. Media a TOOL returned rides the tool result itself
+  on the responses pair, and a `user` message after the run of tool messages on
+  the completions pair.
+- Anthropic: a `text/plain` file by `uri`; any other `uri` scheme; a
+  model-produced part in a user message; anything but text in a `system`
+  message. `name` is optional and becomes the document's title. Media a TOOL
+  returned — text and images ride the tool result, files follow the results of
+  that turn.
 
 REFERENCED CONTENT IS FETCHED FOR THE MODEL BY THE OPERATION'S `resolver`, never
 by rewriting messages. Keep a file in history as a media part with a `uri` of a
@@ -737,6 +741,72 @@ call AND every running tool — `Ai.Tools` passes it into the tool's invocation,
 `AiMcp.ToolProvider` into its `tools/call` — and both agent kinds end with
 `ERR_INVOKE_CANCELLED` even under `onToolError: feedback`, which only turns
 genuine tool failures into `error: true` results.
+A consumer that stops reading an `Ai.AgentStream`'s `output` aborts the model
+call or tools its pending read waits on at once, and no further call is made.
+
+A CHAT ENDPOINT OVER AN AGENT is `ai-chat`'s `Conversation` — import the
+module as `Chat`, never as `AiChat` (an alias equal to its name hides its private
+kinds for now) — `Chat.Conversation` (`agent` an
+`Ai.AgentStream`, `store` an `AiConversation.Store`, `journal` a
+`RecordStream.Journal`, `blobs` a `Blob.Store`, `detector` a
+`MediaType.Detector`, `attachments: { maxBytes, maxPerMessage, pendingRetention }`,
+`pendingRetention` a duration, 24h when omitted); it publishes
+the `Conversation.Spec` a `Ui.ConversationSource` reads (`operations` lists
+only `branch` and `cancel`; `Conversation.conversations` is the
+`DataModel.Collection` over `ConversationSummary` that `GET /conversations`
+speaks, with `limit` 1–100 default 25, `-updatedAt` by default, filters
+`title.contains` and `archived`, and no `q=`). Its operations are invocables taking only `conversation:` — `StartTurn` (a `TurnRequest` plus
+`idempotencyKey` → `{ conversation, turn }`, the reply running in the
+background), `TurnEvents` (`{ turn, after? }` → a stream of `{ id, event }`),
+`CancelTurn`, `ListConversations`, `ReadConversation`, `ConversationEntries`,
+`UpdateConversation`, `DeleteConversation`, `PutAttachment`, `GetAttachment`
+(`{ conversation, id }`), `AttachmentExpiry`, `Capabilities` — never re-implement a
+turn with a hand-written sequence. An upload is pending (it answers
+`{ id, mediaType, size }`, with no address) until the first admitted turn naming it
+binds it to that turn's conversation; after that only that conversation may send or
+read it, and deleting the conversation makes its files unreadable at once. Files
+are removed only by `Chat.AttachmentExpiry` (`conversation: !ref conversation`),
+which the application schedules with a `Scheduler.Interval` beside the journal's
+`RecordStream.JournalExpiry` — without it neither unsent uploads nor deleted
+conversations' files are ever removed. Over
+HTTP, mount `{ kind: Chat.Api, conversation: !ref conversation }` on an
+`Http.Server` (the path a `Ui.ConversationSource.basePath` names): it serves the
+conversation contract's routes — turn events as Server-Sent Events resumable by
+`Last-Event-ID`, `multipart/form-data` uploads at `POST /attachments` checked
+against the model's accepted media, a file read back only at
+`GET /conversations/<id>/attachments/<attachment id>` (its `url` the relative
+reference `conversations/<id>/attachments/<attachment id>`), problems as
+`application/problem+json` — and
+a `Ui.Chat` page over the same conversation draws the upload button only when
+the model accepts media. `Ui.Chat` draws NO conversation list: it takes `show`
+(reasoning, toolDetail, usage, copy: booleans, default true),
+`header` (nodes above the transcript over two accessor roots: `conversation`, the
+open `Conversation.ConversationSummary` or null for a new one, and `chat`, the
+commands `exportTranscript`, `copyTranscript`, `stop`, `newConversation` run by
+`command` nodes; omitted, a `bar` holding the export command; `[]`, none — there
+is no `title`, `show.export` or `buttons.export`),
+`composer: { actions: inside | outside }` (default `inside`, the attach and send
+buttons in the message box's frame) and `buttons` (copy, edit, regenerate,
+attach, send, stop), each a `Ui.TextButton` or a
+`Ui.IconButton { icon?: a Ui.Icon, label: shown | hidden }`, a glyph with the
+text as its accessible name (copy, edit and regenerate are icons unless named;
+the others are text). `conversation: { parameter: <name> }` makes it
+follow that page query parameter (absent is a new conversation, an id opens it,
+a conversation it creates is written back by replacing the history entry, a
+link or back switches without cancelling a running turn; omitted, the choice
+lives in memory), and `refreshes: [<request target>]` over `conversation.id`
+re-reads readers of a path when a send is admitted and a turn ends. The list of
+conversations is COMPOSED: a `Ui.SplitView` whose `aside` is `{ actions, content }`: `actions` holds, under the toggle's bar, a
+button `link` to the page (New conversation) and `content` a `Ui.Listing` over a `Ui.CollectionSource` for
+`Conversation.conversations` (`model: !ref Conversation.ConversationSummary`,
+`delete: true`, rows linking with `queryParams: { conversation: !cel "row.id" }`,
+a `badge` shown over `row.running`, rename and archive as `PATCH` row
+actions), and whose `content` is the `Ui.Chat` placed with `fill: true`, so the
+message box sits at the viewport's bottom and the transcript scrolls. The
+journal's `writerTimeout` is how soon a dead turn reads failed; its `retention`
+how long events and idempotency keys are kept, once the application runs
+`RecordStream.JournalExpiry` over the journal on a schedule (nothing expires
+without one).
 
 THE TOOL CALLS OF ONE MODEL RESPONSE RUN SIDE BY SIDE. Both agent kinds take
 `maxParallelTools` (an integer ≥ 1, a literal or `!cel`, default `4`): up to
@@ -916,7 +986,14 @@ closing is discarded. The limit is `Http.Server.maxBodyBytes`
 `Http.Api.routes[].maxBodyBytes`, larger or smaller. It is an integer of at
 least 1 — nothing switches it off — and it covers streamed and multipart bodies
 as well as JSON, so a route that takes an upload over 1 MiB MUST set its own
-`maxBodyBytes`, beside `request:`. A larger body is answered 413 by the server
+`maxBodyBytes`, beside `request:`. A form carrying ONE file is read with
+`Multipart.ReadPart` (`inputs: { input: !cel "request.body", contentType: !cel
+"request.headers['content-type']", name: file }`, the route body declared
+`x-telo-type: { name: Telo.Stream, of: Telo.Bytes }`): it returns the first part
+of that name (`content` a byte stream, `contentType?`, `filename?`, `headers`)
+without reading the parts after it, and a form with none is
+`ERR_MULTIPART_PART_MISSING` (`data: { name }`) — so any other value the upload
+needs travels in the URL, not as another field. Several files: `Multipart.Reader`. A larger body is answered 413 by the server
 itself, as a problem with `code: ERR_REQUEST_BODY_TOO_LARGE` and `data:
 {maxBodyBytes, contentLength?}`. That answer is NOT catchable: no `catches:`
 list sees it, a catch-all included, and an entry naming the code is
@@ -1023,6 +1100,18 @@ static cases and inherit the 401 re-acquire-and-retry.
 Stream pipelines compose from `Stream.Map` / `Stream.Scan` / `Stream.FlatMap`
 (lazy, one value in and one, several or none out) and `Sse.Decoder`, which
 turns a byte stream of Server-Sent Events into one record per frame.
+`Sse.Encoder` writes FRAMES only: each record is an `Sse.Frame`
+`{ data, event?, id?, retry? }` (no `type`, no extra keys — anything else ends
+the stream with its error frame), so records of another shape go through a
+`Stream.Map` with `elementType: !ref Sse.Frame` first (`value: { event: !cel
+"item.type", data: !cel "item" }`), which `telo check` holds to the shape. When
+one handler feeds several encoders by `Accept`, the mapping lives in a kind
+extending `Codec.Encoder` whose body is that `Stream.Map` then `Sse.Encoder`.
+To end a stream that fails part-way with a final record of your own — the
+client of a committed response sees nothing else — put `Stream.Recover` after
+the last stage (`value:` over `error` — `code`, `message`, `data`,
+`displayMessage` — optional `when:`, `elementType:`); it logs the failure and
+never absorbs a cancellation.
 `Stream.Tap` hands each value to a handler (`invoke:` + `inputs:`, gated by
 `when:`) before delivering it unchanged — use it instead of
 `RecordStream.Tee` when one consumer is a per-value side effect such as
@@ -4329,10 +4418,54 @@ Where to start:
   - `ui` is the vocabulary of a screen, with no browser code in it:
     `Ui.Listing` (the records of a collection, paged and sortable, with create,
     edit and delete), `Ui.Form`, `Ui.Filters` (a filter bar over the listings
-    inside it), `Ui.Action` (a button posting to a route and drawing what it
+    inside it), `Ui.Action` (a button sending a request to a route and drawing what it
     answered), `Ui.Data` (a record read when the page loads) and `Ui.View` (a
     node tree placed wherever it is needed), each reading `Telo.JsonSchema`
-    shapes. A collection reaches a screen in two small resources: a
+    shapes. A request or link target is an ADDRESS: a literal string, or
+    `{ path, pathParams, queryParams }` — `path` a template whose `{name}`
+    placeholders are whole segments (`/tasks/{id}`), filled from `pathParams`
+    (accessors over `row`, `input`, `query`, … or literals, percent-encoded),
+    `queryParams` the query (null and empty left out); a link's `path` may be a
+    `!ref` to a `Ui.Page`. An unbound placeholder or unused `pathParams` entry
+    is refused by `telo check` (and by the kernel). Links (`link.href`, menu
+    items, `value.href`, column and relation `href`s, `onSuccess.navigate`)
+    take addresses and are never per-request CEL — two `link` nodes with `when`
+    instead. `Ui.Action` sends `request: { method, target }` — `method` `POST`
+    (default), `PUT`, `PATCH` or `DELETE`, `target` an address over `input`
+    (there is no `source`). An input property bound as exactly `input.<name>` is
+    consumed: it travels in the target and is left out of the JSON body; a
+    `DELETE` sends no body and must consume every input property
+    (`UI_ACTION_INPUT_UNSENT`). A 2xx with no body (204) is a success unless
+    `result`, `navigate` or a `refreshes` entry reads `result`. After a 2xx the
+    target's path, each `onSuccess.refreshes` request target and a listing's
+    `basePath` are announced, and every `Ui.Data`, `Ui.Listing` and `Ui.Chat`
+    reading exactly that path reads again; a whole segment of a literal
+    `refreshes` (or `Ui.Chat.refreshes`) path may be `*` (one segment) or `**`
+    (any number, none included, so `/api/projects/{id}/**` covers
+    `/api/projects/7` and its subtree), refused in any other address, and a
+    computed path or `pathParams` value is exact. `Ui.Data.source` is a request target
+    over `query` (`{ path, pathParams, queryParams }`; `params` is gone).
+    `Ui.SplitView` (a composite) draws an `aside` beside `content`, the aside being
+    `{ actions?, content }` (`actions`: `link` nodes with `button`, drawn under the
+    toggle's bar and kept as stacked glyphs in the folded rail): `side`,
+    `size` (`small` | `medium` | `large`), a required `label`, `collapse: {
+    collapsed?, state: { key, store } }` and `compact` (default a `Ui.Drawer`
+    below the breakpoint), `frame` (`flush` default, attached to the content, or
+    `framed`) and `toggle` (a `Ui.IconButton`, default, or `Ui.TextButton`); the
+    aside stays mounted and starts no request while hidden. A `link` node takes
+    `button` (a `Ui.TextButton` / `Ui.IconButton`) to draw as a button, and a
+    link whose address is the current page (`_telo*` parameters aside) is
+    `aria-current="page"`, its record `data-selected`, with no authoring. A
+    `bar` node lays out `start`, `center` (kept centred) and `end` node lists;
+    a `command` node (`command: !cel "<root>.<command>"`, `text`, `button?`) is a
+    button running a command the place it is in binds (a `Ui.Command`
+    `{ offered, enabled }`: not drawn unless offered, disabled unless enabled).
+    `fill: true` on any node (not a menu item) stretches it to the bottom of the
+    page or surface body; `ui` marks every node above it, the page stops
+    scrolling as a whole, and the last filling node scrolls inside itself. A
+    `Ui.Listing` takes `sort: { by?, choosable }` (`choosable: false` fixes the
+    order), `show: { count }` and `rowActionsDisplay` (`auto` | `inline` |
+    `menu`); `Ui.ListLayout` takes `frame`. A collection reaches a screen in two small resources: a
     `Ui.CollectionSource` (a `DataModel.Collection` and its `basePath`, written
     once and used by every screen and picker over it) and a
     `Ui.CollectionPresentation` (`source`, and `relations: { <property>: {

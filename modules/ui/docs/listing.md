@@ -14,10 +14,13 @@ layout. How records are drawn is [the layout's](listing-layouts.md).
 | `query` | none | the page query parameters its filters and row actions read, a [`Ui.QueryParameters`](conditions.md); read as `query` |
 | `pageSize` | `25` | records per read, 1–100, sent as `limit` |
 | `paging` | `pages` | how further pages are reached: [`pages`, `more` or `scroll`](#paging) |
+| `sort` | the collection's order, chosen by the viewer | [the order the records start in and whether the viewer may change it](#sorting): `{ by?: { property, direction? }, choosable? }` |
+| `show` | `{ count: true }` | [what is shown beside the records](#the-count): `{ count? }` |
 | `rowStyle` | | a [style rule](nodes.md#style-rules) for the record's element in every layout: a table row, a card, an event |
 | `create`, `edit` | | [how a form is opened](#opening-a-form): `{ form, surface?, afterSubmit?, unsaved? }` |
 | `delete` | `false` | whether each record offers a confirmed delete |
 | `rowActions` | none | [operations each record offers](#row-actions): `{ action, inputs, confirm?, prompt?, enabled? }` each |
+| `rowActionsDisplay` | `auto` | [how the actions, edit and delete are drawn](#how-the-actions-are-drawn): `auto`, `inline` or `menu` |
 | `empty` | the text `noRows`, "No rows." | a [node](nodes.md) drawn where the records would be when the reads answer none |
 | `layout` | a table | how the records are drawn: [a layout kind](listing-layouts.md), `!ref` or inline |
 | `compact` | none | the layout drawn below the application's breakpoint; same kinds as `layout` |
@@ -79,6 +82,63 @@ The viewer's sort is listing state over the collection's `query.sort`, sent as
 `sort` on every read. Each layout draws the choice its own way — a table
 through its column headers, a list, cards, a board and a tree through a sort
 control; a calendar and a timeline draw none but still send the sort.
+
+`sort` fixes the starting order and, optionally, the choice:
+
+```yaml
+sort:
+  by: { property: updatedAt, direction: descending }
+  choosable: false
+```
+
+`by.property` is a property the collection lists under `query.sort`, and
+`direction` is `ascending` (the default) or `descending`. Until the viewer
+chooses another order the listing sends it as `sort` on every read — `-updatedAt`
+above — and the layout's sort starts at it. `choosable: false` draws no sort
+control and no sortable table header, so the order is the listing's alone;
+`{ choosable: false }` without `by` keeps the collection's own order. A
+property the collection does not list is refused (`UI_LISTING_SORT_NOT_ACCEPTED`).
+
+## The count
+
+`show: { count: false }` hides the pager's range text (`pager-status`) in every
+paging mode and words each group's heading — a board column, a grouped list —
+with its label alone. The pager's buttons stay.
+
+## How the actions are drawn
+
+Row actions, edit and delete are drawn the same way in every layout, as
+`rowActionsDisplay` says. `inline` draws each as a button on its record. `menu`
+folds them into one icon button (the glyph `more`, named by the text
+`rowActionsMenu`, "Actions") opening a menu of the row actions, then edit, then
+delete, each labelled by its action's `label`, `edit` and `delete`. An entry
+whose `enabled` condition does not hold is a disabled item, its `disabledText`
+the item's hint; a `confirm` or `prompt` opens as it does from a button, with
+the focus returning to the menu button. A pressed action's answer is drawn in
+the record's actions before the menu button, a failure beside it.
+
+`auto` is one judgement for the whole listing, so the rows stay aligned, made
+from the room each drawn record gives its own actions and never from the
+viewport: inline when, for every record, the buttons laid in one line fit that
+room, a menu as soon as one record lacks it. The room is the record's own
+content box (a card, a board card, a calendar event), or half of it where the
+record's content shares the line with its actions (a list row); in a table it is
+the grid, which must fit its frame with the buttons inline. A small card in a
+wide listing is therefore a menu while a wide row in the same listing is
+buttons. It is judged again when a record's size, the records drawn or the
+actions change. Once a menu, it becomes inline again only at a container wider
+than the one that lacked the room by at least what it lacked.
+
+## The selected record
+
+A record whose layout draws a link that leads to where the viewer is — a
+column's `href`, a `link` node in a layout's `content`, a value the model
+calls a `uri` — is the selected record: its element carries
+`data-selected="true"` and the layout contract's `selected` is true. A
+relation's label links and a row action's answer are never counted. The rule
+that decides what is current, a stray parameter unmarking a link included, is
+in [nodes](nodes.md#the-current-location). A chat's conversation list is
+this: rows linking to `/?conversation=<id>` mark the open conversation.
 
 ## The empty state and row styles
 
@@ -151,7 +211,7 @@ rowActions:
 | `enabled` | always | when the record's button can be pressed, over `row` and `query`, and why not; the action's own `enabled` does not govern it |
 
 The button shows the action's `label` and sends
-[its request](action-contract.md#from-a-row) to its `source.path`. Every
+[its request](action-contract.md#from-a-row) to its `request.target`, filled from the inputs. Every
 property the action's `inputModel` requires is bound here. A record takes no
 press while its last is pending or queued. Once the operation succeeds, the
 listings whose collection source has the same `basePath` reload, the action's
@@ -171,7 +231,7 @@ rowActions:
   - action:
       kind: Ui.Action
       inputModel: !ref Rejection      # { id (required), reason }
-      source: { path: /api/reject }
+      request: { target: /api/reject }
       label: Reject
     inputs:
       id: !cel "row.id"
@@ -217,7 +277,16 @@ listing whose presentation's source has that `basePath` — every group, every
 period and every loaded tree level — and every facet request over it: a
 `values: present` filter field's values and counts, and a `present` board's
 columns. A notify on a relation's source `basePath` reloads that relation's
-labels. `refreshes` matches `Ui.Data.source.path` and `Ui.CollectionSource.basePath`.
+labels.
+
+**What a success announces.** After a 2xx an action announces the resolved path
+of its `request.target` and of each `onSuccess.refreshes` entry; in a listing
+it announces the listing's own `basePath` too, and a listing's own item write
+(create, edit, delete, move) announces the item path (`<basePath>/<key>`) as
+well. A `Ui.Data`, `Ui.Listing` or `Ui.Chat` reads again exactly when the
+resolved, encoded, app-relative path of its request equals an announced one;
+the query is not compared. A `Ui.Data.source` and a `Ui.CollectionSource.basePath`
+are matched this way.
 
 One rule for every reload, whatever causes it:
 
@@ -244,21 +313,25 @@ The requests a reload sends are pinned by
 | --- | --- |
 | `UI_SOURCE_FILTER_UNKNOWN_PROPERTY` | `filters` names a property the model does not declare |
 | `UI_SOURCE_FILTER_NOT_ACCEPTED` | `filters` names a property the collection's `query.filters` does not declare with operator `eq` |
+| `UI_LISTING_SORT_NOT_ACCEPTED` | `sort.by.property` is not a property of the collection's `query.sort` |
 
 What a layout needs of the listing — a grouping, a span or a parent the
 collection can filter by — is refused at the listing too, by the layout's
 [`UI_LAYOUT_*` rules](listing-layouts.md#refused).
 
 The listing refuses the same things itself when it is first read
-(`ERR_UI_SOURCE_FILTER_UNKNOWN_PROPERTY`, `ERR_UI_SOURCE_FILTER_NOT_ACCEPTED`),
+(`ERR_UI_SOURCE_FILTER_UNKNOWN_PROPERTY`, `ERR_UI_SOURCE_FILTER_NOT_ACCEPTED`,
+`ERR_UI_LISTING_SORT_NOT_ACCEPTED`),
 for a manifest that never passed `telo check`, and raises `ERR_<code>` for
 each problem its layout answers.
 
 ## The node
 
 What the listing provides is a `type: listing` node carrying `schema`,
-`basePath`, `key`, `query`, `filters`, `pageSize`, `paging`, `sort` (the
-sortable properties), `rowStyle`, `create`, `edit`, `delete`, `rowActions`,
-`relations`, `empty`, `layout` and `compact` — every default filled by `ui`.
+`basePath`, `key`, `query`, `filters`, `pageSize`, `paging`, `sort`
+(`{ sortable, initial }`: the properties the viewer may sort by — none when the
+order is fixed — and the order sent until they choose, `-` leading a descending
+one, or null), `show` (`{ count }`), `rowStyle`, `create`, `edit`, `delete`,
+`rowActions`, `rowActionsDisplay`, `relations`, `empty`, `layout` and `compact` — every default filled by `ui`.
 `layout` and `compact` are [`Ui.ListingLayoutSpec`](listing-layouts.md#the-layout-spec)
 values.

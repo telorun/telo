@@ -1,5 +1,5 @@
 /**
- * `@telorun/ui-react-radix`: thirteen controls of `ui_react_controls-2` drawn
+ * `@telorun/ui-react-radix`: thirteen controls of `ui_react_controls-3` drawn
  * on Radix's primitives and Lucide's icons — the nine layer controls as one
  * stack, the box, the list, the tabs and the glyph. One copy of the primitives
  * holds every layer a page opens, so they compose among themselves.

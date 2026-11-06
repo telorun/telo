@@ -1,0 +1,182 @@
+kind: Telo.Application
+metadata:
+  name: AiChatApiConversations
+  version: 1.0.0
+  description: |
+    The conversation list speaks the collection contract against
+    `Conversation.conversations`: a title filter, the archived filter and the
+    sort by last activity page by cursor with the total of every match, and any
+    other filter, sort or limit is refused with its issue under `/query`.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Assert: ../../assert
+variables:
+  scratchDir:
+    env: AI_CHAT_API_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent:
+  kind: Ai.AgentStream
+  model:
+    kind: AiEcho.EchoModelStream
+    accepts: []
+    usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 }
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-api-conversations')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.Api
+metadata: { name: chatApi }
+conversation: !ref chat
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 19413 }
+    mounts:
+      - { path: /chat, mount: !ref chatApi }
+targets: [!ref server]
+steps:
+  - name: start0
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19413/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: hi, attachments: [] }
+  - name: end0
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19413/chat/turns/${{ steps.start0.result.body.turn }}/events", responseType: text }
+  - name: rename0
+    invoke: { kind: HttpClient.Request, method: PATCH }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19413/chat/conversations/${{ steps.start0.result.body.conversation }}"
+      headers: { content-type: application/json }
+      body: { title: x one }
+  - name: start1
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19413/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: hi, attachments: [] }
+  - name: end1
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19413/chat/turns/${{ steps.start1.result.body.turn }}/events", responseType: text }
+  - name: rename1
+    invoke: { kind: HttpClient.Request, method: PATCH }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19413/chat/conversations/${{ steps.start1.result.body.conversation }}"
+      headers: { content-type: application/json }
+      body: { title: x two }
+  - name: start2
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19413/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: hi, attachments: [] }
+  - name: end2
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19413/chat/turns/${{ steps.start2.result.body.turn }}/events", responseType: text }
+  - name: rename2
+    invoke: { kind: HttpClient.Request, method: PATCH }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19413/chat/conversations/${{ steps.start2.result.body.conversation }}"
+      headers: { content-type: application/json }
+      body: { title: other }
+  - name: start3
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19413/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: hi, attachments: [] }
+  - name: end3
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19413/chat/turns/${{ steps.start3.result.body.turn }}/events", responseType: text }
+  - name: rename3
+    invoke: { kind: HttpClient.Request, method: PATCH }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19413/chat/conversations/${{ steps.start3.result.body.conversation }}"
+      headers: { content-type: application/json }
+      body: { title: x three }
+  - name: everyone
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19413/chat/conversations?sort=-updatedAt&limit=100" }
+  - name: oldestFirst
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19413/chat/conversations?sort=updatedAt&limit=100" }
+  - name: first
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19413/chat/conversations?title.contains=x&sort=-updatedAt&limit=2" }
+  - name: second
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19413/chat/conversations?title.contains=x&sort=-updatedAt&limit=2&cursor=${{ steps.first.result.body.next }}" }
+  - name: pages
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "{'rows': steps.first.result.body.rows.map(r, r.title), 'total': steps.first.result.body.total, 'more': steps.first.result.body.next != null}"
+        second: !cel "{'rows': steps.second.result.body.rows.map(r, r.title), 'total': steps.second.result.body.total, 'next': steps.second.result.body.next}"
+        inRecencyOrder: !cel "(steps.first.result.body.rows + steps.second.result.body.rows).map(r, r.id) == steps.everyone.result.body.rows.filter(r, r.title.contains('x')).map(r, r.id)"
+        oldestFirst: !cel "steps.oldestFirst.result.body.rows.map(r, r.id) == reverse(steps.everyone.result.body.rows.map(r, r.id))"
+        total: !cel "steps.everyone.result.body.total"
+      expected:
+        first: { rows: [x three, x two], total: 3, more: true }
+        second: { rows: [x one], total: 3, next: null }
+        inRecencyOrder: true
+        oldestFirst: true
+        total: 4
+  - name: archive
+    invoke: { kind: HttpClient.Request, method: PATCH }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19413/chat/conversations/${{ steps.start2.result.body.conversation }}"
+      headers: { content-type: application/json }
+      body: { archived: true }
+  - name: archivedOnly
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19413/chat/conversations?archived=true" }
+  - name: activeOnly
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19413/chat/conversations?archived=false" }
+  - name: archivedFilter
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        archived: !cel "steps.archivedOnly.result.body.rows.map(r, r.title)"
+        active: !cel "steps.activeOnly.result.body.total"
+      expected: { archived: [other], active: 3 }
+  - name: unlistedFilter
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19413/chat/conversations?title.eq=x" }
+  - name: unlistedSort
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19413/chat/conversations?sort=title" }
+  - name: tooMany
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19413/chat/conversations?limit=101" }
+  - name: oldQuery
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19413/chat/conversations?q=x" }
+  - name: refused
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        unlistedFilter: !cel "{'status': steps.unlistedFilter.result.status, 'code': steps.unlistedFilter.result.body.code, 'issues': steps.unlistedFilter.result.body.data.issues.map(i, i.pointer)}"
+        unlistedSort: !cel "{'status': steps.unlistedSort.result.status, 'issues': steps.unlistedSort.result.body.data.issues.map(i, i.pointer)}"
+        tooMany: !cel "{'status': steps.tooMany.result.status, 'issues': steps.tooMany.result.body.data.issues.map(i, i.pointer)}"
+        oldQuery: !cel "steps.oldQuery.result.status"
+      expected:
+        unlistedFilter: { status: 400, code: ERR_INPUT_INVALID, issues: [/query/title.eq] }
+        unlistedSort: { status: 400, issues: [/query/sort] }
+        tooMany: { status: 400, issues: [/query/limit] }
+        oldQuery: 400

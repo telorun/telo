@@ -6,6 +6,9 @@ metadata:
     ui's own texts are the keyed set `Ui.Translations`, in English where nothing
     translates them. Every translation ui ships can be listed.
 
+    A chat's own texts are among them: the composer's accessible name in
+    English, its send button in Polish.
+
     This application is ui's completeness proof: it serves all fourteen shipped
     languages, and `telo check` on it reports no MESSAGE_TRANSLATION_MISSING.
 lang: en
@@ -42,9 +45,11 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        !cel "[steps.shown.result['Ui.Translations'].size(), steps.shown.result['Ui.Translations']['en']['save'], steps.shown.result['Ui.Translations']['de']['save'], steps.shown.result['Ui.Translations']['pl']['pagerRange']]"
+        !cel "[steps.shown.result['Ui.Translations'].size(), steps.shown.result['Ui.Translations']['en']['save'], steps.shown.result['Ui.Translations']['de']['save'], steps.shown.result['Ui.Translations']['pl']['pagerRange'], steps.shown.result['Ui.Translations']['pl']['chatSend'], steps.shown.result['Ui.Translations']['en']['chatMessage']]"
       expected:
         - 15
         - { text: Save, context: null, lang: en, computed: false }
         - { text: Speichern, context: null, lang: de, computed: false }
         - { text: "{$first}–{$last} z {$total}", context: null, lang: pl, computed: false }
+        - { text: Wyślij, context: null, lang: pl, computed: false }
+        - { text: Message, context: null, lang: en, computed: false }

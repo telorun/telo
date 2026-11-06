@@ -1,0 +1,54 @@
+kind: Telo.Library
+metadata:
+  name: AiConversationSql
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [AI, Storage]
+  description: >-
+    Keeps AI chat conversations, their branching transcripts and the files each
+    holds in tables on a database you already run, creating and upgrading the
+    tables itself. Appends are fenced by the current turn, renames by a header
+    version, a file is bound to one conversation at most, and a branch pages in
+    constant work however long the conversation grows. Speaks PostgreSQL and SQLite.
+imports: { AiConversation: ../ai-conversation, Sql: ../sql }
+exports: { kinds: [Store] }
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: >-
+    Stores conversations in five tables on an existing database connection:
+    headers, transcript entries, tool-call approvals, the files each holds and a
+    schema-version record. Creates the tables on start and upgrades an older
+    layout in place; refuses to start over a layout newer than it understands.
+capability: Telo.Provider
+extends: AiConversation.Store
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation-sql.mjs&local_path=./nodejs/src/index.ts#store]
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection]
+  properties:
+    connection:
+      title: Connection
+      description: The connection the store reads and writes through.
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
+    tablePrefix:
+      title: Table prefix
+      description: >-
+        Prefix of the five table names. Use distinct prefixes to keep unrelated
+        stores in one database apart.
+      type: string
+      default: ai_conversation_
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      x-telo-eval: compile
+    createTables:
+      title: Create tables
+      description: >-
+        Whether to create and upgrade the tables on start. Set false when the
+        application's own migrations own them; the recorded schema version is
+        then only checked.
+      type: boolean
+      default: true
+      x-telo-eval: compile

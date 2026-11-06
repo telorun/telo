@@ -1,0 +1,26 @@
+modules:
+  modules/ui-react: Added
+body: "Draws the chat node, a full client of the conversation contract: streamed text
+  through the markdown renderer, a collapsible reasoning panel, tool-call cards,
+  approval cards that resume the turn (also after a reload), citations, refusals and
+  per-turn usage; a message box named by ui's chatMessage text, Enter to send,
+  attachments by button, drop and paste checked against the spec before an upload with
+  progress; edit-and-resend, regenerate (the first message included) and a sibling
+  switcher where the spec offers branching. The chat follows the page: with
+  conversation.parameter it opens the conversation the address names (continuing live
+  when its turn runs), writes a conversation it creates into the address by replacing
+  the current history entry, switches when the parameter changes without cancelling a
+  running turn, draws a missing or failed conversation in place with the composer
+  disabled and the parameter kept, and reads the shown conversation again when a write
+  to its address under the base path is notified; its refreshes are notified when a send
+  is admitted and when a turn ends. Conversations run in parallel (a late answer for the
+  conversation left is dropped), each keeps its own draft of text and attachments, a
+  long branch reads earlier messages as the transcript is scrolled up, and a dropped
+  event stream is reopened with Last-Event-ID. A chat attachment named by the relative
+  reference conversations/<id>/attachments/<attachment id> is drawn, and exported to
+  Markdown, under the source's basePath; a rooted or absolute URL is used as written. An
+  upload has no address until a message sends it, so a file not yet sent is drawn from
+  the file itself and a message being edited keeps its files at the addresses its entry
+  gives them. The upload control exists only when the node's spec offers it. Adds the
+  chat-* parts, data-role and data-status to the styling contract, drawn by conformance
+  scenes and styled by UiReact.defaultTheme."

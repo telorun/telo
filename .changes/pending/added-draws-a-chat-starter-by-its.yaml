@@ -1,0 +1,5 @@
+modules:
+  modules/ui-react: Added
+body: "Draws a chat starter by its onChoose: send sends the prompt, fill puts it in the
+  message box, replacing any draft, with focus and the caret at the end, and sends
+  nothing. The chat node's starters are now { prompt, onChoose } objects."

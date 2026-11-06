@@ -1,0 +1,18 @@
+modules:
+  modules/ai-chat: Added
+body: An uploaded file belongs to the conversation that first sends it. POST
+  /attachments answers { id, mediaType, size } with no address; the first admitted turn
+  naming the upload binds it to its conversation in the admission's own write, a turn
+  naming one that is unknown, expired, deleted or held by another conversation is
+  refused at /body/attachments/<i>, and one naming an id twice is refused at
+  /body/attachments. A file is read only at GET
+  /conversations/{conversationId}/attachments/{attachmentId}, and an attachment's url in
+  entries and journaled events is the relative reference
+  conversations/<id>/attachments/<attachment id>; reading it under another conversation,
+  pending, deleted or by an unknown id is one 404 ERR_CONVERSATION_ATTACHMENT_NOT_FOUND,
+  and the flat GET /attachments/{id} is gone. Deleting a conversation makes its files
+  unreadable at once and touches no other conversation's. Uploads no message sent within
+  Chat.Conversation attachments.pendingRetention (24h when omitted; zero or less refused
+  as AI_CHAT_PENDING_RETENTION_NOT_POSITIVE) and deleted conversations' files are
+  removed by AiChat.AttachmentExpiry, which the application schedules. A file's name is
+  kept in its record, not as a second blob.

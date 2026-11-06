@@ -21,6 +21,7 @@ import { type RecordedError, recordedError } from "./recorded-error.js";
 export const ERR_JOURNAL_KEY_BUSY = "ERR_JOURNAL_KEY_BUSY";
 export const ERR_JOURNAL_KEY_REMOVED = "ERR_JOURNAL_KEY_REMOVED";
 export const ERR_JOURNAL_WRITER_LOST = "ERR_JOURNAL_WRITER_LOST";
+export const ERR_JOURNAL_CANCELLED = "ERR_JOURNAL_CANCELLED";
 
 /** Entries fetched per store read by a reader. */
 const PAGE_SIZE = 256;
@@ -53,7 +54,7 @@ export interface JournalSnapshot {
  * `JournalClaim` until a drain adopts it.
  */
 type KeyState =
-  | { state: "open"; holder: string; drain?: string; timeoutMs: number }
+  | { state: "open"; holder: string; drain?: string; timeoutMs: number; cancel?: true }
   | { state: "finished"; holder: string; drain?: string }
   | { state: "failed"; holder: string; drain?: string; error: RecordedError; writerLost: boolean }
   | { state: "removed" };
@@ -65,6 +66,11 @@ export interface Claimed {
   version: string;
   lastId: number;
   error: RecordedError | null;
+}
+
+/** A claim as the protocol sees it: also the header value it left the key with. */
+interface Acquired extends Claimed {
+  open: string;
 }
 
 function encodeState(state: KeyState): string {
@@ -102,6 +108,14 @@ function lostError(key: string): RecordedError {
   return { code: ERR_JOURNAL_WRITER_LOST, message: lost(key).message, data: { key } };
 }
 
+function cancelled(key: string): InvokeError {
+  return new InvokeError(
+    ERR_JOURNAL_CANCELLED,
+    `RecordStream.Journal: the writer of key '${key}' was asked to stop, so the key was failed as cancelled.`,
+    { key },
+  );
+}
+
 function busy(key: string): InvokeError {
   return new InvokeError(
     ERR_JOURNAL_KEY_BUSY,
@@ -109,6 +123,9 @@ function busy(key: string): InvokeError {
     { key },
   );
 }
+
+/** What a cancel request found: asked of the open key's writer, or nothing to ask. */
+export type JournalCancelOutcome = "requested" | "ended" | "unknown" | "removed";
 
 export interface JournalSettings {
   /** How long an ended key is kept; absent, it is kept until removed. */
@@ -141,7 +158,8 @@ export abstract class Journal {
    */
   async reserve(key: string, options: { resume?: boolean; writer: string }): Promise<Claimed> {
     const open = encodeState({ state: "open", holder: options.writer, timeoutMs: this.settings.writerTimeoutMs });
-    return this.acquire(key, open, options.writer, undefined, options.resume === true);
+    const { version, lastId, error } = await this.acquire(key, open, options.writer, undefined, options.resume === true);
+    return { version, lastId, error };
   }
 
   /**
@@ -160,7 +178,7 @@ export abstract class Journal {
     const drain = randomUUID();
     const open = encodeState({ state: "open", holder, drain, timeoutMs: this.settings.writerTimeoutMs });
     const claimed = await this.acquire(key, open, holder, drain, options.resume === true);
-    return new JournalWriter(this.store, key, holder, drain, open, claimed.version, claimed.lastId);
+    return new JournalWriter(this.store, key, holder, drain, claimed.open, claimed.version, claimed.lastId);
   }
 
   /** The claim protocol, for a drain (`drain` set) or a reservation (unset);
@@ -171,10 +189,10 @@ export abstract class Journal {
     holder: string,
     drain: string | undefined,
     resume: boolean,
-  ): Promise<Claimed> {
+  ): Promise<Acquired> {
     while (true) {
       const version = await this.store.putIfAbsent(key, open);
-      if (version !== null) return { version, lastId: 0, error: null };
+      if (version !== null) return { open, version, lastId: 0, error: null };
       const header = await this.header(key);
       // Deleted between the two calls: the key is free again.
       if (!header) continue;
@@ -186,20 +204,30 @@ export abstract class Journal {
       // again would overwrite how it ended.
       if (drain === undefined && state.holder === holder && state.drain !== undefined && !live) {
         if (state.state !== "open") {
-          return { version: header.version, lastId: header.lastId, error: state.state === "failed" ? state.error : null };
+          return {
+            open,
+            version: header.version,
+            lastId: header.lastId,
+            error: state.state === "failed" ? state.error : null,
+          };
         }
         const failedAt = await this.failLost(key, header.version, state);
         // The writer moved in the meantime: judge the key again.
         if (failedAt === null) continue;
-        return { version: failedAt, lastId: header.lastId, error: lostError(key) };
+        return { open, version: failedAt, lastId: header.lastId, error: lostError(key) };
       }
       if (live && state.holder === holder) {
-        if (drain === undefined) return { version: header.version, lastId: header.lastId, error: null };
+        if (drain === undefined) return { open, version: header.version, lastId: header.lastId, error: null };
         if (state.drain !== undefined) throw busy(key);
-        const adopted = await this.store.compareAndSet(key, header.version, open);
+        // A cancel requested before the drain adopted the key stays requested.
+        const adoptedValue =
+          state.state === "open" && state.cancel
+            ? encodeState({ state: "open", holder, drain, timeoutMs: this.settings.writerTimeoutMs, cancel: true })
+            : open;
+        const adopted = await this.store.compareAndSet(key, header.version, adoptedValue);
         // The key moved since it was read: judge it again.
         if (adopted === null) continue;
-        return { version: adopted, lastId: header.lastId, error: null };
+        return { open: adoptedValue, version: adopted, lastId: header.lastId, error: null };
       }
       if (!resume || state.state === "finished" || live) throw busy(key);
       let failedAt: string | null = header.version;
@@ -210,7 +238,7 @@ export abstract class Journal {
         if (failedAt === null) continue;
       }
       const taken = await this.store.compareAndSet(key, failedAt, open);
-      if (taken !== null) return { version: taken, lastId: header.lastId, error };
+      if (taken !== null) return { open, version: taken, lastId: header.lastId, error };
     }
   }
 
@@ -300,6 +328,31 @@ export abstract class Journal {
     }
   }
 
+  /**
+   * Ask the writer of `key` to stop. A stale writer is failed as lost first, so
+   * a cancel never keeps a dead writer alive, and that key has `ended`. An open
+   * key is marked with the request at the version that was read — which makes
+   * the writer's next append or heartbeat refused, and wakes its wait on the key
+   * — and the request is `requested` (again, if already marked).
+   */
+  async cancel(key: string): Promise<JournalCancelOutcome> {
+    while (true) {
+      const header = await this.header(key);
+      if (!header) return "unknown";
+      const state = decodeState(header);
+      if (state.state === "removed") return "removed";
+      if (state.state !== "open") return "ended";
+      if (header.ageMs > state.timeoutMs) {
+        // The writer moved in the meantime: judge the key again.
+        if ((await this.failLost(key, header.version, state)) === null) continue;
+        return "ended";
+      }
+      if (state.cancel) return "requested";
+      const marked = await this.store.compareAndSet(key, header.version, encodeState({ ...state, cancel: true }));
+      if (marked !== null) return "requested";
+    }
+  }
+
   /** Remove `key`: its records are dropped and a marker left, so it reads as
    *  removed rather than unknown. */
   async remove(key: string): Promise<"removed" | "unknown"> {
@@ -368,9 +421,40 @@ export class JournalWriter {
     if (state.state === "removed") return removed(this.key);
     if (state.holder !== this.holder || state.drain !== this.drain) return busy(this.key);
     if (state.state === "failed" && state.writerLost) return lost(this.key);
+    if (state.state === "open" && state.cancel) return cancelled(this.key);
     return new Error(
       `RecordStream.Journal: the store refused a write to key '${this.key}' by its own holder while the key is ${state.state}; the store reported a conflict no other writer caused.`,
     );
+  }
+
+  /**
+   * Reject with `ERR_JOURNAL_CANCELLED` once a cancel request marks this drain's
+   * key; resolve when `cancellation` is cancelled first, or when the key ended.
+   * Waits on the key through the store, so a request is seen within its wake-up
+   * latency; `timeoutMs` bounds one wait.
+   */
+  async watchForCancel(timeoutMs: number, cancellation: CancellationToken): Promise<void> {
+    while (!cancellation.isCancelled) {
+      const header = (await this.store.read(this.key, 0, 0)).header;
+      if (!header) throw removed(this.key);
+      const state = decodeState(header);
+      if (state.state === "removed") throw removed(this.key);
+      if (state.holder !== this.holder || state.drain !== this.drain) throw busy(this.key);
+      if (state.state !== "open") return;
+      if (state.cancel) throw cancelled(this.key);
+      await this.store.wait(this.key, header.version, timeoutMs, cancellation);
+    }
+  }
+
+  /** Fail the key as cancelled, at the version the request left it. */
+  async failCancelled(): Promise<void> {
+    const header = (await this.store.read(this.key, 0, 0)).header;
+    const state = header && decodeState(header);
+    if (!header || !state || state.state !== "open" || !state.cancel || state.holder !== this.holder || state.drain !== this.drain) {
+      throw await this.refusal();
+    }
+    this.version = header.version;
+    await this.fail(cancelled(this.key));
   }
 
   async append(data: unknown): Promise<number> {
@@ -583,6 +667,7 @@ export function isJournal(value: unknown): value is Journal {
     typeof j.read === "function" &&
     typeof j.open === "function" &&
     typeof j.remove === "function" &&
+    typeof j.cancel === "function" &&
     typeof j.expire === "function"
   );
 }

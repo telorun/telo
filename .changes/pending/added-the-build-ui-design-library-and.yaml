@@ -1,0 +1,5 @@
+modules:
+  apps/hub: Added
+body: "The build_ui, design_library and write_integration_tests guides are written for
+  any reader and are published on telo.run as well: exact schemas and imports lines are
+  pointed to on the hub, with get_kinds named as the MCP route to them."

@@ -45,6 +45,7 @@
   [data-telo-part="tab-bar"] { position: sticky; bottom: 0; }
   /* An icon's glyph is its file as a mask over the colour of the text around
      it, so whatever colours the text colours the glyph. */
+  [data-telo-part="link"][data-button] { display: inline-flex; align-items: center; justify-content: center; }
   [data-telo-part="glyph"] {
     display: inline-block; flex: none; inline-size: 1.25em; block-size: 1.25em; vertical-align: middle;
     background-color: currentColor;
@@ -69,12 +70,107 @@
   [data-telo-part="box"] { display: block; }
   [data-telo-part="columns"] { display: flex; flex-wrap: wrap; align-items: flex-start; }
   [data-telo-part="column"] { flex: 1 1 0; min-width: 0; }
+  /* A bar: its start, its centre and its end in three columns, the centre
+     centred whatever the sides hold (the start taking the room of an empty
+     one); below the breakpoint the regions wrap. */
+  [data-telo-part="bar"] { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; min-width: 0; }
+  [data-telo-part="bar"]:has(> [data-telo-part="bar-center"]:empty) { grid-template-columns: minmax(0, 1fr) 0 auto; }
+  [data-telo-part="bar-start"],
+  [data-telo-part="bar-center"],
+  [data-telo-part="bar-end"] { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+  [data-telo-part="bar-center"] { justify-content: center; }
+  [data-telo-part="bar-end"] { justify-content: flex-end; }
+  [data-compact] [data-telo-part="bar"] { display: flex; flex-wrap: wrap; }
+  [data-compact] [data-telo-part="bar-end"] { margin-inline-start: auto; }
   [data-telo-part="badge"] { display: inline-flex; align-items: center; white-space: nowrap; }
   [data-telo-part="image"],
   [data-telo-part="svg"] { max-width: 100%; height: auto; }
   :where(button)[data-telo-part] { display: inline-flex; align-items: center; justify-content: center; flex: none; white-space: nowrap; }
 
   [data-telo-part="table-frame"] { overflow-x: auto; }
+  /* Markdown: wide tables and long code lines scroll in their own frames. */
+  [data-telo-part="markdown-table-frame"] { overflow-x: auto; }
+  [data-telo-part="markdown-code-pre"] { overflow-x: auto; }
+  [data-telo-part="markdown-code-header"] { display: flex; align-items: center; justify-content: space-between; }
+  [data-telo-part="markdown"][data-state="loading"] > [data-telo-part="markdown-code-pre"] { white-space: pre-wrap; overflow-wrap: anywhere; }
+  [data-telo-part="markdown-code-copy"] { margin-inline-start: auto; }
+  [data-telo-part="markdown-image"] { max-width: 100%; }
+  /* A split view: the aside beside its content while open; folded, it is a rail
+     holding only its bar, so the toggle stays where it was and the content only
+     widens; in the compact surface the same rail stays and its toggle opens the aside,
+     which fills that surface. */
+  [data-telo-part="split"] { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; min-width: 0; }
+  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"], [data-state="compact"]) { grid-template-columns: auto minmax(0, 1fr); }
+  /* Flush, the aside runs the content's height against it; framed, it is a panel of its own height. */
+  [data-telo-part="split"][data-frame="flush"] { align-items: stretch; }
+  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"], [data-state="compact"])[data-side="end"] { grid-template-columns: minmax(0, 1fr) auto; }
+  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"], [data-state="compact"]) > [data-telo-part="split-content"] { grid-row: 1; grid-column: 2; }
+  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"], [data-state="compact"])[data-side="end"] > [data-telo-part="split-content"] { grid-column: 1; }
+  [data-telo-part="split-aside"] { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; min-width: 0; }
+  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"]) [data-telo-part="split-aside"] { grid-row: 1; grid-column: 1; max-width: 100%; width: 24rem; }
+  [data-telo-part="split"][data-state="open"] [data-telo-part="split-aside"][data-size="small"] { width: 18rem; }
+  [data-telo-part="split"][data-state="open"] [data-telo-part="split-aside"][data-size="large"] { width: 32rem; }
+  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"])[data-side="end"] [data-telo-part="split-aside"] { grid-column: 2; }
+  [data-telo-part="split"][data-state="collapsed"] [data-telo-part="split-aside"] { width: auto; }
+  [data-telo-part="split"][data-state="compact"] > [data-telo-part="split-aside"] { grid-row: 1; grid-column: 1; width: auto; }
+  [data-telo-part="split"][data-state="compact"][data-side="end"] > [data-telo-part="split-aside"] { grid-column: 2; }
+  [data-telo-part="split-bar"] { display: flex; flex: none; align-items: center; box-sizing: border-box; }
+  [data-telo-part="split-actions"] { display: flex; flex: none; flex-wrap: wrap; align-items: center; box-sizing: border-box; }
+  [data-telo-part="split-aside"][data-state="rail"] > [data-telo-part="split-actions"] { flex-direction: column; flex-wrap: nowrap; }
+  [data-telo-part="split-content"] { display: flex; flex-direction: column; min-width: 0; }
+  /* Chat: the transcript with the message box under it. */
+  [data-telo-part="chat"] { display: grid; grid-template-columns: minmax(0, 1fr); height: min(48rem, calc(100vh - 8rem)); min-height: 24rem; overflow: hidden; }
+  [data-telo-part="chat-main"] { grid-column: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+  [data-telo-part="chat-message"],
+  [data-telo-part="chat-message-body"],
+  [data-telo-part="chat-composer"],
+  [data-telo-part="chat-tool"],
+  [data-telo-part="chat-tool-detail"],
+  [data-telo-part="chat-approval"],
+  [data-telo-part="chat-reasoning"],
+  [data-telo-part="chat-sources"],
+  [data-telo-part="chat-source-list"],
+  [data-telo-part="chat-attachment-refusals"] { display: flex; flex-direction: column; min-width: 0; }
+  /* The edit form: the text box and the files each on their own line, the attach button at the start and the others together at the end; each on its own line when compact. */
+  [data-telo-part="chat-edit-form"] { position: relative; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; min-width: 0; }
+  [data-telo-part="chat-edit-form"] > :is(:first-child, [data-telo-part="chat-attachments"], [data-telo-part="chat-attachment-refusals"]) { flex: 1 0 100%; min-width: 0; }
+  [data-telo-part="chat-edit-form"] > [data-telo-part="chat-attach"] { margin-inline-end: auto; }
+  [data-compact] [data-telo-part="chat-edit-form"] > button { flex: 1 0 100%; }
+  [data-telo-part="chat-message-actions"],
+  [data-telo-part="chat-tool-header"],
+  [data-telo-part="chat-approval-actions"],
+  [data-telo-part="chat-composer-actions"],
+  [data-telo-part="chat-branches"],
+  [data-telo-part="chat-starters"],
+  [data-telo-part="chat-attachments"],
+  [data-telo-part="chat-attachment-item"],
+  [data-telo-part="chat-turn-note"] { display: flex; flex-wrap: wrap; align-items: center; }
+  [data-telo-part="chat-attachments"],
+  [data-telo-part="chat-attachment-refusals"] { list-style: none; margin: 0; padding: 0; }
+  /* The transcript keeps its reading position itself; a message's block margins stand for the messages not drawn beside it. */
+  [data-telo-part="chat-transcript"] { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-anchor: none; display: flex; flex-direction: column; }
+  [data-telo-part="chat-message"] { margin-top: 0; margin-bottom: 0; }
+  /* The header's nodes top to bottom, centred in a header as tall as a bar. */
+  [data-telo-part="chat-header"] { display: flex; flex-direction: column; justify-content: center; flex: none; min-width: 0; }
+  [data-telo-part="chat-input"],
+  [data-telo-part="chat-composer"] { position: relative; }
+  [data-telo-part="chat-placeholder"] { position: absolute; inset-block-start: 0; inset-inline-start: 0; pointer-events: none; }
+  [data-telo-part="chat-drop"] { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  [data-telo-part="chat-announcer"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  [data-telo-part="chat-media"] { max-width: 100%; height: auto; }
+  /* A picture is a fixed-size crop, so the transcript's measured heights hold before it loads. */
+  [data-telo-part="chat-image"],
+  [data-telo-part="chat-attachment-thumbnail"] { display: block; flex: none; box-sizing: border-box; object-fit: cover; cursor: pointer; }
+  [data-telo-part="chat-image"] { width: 6rem; height: 6rem; align-self: flex-start; }
+  [data-telo-part="chat-attachment-thumbnail"] { width: 2rem; height: 2rem; }
+  /* The viewer: the stage takes the room the toolbar leaves and clips the picture it pans. */
+  [data-telo-part="media-viewer"] { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  [data-telo-part="media-viewer-stage"] { position: relative; display: flex; align-items: center; justify-content: center; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: hidden; touch-action: none; user-select: none; }
+  [data-telo-part="media-viewer-image"] { display: block; max-width: 100%; max-height: 100%; object-fit: contain; transform: none; transform-origin: center; }
+  [data-telo-part="media-viewer-toolbar"] { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; flex: none; }
+  [data-telo-part="media-viewer-position"] { text-align: center; }
+  [data-telo-part="media-viewer-download"] { display: inline-flex; align-items: center; }
+  [data-telo-part="chat-tool-data"] { margin: 0; overflow-x: auto; }
   [data-telo-part="table-grid"] { border-collapse: collapse; width: 100%; }
   [data-telo-part="listing-toolbar"],
   [data-telo-part="pager"],
@@ -84,6 +180,7 @@
   [data-telo-part="pager-status"] { flex: 1; }
   :where(td)[data-telo-part="row-actions"] { white-space: nowrap; text-align: right; width: 1%; }
   :where(div)[data-telo-part="row-actions"] { display: flex; flex-wrap: wrap; align-items: center; }
+  :where([data-telo-part="row-actions"])[data-display="inline"] > * { flex: none; white-space: nowrap; }
   [data-telo-part="listing-empty"],
   [data-telo-part="listing-loading"],
   [data-telo-part="list-empty"] { text-align: center; }
@@ -160,7 +257,6 @@
   [data-telo-part="list-layout"],
   [data-telo-part="board-cards"],
   [data-telo-part="board-column"],
-  [data-telo-part="list-item"],
   [data-telo-part="card"],
   [data-telo-part="board-card"],
   [data-telo-part="calendar-day"],
@@ -168,6 +264,11 @@
   [data-telo-part="timeline-bar"],
   [data-telo-part="timeline-layout"],
   [data-telo-part="calendar-layout"] { display: flex; flex-direction: column; min-width: 0; }
+  /* A list record is one line: the content takes the room, the actions sit at its end. */
+  [data-telo-part="list-item"] { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+  [data-telo-part="list-item"] > :not([data-telo-part="row-actions"], [data-telo-part="record-move"], [data-telo-part="listing-detail"]) { flex: 1 1 0; min-width: 0; }
+  [data-telo-part="list-item"] > :is([data-telo-part="row-actions"], [data-telo-part="record-move"]) { flex: none; margin-inline-start: auto; }
+  [data-telo-part="list-item"] > [data-telo-part="listing-detail"] { flex: 1 0 100%; }
   [data-telo-part="cards-layout"] { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
   [data-telo-part="cards-layout"][data-size="small"] { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
   [data-telo-part="cards-layout"][data-size="large"] { grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr)); }
@@ -197,4 +298,31 @@
   [data-telo-part="error-code"],
   [data-telo-part="error-message"] { grid-column: 2; overflow-wrap: anywhere; }
   [data-telo-part="loading"] { display: inline-flex; align-items: center; }
+
+  /* Filling. The page is the room: the application as tall as the viewport,
+     the page scrolling under the header when what fills it is taller. A
+     filling node takes the room its container leaves, filling siblings sharing
+     it; one holding a filling node passes the room on and never scrolls; the
+     last of a chain scrolls inside itself, but never inside a record, an
+     answer, a header of its own or a surface sized by its content, which grow
+     with what they hold. */
+  [data-telo-part="app"][data-fill="true"] { height: 100dvh; min-height: 0; }
+  [data-telo-part="app"][data-fill="true"]:has(> [data-telo-part="sidebar"]) { grid-template-rows: auto minmax(0, 1fr); }
+  [data-telo-part="main"][data-fill="true"] { min-height: 0; }
+  [data-telo-part="page"][data-fill="true"] { height: 100%; overflow-y: auto; }
+  [data-fill="true"] { flex-grow: 1; flex-shrink: 1; flex-basis: 0; }
+  :is([data-telo-part="page"][data-fill="true"], [data-surface="drawer"]) [data-fill="true"]:not([data-telo-part="chat"], :has([data-fill="true"]), :is([data-surface="inline"], [data-surface="panel"], [data-telo-part="table-row"], [data-telo-part="list-item"], [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"], [data-telo-part="tree-item"], [data-telo-part="action-result"], [data-telo-part="action-failure"], [data-telo-part="row-answer"], [data-telo-part="row-failure"], [data-telo-part="listing-empty"], [data-telo-part="chat-header"], [data-telo-part="split-actions"]) [data-fill="true"]) { overflow-y: auto; }
+  :is([data-telo-part="box"], [data-telo-part="data"])[data-fill="true"] { display: flex; flex-direction: column; }
+  [data-telo-part="columns"][data-fill="true"] { align-items: stretch; }
+  [data-telo-part="columns"][data-fill="true"] > [data-telo-part="column"] { display: flex; flex-direction: column; }
+  /* A filling filter bar above its content stacks what it draws, so the content takes the room left. */
+  [data-telo-part="filters"][data-fill="true"]:not([data-placement="aside"]) { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; }
+  [data-telo-part="filters"][data-fill="true"]:not([data-placement="aside"]) > :not([data-telo-part="filter"], [data-telo-part="filter-chip"], [data-telo-part="filters-toggle"], [data-telo-part="filters-apply"], [data-telo-part="filters-reset"]) { align-self: stretch; }
+  [data-telo-part="filters"][data-fill="true"][data-placement="aside"] { grid-template-rows: auto auto minmax(0, 1fr); }
+  [data-telo-part="filters"][data-fill="true"] > [data-telo-part="filters-content"] { display: flex; flex-direction: column; flex: 1 1 0; }
+  /* A filling split stretches both halves to its height; a half holding no
+     filling node scrolls, and gives the split no height of its own. */
+  [data-telo-part="split"][data-fill="true"] { align-items: stretch; }
+  :is([data-telo-part="split-aside"], [data-telo-part="split-content"])[data-fill="true"]:not([data-state="compact"], :has([data-fill="true"])) { height: 0; min-height: 100%; overflow-y: auto; }
+  [data-telo-part="chat"][data-fill="true"] { height: auto; }
 }

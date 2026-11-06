@@ -23,30 +23,7 @@ resources:
     kind: RecordStream.JournalStore
     description: The store under test. Must start empty.
 exports:
-  resources:
-    - expiry
-    - markerRetention
-    - roundTrip
-    - typedValues
-    - failedReplaysCode
-    - unknownKeyWaits
-    - removal
-    - secondWriterBusy
-    - pausedWriterStaysLive
-    - removedAcrossPages
-    - cancelledRead
-    - resumeContinuesFailed
-    - resumeKeyStates
-    - resumeLiveWriterBusy
-    - readSnapshot
-    - readStates
-    - claimAdopted
-    - claimOneDrain
-    - claimRefusals
-    - claimResumeTakesOver
-    - claimSameWriterEnded
-    - claimGoesStale
-    - claimResumeStale
+  resources: [expiry, markerRetention, roundTrip, typedValues, failedReplaysCode, unknownKeyWaits, removal, secondWriterBusy, pausedWriterStaysLive, removedAcrossPages, cancelledRead, resumeContinuesFailed, resumeKeyStates, resumeLiveWriterBusy, readSnapshot, readStates, claimAdopted, claimOneDrain, claimRefusals, claimResumeTakesOver, claimSameWriterEnded, claimGoesStale, claimResumeStale, cancelIdleWriter, cancelOutcomes]
 ---
 kind: RecordStream.Journal
 metadata: { name: journal }
@@ -71,6 +48,10 @@ journal: !ref journal
 ---
 kind: RecordStream.JournalClaim
 metadata: { name: claim }
+journal: !ref journal
+---
+kind: RecordStream.JournalCancel
+metadata: { name: cancel }
 journal: !ref journal
 ---
 kind: Stream.Collect
@@ -103,9 +84,7 @@ steps:
   - name: writeSecond
     invoke: !ref sink
     inputs: { key: expire-2, input: !cel "steps.second.result.output" }
-  - name: age
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: "20ms" }
+  - { name: age, invoke: { kind: Timer.Delay }, inputs: { duration: "20ms" } }
   - name: expire
     invoke: !ref expireNow
   - name: countExpired
@@ -156,9 +135,7 @@ steps:
   - name: remove
     invoke: !ref removal0
     inputs: { key: marker-gone }
-  - name: age
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: "20ms" }
+  - { name: age, invoke: { kind: Timer.Delay }, inputs: { duration: "20ms" } }
   - name: expire
     invoke:
       kind: RecordStream.JournalExpiry
@@ -315,9 +292,7 @@ steps:
       invoke:
         kind: Run.Sequence
         steps:
-          - name: later
-            invoke: { kind: Timer.Delay }
-            inputs: { duration: "100ms" }
+          - { name: later, invoke: { kind: Timer.Delay }, inputs: { duration: "100ms" } }
           - name: turn
             invoke: !ref items
             inputs: { items: [x, y] }
@@ -518,8 +493,7 @@ steps:
       invoke:
         kind: Run.Sequence
         steps:
-          - name: boom
-            throw: { code: ERR_TEST_BOOM, message: "the producer failed" }
+          - { name: boom, throw: { code: ERR_TEST_BOOM, message: "the producer failed" } }
     inputs: { input: !cel "steps.turn.result.output" }
   - name: write
     try:
@@ -1084,3 +1058,117 @@ steps:
           error: null
           lastId: 2
           entries: [{ id: 1, data: { n: 1, contend: true } }, { id: 2, data: { n: 2 } }]
+---
+# A cancel reaches a writer that is idle waiting for input: the sink's wait on its
+# own key wakes, the key fails with ERR_JOURNAL_CANCELLED well before the input
+# yields, and a reader tailing the key raises that code.
+kind: Run.Sequence
+metadata: { name: cancelIdleWriter }
+steps:
+  - name: trigger
+    invoke: !ref items
+    inputs: { items: [go] }
+  - name: idle
+    invoke: { kind: Stream.Tap, invoke: { kind: Timer.Delay }, inputs: { duration: "3s" } }
+    inputs: { input: !cel "steps.trigger.result.output" }
+  - name: startWriter
+    invoke: { kind: Run.Detach, invoke: !ref sink }
+    inputs: { key: cancel-idle, input: !cel "steps.idle.result.output" }
+  - { name: claimed, invoke: { kind: Timer.Delay }, inputs: { duration: "300ms" } }
+  - name: ask
+    invoke: !ref cancel
+    inputs: { key: cancel-idle }
+  - name: tail
+    invoke: !ref source
+    inputs: { key: cancel-idle }
+  - name: replay
+    try:
+      - name: all
+        timeout: 2000
+        invoke: !ref collect
+        inputs: { input: !cel "steps.tail.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a cancelled key read as finished" }
+    catch:
+      - name: readerRaisesCancelled
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_CANCELLED }
+  - name: snapshot
+    invoke: !ref read
+    inputs: { key: cancel-idle }
+  - name: askAgain
+    invoke: !ref cancel
+    inputs: { key: cancel-idle }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { requested: !cel "steps.ask.result.outcome", again: !cel "steps.askAgain.result.outcome", key: !cel "steps.snapshot.result" }
+      expected:
+        requested: requested
+        again: ended
+        key:
+          state: failed
+          error:
+            code: ERR_JOURNAL_CANCELLED
+            message: "RecordStream.Journal: the writer of key 'cancel-idle' was asked to stop, so the key was failed as cancelled."
+            data: { key: cancel-idle }
+          lastId: 0
+          entries: []
+---
+# What a cancel answers for each state of a key. A stale writer's key is failed
+# as lost, so a cancel never keeps a dead writer alive.
+kind: Run.Sequence
+metadata: { name: cancelOutcomes }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [x] }
+  - name: write
+    invoke: !ref sink
+    inputs: { key: cancel-ended, input: !cel "steps.turn.result.output" }
+  - name: ended
+    invoke: !ref cancel
+    inputs: { key: cancel-ended }
+  - name: unknown
+    invoke: !ref cancel
+    inputs: { key: cancel-never-written }
+  - name: toRemove
+    invoke: !ref items
+    inputs: { items: [y] }
+  - name: writeRemoved
+    invoke: !ref sink
+    inputs: { key: cancel-removed, input: !cel "steps.toRemove.result.output" }
+  - name: remove
+    invoke: !ref removal0
+    inputs: { key: cancel-removed }
+  - name: removed
+    invoke: !ref cancel
+    inputs: { key: cancel-removed }
+  - name: claimed
+    invoke:
+      kind: RecordStream.JournalClaim
+      journal:
+        kind: RecordStream.Journal
+        store: !ref store
+        retention: "1h"
+        writerTimeout: "100ms"
+    inputs: { key: cancel-stale, writer: writer-1 }
+  - name: pastTimeout
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "300ms" }
+  - name: stale
+    invoke: !ref cancel
+    inputs: { key: cancel-stale }
+  - name: staleRead
+    invoke: !ref read
+    inputs: { key: cancel-stale }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        - !cel "steps.ended.result.outcome"
+        - !cel "steps.unknown.result.outcome"
+        - !cel "steps.removed.result.outcome"
+        - !cel "steps.stale.result.outcome"
+        - !cel "steps.staleRead.result.error.code"
+      expected: [ended, unknown, removed, ended, ERR_JOURNAL_WRITER_LOST]

@@ -1,0 +1,26 @@
+# An endpoint whose uploads would all expire before a message could send them:
+# refused by `telo check` at the declaration, and by the controller when the
+# resource is created.
+kind: Telo.Library
+metadata: { name: PendingRetentionZero }
+imports:
+  Chat: ../../..
+  Ai: ../../../../ai
+  AiEcho: ../../../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../../../ai-conversation-sql
+  RecordStream: ../../../../record-stream
+  BlobFs: ../../../../blob-fs
+  MediaType: ../../../../media-type
+  SQLite: ../../../../sqlite
+variables:
+  blobRoot: { type: string, x-telo-type: { name: Telo.HostPath, entry: directory } }
+exports: { resources: [chat] }
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent: { kind: Ai.AgentStream, model: { kind: AiEcho.EchoModelStream, accepts: [] } }
+store: { kind: AiConversationSql.Store, connection: { kind: SQLite.Connection, file: ":memory:" } }
+journal: { kind: RecordStream.Journal, store: { kind: RecordStream.MemoryJournalStore }, markerRetention: 1h }
+blobs: { kind: BlobFs.Store, root: !cel "variables.blobRoot" }
+detector: { kind: MediaType.Detector }
+attachments: { pendingRetention: 0s }

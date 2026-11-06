@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: UnknownOperation, version: 1.0.0 }
+imports: { Conversation: ../../.., Run: ../../../../run }
+targets:
+  - !ref refused
+---
+kind: Run.Value
+metadata: { name: checkSpec }
+inputType: !ref Conversation.Spec
+value: true
+---
+kind: Telo.Sequence
+metadata: { name: refused }
+steps:
+  - name: spec
+    invoke: !ref checkSpec
+    inputs: { operations: [list, teleport] }

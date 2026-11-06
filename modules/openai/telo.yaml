@@ -14,7 +14,39 @@ metadata:
     vectors.
 imports: { Ai: ../ai, Embedding: ../embedding, Http: ../http-client }
 exports:
+  resources: [AcceptedContent]
   kinds: [Client, ChatModel, ChatModelStream, Model, ModelStream, ResponsesModel, ResponsesModelStream, ImageModel, EmbeddingModel]
+---
+# What these two APIs can carry at all: images and files. Audio and video have no
+# input shape on either, so they are outside the ceiling.
+kind: Telo.JsonSchema
+metadata:
+  name: AcceptedContent
+  description: The media a chat or responses model can be declared to take — images of any media type and files of any, each with an optional size bound. Audio and video cannot be carried by these APIs.
+schema:
+  type: array
+  items:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [type, mediaTypes]
+        properties:
+          type: { const: image }
+          mediaTypes:
+            type: array
+            minItems: 1
+            items: { type: string, pattern: "^image/[a-z0-9][a-z0-9!#$&^_.+-]*$|^image/[*]$" }
+          maxBytes: { type: integer, minimum: 1 }
+      - type: object
+        additionalProperties: false
+        required: [type, mediaTypes]
+        properties:
+          type: { const: file }
+          mediaTypes:
+            type: array
+            minItems: 1
+            items: { type: string, pattern: "^[a-z0-9][a-z0-9!#$&^_.+-]*/([a-z0-9][a-z0-9!#$&^_.+-]*|[*])$" }
+          maxBytes: { type: integer, minimum: 1 }
 ---
 # The account as an Http.Client: OpenAI's endpoint and a timeout sized for
 # inference. A complete answer arrives in one response, so the HTTP client's own
@@ -237,6 +269,13 @@ schema:
         a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`, or a
         gateway's).
       x-telo-ref: { kind: Http.Request, use: call }
+    accepts:
+      title: Accepted content
+      description: >-
+        The media this model takes beside text: images of any media type and files of
+        any. Absent means text only; a part outside it is refused before anything is sent.
+      $ref: "telo://Self/AcceptedContent"
+      x-telo-eval: compile
     options:
       title: Options
       description: >-
@@ -434,6 +473,13 @@ schema:
         a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`, or a
         gateway's).
       x-telo-ref: { kind: Http.Request, use: call }
+    accepts:
+      title: Accepted content
+      description: >-
+        The media this model takes beside text: images of any media type and files of
+        any. Absent means text only; a part outside it is refused before anything is sent.
+      $ref: "telo://Self/AcceptedContent"
+      x-telo-eval: compile
     options:
       title: Options
       description: >-
@@ -685,6 +731,13 @@ schema:
         effort: { type: string, enum: [minimal, low, medium, high] }
         summary: { type: string, enum: [auto, concise, detailed] }
       x-telo-eval: compile
+    accepts:
+      title: Accepted content
+      description: >-
+        The media this model takes beside text: images of any media type and files of
+        any. Absent means text only; a part outside it is refused before anything is sent.
+      $ref: "telo://Self/AcceptedContent"
+      x-telo-eval: compile
     options:
       title: Options
       description: >-
@@ -890,6 +943,13 @@ schema:
       properties:
         effort: { type: string, enum: [minimal, low, medium, high] }
         summary: { type: string, enum: [auto, concise, detailed] }
+      x-telo-eval: compile
+    accepts:
+      title: Accepted content
+      description: >-
+        The media this model takes beside text: images of any media type and files of
+        any. Absent means text only; a part outside it is refused before anything is sent.
+      $ref: "telo://Self/AcceptedContent"
       x-telo-eval: compile
     options:
       title: Options

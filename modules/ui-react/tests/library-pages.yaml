@@ -46,4 +46,4 @@ steps:
             items:
               - { type: page, key: shipped/reports, path: /reports, text: { lang: und, message: [Reports] } }
         children:
-          - { type: text, text: { lang: und, message: [Shipped by a library] } }
+          - { type: text, fill: false, text: { lang: und, message: [Shipped by a library] } }

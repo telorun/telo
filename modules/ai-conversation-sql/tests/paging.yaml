@@ -1,0 +1,117 @@
+kind: Telo.Application
+metadata:
+  name: AiConversationSqlPaging
+  version: 1.0.0
+  description: |
+    A 1 000-entry transcript and a 1 000-conversation list, seeded in single
+    statements, are paged through their cursors: every row arrives exactly once in
+    order (entries newest first, conversations most recently active first), and
+    `total` is the branch length or the match count on every page.
+imports:
+  AiConversation: ../../ai-conversation
+  AiConversationSql: ../
+  SQLite: ../../sqlite
+  Sql: ../../sql
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testPaging
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: testPaging }
+steps:
+  # One archived conversation holding a chain of 1 000 entries, appended by turn t.
+  - name: seedTranscript
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: !sql "INSERT INTO ai_conversation_conversations VALUES ('cnv_big', 'big', 1, 't', 1, 1000, 1, 1)"
+  - name: seedEntries
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: !sql "WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s WHERE n < 1000) INSERT INTO ai_conversation_entries SELECT 'ent_' || n, 'cnv_big', CASE WHEN n = 1 THEN '' ELSE 'ent_' || (n - 1) END, n, n, 't', '{\"role\":\"user\",\"content\":\"m' || n || '\"}', n FROM s"
+  - name: seedList
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: !sql "WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s WHERE n < 1000) INSERT INTO ai_conversation_conversations SELECT 'cnv_' || n, 'chat ' || n, 0, NULL, 1, 0, n, n FROM s"
+  - name: entryPages
+    invoke:
+      kind: Run.Loop
+      condition: !cel "previous == null || previous.page.result.next != null"
+      maxIterations: 50
+      steps:
+        - name: page
+          invoke: { kind: AiConversation.Entries, store: !ref store }
+          inputs: !cel "previous == null ? {'conversation': 'cnv_big', 'limit': 100} : {'conversation': 'cnv_big', 'limit': 100, 'cursor': previous.page.result.next}"
+        - name: seen
+          value: !cel "(previous == null ? [] : previous.seen.result) + steps.page.result.rows.map(r, r.sequence)"
+        - name: totals
+          value: !cel "(previous == null ? [] : previous.totals.result) + [steps.page.result.total]"
+      outputs:
+        seen: !cel "steps.seen.result"
+        totals: !cel "steps.totals.result"
+  - name: listPages
+    invoke:
+      kind: Run.Loop
+      condition: !cel "previous == null || previous.page.result.next != null"
+      maxIterations: 50
+      steps:
+        - name: page
+          invoke: { kind: AiConversation.List, store: !ref store }
+          inputs: !cel "previous == null ? {'archived': false, 'limit': 100} : {'archived': false, 'limit': 100, 'cursor': previous.page.result.next}"
+        - name: seen
+          value: !cel "(previous == null ? [] : previous.seen.result) + steps.page.result.rows.map(r, r.title)"
+        - name: totals
+          value: !cel "(previous == null ? [] : previous.totals.result) + [steps.page.result.total]"
+      outputs:
+        seen: !cel "steps.seen.result"
+        totals: !cel "steps.totals.result"
+  - name: search
+    invoke: { kind: AiConversation.List, store: !ref store }
+    inputs: { query: CHAT 99, limit: 3 }
+  - name: oldestFirst
+    invoke: { kind: AiConversation.List, store: !ref store }
+    inputs: { archived: false, direction: asc, limit: 2 }
+  - name: oldestNext
+    invoke: { kind: AiConversation.List, store: !ref store }
+    inputs: { archived: false, direction: asc, limit: 2, cursor: !cel "steps.oldestFirst.result.next != null ? steps.oldestFirst.result.next : ''" }
+  - name: archivedOnly
+    invoke: { kind: AiConversation.List, store: !ref store }
+    inputs: { archived: true }
+  - name: entriesNewestFirstEachOnce
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.entryPages.result.seen == range(1000).map(i, 1000 - i)"
+      expected: true
+  - name: entriesTotalOnEveryPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.entryPages.result.totals == range(10).map(i, 1000)"
+      expected: true
+  - name: conversationsEachOnce
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.listPages.result.seen == range(1000).map(i, 'chat ' + string(1000 - i))"
+      expected: true
+  - name: conversationsTotalOnEveryPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.listPages.result.totals == range(10).map(i, 1000)"
+      expected: true
+  - name: filters
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.search.result.rows.map(r, r.title), steps.search.result.total, steps.search.result.next != null, steps.archivedOnly.result.rows.map(r, r.id)]"
+      expected: [[chat 999, chat 998, chat 997], 11, true, [cnv_big]]
+  - name: ascending
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.oldestFirst.result.rows.map(r, r.title), steps.oldestNext.result.rows.map(r, r.title)]"
+      expected: [[chat 1, chat 2], [chat 3, chat 4]]

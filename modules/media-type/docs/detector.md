@@ -51,12 +51,32 @@ whose signature vouches for it.
 | `image/webp` | `RIFF` at byte 0 and `WEBP` at byte 8 |
 | `application/pdf` | `%PDF-` |
 | `application/zip` | `PK` followed by `03 04`, `05 06` or `07 08` |
+| `audio/mpeg` (MP3) | `ID3`, or a frame sync: `FF` then one of `E2 E3 F2 F3 FA FB` (ADTS AAC, `FF F1` / `FF F9`, is not MP3) |
+| `audio/wav` | `RIFF` at byte 0 and `WAVE` at byte 8 |
+| `audio/ogg` | `OggS` |
+| `audio/flac` | `fLaC` |
+| `audio/mp4` (M4A, M4B) | `ftyp` at byte 4 and the brand `M4A `, `M4B ` or `M4P ` at byte 8 |
+| `video/quicktime` | `ftyp` at byte 4 and the brand `qt  ` at byte 8 |
+| `video/webm` | the EBML magic `1A 45 DF A3` at byte 0 and the DocType `webm` (`42 82 84 77 65 62 6D`) within bytes 4–64 |
+| `video/mp4` | `ftyp` at byte 4 and the brand `isom`, `iso2`, `iso4`, `iso5`, `iso6`, `mp41`, `mp42`, `avc1`, `M4V ` or `dash` at byte 8 |
 | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (`.docx`) | its container, `application/zip` |
 | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (`.xlsx`) | its container, `application/zip` |
 | `application/vnd.openxmlformats-officedocument.presentationml.presentation` (`.pptx`) | its container, `application/zip` |
 
-Every signature starts at the first byte: content with anything in front of it
-proves nothing.
+A signature is a list of byte runs that must all hold, and a run is placed
+either at one `offset` or, when its position varies, anywhere `within`
+`[start, end]`: the run must lie wholly inside bytes `start` up to (not
+including) `end`. The window must fit the 4,096-byte read, and a run declares
+exactly one of the two; a data file breaking either fails when the module loads.
+Most signatures start at the first byte, so content with anything in front of
+it proves nothing.
+
+**Only listed brands are recognised.** An ISO base media file (`ftyp`) with any
+other major brand — `heic`, `heix`, `avif`, `avis`, `mif1`, `msf1`, the 3GPP
+brands — proves nothing and keeps the type it was declared with, so an image is
+never reported as video. The same goes for a Matroska file, whose EBML magic is
+WebM's but whose DocType is not: it stays as declared. There is no signature for
+`text/*`; a text upload keeps the declared type.
 
 **A container-based type is vouched for only as far as its container.** A file
 declared as a `.docx` whose bytes are a ZIP archive is reported as that `.docx`
@@ -83,6 +103,11 @@ Read as examples:
   exists for text, so the label is all there is and it is taken as given.
 - Random bytes declared `image/png` → `application/octet-stream`, mislabelled: a
   PNG would have proven itself.
+- An MP3 declared `application/octet-stream` or `text/plain` → `audio/mpeg`
+  (the second mislabelled).
+- A WebM file declared `video/mp4` → `video/webm`, mislabelled.
+- A HEIC image declared `image/heic` → `image/heic`, not mislabelled: the set
+  has no signature to contradict it.
 - PNG bytes with nothing declared → `image/png`.
 - PNG bytes declared `png` → `image/png`, not mislabelled: an unreadable label
   is no label.

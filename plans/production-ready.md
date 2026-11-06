@@ -1,7 +1,7 @@
 ---
 status: in-progress
 priority: medium
-depends-on: [per-invocation-scope-configuration.md]
+depends-on: [2026-10-29-per-invocation-scope-configuration.md]
 packages: [apps/authoring-agent, apps/studio]
 ---
 

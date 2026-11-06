@@ -1,0 +1,725 @@
+{
+  "description": "How an address or request target resolves to the text a renderer follows or requests, one row per case. `address` is the wire form `ui` produces; `roots` is what a chain reads from; a row has `url` for the text it resolves to, or `unresolved` for the parameter named by the error (`ERR_UI_ADDRESS_UNRESOLVED`, `data.parameter`). Held by every renderer's expansion.",
+  "rows": [
+    {
+      "name": "a literal path is used as written",
+      "address": {
+        "path": {
+          "value": "/docs"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "url": "/docs"
+    },
+    {
+      "name": "an absolute address is used as written",
+      "address": {
+        "path": {
+          "value": "https://example.com/a?b=1#c"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "url": "https://example.com/a?b=1#c"
+    },
+    {
+      "name": "a variable segment is filled with a string",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": "abc"
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "/items/abc"
+    },
+    {
+      "name": "an integer is written as decimal",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": 7
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "/items/7"
+    },
+    {
+      "name": "a slash in a value is encoded",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": "a/b"
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "/items/a%2Fb"
+    },
+    {
+      "name": "a value that is two dots is encoded so it cannot move the path",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": ".."
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "/items/%2E%2E"
+    },
+    {
+      "name": "a value that is one dot is encoded",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": "."
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "/items/%2E"
+    },
+    {
+      "name": "only unreserved characters stay",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": "a b~c-d_e.f!*'()?#é"
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "/items/a%20b~c-d_e.f%21%2A%27%28%29%3F%23%C3%A9"
+    },
+    {
+      "name": "a name with dots inside keeps them",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": "v1.2..3"
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "/items/v1.2..3"
+    },
+    {
+      "name": "several variables are filled in place",
+      "address": {
+        "path": {
+          "value": "/o/{org}/r/{repo}"
+        },
+        "pathParams": {
+          "org": {
+            "value": "telo"
+          },
+          "repo": {
+            "value": "run time"
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "/o/telo/r/run%20time"
+    },
+    {
+      "name": "a variable after an absolute address's host is filled",
+      "address": {
+        "path": {
+          "value": "https://example.com/{org}/repos"
+        },
+        "pathParams": {
+          "org": {
+            "value": "a/b"
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "https://example.com/a%2Fb/repos"
+    },
+    {
+      "name": "a mailto address's variable is one segment",
+      "address": {
+        "path": {
+          "value": "mailto:{address}"
+        },
+        "pathParams": {
+          "address": {
+            "value": "a@b.c"
+          }
+        },
+        "queryParams": {}
+      },
+      "url": "mailto:a%40b.c"
+    },
+    {
+      "name": "a value is read from a root",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "root": "row",
+            "path": [
+              "id"
+            ]
+          }
+        },
+        "queryParams": {}
+      },
+      "roots": {
+        "row": {
+          "id": 42
+        }
+      },
+      "url": "/items/42"
+    },
+    {
+      "name": "an empty value is unresolved",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": ""
+          }
+        },
+        "queryParams": {}
+      },
+      "unresolved": "id"
+    },
+    {
+      "name": "a null value is unresolved",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": null
+          }
+        },
+        "queryParams": {}
+      },
+      "unresolved": "id"
+    },
+    {
+      "name": "an absent value is unresolved",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "root": "row",
+            "path": [
+              "id"
+            ]
+          }
+        },
+        "queryParams": {}
+      },
+      "roots": {
+        "row": {}
+      },
+      "unresolved": "id"
+    },
+    {
+      "name": "a variable nothing binds is unresolved",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "unresolved": "id"
+    },
+    {
+      "name": "a value of another type is unresolved",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": true
+          }
+        },
+        "queryParams": {}
+      },
+      "unresolved": "id"
+    },
+    {
+      "name": "query parameters follow in declaration order",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "b": {
+            "value": "2"
+          },
+          "a": {
+            "value": "1"
+          }
+        }
+      },
+      "url": "/list?b=2&a=1"
+    },
+    {
+      "name": "a query value is form-urlencoded",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "q": {
+            "value": "a b&c=d/é"
+          }
+        }
+      },
+      "url": "/list?q=a+b%26c%3Dd%2F%C3%A9"
+    },
+    {
+      "name": "a query name is form-urlencoded too",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "a_b": {
+            "value": "x"
+          }
+        }
+      },
+      "url": "/list?a_b=x"
+    },
+    {
+      "name": "a boolean is true or false",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "on": {
+            "value": true
+          },
+          "off": {
+            "value": false
+          }
+        }
+      },
+      "url": "/list?on=true&off=false"
+    },
+    {
+      "name": "a number is its JSON text",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "n": {
+            "value": 2.5
+          },
+          "m": {
+            "value": 3
+          }
+        }
+      },
+      "url": "/list?n=2.5&m=3"
+    },
+    {
+      "name": "a list repeats its key",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "tag": {
+            "value": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      },
+      "url": "/list?tag=a&tag=b"
+    },
+    {
+      "name": "an empty list is left out",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "tag": {
+            "value": []
+          },
+          "x": {
+            "value": "1"
+          }
+        }
+      },
+      "url": "/list?x=1"
+    },
+    {
+      "name": "a null value is left out",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "tag": {
+            "value": null
+          },
+          "x": {
+            "value": "1"
+          }
+        }
+      },
+      "url": "/list?x=1"
+    },
+    {
+      "name": "an absent value is left out",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "tag": {
+            "root": "query",
+            "path": [
+              "tag"
+            ]
+          }
+        }
+      },
+      "roots": {
+        "query": {}
+      },
+      "url": "/list"
+    },
+    {
+      "name": "an empty string is kept",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "q": {
+            "value": ""
+          }
+        }
+      },
+      "url": "/list?q="
+    },
+    {
+      "name": "every query value left out leaves no question mark",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "a": {
+            "value": null
+          }
+        }
+      },
+      "url": "/list"
+    },
+    {
+      "name": "query parameters follow a path's own query",
+      "address": {
+        "path": {
+          "value": "/list?x=1"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "y": {
+            "value": "2"
+          }
+        }
+      },
+      "url": "/list?x=1&y=2"
+    },
+    {
+      "name": "query parameters come before a path's fragment",
+      "address": {
+        "path": {
+          "value": "/list#top"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "y": {
+            "value": "2"
+          }
+        }
+      },
+      "url": "/list?y=2#top"
+    },
+    {
+      "name": "query parameters come after a path's query and before its fragment",
+      "address": {
+        "path": {
+          "value": "/list?x=1#top"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "y": {
+            "value": "2"
+          }
+        }
+      },
+      "url": "/list?x=1&y=2#top"
+    },
+    {
+      "name": "a variable and a query parameter together",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": 7
+          }
+        },
+        "queryParams": {
+          "from": {
+            "value": "a b"
+          }
+        }
+      },
+      "url": "/items/7?from=a+b"
+    },
+    {
+      "name": "a path read from data is used as it is and never expanded",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "roots": {
+        "data": {
+          "home": "/a/{b}/c"
+        }
+      },
+      "url": "/a/{b}/c"
+    },
+    {
+      "name": "a path read from data takes query parameters",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {
+          "x": {
+            "value": "1"
+          }
+        }
+      },
+      "roots": {
+        "data": {
+          "home": "/a"
+        }
+      },
+      "url": "/a?x=1"
+    },
+    {
+      "name": "a path read from data that holds nothing is unresolved",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "roots": {
+        "data": {}
+      },
+      "unresolved": "path"
+    },
+    {
+      "name": "a path read from data that is not text is unresolved",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "roots": {
+        "data": {
+          "home": 3
+        }
+      },
+      "unresolved": "path"
+    },
+    {
+      "name": "a result that is not an address is refused",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "roots": {
+        "data": {
+          "home": "//evil.example/x"
+        }
+      },
+      "unresolved": "path"
+    },
+    {
+      "name": "a result with a control character is refused",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "roots": {
+        "data": {
+          "home": "/a\nb"
+        }
+      },
+      "unresolved": "path"
+    },
+    {
+      "name": "a result that is a relative path is refused",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "roots": {
+        "data": {
+          "home": "a/b"
+        }
+      },
+      "unresolved": "path"
+    },
+    {
+      "name": "a result with a javascript scheme is refused",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "roots": {
+        "data": {
+          "home": "javascript:alert(1)"
+        }
+      },
+      "unresolved": "path"
+    },
+    {
+      "name": "a result with a data scheme is refused",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "roots": {
+        "data": {
+          "home": "data:text/html,x"
+        }
+      },
+      "unresolved": "path"
+    },
+    {
+      "name": "a result with a vbscript scheme is refused",
+      "address": {
+        "path": {
+          "root": "data",
+          "path": [
+            "home"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "roots": {
+        "data": {
+          "home": "vbscript:msgbox(1)"
+        }
+      },
+      "unresolved": "path"
+    }
+  ]
+}

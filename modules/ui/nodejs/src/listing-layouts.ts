@@ -9,6 +9,7 @@ import { readPlan } from "./read-plan.js";
 import { NOTHING } from "./request-failure.js";
 import type { Binding } from "./row-binding.js";
 import { pendingRowAction, providedRowActions, type RowActionConfig } from "./row-actions.js";
+import { filledNode } from "./fill-marking.js";
 
 /** What a layout draws, `reads` aside, and the files a browser loads for it. */
 interface Drawn {
@@ -52,7 +53,7 @@ async function recordContent(written: AuthoredNode | null | undefined, inputs: L
   };
   const row = modelShape(inputs.model, { ctx, owner }, "model");
   const resolved = await resolveNode(tree, ctx, `${owner} content`, { row });
-  return { node: resolved?.node ?? NOTHING, assets: resolved?.assets ?? [] };
+  return { node: filledNode(resolved?.node ?? NOTHING), assets: resolved?.assets ?? [] };
 }
 
 /** A move as a renderer receives it, its action provided; nothing when none is declared. */
@@ -72,8 +73,10 @@ async function drawnRecords(type: string, resource: MovingResource, inputs: Layo
   return { spec: { type, ...own, content: content.node, ...(move ? { move } : {}) }, assets: [content.assets, ...assets] };
 }
 
-export const ListLayoutController = layoutController<ContentResource>("ListLayout", () => ({}), (resource, inputs, ctx, owner) =>
-  drawnRecords("list", resource, inputs, ctx, owner),
+export const ListLayoutController = layoutController<ContentResource & { frame?: "framed" | "flush" | null }>(
+  "ListLayout",
+  () => ({}),
+  (resource, inputs, ctx, owner) => drawnRecords("list", resource, inputs, ctx, owner, { frame: resource.frame ?? "framed" }),
 );
 
 export const CardLayoutController = layoutController<ContentResource & { size?: "small" | "medium" | "large" | null }>(

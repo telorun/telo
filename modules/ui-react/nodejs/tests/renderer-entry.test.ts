@@ -1,6 +1,6 @@
 import * as source from "@telorun/message-format";
 import { build } from "esbuild";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -13,7 +13,8 @@ import { runVectors, type MessageFormatCore } from "../../../../message-format/n
  * declaration (source, external list, exports) under the kernel's browser
  * build options — holds the message core every browser formats with: it
  * answers the core's conformance vectors as the package does, and it carries
- * the Unicode notice of the CLDR data inlined into it.
+ * the Unicode notice of the CLDR data inlined into it and the notices of the
+ * highlighter, the markdown parser and the transcript's virtualizer.
  */
 const manifest = parseAllDocuments(readFileSync(new URL("../../telo.yaml", import.meta.url), "utf8"), { logLevel: "silent" })[0].toJS();
 const entry = manifest.exports.browser.find((each: { specifier: string }) => each.specifier === "@telorun/ui-react-renderer");
@@ -44,7 +45,11 @@ beforeAll(async () => {
     logLevel: "silent",
   });
   expect(result.errors).toEqual([]);
-  built = readFileSync(join(directory, "renderer.js"), "utf8");
+  // The entry and the chunks it loads: the markdown renderer splits the build.
+  built = readdirSync(directory)
+    .filter((file) => file.endsWith(".js"))
+    .map((file) => readFileSync(join(directory, file), "utf8"))
+    .join("\n");
   module = await import(pathToFileURL(join(directory, "renderer.js")).href);
 }, 60_000);
 
@@ -64,5 +69,10 @@ describe("the renderer entry as built", () => {
 
   it("carries the Unicode license notice of the CLDR data it inlines", () => {
     expect(built).toMatch(/\/\*![^]*CLDR data \(Unicode CLDR, https:\/\/cldr\.unicode\.org\), used under this licence:[^]*SPDX-License-Identifier: Unicode-3\.0/);
+  });
+
+  it("carries the licence notices of the highlighter, the markdown parser and the transcript's virtualizer it bundles", () => {
+    expect(built).toMatch(/\/\*![^]*highlight\.js 11[^]*BSD-3-Clause[^]*Copyright \(c\) 2006, Ivan Sagalaev[^]*Copyright \(c\) Titus Wormer/);
+    expect(built).toMatch(/\/\*![^]*TanStack Virtual[^]*MIT[^]*Copyright \(c\) 2021-present Tanner Linsley/);
   });
 });

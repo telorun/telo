@@ -125,7 +125,7 @@ layout:
     action:
       kind: Ui.Action
       inputModel: !ref PostMove
-      source: { path: /api/posts/move }
+      request: { target: /api/posts/move }
       label: Move
     inputs:
       id: !cel "row.id"
@@ -171,7 +171,7 @@ steps:
           'type': l.type,
           'groups': l.reads.groups,
           'content': l.content,
-          'move': {'inputs': l.move.inputs, 'path': l.move.action.path}
+          'move': {'inputs': l.move.inputs, 'path': l.move.action.request.target.path.value}
         })
       expected:
         type: board
@@ -183,7 +183,7 @@ steps:
             - { value: draft, label: { text: draft, context: null, lang: und, computed: false } }
             - { value: review, label: { text: review, context: null, lang: und, computed: false } }
             - { value: published, label: { text: published, context: null, lang: und, computed: false } }
-        content: { type: value, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
+        content: { type: value, value: { root: row, path: [title] }, present: { type: string }, labels: [], fill: false }
         move:
           inputs: { id: { root: row, path: [id] }, status: { root: to, path: [status] } }
           path: /api/posts/move

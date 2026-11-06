@@ -190,5 +190,5 @@ layout:
 kind: Ui.Action
 metadata: { name: moveTask }
 inputModel: !ref TaskMove
-source: { path: /api/tasks/move }
+request: { target: /api/tasks/move }
 label: Move

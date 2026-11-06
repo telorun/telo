@@ -10,13 +10,14 @@ one meant for other modules lives outside it. This guide is about the design dec
 to export, how to make a kind, what the importer must supply — not about the
 field grammar.
 
-Take the exact schema of every kind you compose or extend, and the `imports:`
-line for each module (with its version and integrity pin), from `get_kinds`.
-Snippets below write an import as `<ref>@<version>#<pin>`; write what
-`get_kinds` returns. A `Telo.*` kind (`Telo.Definition`, `Telo.Abstract`, a
-`Telo.<Kind>` parent such as `Telo.LogSink`) and every schema fragment a kind
-names is built in: `get_kinds` returns it with no import line, at the telo
-version you pass as `telo` — import nothing for it. Never write a
+The exact schema of every kind you compose or extend, and the `imports:` line
+for each module (with its version and integrity pin), are on the
+[hub](https://hub.telo.run) (`get_kinds` over MCP). Snippets below write an
+import as `<ref>@<version>#<pin>`; write the hub's line. A `Telo.*` kind
+(`Telo.Definition`, `Telo.Abstract`, a `Telo.<Kind>` parent such as
+`Telo.LogSink`) and every schema fragment a kind names is built in — import
+nothing for it; `get_kinds` returns it with no import line, at the telo
+version you pass as `telo`. Never write a
 `JS.Script`: a kind is composed from existing kinds, specialized from one, or —
 for genuinely new runtime behaviour — given a controller in a module of its
 own.
@@ -607,4 +608,5 @@ steps:
   run by `Assert.Manifest` expecting its diagnostic code (and `runFails` for
   what the kernel refuses at boot).
 - A test that needs a real database or queue starts it as a container; see
-  the `write_integration_tests` guide.
+  [Writing integration tests that start a real service](./write-integration-tests.md)
+  (`guide_write_integration_tests` over MCP).

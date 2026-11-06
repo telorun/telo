@@ -49,6 +49,71 @@
     {
       "mediaType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "container": "application/zip"
+    },
+    {
+      "mediaType": "audio/mpeg",
+      "signatures": [
+        [{ "offset": 0, "hex": "494433" }],
+        [{ "offset": 0, "hex": "ffe2" }],
+        [{ "offset": 0, "hex": "ffe3" }],
+        [{ "offset": 0, "hex": "fff2" }],
+        [{ "offset": 0, "hex": "fff3" }],
+        [{ "offset": 0, "hex": "fffa" }],
+        [{ "offset": 0, "hex": "fffb" }]
+      ]
+    },
+    {
+      "mediaType": "audio/wav",
+      "signatures": [
+        [{ "offset": 0, "hex": "52494646" }, { "offset": 8, "hex": "57415645" }]
+      ]
+    },
+    {
+      "mediaType": "audio/ogg",
+      "signatures": [
+        [{ "offset": 0, "hex": "4f676753" }]
+      ]
+    },
+    {
+      "mediaType": "audio/flac",
+      "signatures": [
+        [{ "offset": 0, "hex": "664c6143" }]
+      ]
+    },
+    {
+      "mediaType": "audio/mp4",
+      "signatures": [
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "4d344120" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "4d344220" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "4d345020" }]
+      ]
+    },
+    {
+      "mediaType": "video/quicktime",
+      "signatures": [
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "71742020" }]
+      ]
+    },
+    {
+      "mediaType": "video/webm",
+      "signatures": [
+        [{ "offset": 0, "hex": "1a45dfa3" }, { "within": [4, 64], "hex": "4282847765626d" }]
+      ]
+    },
+    {
+      "mediaType": "video/mp4",
+      "signatures": [
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "69736f6d" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "69736f32" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "69736f34" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "69736f35" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "69736f36" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "6d703431" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "6d703432" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "61766331" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "4d345620" }],
+        [{ "offset": 4, "hex": "66747970" }, { "offset": 8, "hex": "64617368" }]
+      ]
     }
   ]
 }

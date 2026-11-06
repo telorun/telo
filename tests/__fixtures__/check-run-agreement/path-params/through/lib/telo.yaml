@@ -1,0 +1,13 @@
+# A link naming a page is held to the page's own template.
+kind: Telo.Library
+metadata: { name: PathParamThroughLib }
+imports: { Kinds: ../../kinds }
+exports: { resources: [link] }
+---
+kind: Kinds.Page
+metadata: { name: item }
+path: "/p/{id}"
+---
+kind: Kinds.PageLink
+metadata: { name: link }
+href: { path: !ref item, pathParams: { page: a } }

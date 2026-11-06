@@ -97,7 +97,7 @@ exports:
     - specifier: "@acme/controls"
       path: ./browser/controls.js
       source: ./nodejs/src/controls.tsx
-      abi: ui_react_controls-2
+      abi: ui_react_controls-3
       external: [react, react/jsx-runtime, react-dom]
       exports: [Checkbox, Switch, Icon]
 ---
@@ -152,7 +152,7 @@ one set. `ui-react` runs `CheckTheme` on `UiReact.defaultTheme`.
 | `theme:`, `controls:` or `tokens:` naming the wrong kind | `REFERENCE_KIND_MISMATCH` | the kernel's reference refusal |
 | `entry` not a browser entry of the declaring module | `BROWSER_ENTRY_UNKNOWN` | `ERR_BROWSER_ENTRY_UNKNOWN` |
 | an implemented control the entry does not export | `BROWSER_EXPORT_UNKNOWN` | `ERR_BROWSER_EXPORT_UNKNOWN` |
-| an entry written against another generation than `ui_react_controls-2` | `BROWSER_ENTRY_ABI_UNSUPPORTED` | `ERR_BROWSER_ENTRY_ABI_UNSUPPORTED` |
+| an entry written against another generation than `ui_react_controls-3` | `BROWSER_ENTRY_ABI_UNSUPPORTED` | `ERR_BROWSER_ENTRY_ABI_UNSUPPORTED` |
 | an entry leaving anything but `react`, `react/jsx-runtime`, `react-dom` to its host | `BROWSER_ENTRY_IMPORT_UNSUPPLIED` | `ERR_BROWSER_ENTRY_IMPORT_UNSUPPLIED` |
 | two entries of a theme's `controls` implementing one control (the same set listed through two aliases included), reported at each entry | `RESOURCE_RULE_VIOLATED` with `data.rule: UI_THEME_CONTROL_DUPLICATE` | `ERR_UI_THEME_CONTROL_DUPLICATE` |
 | a set implementing some of the nine layer controls but not all of them — the eight of `ui_react_controls-1` without `Navigation` included | `RESOURCE_RULE_VIOLATED` with `data.rule: UI_CONTROLS_LAYERS_PARTIAL` | `ERR_UI_CONTROLS_LAYERS_PARTIAL` |

@@ -25,9 +25,9 @@ export interface Host {
    * untouched, 401 and 403 included.
    */
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-  /** Say that the collection at this `basePath` changed. */
+  /** Say that the data at this app-relative path changed: the path as it was requested, encoded, its query left out. */
   notifyChanged(basePath: string): void;
-  /** Call `listener` after each such change; returns the function that stops it. */
+  /** Call `listener` after each change announced for exactly this path; returns the function that stops it. */
   onChanged(basePath: string, listener: () => void): () => void;
 }
 

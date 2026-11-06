@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUNDLE, render, type Page, type Rendered } from "./harness.js";
-import { filtersNode } from "./spec-nodes.js";
+import { filtersNode, address } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -51,19 +51,21 @@ describe("what the renderer draws", () => {
   });
 
   it.each([
-    ["//x", "error"],
-    ["/\\x", "error"],
-    ["/\t/x", "error"],
+    ["//x", "text"],
+    ["/\\x", "text"],
+    ["/\t/x", "text"],
     ["/x", "/x"],
     ["/", "/"],
     ["/a//b", "/a//b"],
   ])("draws a link to %j as %s", async (href, drawn) => {
-    rendered = await show([{ type: "text", text: "Above" }, { type: "link", text: "There", href }, { type: "text", text: "Below" }]);
-    expect(texts(rendered)).toEqual(["Above", "Below"]);
-    if (drawn === "error") {
+    rendered = await show([{ type: "text", text: "Above" }, { type: "link", text: "There", href: address(href) }, { type: "text", text: "Below" }]);
+    if (drawn === "text") {
+      // An address that does not resolve is drawn as plain text.
+      expect(texts(rendered)).toEqual(["Above", "There", "Below"]);
       expect(rendered.parts("link")).toEqual([]);
-      expect(codes(rendered)).toEqual(["ERR_UI_NODE_INVALID"]);
+      expect(codes(rendered)).toEqual([]);
     } else {
+      expect(texts(rendered)).toEqual(["Above", "Below"]);
       expect(rendered.parts("link").map((link) => link.getAttribute("href"))).toEqual([drawn]);
       expect(codes(rendered)).toEqual([]);
     }

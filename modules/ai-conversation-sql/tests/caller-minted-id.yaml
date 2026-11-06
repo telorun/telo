@@ -1,0 +1,43 @@
+kind: Telo.Application
+metadata:
+  name: AiConversationSqlCallerMintedId
+  version: 1.0.0
+  description: |
+    A create given an id stores the conversation under it, and a second create with
+    the same id answers the first header unchanged, so a retried create makes one
+    conversation.
+imports:
+  AiConversation: ../../ai-conversation
+  AiConversationSql: ../
+  SQLite: ../../sqlite
+  Assert: ../../assert
+targets: [!ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: first
+    invoke: { kind: AiConversation.Create, store: !ref store }
+    inputs: { id: cnv_0000000000000000000001, title: First }
+  - name: again
+    invoke: { kind: AiConversation.Create, store: !ref store }
+    inputs: { id: cnv_0000000000000000000001, title: Second }
+  - name: listed
+    invoke: { kind: AiConversation.List, store: !ref store }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        id: !cel "steps.again.result.id"
+        title: !cel "steps.again.result.title"
+        version: !cel "steps.again.result.version"
+        total: !cel "steps.listed.result.total"
+      expected: { id: cnv_0000000000000000000001, title: First, version: 1, total: 1 }

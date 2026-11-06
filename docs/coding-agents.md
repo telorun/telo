@@ -39,6 +39,11 @@ The ones an agent composes with:
   tracked module by its location ref (e.g. `oci://ghcr.io/telorun/console` or
   `oci://ghcr.io/acme/telo-s3`). `version` defaults to `latest`. For when the
   whole module is wanted rather than a few of its kinds.
+- **Authoring guides** — `guide_build_ui`, `guide_design_library` and
+  `guide_write_integration_tests`, one tool each, returning the same text you
+  can read here: [Building a user interface](../apps/hub/guides/build-ui.md),
+  [Designing a library](../apps/hub/guides/design-library.md) and
+  [Integration tests with real services](../apps/hub/guides/write-integration-tests.md).
 - **Instructions primer** — explains Telo's runtime model, built-in kinds
   (`Telo.Application`, `Telo.Library`, `Telo.Definition`), CEL `!cel "…"`
   templating, and the recommended workflow: search → read the kinds → compose.

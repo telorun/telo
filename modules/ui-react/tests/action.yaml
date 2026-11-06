@@ -37,12 +37,13 @@ steps:
         status: !cel "steps.page.result.status"
         action: !cel "steps.page.result.body.children[0]"
         listing: !cel "steps.page.result.body.children[1].type"
-        rowActions: !cel "steps.page.result.body.children[1].rowActions.map(r, {'action': [r.action.path, r.action.label, r.action.result], 'inputs': r.inputs, 'confirm': r.confirm, 'enabled': r.enabled})"
+        rowActions: !cel "steps.page.result.body.children[1].rowActions.map(r, {'action': [r.action.request.target.path.value, r.action.label, r.action.result], 'inputs': r.inputs, 'confirm': r.confirm, 'enabled': r.enabled})"
         months: !cel "steps.page.result.body.children[2]"
       expected:
         status: 200
         action:
           type: action
+          fill: false
           schema:
             type: object
             additionalProperties: false
@@ -52,7 +53,7 @@ steps:
               copies: { type: integer, title: Copies, minimum: 1 }
               formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
               recipients: { type: array, title: Recipients, items: { type: string, minLength: 3 } }
-          path: /api/reports
+          request: { method: POST, target: { path: { value: /api/reports }, pathParams: {}, queryParams: {} }, consumed: [] }
           label: { lang: und, message: [Generate] }
           fields:
             - { type: input, property: month, label: { lang: und, message: [Month] }, description: null, labels: [], control: auto }
@@ -79,23 +80,26 @@ steps:
                     url: { type: string, title: Download, format: uri-reference }
           result:
             type: list
+            fill: false
             heading: { lang: und, message: [Files] }
             rows: { root: result, path: [files] }
+            rowActionsDisplay: auto
             columns:
               - { header: { lang: und, message: [File] }, labels: [], value: { root: row, path: [name] }, present: { type: string } }
               - { header: { lang: und, message: [Download] }, labels: [], value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }
           failure:
             type: stack
+            fill: false
             style: danger
             children:
-              - { type: value, value: { root: error, path: [code] }, labels: [], present: { type: string }, style: strong }
-              - { type: value, value: { root: error, path: [message] }, labels: [], present: { type: string } }
-          onSuccess: { refreshes: [/api/todos] }
+              - { type: value, fill: false, value: { root: error, path: [code] }, labels: [], present: { type: string }, style: strong }
+              - { type: value, fill: false, value: { root: error, path: [message] }, labels: [], present: { type: string } }
+          onSuccess: { refreshes: [{ path: { value: /api/todos }, pathParams: {}, queryParams: {} }] }
           concurrency: serial
           clearAnswerOn: [month]
         listing: listing
         rowActions:
-          - action: [ /api/archive, { lang: und, message: [Archive] }, { type: value, value: { root: result, path: [ archived ] }, labels: [], present: { type: boolean } } ]
+          - action: [ /api/archive, { lang: und, message: [Archive] }, { type: value, fill: false, value: { root: result, path: [ archived ] }, labels: [], present: { type: boolean } } ]
             inputs: { id: { root: row, path: [id] }, status: { value: archived } }
             confirm: { lang: und, message: [Archive this task?] }
             enabled:
@@ -104,8 +108,10 @@ steps:
               disabledText: { lang: und, message: [Name it first.] }
         months:
           type: list
+          fill: false
           heading: { lang: und, message: [Months] }
           rows: { root: query, path: [months] }
+          rowActionsDisplay: auto
           columns:
             - { header: { lang: und, message: [Month] }, labels: [], value: { root: row, path: [] }, present: { type: string } }
           rowActions:

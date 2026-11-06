@@ -29,6 +29,7 @@ const X_TELO_SPAN_ATTRIBUTE = "x-telo-span-attribute" as const;
 const X_TELO_TEXT_CONTEXT = "x-telo-text-context" as const;
 const X_TELO_TEXT_VALUES_FOR = "x-telo-text-values-for" as const;
 const X_TELO_TEXT_VALUES = "x-telo-text-values" as const;
+const X_TELO_PATH_PARAMS_FOR = "x-telo-path-params-for" as const;
 /** Read on a binding of an `x-telo-context` alone. */
 const X_TELO_CONTEXT_EVAL = "x-telo-context-eval" as const;
 const X_TELO_CONTEXT_FROM_REFERRER = "x-telo-context-from-referrer" as const;
@@ -298,6 +299,15 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       "This object holds the values of a message: a JSON Pointer, relative to the enclosing value (for a callable parameter, the call's arguments keyed by parameter name), to the `Text` they bind. Every placeholder and plural selector of that text must be one of its keys, holding a string or a number.",
     type: "string",
   },
+  [X_TELO_PATH_PARAMS_FOR]: {
+    title: "Path params for",
+    description:
+      "This map binds the variables of a path template, each key a `{name}` segment. `template` is a JSON Pointer, relative to the enclosing object, to the field holding the template; `through` names the field of the declaration a reference there names that holds it. A variable no entry binds, an entry naming no variable, and a brace that is not a whole segment are refused; an expression at the template field is never expanded, so every entry is unused.",
+    type: "object",
+    required: ["template"],
+    properties: { template: { type: "string" }, through: { type: "string" } },
+    additionalProperties: false,
+  },
   "x-telo-match-for": {
     title: "Match for",
     description:
@@ -396,7 +406,8 @@ export const TELO_DATA_SCHEMA_ANNOTATIONS: Record<
   | typeof X_TELO_SPAN_ATTRIBUTE
   | typeof X_TELO_TEXT_CONTEXT
   | typeof X_TELO_TEXT_VALUES
-  | typeof X_TELO_TEXT_VALUES_FOR,
+  | typeof X_TELO_TEXT_VALUES_FOR
+  | typeof X_TELO_PATH_PARAMS_FOR,
   Record<string, unknown>
 > = {
   [X_TELO_TEXT_CONTEXT]: {
@@ -417,6 +428,15 @@ export const TELO_DATA_SCHEMA_ANNOTATIONS: Record<
     description:
       "This object holds the values of a message: a JSON Pointer, relative to the enclosing value (for a callable parameter, the call's arguments keyed by parameter name), to the `Text` they bind. Every placeholder and plural selector of that text must be one of its keys, holding a string or a number.",
     type: "string",
+  },
+  [X_TELO_PATH_PARAMS_FOR]: {
+    title: "Path params for",
+    description:
+      "This map binds the variables of a path template, each key a `{name}` segment. `template` is a JSON Pointer, relative to the enclosing object, to the field holding the template; `through` names the field of the declaration a reference there names that holds it. A variable no entry binds, an entry naming no variable, and a brace that is not a whole segment are refused; an expression at the template field is never expanded, so every entry is unused.",
+    type: "object",
+    required: ["template"],
+    properties: { template: { type: "string" }, through: { type: "string" } },
+    additionalProperties: false,
   },
   [X_TELO_SENSITIVE]: {
     title: "Sensitive",

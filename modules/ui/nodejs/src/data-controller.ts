@@ -4,19 +4,20 @@ import {
   type ResourceInstance,
   type RuntimeResource,
 } from "@telorun/sdk";
+import { addressSpec, type AddressConfig } from "./address-spec.js";
 import { mergeAssets, type Provided, type SpecNode } from "./composite.js";
 import { modelSchema, modelShape, type JsonSchema, type ShapeReader } from "./model-schema.js";
 import { resolveNode, type AuthoredNode, type RootShapes } from "./node-resolution.js";
 import { DEFAULT_FAILURE, NOTHING } from "./request-failure.js";
-import type { Binding } from "./row-binding.js";
 import { uiText } from "./spec-texts.js";
+import { filledProvided } from "./fill-marking.js";
 
 type Reload = "focus" | "unauthorized";
 
 type DataResource = RuntimeResource & {
   model: unknown;
   query?: Record<string, JsonSchema> | null;
-  source: { path: string; params?: Record<string, Binding> | null };
+  source: AddressConfig;
   content: AuthoredNode;
   loading?: AuthoredNode | null;
   failure?: AuthoredNode | null;
@@ -53,14 +54,14 @@ class Data implements ResourceInstance {
     const node: SpecNode = {
       type: "data",
       schema,
-      source: { path: resource.source.path, params: resource.source.params ?? {} },
+      source: addressSpec(resource.source, this.ctx, `${this.owner} source`),
       query,
       content: content.node ?? NOTHING,
       loading: loading.node ?? NOTHING,
       failure: failure.node ?? NOTHING,
       reloadOn: resource.reloadOn ?? [],
     };
-    return { node, assets: mergeAssets(content.assets, loading.assets, failure.assets) };
+    return filledProvided({ node, assets: mergeAssets(content.assets, loading.assets, failure.assets) });
   }
 }
 

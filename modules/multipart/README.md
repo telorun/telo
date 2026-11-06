@@ -2,13 +2,16 @@
 
 Multipart bodies: combine several parts into one payload with the boundary framing servers expect, and split a received payload back into its parts.
 
-Three kinds:
+Four kinds:
 
 | Kind | What it does |
 | --- | --- |
 | `Multipart.Encoder` | An ordered list of parts → one framed byte stream, plus the media type to send it under. |
 | `Multipart.Decoder` | A received payload + its media type → the parts it contains, collected whole. |
 | `Multipart.Reader` | The same, read incrementally — a stream of parts, each a stream of bytes — for uploads too large to hold. |
+| `Multipart.ReadPart` | One named part, streamed — the parts before it discarded, the rest of the payload never read. A single-file upload. |
+
+`Multipart.Part` is the shape of a streamed part (`{ content, headers, contentType?, name?, filename? }`), exported for a contract that passes one on.
 
 ## Why use this
 
@@ -66,24 +69,26 @@ Parts come back as a list, each with `content` (bytes), `headers` (lowercase key
 
 ## Limits
 
-Both inbound kinds take three limits, each an integer of at least 1:
+The three inbound kinds take three limits, each an integer of at least 1:
 
-| Limit | Counts | `Decoder` default | `Reader` default |
+| Limit | Counts | `Decoder` default | `Reader` / `ReadPart` default |
 | --- | --- | --- | --- |
 | `maxPartBytes` | One part's content — not its headers or framing. | 8 MiB | none |
 | `maxParts` | The parts in the payload. | 1000 | 1000 |
 | `maxTotalBytes` | Every byte read: framing, headers and content. | 16 MiB | none |
 
-The decoder holds each part whole to return it, so all three have defaults; the reader holds nothing, so its byte limits apply only when set. A limit stops the read as soon as the bytes read show it is crossed, never after collecting the payload.
+The decoder holds each part whole to return it, so all three have defaults; the reader and `ReadPart` hold nothing, so their byte limits apply only when set. A part `ReadPart` skips counts toward them. A limit stops the read as soon as the bytes read show it is crossed, never after collecting the payload.
 
 ## Failures
 
-Both inbound kinds declare two codes a route can map:
+The inbound kinds declare two codes a route can map:
 
 - `ERR_MULTIPART_MALFORMED` — `error.data.reason` is `boundary-missing`, `truncated`, `header-malformed` or `header-too-large`.
 - `ERR_MULTIPART_LIMIT_EXCEEDED` — `error.data` is `{ limit, max, part?, name? }`, `limit` naming the input that was exceeded.
 
-A route whose handler is a decoder or a reader must cover both (or declare a catch-all), or `telo check` reports `UNCOVERED_THROW_CODE`. The decoder raises them from the call; the reader raises all but a missing boundary as its streams are drained. Details: [`docs/decoder.md`](docs/decoder.md), [`docs/reader.md`](docs/reader.md).
+`ReadPart` adds a third, `ERR_MULTIPART_PART_MISSING` with `error.data` `{ name }`, for a payload that reaches its closing boundary with no part of that name.
+
+A route whose handler is one of them must cover its codes (or declare a catch-all), or `telo check` reports `UNCOVERED_THROW_CODE`. The decoder raises them from the call; the reader raises all but a missing boundary as its streams are drained; `ReadPart` raises one met before the part from the call and one met inside it from the read of its `content`. Details: [`docs/decoder.md`](docs/decoder.md), [`docs/reader.md`](docs/reader.md), [`docs/read-part.md`](docs/read-part.md).
 
 ## Not a `Codec`
 
@@ -91,7 +96,7 @@ No kind here extends `Codec.Encoder` / `Codec.Decoder`. That contract's input is
 
 ## Reader vs Decoder
 
-`Decoder` buffers and is bounded by its limits (8 MiB a part, 16 MiB in all); `Reader` streams and is bounded by one chunk. Use `Decoder` for form fields and anything you want as a plain value; use `Reader` for file uploads. Skipping a part in `Reader` is safe — advancing discards the remainder rather than leaving the cursor mid-part.
+`Decoder` buffers and is bounded by its limits (8 MiB a part, 16 MiB in all); `Reader` streams and is bounded by one chunk. Use `Decoder` for form fields and anything you want as a plain value; use `ReadPart` for an upload carrying one file, and `Reader` for one carrying several. Skipping a part in `Reader` is safe — advancing discards the remainder rather than leaving the cursor mid-part.
 
 ## Receiving an upload
 

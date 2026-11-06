@@ -1,0 +1,7 @@
+modules:
+  modules/ui-react: Added
+body: A `refreshes` entry whose literal path holds a `*` or `**` segment reads again
+  every subscribed `Ui.Data`, `Ui.Listing` and `Ui.Chat` whose resolved, encoded,
+  app-relative path it matches segment by segment, held to `ui`'s
+  `conformance/refreshes.json`; an entry with no wildcard matches only its own path, as
+  before.

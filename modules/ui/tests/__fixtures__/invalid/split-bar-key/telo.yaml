@@ -1,0 +1,14 @@
+# The renamed `aside.bar` key, which a split view no longer takes.
+kind: Telo.Library
+metadata:
+  name: UiInvalidSplitBarKey
+  version: 1.0.0
+  description: Test fixture exporting a split view whose aside is written with the retired bar key.
+imports: { Ui: ../../../../ }
+exports: { resources: [barKey] }
+---
+kind: Ui.SplitView
+metadata: { name: barKey }
+label: Conversations
+aside: { bar: [], content: { type: text, text: Aside } }
+content: { type: text, text: Content }

@@ -1,0 +1,11 @@
+# An address computed whole is never expanded, so its parameters fill nothing.
+kind: Telo.Library
+metadata: { name: PathParamExpressionLib }
+imports: { Kinds: ../../kinds }
+exports: { resources: [link] }
+---
+kind: Kinds.Link
+metadata: { name: link }
+href:
+  path: !cel "'/x/' + 'y'"
+  pathParams: { id: a }

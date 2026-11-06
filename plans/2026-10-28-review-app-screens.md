@@ -1,7 +1,7 @@
 ---
 status: approved
 priority: medium
-depends-on: []
+depends-on: [2026-11-04-composable-chat-screens.md]
 packages: [modules/ui, modules/ui-react, modules/ui-react-radix, apps/plan-approval]
 ---
 
@@ -13,12 +13,12 @@ An application that reviews documents, watches workers or fronts a REST API keye
 
 What `ui` lacks for that, all generic:
 
-- a page address and a request target that carry an ID (`/plans/{id}`, `POST /plans/{id}/decisions`), and a link built from a row;
+- a page address that carries an ID (`/plans/{id}`);
 - Markdown text drawn safely, with a control on the items the server names;
 - screens that refresh on a timer without losing the viewer's place;
 - a control that sets a page query parameter, row and column styles on a `list` node, filter values relative to now, and relative time display.
 
-This is written against the shape the related-records plan leaves behind: `Ui.Listing`, `Ui.CollectionSource`, `Ui.CollectionPresentation`, `Ui.TableLayout`. It ships after that plan; `Ui.Table` and `Ui.Collection` no longer exist by then.
+This is written against the shape the related-records plan leaves behind: `Ui.Listing`, `Ui.CollectionSource`, `Ui.CollectionPresentation`, `Ui.TableLayout`. It ships after that plan; `Ui.Table` and `Ui.Collection` no longer exist by then. Addresses and request targets — `Ui.Address`, `Ui.RequestTarget`, `pathParams` and `queryParams`, a link built from a row, the template rules and invalidation by resolved target — are the composable chat screens plan's; this plan adds the page-side variables they read.
 
 ## 1. Address variables
 
@@ -28,48 +28,30 @@ Before: a page `path` is a literal. After: a segment may be `{name}`, standing f
 
 - A segment is either wholly literal or exactly `{name}`; a brace anywhere else, or a repeated name, is `SCHEMA_VIOLATION`. `/plans/{id}` and `/runners/{name}/commands` are paths; `/plans/x{id}` is not.
 - A literal segment beats a variable one (`/plans/new` over `/plans/{id}`). Two pages whose paths differ only in variable names are `UI_PAGE_PATH_AMBIGUOUS`.
-- A page with a variable has no address of its own to link to from a menu, so a navigation entry naming one is `UI_NAVIGATION_PAGE_HAS_PARAMETERS`.
+- A page with a variable has no address of its own to link to from a menu, so a navigation entry naming one is `UI_NAVIGATION_PAGE_HAS_PARAMETERS`; a link names it with an address whose `pathParams` fill its variables.
 - A malformed encoded segment answers the application's not-found page.
 
 ### The `path` root
 
-`path` is a browser root beside `query`: an object of the page's variables, each a string. It is readable wherever `query` is read today — a reader's trees and `source.params`, `value`, `list` and `shown`, an action's and a row action's inputs, a listing's roots.
+`path` is a browser root beside `query`: an object of the page's variables, each a string. It is readable wherever `query` is read today — a reader's trees and `source`, `value`, `list` and `shown`, an action's and a row action's inputs, a listing's roots.
 
 - A reader, an action, a listing's source and an option source declare the names they read in `path`, the way they declare `query` (names, each optionally narrowed by a `Ui.Match`). The root is closed over them; an undeclared name is `CEL_UNKNOWN_FIELD`.
 - A declared name the placing page's `path` lacks is `UI_PATH_PARAMETER_UNPROVIDED`, at check and as `ERR_UI_PATH_PARAMETER_UNPROVIDED` where the node is resolved.
 
-### Request targets
+### Templated source paths
 
-A target is a path with `{name}` segments plus `pathParams`, a map from each name to an accessor over the roots in scope (`path`, `query`, plus `row` in a row action, `data` inside a reader, `input` and `result` after an action). It applies to:
+`Ui.CollectionSource` takes `basePath` as a template, with `pathParams` over `path` and `query` only, since a source has no row; the source declares the `path` / `query` names it reads, and a listing, option source or presentation using it must declare at least those (`UI_SOURCE_PARAMETER_UNPROVIDED`). A value that holds nothing at run time sends nothing and draws the node's `failure`. Every other target is an address of the composable chat screens plan, whose `pathParams` read `path` among the roots in scope.
 
-- `Ui.Data.source`, `Ui.Action.source` — `path` and `pathParams`;
-- `Ui.CollectionSource` — `basePath` and `pathParams`, over `path` and `query` only, since a source has no row; the source declares the `path` / `query` names it reads, and a listing, option source or presentation using it must declare at least those (`UI_SOURCE_PARAMETER_UNPROVIDED`);
-- `onSuccess.refreshes` entries — a plain string, or `{ path, pathParams }` over `path`, `query`, `input` and `result`.
-
-Rules: every `{name}` has exactly one binding and every binding names a segment (`UI_PATH_PARAMETER_UNBOUND`, `UI_PATH_PARAMETER_UNUSED`); a binding's type is string or integer (`CEL_TYPE_ERROR` otherwise). A filled value is percent-encoded as one segment, so an ID holding `/` or `..` cannot change the route. A binding that is null at run time sends nothing: the node draws its `failure` with `ERR_UI_PATH_PARAMETER_MISSING`.
-
-**Invalidation matches the resolved URL.** The related-records plan's "every listing over the same `basePath`" becomes "every target resolving to the same URL"; a `basePath` with no variables resolves to itself, so nothing that plan declares changes. A write or `refreshes` reloads every reader, listing, facet request and relation's labels whose target resolves to the same URL, so `refreshes` of plan 7's decisions re-reads plan 7's page and not plan 8's. `notifyChanged` takes a resolved path. The address rule (app-relative, no `//`) is held on the resolved string.
-
-### Links built from data
-
-A node value is an accessor, never an expression, so `"/plans/" + row.id` cannot be written. An **address** is therefore a string or `{ path, pathParams }`, accepted at:
-
-- `link.href` (and a menu item's);
-- a new optional `href` on the `value` node, which draws the presented value as the link's text;
-- a new optional `href` on a `list` column and on a `Ui.TableLayout` column, over `row`;
-- a `Ui.CollectionPresentation` relation entry's `href`, over the related `row`, so a label can link to `/authors/<id>` rather than only to a URL the record stores.
-
-The resolved address is held to the address rule in the browser; one that fails is drawn as plain text, as a `format: uri` value is today. A link to a declared page is a move within the application, anything else an ordinary load, as today.
+**Invalidation matches the resolved URL.** The related-records plan's "every listing over the same `basePath`" becomes "every target resolving to the same URL"; a `basePath` with no variables resolves to itself, so nothing that plan declares changes. A write or `refreshes` reloads every reader, listing, facet request and relation's labels whose target resolves to the same URL, so `refreshes` of plan 7's decisions re-reads plan 7's page and not plan 8's. The address rule (app-relative, no `//`) is held on the resolved string.
 
 ### Docs
 
-`page.md` (variables, the `path` root, ambiguity), `data.md`, `action.md`, `collection-source.md`, `collection-presentation.md` (a relation's `href` as an address), `nodes.md` (addresses, `href` on value and columns), `listing.md` (the `path` roots).
+`page.md` (variables, the `path` root, ambiguity), `collection-source.md`, `listing.md` (the `path` roots).
 
 ### Verify
 
 - An inbox table row's title links to `/plans/<id>`; that page loads `GET /api/review/plans/<id>`; its Approve button posts to `/api/review/plans/<id>/decisions`; no route changed.
 - Two pages `/a/{x}` and `/a/{y}` are `UI_PAGE_PATH_AMBIGUOUS`; `/plans/new` and `/plans/{id}` both route, the literal winning.
-- A binding yielding `../x` is sent as one encoded segment.
 - Approving plan 7 re-reads plan 7's reader and listing and leaves plan 8's alone.
 - A reader reading `path.id` on a page whose path has no `{id}` is `UI_PATH_PARAMETER_UNPROVIDED`.
 - A navigation entry naming `/plans/{id}` is `UI_NAVIGATION_PAGE_HAS_PARAMETERS`.
@@ -185,8 +167,8 @@ Before building: confirm by test that two actions' fields over one property, eac
 ## 8. Docs, guides, ledger
 
 - `modules/ui/README.md` and the docs named above; `modules/ui-react/` docs for the renderer parts.
-- `apps/hub/guides/build-ui.md` and `apps/authoring-agent/chat/primer.md`: path variables and `pathParams`, addresses, `refreshEvery`, `markdown` and anchors, `Ui.QuerySelect`, `list` styles, relative values, `relative`.
-- `docs/guides/what-you-get.md`, under Standard library: "Routes keyed by ID" (page paths with variables, request targets filled from them, refused before the app runs when a name is unbound or mistyped); "Screens that refresh in place" (`refreshEvery` keeps loaded pages, scroll and open forms); "Markdown without raw HTML" (rendered safely, links held to the address rule).
+- `apps/hub/guides/build-ui.md` and `apps/authoring-agent/chat/primer.md`: path variables and the `path` root, `refreshEvery`, `markdown` and anchors, `Ui.QuerySelect`, `list` styles, relative values, `relative`.
+- `docs/guides/what-you-get.md`, under Standard library: "Routes keyed by ID" (page paths with variables, refused before the app runs when a name is unbound or mistyped); "Screens that refresh in place" (`refreshEvery` keeps loaded pages, scroll and open forms); "Markdown without raw HTML" (rendered safely, links held to the address rule).
 - `modules/CLAUDE.md`: the Declarative UI paragraph gains the `path` root, address templates, the `markdown` node, `Ui.QuerySelect` and `refreshEvery`.
 
 ## 9. Checks to run before building on them
@@ -195,10 +177,9 @@ Each confirmed by reading, not by running. Check with a minimal manifest first; 
 
 1. `UiReact.App` routes `{name}` segments, a literal beating a variable one. If not, extending its page routing is part of this work.
 2. A rule on a reader can see the placing page's path through nested composites. If not, the page, which already resolves its composites at creation, judges each composite's declared names and raises the twin.
-3. A map whose values are accessors (`pathParams`) is typed as call-site arguments against a template's names. If not, the accessor-map handling `Ui.RowAction.inputs` uses is generalised.
-4. `anchor` is typed as the element of the list `rows` names, through the relative-pointer binding the `list` node's `row` uses.
-5. A duration field with a lower bound is expressible as a resource rule.
-6. A lazily loaded chunk of a browser entry is served by digest and loaded on demand under the current browser-entry build.
+3. `anchor` is typed as the element of the list `rows` names, through the relative-pointer binding the `list` node's `row` uses.
+4. A duration field with a lower bound is expressible as a resource rule.
+5. A lazily loaded chunk of a browser entry is served by digest and loaded on demand under the current browser-entry build.
 
 ## 10. Acceptance: plan-approval
 
@@ -214,7 +195,7 @@ One fragment per module, written with `telo release add`, each body naming only 
 
 | Module | Kind | What the body says |
 | --- | --- | --- |
-| `ui` | `Added`, describing the break | page path variables (a literal brace in a page path now is a variable), the `path` root and `pathParams`, addresses, `refreshEvery`, the `markdown` node, `Ui.QuerySelect`, `list` styles, relative filter values, `relative` |
+| `ui` | `Added`, describing the break | page path variables (a literal brace in a page path now is a variable), the `path` root, templated `basePath`, `refreshEvery`, the `markdown` node, `Ui.QuerySelect`, `list` styles, relative filter values, `relative` |
 | `ui-react` | `Added` | path routing, the Markdown renderer chunk, timed refresh, query select, relative time |
 | `ui-react-radix` | `Added` | styles for the Markdown parts and the anchor control |
 

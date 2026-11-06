@@ -1,0 +1,15 @@
+# A `button` written on a node that is not a link.
+kind: Telo.Library
+metadata:
+  name: UiInvalidLinkButton
+  version: 1.0.0
+  description: Test fixture exporting a view whose text node is given a button display.
+imports: { Ui: ../../../../ }
+exports: { resources: [buttonOnText] }
+---
+kind: Ui.View
+metadata: { name: buttonOnText }
+content:
+  type: stack
+  children:
+    - { type: text, text: Docs, button: { kind: Ui.TextButton } }

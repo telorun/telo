@@ -1,6 +1,7 @@
 import type { KindRef, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError, isInvokeError } from "@telorun/sdk";
+import { InvokeError, createCancellationSource, isInvokeError } from "@telorun/sdk";
 import {
+  ERR_JOURNAL_CANCELLED,
   ERR_JOURNAL_KEY_BUSY,
   ERR_JOURNAL_KEY_REMOVED,
   ERR_JOURNAL_WRITER_LOST,
@@ -31,6 +32,10 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
 
 const REFUSALS = new Set([ERR_JOURNAL_KEY_BUSY, ERR_JOURNAL_KEY_REMOVED, ERR_JOURNAL_WRITER_LOST]);
 
+function isCancelled(err: unknown): boolean {
+  return isInvokeError(err) && err.code === ERR_JOURNAL_CANCELLED;
+}
+
 /** A refusal means the key is not this writer's to settle; anything else is the
  *  drain failing, which the key records. */
 function isRefusal(err: unknown): boolean {
@@ -46,7 +51,10 @@ function isRefusal(err: unknown): boolean {
  * the journal's writer timeout for as long as the drain does, records or not.
  * The writer's store operations run one at a time, so a heartbeat never races an
  * append for the version. A refused write stops the drain, cancels the input and
- * raises its code; an input error fails the key and is rethrown unchanged —
+ * raises its code. A cancel request (`JournalCancel`) is seen at the next refused
+ * append or heartbeat, and while the drain waits for input through a wait on its
+ * own key: the drain stops pulling, cancels the input, fails the key with
+ * `ERR_JOURNAL_CANCELLED` and raises that code; an input error fails the key and is rethrown unchanged —
  * outside the kind's declared `throws:`, since it is whatever the producer raised.
  */
 class JournalSink implements ResourceInstance<JournalSinkInputs, JournalSinkOutputs> {
@@ -106,6 +114,9 @@ class JournalSink implements ResourceInstance<JournalSinkInputs, JournalSinkOutp
     }, Math.min(heartbeatMs, MAX_TIMER_MS));
     heartbeat.unref();
 
+    // Sees a cancel request while the drain is idle between writes.
+    const watching = createCancellationSource();
+    const watcher = writer.watchForCancel(Math.min(heartbeatMs, MAX_TIMER_MS), watching.token).catch(stop);
     const iterator = input[Symbol.asyncIterator]();
     let pending: Promise<IteratorResult<unknown>> | undefined;
     let count = 0;
@@ -124,6 +135,18 @@ class JournalSink implements ResourceInstance<JournalSinkInputs, JournalSinkOutp
       return { key: writer.key, count };
     } catch (err) {
       clearInterval(heartbeat);
+      if (isCancelled(err)) {
+        try {
+          await serialize(() => writer.failCancelled());
+        } catch (recordErr) {
+          this.ctx.log.error("RecordStream.JournalSink could not record the cancellation on its key", {
+            key: writer.key,
+            error: recordErr instanceof Error ? recordErr.message : String(recordErr),
+          });
+        }
+        await this.cancel(iterator, pending, writer.key);
+        throw err;
+      }
       if (!isRefusal(err)) {
         try {
           const note = await serialize(() => writer.fail(err));
@@ -143,6 +166,11 @@ class JournalSink implements ResourceInstance<JournalSinkInputs, JournalSinkOutp
       }
       await this.cancel(iterator, pending, writer.key);
       throw err;
+    } finally {
+      clearInterval(heartbeat);
+      watching.cancel();
+      watching.dispose();
+      await watcher;
     }
   }
 

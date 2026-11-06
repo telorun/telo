@@ -7,6 +7,16 @@ const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 
 const ZIP = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 20, 0, 0, 0, 8, 0]);
 const TEXT = new TextEncoder().encode("plain words, no signature");
 const NOISE = Uint8Array.from([0x13, 0x37, 0xc0, 0xde, 0x00, 0x42, 0x99, 0x01]);
+const ascii = (text: string) => new TextEncoder().encode(text);
+/** `size`-less ISO BMFF box start: four size bytes, `ftyp`, the major brand. */
+const ftyp = (brand: string) => Uint8Array.from([0, 0, 0, 24, ...ascii("ftyp" + brand), 0, 0, 0, 0]);
+/** An EBML header: magic, size, then the DocType element after `before` filler bytes. */
+const ebml = (docType: string, before = 0) =>
+  Uint8Array.from([
+    0x1a, 0x45, 0xdf, 0xa3, 0x9f,
+    ...new Uint8Array(before).fill(0x42).map((byte, at) => (at % 2 ? 0x81 : byte)),
+    0x42, 0x82, 0x80 | docType.length, ...ascii(docType), 0, 0,
+  ]);
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const OCTETS = "application/octet-stream";
 
@@ -62,6 +72,38 @@ it.each([
   expect(await verdict(input, declared)).toEqual({ mediaType, mislabelled });
 });
 
+it.each([
+  ["MP3 with an ID3 tag", ascii("ID3\x04\x00\x00\x00\x00\x00\x00"), "audio/mpeg"],
+  ["MP3 frame sync (MPEG-1 layer III)", Uint8Array.from([0xff, 0xfb, 0x90, 0x44, 0]), "audio/mpeg"],
+  ["MP3 frame sync (MPEG-2 layer III)", Uint8Array.from([0xff, 0xf3, 0x90, 0x44, 0]), "audio/mpeg"],
+  ["WAV", ascii("RIFF\x24\x00\x00\x00WAVEfmt "), "audio/wav"],
+  ["OGG", ascii("OggS\x00\x02\x00\x00"), "audio/ogg"],
+  ["FLAC", ascii("fLaC\x00\x00\x00\x22"), "audio/flac"],
+  ["M4A", ftyp("M4A "), "audio/mp4"],
+  ["M4B", ftyp("M4B "), "audio/mp4"],
+  ["QuickTime", ftyp("qt  "), "video/quicktime"],
+  ["MP4", ftyp("isom"), "video/mp4"],
+  ["MP4 (mp42)", ftyp("mp42"), "video/mp4"],
+  ["WebM", ebml("webm"), "video/webm"],
+  ["WebM with its DocType later in the window", ebml("webm", 30), "video/webm"],
+])("detects %s by content, whatever was declared", async (name, input, mediaType) => {
+  expect(await verdict(input)).toEqual({ mediaType, mislabelled: false });
+  expect(await verdict(input, mediaType)).toEqual({ mediaType, mislabelled: false });
+  expect(await verdict(input, "application/octet-stream")).toEqual({ mediaType, mislabelled: false });
+  expect(await verdict(input, "text/plain")).toEqual({ mediaType, mislabelled: true });
+});
+
+it.each([
+  ["HEIC", ftyp("heic"), "image/heic"],
+  ["AVIF", ftyp("avif"), "image/avif"],
+  ["a Matroska file", ebml("matroska"), "video/x-matroska"],
+  ["ADTS AAC", Uint8Array.from([0xff, 0xf1, 0x50, 0x80, 0]), "audio/aac"],
+  ["a WebM DocType past the window", ebml("webm", 70), "video/x-matroska"],
+])("leaves %s to its declared type", async (name, input, declared) => {
+  expect(await verdict(input, declared)).toEqual({ mediaType: declared, mislabelled: false });
+  expect(await verdict(input)).toEqual({ mediaType: OCTETS, mislabelled: false });
+});
+
 it("compares the declared type lower-cased and without its parameters", async () => {
   expect(await verdict(TEXT, " Text/Plain ; charset=UTF-8")).toEqual({
     mediaType: "text/plain",
@@ -69,7 +111,7 @@ it("compares the declared type lower-cased and without its parameters", async ()
   });
 });
 
-it("recognises exactly the nine types of the data file", async () => {
+it("recognises exactly the types of the data file", async () => {
   const catalog = JSON.parse(
     await readFile(new URL("../../media-types.json", import.meta.url), "utf8"),
   );
@@ -83,6 +125,14 @@ it("recognises exactly the nine types of the data file", async () => {
     DOCX,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "audio/mpeg",
+    "audio/wav",
+    "audio/ogg",
+    "audio/flac",
+    "audio/mp4",
+    "video/quicktime",
+    "video/webm",
+    "video/mp4",
   ]);
 });
 

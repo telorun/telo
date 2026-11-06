@@ -1,0 +1,17 @@
+modules:
+  modules/ai-conversation: Added
+body: "Uploaded files belong to one conversation. AiConversation.RegisterAttachment
+  registers a file pending, or, given a binding of a conversation and its running turn,
+  bound to that conversation at once and refused once another turn is current; a
+  caller-supplied id that already exists answers its record only while it is unreleased
+  and as the call would have left it. AiConversation.Admit admits a turn and binds the
+  files its message names in one write conditional on the header version, Append binds
+  the files an entry names, Delete releases the conversation's files in its own
+  transaction, and ExpireAttachments and ForgetAttachments let an expiry pass release
+  expired uploads and remove released files' records; ReadAttachment returns a file's
+  record. A file that is unknown, expired, released or held by another conversation is
+  ERR_CONVERSATION_ATTACHMENT_NOT_FOUND with data { attachment }, and the whole write is
+  rolled back. Update now renames and archives only: a turn is admitted with Admit. The
+  store contract gains admit, registerAttachment (with an optional binding),
+  readAttachment, expireAttachments and forgetAttachments, and append takes
+  attachments."

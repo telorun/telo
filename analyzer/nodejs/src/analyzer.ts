@@ -183,6 +183,7 @@ import {
   type RefSlotIssue,
 } from "./validate-ref-slots.js";
 import { retryForProblems } from "./retry-for-slot.js";
+import { pathParamsAnnotationProblems, pathParamsProblems } from "./path-params-slot.js";
 import { serializableAnnotationProblems, serializableProblems } from "./serializable-slot.js";
 import { scopeSlotProblems } from "./validate-scope-slots.js";
 import { topologyRoleProblems } from "./validate-topology-roles.js";
@@ -3421,6 +3422,25 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
         message: `${m.kind}/${resource.name}: ${problem.message}`,
         data: { resource, filePath, path: pointerToPath(problem.pointer) },
       });
+    }
+    // A map of path variables against the template it fills.
+    for (const problem of pathParamsProblems(projected, m as Record<string, any>, {
+      external: (ref) => defs.schemaForId(ref),
+      declarationOf: (value, holder) => {
+        const found = world.projectionScope.resolveManifest(value, holder);
+        return found && "manifest" in found ? found.manifest : undefined;
+      },
+    })) {
+      push(
+        {
+          severity: DiagnosticSeverity.Error,
+          code: problem.code,
+          source: SOURCE,
+          message: `${m.kind}/${resource.name}: ${problem.message}`,
+          data: { resource, filePath, path: problem.path },
+        },
+        problem.judgedAt,
+      );
     }
     for (const diagnostic of moduleFileEntryMismatches(m, (path) => navigateSchemaToExprPath(projected, path))) {
       push(diagnostic);
@@ -9499,7 +9519,7 @@ export class StaticAnalyzer {
     );
 
     // A text slot at or beneath an accessor field, a misplaced text annotation,
-    // and a malformed `x-telo-browser-export`. The kernel refuses the kind when it registers
+    // and a malformed `x-telo-browser-export` or `x-telo-path-params-for`. The kernel refuses the kind when it registers
     // it, so a dependency's is reported at the `imports:` entry reaching it; a
     // named shape is read from the registry, else from the library's own
     // documents.
@@ -9564,6 +9584,10 @@ export class StaticAnalyzer {
         })),
         ...applicationSourceAnnotationProblems(String(m.metadata?.name), m.schema).map((problem) => ({
           code: "APPLICATION_SOURCE_ANNOTATION_INVALID",
+          ...problem,
+        })),
+        ...pathParamsAnnotationProblems(String(m.metadata?.name), m.schema, resolveShape).map((problem) => ({
+          code: "PATH_PARAMS_FOR_INVALID",
           ...problem,
         })),
       ];

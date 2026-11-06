@@ -1,12 +1,15 @@
 import { useContext, useState, type ReactNode } from "react";
 import { resolveBinding, ruleStyle, styleAttribute, type Binding, type StyleRule } from "../bindings.js";
+import { resolveAddress, type AddressWire } from "../address-wire.js";
+import { useHost } from "../host.js";
+import { anyCurrent, columnAddresses } from "../record-selection.js";
 import { useControl } from "../effective-controls.js";
 import type { LayoutProps, ListingDrawing } from "../listing.js";
 import type { ListedRecord } from "../listing-engine.js";
 import { Loading, Node, type SpecNode } from "../nodes.js";
 import { useWindowedBlock } from "../record-window.js";
 import { RelatedValue } from "../related-labels.js";
-import { RootsContext, RowContext } from "../renderer-context.js";
+import { RecordLinkContext, RootsContext, RowContext } from "../renderer-context.js";
 import { useText, type ValueLabel, type WireText } from "../texts.js";
 import { Presented } from "../value-cell.js";
 
@@ -19,31 +22,45 @@ interface Column {
   labels?: ValueLabel[];
   style?: StyleRule;
   cell?: SpecNode;
+  href?: AddressWire;
 }
 
 /** One record's row, with its inline surface under it when one is open there. */
 function TableRow({ record, columns, drawing, span }: { record: ListedRecord; columns: Column[]; drawing: ListingDrawing; span: number }) {
   const roots = useContext(RootsContext);
   const { row } = record;
+  const { location } = useHost();
+  const selected = anyCurrent(columnAddresses(columns, { ...roots, row }, "table column href"), location);
   return (
     <>
-      <tr data-telo-part="table-row" data-style={drawing.rowStyle(row)}>
+      <tr data-telo-part="table-row" data-style={drawing.rowStyle(row)} data-selected={selected ? "true" : undefined}>
         {columns.map((column, index) => (
           <td key={index} data-telo-part="table-cell" data-style={styleAttribute(ruleStyle(column.style, { row }))}>
-            {column.cell ? (
-              <RowContext.Provider value={row}>
-                <RootsContext.Provider value={{ ...roots, row }}>
-                  <Node node={column.cell} />
-                </RootsContext.Provider>
-              </RowContext.Provider>
-            ) : column.relation !== undefined ? (
-              <RelatedValue relation={column.relation} value={resolveBinding(column.value as Binding, { row })} />
-            ) : (
-              <Presented value={resolveBinding(column.value as Binding, { row })} present={column.present} labels={column.labels} />
-            )}
+            <RecordLinkContext.Provider value={true}>
+              {column.cell ? (
+                <RowContext.Provider value={row}>
+                  <RootsContext.Provider value={{ ...roots, row }}>
+                    <Node node={column.cell} />
+                  </RootsContext.Provider>
+                </RowContext.Provider>
+              ) : column.relation !== undefined ? (
+                <RelatedValue relation={column.relation} value={resolveBinding(column.value as Binding, { row })} />
+              ) : (
+                <Presented
+                  value={resolveBinding(column.value as Binding, { row })}
+                  present={column.present}
+                  labels={column.labels}
+                  href={column.href && resolveAddress(column.href, { ...roots, row }, "table column href")}
+                />
+              )}
+            </RecordLinkContext.Provider>
           </td>
         ))}
-        {drawing.hasActions && <td data-telo-part="row-actions">{drawing.actions(record)}</td>}
+        {drawing.hasActions && (
+          <td data-telo-part="row-actions" data-display={drawing.actionsArea.display} ref={drawing.actionsArea.ref}>
+            {drawing.actions(record)}
+          </td>
+        )}
       </tr>
       {drawing.detail?.key === record.key && (
         <tr>
@@ -87,12 +104,14 @@ export function TableLayout({ spec, drawing }: LayoutProps): ReactNode {
   const columns = spec.columns as Column[];
   const span = columns.length + (drawing.hasActions ? 1 : 0);
   const read = drawing.reads[0];
+  // A column sorts only where the listing lets the viewer choose its order.
+  const sortable = (column: Column) => column.sort !== undefined && drawing.sort.sortable.includes(column.sort);
   const sorted = (column: Column) =>
     column.sort === undefined ? undefined : drawing.sort.value === column.sort ? "asc" : drawing.sort.value === `-${column.sort}` ? "desc" : undefined;
   const blocks = (read ? (drawing.windowed ? read.blocks : [read.records]) : []).filter((block) => block.length > 0);
   return (
     <div data-telo-part="table">
-      <div data-telo-part="table-frame">
+      <div data-telo-part="table-frame" data-embedded={drawing.embedded ? "true" : undefined}>
         <table data-telo-part="table-grid">
           <thead data-telo-part="table-head">
             <tr>
@@ -100,7 +119,7 @@ export function TableLayout({ spec, drawing }: LayoutProps): ReactNode {
                 const order = sorted(column);
                 return (
                   <th key={index} data-telo-part="table-header-cell" data-sorted={order} aria-sort={order === "asc" ? "ascending" : order === "desc" ? "descending" : undefined}>
-                    {column.sort === undefined ? (
+                    {!sortable(column) ? (
                       text(column.header)
                     ) : (
                       <button data-telo-part="table-sort" type="button" onClick={() => drawing.sort.sortBy(column.sort as string)}>

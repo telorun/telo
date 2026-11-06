@@ -1,0 +1,5 @@
+modules:
+  modules/ui-react: Added
+body: The chat's copy button draws the new done glyph (a check mark) and takes the
+  chatCopied text as its name for two seconds after a successful copy, announced once
+  through the chat's live region.

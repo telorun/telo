@@ -1,0 +1,127 @@
+kind: Telo.Application
+metadata:
+  name: AiChatTurnApprovals
+  version: 1.0.0
+  description: |
+    A gated tool call through the invocables: the turn ends asking, its approval
+    request is journaled and recorded on the entry holding the call, still
+    undecided; a turn carrying the decision resumes it — the tool runs, the
+    model answers — and the entry then reads the decision.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  scratchDir:
+    env: AI_CHAT_TURN_APPROVALS_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent:
+  kind: Ai.AgentStream
+  model: { kind: AiEcho.EchoModelStream, accepts: [], emitToolCall: { name: transfer, arguments: { amount: 500 } } }
+  toolProviders:
+    - provider:
+        kind: Ai.Tools
+        tools:
+          - name: transfer
+            tool:
+              kind: Run.Value
+              inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { amount: { type: integer } } } }
+              value: { sent: !cel "inputs.amount" }
+            parameters:
+              type: object
+              additionalProperties: false
+              required: [amount]
+              properties: { amount: { type: integer } }
+            approval: !cel "arguments.amount > 100"
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-approvals')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.StartTurn
+metadata: { name: startTurn }
+conversation: !ref chat
+---
+kind: Chat.TurnEvents
+metadata: { name: turnEvents }
+conversation: !ref chat
+---
+kind: Chat.ConversationEntries
+metadata: { name: entries }
+conversation: !ref chat
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: asking
+    invoke: !ref startTurn
+    inputs: { message: pay, attachments: [] }
+  - name: askingEvents
+    invoke: !ref turnEvents
+    inputs: { turn: !cel "steps.asking.result.turn" }
+  - name: asked
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.askingEvents.result.output" }
+  - name: pending
+    invoke: !ref entries
+    inputs: { id: !cel "steps.asking.result.conversation" }
+  - name: decided
+    invoke: !ref startTurn
+    inputs:
+      conversation: !cel "steps.asking.result.conversation"
+      message: ""
+      attachments: []
+      approvals: [{ id: !cel "steps.asked.result.items[2].event.id", approved: true }]
+  - name: decidedEvents
+    invoke: !ref turnEvents
+    inputs: { turn: !cel "steps.decided.result.turn" }
+  - name: resumed
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.decidedEvents.result.output" }
+  - name: after
+    invoke: !ref entries
+    inputs: { id: !cel "steps.asking.result.conversation" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        asked: !cel "steps.asked.result.items.map(f, f.event.type)"
+        request: !cel >-
+          {'toolCallId': steps.asked.result.items[2].event.toolCallId == steps.asked.result.items[0].event.id,
+           'name': steps.asked.result.items[2].event.name,
+           'arguments': steps.asked.result.items[2].event.arguments}
+        askEnded: !cel "steps.asked.result.items[3].event.reason"
+        pending: !cel "steps.pending.result.rows[0].toolCalls[0].approval.id == steps.asked.result.items[2].event.id && steps.pending.result.rows[0].toolCalls[0].approval.decision == null"
+        firstResumed: !cel "steps.resumed.result.items[0].event"
+        resumeEnded: !cel "steps.resumed.result.items[steps.resumed.result.items.size() - 1].event.reason"
+        decision: !cel "steps.after.result.rows.filter(r, has(r.toolCalls)).map(r, r.toolCalls[0].approval.decision)"
+      expected:
+        asked: [tool-call, step-usage, approval-request, turn-end]
+        request: { toolCallId: true, name: transfer, arguments: { amount: 500 } }
+        askEnded: approval
+        pending: true
+        firstResumed: { type: tool-result, id: echo-call-1, result: { sent: 500 } }
+        resumeEnded: stop
+        decision: [{ approved: true }]

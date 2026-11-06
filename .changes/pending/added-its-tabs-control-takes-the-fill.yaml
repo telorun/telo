@@ -1,0 +1,7 @@
+modules:
+  modules/ui-react-radix: Added
+body: Its Tabs control takes the fill prop, marking its root and the shown panel with
+  data-fill and passing the room on to the panel's content, and the theme styles the bar
+  and command parts, draws a chat header's bar at the header's height, and scopes its
+  button, badge and bar heights and a flush split's vertical clipping to parts that do
+  not fill.

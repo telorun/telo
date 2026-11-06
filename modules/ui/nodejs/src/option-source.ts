@@ -1,5 +1,7 @@
 import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
 import { isCollectionSource, type Operator } from "./collection-source.js";
+import type { AddressSpec } from "./address-expansion.js";
+import { addressSpec, type AddressConfig } from "./address-spec.js";
 import { modelSchema, type JsonSchema } from "./model-schema.js";
 import { isChain, type Binding } from "./row-binding.js";
 
@@ -10,7 +12,7 @@ export interface OptionSourceSpec {
   value: Binding;
   label: Binding;
   hint?: Binding;
-  href?: Binding;
+  href?: AddressSpec;
   [key: string]: unknown;
 }
 
@@ -27,7 +29,7 @@ type CollectionOptionsResource = RuntimeResource & {
   value: Binding;
   label: Binding;
   hint?: Binding | null;
-  href?: Binding | null;
+  href?: AddressConfig | null;
   source: unknown;
   filters?: Record<string, Binding> | null;
   search?: { property: string; operator: Operator } | null;
@@ -83,7 +85,7 @@ class CollectionOptions implements ResourceInstance, OptionSourceInstance {
       value,
       label: resource.label,
       ...(resource.hint != null ? { hint: resource.hint } : {}),
-      ...(resource.href != null ? { href: resource.href } : {}),
+      ...(resource.href != null ? { href: addressSpec(resource.href, this.ctx, `${owner} href`) } : {}),
       basePath: source.basePath,
       filters,
       pageSize: Number(resource.pageSize ?? 25),

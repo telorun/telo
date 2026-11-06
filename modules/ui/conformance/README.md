@@ -2,7 +2,7 @@
 
 Data files a renderer's tests read, so every renderer answers what `ui`
 answers. Each is one JSON object, `{ description, rows }`, every row carrying a
-`name` and the case's inputs and expected outcome. All three ship with the
+`name` and the case's inputs and expected outcome. All six ship with the
 module through `files:`.
 
 | File | Pins |
@@ -10,6 +10,9 @@ module through `files:`.
 | `match.json` | what a `Ui.Match` condition holds for a value |
 | `control-fits.json` | which control fits which property, the rule `Ui.controlFits` states |
 | `listing-reads.json` | the exact requests a listing's read plan sends |
+| `addresses.json` | the text an address or request target resolves to, or the parameter it is unresolved for |
+| `current-location.json` | whether a link to an address is marked as the current location |
+| `refreshes.json` | which readers a refresh entry, with its `*` / `**` segments, reads again |
 
 ## `listing-reads.json`
 
@@ -43,3 +46,48 @@ first page alone.
 `ui` produces the rows' requests through the functions `@telorun/ui` exports
 (`pageRequest`, `reloadRequests`, `valuesRequest`); its own unit test holds them
 to every row.
+
+## `addresses.json`
+
+One row is one address in the wire form `ui` produces (`{ path, pathParams,
+queryParams }`, every member a binding), the `roots` its chains read from, and
+either `url` — the text it resolves to — or `unresolved`, the `parameter` the
+`ERR_UI_ADDRESS_UNRESOLVED` error names (`path` when the whole address, or a
+path read from data, is unusable). The rules the rows pin:
+
+- A literal `path` is a template; a `{name}` segment is replaced by the value of
+  `pathParams.<name>`, percent-encoded as one segment so only RFC 3986's
+  unreserved characters stay, a whole `.` or `..` becoming `%2E` / `%2E%2E`.
+  An integer is its decimal; an empty, null, absent or non-text value is
+  unresolved.
+- A `path` read from data is used as it is, never expanded.
+- `queryParams` follow in declaration order, form-urlencoded; null, absent and
+  empty lists are left out, a list repeats its key, a boolean is `true` or
+  `false`, a number its JSON text. They are appended after the path's own query
+  and before its fragment.
+- The result is held to the address rule: under the mount, or an `https:`,
+  `http:` or `mailto:` address.
+
+## `current-location.json`
+
+One row is the text an address resolves to, the viewer's `location` (`path`
+under the mount, and `search`), and whether a link to it is `current`. The
+rules the rows pin: an app-relative address is current when its path equals the
+current path exactly (the fragment ignored) and its query equals the current
+one once every parameter named `_telo*` is set aside — key order free, each
+key's values compared as an ordered list, an absent key absent. An `https:`,
+`http:` or `mailto:` address is never current. A parameter the application did
+not write unmarks the link. Only a renderer draws links, so only renderers read
+this file.
+
+## `refreshes.json`
+
+One row is a `refreshes` entry in the wire form (`address`, with `roots` for
+its chains), the encoded app-relative `path` a reader is keyed by, and whether
+it `match`es, so the reader reads again. A pattern is matched segment by
+segment against the resolved, encoded path with its query left out: a `*`
+segment is exactly one non-empty segment, a `**` segment any number of them,
+none included (`/a/7/**` covers `/a/7`). A segment is a wildcard only when the
+whole segment is `*` or `**` in a literal template: a `{name}` value is
+encoded, so a star in it is text, and a path read from data is exact. An entry
+with no wildcard matches only its own path. Only renderers read this file.

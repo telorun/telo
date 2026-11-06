@@ -57,7 +57,7 @@ kind: Ui.Action
 metadata: { name: generate }
 inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
 outputModel: !ref Answer
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 result:
   type: stack

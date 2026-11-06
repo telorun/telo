@@ -1,0 +1,9 @@
+# The map is omitted: it binds nothing, so `{id}` is unbound all the same.
+kind: Telo.Library
+metadata: { name: PathParamOmittedLib }
+imports: { Kinds: ../../kinds }
+exports: { resources: [link] }
+---
+kind: Kinds.Link
+metadata: { name: link }
+href: { path: "/x/{id}" }

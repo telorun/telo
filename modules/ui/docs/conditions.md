@@ -83,14 +83,14 @@ in.
 | --- | --- |
 | `data` | inside a [`Ui.Data`](data.md)'s `content`, typed from its `model` |
 | `error` | inside a `Ui.Data`'s or a [`Ui.Action`](action.md#the-answer)'s `failure`: a `Ui.RequestError` |
-| `result` | inside an action's `result`, and its `onSuccess.navigate`: the answer, typed from `outputModel` |
-| `input` | inside an action's `result` and `failure`: the record sent, typed from `inputModel` |
+| `result` | inside an action's `result`, and its `onSuccess` (`navigate`, `refreshes`): the answer, typed from `outputModel` |
+| `input` | inside an action's `request.target`, `result`, `failure` and `onSuccess`: the record sent, typed from `inputModel` |
 | `query` | wherever the resource or the page declares `query:` (a page, a reader, a listing's row actions); with none declared it is closed and empty |
 | `values` | a form's or an action's field `shown`, an action's `enabled`, its `result` and `failure`, typed from the model |
 | `row` | a `list` node's column and row actions, a listing's row actions and layouts; typed as an element of what the list's `rows` names, or from the listing's model |
 
 Every root is read only by what is named — a condition's `at`, a `value` or
-`list` node, a reader's `source.params` — and never by an expression the
+`list` node, a reader's `source` — and never by an expression the
 server evaluates: `!cel "data.x"` in a `text` is `CEL_UNKNOWN_IDENTIFIER`.
 
 ## Query parameters

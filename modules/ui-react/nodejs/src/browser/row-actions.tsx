@@ -2,6 +2,7 @@ import { Fragment, useContext, useId, useRef, useState, type ReactNode } from "r
 import { conditionHolds, readBinding } from "./bindings.js";
 import { useHost, useHostStore } from "./host.js";
 import { Node } from "./nodes.js";
+import { RowMenu, type RowMenuEntry } from "./row-menu.js";
 import { followSuccess, PressQueueContext, runOperation, type Outcome, type RowActionSpec } from "./operation.js";
 import {
   enteredRecord,
@@ -52,6 +53,8 @@ const answerKey = (index: number, key: string) => `${index}\u0000${key}`;
 export interface RowActions {
   /** The buttons — or the answers drawn in their place — of one row. */
   cell(row: Row, key: string, disabled?: boolean): ReactNode;
+  /** The same, folded into a menu: the answers of pressed actions, then one button opening each action followed by `after`. */
+  menuCell(row: Row, key: string, disabled?: boolean, after?: RowMenuEntry[]): ReactNode;
   /** The confirmation of the press being asked about, when one is open. */
   dialog: ReactNode;
   /** Press an entry for a row, its inputs read over `extra` beside the row: a move's `to`. */
@@ -131,7 +134,7 @@ export function useRowActions(
     if (outcome.ok) {
       setAsking(undefined);
       if (action.result !== undefined) answer(answerKey(index, key), outcome);
-      followSuccess(action, outcome.result, host, store, pages);
+      followSuccess(action, outcome, host, store, pages);
       succeeded(outcome.result, key);
       return;
     }
@@ -198,6 +201,44 @@ export function useRowActions(
       );
     });
 
+  const menuCell = (row: Row, key: string, disabled = false, after: RowMenuEntry[] = []): ReactNode => {
+    const rowRoots = { ...roots, row };
+    const busy = busyKeys.has(key);
+    const answered: ReactNode[] = [];
+    const offered: RowMenuEntry[] = [];
+    entries.forEach((entry, index) => {
+      const outcome = answers.get(answerKey(index, key));
+      const { action } = entry;
+      if (outcome?.ok && action.result !== undefined) {
+        answered.push(
+          <div key={index} data-telo-part="row-answer">
+            <RootsContext.Provider value={{ result: outcome.result, input: outcome.input, values: outcome.input }}>
+              <Node node={action.result} />
+            </RootsContext.Provider>
+          </div>,
+        );
+        return;
+      }
+      const allowed = conditionHolds(entry.enabled, rowRoots);
+      offered.push({
+        key: `action:${index}`,
+        label: text(action.label),
+        disabled: busy || disabled || !allowed,
+        ...(!allowed && entry.enabled ? { hint: text(entry.enabled.disabledText, undefined, rowRoots) } : {}),
+        run: () => press(index, row, key),
+      });
+    });
+    return (
+      <>
+        {answered}
+        <RowMenu entries={[...offered, ...after]} />
+        {[...entries.keys()].map((index) => (
+          <Fragment key={index}>{failureOf(index, key)}</Fragment>
+        ))}
+      </>
+    );
+  };
+
   let dialog: ReactNode = null;
   if (asking) {
     const entry = entries[asking.index];
@@ -246,6 +287,7 @@ export function useRowActions(
 
   return {
     cell,
+    menuCell,
     dialog,
     press,
     failure: failureOf,

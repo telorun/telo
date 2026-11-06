@@ -261,6 +261,8 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   // The last page delivered keeps its width while the next one loads; a path no
   // page declares has none, whichever page came before it.
   const width = declared ? (shown ?? held.current.page)?.width : undefined;
+  // A page fills while one of its own nodes does and no page surface stands in for it.
+  const fill = !failure && claims === 0 && shown?.children.some((child: SpecNode) => child.fill === true) ? "true" : undefined;
   // A failure is drawn whatever the styles: it must never be a spinner forever.
   if (!failure && (!styled || !controls)) return null;
   const texts = app?.texts ?? NO_TEXTS;
@@ -270,7 +272,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     <ControlsContext.Provider value={controls ?? BUILT_IN}>
     <HostContext.Provider value={store}>
       <RendererContext.Provider value={base}>
-        <div data-telo-part="app" data-compact={compact ? "true" : undefined} onClick={followAnchor}>
+        <div data-telo-part="app" data-compact={compact ? "true" : undefined} data-fill={fill} onClick={followAnchor}>
           <header data-telo-part="header" data-width={app?.header.width}>
             <div data-telo-part="header-content">
               {app && <SiteNavigation navigation={app.navigation} path={path} side="start" />}
@@ -290,8 +292,8 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
             </div>
           </header>
           {app && <SiteNavigation navigation={app.navigation} path={path} side="before" />}
-          <main data-telo-part="main">
-            <div data-telo-part="page" data-state={state} data-width={width}>
+          <main data-telo-part="main" data-fill={fill}>
+            <div data-telo-part="page" data-state={state} data-width={width} data-fill={fill}>
               {failure ? (
                 <ErrorNode error={failure} />
               ) : !app ? (

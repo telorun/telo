@@ -129,6 +129,9 @@ A column is exactly one of:
 columns:
   - header: Task                 # optional
     value: !cel "row.text"       # an accessor: a chain into the record, or a fixed value
+    href:                        # optional: the cell links to an address over `row`
+      path: "/tasks/{id}"
+      pathParams: { id: !cel "row.id" }
     style:                       # optional style rule for the cell
       by: !cel "row.priority"
       cases: { "1": danger }
@@ -141,7 +144,9 @@ columns:
 ```
 
 `row` is typed from the listing's `model`, so a property the model does not
-declare is `CEL_UNKNOWN_FIELD` at `telo check`.
+declare is `CEL_UNKNOWN_FIELD` at `telo check`. A value column's `href` is an
+[address](nodes.md#addresses) drawing the value as the text of a link; a cell
+column takes none.
 
 Whether written or derived, a value column takes everything else from the
 property its value names:
@@ -182,9 +187,12 @@ layout and the place in `model`. `telo check` does not report it.
 
 Records one under another, each drawn with `content` — a feed.
 
+A record is one line: its content takes the room and the record's actions (buttons, or the menu button) sit at its end, centred on the content. Its own link is not underlined until hovered, and the row is filled on hover and while it is the current one.
+
 | Field | | |
 | --- | --- | --- |
 | `content` | derived | the node drawn per record |
+| `frame` | `framed` | `framed` draws the list as a bordered, rounded panel on the surface background; `flush` draws no border, radius or background, the records separated by dividers alone, for a list that sits against an edge — a sidebar's |
 
 ## `Ui.CardLayout`
 
@@ -320,7 +328,7 @@ without `end`, tree roots and children, the next page, a reload — are pinned b
 
 | Branch | Members beside `type` and `reads` |
 | --- | --- |
-| `table` | `columns`, each `{ header, value?, labels, sort?, relation?, present?, style?, cell? }` — `relation` naming the key of the listing's `relations` its value is labelled through |
+| `table` | `columns`, each `{ header, value?, href?, labels, sort?, relation?, present?, style?, cell? }` — `relation` naming the key of the listing's `relations` its value is labelled through |
 | `list` | `content` |
 | `cards` | `content`, `size` |
 | `board` | `content`, `move?` |

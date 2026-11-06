@@ -7,7 +7,12 @@ import {
   type MediaPart,
   type MessageContent,
 } from "@telorun/ai";
-import { modelResponseInvalid } from "@telorun/ai";
+import {
+  acceptedOf,
+  modelResponseInvalid,
+  requireAccepted,
+  type AcceptedContent,
+} from "@telorun/ai";
 import type {
   AiModelInstance,
   AiModelStreamInstance,
@@ -82,6 +87,7 @@ interface OpenaiResource {
   /** Injected by Phase 5 — the account's base URL and credential live on its
    *  client, so this module holds no key. */
   request: HttpRequestInstance;
+  accepts?: AcceptedContent;
   options?: Record<string, unknown>;
 }
 
@@ -161,7 +167,8 @@ const TAKES_MEDIA = "This endpoint takes text, images and files.";
  * dropped — dropping it would send a request quietly missing part of the
  * message.
  */
-function translatePart(part: ContentPart, label: string): OpenAiContentPart {
+function translatePart(part: ContentPart, label: string, accepts: AcceptedContent): OpenAiContentPart {
+  requireAccepted(accepts, part, label);
   switch (part.type) {
     case "text":
       return { type: "text", text: part.text };
@@ -189,12 +196,20 @@ function translatePart(part: ContentPart, label: string): OpenAiContentPart {
 
 /** Translate message content for a role that can carry parts (user). A plain
  *  string passes through; content parts become the OpenAI multimodal part array. */
-function translateContent(content: MessageContent, label: string): string | OpenAiContentPart[] {
+function translateContent(
+  content: MessageContent,
+  label: string,
+  accepts: AcceptedContent,
+): string | OpenAiContentPart[] {
   if (typeof content === "string") return content;
-  return content.map((part) => translatePart(part, label));
+  return content.map((part) => translatePart(part, label, accepts));
 }
 
-function translateMessages(messages: Message[], label: string): OpenAiRequestMessage[] {
+function translateMessages(
+  messages: Message[],
+  label: string,
+  accepts: AcceptedContent,
+): OpenAiRequestMessage[] {
   const out: OpenAiRequestMessage[] = [];
   // OpenAI requires every `tool` message answering an assistant's tool_calls to be
   // contiguous, before any other role. A media-bearing tool result can't carry the
@@ -224,7 +239,7 @@ function translateMessages(messages: Message[], label: string): OpenAiRequestMes
       if (media.length > 0) {
         pendingMediaMessages.push({
           role: "user",
-          content: media.map((part) => translatePart(part, label)),
+          content: media.map((part) => translatePart(part, label, accepts)),
         });
       }
       continue;
@@ -252,7 +267,7 @@ function translateMessages(messages: Message[], label: string): OpenAiRequestMes
     }
     out.push({
       role: m.role,
-      content: translateContent(m.content, label),
+      content: translateContent(m.content, label, accepts),
     } as OpenAiRequestMessage);
   }
   // The conversation handed to the provider ends with the tool results of the last
@@ -331,6 +346,7 @@ abstract class OpenaiBase {
   snapshot(): Record<string, unknown> {
     return {
       model: this.resource.model,
+      accepts: acceptedOf(this.resource),
       ...(this.resource.options ? { options: this.resource.options } : {}),
     };
   }
@@ -342,6 +358,7 @@ abstract class OpenaiBase {
       messages: translateMessages(
         input.messages,
         `OpenAI chat completion "${this.resource.metadata.name}"`,
+        acceptedOf(this.resource),
       ),
       ...(tools ? { tools } : {}),
       // A declared contract input, under this dialect's own key AND its own

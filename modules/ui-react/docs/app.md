@@ -162,7 +162,9 @@ The application reads the icon's file when it starts and serves it under
 renderer's layout uses as a mask over `currentColor`: the glyph takes the
 colour of the entry's text — the current entry's included — and none of the
 file's markup enters the page. A file that is not an SVG, PNG or WebP image is
-refused with `ERR_UI_ICON_FORMAT_UNKNOWN` when the application starts.
+refused with `ERR_UI_ICON_FORMAT_UNKNOWN` when the application starts. A chat
+button's icon is the same glyph, its file served by the same rule and refused
+the same way by `Ui.Chat` when the chat is first read.
 
 ## Header
 
@@ -287,9 +289,8 @@ children, a computed list item or a computed `ref` is `REF_SLOT_COMPUTED` at
 out of an expression. Each composite a page places is resolved once, when the
 page is created; one the header places, when the application starts.
 
-A value that does not make a valid node once evaluated — an `href` that is no
-allowed address (`javascript:…`, or `//host`, which is not app-relative), a
-`text` that is not a string — replaces that one node with
+A value that does not make a valid node once evaluated — a `style` naming none
+of the known styles, a `text` that is not a string — replaces that one node with
 an `error` node, code `ERR_UI_NODE_INVALID`, and is logged. The rest of the
 page is served. Each node is checked once per request; what a composite
 provides is checked once, when it is resolved.
@@ -357,13 +358,13 @@ time `*`, and an application reading no header adds none.
 
 A fault in one node never takes the page with it.
 
-- A `link` whose `href` starts with `/` is a reference into the application.
-  One that would leave it once the browser resolves it — `//host`, `/\host`,
-  or either with a tab or a line break inside, which a browser drops — is
-  refused where it is written and replaced by an `error` node where it is
-  computed (above). The renderer holds the same line for a document that
-  reaches it some other way: such a link is not drawn as a link, the `error`
-  node `ERR_UI_NODE_INVALID` stands in its place, and a navigation entry
+- A `link` whose address resolves to a path starting with `/` is a reference
+  into the application. One that would leave it once the browser resolves it —
+  `//host`, `/\host`, or either with a tab or a line break inside, which a
+  browser drops — is refused where it is written. An address that does not
+  resolve at all (an empty path parameter, a result that is no address) is
+  drawn as plain text, and `ERR_UI_ADDRESS_UNRESOLVED` is reported once in the
+  console ([addresses](urls.md#addresses)). A navigation entry
   whose address does so is shown the same way beside the navigation.
 - A click on a link is taken as a move within the application only when it
   leads to a page the application declares. A `link` node to anything else
@@ -414,9 +415,10 @@ but the drawing is the listing's, whatever the layout:
   ascending then descending. A calendar and a timeline draw no control but
   still send the sort. A sort or a filter change returns every read to its
   first page.
-- **Reloading.** A write, a delete, a row action, `notifyChanged(basePath)`
-  and an action's `onSuccess.refreshes` reload every listing whose source has
-  that `basePath`, and every `values: present` filter over it. A reload keeps
+- **Reloading.** A write, a delete, a row action, `notifyChanged(path)` and an
+  action's resolved target and `onSuccess.refreshes` reload every listing whose
+  source has that `basePath` ([invalidation](urls.md#invalidation)), and every
+  `values: present` filter over it. A reload keeps
   what is drawn until it answers: it reads the loaded pages again from the
   first, each with the cursor the one before answered, and draws them
   together; with more than 10 pages loaded in a read it reads the first page
@@ -463,10 +465,11 @@ application starts; one built for another is drawn as an error node in place
 of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
 
 - A listing, a form and an option source read and write their `basePath` under
-  the mount, as a reader reads its `source.path`: mounted at `/admin`,
+  the mount, as a reader reads its resolved `source`: mounted at `/admin`,
   `basePath: /api/todos` lists from `/admin/api/todos` and edits
   `/admin/api/todos/<key>`. A write announces the change under the
-  `basePath` as written, which is what `onSuccess.refreshes` names.
+  `basePath` (and an edit or delete also under the record's own path), which is
+  what a reader or an action's `refreshes` names.
 - A filter bar shows the filters on one property together: one label, and
   each control captioned by its operator — `from` and `to` for a range
   (`gte`, `lte`), `after` and `before` for `gt` and `lt`.
@@ -521,6 +524,13 @@ node's, drawn the same way in a last cell of each row — are text buttons in
 each row, showing each action's label in the order declared, before edit and
 delete.
 
+- Written `rowActionsDisplay: menu`, or `auto` where the listing's own width
+  does not give the buttons room, they are folded with edit and delete into
+  one `row-menu` button per row opening a `Menu`; an action whose condition
+  does not hold is a disabled entry whose hint is its `disabledText`. `auto`
+  is judged once for the listing, in the container the records are drawn in
+  and never the viewport, before the page is painted and again whenever that
+  container is resized or the records or actions change.
 - A press sends the row's bound record at once — `POST`, as JSON, to the
   action's path under the mount, as an action's own press does. The record is
   read when the button is pressed.
@@ -615,20 +625,25 @@ below it what the operation answered.
 - The fields are a form's: the same controls, derived the same way, and the
   same check in the page before anything is sent. The button shows the
   action's `label`.
-- A press sends the entered record — `POST`, `content-type: application/json`
-  — to the action's `path` under the mount, as a reader reads its
-  `source.path`: mounted at `/admin`, `path: /api/reports` is sent to
-  `/admin/api/reports`. `onSuccess.refreshes` names paths as written. A field
-  holding nothing is left out; a checkbox is always `true` or `false`.
+- A press sends the action's `request`: its `method` to its `target`, resolved
+  over `input` and put under the mount (mounted at `/admin`, a target
+  `/api/reports` is sent to `/admin/api/reports`). `POST`, `PUT` and `PATCH`
+  send `content-type: application/json` and the entered record's properties
+  that hold a value, less the ones the target `consumed`; `{}` when none
+  remain. `DELETE` sends no body and no content type. A target that does not
+  resolve sends nothing and draws the `failure` tree with
+  `ERR_UI_ADDRESS_UNRESOLVED`. A field holding nothing is left out; a checkbox
+  is always `true` or `false`.
 - Every press clears the last answer, and the form takes no other press until
   the operation answers. A `serial` action's presses on the page — its form's
   and its rows' — are sent one after another, in the order they were made.
   The fields keep what was entered, whatever the answer.
 - A success draws the `result` tree (`action-result`) over `result`, the
   record sent as `input` and what the form holds now as `values`. Its body is
-  read only when that tree or `onSuccess.navigate` reads `result`, and must
-  then be a JSON object the declared answer model accepts; any other body is a
-  failure `ERR_UI_RESPONSE_INVALID`.
+  read only when that tree, `onSuccess.navigate` or an `onSuccess.refreshes`
+  entry reads `result`, and must then be a JSON object the declared answer
+  model accepts; any other body, an empty one (a `204`) included, is a failure
+  `ERR_UI_RESPONSE_INVALID`. A 2xx nothing reads is a success whatever it holds.
 - Anything else draws the `failure` tree (`action-failure`) over `error` —
   `status`, absent when nothing answered; `code`, the problem body's `code`,
   else `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN` for a 403 and
@@ -636,12 +651,14 @@ below it what the operation answered.
   renderer's own text for the status — `input` and `values`. A 400 also marks
   the fields its `data.issues` name, each worded from its `keyword` and
   `params` by `ui`'s validation texts, every other issue under the fields.
-- After a success, every reader whose `source.path` and every listing whose
-  source's `basePath` equals an entry of `onSuccess.refreshes` reads again, and
-  `onSuccess.navigate` moves the page: within the application to a declared
-  page, by a full load to any other app-relative address, by replacing the
-  page for an `https://`, `http://` or `mailto:` one. A value that is no such
-  address navigates nowhere.
+- After a success the resolved target path and each resolved
+  `onSuccess.refreshes` path are announced (an entry that does not resolve is
+  skipped and reported in the console), and every reader reading exactly one
+  reads again ([invalidation](urls.md#invalidation)). `onSuccess.navigate`
+  moves the page: within the application to a declared page, by a full load to
+  any other app-relative address, by replacing the page for an `https://`,
+  `http://` or `mailto:` one. An address that does not resolve navigates
+  nowhere.
 - The drawn answer is cleared when a property `clearAnswerOn` lists changes.
 
 ## Surfaces

@@ -10,6 +10,7 @@ import { isOptionSource, type OptionSourceSpec } from "./option-source.js";
 import { resolveNode, type AuthoredNode } from "./node-resolution.js";
 import { controlFits, type Control } from "./control-fit.js";
 import { stateSpec, type StateConfig } from "./state-record.js";
+import { filledProvided } from "./fill-marking.js";
 
 type Scalar = string | number | boolean;
 
@@ -256,7 +257,7 @@ class Filters implements ResourceInstance {
       state,
       presets,
     };
-    return { node, assets: content.assets };
+    return filledProvided({ node, assets: content.assets });
   }
 }
 

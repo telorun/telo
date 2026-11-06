@@ -1,0 +1,24 @@
+# A list column's link reads a field the row does not have.
+kind: Telo.Application
+metadata: { name: UiInvalidAddressRowFieldApp, version: 1.0.0 }
+imports: { Ui: ../../../../ }
+---
+kind: Telo.JsonSchema
+metadata: { name: Rows }
+schema:
+  type: object
+  properties:
+    items:
+      type: array
+      items: { type: object, properties: { id: { type: integer }, name: { type: string } } }
+---
+kind: Ui.Data
+metadata: { name: misspelledField }
+model: !ref Rows
+source: /api/rows
+content:
+  type: list
+  rows: !cel "data.items"
+  columns:
+    - value: !cel "row.name"
+      href: { path: "/items/{id}", pathParams: { id: !cel "row.nmae" } }

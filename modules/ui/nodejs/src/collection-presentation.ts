@@ -1,5 +1,6 @@
 import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
 import { isCollectionSource, sameCollection, type CollectionFacts, type Operator } from "./collection-source.js";
+import { addressSpec, type AddressConfig } from "./address-spec.js";
 import type { OptionSourceSpec } from "./option-source.js";
 import type { Binding } from "./row-binding.js";
 
@@ -8,7 +9,7 @@ interface RelationConfig {
   source: unknown;
   label: Binding;
   hint?: Binding | null;
-  href?: Binding | null;
+  href?: AddressConfig | null;
   search?: { property: string; operator: Operator } | null;
   pageSize?: number | bigint | null;
 }
@@ -87,7 +88,7 @@ class CollectionPresentation implements ResourceInstance, PresentationInstance {
         value: { root: "row", path: [target.key] },
         label: entry.label,
         ...(entry.hint != null ? { hint: entry.hint } : {}),
-        ...(entry.href != null ? { href: entry.href } : {}),
+        ...(entry.href != null ? { href: addressSpec(entry.href, this.ctx, `${at}.href`) } : {}),
         basePath: related.basePath,
         filters: {},
         pageSize: Number(entry.pageSize ?? 25),

@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: AiChatPendingRetention
+  version: 1.0.0
+  description: |
+    A retention of zero or less for unsent uploads is refused at the declaration
+    by `telo check`, and from a consumer whose own check is silent, by the
+    controller when the conversation is created.
+imports: { Assert: ../../assert }
+targets: [!ref refusedAtCheck, !ref refusedAtCreation]
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCheck }
+source: ./__fixtures__/pending-retention-zero/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets `attachments.pendingRetention` to zero or less"
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCreation }
+source: ./__fixtures__/pending-retention-zero-app.yaml
+expect: { errors: [], runFails: "[ERR_AI_CHAT_PENDING_RETENTION_NOT_POSITIVE]" }

@@ -1,0 +1,42 @@
+# What a chat's header and its nodes refuse before anything runs: a header root
+# read outside the header, an unknown command or summary field, and a command
+# chain to a non-command.
+kind: Telo.Library
+metadata:
+  name: UiInvalidChatHeader
+  version: 1.0.0
+  description: Test fixture exporting chats whose header nodes read their roots wrongly, and a view reading them outside a header.
+imports: { Ui: ../../../../, Fixture: ../../conversation }
+exports: { resources: [commandOutside, summaryOutside, unknownCommand, unknownSummaryField, notACommand] }
+---
+kind: Fixture.Endpoint
+metadata: { name: conversation }
+operations: [cancel]
+---
+kind: Ui.ConversationSource
+metadata: { name: source }
+conversation: !ref conversation
+basePath: /api/chat
+---
+kind: Ui.View
+metadata: { name: commandOutside }
+content: { type: command, command: !cel "chat.stop", text: Stop }
+---
+kind: Ui.View
+metadata: { name: summaryOutside }
+content: { type: value, value: !cel "conversation.title" }
+---
+kind: Ui.Chat
+metadata: { name: unknownCommand }
+source: !ref source
+header: [{ type: command, command: !cel "chat.exportTranscrip", text: Export }]
+---
+kind: Ui.Chat
+metadata: { name: unknownSummaryField }
+source: !ref source
+header: [{ type: value, value: !cel "conversation.titel" }]
+---
+kind: Ui.Chat
+metadata: { name: notACommand }
+source: !ref source
+header: [{ type: command, command: !cel "chat", text: Export }]

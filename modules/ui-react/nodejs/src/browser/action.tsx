@@ -1,12 +1,12 @@
 import { useContext, useId, useRef, useState, type FormEvent } from "react";
-import { conditionHolds, styleAttribute } from "./bindings.js";
+import { conditionHolds, fillAttribute, styleAttribute } from "./bindings.js";
 import { useHost, useHostStore } from "./host.js";
 import { Node, type SpecNode } from "./nodes.js";
 import { followSuccess, PressQueueContext, runOperation, type ActionSpec, type Outcome } from "./operation.js";
 import { useRecordEntry, type EntrySpec } from "./record-entry.js";
 import { problemOf } from "./problem-details.js";
 import { Fields, refusalOf } from "./record-fields.js";
-import { RendererContext, RootsContext } from "./renderer-context.js";
+import { RecordLinkContext, RendererContext, RootsContext } from "./renderer-context.js";
 import { useSay, useText } from "./texts.js";
 
 /**
@@ -65,7 +65,7 @@ export function Action({ node }: { node: SpecNode }) {
       return;
     }
     setState("idle");
-    followSuccess(action, outcome.result, host, store, pages);
+    followSuccess(action, outcome, host, store, pages);
   };
 
   const change = (property: string, next: unknown) => {
@@ -74,7 +74,7 @@ export function Action({ node }: { node: SpecNode }) {
   };
 
   return (
-    <div data-telo-part="action" data-state={state} data-style={styleAttribute(node.style)}>
+    <div data-telo-part="action" data-state={state} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
       <form data-telo-part="form" autoComplete="off" noValidate onSubmit={run}>
         <Fields
           id={id}
@@ -103,14 +103,18 @@ export function Action({ node }: { node: SpecNode }) {
       {answer?.ok && action.result !== undefined && (
         <div data-telo-part="action-result">
           <RootsContext.Provider value={{ result: answer.result, input: answer.input, values: current }}>
-            <Node node={action.result} />
+            <RecordLinkContext.Provider value={false}>
+              <Node node={action.result} />
+            </RecordLinkContext.Provider>
           </RootsContext.Provider>
         </div>
       )}
       {answer && !answer.ok && (
         <div data-telo-part="action-failure">
           <RootsContext.Provider value={{ error: answer.error, input: answer.input, values: current }}>
-            <Node node={action.failure} />
+            <RecordLinkContext.Provider value={false}>
+              <Node node={action.failure} />
+            </RecordLinkContext.Provider>
           </RootsContext.Provider>
         </div>
       )}

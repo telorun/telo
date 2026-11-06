@@ -9,8 +9,9 @@ metadata:
     Content sniffing for uploads and files: identifies what a value really is
     from its leading bytes, by magic number, and reports whether the media type
     a client declared was contradicted by the content. Recognises PNG, JPEG, GIF,
-    WebP, PDF, ZIP and Office Open XML documents, so an endpoint can validate a
-    file before storing, processing or serving it.
+    WebP, PDF, ZIP, Office Open XML documents and common audio and video (MP3,
+    WAV, OGG, FLAC, MP4, M4A, WebM, QuickTime), so an endpoint can validate an
+    upload before storing, transcribing or serving it.
 requires:
   # The release this module was first checked against; nothing older has read it.
   telo: ">=0.114.0"

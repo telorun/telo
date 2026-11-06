@@ -8,10 +8,13 @@ import { DateRangeFieldController, InputFieldController } from "../src/field-con
 import * as FiltersController from "../src/filters-controller.js";
 import * as CollectionOptionsController from "../src/option-source.js";
 import * as surfaces from "../src/surface-controllers.js";
+import * as ChatController from "../src/chat-controller.js";
+import * as SplitViewController from "../src/split-view-controller.js";
+import { IconButtonController } from "../src/button-display.js";
 import * as CollectionPresentationController from "../src/collection-presentation.js";
 import * as ListingController from "../src/listing-controller.js";
 import * as TableLayoutController from "../src/table-layout.js";
-import { BoardLayoutController, CalendarLayoutController, CardLayoutController, TimelineLayoutController } from "../src/listing-layouts.js";
+import { BoardLayoutController, CalendarLayoutController, CardLayoutController, ListLayoutController, TimelineLayoutController } from "../src/listing-layouts.js";
 
 type Schema = Record<string, any>;
 
@@ -132,6 +135,31 @@ describe("a default the manifest declares", () => {
     expect({ pageSize: relations.authorId.pageSize }).toEqual(defaultsOf(declared("Relations").additionalProperties));
   });
 
+  it("is what a chat carries for a switch and a composer member left out, and an icon button for its label", async () => {
+    // The header's roots are typed from named shapes, which this reader holds as open objects.
+    const named = new Map<string, Schema>();
+    const lookupSchema = (id: string) => named.get(id) ?? named.set(id, { $id: id, type: "object" }).get(id);
+    const shapes = { ...ctx, lookupSchema } as unknown as ResourceContext;
+    const chat = await ChatController.create(
+      resource({ source: { basePath: "/api/chat", spec: async () => ({ operations: [] }) }, show: { copy: undefined }, composer: { actions: undefined } }),
+      shapes,
+    );
+    const { node } = await chat.provide();
+    const { show, composer } = defaultsOf(declared("Chat"));
+    expect({ show: node.show, composer: node.composer }).toEqual({ show, composer });
+    const button = await (await IconButtonController.create(resource({ label: undefined }), ctx)).provide();
+    expect({ label: button.label }).toEqual(defaultsOf(declared("IconButton")));
+  });
+
+  it("is what a split view carries for a member left out", async () => {
+    const empty = { type: "stack", children: [] };
+    const { node } = await provided(SplitViewController, { label: "Filters", aside: { content: empty }, content: empty, collapse: {} });
+    const { side, size, frame, collapse } = defaultsOf(declared("SplitView"));
+    expect({ side: node.side, size: node.size, frame: node.frame, collapse: node.collapse }).toEqual({ side, size, frame, collapse: { ...collapse, state: null } });
+    expect(node.toggle).toEqual({ type: "icon", icon: null, label: "hidden" });
+    expect(node.aside).toEqual({ actions: [], content: { ...empty, fill: false } });
+  });
+
   it("is what a listing carries for a member left out", async () => {
     const { node } = await provided(ListingController, {
       presentation: presentation("/api/todos"),
@@ -140,8 +168,17 @@ describe("a default the manifest declares", () => {
       paging: undefined,
       delete: undefined,
     });
-    const { pageSize, paging, delete: remove } = defaultsOf(declared("Listing"));
-    expect({ pageSize: node.pageSize, paging: node.paging, delete: node.delete }).toEqual({ pageSize, paging, delete: remove });
+    const { pageSize, paging, delete: remove, rowActionsDisplay, show, sort } = defaultsOf(declared("Listing"));
+    expect({ pageSize: node.pageSize, paging: node.paging, delete: node.delete, rowActionsDisplay: node.rowActionsDisplay, show: node.show }).toEqual({
+      pageSize,
+      paging,
+      delete: remove,
+      rowActionsDisplay,
+      show,
+    });
+    expect(node.sort).toEqual({ sortable: [], initial: null });
+    expect(sort.choosable).toBe(true);
+    expect(sort.by).toEqual({ direction: "ascending" });
   });
 
   it("is a table layout's with nothing listed, for a listing that names no layout", async () => {
@@ -166,10 +203,12 @@ describe("a default the manifest declares", () => {
     );
     const spec = async (controller: { create: (...args: any[]) => Promise<any> }, config: Schema) =>
       (await (await controller.create(resource(config), ctx)).invoke({ model, collection, relations: {} })).spec;
+    const list = await spec(ListLayoutController, { frame: undefined });
     const cards = await spec(CardLayoutController, { size: undefined });
     const calendar = await spec(CalendarLayoutController, { span: { start: "on", end: undefined }, period: undefined });
     const timeline = await spec(TimelineLayoutController, { span: { start: "on" }, groups: undefined, scale: undefined });
     const board = await spec(BoardLayoutController, { groups: { property: "status", values: undefined } });
+    expect({ frame: list.frame }).toEqual(defaultsOf(declared("ListLayout")));
     expect({ size: cards.size }).toEqual(defaultsOf(declared("CardLayout")));
     expect({ period: calendar.period }).toEqual(defaultsOf(declared("CalendarLayout")));
     expect({ scale: timeline.scale }).toEqual(defaultsOf(declared("TimelineLayout")));

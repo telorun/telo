@@ -7,7 +7,7 @@ export function ListLayout(props: LayoutProps) {
   return (
     <>
       <SortControl sort={props.sort} onSortChange={props.onSortChange} />
-      <div data-telo-part="list-layout" role="list">
+      <div data-telo-part="list-layout" data-frame={props.props.frame as string | undefined} role="list" data-embedded={props.props.embedded ? "true" : undefined}>
         <Windowed records={props.records} size={props.props.pageSize as number} enabled={props.props.windowed === true} flow="column" draw={draw} />
       </div>
       <LevelState level={props} />

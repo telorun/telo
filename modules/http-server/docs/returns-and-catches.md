@@ -72,11 +72,13 @@ returns:
       application/x-ndjson:
         encoder: { kind: Ndjson.Encoder }
       text/event-stream:
-        encoder: { kind: Sse.Encoder }
+        encoder: { kind: App.PartEvents }
         headers: { Cache-Control: "no-cache" }
       text/plain; charset=utf-8:
         encoder: { kind: PlainText.Encoder }
 ```
+
+Every entry is handed the same stream, so an encoder that needs records of its own shape owns that shaping. `Sse.Encoder` writes `Sse.Frame` records (`{ data, event?, id?, retry? }`); `App.PartEvents` above is a kind extending `Codec.Encoder` whose body maps each record to a frame with `Stream.Map` and pipes the frames through `Sse.Encoder` — the pattern is in `modules/http-server/tests/text-stream-via-http.yaml`.
 
 The `Accept` header decides which key wins (see [Content negotiation](#content-negotiation) below).
 
@@ -348,7 +350,7 @@ Cancellation propagates top-to-bottom: client disconnect → Fastify socket clos
 
 If a `mode: stream` `returns:` entry matches, the response is committed (status + headers flushed) before the stream body begins. A throw after that point cannot trigger `catches:` — the chunked transfer is aborted and the socket closed. Authors who need catchable failure inside a streaming pipeline must validate upfront and throw before the stream starts.
 
-The format-codec encoders embed *in-band* error frames at their own level: `Ndjson.Encoder` emits `{"type":"error","error":{"message":"..."}}` and ends; `Sse.Encoder` emits `event: error\ndata: ...\n\n` and ends; `PlainText.Encoder` and `Octet.Encoder` propagate the error and abort the transport.
+The format-codec encoders embed *in-band* error frames at their own level: `Ndjson.Encoder` emits `{"type":"error","error":{"message":"..."}}` and ends; `Sse.Encoder` emits `event: error\ndata: ...\n\n` and ends (`Stream.Recover` before an encoder ends the stream with a value of your own instead); `PlainText.Encoder` and `Octet.Encoder` propagate the error and abort the transport.
 
 Regardless of encoder, a mid-stream failure is logged server-side through the server's structured logger at `error` level with the error, route, status, and MIME — so a failure that can't reach `catches:` is never silent for the operator. It is also emitted as an `Http.Api.streamFailed` event for debug tooling, whose `error` is `ctx.errorValueOf(err)` — the failure's error value as a log line writes it (`type`, `message`, the Telo `stack` and `frames`, and a `hostStack` only for an uncoded failure). A handler that fails names the API as `HttpServer.Api.<name>#/routes/<i>/handler` in that trace, `<i>` being the route's position in `routes:`.
 

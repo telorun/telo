@@ -6,19 +6,24 @@ import {
   type RuntimeResource,
   type TextRecord,
 } from "@telorun/sdk";
+import { addressSpec, type AddressConfig } from "./address-spec.js";
+import type { AddressSpec } from "./address-expansion.js";
 import { mergeAssets, type Provided, type SpecNode } from "./composite.js";
 import { DEFAULT_FAILURE, NOTHING } from "./request-failure.js";
 import { enteredFields, type GroupConfig, type GroupSpec } from "./entered-fields.js";
 import type { FieldSpec } from "./field-answer.js";
 import { modelSchema, modelShape, type JsonSchema } from "./model-schema.js";
 import { resolveNode, type AuthoredNode } from "./node-resolution.js";
-import type { Binding, Condition } from "./row-binding.js";
+import type { Condition } from "./row-binding.js";
 import { stateSpec, type StateConfig } from "./state-record.js";
+import { filledProvided } from "./fill-marking.js";
+
+type RequestMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 
 type ActionResource = RuntimeResource & {
   inputModel: unknown;
   outputModel?: unknown;
-  source: { path: string };
+  request: { method?: RequestMethod | null; target: AddressConfig };
   label: TextRecord;
   fields?: unknown[] | null;
   groups?: GroupConfig[] | null;
@@ -26,7 +31,7 @@ type ActionResource = RuntimeResource & {
   enabled?: (Condition & { disabledText: unknown }) | null;
   result?: AuthoredNode | null;
   failure?: AuthoredNode | null;
-  onSuccess?: { navigate?: Binding | null; refreshes?: string[] | null } | null;
+  onSuccess?: { navigate?: AddressConfig | null; refreshes?: AddressConfig[] | null } | null;
   concurrency?: "parallel" | "serial" | null;
   clearAnswerOn?: string[] | null;
 };
@@ -47,6 +52,17 @@ export interface ActionInstance {
 export function isAction(candidate: unknown): candidate is ActionInstance {
   const action = candidate as ActionInstance | null;
   return typeof action?.operation === "function" && typeof action.provide === "function";
+}
+
+/** The input properties a target's parameters read whole (`input.<property>`),
+ *  in the input model's order. */
+function consumedProperties(target: AddressSpec, properties: string[]): string[] {
+  const reads = new Set<string>();
+  for (const binding of [...Object.values(target.pathParams), ...Object.values(target.queryParams)]) {
+    const chain = binding as { root?: unknown; path?: unknown };
+    if (chain.root === "input" && Array.isArray(chain.path) && chain.path.length === 1) reads.add(String(chain.path[0]));
+  }
+  return properties.filter((property) => reads.has(property));
 }
 
 class Action implements ResourceInstance, ActionInstance {
@@ -81,6 +97,18 @@ class Action implements ResourceInstance, ActionInstance {
         );
       }
     }
+    const method = resource.request.method ?? "POST";
+    const target = addressSpec(resource.request.target, this.ctx, `${this.owner} request.target`);
+    const consumed = consumedProperties(target, Object.keys(properties));
+    if (method === "DELETE") {
+      const unsent = Object.keys(properties).filter((property) => !consumed.includes(property));
+      if (unsent.length > 0) {
+        throw new RuntimeError(
+          "ERR_UI_ACTION_INPUT_UNSENT",
+          `${this.owner}: a 'DELETE' sends no body, yet its target does not read ${unsent.map((property) => `'${property}'`).join(", ")} of 'inputModel'. Read each in a 'pathParams' or 'queryParams' entry as exactly 'input.<property>', or remove it from 'inputModel'.`,
+        );
+      }
+    }
     const reader = { ctx: this.ctx, owner: this.owner };
     const answer = resource.outputModel == null ? undefined : modelSchema(resource.outputModel, this.ctx, this.owner, "outputModel");
     const input = modelShape(schema, reader, "inputModel");
@@ -101,10 +129,11 @@ class Action implements ResourceInstance, ActionInstance {
       values: input,
     })) ?? { node: NOTHING, assets: [] };
     const navigate = resource.onSuccess?.navigate;
+    const onSuccessWhere = `${this.owner} onSuccess`;
     const node: SpecNode = {
       type: "action",
       schema,
-      path: resource.source.path,
+      request: { method, target, consumed },
       label: resource.label,
       fields,
       groups,
@@ -114,13 +143,15 @@ class Action implements ResourceInstance, ActionInstance {
       ...(drawn ? { result: drawn.node ?? NOTHING } : {}),
       failure: failure.node ?? NOTHING,
       onSuccess: {
-        ...(navigate != null ? { navigate } : {}),
-        refreshes: resource.onSuccess?.refreshes ?? [],
+        ...(navigate != null ? { navigate: addressSpec(navigate, this.ctx, `${onSuccessWhere}.navigate`) } : {}),
+        refreshes: (resource.onSuccess?.refreshes ?? []).map((refresh, index) =>
+          addressSpec(refresh, this.ctx, `${onSuccessWhere}.refreshes[${index}]`),
+        ),
       },
       concurrency: resource.concurrency ?? "parallel",
       clearAnswerOn: resource.clearAnswerOn ?? [],
     };
-    return { node, assets: mergeAssets(drawn?.assets ?? [], failure.assets) };
+    return filledProvided({ node, assets: mergeAssets(drawn?.assets ?? [], failure.assets) });
   }
 }
 

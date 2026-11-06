@@ -116,6 +116,45 @@ describe("the style checks", () => {
     );
   });
 
+  it("refuse a message's block margins through the block shorthands and logical names too", () => {
+    const parts = JSON.parse(readFileSync(new URL("../../../ui-react/nodejs/src/contract/parts.json", import.meta.url), "utf8"));
+    const message = parts.reserved.filter((entry: { part: string }) => entry.part === "chat-message");
+    const refusedBy = (css: string) => {
+      const read = readStylesheet(css);
+      if (!read.ok) throw new Error(read.message);
+      const window = new Window();
+      window.document.body.innerHTML = `<article data-telo-part="chat-message"></article>`;
+      const coverage = new StyleCoverage([{ path: "/theme.css", reading: read.reading }]);
+      coverage.record(window.document as unknown as Document);
+      return coverage.problems({ parts: [], reserved: message }, []).map((problem) => problem.subject).sort();
+    };
+    expect(refusedBy(`[data-telo-part=chat-message] { margin: 0 }`)).toEqual(["chat-message: margin-bottom", "chat-message: margin-top"]);
+    expect(refusedBy(`[data-telo-part=chat-message] { margin-block: 0 }`)).toEqual(["chat-message: margin-bottom", "chat-message: margin-top"]);
+    expect(refusedBy(`[data-telo-part=chat-message] { margin-block-start: 0 }`)).toEqual(["chat-message: margin-top"]);
+    expect(refusedBy(`[data-telo-part=chat-message] { margin-inline: auto }`)).toEqual([]);
+  });
+
+  it("hold a state-qualified reservation only where a rule styled a part carrying the state", () => {
+    const fill = { attribute: "data-fill", value: "true" };
+    const reservedFor = (css: string) => {
+      const read = readStylesheet(css);
+      if (!read.ok) throw new Error(read.message);
+      const window = new Window();
+      window.document.body.innerHTML = `<div data-telo-part="page"><div data-telo-part="component" data-fill="true"></div><div data-telo-part="component"></div></div>`;
+      const coverage = new StyleCoverage([{ path: "/theme.css", reading: read.reading }]);
+      coverage.record(window.document as unknown as Document);
+      return coverage.problems({ parts: [], reserved: [{ state: fill, properties: ["min-height"], because: "a filling node takes the room it is given" }] }, []);
+    };
+    expect(reservedFor(`[data-telo-part="component"] { min-height: 1rem }`)).toEqual([
+      {
+        check: "property-reserved",
+        subject: '[data-fill="true"]: min-height',
+        message: `'[data-telo-part="component"]' in /theme.css sets 'min-height' on a part carrying data-fill="true" ('component'), which the renderer reserves: a filling node takes the room it is given.`,
+      },
+    ]);
+    expect(reservedFor(`[data-telo-part="component"]:not([data-fill="true"]) { min-height: 1rem }`)).toEqual([]);
+  });
+
   it("refuse a stylesheet css-tree cannot parse", () => {
     expect(readStylesheet(`[data-telo-part=page] { color: red; }\n}} .x {`)).toEqual({ ok: false, message: "Selector is expected at line 2, column 1" });
   });

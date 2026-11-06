@@ -1,0 +1,32 @@
+# A concrete kind extending the abstract publishes its spec as its reading, and
+# a slot typed by the abstract takes it.
+kind: Telo.Application
+metadata: { name: ConversationPublishesSpecTest, version: 1.0.0 }
+imports:
+  Fixed: ./__fixtures__/fixed-conversation
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref publishesSpec
+---
+kind: Fixed.Endpoint
+metadata: { name: endpoint }
+attachments:
+  accepts: [{ type: image, mediaTypes: [image/png], maxBytes: 1048576 }]
+  maxPerMessage: 4
+operations: [branch, cancel]
+---
+kind: Fixed.ReadSpec
+metadata: { name: readSpec }
+conversation: !ref endpoint
+---
+kind: Telo.Sequence
+metadata: { name: publishesSpec }
+steps:
+  - name: spec
+    invoke: !ref readSpec
+  - name: reading
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.spec.result"
+      expected: { operations: [branch, cancel], maxPerMessage: 4 }

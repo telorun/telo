@@ -187,7 +187,7 @@ kind: Ui.Action
 metadata:
   name: actionInputControl
 inputModel: !ref Task
-source: { path: /api/tasks }
+request: { target: /api/tasks }
 label: Send
 fields:
   - { kind: Ui.InputField, property: isDone, control: slider }

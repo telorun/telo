@@ -1,0 +1,231 @@
+kind: Telo.Application
+metadata:
+  name: AiChatTurnLifecycle
+  version: 1.0.0
+  description: |
+    A running turn's life through the invocables: a second turn on the same
+    conversation is refused while the first runs; a cancel ends the turn
+    cancelled, stops the tool it was running, and the model receives no request
+    after it; events read from a given id resume after it; a turn whose writer
+    stops heartbeating no longer blocks the conversation once the journal's
+    writer timeout passes, and its events close with the writer-lost error and a
+    failed ending.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversation: ../../ai-conversation
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Sql: ../../sql
+  Stream: ../../stream
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  scratchDir:
+    env: AI_CHAT_TURN_LIFECYCLE_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+# A model that counts the requests it receives, then answers as the echo model:
+# a call to the `wait` tool first, text once the call has a result.
+kind: Telo.Definition
+metadata: { name: CountingModel }
+capability: Telo.Invocable
+extends: Ai.ModelStream
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection]
+  properties: { connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } } }
+resources:
+  - kind: AiEcho.EchoModelStream
+    metadata: { name: echo }
+    accepts: []
+    emitToolCall: { name: wait, arguments: {} }
+  - { kind: Sql.Command, metadata: { name: count }, connection: !cel "self.connection" }
+  - kind: Telo.Sequence
+    metadata: { name: call }
+    steps:
+      - name: counted
+        invoke: !ref count
+        inputs: { sql: !sql "INSERT INTO model_requests (at) VALUES (1)" }
+      - name: answer
+        invoke: !ref echo
+        inputs: !cel "inputs"
+    outputs:
+      output: !cel "steps.answer.result.output"
+invoke: !ref call
+---
+# A tool that takes three seconds, then records that it finished.
+kind: Telo.Sequence
+metadata: { name: slowTool }
+steps:
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 3s } }
+  - name: done
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: !sql "INSERT INTO tool_done (at) VALUES (1)" }
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+markerRetention: 1h
+writerTimeout: 600ms
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent:
+  kind: Ai.AgentStream
+  model: { kind: AiChatTurnLifecycle.CountingModel, connection: !ref db }
+  maxSteps: 4
+  toolProviders:
+    - provider:
+        kind: Ai.Tools
+        tools:
+          - tool: !ref slowTool
+            name: wait
+            description: Waits a while.
+            parameters: { type: object }
+store: !ref store
+journal: !ref journal
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-lifecycle')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.StartTurn
+metadata: { name: startTurn }
+conversation: !ref chat
+---
+kind: Chat.TurnEvents
+metadata: { name: turnEvents }
+conversation: !ref chat
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: tables
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: !sql "CREATE TABLE model_requests (at INTEGER)" }
+  - name: toolTable
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: !sql "CREATE TABLE tool_done (at INTEGER)" }
+  - name: first
+    invoke: !ref startTurn
+    inputs: { message: go, attachments: [] }
+  - { name: running, invoke: { kind: Timer.Delay }, inputs: { duration: 500ms } }
+  - name: secondAttempt
+    try:
+      - name: second
+        invoke: !ref startTurn
+        inputs: { conversation: !cel "steps.first.result.conversation", message: again, attachments: [] }
+      - { name: secondOutcome, value: admitted }
+    catch:
+      - { name: secondOutcome, value: !cel "error.code" }
+  - name: cancel
+    invoke: { kind: Chat.CancelTurn, conversation: !ref chat }
+    inputs: { turn: !cel "steps.first.result.turn" }
+  - name: events
+    invoke: !ref turnEvents
+    inputs: { turn: !cel "steps.first.result.turn" }
+  - name: frames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.events.result.output" }
+  - name: resumedEvents
+    invoke: !ref turnEvents
+    inputs: { turn: !cel "steps.first.result.turn", after: 2 }
+  - name: resumed
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.resumedEvents.result.output" }
+  # Past the tool's three seconds: a tool that kept running would have finished.
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 3500ms } }
+  - name: requests
+    invoke: !ref query
+    inputs: { sql: !sql "SELECT count(*) AS n FROM model_requests" }
+  - name: tools
+    invoke: !ref query
+    inputs: { sql: !sql "SELECT count(*) AS n FROM tool_done" }
+  - name: checkCancel
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        second: !cel "steps.secondOutcome.result"
+        cancel: !cel "steps.cancel.result.outcome"
+        frames: !cel "steps.frames.result.items.map(f, {'id': f.id, 'type': f.event.type})"
+        ending: !cel "steps.frames.result.items[2]"
+        resumed: !cel "steps.resumed.result.items"
+        modelRequests: !cel "steps.requests.result.rows[0].n"
+        toolsFinished: !cel "steps.tools.result.rows[0].n"
+      expected:
+        second: ERR_CONVERSATION_TURN_RUNNING
+        cancel: requested
+        frames: [{ id: 1, type: tool-call }, { id: 2, type: step-usage }, { id: 3, type: turn-end }]
+        ending: { id: 3, event: { type: turn-end, reason: cancelled } }
+        resumed: [{ id: 3, event: { type: turn-end, reason: cancelled } }]
+        modelRequests: 1
+        toolsFinished: 0
+  # A turn admitted on the conversation whose writer never drains its key.
+  - name: lostClaim
+    invoke: { kind: RecordStream.JournalClaim, journal: !ref journal }
+    inputs: { key: trn_000000000000000000lost, writer: wrt_lost }
+  - name: header
+    invoke: { kind: AiConversation.Read, store: !ref store }
+    inputs: { conversation: !cel "steps.first.result.conversation" }
+  - name: admitLost
+    invoke: { kind: AiConversation.Admit, store: !ref store }
+    inputs:
+      conversation: !cel "steps.first.result.conversation"
+      version: !cel "steps.header.result.version"
+      turn: trn_000000000000000000lost
+      attachments: []
+      expiredBefore: !cel "timestamp('1970-01-01T00:00:00Z')"
+  - name: blockedAttempt
+    try:
+      - name: blocked
+        invoke: !ref startTurn
+        inputs: { conversation: !cel "steps.first.result.conversation", message: blocked, attachments: [] }
+      - { name: blockedOutcome, value: admitted }
+    catch:
+      - { name: blockedOutcome, value: !cel "error.code" }
+  - { name: stale, invoke: { kind: Timer.Delay }, inputs: { duration: 900ms } }
+  - name: after
+    invoke: !ref startTurn
+    inputs: { conversation: !cel "steps.first.result.conversation", message: after, attachments: [] }
+  - name: lostEvents
+    invoke: !ref turnEvents
+    inputs: { turn: trn_000000000000000000lost }
+  - name: lostFrames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.lostEvents.result.output" }
+  - name: checkLost
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        blocked: !cel "steps.blockedOutcome.result"
+        admitted: !cel "steps.after.result.conversation == steps.first.result.conversation"
+        frames: !cel >-
+          steps.lostFrames.result.items.map(f, f.event.type == 'error'
+            ? {'id': f.id, 'type': f.event.type, 'code': f.event.code}
+            : {'id': f.id, 'type': f.event.type, 'reason': f.event.reason})
+      expected:
+        blocked: ERR_CONVERSATION_TURN_RUNNING
+        admitted: true
+        frames:
+          - { id: 1, type: error, code: ERR_JOURNAL_WRITER_LOST }
+          - { id: 2, type: turn-end, reason: failed }

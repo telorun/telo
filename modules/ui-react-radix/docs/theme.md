@@ -47,7 +47,7 @@ tokens only.
 ## The controls
 
 `Radix.controls` implements thirteen controls of
-[`ui_react_controls-2`](../../ui-react/docs/controls-abi.md) in one browser
+[`ui_react_controls-3`](../../ui-react/docs/controls-abi.md) in one browser
 entry, `@telorun/ui-react-radix`, which leaves only `react`,
 `react/jsx-runtime` and `react-dom` to the page:
 

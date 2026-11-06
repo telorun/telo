@@ -1,0 +1,43 @@
+kind: Telo.Application
+metadata:
+  name: StreamRecoverTest
+  version: 1.0.0
+  description: |
+    A stream whose source fails part-way ends with the recovery value, computed
+    from the failure as a catch branch reads it, after every value delivered
+    before it; a recovery value its element type refuses is an error before the
+    app runs.
+imports: { Stream: .., Assert: ../../assert }
+targets:
+  - !ref test
+  - !ref valueHeldToElementType
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - { name: source, invoke: { kind: Stream.Of, items: [[1], [2], refused] } }
+  # A non-list is refused by FlatMap, failing the stream at its third value.
+  - name: expand
+    invoke: { kind: Stream.FlatMap, values: !cel "item" }
+    inputs: { input: !cel "steps.source.result.output" }
+  - name: recovered
+    invoke:
+      kind: Stream.Recover
+      value: { code: !cel "error.code", data: !cel "error.data", shown: !cel "error.displayMessage == null" }
+    inputs: { input: !cel "steps.expand.result.output" }
+  - name: all
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.recovered.result.output" }
+  - name: assertEnded
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.all.result.items"
+      expected: [1, 2, { code: ERR_INVALID_VALUE, data: null, shown: true }]
+---
+kind: Assert.Manifest
+metadata: { name: valueHeldToElementType }
+source: ./__fixtures__/recover/value-off-element-type.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "is missing required property 'text'" }
+    - { code: SCHEMA_VIOLATION, message: "('txt' is not allowed)" }

@@ -100,23 +100,19 @@ request: !ref openaiRequest
 
 ## What a message can carry
 
-Both chat APIs take text, images and documents; they differ in how a document may arrive.
+Both chat APIs take text, images and documents. A model takes only what it declares in `accepts` — a list of `{ type, mediaTypes, maxBytes? }`, none meaning text only — within what the API can carry at all (images and files; audio and video have no input shape):
 
-| Part | Chat completions (`OpenAI.ChatModel`, `ChatModelStream`) | Responses (`OpenAI.ResponsesModel`, `ResponsesModelStream`) |
-| --- | --- | --- |
-| text | yes | yes |
-| image by bytes (`data`) | yes — a `data:` URL | yes — a `data:` URL |
-| image by `http:` / `https:` `uri` | yes — the string as written | yes — the string as written |
-| file by bytes (`data`), with `name` (sent as its filename) | yes | yes |
-| file by bytes with no `name` | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
-| file by `http:` / `https:` `uri` | `ERR_MODEL_CONTENT_UNSUPPORTED` | yes — the string as written |
-| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_MODEL_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
-| audio, video | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
-| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
+```yaml
+kind: OpenAI.ChatModel
+metadata: { name: vision }
+model: gpt-4o
+request: !ref openaiRequest
+accepts:
+  - { type: image, mediaTypes: [image/png, image/jpeg], maxBytes: 20971520 }
+  - { type: file, mediaTypes: [application/pdf] }
+```
 
-A part the API cannot carry is refused by the call, before anything is sent, as `ERR_MODEL_CONTENT_UNSUPPORTED` with `error.data.partType`, `error.data.mediaType` when the part has one, and `error.data.scheme` when the `uri`'s scheme is the reason. A `uri` is handed to the endpoint as written and never fetched.
-
-A file by bytes needs `name`: both APIs take the bytes beside a filename, so one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent; a file by `uri` on the responses kinds needs none. The provider gates on no media type. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; any other type is the endpoint's to accept or refuse, and its refusal is the code its status and error name (usually `ERR_MODEL_REQUEST_REJECTED`).
+A part outside it is refused by the call, before anything is sent, as `ERR_MODEL_CONTENT_UNSUPPORTED` with `error.data.partType`, `error.data.mediaType` when the part has one, and `error.data.scheme` when the `uri`'s scheme is the reason. The dialects keep their own rules beyond `accepts`: a file by bytes needs `name`, a file by `uri` is for the responses kinds only, and a `uri` scheme other than `http:` / `https:` is refused. A `uri` is handed to the endpoint as written and never fetched. The list is published as `resources.<name>.accepts`.
 
 Media a **tool** returned reaches the model on both APIs, by different routes: on the responses kinds it rides the tool's own output, in the tool's part order; on the chat kinds, whose tool message is text only, it rides a `user` message that follows the run of tool messages. Details per API: [chat](docs/chat-model.md#multimodal-content), [responses](docs/responses-model.md#content-parts).
 

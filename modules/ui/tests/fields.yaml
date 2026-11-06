@@ -53,7 +53,7 @@ model: !ref Person
 value: !cel "row.id"
 label: !cel "row.name"
 hint: !cel "row.team"
-href: !cel "row.page"
+href: { path: !cel "row.page" }
 source:
   kind: Ui.CollectionSource
   basePath: /api/people
@@ -156,7 +156,7 @@ steps:
               value: { root: row, path: [id] }
               label: { root: row, path: [name] }
               hint: { root: row, path: [team] }
-              href: { root: row, path: [page] }
+              href: { path: { root: row, path: [page] }, pathParams: {}, queryParams: {} }
               basePath: /api/people
               filters: { team: { root: values, path: [title] } }
               pageSize: 25

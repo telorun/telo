@@ -51,6 +51,12 @@ set's kind such as `UiLucide.Icon`. It is drawn before the entry's text, as a
 tab's glyph in a tab bar, and in a sidebar's rail in place of the entry's first
 letter, in the colour of the entry's text.
 
+A `link` entry is current, and drawn so (`aria-current="page"`), when its
+address leads to where the viewer is under the [rule for
+links](nodes.md#the-current-location): the same path and the same query, the
+renderer's `_telo*` parameters set aside. A `page` entry is current by its path
+alone, whatever the query.
+
 `when` is evaluated for every request over `request` (`request.headers`,
 `request.ip`), as a page's own nodes are. An entry whose `when` is false is
 not delivered, and a group none of whose entries is delivered is left out

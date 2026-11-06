@@ -129,22 +129,33 @@ NDJSON is lossless: every `StreamPart` field travels on the wire, including stru
 
 ### Server-Sent Events
 
+`Sse.Encoder` writes frames (`Sse.Frame`: `{ data, event?, id?, retry? }`), so a `Stream.Map` makes each `StreamPart` one first:
+
 ```yaml
-kind: Sse.Encoder
-metadata: { name: SseEnc }
+- name: Frames
+  inputs:
+    input: !cel "steps.Stream.result.output"
+  invoke:
+    kind: Stream.Map
+    elementType: !ref Sse.Frame
+    value: { event: !cel "item.type", data: !cel "item" }
+- name: Encode
+  inputs:
+    input: !cel "steps.Frames.result.output"
+  invoke: { kind: Sse.Encoder }
 ```
 
 Each `StreamPart` becomes `event: <type>\ndata: <json>\n\n`:
 
 ```
 event: text-delta
-data: {"delta":"hello"}
+data: {"type":"text-delta","delta":"hello"}
 
 event: text-delta
-data: {"delta":" world"}
+data: {"type":"text-delta","delta":" world"}
 
 event: finish
-data: {"usage":{"promptTokens":3,"completionTokens":2,"totalTokens":5},"finishReason":"stop"}
+data: {"type":"finish","usage":{"promptTokens":3,"completionTokens":2,"totalTokens":5},"finishReason":"stop"}
 
 ```
 

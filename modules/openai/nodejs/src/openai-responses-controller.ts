@@ -7,7 +7,13 @@ import {
   type ContentPart,
   type MessageContent,
 } from "@telorun/ai";
-import { modelResponseInvalid, modelUnavailable } from "@telorun/ai";
+import {
+  acceptedOf,
+  modelResponseInvalid,
+  modelUnavailable,
+  requireAccepted,
+  type AcceptedContent,
+} from "@telorun/ai";
 import type {
   AiModelInstance,
   AiModelStreamInstance,
@@ -82,6 +88,7 @@ interface ResponsesResource {
    *  client, so this module holds no key. */
   request: HttpRequestInstance;
   reasoning?: { effort?: string; summary?: string };
+  accepts?: AcceptedContent;
   options?: Record<string, unknown>;
 }
 
@@ -192,7 +199,8 @@ const TAKES_MEDIA = "This endpoint takes text, images and files.";
  * dropped — dropping it would send a request quietly missing part of the
  * message.
  */
-function translatePart(part: ContentPart, label: string): InputItem {
+function translatePart(part: ContentPart, label: string, accepts: AcceptedContent): InputItem {
+  requireAccepted(accepts, part, label);
   switch (part.type) {
     case "text":
       return { type: "input_text", text: part.text };
@@ -214,9 +222,13 @@ function translatePart(part: ContentPart, label: string): InputItem {
 }
 
 /** Translate a caller's message content into responses `input_*` parts. */
-function translateContent(content: MessageContent, label: string): InputItem[] {
+function translateContent(
+  content: MessageContent,
+  label: string,
+  accepts: AcceptedContent,
+): InputItem[] {
   if (typeof content === "string") return [{ type: "input_text", text: content }];
-  return content.map((part) => translatePart(part, label));
+  return content.map((part) => translatePart(part, label, accepts));
 }
 
 /**
@@ -226,11 +238,15 @@ function translateContent(content: MessageContent, label: string): InputItem[] {
  * so a media part a user message is refused, a tool result is refused the same
  * way. A part a model produces is left out, not refused.
  */
-function toolOutput(content: MessageContent, label: string): string | InputItem[] {
+function toolOutput(
+  content: MessageContent,
+  label: string,
+  accepts: AcceptedContent,
+): string | InputItem[] {
   if (typeof content === "string" || !content.some(isMediaPart)) return contentToText(content);
   return content
     .filter((part) => isTextPart(part) || isMediaPart(part))
-    .map((part) => translatePart(part, label));
+    .map((part) => translatePart(part, label, accepts));
 }
 
 interface TranslatedInput {
@@ -256,6 +272,7 @@ function translateMessages(
   model: string,
   label: string,
   resourceId: string,
+  accepts: AcceptedContent,
 ): TranslatedInput {
   const input: InputItem[] = [];
   const instructions: string[] = [];
@@ -272,7 +289,7 @@ function translateMessages(
       input.push({
         type: "function_call_output",
         call_id: answeredCallId(m, index, label),
-        output: toolOutput(m.content, label),
+        output: toolOutput(m.content, label, accepts),
       });
       continue;
     }
@@ -296,7 +313,7 @@ function translateMessages(
       if (input.length > start) assistantStart = start;
       continue;
     }
-    input.push({ role: m.role, content: translateContent(m.content, label) });
+    input.push({ role: m.role, content: translateContent(m.content, label, accepts) });
   }
 
   if (assistantStart !== -1 && isOwnState(providerState, model, resourceId)) {
@@ -350,6 +367,7 @@ abstract class ResponsesBase {
   snapshot(): Record<string, unknown> {
     return {
       model: this.resource.model,
+      accepts: acceptedOf(this.resource),
       ...(this.resource.reasoning ? { reasoning: this.resource.reasoning } : {}),
       ...(this.resource.options ? { options: this.resource.options } : {}),
     };
@@ -374,6 +392,7 @@ abstract class ResponsesBase {
       this.resource.model,
       `OpenAI responses "${this.resource.metadata.name}"`,
       qualifiedName(this.resource),
+      acceptedOf(this.resource),
     );
     const tools = buildTools(input.tools);
     const params = toOpenAiParams(mergeOptions(this.resource.options, input.options));

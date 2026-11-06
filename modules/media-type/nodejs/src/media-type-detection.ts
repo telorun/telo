@@ -1,8 +1,10 @@
 import catalog from "../../media-types.json" with { type: "json" };
 
-/** One run of bytes a signature expects at an offset. */
+/** One run of bytes a signature expects: at one offset, or anywhere inside a
+ *  window `[start, end)` of the leading bytes. */
 interface SignaturePart {
-  readonly offset: number;
+  readonly start: number;
+  readonly end: number;
   readonly bytes: Uint8Array;
 }
 
@@ -14,7 +16,7 @@ interface ProvableType {
 
 interface CatalogEntry {
   mediaType: string;
-  signatures?: { offset: number; hex: string }[][];
+  signatures?: { offset?: number; within?: number[]; hex: string }[][];
   container?: string;
 }
 
@@ -35,11 +37,45 @@ const provable: ProvableType[] = entries.flatMap((entry) =>
         {
           mediaType: entry.mediaType,
           alternatives: entry.signatures.map((parts) =>
-            parts.map(({ offset, hex }) => ({ offset, bytes: Buffer.from(hex, "hex") })),
+            parts.map((part) => signaturePart(entry.mediaType, part)),
           ),
         },
       ],
 );
+
+/** Reads one data-file run; a run with both or neither of `offset` and `within`,
+ *  or a malformed window, is a defect in the data file and fails at load. */
+function signaturePart(
+  mediaType: string,
+  { offset, within, hex }: { offset?: number; within?: number[]; hex: string },
+): SignaturePart {
+  const bytes = Buffer.from(hex, "hex");
+  const where = `media-types.json: ${mediaType}`;
+  if (bytes.byteLength === 0 || bytes.byteLength * 2 !== hex.length) {
+    throw new Error(`${where}: "hex" must be a non-empty run of whole bytes`);
+  }
+  if ((offset === undefined) === (within === undefined)) {
+    throw new Error(`${where}: a run declares exactly one of "offset" and "within"`);
+  }
+  if (offset !== undefined) {
+    if (!Number.isInteger(offset) || offset < 0) {
+      throw new Error(`${where}: "offset" must be a non-negative integer`);
+    }
+    return { start: offset, end: offset + bytes.byteLength, bytes };
+  }
+  const [start, end] = within!;
+  if (
+    within!.length !== 2 ||
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 0 ||
+    end - start < bytes.byteLength
+  ) {
+    throw new Error(`${where}: "within" must be [start, end] with room for the run`);
+  }
+  if (end > WINDOW) throw new Error(`${where}: "within" reaches past the ${WINDOW}-byte window`);
+  return { start, end, bytes };
+}
 
 /** A recognised type → the type whose signature vouches for it: itself, or the
  *  container it is built on. */
@@ -86,7 +122,10 @@ export function detect(leading: Uint8Array, claim: string | undefined): Detectio
     : { mediaType: proven, mislabelled: true };
 }
 
-function holds(leading: Uint8Array, part: SignaturePart): boolean {
-  if (leading.byteLength < part.offset + part.bytes.byteLength) return false;
-  return part.bytes.every((byte, index) => leading[part.offset + index] === byte);
+function holds(leading: Uint8Array, { start, end, bytes }: SignaturePart): boolean {
+  const last = Math.min(end, leading.byteLength) - bytes.byteLength;
+  for (let at = start; at <= last; at++) {
+    if (bytes.every((byte, index) => leading[at + index] === byte)) return true;
+  }
+  return false;
 }

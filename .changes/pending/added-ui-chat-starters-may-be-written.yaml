@@ -1,0 +1,5 @@
+modules:
+  modules/ui: Added
+body: "Ui.Chat starters may be written as { prompt, onChoose: send | fill }; fill puts
+  the prompt in the message box instead of sending it, so a file can be attached first.
+  A bare text still sends. The chat node's starters carry { prompt, onChoose }."

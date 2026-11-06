@@ -1,6 +1,6 @@
 /**
- * Server-Sent Events codec — event-record stream ↔ byte iterables. The encoder
- * frames records for the wire; the decoder parses frames back out of it,
+ * Server-Sent Events codec — frame stream ↔ byte iterables. The encoder writes
+ * frames for the wire; the decoder parses frames back out of it,
  * emitting each one as it arrives rather than collecting to the end.
  */
 
@@ -8,7 +8,7 @@
 // `@telorun/sse-codec`: the frame and comment writers, for a transport that
 // writes its own event stream rather than encoding a handler's, and the frame
 // reader the decoder runs, for a controller that reads one.
-export { sseComment, sseFrame } from "./sse-frame.js";
+export { sseComment, sseFrame, type SseFrame } from "./sse-frame.js";
 export { readSseRecords, type SseReadBounds, type SseRecord } from "./sse-records.js";
 
 // Controller entry points. Each kind's `controllers:` candidate selects one of

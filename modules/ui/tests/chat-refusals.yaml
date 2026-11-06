@@ -1,0 +1,137 @@
+kind: Telo.Application
+metadata:
+  name: UiChatRefusalsTest
+  version: 1.0.0
+  description: |
+    What a chat refuses: a text button given a label, an icon button given
+    something that is not an icon (both before anything runs), an icon file that
+    is not an image (when the chat is first read), and what it no longer takes —
+    a sidebar switch, a compact surface, a new conversation button — beside a
+    parameter name the address cannot carry and a refresh reading a member of
+    `conversation` that does not exist. The header's refusals — the keys it
+    replaced, `fill` on a menu item, its roots read outside it, an unknown command
+    or summary field, a command chain to a non-command — are each found before
+    anything runs and refused again when an importer runs; a command node
+    holding a fixed value is refused when the chat resolves its header.
+imports: { Assert: ../../assert }
+targets:
+  - !ref buttons
+  - !ref iconFormat
+  - !ref retired
+  - !ref starter
+  - !ref headerKeys
+  - !ref headerKeysTitleAtRuntime
+  - !ref headerKeysShowAtRuntime
+  - !ref headerKeysButtonsAtRuntime
+  - !ref headerKeysFillAtRuntime
+  - !ref headerRoots
+  - !ref headerRootsAtRuntime
+  - !ref headerCommandAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: buttons }
+source: ./__fixtures__/invalid/chat-buttons/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/textWithLabel: /buttons/copy must NOT have additional properties ('label' is not allowed)"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.Chat/iconNotAnIcon: reference at 'buttons.send.icon' → 'Ui.Dialog' does not implement 'Ui.Icon'"
+---
+kind: Assert.Manifest
+metadata: { name: iconFormat }
+source: ./__fixtures__/invalid/chat-icon-format/telo.yaml
+expect: { errors: [], runFails: "the icon of 'buttons.copy.icon' is drawn from" }
+---
+kind: Assert.Manifest
+metadata: { name: retired }
+source: ./__fixtures__/invalid/chat-retired/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/sidebarSwitch: /show must NOT have additional properties ('sidebar' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/compactSidebar: / must NOT have additional properties ('compact' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/newConversationButton: /buttons must NOT have additional properties ('newConversation' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/parameterNotAName: /conversation/parameter must match pattern"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Chat/refreshReadsUnknown: !cel: 'conversation.title' is not defined (available: id)"
+---
+kind: Assert.Manifest
+metadata: { name: starter }
+source: ./__fixtures__/invalid/chat-starter/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION }
+---
+kind: Assert.Manifest
+metadata: { name: headerKeys }
+source: ./__fixtures__/invalid/chat-header-keys/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/titled: / must NOT have additional properties ('title' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/exportSwitch: /show must NOT have additional properties ('export' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/exportButton: /buttons must NOT have additional properties ('export' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.View/filledItem: /content/items/0/fill matches a shape that is not allowed here"
+---
+kind: Assert.Manifest
+metadata: { name: headerKeysTitleAtRuntime }
+source: ./__fixtures__/invalid/chat-header-keys-at-runtime/telo.yaml
+expect: { errors: [], runFails: "Ui.Chat titled: RuntimeError: Resource does not match schema for kind Ui.Chat" }
+---
+kind: Assert.Manifest
+metadata: { name: headerKeysShowAtRuntime }
+source: ./__fixtures__/invalid/chat-header-keys-at-runtime/telo.yaml
+expect: { errors: [], runFails: "Ui.Chat exportSwitch: RuntimeError: Resource does not match schema for kind Ui.Chat" }
+---
+kind: Assert.Manifest
+metadata: { name: headerKeysButtonsAtRuntime }
+source: ./__fixtures__/invalid/chat-header-keys-at-runtime/telo.yaml
+expect: { errors: [], runFails: "Ui.Chat exportButton: RuntimeError: Resource does not match schema for kind Ui.Chat" }
+---
+kind: Assert.Manifest
+metadata: { name: headerKeysFillAtRuntime }
+source: ./__fixtures__/invalid/chat-header-keys-at-runtime/telo.yaml
+expect: { errors: [], runFails: "Ui.View filledItem: RuntimeError: Resource does not match schema for kind Ui.View" }
+---
+kind: Assert.Manifest
+metadata: { name: headerRoots }
+source: ./__fixtures__/invalid/chat-header/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.View/commandOutside: !cel: unknown identifier 'chat' — nothing by that name is in scope here."
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.View/summaryOutside: !cel: unknown identifier 'conversation' — nothing by that name is in scope here."
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Chat/unknownCommand: !cel: 'chat.exportTranscrip' is not defined (available: exportTranscript, copyTranscript, stop, newConversation)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Chat/unknownSummaryField: !cel: 'conversation.titel' is not defined (available: id, title, archived, turn, running, updatedAt)"
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Chat/notACommand: CEL at 'header[0].command' reads 'chat', whose declared shape does not fit what the field expects"
+---
+# A library's CEL is judged for its importer too, so the importer is not silent:
+# it reports what the library refuses, and running it is refused at load.
+kind: Assert.Manifest
+metadata: { name: headerRootsAtRuntime }
+source: ./__fixtures__/invalid/chat-header-at-runtime/telo.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_IDENTIFIER, message: "Ui.View/commandOutside: !cel: unknown identifier 'chat'" }
+    - { code: CEL_UNKNOWN_IDENTIFIER, message: "Ui.View/summaryOutside: !cel: unknown identifier 'conversation'" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Chat/unknownCommand: !cel: 'chat.exportTranscrip' is not defined" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Chat/unknownSummaryField: !cel: 'conversation.titel' is not defined" }
+  runFails: "Ui.Chat/unknownCommand: !cel: 'chat.exportTranscrip' is not defined"
+---
+# The runtime twin of a command chain to a non-command: a literal passes the type
+# check, and the chat refuses it when it resolves its header.
+kind: Assert.Manifest
+metadata: { name: headerCommandAtRuntime }
+source: ./__fixtures__/invalid/chat-command-at-runtime/telo.yaml
+expect: { errors: [], runFails: "header[0].command: the command node names a fixed value, which is no command a root in scope offers" }

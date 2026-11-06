@@ -1,0 +1,153 @@
+kind: Telo.Application
+metadata:
+  name: AiChatTurn
+  version: 1.0.0
+  description: |
+    A turn run through the invocables, no transport: its events in order, the
+    transcript it leaves (the user's message, then the reply), the conversation's
+    summary once it has ended, and what the endpoint offers — no attachments over
+    a text-only model, and each accepted type's tighter size bound over one that
+    takes images and PDFs.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Stream: ../../stream
+  Assert: ../../assert
+variables:
+  scratchDir:
+    env: AI_CHAT_TURN_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref turn, !ref offers]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent:
+  kind: Ai.AgentStream
+  model:
+    kind: AiEcho.EchoModelStream
+    accepts: []
+    usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 }
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref db }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-turn')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.Conversation
+metadata: { name: mediaChat }
+agent:
+  kind: Ai.AgentStream
+  model:
+    kind: AiEcho.EchoModelStream
+    accepts:
+      - { type: image, mediaTypes: [image/png], maxBytes: 5242880 }
+      - { type: file, mediaTypes: [application/pdf] }
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref db }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-turn')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Telo.Sequence
+metadata: { name: turn }
+steps:
+  - name: start
+    invoke: { kind: Chat.StartTurn, conversation: !ref chat }
+    inputs: { message: hi, attachments: [] }
+  - name: events
+    invoke: { kind: Chat.TurnEvents, conversation: !ref chat }
+    inputs: { turn: !cel "steps.start.result.turn" }
+  - name: frames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.events.result.output" }
+  - name: checkEvents
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.frames.result.items"
+      expected:
+        - { id: 1, event: { type: text-delta, text: h } }
+        - { id: 2, event: { type: text-delta, text: i } }
+        - { id: 3, event: { type: step-usage, usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 } } }
+        - id: 4
+          event: { type: turn-end, reason: stop, usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 } }
+  - name: entries
+    invoke: { kind: Chat.ConversationEntries, conversation: !ref chat }
+    inputs: { id: !cel "steps.start.result.conversation" }
+  - name: checkEntries
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        total: !cel "steps.entries.result.total"
+        rows: !cel >-
+          steps.entries.result.rows.map(r, {
+            'role': r.role,
+            'parts': r.parts,
+            'ofTurn': r.turn == steps.start.result.turn,
+            'siblings': r.siblings
+          })
+        chained: !cel "steps.entries.result.rows[0].parent == steps.entries.result.rows[1].id"
+        root: !cel "steps.entries.result.rows[1].parent"
+      expected:
+        total: 2
+        rows:
+          - role: assistant
+            parts: [{ type: text, text: hi }]
+            ofTurn: true
+            siblings: { position: 1, count: 1, previous: null, next: null }
+          - role: user
+            parts: [{ type: text, text: hi }]
+            ofTurn: true
+            siblings: { position: 1, count: 1, previous: null, next: null }
+        chained: true
+        root: null
+  - name: summary
+    invoke: { kind: Chat.ReadConversation, conversation: !ref chat }
+    inputs: { id: !cel "steps.start.result.conversation" }
+  - name: checkSummary
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        id: !cel "steps.summary.result.id == steps.start.result.conversation"
+        title: !cel "steps.summary.result.title"
+        archived: !cel "steps.summary.result.archived"
+        turn: !cel "steps.summary.result.turn == steps.start.result.turn"
+        running: !cel "steps.summary.result.running"
+      expected: { id: true, title: null, archived: false, turn: true, running: false }
+---
+kind: Telo.Sequence
+metadata: { name: offers }
+steps:
+  - name: textOnly
+    invoke: { kind: Chat.Capabilities, conversation: !ref chat }
+  - name: withMedia
+    invoke: { kind: Chat.Capabilities, conversation: !ref mediaChat }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: { textOnly: !cel "steps.textOnly.result", withMedia: !cel "steps.withMedia.result" }
+      expected:
+        textOnly: { operations: [branch, cancel] }
+        withMedia:
+          attachments:
+            accepts:
+              - { type: image, mediaTypes: [image/png], maxBytes: 5242880 }
+              - { type: file, mediaTypes: [application/pdf], maxBytes: 10485760 }
+            maxPerMessage: 4
+          operations: [branch, cancel]

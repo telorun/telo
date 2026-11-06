@@ -14,7 +14,7 @@ exports:
     - specifier: "@fixture/built-in-controls"
       path: ./browser/built-in-controls.js
       source: ./src/built-in-controls.js
-      abi: ui_react_controls-2
+      abi: ui_react_controls-3
       external: [react, react/jsx-runtime, react-dom]
       exports:
         [
@@ -23,7 +23,7 @@ exports:
     - specifier: "@fixture/broken-select"
       path: ./browser/broken-select.js
       source: ./src/broken-select.js
-      abi: ui_react_controls-2
+      abi: ui_react_controls-3
       external: [react, react/jsx-runtime, react-dom]
       exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]
 ---

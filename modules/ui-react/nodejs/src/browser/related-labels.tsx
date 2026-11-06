@@ -1,5 +1,6 @@
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { boundFilters, fetchRequest, filterParam, type Param } from "./collection.js";
+import { CurrentAnchor } from "./current-location.js";
 import { useHost, useHostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
 import { optionKey, optionOf, type ChoiceOption, type OptionSourceSpec } from "./option-source.js";
@@ -144,9 +145,9 @@ function RelatedLabel({ option }: { option: ChoiceOption }) {
   const store = useHostStore();
   const href = option.href === undefined ? undefined : linkAddress(store, option.href);
   return href ? (
-    <a data-telo-part="link" href={href}>
+    <CurrentAnchor address={option.href} data-telo-part="link" href={href}>
       {option.label}
-    </a>
+    </CurrentAnchor>
   ) : (
     <>{option.label}</>
   );

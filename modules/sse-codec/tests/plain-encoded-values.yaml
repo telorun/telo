@@ -20,7 +20,7 @@ metadata: { name: testPlainFrame }
 steps:
   - name: source
     inputs:
-      items: !cel "[{'type': 'progress', 'took': duration('1h30m')}]"
+      items: !cel "[{'event': 'progress', 'data': {'took': duration('1h30m')}}]"
     invoke: { kind: Stream.Of }
   - name: encode
     inputs:

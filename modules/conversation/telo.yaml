@@ -1,0 +1,395 @@
+kind: Telo.Library
+metadata:
+  name: Conversations
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [AI, Transport]
+  description: >-
+    The contract between a chat server and a chat client: what an endpoint offers
+    before any message (attachment types and size limits, supported conversation
+    operations), the streamed events a reply arrives as (text, reasoning, tool
+    calls, approvals, usage, errors), the transcript entries a viewer reads back,
+    and the routes and problems that carry them. Servers and clients agree on it
+    without importing each other.
+imports: { DataModel: ../data-model }
+exports:
+  kinds: [Conversation]
+  resources: [conversations, Spec, AttachmentOffer, Operations, Event, Entry, TurnRequest, TurnStarted, ConversationSummary, ConversationPage, EntryPage, ConversationPatch, Attachment, Part, Usage, Problem]
+---
+kind: Telo.Abstract
+metadata:
+  name: Conversation
+  description: >-
+    A conversation endpoint's description of itself: the attachments it accepts
+    and the conversation operations it supports, published as its reading so a
+    client can draw only the controls the endpoint offers.
+capability: Telo.Provider
+---
+# What an endpoint accepts on a message. Absent from a spec when it takes none.
+kind: Telo.JsonSchema
+metadata: { name: AttachmentOffer }
+schema:
+  type: object
+  additionalProperties: false
+  required: [accepts, maxPerMessage]
+  properties:
+    accepts:
+      description: The kinds of file accepted, each with its media types and size limit.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [type, mediaTypes, maxBytes]
+        properties:
+          type: { description: The kind of attachment., enum: [image, audio, video, file] }
+          mediaTypes:
+            description: The media types of this kind that are accepted.
+            type: array
+            items: { type: string, minLength: 1 }
+          maxBytes: { description: The largest accepted file, in bytes., type: integer, minimum: 1 }
+    maxPerMessage: { description: How many attachments one message may carry., type: integer, minimum: 1 }
+---
+kind: Telo.JsonSchema
+metadata: { name: Operations }
+schema:
+  description: >-
+    The conversation operations the endpoint supports. Reading, renaming,
+    archiving and deleting a conversation are served whatever it lists.
+  type: array
+  uniqueItems: true
+  items: { enum: [branch, cancel] }
+---
+# What an endpoint offers before any event arrives.
+kind: Telo.JsonSchema
+metadata: { name: Spec }
+schema:
+  type: object
+  additionalProperties: false
+  required: [operations]
+  properties:
+    attachments: { $ref: "telo:Conversations/AttachmentOffer" }
+    operations: { $ref: "telo:Conversations/Operations" }
+---
+kind: Telo.JsonSchema
+metadata: { name: Usage }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    inputTokens: { type: integer, minimum: 0 }
+    outputTokens: { type: integer, minimum: 0 }
+    totalTokens: { type: integer, minimum: 0 }
+    reasoningTokens: { type: integer, minimum: 0 }
+    cachedInputTokens: { type: integer, minimum: 0 }
+---
+# A completed part of a message: text, reasoning, media by attachment URL, a
+# citation or a refusal.
+kind: Telo.JsonSchema
+metadata: { name: Part }
+schema:
+  oneOf:
+    - type: object
+      additionalProperties: false
+      required: [type, text]
+      properties: { type: { const: text }, text: { type: string } }
+    - type: object
+      additionalProperties: false
+      required: [type, text]
+      properties: { type: { const: reasoning }, text: { type: string } }
+    - type: object
+      additionalProperties: false
+      required: [type, url, mediaType]
+      properties:
+        type: { enum: [image, audio, video, file] }
+        url:
+          description: >-
+            Where the media is read: an attachment's relative reference
+            `conversations/<conversation>/attachments/<id>`, resolved against the
+            endpoint's base, or an absolute URL.
+          type: string
+          minLength: 1
+        mediaType: { type: string, minLength: 1 }
+        name: { type: string }
+        size: { type: integer, minimum: 0 }
+    - type: object
+      additionalProperties: false
+      required: [type, url]
+      properties:
+        type: { const: citation }
+        url: { type: string, minLength: 1 }
+        title: { type: string }
+        quote: { type: string }
+    - type: object
+      additionalProperties: false
+      required: [type, text]
+      properties: { type: { const: refusal }, text: { type: string } }
+---
+# A closed union on `type`. The contract grows only by adding event types; a
+# client ignores a type it does not know.
+kind: Telo.JsonSchema
+metadata: { name: Event }
+schema:
+  oneOf:
+    - type: object
+      additionalProperties: false
+      required: [type, text]
+      properties: { type: { const: text-delta }, text: { type: string } }
+    - type: object
+      additionalProperties: false
+      required: [type, text]
+      properties: { type: { const: reasoning-delta }, text: { type: string } }
+    - type: object
+      additionalProperties: false
+      required: [type, part]
+      properties: { type: { const: content }, part: { $ref: "telo:Conversations/Part" } }
+    - type: object
+      additionalProperties: false
+      required: [type, id, argumentsDelta]
+      properties:
+        type: { const: tool-call-delta }
+        id: { description: The tool call being written., type: string, minLength: 1 }
+        name: { type: string }
+        argumentsDelta: { description: The next piece of the arguments' JSON text., type: string }
+    - type: object
+      additionalProperties: false
+      required: [type, id, name, arguments]
+      properties:
+        type: { const: tool-call }
+        id: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        arguments: { type: object }
+    - type: object
+      additionalProperties: false
+      required: [type, id, result]
+      properties:
+        type: { const: tool-result }
+        id: { description: The tool call this answers., type: string, minLength: 1 }
+        result: {}
+        isError: { type: boolean }
+    - type: object
+      additionalProperties: false
+      required: [type, id, toolCallId, name, arguments]
+      properties:
+        type: { const: approval-request }
+        id: { type: string, minLength: 1 }
+        toolCallId: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        arguments: { type: object }
+    - type: object
+      additionalProperties: false
+      required: [type, id, approved]
+      properties:
+        type: { const: approval-decision }
+        id: { type: string, minLength: 1 }
+        approved: { type: boolean }
+        reason: { type: string }
+    - type: object
+      additionalProperties: false
+      required: [type, usage]
+      properties: { type: { const: step-usage }, usage: { $ref: "telo:Conversations/Usage" } }
+    - type: object
+      additionalProperties: false
+      required: [type, reason]
+      properties:
+        type: { const: turn-end }
+        reason: { enum: [stop, length, content-filter, limit, approval, cancelled, failed] }
+        usage: { $ref: "telo:Conversations/Usage" }
+    - type: object
+      additionalProperties: false
+      required: [type, code, detail]
+      properties:
+        type: { const: error }
+        code: { type: string, minLength: 1 }
+        detail: { type: string }
+        data: { type: object }
+---
+# One transcript entry as a viewer reads it.
+kind: Telo.JsonSchema
+metadata: { name: Entry }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, parent, turn, siblings, role, parts]
+  properties:
+    id: { type: string, minLength: 1 }
+    parent: { description: The entry this follows; null for a root., type: [string, "null"] }
+    turn: { description: The id of the turn that appended the entry., type: string, minLength: 1 }
+    siblings:
+      description: >-
+        Where the entry stands among the entries sharing its parent (roots are siblings
+        of each other), in append order; the same whichever branch the entry is read through.
+      type: object
+      additionalProperties: false
+      required: [position, count, previous, next]
+      properties:
+        position: { description: 1-based., type: integer, minimum: 1 }
+        count: { type: integer, minimum: 1 }
+        previous: { description: The preceding sibling's id; null at the start., type: [string, "null"] }
+        next: { description: The following sibling's id; null at the end., type: [string, "null"] }
+    role: { enum: [user, assistant] }
+    parts: { type: array, items: { $ref: "telo:Conversations/Part" } }
+    toolCalls:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [id, name, arguments]
+        properties:
+          id: { type: string, minLength: 1 }
+          name: { type: string, minLength: 1 }
+          arguments: { type: object }
+          approval:
+            description: Absent when the call needed no decision.
+            type: object
+            additionalProperties: false
+            required: [id, decision]
+            properties:
+              id: { description: The approval-request and approval-decision id., type: string, minLength: 1 }
+              decision:
+                description: Null while pending.
+                oneOf:
+                  - { type: "null" }
+                  - type: object
+                    additionalProperties: false
+                    required: [approved]
+                    properties: { approved: { type: boolean }, reason: { type: string } }
+    toolResults:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [id, result]
+        properties: { id: { type: string, minLength: 1 }, result: {}, isError: { type: boolean } }
+    usage: { $ref: "telo:Conversations/Usage" }
+    createdAt: { type: string, format: date-time }
+---
+kind: Telo.JsonSchema
+metadata: { name: TurnRequest }
+schema:
+  type: object
+  additionalProperties: false
+  required: [message, attachments]
+  properties:
+    conversation: { description: The conversation to continue; absent starts one., type: string, minLength: 1 }
+    parent:
+      description: >-
+        The entry the message follows; absent continues the latest branch, null starts a new root.
+      anyOf:
+        - { type: string, minLength: 1 }
+        - { type: "null" }
+    message: { description: The user's text; may be empty when resuming with approvals., type: string }
+    attachments:
+      description: Ids returned by the attachment upload.
+      type: array
+      uniqueItems: true
+      items: { type: string, minLength: 1 }
+    approvals:
+      description: >-
+        Decisions that resume a turn which ended with reason approval; beside them
+        the message is empty and no attachment is sent.
+      type: array
+      minItems: 1
+      items:
+        type: object
+        additionalProperties: false
+        required: [id, approved]
+        properties:
+          id: { type: string, minLength: 1 }
+          approved: { type: boolean }
+          reason: { type: string }
+  if: { required: [approvals] }
+  then: { properties: { message: { type: string, const: "" }, attachments: { type: array, maxItems: 0 } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: TurnStarted }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation, turn]
+  properties:
+    conversation: { type: string, minLength: 1 }
+    turn: { type: string, minLength: 1 }
+---
+kind: Telo.JsonSchema
+metadata: { name: ConversationSummary }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, title, archived, updatedAt, turn, running]
+  properties:
+    id: { type: string, minLength: 1 }
+    title: { type: [string, "null"] }
+    archived: { type: boolean }
+    turn: { description: The latest admitted turn; null when there is none., type: [string, "null"] }
+    running: { description: True only while that turn is open., type: boolean }
+    updatedAt: { type: string, format: date-time }
+---
+# The list of conversations a page offers: what `GET /conversations` accepts.
+kind: DataModel.Collection
+metadata: { name: conversations }
+model: !ref ConversationSummary
+key: id
+query:
+  filters:
+    - { property: title, operator: contains }
+    - { property: archived, operator: eq }
+  sort: [{ property: updatedAt }]
+---
+kind: Telo.JsonSchema
+metadata: { name: ConversationPage }
+schema:
+  type: object
+  additionalProperties: false
+  required: [rows, total, next]
+  properties:
+    rows: { type: array, items: { $ref: "telo:Conversations/ConversationSummary" } }
+    total: { type: integer, minimum: 0 }
+    next: { type: [string, "null"] }
+---
+kind: Telo.JsonSchema
+metadata: { name: EntryPage }
+schema:
+  type: object
+  additionalProperties: false
+  required: [rows, total, next]
+  properties:
+    rows:
+      description: Newest first, from the leaf toward the root; total is the branch length.
+      type: array
+      items: { $ref: "telo:Conversations/Entry" }
+    total: { type: integer, minimum: 0 }
+    next: { type: [string, "null"] }
+---
+kind: Telo.JsonSchema
+metadata: { name: ConversationPatch }
+schema:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties: { title: { type: string }, archived: { type: boolean } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Attachment }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, mediaType, size]
+  properties:
+    id: { type: string, minLength: 1 }
+    mediaType: { type: string, minLength: 1 }
+    size: { type: integer, minimum: 0 }
+---
+# An RFC 9457 problem as `application/problem+json`.
+kind: Telo.JsonSchema
+metadata: { name: Problem }
+schema:
+  type: object
+  required: [status, code]
+  properties:
+    type: { type: string }
+    title: { type: string }
+    status: { type: integer, minimum: 400, maximum: 599 }
+    code: { type: string, minLength: 1 }
+    detail: { type: string }
+    data: { type: object, properties: { issues: { type: array } } }

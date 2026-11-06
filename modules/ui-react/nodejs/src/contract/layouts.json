@@ -118,7 +118,18 @@
         "onMove": null,
         "onCreate": null
       },
-      "states": [],
+      "states": [
+        {
+          "attribute": "data-frame",
+          "values": [
+            "framed",
+            "flush"
+          ],
+          "on": [
+            "$root"
+          ]
+        }
+      ],
       "semantics": false,
       "portal": []
     },

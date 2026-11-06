@@ -1,0 +1,8 @@
+modules:
+  modules/ui-react: Added
+body: Draws a listing's record actions as buttons or, when a record gives them no room
+  for the buttons in one line, as one menu button per record (the room is the record's
+  content box, half of it where the content shares the line, the grid's frame in a
+  table); starts at a listing's fixed sort, draws no sort control where the order is
+  fixed and no pager range or group count where show.count is false; Menu entries may be
+  disabled with a hint, in the controls contract ui_react_controls-3.

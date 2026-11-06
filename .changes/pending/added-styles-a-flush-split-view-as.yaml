@@ -1,0 +1,5 @@
+modules:
+  modules/ui-react-radix: Added
+body: Styles a flush split view as one panel with a rail when folded, the data-embedded
+  frames, the split-bar part, the shared bar height --ui-react-bar-height and the
+  one-line list record with its hover fill in the Radix theme.

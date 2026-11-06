@@ -1,0 +1,39 @@
+# The keys a chat's header replaced, and `fill` on a menu item.
+kind: Telo.Library
+metadata:
+  name: UiInvalidChatHeaderKeys
+  version: 1.0.0
+  description: Test fixture exporting a chat written with the keys its header replaced, and a menu item that fills.
+imports: { Ui: ../../../../, Fixture: ../../conversation }
+exports: { resources: [titled, exportSwitch, exportButton, filledItem] }
+---
+kind: Fixture.Endpoint
+metadata: { name: conversation }
+operations: [cancel]
+---
+kind: Ui.ConversationSource
+metadata: { name: source }
+conversation: !ref conversation
+basePath: /api/chat
+---
+kind: Ui.Chat
+metadata: { name: titled }
+source: !ref source
+title: Assistant
+---
+kind: Ui.Chat
+metadata: { name: exportSwitch }
+source: !ref source
+show: { export: false }
+---
+kind: Ui.Chat
+metadata: { name: exportButton }
+source: !ref source
+buttons: { export: { kind: Ui.IconButton } }
+---
+kind: Ui.View
+metadata: { name: filledItem }
+content:
+  type: menu
+  text: Pick
+  items: [{ type: link, text: One, href: /one, fill: true }]

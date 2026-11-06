@@ -1,0 +1,142 @@
+kind: Telo.Application
+metadata:
+  name: AiChatParallelTurns
+  version: 1.0.0
+  description: |
+    Two conversations on one instance run their turns at the same time: both
+    are admitted, a tool in each is running before either finishes, both event
+    streams reach their ending, and each conversation's entries hold only its
+    own messages.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Sql: ../../sql
+  Stream: ../../stream
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  scratchDir:
+    env: AI_CHAT_PARALLEL_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+# A tool that takes a second and logs when it starts and when it ends.
+kind: Telo.Sequence
+metadata: { name: slowTool }
+steps:
+  - name: begin
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: !sql "INSERT INTO tool_log (phase) VALUES ('start')" }
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
+  - name: end
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: !sql "INSERT INTO tool_log (phase) VALUES ('end')" }
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent:
+  kind: Ai.AgentStream
+  model:
+    kind: AiEcho.EchoModelStream
+    accepts: []
+    emitToolCall: { name: wait, arguments: {} }
+  maxSteps: 4
+  toolProviders:
+    - provider:
+        kind: Ai.Tools
+        tools:
+          - tool: !ref slowTool
+            name: wait
+            description: Waits a while.
+            parameters: { type: object }
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref db }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-parallel')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.StartTurn
+metadata: { name: startTurn }
+conversation: !ref chat
+---
+kind: Chat.TurnEvents
+metadata: { name: turnEvents }
+conversation: !ref chat
+---
+kind: Chat.ConversationEntries
+metadata: { name: conversationEntries }
+conversation: !ref chat
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: table
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: !sql "CREATE TABLE tool_log (phase TEXT)" }
+  - name: first
+    invoke: !ref startTurn
+    inputs: { message: alpha, attachments: [] }
+  - name: second
+    invoke: !ref startTurn
+    inputs: { message: beta, attachments: [] }
+  - name: firstEvents
+    invoke: !ref turnEvents
+    inputs: { turn: !cel "steps.first.result.turn" }
+  - name: secondEvents
+    invoke: !ref turnEvents
+    inputs: { turn: !cel "steps.second.result.turn" }
+  - name: firstFrames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.firstEvents.result.output" }
+  - name: secondFrames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.secondEvents.result.output" }
+  - name: firstEntries
+    invoke: !ref conversationEntries
+    inputs: { id: !cel "steps.first.result.conversation" }
+  - name: secondEntries
+    invoke: !ref conversationEntries
+    inputs: { id: !cel "steps.second.result.conversation" }
+  - name: log
+    invoke: !ref query
+    inputs: { sql: !sql "SELECT phase FROM tool_log ORDER BY rowid" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        distinct: !cel "steps.first.result.conversation != steps.second.result.conversation"
+        firstEnding: !cel "steps.firstFrames.result.items[size(steps.firstFrames.result.items) - 1].event"
+        secondEnding: !cel "steps.secondFrames.result.items[size(steps.secondFrames.result.items) - 1].event"
+        toolLog: !cel "steps.log.result.rows.map(r, r.phase)"
+        firstRoles: !cel "steps.firstEntries.result.rows.map(r, r.role)"
+        firstUsers: !cel "steps.firstEntries.result.rows.filter(r, r.role == 'user').map(r, r.parts[0].text)"
+        secondRoles: !cel "steps.secondEntries.result.rows.map(r, r.role)"
+        secondUsers: !cel "steps.secondEntries.result.rows.filter(r, r.role == 'user').map(r, r.parts[0].text)"
+      expected:
+        distinct: true
+        firstEnding: { type: turn-end, reason: stop, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }
+        secondEnding: { type: turn-end, reason: stop, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }
+        toolLog: [start, start, end, end]
+        firstRoles: [assistant, assistant, assistant, user]
+        firstUsers: [alpha]
+        secondRoles: [assistant, assistant, assistant, user]
+        secondUsers: [beta]

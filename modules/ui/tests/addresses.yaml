@@ -1,0 +1,144 @@
+kind: Telo.Application
+metadata:
+  name: UiAddressTest
+  version: 1.0.0
+  description: |
+    An address is a string or a path with its path and query parameters, and
+    reaches a renderer with every member present: a string as a literal path, a
+    page reference as that page's own path, a chain as data. A link, a value, a
+    list column, a menu item and a reader's source all take one, and a reader's
+    source takes its query parameters under `queryParams`.
+imports: { Ui: ../, Run: ../../run, Assert: ../../assert }
+targets:
+  - !ref main
+---
+kind: Ui.Page
+metadata: { name: archive }
+path: /somewhere/else
+title: Archive
+children: []
+---
+kind: Ui.Page
+metadata: { name: home }
+path: /
+title: Home
+query: { tag: { type: string } }
+children:
+  - { type: link, text: Docs, href: /docs }
+  - { type: link, text: Archive, href: { path: !ref archive } }
+  - type: link
+    text: Item
+    href:
+      path: "/items/{id}"
+      pathParams: { id: 7 }
+      queryParams: { tag: !cel "query.tag", page: 2, flag: true, labels: [a, b] }
+  - type: menu
+    text: Go
+    items:
+      - { type: link, text: Archive, href: { path: !ref archive, queryParams: { tag: x } } }
+  - { type: composite, ref: !ref account }
+---
+kind: Telo.JsonSchema
+metadata: { name: Account }
+schema:
+  type: object
+  properties:
+    home: { type: string, title: Home }
+    items:
+      type: array
+      items:
+        type: object
+        properties: { id: { type: integer }, name: { type: string, title: Name } }
+---
+kind: Ui.Data
+metadata: { name: account }
+model: !ref Account
+query: { tag: { type: string } }
+source:
+  path: "/api/accounts/{tag}"
+  pathParams: { tag: !cel "query.tag" }
+  queryParams: { expand: [items, home] }
+content:
+  type: stack
+  children:
+    - { type: value, value: !cel "data.home", href: { path: !cel "data.home" } }
+    - type: list
+      rows: !cel "data.items"
+      columns:
+        - value: !cel "row.name"
+          href: { path: "/items/{id}", pathParams: { id: !cel "row.id" }, queryParams: { from: !cel "query.tag" } }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: read
+    invoke: !ref home
+    inputs: { request: { headers: {} } }
+  - name: links
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.read.result.children[0], steps.read.result.children[1], steps.read.result.children[2], steps.read.result.children[3]]"
+      expected:
+        - type: link
+          fill: false
+          text: { text: Docs, context: null, lang: und, computed: false }
+          href: { path: { value: /docs }, pathParams: {}, queryParams: {} }
+          button: null
+        - type: link
+          fill: false
+          text: { text: Archive, context: null, lang: und, computed: false }
+          href: { path: { value: /somewhere/else }, pathParams: {}, queryParams: {} }
+          button: null
+        - type: link
+          fill: false
+          text: { text: Item, context: null, lang: und, computed: false }
+          href:
+            path: { value: "/items/{id}" }
+            pathParams: { id: { value: 7 } }
+            queryParams:
+              tag: { root: query, path: [tag] }
+              page: { value: 2 }
+              flag: { value: true }
+              labels: { value: [a, b] }
+          button: null
+        - type: menu
+          fill: false
+          text: { text: Go, context: null, lang: und, computed: false }
+          items:
+            - type: link
+              fill: false
+              text: { text: Archive, context: null, lang: und, computed: false }
+              href: { path: { value: /somewhere/else }, pathParams: {}, queryParams: { tag: { value: x } } }
+              button: null
+  - name: reader
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "{'source': steps.read.result.children[4].source, 'content': steps.read.result.children[4].content}"
+      expected:
+        source:
+          path: { value: "/api/accounts/{tag}" }
+          pathParams: { tag: { root: query, path: [tag] } }
+          queryParams: { expand: { value: [items, home] } }
+        content:
+          type: stack
+          fill: false
+          children:
+            - type: value
+              fill: false
+              value: { root: data, path: [home] }
+              href: { path: { root: data, path: [home] }, pathParams: {}, queryParams: {} }
+              present: { type: string }
+              labels: []
+            - type: list
+              fill: false
+              rowActionsDisplay: auto
+              rows: { root: data, path: [items] }
+              columns:
+                - header: { text: Name, context: null, lang: und, computed: false }
+                  value: { root: row, path: [name] }
+                  present: { type: string }
+                  labels: []
+                  href:
+                    path: { value: "/items/{id}" }
+                    pathParams: { id: { root: row, path: [id] } }
+                    queryParams: { from: { root: query, path: [tag] } }

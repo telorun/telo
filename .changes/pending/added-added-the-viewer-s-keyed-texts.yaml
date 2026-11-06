@@ -1,0 +1,5 @@
+modules:
+  modules/ui: Added
+body: Added the viewer's keyed texts (mediaViewer, mediaPrevious, mediaNext,
+  mediaPosition, mediaZoomIn, mediaZoomOut, mediaZoomReset, mediaDownload) to
+  Ui.Translations, translated into all fourteen shipped languages.

@@ -1,0 +1,42 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiAcceptsOutsideCeiling
+  version: 1.0.0
+  description: Fixture — one declaration per model kind, each accepting what its API cannot carry.
+imports: { OpenAI: ../../, Http: ../../../http-client }
+---
+kind: Http.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:1/v1
+---
+kind: Http.Request
+metadata: { name: request }
+client: !ref client
+---
+kind: OpenAI.ChatModel
+metadata: { name: chatAudio }
+model: test
+request: !ref request
+accepts:
+  - { type: audio, mediaTypes: [audio/wav] }
+---
+kind: OpenAI.ChatModelStream
+metadata: { name: chatStreamVideo }
+model: test
+request: !ref request
+accepts:
+  - { type: video, mediaTypes: [video/mp4] }
+---
+kind: OpenAI.ResponsesModel
+metadata: { name: responsesAudio }
+model: test
+request: !ref request
+accepts:
+  - { type: audio, mediaTypes: [audio/wav] }
+---
+kind: OpenAI.ResponsesModelStream
+metadata: { name: responsesStreamImage }
+model: test
+request: !ref request
+accepts:
+  - { type: image, mediaTypes: [application/pdf] }

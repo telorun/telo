@@ -7,6 +7,8 @@ export {
   isMediaPart,
   isTextPart,
 } from "./content.js";
+export { acceptedByModel, acceptedOf, requireAccepted } from "./accepted-content.js";
+export type { AcceptedContent, AcceptedContentEntry } from "./accepted-content.js";
 export { answeredCallId } from "./answered-call.js";
 export { redact } from "./redact.js";
 export {
@@ -42,6 +44,7 @@ export type {
 // state is one module scope.
 export * as AiAgentController from "./ai-agent-controller.js";
 export * as AiAgentStreamController from "./ai-agent-stream-controller.js";
+export * as AiBufferedController from "./ai-buffered-controller.js";
 export * as AiImageController from "./ai-image-controller.js";
 export * as AiTextController from "./ai-text-controller.js";
 export * as AiTextStreamController from "./ai-text-stream-controller.js";

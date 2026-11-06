@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: UnknownEventType, version: 1.0.0 }
+imports: { Conversation: ../../.., Run: ../../../../run }
+targets:
+  - !ref refused
+---
+kind: Run.Value
+metadata: { name: checkEvent }
+inputType: !ref Conversation.Event
+value: true
+---
+kind: Telo.Sequence
+metadata: { name: refused }
+steps:
+  - name: event
+    invoke: !ref checkEvent
+    inputs: { type: banana, text: x }

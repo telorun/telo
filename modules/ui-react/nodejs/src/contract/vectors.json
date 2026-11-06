@@ -792,6 +792,28 @@
         ]
       },
       {
+        "name": "draws a disabled entry with its hint, and reports nothing when it is chosen",
+        "props": {
+          "open": true,
+          "items": [
+            { "key": "done", "label": "Done" },
+            { "key": "priority", "label": "Priority", "disabled": true, "hint": "Not now" }
+          ]
+        },
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "part": "menu-item", "index": 1 }, "name": "aria-disabled", "value": "true" },
+                { "of": { "part": "menu-item", "index": 1 }, "name": "title", "value": "Not now" }
+              ]
+            }
+          },
+          { "click": { "part": "menu-item", "index": 1 } },
+          { "expect": { "intents": [] } }
+        ]
+      },
+      {
         "name": "asks to close on Escape, and stays open until the renderer closes it",
         "props": { "open": true },
         "hold": ["open"],
@@ -1238,9 +1260,32 @@
         { "key": "three", "label": "Three" }
       ],
       "value": "one",
+      "fill": false,
       "children": { "element": "p", "attributes": { "id": "content" }, "text": "First" }
     },
     "vectors": [
+      {
+        "name": "marks its root and the shown panel filling while it fills, and neither while it does not",
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "part": "tabs" }, "name": "data-fill", "value": null },
+                { "of": { "part": "tab-panel" }, "name": "data-fill", "value": null }
+              ]
+            }
+          },
+          { "props": { "fill": true } },
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "part": "tabs" }, "name": "data-fill", "value": "true" },
+                { "of": { "part": "tab-panel" }, "name": "data-fill", "value": "true" }
+              ]
+            }
+          }
+        ]
+      },
       {
         "name": "is a tab list named by its label, the chosen tab selected, its content in the panel",
         "steps": [
@@ -1307,22 +1352,32 @@
         "steps": [
           { "expect": { "attributes": [{ "of": { "part": "icon" }, "name": "aria-hidden", "value": "true" }] } },
           { "props": { "name": "alert" } },
+          { "props": { "name": "attach" } },
           { "props": { "name": "close" } },
           { "props": { "name": "collapse" } },
+          { "props": { "name": "copy" } },
           { "props": { "name": "delete" } },
+          { "props": { "name": "done" } },
           { "props": { "name": "edit" } },
           { "props": { "name": "expand" } },
+          { "props": { "name": "export" } },
           { "props": { "name": "filter" } },
+          { "props": { "name": "go" } },
           { "props": { "name": "loading" } },
           { "props": { "name": "menu" } },
           { "props": { "name": "more" } },
           { "props": { "name": "next" } },
+          { "props": { "name": "panel-close" } },
+          { "props": { "name": "panel-open" } },
           { "props": { "name": "previous" } },
+          { "props": { "name": "regenerate" } },
           { "props": { "name": "remove" } },
           { "props": { "name": "reset" } },
+          { "props": { "name": "send" } },
           { "props": { "name": "sort-ascending" } },
           { "props": { "name": "sort-descending" } },
           { "props": { "name": "sortable" } },
+          { "props": { "name": "stop" } },
           { "expect": { "present": [{ "part": "icon" }] } }
         ]
       }

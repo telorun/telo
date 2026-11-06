@@ -1,5 +1,6 @@
 import { createContext } from "react";
-import { readBinding, type Binding, type Condition } from "./bindings.js";
+import { addressReads, resolveAddress, resolveRefresh, resolveRequest, type AddressWire } from "./address-wire.js";
+import type { Binding, Condition } from "./bindings.js";
 import type { Host, HostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
 import type { Field } from "./record-fields.js";
@@ -14,7 +15,7 @@ type Node = { type: string } & Record<string, any>;
 export interface ActionSpec {
   type: "action";
   schema: JsonSchema;
-  path: string;
+  request: { method: RequestMethod; target: AddressWire; consumed: string[] };
   label: WireText;
   fields: Field[];
   enabled?: Condition & { disabledText: WireText };
@@ -22,10 +23,12 @@ export interface ActionSpec {
   answer?: JsonSchema;
   result?: Node;
   failure: Node;
-  onSuccess: { navigate?: Binding; refreshes: string[] };
+  onSuccess: { navigate?: AddressWire; refreshes: AddressWire[] };
   concurrency: "parallel" | "serial";
   clearAnswerOn: string[];
 }
+
+export type RequestMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** An operation a row offers. */
 export interface RowActionSpec {
@@ -41,13 +44,21 @@ export interface RowActionSpec {
 /** What a press came to: the answer it drew from, or why it did not succeed.
  *  `input` is the record that was sent. */
 export type Outcome =
-  | { ok: true; result: Record<string, unknown> | undefined; input: Record<string, unknown> }
+  | { ok: true; result: Record<string, unknown> | undefined; input: Record<string, unknown>; target: string }
   | { ok: false; error: RequestError; input: Record<string, unknown>; body?: unknown };
 
-/** The action contract's request: one `POST` with a JSON body. Whatever the
- *  operation answered is returned; no answer at all is thrown. */
-export async function requestAction(host: Host, path: string, record: Record<string, unknown>): Promise<Response> {
-  return host.fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(record) });
+/** Whether a property of the input holds a value the body carries: not nothing, null or an empty list. */
+const valued = (value: unknown): boolean => value !== undefined && value !== null && !(Array.isArray(value) && value.length === 0);
+
+/**
+ * The action contract's request: the method to the target, a `DELETE` with no
+ * body, any other with the input's valued properties minus the consumed ones
+ * as JSON. Whatever the operation answered is returned; no answer at all is thrown.
+ */
+export async function requestAction(host: Host, url: string, request: ActionSpec["request"], input: Record<string, unknown>): Promise<Response> {
+  if (request.method === "DELETE") return host.fetch(url, { method: "DELETE" });
+  const body = Object.fromEntries(Object.entries(input).filter(([property, value]) => !request.consumed.includes(property) && valued(value)));
+  return host.fetch(url, { method: request.method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 }
 
 /** Whether a binding reads `result`. */
@@ -104,9 +115,12 @@ export async function runOperation(
   input: Record<string, unknown>,
   say: Say,
 ): Promise<Outcome> {
+  const resolved = resolveRequest(action.request.target, { input }, "action target");
+  if (!resolved.ok) return { ok: false, error: { code: resolved.error.code, message: resolved.error.message }, input };
+  const target = resolved.address;
   let response: Response;
   try {
-    response = await requestAction(host, underMount(prefix, action.path), input);
+    response = await requestAction(host, underMount(prefix, target), action.request, input);
   } catch (error) {
     return { ok: false, error: unansweredError(error, say), input };
   }
@@ -119,8 +133,11 @@ export async function runOperation(
     }
     return { ok: false, error: requestErrorOf(response.status, body, say), input, body };
   }
-  const navigate = action.onSuccess.navigate;
-  if (!readsResult(action.result) && !(navigate !== undefined && "root" in navigate)) return { ok: true, result: undefined, input };
+  const { navigate, refreshes } = action.onSuccess;
+  // A success with no body (a 204) is a success unless something reads it.
+  if (!readsResult(action.result) && !addressReads(navigate, "result") && !refreshes.some((each) => addressReads(each, "result"))) {
+    return { ok: true, result: undefined, input, target };
+  }
   const invalid = (message: string): Outcome => ({ ok: false, error: { status: response.status, code: "ERR_UI_RESPONSE_INVALID", message }, input });
   let body: unknown;
   try {
@@ -131,23 +148,35 @@ export async function runOperation(
   if (body === null || typeof body !== "object" || Array.isArray(body)) return invalid(say("answerNotObject"));
   const findings = action.answer ? validate(action.answer, body) : [];
   if (findings.length > 0) return invalid(say("answerNotModel", { detail: findingText(findings[0], say) }));
-  return { ok: true, result: body as Record<string, unknown>, input };
+  return { ok: true, result: body as Record<string, unknown>, input, target };
 }
 
 /**
- * What a success does beyond being drawn: every reader and table over a path
- * `refreshes` names reads again, then the page goes where `navigate` says — a
- * declared page within the application, any other app-relative address by a
- * load, an absolute one replacing the page. A value that is no such address
- * navigates nowhere.
+ * What a success does beyond being drawn: every reader over the resolved target
+ * path, each resolved `refreshes` path and `also` (a listing's own paths) reads
+ * again, then the page goes where `navigate` says — a declared page within the
+ * application, any other app-relative address by a load, an absolute one
+ * replacing the page. A refresh that does not resolve is skipped; a navigation
+ * that does not goes nowhere.
  */
-export function followSuccess(action: ActionSpec, result: Record<string, unknown> | undefined, host: Host, store: HostStore, pages: string[]): void {
-  for (const path of action.onSuccess.refreshes) host.notifyChanged(path);
+export function followSuccess(
+  action: ActionSpec,
+  outcome: Extract<Outcome, { ok: true }>,
+  host: Host,
+  store: HostStore,
+  pages: string[],
+  also: readonly string[] = [],
+): void {
+  const roots = { result: outcome.result, input: outcome.input };
+  for (const path of [outcome.target, ...also]) host.notifyChanged(path);
+  for (const each of action.onSuccess.refreshes) {
+    const refresh = resolveRefresh(each, roots, "action refresh");
+    if (refresh !== undefined) store.notifyRefresh(refresh);
+  }
   const navigate = action.onSuccess.navigate;
   if (navigate === undefined) return;
-  const read = readBinding(navigate, { result });
-  if (!read.present || typeof read.value !== "string") return;
-  const address = read.value;
+  const address = resolveAddress(navigate, roots, "action navigate");
+  if (address === undefined) return;
   const href = linkAddress(store, address);
   if (href === undefined) return;
   if (address.startsWith("/")) {
@@ -169,13 +198,14 @@ export class PressQueues {
 
   run<T>(action: ActionSpec, press: () => Promise<T>): Promise<T> {
     if (action.concurrency !== "serial") return press();
-    const prior = this.tails.get(action.path) ?? Promise.resolve();
+    const queue = `${action.request.method} ${JSON.stringify(action.request.target.path)}`;
+    const prior = this.tails.get(queue) ?? Promise.resolve();
     const running = prior.then(press);
     const tail = running.then(
       () => {},
       () => {},
     );
-    this.tails.set(action.path, tail);
+    this.tails.set(queue, tail);
     return running;
   }
 }

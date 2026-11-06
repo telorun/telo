@@ -1,0 +1,6 @@
+modules:
+  modules/ui: Added
+body: "Ui.SplitView takes its aside as { actions, content }: content is the tree the
+  panel holds, actions the button links (a link node with button; anything else is
+  refused) drawn under its top bar. The split wire carries aside as { actions, content
+  }, actions always present."

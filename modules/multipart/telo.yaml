@@ -8,23 +8,14 @@ metadata:
   description: |
     Multipart bodies: combine several parts — a JSON document, a file, a form field —
     into one payload with the boundary framing servers expect, and split a received
-    payload back into its parts — either collected whole, or read incrementally so
-    an upload larger than memory can be handled. Covers form uploads and the
-    metadata-plus-content shape file APIs use. Part content may be text or bytes.
-exports: { kinds: [Encoder, Decoder, Reader] }
+    payload back into its parts — collected whole, read incrementally so an upload
+    larger than memory can be handled, or one named file streamed while the rest is
+    never read. Covers form uploads and the metadata-plus-content shape file APIs
+    use. Part content may be text or bytes.
+exports: { kinds: [Encoder, Decoder, Reader, ReadPart], resources: [Part] }
 ---
-# Multipart.Encoder — N parts in, one framed byte stream out.
-#
-# NOT `extends: Codec.Encoder`. That abstract's inputType is a single `input`
-# stream; a multipart encoder takes an ordered LIST of parts, each with its own
-# headers. Extending it would claim substitutability at every Codec.Encoder slot
-# and be false — a consumer holding this as a Codec.Encoder would pass `input`
-# and get nothing back.
-#
-# THE CONTENT TYPE IS AN OUTPUT, not something the caller writes. The boundary is
-# generated here and has to appear in the header (`multipart/form-data;
-# boundary=...`), so a caller that wrote its own Content-Type would produce a body
-# no server could parse. Returning them together makes the pair inseparable.
+# Not a Codec.Encoder: it takes a list of parts, not one `input`. The content type is
+# an output because the generated boundary must appear in it.
 kind: Telo.Definition
 metadata:
   name: Encoder
@@ -119,12 +110,7 @@ outputType:
         description: The boundary used, for a caller that must reproduce the header itself.
 schema: { type: object, additionalProperties: false }
 ---
-# Multipart.Decoder — a framed byte stream back into its parts.
-#
-# The inbound half, for a server receiving an upload. Not `extends: Codec.Decoder`
-# for the same reason the encoder does not extend its abstract: that contract's
-# input is `input` alone, and parsing multipart needs the boundary, which lives in
-# the Content-Type header rather than in the bytes.
+# Not a Codec.Decoder: the boundary comes from the content type, not the bytes.
 kind: Telo.Definition
 metadata:
   name: Decoder
@@ -254,22 +240,68 @@ outputType:
               description: Every header the part carried, with lowercase keys.
 schema: { type: object, additionalProperties: false }
 ---
-# Multipart.Reader — the incremental counterpart to Decoder.
-#
-# Decoder buffers, which is right for a form's small fields and wrong for a file
-# upload: its limits cap what a server can accept, and raising them only moves
-# the allocation. This reads a stream of parts, each a stream of bytes.
-#
-# Its codes are declared like the decoder's, but only a missing boundary rejects
-# the call: everything else is found while the returned streams are drained, so
-# it surfaces wherever they are read.
-#
-# The usual objection to that shape is that the source is single-pass, so a
-# consumer that skips a part reads nothing from the next one — a silent
-# use-after-free rather than an error. Advancing the outer stream DISCARDS
-# whatever is left of the current part, so skipping is correct by construction
-# and costs no memory. What would otherwise be an ordering contract a consumer
-# could violate silently becomes an invariant it cannot.
+# What an incremental read takes, shared by Reader and ReadPart.
+kind: Telo.JsonSchema
+metadata: { name: ReadingInput }
+schema:
+  type: object
+  additionalProperties: false
+  required: [input, contentType]
+  properties:
+    input:
+      x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+      description: The received payload.
+    contentType:
+      type: string
+      description: >-
+        The media type the sender used, carrying the boundary. A value with no
+        `boundary=` parameter is an error, since nothing in the bytes identifies
+        where parts begin.
+    maxPartBytes:
+      type: integer
+      minimum: 1
+      description: >-
+        Largest content one part may hold, in bytes, its headers and framing not
+        counted. Omitted: no limit, since a part is streamed and never held.
+        Counted whether the part is read or skipped.
+    maxParts:
+      type: integer
+      minimum: 1
+      default: 1000
+      description: >-
+        Most parts the payload may hold. One more fails with
+        `ERR_MULTIPART_LIMIT_EXCEEDED` before its headers are read.
+    maxTotalBytes:
+      type: integer
+      minimum: 1
+      description: >-
+        Most bytes read from `input`, counting everything — framing, headers,
+        preamble and content. Omitted: no limit.
+---
+kind: Telo.JsonSchema
+metadata: { name: Part }
+schema:
+  type: object
+  additionalProperties: false
+  required: [content, headers]
+  properties:
+    content:
+      x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+      description: This part's payload, read incrementally.
+    contentType:
+      type: string
+      description: The part's media type exactly as it declared it, when it carried one.
+    name:
+      type: string
+      description: The form field name from the part's Content-Disposition.
+    filename: { type: string, description: "The file name, when present." }
+    headers:
+      type: object
+      additionalProperties: { type: string }
+      description: Every header the part carried, with lowercase keys.
+---
+# Only a missing boundary rejects the call; every other failure surfaces where the
+# streams are drained. Advancing discards the rest of the current part.
 kind: Telo.Definition
 metadata:
   name: Reader
@@ -331,42 +363,7 @@ throws:
             description: >-
               The form field name of that part, when `maxPartBytes` was exceeded
               by a part that declared one.
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    additionalProperties: false
-    required: [input, contentType]
-    properties:
-      input:
-        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
-        description: The received payload.
-      contentType:
-        type: string
-        description: >-
-          The media type the sender used, carrying the boundary. A value with no
-          `boundary=` parameter is an error, since nothing in the bytes identifies
-          where parts begin.
-      maxPartBytes:
-        type: integer
-        minimum: 1
-        description: >-
-          Largest content one part may hold, in bytes — its headers and the
-          framing around it are not counted. Omitted: no limit, since a
-          part is streamed and never held. Counted whether the part is read or skipped.
-      maxParts:
-        type: integer
-        minimum: 1
-        default: 1000
-        description: >-
-          Most parts the payload may hold. One more fails with
-          `ERR_MULTIPART_LIMIT_EXCEEDED` before its headers are read.
-      maxTotalBytes:
-        type: integer
-        minimum: 1
-        description: >-
-          Most bytes read from `input`, counting everything — framing, headers,
-          preamble and content. Omitted: no limit.
+inputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Multipart/ReadingInput" } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -376,25 +373,74 @@ outputType:
     properties:
       parts:
         description: The parts, in order. Consumed by iterating.
-        x-telo-type:
-          name: Telo.Stream
-          of:
-            type: object
-            additionalProperties: false
-            required: [content, headers]
-            properties:
-              content:
-                x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
-                description: This part's payload, read incrementally.
-              contentType:
-                type: string
-                description: The part's declared media type, when it carried one.
-              name:
-                type: string
-                description: The form field name from the part's Content-Disposition.
-              filename: { type: string, description: "The file name, when present." }
-              headers:
-                type: object
-                additionalProperties: { type: string }
-                description: Every header the part carried, with lowercase keys.
+        x-telo-type: { name: Telo.Stream, of: { $ref: "telo://Self/Part" } }
+schema: { type: object, additionalProperties: false }
+---
+# A first-match stream stage cannot do this: a part's content is a view into the
+# payload's one cursor, which releasing the parts stream on a match would end.
+kind: Telo.Definition
+metadata:
+  name: ReadPart
+  description: >-
+    Reads one named part out of a multipart upload as a stream, for a form that
+    sends a single file: earlier parts are discarded, the rest of the payload is
+    never read, and the file's bytes are read only as fast as they are consumed.
+    A payload with no part of that name fails with a distinct code; limits bound
+    part size, part count and total bytes.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#ReadPartController]
+throws:
+  codes:
+    ERR_MULTIPART_MALFORMED:
+      description: >-
+        The payload is not well-formed multipart. Met before the part, it rejects
+        the call; inside it, it fails the read of `content` that meets it.
+        `error.data.reason` is as Reader's.
+      data:
+        type: object
+        additionalProperties: false
+        required: [reason]
+        properties:
+          reason:
+            type: string
+            enum: [boundary-missing, truncated, header-malformed, header-too-large]
+            description: What is wrong with the payload.
+    ERR_MULTIPART_LIMIT_EXCEEDED:
+      description: >-
+        The payload crossed one of the call's limits; skipped parts count. Met
+        before the part, it rejects the call; inside it, it fails the read of
+        `content` that meets it. `error.data` is as Reader's.
+      data:
+        type: object
+        additionalProperties: false
+        required: [limit, max]
+        properties:
+          limit:
+            type: string
+            enum: [maxPartBytes, maxParts, maxTotalBytes]
+            description: The input whose value was exceeded.
+          max: { type: integer, description: That input's value for this call. }
+          part: { type: integer, description: "Zero-based position of the part the limit was met at. Absent for `maxTotalBytes`." }
+          name: { type: string, description: The form field name of that part, when `maxPartBytes` was exceeded by a part that declared one. }
+    ERR_MULTIPART_PART_MISSING:
+      description: The payload reached its closing boundary with no part named `name`.
+      data:
+        type: object
+        additionalProperties: false
+        required: [name]
+        properties: { name: { type: string, description: The part name asked for. } }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input, contentType, name]
+    properties:
+      input: { $ref: "telo:Multipart/ReadingInput#/properties/input" }
+      contentType: { $ref: "telo:Multipart/ReadingInput#/properties/contentType" }
+      name: { type: string, minLength: 1, description: The form field name of the part to read. }
+      maxPartBytes: { $ref: "telo:Multipart/ReadingInput#/properties/maxPartBytes" }
+      maxParts: { $ref: "telo:Multipart/ReadingInput#/properties/maxParts" }
+      maxTotalBytes: { $ref: "telo:Multipart/ReadingInput#/properties/maxTotalBytes" }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Multipart/Part" } }
 schema: { type: object, additionalProperties: false }

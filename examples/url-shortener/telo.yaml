@@ -18,9 +18,13 @@ metadata:
 requires:
   # 0.118.0: `site` is a `Telo.PublicUrl` need, a kind an older analyzer does not
   # declare.
-  telo: ">=0.121.0"
+  # 0.129.0: the `ui-react` renderer.
+  telo: ">=0.129.0"
+lang: en
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
+  Http: ../../modules/http-server
   Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
   SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
   Database:
@@ -43,14 +47,8 @@ variables:
     type: string
     x-telo-type: { name: Telo.HostPath, entry: file }
     default: ./tmp/url-shortener.db
-ports:
-  http:
-    env: PORT
-    default: 8080
-needs:
-  site:
-    kind: Telo.PublicUrl
-    parameters: { port: http }
+ports: { http: { env: PORT, default: 8080 } }
+needs: { site: { kind: Telo.PublicUrl, parameters: { port: http } } }
 targets:
   - !ref setupDb
   - !ref server
@@ -67,10 +65,50 @@ metadata: { name: server }
 listen:
   port: !cel "ports.http"
 trustProxy: true
-openapi:
-  info: { title: URL Shortener, version: 1.0.0 }
+openapi: { info: { title: URL Shortener, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref Redirect.routes
   - path: /admin
     mount: !ref Admin.routes
+  - path: /ui/api
+    mount: !ref Redirect.shortenRoutes
+  - path: /ui
+    mount: !ref app
+---
+kind: Telo.JsonSchema
+metadata: { name: ShortenRequest }
+schema:
+  type: object
+  required: [url]
+  additionalProperties: false
+  properties: { url: { type: string, title: URL to shorten, pattern: "^https?://[^\\s]+$" } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ShortenAnswer }
+schema:
+  type: object
+  required: [code, shortUrl]
+  properties: { code: { type: string }, shortUrl: { type: string, title: Short URL } }
+---
+kind: UiReact.App
+metadata: { name: app }
+title: URL Shortener
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Shorten a URL
+    children:
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: !ref ShortenRequest
+          outputModel: !ref ShortenAnswer
+          request: { target: /api/shorten }
+          label: Shorten
+          result:
+            type: stack
+            children:
+              - { type: text, text: Your short URL, style: muted }
+              - { type: value, value: !cel "result.shortUrl", style: strong }

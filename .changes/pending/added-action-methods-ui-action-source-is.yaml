@@ -1,0 +1,13 @@
+modules:
+  modules/ui: Added
+body: 'Action methods: `Ui.Action.source` is replaced by `request: { method, target }`,
+  `method` `POST` (default), `PUT`, `PATCH` or `DELETE`, `target` a `Ui.RequestTarget`
+  whose parameters read `input` (`source:`, `method: GET`, an absolute target and a page
+  reference are schema violations). An input property read whole (`input.<property>`) is
+  consumed: it travels in the target and stays out of the body; a `DELETE` sends no body
+  and must consume every input property (`UI_ACTION_INPUT_UNSENT` /
+  `ERR_UI_ACTION_INPUT_UNSENT`). `onSuccess.navigate` is a `Ui.Address` over `result`
+  and `input` (a path chain is now `navigate: { path: !cel "result.url" }`) and
+  `onSuccess.refreshes` are `Ui.RequestTarget`s over `input` and `result`. The action
+  wire node carries `request: { method, target, consumed }` and addresses in `onSuccess`
+  in place of `path`.'

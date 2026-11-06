@@ -1,0 +1,50 @@
+kind: Telo.Application
+metadata:
+  name: UiLinkButtonTest
+  version: 1.0.0
+  description: |
+    A link written with a button display is delivered with it — as its text, or
+    as a glyph with the look's own and a file of the page's own served — and a
+    link without one, or an item of a menu, is delivered inline. A button on a
+    node that is not a link is refused by `telo check`.
+imports: { Ui: ../, Probe: ./__fixtures__/probe, Assert: ../../assert }
+targets:
+  - !ref check
+  - !ref onText
+---
+kind: Ui.View
+metadata: { name: links }
+content:
+  type: stack
+  children:
+    - { type: link, text: Plain, href: /plain }
+    - { type: link, text: Text, href: /text, style: accent, button: { kind: Ui.TextButton } }
+    - { type: link, text: Glyph, href: /glyph, button: { kind: Ui.IconButton, label: shown } }
+    - { type: link, text: Mark, href: /mark, button: { kind: Ui.IconButton, icon: { kind: Ui.FileIcon, file: !module-path ./__fixtures__/chat-icons/mark.svg } } }
+---
+kind: Telo.Sequence
+metadata: { name: check }
+steps:
+  - name: read
+    invoke: { kind: Probe.Read, source: !ref links }
+  - name: wireIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result.node.children.map(link, link.button)"
+      expected:
+        - null
+        - { type: text }
+        - { type: icon, icon: null, label: shown }
+        - { type: icon, icon: { digest: 276ad3aee0a8ee2c8486148005b736534b2a9fea0abe52ccf5e0e7d0b97ae8b2, name: mark.svg }, label: hidden }
+  - name: iconServed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result.assets.map(asset, asset.name)"
+      expected: [mark.svg]
+---
+kind: Assert.Manifest
+metadata: { name: onText }
+source: ./__fixtures__/invalid/link-button/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Ui.View/buttonOnText" }

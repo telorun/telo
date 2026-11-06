@@ -37,6 +37,11 @@ children:
   evaluated for every request. A `shown` condition and a `value` or `list`
   node read `query` in the browser instead, and never `request`
   (`CEL_UNKNOWN_IDENTIFIER`).
+- A `link`'s `href` is an [address](nodes.md#addresses), and is not evaluated per
+  request: `href: !cel "request…"` is `CEL_UNKNOWN_IDENTIFIER`; a link that
+  differs by request is two `link` nodes with a `when` each. An address may
+  name a page by `!ref`, which is that page's `path` — renaming the `path`
+  moves every link to it.
 - The tree's structure and its references are literal: a computed list of
   children or a computed `ref` is `REF_SLOT_COMPUTED` at `telo check` and
   `ERR_REF_SLOT_COMPUTED` at creation.
@@ -55,6 +60,12 @@ Invoked with `{ request: { headers, ip?, lang? }, pageWidth? }`, the page answer
 request — a node whose `when:` is false left out, each composite placed as it
 provided, and a node an expression made invalid replaced by an `error` node,
 its siblings kept.
+
+A move to the page already shown — a link whose address is the page's own
+path with other query parameters, back or forward — keeps its nodes mounted:
+each reader and listing re-reads the parameters it declares instead of being
+drawn again, so a draft, a scroll position and an open surface stay. This is
+how a renderer behaves; `ui` states it so a page can rely on it.
 
 Its published reading is `{ path, title, query }`, so another resource reads
 `resources.<page>.path`.

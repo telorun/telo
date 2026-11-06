@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: EntryWithoutSiblings, version: 1.0.0 }
+imports: { Conversation: ../../.., Run: ../../../../run }
+targets:
+  - !ref refused
+---
+kind: Run.Value
+metadata: { name: checkEntry }
+inputType: !ref Conversation.Entry
+value: true
+---
+kind: Telo.Sequence
+metadata: { name: refused }
+steps:
+  - name: entry
+    invoke: !ref checkEntry
+    inputs: { id: e1, parent: null, turn: trn_1, role: user, parts: [] }

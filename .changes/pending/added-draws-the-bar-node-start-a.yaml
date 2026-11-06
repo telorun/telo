@@ -1,0 +1,16 @@
+modules:
+  modules/ui-react: Added
+body: "Draws the bar node (start, a centre kept centred and end, wrapping below the
+  breakpoint, as tall as every bar), the command node (a button running a command of its
+  place, with data-command and data-button, disabled while it cannot run and absent
+  where it is not offered) and the chat's header: its nodes over the open conversation's
+  summary, read on open, on a refresh and when a turn starts or ends, and the commands
+  exportTranscript, copyTranscript, stop and newConversation; the chat-title and
+  chat-export parts are gone and a header holding no nodes draws no chat-header. A node
+  marked fill carries data-fill on its root part, and while a page's node fills the
+  application is the viewport's height and the page scrolls only below the chain's
+  minimum, a split view's halves stretch and its aside scrolls, and a filling chat keeps
+  its message box at the bottom. The styling contract gains the bar, command and
+  data-fill parts and states and reservations qualified by a state, the data-fill ones
+  holding only while it is carried; the Tabs control of ui_react_controls-3 gains a
+  required fill prop marking its root and the shown panel."

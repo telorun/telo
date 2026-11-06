@@ -1,0 +1,179 @@
+kind: Telo.Application
+metadata:
+  name: UiChatTest
+  version: 1.0.0
+  description: |
+    A chat composite carries what its conversation endpoint offers, where the
+    endpoint is served and every presentation member — written, or filled by ui:
+    every switch on, a header bar holding the export command, no placeholder, no
+    starters, buttons drawn as text, the composer's buttons inside the message
+    box, the selection kept in memory and nothing refreshed. A written header's
+    nodes read the open conversation and the chat's commands as bindings, and
+    `header: []` draws none. A switch only travels with the node: the spec stays
+    whatever the endpoint offers. An icon button travels as a glyph whose file is
+    among the chat's assets. The query parameter that names the conversation and
+    the requests read again travel as addresses over `conversation.id`.
+lang: en
+imports:
+  Ui: ../
+  Fixture: ./__fixtures__/conversation
+  Probe: ./__fixtures__/probe
+  Assert: ../../assert
+targets:
+  - !ref check
+---
+kind: Fixture.Endpoint
+metadata: { name: conversation }
+attachments:
+  accepts: [{ type: image, mediaTypes: [image/png], maxBytes: 1048576 }]
+  maxPerMessage: 4
+operations: [branch, cancel]
+---
+kind: Ui.ConversationSource
+metadata: { name: source }
+conversation: !ref conversation
+basePath: /api/chat
+---
+kind: Ui.Chat
+metadata: { name: plain }
+source: !ref source
+---
+kind: Ui.Chat
+metadata: { name: written }
+source: !ref source
+header:
+  - type: bar
+    start: [{ type: value, value: !cel "conversation.title", style: heading }]
+    end: [{ type: command, command: !cel "chat.stop", text: Stop, button: { kind: Ui.IconButton } }]
+placeholder: Ask anything
+starters: [Summarise this, { prompt: Explain that, onChoose: fill }, { prompt: Say hi }]
+show: { usage: false }
+conversation: { parameter: conversation }
+refreshes:
+  - /api/chat/conversations
+  - { path: "/api/chat/conversations/{id}", pathParams: { id: !cel "conversation.id" } }
+---
+kind: Ui.Chat
+metadata: { name: iconed }
+source: !ref source
+header: []
+show: { copy: false }
+composer: { actions: outside }
+buttons:
+  copy: { kind: Ui.IconButton }
+  regenerate: { kind: Ui.IconButton, label: shown, icon: { kind: Ui.FileIcon, file: !module-path ./__fixtures__/chat-icons/mark.svg } }
+  send: { kind: Ui.TextButton }
+---
+kind: Telo.Sequence
+metadata: { name: check }
+steps:
+  - name: plain
+    invoke: { kind: Probe.Read, source: !ref plain }
+  - name: written
+    invoke: { kind: Probe.Read, source: !ref written }
+  - name: iconed
+    invoke: { kind: Probe.Read, source: !ref iconed }
+  - name: plainIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.plain.result.node"
+      expected:
+        type: chat
+        spec:
+          attachments:
+            accepts: [{ type: image, mediaTypes: [image/png], maxBytes: 1048576 }]
+            maxPerMessage: 4
+          operations: [branch, cancel]
+        basePath: /api/chat
+        header:
+          - type: bar
+            start: []
+            center: []
+            end:
+              - type: command
+                command: { root: chat, path: [exportTranscript] }
+                text: { set: Ui.Translations, key: chatExport }
+                button: { type: text }
+                fill: false
+            fill: false
+        placeholder: null
+        starters: []
+        show: { reasoning: true, toolDetail: true, usage: true, copy: true }
+        buttons:
+          copy: { type: icon, icon: null, label: hidden }
+          edit: { type: icon, icon: null, label: hidden }
+          regenerate: { type: icon, icon: null, label: hidden }
+          attach: { type: text }
+          send: { type: text }
+          stop: { type: text }
+        composer: { actions: inside }
+        conversation: null
+        refreshes: []
+        fill: false
+  - name: writtenIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.written.result.node"
+      expected:
+        type: chat
+        spec:
+          attachments:
+            accepts: [{ type: image, mediaTypes: [image/png], maxBytes: 1048576 }]
+            maxPerMessage: 4
+          operations: [branch, cancel]
+        basePath: /api/chat
+        header:
+          - type: bar
+            start: [{ type: value, value: { root: conversation, path: [title] }, present: { type: [string, "null"] }, labels: [], style: heading, fill: false }]
+            center: []
+            end:
+              - type: command
+                command: { root: chat, path: [stop] }
+                text: { text: Stop, context: null, lang: en, computed: false }
+                button: { type: icon, icon: null, label: hidden }
+                fill: false
+            fill: false
+        placeholder: { text: Ask anything, context: null, lang: en, computed: false }
+        starters:
+          - { prompt: { text: Summarise this, context: null, lang: en, computed: false }, onChoose: send }
+          - { prompt: { text: Explain that, context: null, lang: en, computed: false }, onChoose: fill }
+          - { prompt: { text: Say hi, context: null, lang: en, computed: false }, onChoose: send }
+        show: { reasoning: true, toolDetail: true, usage: false, copy: true }
+        buttons:
+          copy: { type: icon, icon: null, label: hidden }
+          edit: { type: icon, icon: null, label: hidden }
+          regenerate: { type: icon, icon: null, label: hidden }
+          attach: { type: text }
+          send: { type: text }
+          stop: { type: text }
+        composer: { actions: inside }
+        conversation: { parameter: conversation }
+        refreshes:
+          - { path: { value: /api/chat/conversations }, pathParams: {}, queryParams: {} }
+          - path: { value: "/api/chat/conversations/{id}" }
+            pathParams: { id: { root: conversation, path: [id] } }
+            queryParams: {}
+        fill: false
+  - name: iconedIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.iconed.result.node.header, steps.iconed.result.node.show, steps.iconed.result.node.buttons, steps.iconed.result.node.composer]"
+      expected:
+        - []
+        - { reasoning: true, toolDetail: true, usage: true, copy: false }
+        - copy: { type: icon, icon: null, label: hidden }
+          edit: { type: icon, icon: null, label: hidden }
+          regenerate:
+            type: icon
+            icon: { digest: 276ad3aee0a8ee2c8486148005b736534b2a9fea0abe52ccf5e0e7d0b97ae8b2, name: mark.svg }
+            label: shown
+          attach: { type: text }
+          send: { type: text }
+          stop: { type: text }
+        - { actions: outside }
+  - name: iconedAssets
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.iconed.result.assets.map(asset, [asset.digest, asset.name, asset.mediaType])"
+      expected:
+        - [276ad3aee0a8ee2c8486148005b736534b2a9fea0abe52ccf5e0e7d0b97ae8b2, mark.svg, image/svg+xml]

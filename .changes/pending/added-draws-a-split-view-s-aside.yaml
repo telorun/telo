@@ -1,0 +1,6 @@
+modules:
+  modules/ui-react: Added
+body: "Draws a split view's aside actions under the top bar, which holds the toggle
+  alone: a wrapping row while open, and stacked as glyphs (the text kept as accessible
+  name and tooltip) in the rail, folded or below the breakpoint; the compact surface
+  holds the aside content only."

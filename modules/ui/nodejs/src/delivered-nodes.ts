@@ -1,13 +1,14 @@
 import { canonicalTypeSchemaId, type DataValidator, type ResourceContext } from "@telorun/sdk";
 import { mergeAssets, type AssetFile, type SpecNode } from "./composite.js";
-import { deliveredMenu, deliveredTabs, placed, presented, type AuthoredNode, type AuthoredTab, type RootShapes } from "./node-resolution.js";
+import { filledNode } from "./fill-marking.js";
+import { deliveredMenu, deliveredTabs, nodeLists, placed, presented, withLinkButtons, type AuthoredNode, type AuthoredTab, type RootShapes } from "./node-resolution.js";
 import { headerReads, type HeaderReads } from "./request-header-reads.js";
 import { placedRowAction } from "./row-actions.js";
 import { uiText } from "./spec-texts.js";
 
 /** The node standing where one could not be produced. */
 export function errorNode(code: string, message: string): SpecNode {
-  return { type: "error", code, message };
+  return { type: "error", code, message, fill: false };
 }
 
 /** A node as written, after its expressions were evaluated for a request. */
@@ -23,13 +24,13 @@ export interface EvaluatedNode {
 
 /** Stands where a node already judged sits, so judging what holds it does not
  *  judge it again. */
-const JUDGED: SpecNode = { type: "stack", children: [] };
+const JUDGED: SpecNode = { type: "stack", children: [], fill: false };
 
 /** Stands where an action already judged sits inside a row action. */
 const JUDGED_ACTION: SpecNode = {
   type: "action",
   schema: {},
-  path: "/",
+  request: { method: "POST", target: { path: { value: "/" }, pathParams: {}, queryParams: {} }, consumed: [] },
   label: uiText("save"),
   fields: [],
   groups: [],
@@ -38,6 +39,7 @@ const JUDGED_ACTION: SpecNode = {
   onSuccess: { refreshes: [] },
   concurrency: "parallel",
   clearAnswerOn: [],
+  fill: false,
 };
 
 type Invalid = (node: SpecNode, reason: string) => void;
@@ -72,9 +74,9 @@ export function producedNode(
     // A composite with nothing to show is left out, like a node switched off.
     if (composite === null) return undefined;
     if (!composite) return refuse(rest as SpecNode, "its 'ref' names nothing this application resolved", invalid);
-    if (node.style == null && node.shown == null) return composite;
+    if (node.style == null && node.shown == null && node.fill !== true) return composite;
     const shell = placed(
-      { ...JUDGED, ...(composite.style === undefined ? {} : { style: composite.style }), ...(composite.shown === undefined ? {} : { shown: composite.shown }) },
+      { ...JUDGED, ...(composite.style === undefined ? {} : { style: composite.style }), ...(composite.shown === undefined ? {} : { shown: composite.shown }), fill: composite.fill === true },
       node,
     );
     const reason = refusalOf(shell.type === "box" ? { ...shell, children: [JUDGED] } : shell, validator);
@@ -116,16 +118,22 @@ export function producedNode(
     if (reason !== undefined) return refuse(rest as SpecNode, reason, invalid);
     return { ...rest, rowActions: entries.map((entry, index) => placedRowAction(entry as never, actions[index]!)) } as SpecNode;
   }
-  if (!Array.isArray(node.children)) {
+  const lists = nodeLists(node);
+  if (lists.length === 0) {
     const reason = refusalOf(rest as SpecNode, validator);
     return reason === undefined ? (rest as SpecNode) : refuse(rest as SpecNode, reason, invalid);
   }
-  const children = node.children
-    .map((child) => producedNode(child, provided, validator, invalid))
-    .filter((child): child is SpecNode => child !== undefined);
-  const produced = { ...rest, children } as SpecNode;
-  const reason = refusalOf({ ...rest, children: children.map(() => JUDGED) } as SpecNode, validator);
-  return reason === undefined ? produced : refuse(produced, reason, invalid);
+  const produced: Record<string, unknown> = { ...rest };
+  const judged: Record<string, unknown> = { ...rest };
+  for (const list of lists) {
+    const children = ((node[list] as EvaluatedNode[] | undefined) ?? [])
+      .map((child) => producedNode(child, provided, validator, invalid))
+      .filter((child): child is SpecNode => child !== undefined);
+    produced[list] = children;
+    judged[list] = children.map(() => JUDGED);
+  }
+  const reason = refusalOf(judged as SpecNode, validator);
+  return reason === undefined ? (produced as SpecNode) : refuse(produced as SpecNode, reason, invalid);
 }
 
 /** What a composite provided, judged once: itself when it is a valid
@@ -173,7 +181,7 @@ const provides = (candidate: unknown): candidate is Providing =>
 function withCompositesNumbered(node: unknown, placed: unknown[], composite: (ref: unknown, where: string) => Providing, where: string): unknown {
   if (Array.isArray(node)) return node.map((child, at) => withCompositesNumbered(child, placed, composite, `${where}[${at}]`));
   if (node === null || typeof node !== "object") return node;
-  const { type, ref, children, rowActions, tabs } = node as EvaluatedNode;
+  const { type, ref, rowActions, tabs } = node as EvaluatedNode;
   if (type === "composite") return { ...node, ref: placed.push(composite(ref, where)) - 1 };
   if (type === "tabs" && Array.isArray(tabs)) {
     return {
@@ -183,7 +191,12 @@ function withCompositesNumbered(node: unknown, placed: unknown[], composite: (re
       ),
     };
   }
-  if (Array.isArray(children)) return { ...node, children: withCompositesNumbered(children, placed, composite, `${where}.children`) };
+  const lists = nodeLists(node as EvaluatedNode);
+  if (lists.length > 0) {
+    const numbered: Record<string, unknown> = { ...node };
+    for (const list of lists) numbered[list] = withCompositesNumbered((node as EvaluatedNode)[list], placed, composite, `${where}.${list}`);
+    return numbered;
+  }
   if (type === "list" && Array.isArray(rowActions)) {
     return {
       ...node,
@@ -219,7 +232,13 @@ export class RequestNodes {
   /** `where` names the nodes in what is logged and refused. */
   static async prepare(nodes: unknown, roots: RootShapes, ctx: ResourceContext, where: string): Promise<RequestNodes> {
     const reader = { ctx, owner: where };
-    const authored = (nodes as AuthoredNode[]).map((child, at) => presented(child, roots, reader, `${where}[${at}]`));
+    const buttons: AssetFile[][] = [];
+    const authored: AuthoredNode[] = [];
+    for (const [at, child] of (nodes as AuthoredNode[]).entries()) {
+      const drawn = await withLinkButtons(child, ctx, `${where}[${at}]`);
+      buttons.push(drawn.assets);
+      authored.push(presented(drawn.node, roots, reader, `${where}[${at}]`));
+    }
     const placed: unknown[] = [];
     const composite = (ref: unknown, at: string) =>
       ctx.resolveRef(ref, provides, () => `'ref' of the composite node at ${where}${at}`, "Ui.Composite");
@@ -234,7 +253,7 @@ export class RequestNodes {
         provided.node === undefined
           ? null
           : // Judged here, once: a request places it as it stands.
-            judgedComposite(provided.node, validator, (invalid, reason) =>
+            judgedComposite(filledNode(provided.node), validator, (invalid, reason) =>
               ctx.log.error("A composite provides a node that is not valid and is shown as an error", {
                 code: "ERR_UI_NODE_INVALID",
                 where,
@@ -244,11 +263,12 @@ export class RequestNodes {
             ),
       );
     }
-    return new RequestNodes(ctx, where, tree, composites, validator, mergeAssets(...assets), headerReads(tree));
+    return new RequestNodes(ctx, where, tree, composites, validator, mergeAssets(...assets, ...buttons), headerReads(tree));
   }
 
   /** The nodes for one request: evaluated over it, a node switched off left
-   *  out, one not valid replaced by an error node and logged. */
+   *  out, one not valid replaced by an error node and logged, and every node
+   *  above a filling one marked to fill. */
   deliver(request: Record<string, unknown>): SpecNode[] {
     const evaluated = this.ctx.expandValue(this.tree, { request }) as EvaluatedNode[];
     return evaluated
@@ -266,6 +286,7 @@ export class RequestNodes {
             }),
         ),
       )
-      .filter((node): node is SpecNode => node !== undefined);
+      .filter((node): node is SpecNode => node !== undefined)
+      .map(filledNode);
   }
 }

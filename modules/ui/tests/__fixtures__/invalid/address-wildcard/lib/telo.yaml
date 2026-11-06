@@ -1,0 +1,37 @@
+# Wildcard segments belong to `refreshes` alone: a link and a request target
+# that write one are refused, in either spelling, and a refresh holds its
+# template variables to `pathParams` beside its wildcards.
+kind: Telo.Library
+metadata:
+  name: UiInvalidAddressWildcard
+  version: 1.0.0
+  description: Test fixture exporting views and an action whose addresses hold a wildcard segment.
+imports: { Ui: ../../../../../ }
+exports: { resources: [literalLink, templateLink, literalTarget, templateTarget, unboundRefresh] }
+---
+kind: Ui.View
+metadata: { name: literalLink }
+content: { type: link, text: All, href: /files/* }
+---
+kind: Ui.View
+metadata: { name: templateLink }
+content: { type: link, text: Item, href: { path: "/x/{id}/**", pathParams: { id: 7 } } }
+---
+kind: Ui.Action
+metadata: { name: literalTarget }
+inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
+request: { target: /api/** }
+label: Go
+---
+kind: Ui.Action
+metadata: { name: templateTarget }
+inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
+request: { target: { path: "/api/{id}/*", pathParams: { id: 7 } } }
+label: Go
+---
+kind: Ui.Action
+metadata: { name: unboundRefresh }
+inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
+request: { target: /api/go }
+label: Go
+onSuccess: { refreshes: [{ path: "/api/{id}/**", pathParams: { idd: 7 } }] }

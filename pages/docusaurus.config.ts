@@ -40,6 +40,13 @@ function collectDocIds(items: unknown): string[] {
 
 const docInclude = collectDocIds(sidebars.docs).map((id) => `${id}.md`);
 
+// Mirrored in plugins/llms-txt.
+const hubGuideSlugs: Record<string, string> = {
+  "build-ui": "/learn/build-ui",
+  "design-library": "/extend/design-library",
+  "write-integration-tests": "/build/integration-tests",
+};
+
 // Analytics ships only on the build that deploys telo.run, which is the one
 // place PLAUSIBLE_DOMAIN is set. Local and preview builds emit no tags at all,
 // so they cannot report into the production site. The variable both gates the
@@ -148,6 +155,13 @@ const config: Config = {
 
       if (/\/docs\/coding-agents\.md$/.test(normalized)) {
         result.frontMatter.slug = "/build/coding-agents";
+        return result;
+      }
+
+      // The hub's MCP authoring guides, published as-is.
+      const hubGuideMatch = normalized.match(/\/apps\/hub\/guides\/(.+)\.md$/);
+      if (hubGuideMatch && hubGuideSlugs[hubGuideMatch[1]]) {
+        result.frontMatter.slug = hubGuideSlugs[hubGuideMatch[1]];
         return result;
       }
 

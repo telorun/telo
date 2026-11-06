@@ -66,6 +66,8 @@ client:
 ---
 kind: Anthropic.MessagesModel
 metadata: { name: echo }
+accepts:
+  - { type: image, mediaTypes: [image/png] }
 model: claude-test
 request: !ref echoRequest
 maxTokens: 256

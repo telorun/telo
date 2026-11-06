@@ -1,5 +1,6 @@
-import { useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType, type ReactNode } from "react";
-import { conditionHolds, ruleStyle, styleAttribute, type Binding, type StyleRule } from "./bindings.js";
+import { segment } from "./address-wire.js";
+import { useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType, type ReactNode, type RefCallback } from "react";
+import { conditionHolds, fillAttribute, ruleStyle, styleAttribute, type Binding, type StyleRule } from "./bindings.js";
 import { boundFilters, send } from "./collection.js";
 import { useControl } from "./effective-controls.js";
 import { Form } from "./form.js";
@@ -18,6 +19,7 @@ import { heldValues, RelatedContext, useRelatedLabels, type RelatedLabels } from
 import { useEndReached } from "./record-window.js";
 import { FilterContext, RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { useRowActions } from "./row-actions.js";
+import { useRowActionsDisplay, type ActionsDisplay, type ActionsSetting } from "./row-actions-display.js";
 import { Confirmation, Surface, type SurfaceSpec } from "./surface.js";
 import { useSay } from "./texts.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
@@ -58,6 +60,8 @@ export interface ListingDrawing {
   expand(key: string, open: boolean): void;
   /** The viewer's sort over the properties the collection sorts by: by a property, ascending then descending, or set outright. */
   sort: { value?: string; sortable: readonly string[]; sortBy(property: string): void; set(sort: string): void };
+  /** Whether the listing is the direct content of a flush split view: its layout draws no frame of its own. */
+  embedded: boolean;
   /** Whether the records are drawn page by page while in view: under `more` and `scroll`. */
   windowed: boolean;
   /** `loading` before any read answered, `error` when one failed, `empty` when none holds a record. */
@@ -68,8 +72,10 @@ export interface ListingDrawing {
   rowStyle(row: Row): string | undefined;
   /** Whether each record offers row actions, edit or delete. */
   hasActions: boolean;
-  /** A record's row actions, edit and delete. */
+  /** A record's row actions, edit and delete: as buttons or as a menu, as `actionsArea` says. */
   actions(record: ListedRecord): ReactNode;
+  /** How the actions are drawn, and what a layout gives the element holding them so the room they have is judged. */
+  actionsArea: { display: ActionsDisplay; ref: RefCallback<HTMLElement> };
   /** Where the record whose edit form opens in line draws it. */
   detail?: { key: string; ref: (element: HTMLElement | null) => void };
   /** Open a record's edit form, where the listing edits. */
@@ -156,7 +162,7 @@ export function LoadMore({ read, scroll }: { read: ReadView; scroll: boolean }) 
  * related records, invalidation, openers, row actions, delete and the empty
  * state are the listing's, whatever the layout.
  */
-export function Listing({ node }: { node: SpecNode }) {
+export function Listing({ node, embedded = false }: { node: SpecNode; embedded?: boolean }) {
   const Icon = useControl("Icon");
   const host = useHost();
   const say = useSay();
@@ -176,7 +182,10 @@ export function Listing({ node }: { node: SpecNode }) {
   const rowRoots = useMemo(() => ({ ...roots, query }), [roots, query]);
   const keyOf = (row: Row) => String(row[recordKey]);
 
-  const [sort, setSort] = useState<string>();
+  const sorting = node.sort as { sortable: string[]; initial: string | null };
+  const [chosen, setSort] = useState<string>();
+  // The order the listing starts in is read until the viewer chooses another.
+  const sort = chosen ?? sorting.initial ?? undefined;
   const [period, setPeriod] = useState<{ from: string; to: string }>();
   const [expanded, setExpanded] = useState<readonly string[]>([]);
   const [changes, setChanges] = useState(0);
@@ -234,10 +243,15 @@ export function Listing({ node }: { node: SpecNode }) {
   const moves = useRowActions(spec.move ? [spec.move as RowActionSpec] : [], rowRoots, succeeded);
   // What a create opened from the layout starts with: a column's value, a day.
   const [createValues, setCreateValues] = useState<Row>();
-  const itemUrl = (key: string) => `${collectionAt}/${encodeURIComponent(key)}`;
+  const itemPath = (key: string) => `${basePath}/${segment(key)}`;
+  const itemUrl = (key: string) => underMount(prefix, itemPath(key));
   const creates = node.create as Opener | undefined;
   const edits = node.edit as Opener | undefined;
   const hasActions = (node.rowActions as RowActionSpec[]).length > 0 || edits !== undefined || node.delete === true;
+  const shownActions = useRowActionsDisplay(
+    node.rowActionsDisplay as ActionsSetting,
+    `${records.map((record) => record.key).join("\u0000")}|${(node.rowActions as RowActionSpec[]).length}|${edits ? 1 : 0}|${node.delete ? 1 : 0}`,
+  );
 
   // The address says what is open: under a name, an empty value is the create
   // form and any other the edit form over the record with that key.
@@ -304,6 +318,7 @@ export function Listing({ node }: { node: SpecNode }) {
     }
     setRemoving(undefined);
     host.notifyChanged(basePath);
+    host.notifyChanged(itemPath(record.key));
   };
 
   // A record's answers last while its key is drawn.
@@ -356,6 +371,7 @@ export function Listing({ node }: { node: SpecNode }) {
   const state = failure ? "error" : !answered && reads.reads.some((read) => read.loading) ? "loading" : records.length === 0 ? "empty" : "idle";
   const drawing: ListingDrawing = {
     reads: reads.reads,
+    embedded,
     ...(groups ? { groups } : {}),
     ...(period ? { period } : {}),
     showPeriod: (next) => setPeriod((held) => (held?.from === next.from && held.to === next.to ? held : next)),
@@ -363,8 +379,8 @@ export function Listing({ node }: { node: SpecNode }) {
     expand: (key, opening) => setExpanded((held) => (opening ? (held.includes(key) ? held : [...held, key]) : held.filter((each) => each !== key))),
     sort: {
       ...(sort !== undefined ? { value: sort } : {}),
-      sortable: node.sort as string[],
-      sortBy: (property) => setSort((held) => (held === property ? `-${property}` : property)),
+      sortable: sorting.sortable,
+      sortBy: (property) => setSort(sort === property ? `-${property}` : property),
       set: setSort,
     },
     windowed: mode === "more",
@@ -372,21 +388,32 @@ export function Listing({ node }: { node: SpecNode }) {
     empty: <Node node={node.empty} />,
     rowStyle: (row) => styleAttribute(ruleStyle(node.rowStyle as StyleRule | undefined, { row })),
     hasActions,
-    actions: (record) => (
-      <>
-        {rowActions.cell(record.row, record.key, deleting)}
-        {edits && <IconButton part="row-edit" label={say("edit")} icon="edit" onClick={(button) => show({ kind: "edit", key: record.key }, editName, record.key, button)} />}
-        {node.delete && (
-          <IconButton
-            part="row-delete"
-            label={say("delete")}
-            icon="delete"
-            disabled={rowActions.busy(record.key)}
-            onClick={() => rowActions.busy(record.key) || confirmDelete(record)}
-          />
-        )}
-      </>
-    ),
+    actionsArea: { display: shownActions.display, ref: shownActions.area },
+    actions: (record) =>
+      shownActions.display === "menu" ? (
+        rowActions.menuCell(record.row, record.key, deleting, [
+          ...(edits
+            ? [{ key: "edit", label: say("edit"), run: (button: HTMLElement) => show({ kind: "edit", key: record.key }, editName, record.key, button) }]
+            : []),
+          ...(node.delete
+            ? [{ key: "delete", label: say("delete"), disabled: rowActions.busy(record.key), run: () => confirmDelete(record) }]
+            : []),
+        ])
+      ) : (
+        <>
+          {rowActions.cell(record.row, record.key, deleting)}
+          {edits && <IconButton part="row-edit" label={say("edit")} icon="edit" onClick={(button) => show({ kind: "edit", key: record.key }, editName, record.key, button)} />}
+          {node.delete && (
+            <IconButton
+              part="row-delete"
+              label={say("delete")}
+              icon="delete"
+              disabled={rowActions.busy(record.key)}
+              onClick={() => rowActions.busy(record.key) || confirmDelete(record)}
+            />
+          )}
+        </>
+      ),
     ...(underRecord !== undefined ? { detail: { key: underRecord, ref: setDetail } } : {}),
     ...(edits ? { open: (key: string) => show({ kind: "edit", key }, editName, key, document.activeElement as HTMLElement) } : {}),
     ...(creates
@@ -407,9 +434,10 @@ export function Listing({ node }: { node: SpecNode }) {
   // A plan with no dimension is one read, and its paging is the listing's own.
   const single = plan.groups === undefined && plan.span === undefined && plan.parent === undefined ? reads.reads[0] : undefined;
   const pager = single?.pager;
+  const showCount = (node.show as { count: boolean }).count;
   const rows = single?.records.length ?? 0;
   return (
-    <div data-telo-part="listing" data-state={state} data-style={styleAttribute(node.style)}>
+    <div data-telo-part="listing" data-state={state} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
       {creates && (
         <div data-telo-part="listing-toolbar">
           <button
@@ -426,7 +454,7 @@ export function Listing({ node }: { node: SpecNode }) {
         </div>
       )}
       {above && drawn}
-      <div data-telo-part="listing-main">
+      <div data-telo-part="listing-main" ref={shownActions.container}>
         {single?.failure ? (
           <ErrorNode error={single.failure} />
         ) : !Layout ? (
@@ -441,13 +469,15 @@ export function Listing({ node }: { node: SpecNode }) {
         ))}
         {single && (
           <div data-telo-part="pager">
-            <span data-telo-part="pager-status">
-              {single.total === undefined
-                ? ""
-                : rows === 0
-                  ? say("pagerEmpty", { total: single.total })
-                  : say("pagerRange", { first: (pager?.start ?? 0) + 1, last: (pager?.start ?? 0) + rows, total: single.total })}
-            </span>
+            {showCount && (
+              <span data-telo-part="pager-status">
+                {single.total === undefined
+                  ? ""
+                  : rows === 0
+                    ? say("pagerEmpty", { total: single.total })
+                    : say("pagerRange", { first: (pager?.start ?? 0) + 1, last: (pager?.start ?? 0) + rows, total: single.total })}
+              </span>
+            )}
             {pager ? (
               <>
                 <IconButton part="pager-prev" label={say("previousPage")} icon="previous" disabled={!pager.hasPrevious} onClick={pager.previous} />

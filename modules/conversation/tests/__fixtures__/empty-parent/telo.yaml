@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: EmptyParent, version: 1.0.0 }
+imports: { Conversation: ../../.., Run: ../../../../run }
+targets:
+  - !ref refused
+---
+kind: Run.Value
+metadata: { name: checkTurn }
+inputType: !ref Conversation.TurnRequest
+value: true
+---
+kind: Telo.Sequence
+metadata: { name: refused }
+steps:
+  - name: turn
+    invoke: !ref checkTurn
+    inputs: { parent: "", message: Hi, attachments: [] }

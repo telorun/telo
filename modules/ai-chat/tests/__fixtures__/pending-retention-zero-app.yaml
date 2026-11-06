@@ -1,0 +1,14 @@
+# Consumes the library beside it; its entry-scoped check does not reach the
+# library's internals, so the controller's own refusal is what remains here.
+kind: Telo.Application
+metadata: { name: PendingRetentionZeroApp }
+imports:
+  Lib:
+    source: ./pending-retention-zero
+    variables: { blobRoot: !cel "variables.scratchDir" }
+variables:
+  scratchDir:
+    env: AI_CHAT_PENDING_RETENTION_FIXTURES
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: .telo/ai-chat-tests

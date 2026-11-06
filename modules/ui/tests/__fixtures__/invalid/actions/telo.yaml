@@ -39,7 +39,7 @@ kind: Ui.Action
 metadata:
   name: strayKey
 inputModel: !ref Request
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 method: PUT
 ---
@@ -48,7 +48,7 @@ metadata:
   name: rowTypo
 inputModel: !ref Request
 outputModel: !ref Answer
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 result:
   type: list
@@ -61,7 +61,7 @@ metadata:
   name: rowsNotAList
 inputModel: !ref Request
 outputModel: !ref Answer
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 result:
   type: list
@@ -74,7 +74,7 @@ metadata:
   name: rowsComputed
 inputModel: !ref Request
 outputModel: !ref Answer
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 result:
   type: list
@@ -86,7 +86,7 @@ kind: Ui.Action
 metadata:
   name: noAnswerModel
 inputModel: !ref Request
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 result:
   type: list
@@ -99,15 +99,28 @@ metadata:
   name: listsRemoved
 inputModel: !ref Request
 outputModel: !ref Answer
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 lists: []
+---
+kind: Ui.Action
+metadata: { name: sourceKept }
+inputModel: !ref Request
+request: { target: /api/reports }
+source: { path: /api/reports }
+label: Generate
+---
+kind: Ui.Action
+metadata: { name: getMethod }
+inputModel: !ref Request
+request: { method: GET, target: /api/reports }
+label: Generate
 ---
 kind: Ui.Action
 metadata:
   name: navigateOff
 inputModel: !ref Request
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 onSuccess:
   navigate: ftp://files.example/report
@@ -148,14 +161,14 @@ kind: Ui.Action
 metadata:
   name: archive
 inputModel: !ref Archive
-source: { path: /api/todos/archive }
+request: { target: /api/todos/archive }
 label: Archive
 ---
 kind: Ui.Action
 metadata:
   name: rename
 inputModel: !ref Rename
-source: { path: /api/todos/rename }
+request: { target: /api/todos/rename }
 label: Rename
 ---
 kind: Ui.CollectionPresentation

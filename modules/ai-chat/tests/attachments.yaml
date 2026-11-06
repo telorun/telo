@@ -1,0 +1,251 @@
+kind: Telo.Application
+metadata:
+  name: AiChatAttachments
+  version: 1.0.0
+  description: |
+    An upload is detected, held to what the model accepts and stored under that
+    type's bound: a PNG within the bound is stored; one over it, and a type the
+    model does not take, are refused at the content. A message carrying the
+    upload binds it to its conversation and stores it by reference, and the
+    model is sent its bytes. The file is then read only under that conversation,
+    named again there (a resend) but refused to any other, and deleting the
+    conversation makes it unreadable at once while another conversation's file
+    stays; an expiry pass removes its bytes. An upload no message sent within
+    the endpoint's retention is refused before any pass runs, and a pass removes it.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Stream: ../../stream
+  Timer: ../../timer
+  Fs: ../../fs
+  Assert: ../../assert
+variables:
+  scratchDir:
+    env: AI_CHAT_ATTACHMENTS_FIXTURES
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: .telo/ai-chat-tests
+targets: [!ref test, !ref testExpiry]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent:
+  kind: Ai.AgentStream
+  model:
+    kind: AiEcho.EchoModelStream
+    accepts: [{ type: image, mediaTypes: [image/png], maxBytes: 100 }]
+    echoMedia: true
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-attachments')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.PutAttachment
+metadata: { name: upload }
+conversation: !ref chat
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  # A 1×1 PNG, 70 bytes.
+  - name: stored
+    invoke: !ref upload
+    inputs:
+      content: !include-bytes __fixtures__/dot.png
+      declaredMediaType: image/png
+      name: dot.png
+  - name: tooLargeAttempt
+    try:
+      # The same PNG with 40 bytes after it: 110, over the 100 the model takes.
+      - name: tooLargeTry
+        invoke: !ref upload
+        inputs:
+          content: !include-bytes __fixtures__/large.png
+          declaredMediaType: image/png
+      - { name: tooLargeOutcome, value: stored }
+    catch:
+      - { name: tooLargeOutcome, value: !cel "error.code + ' ' + error.data.issues.map(i, i.pointer).join(',')" }
+  - name: refusedTypeAttempt
+    try:
+      - name: refusedTypeTry
+        invoke: !ref upload
+        inputs: { content: !include-bytes __fixtures__/note.txt, declaredMediaType: text/plain }
+      - { name: refusedTypeOutcome, value: stored }
+    catch:
+      - { name: refusedTypeOutcome, value: !cel "error.code + ' ' + error.data.issues.map(i, i.pointer).join(',')" }
+  - name: turn
+    invoke: { kind: Chat.StartTurn, conversation: !ref chat }
+    inputs: { message: look, attachments: [!cel "steps.stored.result.id"] }
+  - name: events
+    invoke: { kind: Chat.TurnEvents, conversation: !ref chat }
+    inputs: { turn: !cel "steps.turn.result.turn" }
+  - name: frames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.events.result.output" }
+  - name: entries
+    invoke: { kind: Chat.ConversationEntries, conversation: !ref chat }
+    inputs: { id: !cel "steps.turn.result.conversation" }
+  - name: readBack
+    invoke: { kind: Chat.GetAttachment, conversation: !ref chat }
+    inputs: { conversation: !cel "steps.turn.result.conversation", id: !cel "steps.stored.result.id" }
+
+  # Bound to the first conversation: a new one may not send it, and it is not read under another.
+  - name: elsewhereAttempt
+    try:
+      - name: elsewhereTry
+        invoke: { kind: Chat.StartTurn, conversation: !ref chat }
+        inputs: { message: mine now, attachments: [!cel "steps.stored.result.id"] }
+      - { name: elsewhereOutcome, value: admitted }
+    catch:
+      - { name: elsewhereOutcome, value: !cel "error.code + ' ' + error.data.issues.map(i, i.pointer).join(',')" }
+  - name: theirs
+    invoke: !ref upload
+    inputs: { content: !include-bytes __fixtures__/dot.png, declaredMediaType: image/png }
+  - name: theirTurn
+    invoke: { kind: Chat.StartTurn, conversation: !ref chat }
+    inputs: { message: mine, attachments: [!cel "steps.theirs.result.id"] }
+  - name: theirEvents
+    invoke: { kind: Chat.TurnEvents, conversation: !ref chat }
+    inputs: { turn: !cel "steps.theirTurn.result.turn" }
+  - name: theirFrames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.theirEvents.result.output" }
+  - name: wrongReadAttempt
+    try:
+      - name: wrongReadTry
+        invoke: { kind: Chat.GetAttachment, conversation: !ref chat }
+        inputs: { conversation: !cel "steps.theirTurn.result.conversation", id: !cel "steps.stored.result.id" }
+      - { name: wrongReadOutcome, value: read }
+    catch:
+      - { name: wrongReadOutcome, value: !cel "error.code" }
+
+  # Named again by its own conversation, as a resend does.
+  - name: resend
+    invoke: { kind: Chat.StartTurn, conversation: !ref chat }
+    inputs: { conversation: !cel "steps.turn.result.conversation", message: again, attachments: [!cel "steps.stored.result.id"] }
+  - name: resendEvents
+    invoke: { kind: Chat.TurnEvents, conversation: !ref chat }
+    inputs: { turn: !cel "steps.resend.result.turn" }
+  - name: resendFrames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.resendEvents.result.output" }
+
+  # Deleting the conversation makes its file unreadable at once; the other conversation's stays.
+  - name: filesBefore
+    invoke: { kind: Fs.DirectoryListing, cwd: !cel "variables.scratchDir" }
+    inputs: { path: scratch-attachments, recursive: true }
+  - name: deleted
+    invoke: { kind: Chat.DeleteConversation, conversation: !ref chat }
+    inputs: { id: !cel "steps.turn.result.conversation" }
+  - name: goneAttempt
+    try:
+      - name: goneTry
+        invoke: { kind: Chat.GetAttachment, conversation: !ref chat }
+        inputs: { conversation: !cel "steps.turn.result.conversation", id: !cel "steps.stored.result.id" }
+      - { name: goneOutcome, value: still stored }
+    catch:
+      - { name: goneOutcome, value: !cel "error.code" }
+  - name: pass
+    invoke: { kind: Chat.AttachmentExpiry, conversation: !ref chat }
+  - name: filesAfter
+    invoke: { kind: Fs.DirectoryListing, cwd: !cel "variables.scratchDir" }
+    inputs: { path: scratch-attachments, recursive: true }
+  - name: theirsKept
+    invoke: { kind: Chat.GetAttachment, conversation: !ref chat }
+    inputs: { conversation: !cel "steps.theirTurn.result.conversation", id: !cel "steps.theirs.result.id" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        stored: { keys: !cel "size(steps.stored.result) == 3", mediaType: !cel "steps.stored.result.mediaType", size: !cel "steps.stored.result.size" }
+        tooLarge: !cel "steps.tooLargeOutcome.result"
+        refusedType: !cel "steps.refusedTypeOutcome.result"
+        modelSaw: !cel "steps.frames.result.items.filter(f, f.event.type == 'text-delta').map(f, f.event.text).join('').contains('image(70 bytes)')"
+        userParts: !cel "steps.entries.result.rows[1].parts"
+        readBack: { mediaType: !cel "steps.readBack.result.mediaType", size: !cel "steps.readBack.result.size" }
+        elsewhere: !cel "steps.elsewhereOutcome.result"
+        wrongRead: !cel "steps.wrongReadOutcome.result"
+        resent: !cel "steps.resendFrames.result.items.filter(f, f.event.type == 'text-delta').map(f, f.event.text).join('').contains('image(70 bytes)')"
+        afterDelete: !cel "steps.goneOutcome.result"
+        removed: !cel "steps.pass.result.count"
+        filesRemoved: !cel "steps.filesBefore.result.entries.filter(e, e.type == 'file').size() - steps.filesAfter.result.entries.filter(e, e.type == 'file').size()"
+        theirsKept: !cel "steps.theirsKept.result.size"
+      expected:
+        stored: { keys: true, mediaType: image/png, size: 70 }
+        tooLarge: ERR_INPUT_INVALID /content
+        refusedType: ERR_INPUT_INVALID /content
+        modelSaw: true
+        userParts:
+          - { type: text, text: look }
+          - type: image
+            url: !cel "'conversations/' + steps.turn.result.conversation + '/attachments/' + steps.stored.result.id"
+            mediaType: image/png
+            name: dot.png
+        readBack: { mediaType: image/png, size: 70 }
+        elsewhere: ERR_INPUT_INVALID /attachments/0
+        wrongRead: ERR_CONVERSATION_ATTACHMENT_NOT_FOUND
+        resent: true
+        afterDelete: ERR_CONVERSATION_ATTACHMENT_NOT_FOUND
+        removed: 1
+        filesRemoved: 1
+        theirsKept: 70
+---
+# An endpoint whose uploads expire a second after they are made.
+kind: SQLite.Connection
+metadata: { name: briefDb }
+file: ":memory:"
+---
+kind: Chat.Conversation
+metadata: { name: briefChat }
+agent:
+  kind: Ai.AgentStream
+  model: { kind: AiEcho.EchoModelStream, accepts: [{ type: image, mediaTypes: [image/png], maxBytes: 100 }] }
+store: { kind: AiConversationSql.Store, connection: !ref briefDb }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref briefDb, pollInterval: 50ms }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-attachments-brief')" }
+detector: { kind: MediaType.Detector }
+attachments: { pendingRetention: 1s }
+---
+kind: Telo.Sequence
+metadata: { name: testExpiry }
+steps:
+  - name: unsent
+    invoke: { kind: Chat.PutAttachment, conversation: !ref briefChat }
+    inputs: { content: !include-bytes __fixtures__/dot.png, declaredMediaType: image/png }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 1500ms } }
+  - name: lateAttempt
+    try:
+      - name: lateTry
+        invoke: { kind: Chat.StartTurn, conversation: !ref briefChat }
+        inputs: { message: too late, attachments: [!cel "steps.unsent.result.id"] }
+      - { name: lateOutcome, value: admitted }
+    catch:
+      - { name: lateOutcome, value: !cel "error.code + ' ' + error.data.issues.map(i, i.pointer).join(',')" }
+  - name: firstPass
+    invoke: { kind: Chat.AttachmentExpiry, conversation: !ref briefChat }
+  - name: secondPass
+    invoke: { kind: Chat.AttachmentExpiry, conversation: !ref briefChat }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        late: !cel "steps.lateOutcome.result"
+        passes: [!cel "steps.firstPass.result.count", !cel "steps.secondPass.result.count"]
+      expected: { late: ERR_INPUT_INVALID /attachments/0, passes: [1, 0] }

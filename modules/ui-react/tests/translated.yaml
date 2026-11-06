@@ -171,32 +171,35 @@ steps:
           save: { lang: pl, message: [Zapisz] }
           header:
             width: contained
-            start: [ { type: image, src: /logo.svg, alt: { lang: pl, message: [Faktury] } } ]
+            start: [ { type: image, fill: false, src: /logo.svg, alt: { lang: pl, message: [Faktury] } } ]
             end:
-              - { type: link, text: { lang: pl, message: [Pomoc] }, href: /help }
+              - { type: link, fill: false, text: { lang: pl, message: [Pomoc] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null }
               - type: menu
+                fill: false
                 text: { lang: pl, message: [Pomoc] }
-                items: [ { type: link, text: { lang: pl, message: [Pomoc] }, href: /help, style: strong } ]
+                items: [ { type: link, fill: false, text: { lang: pl, message: [Pomoc] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null, style: strong } ]
         english:
           lang: en
           title: { lang: en, message: [Invoices] }
           save: { lang: en, message: [Save] }
           header:
             width: contained
-            start: [ { type: image, src: /logo.svg, alt: { lang: en, message: [Invoices] } } ]
+            start: [ { type: image, fill: false, src: /logo.svg, alt: { lang: en, message: [Invoices] } } ]
             end:
-              - { type: link, text: { lang: en, message: [Help] }, href: /help }
+              - { type: link, fill: false, text: { lang: en, message: [Help] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null }
               - type: menu
+                fill: false
                 text: { lang: en, message: [Help] }
-                items: [ { type: link, text: { lang: en, message: [Help] }, href: /help, style: strong } ]
+                items: [ { type: link, fill: false, text: { lang: en, message: [Help] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null, style: strong } ]
         staffHeaderEnd:
-          - { type: link, text: { lang: en, message: [Help] }, href: /help }
+          - { type: link, fill: false, text: { lang: en, message: [Help] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null }
           - type: menu
+            fill: false
             text: { lang: en, message: [Help] }
             items:
-              - { type: link, text: { lang: en, message: [Help] }, href: /help, style: strong }
-              - { type: link, text: { lang: en, message: [Staff] }, href: /staff }
-          - { type: badge, text: { lang: en, message: [Staff] } }
+              - { type: link, fill: false, text: { lang: en, message: [Help] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null, style: strong }
+              - { type: link, fill: false, text: { lang: en, message: [Staff] }, href: { path: { value: /staff }, pathParams: {}, queryParams: {} }, button: null }
+          - { type: badge, fill: false, text: { lang: en, message: [Staff] } }
         etagsDiffer: true
         page:
           lang: pl

@@ -1,0 +1,18 @@
+# A starter whose onChoose is not a behaviour the chat knows.
+kind: Telo.Application
+metadata: { name: UiInvalidChatStarterApp, version: 1.0.0 }
+imports: { Ui: ../../../../, Fixture: ../../conversation }
+---
+kind: Fixture.Endpoint
+metadata: { name: conversation }
+operations: [cancel]
+---
+kind: Ui.ConversationSource
+metadata: { name: source }
+conversation: !ref conversation
+basePath: /api/chat
+---
+kind: Ui.Chat
+metadata: { name: unknownChoice }
+source: !ref source
+starters: [{ prompt: Hello, onChoose: shout }]

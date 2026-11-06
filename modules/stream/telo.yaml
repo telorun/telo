@@ -9,29 +9,18 @@ metadata:
     The ends and the middle of a stream pipeline: turn a list of values into a stream,
     drain a stream back into a list, re-frame bytes into fixed-size chunks, transform,
     accumulate or expand values as they are pulled, observe each value as it passes
-    without holding it, and join several producers into one stream, starting each
-    only when the previous one ends. Values may be anything — text, records,
-    numbers — so the same set serves any streaming pipeline.
+    without holding it, join several producers into one stream, starting each
+    only when the previous one ends, and end a stream that fails part-way with a
+    final value of your own. Values may be anything — text, records, numbers — so
+    the same set serves any streaming pipeline.
 requires:
   # `x-telo-ref` `outputType:` (Concat's sources) is read from this release on;
   # an older analyzer refuses it as an unknown key. Forward-declared: the
   # release carrying it is pending.
   telo: ">=0.103.0"
-exports: { kinds: [Of, Collect, Chunk, Map, Scan, FlatMap, Tap, Concat] }
+exports: { kinds: [Of, Collect, Chunk, Map, Scan, FlatMap, Tap, Concat, Recover] }
 ---
-# Emit a list of items as a stream, in order — declared statically or supplied
-# at invoke time.
-#
-# `items` may be declared as a static resource field (fixed data, no JS) or
-# passed as invoke inputs to emit values computed at request time (e.g. a
-# read-through cache hit streaming a stored value). Runtime inputs take
-# precedence over the declared list; when neither is present the stream is empty.
-#
-# Value-agnostic: `items` may hold strings, objects, numbers — whatever the
-# downstream consumer expects (e.g. strings into PlainText.Encoder, AI-shape
-# records into RecordStream.ExtractText). The output is an opaque stream today;
-# the eventual `x-telo-stream: { items }` form will let it carry a static
-# element type.
+# Runtime `items` take precedence over the declared list; neither is an empty stream.
 kind: Telo.Definition
 metadata:
   name: Of
@@ -70,12 +59,7 @@ outputType:
     required: [ output ]
     additionalProperties: false
 ---
-# Terminal stream sink — the inverse of Stream.Of. Consumes `input` fully and
-# returns every item as `items`, in order. Draining drives the producer's side
-# effects (so it runs an upstream agent / pipeline); `items` materializes the finite
-# stream so a caller can inspect, assert, or aggregate it in CEL (e.g.
-# `items.exists(r, r.type == 'tool-call')`). Value-agnostic and buffered — bounded by
-# the stream's length. For an unbounded stream, drain incrementally instead.
+# Buffered: bounded by the stream's length, so drain an unbounded stream incrementally.
 kind: Telo.Definition
 metadata:
   name: Collect
@@ -105,17 +89,8 @@ outputType:
     additionalProperties: false
 schema: { type: object, additionalProperties: false }
 ---
-# Stream.Chunk — re-frames a byte stream into fixed-size pieces.
-#
-# The boundaries a byte stream arrives with are an artifact of the transport (a
-# socket read, a file read-ahead) and are never the ones a consumer wants. A
-# resumable upload needs the size the far end mandates; a framed protocol needs
-# its frame size. So this coalesces and splits rather than merely regrouping.
-#
-# Each record carries its OFFSET and whether it is `last`, so positional framing
-# — a `Content-Range` header, a sequence number — is expressible in CEL at the
-# use site. Deriving the offset downstream would mean accumulating state across
-# iterations of a body that has nowhere to keep it.
+# Each piece carries its offset and `last`, so positional framing (a `Content-Range`)
+# is CEL at the use site rather than state kept across pieces.
 kind: Telo.Definition
 metadata:
   name: Chunk
@@ -183,17 +158,8 @@ schema:
         Default bytes per piece, used when a call supplies none. Declared here when
         the size is a property of the destination rather than of the call.
 ---
-# The three element-wise transforms every streaming protocol is assembled from.
-#
-# They exist so a manifest can produce a token stream at all: an SSE decoder
-# hands over wire frames, and turning those into a provider's parts is mapping,
-# accumulating and re-fanning them — work that was previously only expressible
-# in a controller, which is why every provider shipped one.
-#
-# All three are LAZY. The work happens as the consumer pulls, so a stage never
-# drains its source to build a result, and abandonment costs nothing to support:
-# a consumer that stops draining causes `for await` to call `return()` on the
-# stage, which propagates to its own source and so on to the transport.
+# Map, Scan and FlatMap are lazy: work happens as the consumer pulls, and a consumer
+# that stops returns each stage and so its source. Rationale: docs/map.md.
 kind: Telo.Definition
 metadata:
   name: Map
@@ -379,16 +345,8 @@ schema:
       type: array
       x-telo-context: { type: object, properties: { item: {}, index: { type: integer } } }
 ---
-# Stream.Tap — observes a stream without holding it.
-#
-# Per value: evaluate `when`, dispatch the handler and await it, THEN deliver the
-# value. Dispatching first is what makes the observed values exactly the delivered
-# ones even when the consumer stops early, and keeps a value whose handler failed
-# from reaching the consumer.
-#
-# The handler runs under the tap's OWN invocation context, captured at invoke() and
-# passed explicitly to every dispatch — never whatever is ambient when the consumer
-# drains, which is one runtime's mechanism and not part of the SDK surface.
+# The handler is awaited before each value is delivered, under the tap's own
+# invocation context. Rationale: docs/tap.md.
 kind: Telo.Definition
 metadata:
   name: Tap
@@ -457,17 +415,8 @@ schema:
       type: boolean
       x-telo-context: { type: object, properties: { item: {}, index: { type: integer } } }
 ---
-# Stream.Concat — several producers read as one stream, lazily.
-#
-# Nothing is invoked by the call: the first source is invoked on the first pull,
-# and each next one only when the previous source's stream has ended, so work a
-# later source does (a model call, a query) starts only once everything before it
-# was delivered. Every source is invoked under the Concat's OWN invocation
-# context, captured at invoke() as Stream.Tap does, and must return
-# `{ output: <stream> }`. The slot is `trigger.consumer`: control reaches a source
-# when someone drains the returned stream. `throws: { inherit: true }` carries a
-# source's codes into this kind's throw union, as Stream.Tap does, because they
-# surface wherever the returned stream is drained — a route rendering it.
+# Each source is invoked only once the previous stream ended, under the Concat's own
+# invocation context; `inherit` carries their codes. Rationale: docs/concat.md.
 kind: Telo.Definition
 metadata:
   name: Concat
@@ -563,3 +512,83 @@ schema:
                   type: object
                   additionalProperties: true
                   description: The caller's `context` input.
+---
+# Stream.Recover — what a stream ends with when its source fails.
+#
+# A cancellation and a suspension are always rethrown, as every catcher in Telo
+# rethrows them.
+kind: Telo.Definition
+metadata:
+  name: Recover
+  description: >-
+    Passes every value of a stream through unchanged; when the source fails
+    part-way, logs the failure and ends the stream with a final value computed
+    from the error instead, so a client receives a last record it can read rather
+    than a broken connection. A condition can limit which failures are recovered;
+    the others are rethrown.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#RecoverController]
+throws:
+  codes:
+    ERR_INVALID_INPUT: { description: "`input` did not resolve to an async iterable." }
+    ERR_INVALID_VALUE: { description: "`when` evaluated to something other than a boolean, raised as the source fails." }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input]
+    properties:
+      input: { x-telo-type: Telo.Stream, description: Stream whose failure is recovered. }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output]
+    properties:
+      output:
+        x-telo-type: Telo.Stream
+        description: >-
+          Every value of `input`, then `value` when it fails. A failure `when`
+          declines, a cancellation and a suspension are raised as they were.
+schema:
+  type: object
+  additionalProperties: false
+  required: [value]
+  properties:
+    elementType:
+      title: Element Type
+      description: >-
+        The contract `value` satisfies — a named type reference or an inline type
+        definition, usually the one the stage before it declares.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    value:
+      title: Value
+      description: >-
+        The last value, evaluated once when the source fails — a CEL expression, a
+        structure with `!cel` leaves, or a literal. Sees error.
+      x-telo-context: &recoverContext
+        type: object
+        properties:
+          error:
+            type: object
+            description: The failure, as a step's catch branch reads it.
+            required: [code, message, data, displayMessage]
+            properties:
+              code: { type: string, description: The failure's code; INTERNAL_ERROR for a failure with none. }
+              message: { type: string, description: The developer's message. }
+              data: { description: The failure's structured data; null when it carries none. }
+              displayMessage:
+                description: The text a person is shown for the failure, as its record; null when it carries none.
+                anyOf:
+                  - { $ref: "telo://manifest#/$defs/TextRecord" }
+                  - { type: "null" }
+      x-telo-value-schema-from: elementType
+    when:
+      title: When
+      description: >-
+        Whether to recover this failure, evaluated once when the source fails. False
+        rethrows it. Omitted, every failure is recovered. Sees error.
+      type: boolean
+      x-telo-context: *recoverContext

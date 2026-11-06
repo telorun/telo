@@ -35,6 +35,7 @@ kind: Echo.TypedNode
 metadata: { name: listingSurface }
 node:
   type: listing
+  fill: false
   schema: {}
   basePath: /api/todos
   key: id
@@ -44,11 +45,11 @@ node:
   sort: []
   rowActions: []
   relations: {}
-  empty: { type: text, text: { set: Ui.Translations, key: noRows } }
+  empty: { type: text, fill: false, text: { set: Ui.Translations, key: noRows } }
   layout: { type: table, columns: [], reads: {} }
   delete: false
   create:
-    form: { type: form, schema: {}, basePath: /api/todos, fields: [], groups: [], state: { address: false, store: { type: memory }, fields: [] } }
+    form: { type: form, fill: false, schema: {}, basePath: /api/todos, fields: [], groups: [], state: { address: false, store: { type: memory }, fields: [] } }
     surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
     afterSubmit: close
     unsaved: confirm
@@ -67,9 +68,10 @@ kind: Echo.TypedNode
 metadata: { name: filtersPlacement }
 node:
   type: filters
+  fill: false
   basePath: /api/todos
   fields: []
-  content: { type: text, text: { set: Ui.Translations, key: loading } }
+  content: { type: text, fill: false, text: { set: Ui.Translations, key: loading } }
   show: all
   placement: { type: nowhere }
   controls: direct
@@ -82,9 +84,10 @@ kind: Echo.TypedNode
 metadata: { name: filtersStore }
 node:
   type: filters
+  fill: false
   basePath: /api/todos
   fields: []
-  content: { type: text, text: { set: Ui.Translations, key: loading } }
+  content: { type: text, fill: false, text: { set: Ui.Translations, key: loading } }
   show: all
   placement: { type: above }
   controls: direct

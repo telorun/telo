@@ -1,0 +1,681 @@
+kind: Telo.Library
+metadata:
+  name: AiConversation
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [AI, Storage]
+  description: >-
+    Persists branching chat transcripts for any AI agent: create, list, search
+    and archive conversations, append messages to a branch, and read a branch
+    back a page at a time. Editing or regenerating a message keeps the old
+    branch as a sibling, a turn-id fence stops a superseded run from writing,
+    and uploaded files belong to the conversation that first sends them.
+imports: { Ai: ../ai }
+exports:
+  kinds: [Store, Create, Read, List, Entries, Append, Update, Admit, Delete, RecordApproval, RegisterAttachment, ReadAttachment, ExpireAttachments, ForgetAttachments]
+  resources: [Header, Approval, Siblings, EntryRow, Attachment]
+  # The store contract a backend implements, its coded errors and the id minting.
+  # Optional for a backend: a store is recognised by its methods.
+  code:
+    - specifier: "@telorun/ai-conversation"
+      format: js
+      path: ./nodejs/ai-conversation.mjs
+      source: ./nodejs/src/index.ts
+---
+# AiConversation.Store — where conversations live. A backend provides a kind
+# extending it whose instance implements the store contract
+# (docs/store-contract.md). The operations own the input contracts; a store stores.
+kind: Telo.Abstract
+metadata:
+  name: Store
+  description: >-
+    A durable store of conversations: each has a header (title, archived flag,
+    latest turn, version), a branching transcript of messages and the files it
+    holds. Writes are guarded: a rename or an admission is conditional on the
+    header version, an append on the turn that is current, a tool-call approval
+    is decided once, and a file is bound to one conversation at most.
+capability: Telo.Provider
+---
+kind: Telo.JsonSchema
+metadata: { name: Header }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, title, archived, turn, version, createdAt, updatedAt]
+  properties:
+    id: { type: string, description: "The conversation id: cnv_ and 22 base-62 characters." }
+    title: { type: [string, "null"] }
+    archived: { type: boolean }
+    turn: { type: [string, "null"], description: The latest admitted turn id; null before the first. }
+    version: { type: integer, minimum: 1, description: Changes with every Update; the guard of the next one. }
+    createdAt: { x-telo-type: Telo.Timestamp }
+    updatedAt: { x-telo-type: Telo.Timestamp, description: Moves with every Update and every Append. }
+---
+kind: Telo.JsonSchema
+metadata: { name: Siblings }
+schema:
+  type: object
+  additionalProperties: false
+  required: [position, count, previous, next]
+  properties:
+    position: { type: integer, minimum: 1 }
+    count: { type: integer, minimum: 1 }
+    previous: { type: [string, "null"] }
+    next: { type: [string, "null"] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Approval }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, toolCallId, requestedAt, decision]
+  properties:
+    id: { type: string, minLength: 1 }
+    toolCallId: { type: string, minLength: 1 }
+    requestedAt: { x-telo-type: Telo.Timestamp }
+    decision:
+      description: Null while pending.
+      anyOf:
+        - { type: "null" }
+        - type: object
+          additionalProperties: false
+          required: [approved, decidedAt, turn]
+          properties:
+            approved: { type: boolean }
+            reason: { type: string }
+            decidedAt: { x-telo-type: Telo.Timestamp }
+            turn: { type: string, description: The turn that decided. }
+---
+kind: Telo.JsonSchema
+metadata: { name: EntryRow }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, parent, sequence, depth, turn, createdAt, message, siblings]
+  properties:
+    id: { type: string, description: "The entry id: ent_ and 22 base-62 characters." }
+    parent: { type: [string, "null"], description: Null for a root. }
+    sequence: { type: integer, minimum: 1, description: Append order within the conversation. }
+    depth: { type: integer, minimum: 1, description: A root is 1. }
+    turn: { type: string, description: The turn that appended the entry. }
+    createdAt: { x-telo-type: Telo.Timestamp }
+    message: { $ref: "telo:AI/Message" }
+    siblings: { $ref: "telo:AiConversation/Siblings" }
+    approvals:
+      description: The approvals of this entry's tool calls; present on a branch page.
+      type: array
+      items: { $ref: "telo:AiConversation/Approval" }
+---
+kind: Telo.JsonSchema
+metadata: { name: Attachment }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, conversation, name, createdAt, boundAt]
+  properties:
+    id: { type: string, description: "The attachment id: att_ and 22 base-62 characters." }
+    conversation: { type: [string, "null"], description: The conversation holding it; null while pending. }
+    name: { type: [string, "null"], description: The file name it was registered with. }
+    createdAt: { x-telo-type: Telo.Timestamp }
+    boundAt:
+      description: When a conversation first referred to it; null while pending.
+      anyOf:
+        - { x-telo-type: Telo.Timestamp }
+        - { type: "null" }
+---
+kind: Telo.Definition
+metadata:
+  name: Create
+  description: >-
+    Starts a conversation with an optional title and returns its header: version 1, not archived, no turn admitted yet. The id is minted unless the caller supplies one, and a supplied id that already exists answers that conversation's header unchanged, so a retried create makes one conversation.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#Create]
+throws:
+  codes:
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      title: { type: string }
+      id:
+        type: string
+        pattern: "^cnv_[0-9A-Za-z]{22}$"
+        description: A caller-minted id; an existing one answers its header unchanged. Minted when omitted.
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:AiConversation/Header" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store the conversation is created in.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Read
+  description: >-
+    Returns one conversation's header, so a caller can learn its current version and the latest admitted turn. An unknown id is refused.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#Read]
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND:
+      description: >-
+        No conversation has this id.
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversation]
+    properties: { conversation: { type: string, minLength: 1 } }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:AiConversation/Header" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store to read from.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: List
+  description: >-
+    Pages through conversations ordered by last activity, newest first unless ascending is asked for, optionally filtered by a text found in the title (case-insensitive) and by whether they are archived. Without an archived filter both are listed. Returns the rows, the number of matches and the cursor of the next page.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#List]
+throws:
+  codes:
+    ERR_CONVERSATION_CURSOR_INVALID:
+      description: >-
+        The cursor was not returned by this listing, or the store can no longer read it.
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      query: { type: string, description: Lists only conversations whose title contains this text, ignoring case. }
+      archived: { type: boolean, description: True lists only archived conversations and false only active ones; absent lists both. }
+      direction: { enum: [asc, desc], default: desc, description: The order of last activity; a cursor is valid only for the direction it was read in. }
+      limit: { type: integer, minimum: 1, maximum: 500, default: 50 }
+      cursor: { type: string, description: The `next` of the previous page. }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [rows, total, next]
+    properties:
+      rows: { type: array, items: { $ref: "telo:AiConversation/Header" } }
+      total: { type: integer, minimum: 0 }
+      next: { type: [string, "null"], description: The cursor of the following page; null on the last. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store to list.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Entries
+  description: >-
+    Reads one branch of a conversation's transcript from its leaf toward the root, newest first, a page at a time. The branch runs through a chosen entry and then down by the most recently appended child to a leaf; without one it is the latest branch. Each row carries its place among its siblings and the approvals of its tool calls.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#Entries]
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND:
+      description: >-
+        No conversation has this id.
+    ERR_CONVERSATION_ENTRY_NOT_FOUND:
+      description: >-
+        The conversation has no entry with this id.
+    ERR_CONVERSATION_CURSOR_INVALID:
+      description: >-
+        The cursor was not returned by this listing, or the store can no longer read it.
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversation]
+    properties:
+      conversation: { type: string, minLength: 1 }
+      through: { type: string, minLength: 1, description: An entry the branch passes through. }
+      limit: { type: integer, minimum: 1, maximum: 500, default: 50 }
+      cursor: { type: string, description: The `next` of the previous page. }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [rows, total, next]
+    properties:
+      rows: { type: array, items: { $ref: "telo:AiConversation/EntryRow" } }
+      total: { type: integer, minimum: 0 }
+      next: { type: [string, "null"], description: The cursor of the following page; null on the last. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store to read from.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Append
+  description: >-
+    Adds a message under a parent entry (null for a new root) on behalf of a turn, binding the files it carries to the conversation, and returns the stored entry with its sequence, depth and place among its siblings. Refused when another turn is current, the parent has an undecided tool-call approval or a file is not the conversation's to bind; not conditional on the header version, so a rename never breaks a running turn.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#Append]
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND:
+      description: >-
+        No conversation has this id.
+    ERR_CONVERSATION_ENTRY_NOT_FOUND:
+      description: >-
+        The conversation has no entry with this id.
+    ERR_CONVERSATION_CONFLICT:
+      description: >-
+        The named turn is not the header's current turn (a superseded turn), or the parent has an undecided approval.
+    ERR_CONVERSATION_MESSAGE_NOT_STORABLE:
+      description: >-
+        The message holds raw bytes; refer to media by URI.
+    ERR_CONVERSATION_ATTACHMENT_NOT_FOUND:
+      description: >-
+        A named attachment is unknown, released, or bound to another conversation.
+      data: { type: object, additionalProperties: false, required: [attachment], properties: { attachment: { type: string } } }
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversation, parent, turn, message]
+    properties:
+      conversation: { type: string, minLength: 1 }
+      parent: { type: [string, "null"], minLength: 1, description: The entry this follows; null appends a root. }
+      turn: { type: string, minLength: 1, description: The appending turn; must be the header's current turn. }
+      message: { $ref: "telo:AI/Message" }
+      attachments:
+        description: Attachments the message refers to, bound to the conversation with it; each pending or already the conversation's.
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:AiConversation/EntryRow" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store to append to.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Update
+  description: >-
+    Renames or archives a conversation, conditional on the header version, and returns the new header. Of two changes at one version exactly one succeeds.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#Update]
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND:
+      description: >-
+        No conversation has this id.
+    ERR_CONVERSATION_CONFLICT:
+      description: >-
+        The version is stale: another change landed since the header was read.
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversation, version]
+    properties:
+      conversation: { type: string, minLength: 1 }
+      version: { type: integer, minimum: 1, description: The header version the change is based on. }
+      title: { type: string }
+      archived: { type: boolean }
+    anyOf:
+      - { required: [title] }
+      - { required: [archived] }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:AiConversation/Header" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store to update.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Admit
+  description: >-
+    Admits a turn on a conversation, superseding the previous one, and binds the files its message carries, all at once and conditional on the header version. Returns the new header. Refused, with nothing changed, when another change landed first or a file is unknown, expired, deleted or held by another conversation.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#Admit]
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND:
+      description: >-
+        No conversation has this id.
+    ERR_CONVERSATION_CONFLICT:
+      description: >-
+        The version is stale: another change landed since the header was read.
+    ERR_CONVERSATION_ATTACHMENT_NOT_FOUND:
+      description: >-
+        A named attachment is unknown, expired, released, or bound to another conversation.
+      data: { type: object, additionalProperties: false, required: [attachment], properties: { attachment: { type: string } } }
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversation, version, turn, attachments, expiredBefore]
+    properties:
+      conversation: { type: string, minLength: 1 }
+      version: { type: integer, minimum: 1, description: The header version the admission is based on. }
+      turn: { type: string, minLength: 1, description: The turn to admit. }
+      attachments:
+        description: Attachments the turn's message carries; each pending, or already the conversation's.
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+      expiredBefore:
+        description: A pending attachment registered before this instant is expired and refused.
+        x-telo-type: Telo.Timestamp
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:AiConversation/Header" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store the turn is admitted in.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Delete
+  description: >-
+    Deletes a conversation with all its entries and approvals, and releases its files at once, so none is readable afterwards; an expiry pass removes them. An unknown id is refused.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#Delete]
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND:
+      description: >-
+        No conversation has this id.
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversation]
+    properties: { conversation: { type: string, minLength: 1 } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [deleted]
+    properties: { deleted: { type: boolean } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store to delete from.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: RecordApproval
+  description: >-
+    Records the approval a gated tool call waits for, and later its decision. With no decision it records the request (repeating it changes nothing); with one it decides, once: a second decision is a conflict. Fenced by the header's current turn as Append is. Returns the approval record.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#RecordApproval]
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND:
+      description: >-
+        No conversation has this id.
+    ERR_CONVERSATION_ENTRY_NOT_FOUND:
+      description: >-
+        The conversation has no entry with this id.
+    ERR_CONVERSATION_TOOL_CALL_NOT_FOUND:
+      description: >-
+        The entry holds no tool call with this id.
+    ERR_CONVERSATION_CONFLICT:
+      description: >-
+        The named turn is not the header's current turn, the approval id names another call, or the approval already has a decision.
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversation, turn, id, entry, toolCallId]
+    properties:
+      conversation: { type: string, minLength: 1 }
+      turn: { type: string, minLength: 1, description: The recording turn; must be the header's current turn, and is the deciding turn of a decision. }
+      id: { type: string, minLength: 1, description: The approval-request id. }
+      entry: { type: string, minLength: 1, description: The entry holding the tool call. }
+      toolCallId: { type: string, minLength: 1 }
+      decision:
+        type: object
+        additionalProperties: false
+        required: [approved]
+        properties: { approved: { type: boolean }, reason: { type: string } }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:AiConversation/Approval" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store to record in.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: RegisterAttachment
+  description: >-
+    Registers a file before its bytes are stored and returns its record: pending, belonging to no conversation until the first admitted turn naming it binds it, or bound at once to the conversation of a running turn, refused when another turn is current. The id is minted unless the caller supplies one.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#RegisterAttachment]
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND:
+      description: >-
+        `binding` names no conversation.
+    ERR_CONVERSATION_CONFLICT:
+      description: >-
+        `binding` names a turn that is not the header's current turn (a superseded turn).
+    ERR_CONVERSATION_ATTACHMENT_NOT_FOUND:
+      description: >-
+        A caller-supplied id already names a file in a state this registration would not leave it in: bound where pending was asked for, held by another conversation, or released.
+      data: { type: object, additionalProperties: false, required: [attachment], properties: { attachment: { type: string } } }
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      id: { type: string, pattern: "^att_[0-9A-Za-z]{22}$", description: A caller-minted id; minted when omitted. }
+      name: { type: string, description: The file name the upload carried. }
+      binding:
+        description: The running turn whose conversation the file is bound to from the start; omitted registers it pending.
+        type: object
+        additionalProperties: false
+        required: [conversation, turn]
+        properties:
+          conversation: { type: string, minLength: 1 }
+          turn: { type: string, minLength: 1, description: Must be the header's current turn. }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:AiConversation/Attachment" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store the file is registered in.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: ReadAttachment
+  description: >-
+    Returns a file's record: the conversation holding it, null while it is pending, and its name. An unknown or released file is refused.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#ReadAttachment]
+throws:
+  codes:
+    ERR_CONVERSATION_ATTACHMENT_NOT_FOUND:
+      description: >-
+        No attachment has this id, or it was released.
+      data: { type: object, additionalProperties: false, required: [attachment], properties: { attachment: { type: string } } }
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [attachment]
+    properties: { attachment: { type: string, minLength: 1 } }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:AiConversation/Attachment" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store to read from.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: ExpireAttachments
+  description: >-
+    Releases pending files registered before a cutoff, then returns a batch of released files — expired ones and those of deleted conversations — whose bytes the caller removes before forgetting them. Racing an admission, a pending file is either bound or released, never both.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#ExpireAttachments]
+throws:
+  codes:
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [expiredBefore]
+    properties:
+      expiredBefore: { description: Pending files registered before this instant are released., x-telo-type: Telo.Timestamp }
+      limit: { type: integer, minimum: 1, maximum: 500, default: 50, description: The most files released, and the most returned. }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ids]
+    properties: { ids: { type: array, items: { type: string }, description: Released files not yet forgotten. } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store whose files expire.
+      x-telo-ref: { kind: Self.Store, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: ForgetAttachments
+  description: >-
+    Deletes the records of released files once their bytes are gone. A file that is not released is left as it is.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-conversation.mjs&local_path=./nodejs/src/index.ts#ForgetAttachments]
+throws:
+  codes:
+    ERR_CONVERSATION_UNAVAILABLE:
+      description: >-
+        The storage could not be reached or failed. Retryable.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ids]
+    properties: { ids: { type: array, uniqueItems: true, items: { type: string, minLength: 1 } } }
+outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store whose records are forgotten.
+      x-telo-ref: { kind: Self.Store, use: dependency }

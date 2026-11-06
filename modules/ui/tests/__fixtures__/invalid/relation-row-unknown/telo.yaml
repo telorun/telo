@@ -55,4 +55,4 @@ relations:
   reviewerId:
     source: { kind: Ui.CollectionSource, collection: !ref reviewers, basePath: /api/reviewers }
     label: !cel "row.handle"
-    href: !cel "row.name"
+    href: { path: !cel "row.name" }

@@ -8,7 +8,7 @@ tree for anything else.
 | --- | --- | --- |
 | `inputModel` | required | the shape of the record sent: a `!ref` to a `Telo.JsonSchema`, or one inline |
 | `outputModel` | | the shape of the answer, read as `result`; a success's body is held to it |
-| `source.path` | required | [app-relative](nodes.md#addresses) URL of the operation |
+| `request` | required | `{ method?, target }`: the HTTP `method` (`POST`, the default, `PUT`, `PATCH` or `DELETE`) and the `target`, a [request target](nodes.md#addresses) over `input` |
 | `label` | required | the text of the button |
 | `fields` | every enterable property | the fields, top to bottom: a property name, or a [field kind](field-kinds.md), none entering a property twice |
 | `groups` | none | labelled sections the fields name by `group` ([field kinds](field-kinds.md#groups)) |
@@ -16,20 +16,21 @@ tree for anything else.
 | `enabled` | always | when the button can be pressed, and why not: a [`Ui.Enablement`](conditions.md#enablement) over `values` |
 | `result` | nothing drawn | a [node tree](nodes.md) drawn from a success, over `result`, `input` and `values` |
 | `failure` | the error's code and message | a node tree drawn when the operation does not succeed, over `error`, `input` and `values` |
-| `onSuccess` | nothing | `{ navigate?, refreshes? }`: where the page goes, and what is read again |
+| `onSuccess` | nothing | `{ navigate?, refreshes? }`: an [address](nodes.md#addresses) the page goes to over `result` and `input`, and the request targets read again over `input` and `result` |
 | `concurrency` | `parallel` | `parallel` or `serial`: whether presses run at once or one after another |
 | `clearAnswerOn` | none | input properties whose change clears what was drawn from the last answer |
 
-The operation must speak [the action contract](action-contract.md): one `POST`
-with a JSON body, answered with a JSON object on success and a problem body
-(`code`, `detail`, a 400's `data.issues`) otherwise.
+The operation must speak [the action contract](action-contract.md): one
+`<method> <target>` request, its JSON body the input minus what the target
+reads, answered with a JSON object on success and a problem body (`code`,
+`detail`, a 400's `data.issues`) otherwise.
 
 ```yaml
 kind: Ui.Action
 metadata: { name: generateReports }
 inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 result:
   type: list
@@ -42,6 +43,38 @@ result:
 onSuccess:
   refreshes: [/api/reports]
 ```
+
+## The request
+
+`request.target` is a [`Ui.RequestTarget`](nodes.md#addresses): an app-relative
+path, or `{ path, pathParams, queryParams }` whose bindings read `input`, the
+record the press sends. An input property is **consumed** when a `pathParams`
+or `queryParams` binding is exactly the chain `input.<property>`; a deeper
+chain (`input.range.from`) reads without consuming, and a literal consumes
+nothing. A consumed property travels in the target and is left out of the body.
+
+```yaml
+kind: Ui.Action
+metadata: { name: renameConversation }
+inputModel: !ref ConversationRename   # { id, title }
+request:
+  method: PATCH
+  target:
+    path: "/api/chat/conversations/{id}"
+    pathParams: { id: !cel "input.id" }
+label: Rename
+```
+
+sends `PATCH /api/chat/conversations/<id>` with the body `{ "title": … }`.
+
+| Method | Body |
+| --- | --- |
+| `POST`, `PUT`, `PATCH` | the input's properties that hold a value, minus the consumed ones |
+| `DELETE` | none; every input property must be consumed |
+
+A target whose parameter holds nothing is not sent (`ERR_UI_ADDRESS_UNRESOLVED`
+as a failure, naming the parameter). A `GET`, an absolute target and a page
+reference are refused: a read is a [`Ui.Data`](data.md).
 
 An action is a [composite](composite.md): it is placed on a page with
 `{ type: composite, ref: !ref generateReports }`, or
@@ -80,9 +113,9 @@ read these roots, each typed as declared:
 
 | Root | In | Is |
 | --- | --- | --- |
-| `result` | `result`, `onSuccess.navigate` | the answer, typed from `outputModel`; with none it has no members, so any `result.<name>` is `CEL_UNKNOWN_FIELD` |
+| `result` | `result`, `onSuccess` | the answer, typed from `outputModel`; with none it has no members, so any `result.<name>` is `CEL_UNKNOWN_FIELD` |
 | `error` | `failure` | a [`Ui.RequestError`](conditions.md): `status` (absent when nothing answered), `code`, `message` |
-| `input` | `result`, `failure` | the record that was sent, typed from `inputModel` |
+| `input` | `request.target`, `result`, `failure`, `onSuccess` | the record that was sent, typed from `inputModel` |
 | `values` | `result`, `failure` | what the form holds now, typed from `inputModel`; from a row, the record the press sent |
 
 `failure` is drawn for every answer but a 2xx — a 400 still marks the fields
@@ -90,8 +123,9 @@ it names — for no answer at all, and for a 2xx body that is not a JSON object
 or that `outputModel` refuses (`code: ERR_UI_RESPONSE_INVALID`). Left out, it
 draws the error's code and message.
 
-A success's body is read only when the `result` tree or `onSuccess.navigate`
-reads `result`; otherwise any 2xx is a success, whatever it carries.
+A success's body is read only when the `result` tree, `onSuccess.navigate` or
+a `refreshes` entry reads `result`; otherwise any 2xx is a success, whatever it
+carries.
 
 The answer drawn is cleared when a submission starts, and when the value of a
 property `clearAnswerOn` lists changes — a row's answers drawn inside it go
@@ -99,16 +133,34 @@ with it.
 
 ## After a success
 
-`onSuccess.refreshes` lists [app-relative](nodes.md#addresses) paths: every
-[`Ui.Data`](data.md) whose `source.path`, and every [`Ui.Listing`](listing.md)
-whose presentation's [collection source](collection-source.md) has a
-`basePath`, equal to one of them reads again.
+After a 2xx the resolved target's path, and each resolved `onSuccess.refreshes`
+path, are announced as changed, and so is the `basePath` of the listing a row
+action ran in. A [`Ui.Data`](data.md), [`Ui.Listing`](listing.md) or
+[`Ui.Chat`](chat.md) whose request path equals an announced one — resolved,
+encoded and app-relative, the query left out — reads again.
+`onSuccess.refreshes` entries are [request targets](nodes.md#addresses) over
+`input` and `result`, except that a whole segment of a literal `path` may be a
+wildcard: `*` is exactly one segment, `**` any number of segments, none
+included, so `/api/projects/{id}/**` covers `/api/projects/7` and
+`/api/projects/7/members` but not `/api/projects/70`. There is no `?`, no
+character class and no alternation (`{name}` is a variable). Exact stays the
+default: an entry with no wildcard covers only its own path, and a subtree is
+opted into with `/**`. A wildcard comes from the literal template alone — a
+`pathParams` value is encoded before matching, so a `*` in it is text, and a
+`path` read from data is matched exactly. The rows are
+`conformance/refreshes.json`. A wildcard in any other address is
+`SCHEMA_VIOLATION`.
 
-`onSuccess.navigate` is a path into `result`, or a fixed address. An
-app-relative address of a declared page moves within the application; any
-other app-relative address is loaded; an `https://`, `http://` or `mailto:`
-address replaces the page. A value that is no such address navigates nowhere,
-and the answer is drawn.
+`onSuccess.navigate` is an [address](nodes.md#addresses) over `result` and
+`input`: a literal, `{ path, pathParams, queryParams }`, or a `path` chain
+reading a whole address from the answer. An app-relative address of a declared
+page moves within the application; any other app-relative address is loaded; an
+`https://`, `http://` or `mailto:` address replaces the page. An address that
+does not resolve navigates nowhere, and the answer is drawn.
+
+**An empty success.** A 2xx with no body, 204 included, is a success unless
+something reads `result` — the `result` tree, `navigate` or a `refreshes` entry
+— in which case an empty body is `ERR_UI_RESPONSE_INVALID`.
 
 ## Pressing
 
@@ -159,7 +211,7 @@ list is drawn from.
 | a `list`'s `rows` naming something that is not a list | `CEL_TYPE_ERROR` |
 | `rows: !cel "size(result.files)"`, or any other expression | `ACCESSOR_NOT_PLAIN_CHAIN` |
 | `navigate: ftp://…`, `refreshes: [api/reports]` | `SCHEMA_VIOLATION` |
-| a key the kind does not take (`method: PUT`, `lists`) | `SCHEMA_VIOLATION` |
+| `source:` (now `request.target`), `method: GET`, an absolute `target`, a page reference as a `target`, a key the kind does not take (`lists`) | `SCHEMA_VIOLATION` |
 | a row action's input the action does not take, or a required one left out | `CONTRACT_INPUTS_MISMATCH` |
 
 ## Refused
@@ -168,6 +220,7 @@ list is drawn from.
 | --- | --- |
 | `UI_FIELD_*`, `UI_STATE_FIELD_UNKNOWN` | the field rules a [form](form.md#refused) has, over `inputModel`; a property `inputModel` requires with no field is `UI_FIELD_REQUIRED_NOT_ENTERED` |
 | `UI_ACTION_CLEAR_UNKNOWN_PROPERTY` | `clearAnswerOn` names a property `inputModel` does not declare |
+| `UI_ACTION_INPUT_UNSENT` | a `DELETE` whose target does not consume every `inputModel` property as exactly `input.<property>` (`ERR_UI_ACTION_INPUT_UNSENT` when first read) |
 
 The action refuses the same things itself when it is first read, as
 `ERR_<code>` — each field kind answering for its own fit — for a manifest that never passed
@@ -185,7 +238,8 @@ An `action` node:
 | Member | |
 | --- | --- |
 | `schema` | the input model's JSON Schema |
-| `path`, `label` | as declared |
+| `request` | `{ method, target, consumed }`: `method` always present (`POST` by default), `target` an [address](nodes.md#addresses) `{ path, pathParams, queryParams }` whose bindings read `input`, `consumed` the input properties the target reads whole, in the input model's order — the renderer sends the others in the body, with no CEL of its own |
+| `label` | as declared |
 | `fields` | each field kind's [spec](field-kinds.md#what-a-renderer-receives), its label the property's `title`, else its name |
 | `groups` | `{ name, label, description?, shown? }` each; empty when none |
 | `state` | `{ key?, address, store, fields }` ([kept values](field-kinds.md#kept-values)) |
@@ -193,7 +247,7 @@ An `action` node:
 | `answer` | the output model's JSON Schema, present when one is declared |
 | `result` | the `result` tree, its `value` and `list` nodes [presented](nodes.md#values-and-lists) from the roots they read; present when declared |
 | `failure` | the `failure` tree, the default filled in |
-| `onSuccess` | `{ navigate?, refreshes }`: `navigate` a binding, present when declared; `refreshes` empty when none |
+| `onSuccess` | `{ navigate?, refreshes }`: `navigate` an address over `result` and `input`, present when declared; `refreshes` addresses over `input` and `result`, empty when none |
 | `concurrency` | `parallel` or `serial` |
 | `clearAnswerOn` | the listed properties; empty when none |
 

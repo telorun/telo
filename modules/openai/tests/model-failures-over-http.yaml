@@ -106,11 +106,15 @@ request: !ref nobodyRequest
 ---
 kind: OpenAI.ChatModel
 metadata: { name: echoChat }
+accepts:
+  - { type: image, mediaTypes: [image/png] }
 model: gpt-test
 request: !ref echoRequest
 ---
 kind: OpenAI.ResponsesModel
 metadata: { name: echoResponses }
+accepts:
+  - { type: image, mediaTypes: [image/png] }
 model: gpt-test
 request: !ref echoRequest
 ---

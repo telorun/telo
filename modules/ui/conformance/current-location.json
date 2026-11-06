@@ -1,0 +1,203 @@
+{
+  "description": "Whether an address leads to where the viewer is, one row per case. `address` is the text an address resolves to; `location` is the viewer's path (under the mount) and query; `current` whether a link to the address is marked as the current location. Held by every renderer's test.",
+  "rows": [
+    {
+      "name": "the page itself is current",
+      "address": "/",
+      "location": {
+        "path": "/",
+        "search": ""
+      },
+      "current": true
+    },
+    {
+      "name": "a link with a query is not current on a page without one",
+      "address": "/?conversation=abc",
+      "location": {
+        "path": "/",
+        "search": ""
+      },
+      "current": false
+    },
+    {
+      "name": "a link without a query is not current when the address has one",
+      "address": "/",
+      "location": {
+        "path": "/",
+        "search": "?conversation=abc"
+      },
+      "current": false
+    },
+    {
+      "name": "the link naming the address's query is current",
+      "address": "/?conversation=abc",
+      "location": {
+        "path": "/",
+        "search": "?conversation=abc"
+      },
+      "current": true
+    },
+    {
+      "name": "another value of the same key is not current",
+      "address": "/?conversation=xyz",
+      "location": {
+        "path": "/",
+        "search": "?conversation=abc"
+      },
+      "current": false
+    },
+    {
+      "name": "a different path is not current",
+      "address": "/other",
+      "location": {
+        "path": "/",
+        "search": ""
+      },
+      "current": false
+    },
+    {
+      "name": "a longer path is not current",
+      "address": "/items/7",
+      "location": {
+        "path": "/items",
+        "search": ""
+      },
+      "current": false
+    },
+    {
+      "name": "a trailing slash is another path",
+      "address": "/items/",
+      "location": {
+        "path": "/items",
+        "search": ""
+      },
+      "current": false
+    },
+    {
+      "name": "the fragment is ignored",
+      "address": "/items#top",
+      "location": {
+        "path": "/items",
+        "search": ""
+      },
+      "current": true
+    },
+    {
+      "name": "key order is free",
+      "address": "/?a=1&b=2",
+      "location": {
+        "path": "/",
+        "search": "?b=2&a=1"
+      },
+      "current": true
+    },
+    {
+      "name": "a repeated key's values are an ordered list",
+      "address": "/?a=1&a=2",
+      "location": {
+        "path": "/",
+        "search": "?a=2&a=1"
+      },
+      "current": false
+    },
+    {
+      "name": "a repeated key's values in the same order are current",
+      "address": "/?a=1&a=2",
+      "location": {
+        "path": "/",
+        "search": "?a=1&a=2"
+      },
+      "current": true
+    },
+    {
+      "name": "a key the location lacks is not current",
+      "address": "/?a=1&b=2",
+      "location": {
+        "path": "/",
+        "search": "?a=1"
+      },
+      "current": false
+    },
+    {
+      "name": "a key the address lacks is not current",
+      "address": "/?a=1",
+      "location": {
+        "path": "/",
+        "search": "?a=1&b=2"
+      },
+      "current": false
+    },
+    {
+      "name": "a renderer parameter in the location is set aside",
+      "address": "/?conversation=abc",
+      "location": {
+        "path": "/",
+        "search": "?conversation=abc&_telo.f.bar.status=open"
+      },
+      "current": true
+    },
+    {
+      "name": "a renderer parameter in the address is set aside",
+      "address": "/?_telo.open.x=1",
+      "location": {
+        "path": "/",
+        "search": ""
+      },
+      "current": true
+    },
+    {
+      "name": "a parameter the app did not write unmarks the link",
+      "address": "/?conversation=abc",
+      "location": {
+        "path": "/",
+        "search": "?conversation=abc&page=2"
+      },
+      "current": false
+    },
+    {
+      "name": "the form encoding is decoded",
+      "address": "/?q=a+b",
+      "location": {
+        "path": "/",
+        "search": "?q=a%20b"
+      },
+      "current": true
+    },
+    {
+      "name": "an https address is never current",
+      "address": "https://example.com/",
+      "location": {
+        "path": "/",
+        "search": ""
+      },
+      "current": false
+    },
+    {
+      "name": "an http address is never current",
+      "address": "http://example.com/",
+      "location": {
+        "path": "/",
+        "search": ""
+      },
+      "current": false
+    },
+    {
+      "name": "a mailto address is never current",
+      "address": "mailto:a@example.com",
+      "location": {
+        "path": "/",
+        "search": ""
+      },
+      "current": false
+    },
+    {
+      "name": "a reference that is not app-relative is never current",
+      "address": "items",
+      "location": {
+        "path": "/items",
+        "search": ""
+      },
+      "current": false
+    }
+  ]
+}

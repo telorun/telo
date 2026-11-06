@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: UiInvalidChatHeaderKeysApp, version: 1.0.0 }
+imports: { Lib: ../chat-header-keys, Probe: ../../probe }
+targets:
+  - invoke: !ref read
+---
+kind: Probe.Read
+metadata: { name: read }
+source: !ref Lib.titled

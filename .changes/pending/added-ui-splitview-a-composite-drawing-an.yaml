@@ -1,0 +1,9 @@
+modules:
+  modules/ui: Added
+body: "Ui.SplitView, a composite drawing an aside tree beside a content tree: a side
+  (start or end), a size (small, medium or large), a required label naming the aside and
+  its toggle, an optional collapse whose fold is kept under a key in a Ui.LocalStore or
+  Ui.SessionStore, and a compact surface (a drawer from the aside side unless another
+  Ui.ViewportOverlay is named) used below the breakpoint, refused when it has an address
+  or a compact surface of its own. Adds the split spec node and the keyed texts
+  splitShow and splitHide, translated into every language ui ships."

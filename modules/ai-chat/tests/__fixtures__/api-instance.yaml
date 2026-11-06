@@ -1,0 +1,94 @@
+# One replica of a chat endpoint over a SQLite file it shares with the others:
+# the store and the turn journal both live in it. The model counts each request
+# it receives in the same file and takes 700ms to answer it; a conversation's first turn
+# calls a two-second tool before it answers.
+kind: Telo.Application
+metadata: { name: AiChatApiInstance, version: 1.0.0 }
+imports:
+  Chat: ../../
+  Ai: ../../../ai
+  AiEcho: ../../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../../ai-conversation-sql
+  RecordStream: ../../../record-stream
+  RecordStreamSql: ../../../record-stream-sql
+  BlobFs: ../../../blob-fs
+  MediaType: ../../../media-type
+  SQLite: ../../../sqlite
+  Sql: ../../../sql
+  Timer: ../../../timer
+  Http: ../../../http-server
+variables:
+  dbFile: { env: AI_CHAT_INSTANCE_DB, type: string, x-telo-type: Telo.HostPath }
+  blobDir:
+    env: AI_CHAT_INSTANCE_BLOBS
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+ports: { http: { env: PORT, protocol: tcp, default: 19420 } }
+targets: [!ref server]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: Telo.Definition
+metadata: { name: CountingModel }
+capability: Telo.Invocable
+extends: Ai.ModelStream
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection]
+  properties: { connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } } }
+resources:
+  - kind: AiEcho.EchoModelStream
+    metadata: { name: echo }
+    accepts: []
+    emitToolCall: { name: wait, arguments: {} }
+  - { kind: Sql.Command, metadata: { name: count }, connection: !cel "self.connection" }
+  - kind: Telo.Sequence
+    metadata: { name: call }
+    steps:
+      - name: counted
+        invoke: !ref count
+        inputs: { sql: !sql "INSERT INTO model_requests (note) VALUES (${{ string(inputs.messages[0].content) }})" }
+      - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 700ms } }
+      - name: answer
+        invoke: !ref echo
+        inputs: !cel "inputs"
+    outputs:
+      output: !cel "steps.answer.result.output"
+invoke: !ref call
+---
+kind: Telo.Sequence
+metadata: { name: slowTool }
+steps:
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent:
+  kind: Ai.AgentStream
+  model: { kind: AiChatApiInstance.CountingModel, connection: !ref db }
+  maxSteps: 4
+  toolProviders:
+    - provider:
+        kind: Ai.Tools
+        tools:
+          - tool: !ref slowTool
+            name: wait
+            description: Waits a while.
+            parameters: { type: object }
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+  markerRetention: 1h
+  writerTimeout: 3s
+blobs: { kind: BlobFs.Store, root: !cel "variables.blobDir" }
+detector: { kind: MediaType.Detector }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: !cel "ports.http" }
+mounts:
+  - { path: /chat, mount: { kind: Chat.Api, conversation: !ref chat } }

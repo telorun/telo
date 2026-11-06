@@ -1,0 +1,126 @@
+kind: Telo.Application
+metadata:
+  name: AiConversationSqlBranching
+  version: 1.0.0
+  description: |
+    Regenerating a reply and editing the first message append siblings and keep the
+    old branches: each `through` reads its own branch intact, every row carries its
+    place among its siblings, the latest branch ends at the newest entry, and the
+    editing leaves three roots.
+imports:
+  AiConversation: ../../ai-conversation
+  AiConversationSql: ../
+  SQLite: ../../sqlite
+  Assert: ../../assert
+targets:
+  - !ref testBranching
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: testBranching }
+steps:
+  - name: created
+    invoke: { kind: AiConversation.Create, store: !ref store }
+  - name: admitted
+    invoke: { kind: AiConversation.Admit, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", version: !cel "steps.created.result.version", turn: trn_1, attachments: [], expiredBefore: !cel "timestamp('1970-01-01T00:00:00Z')" }
+  - name: a
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: null, turn: trn_1, message: { role: user, content: a } }
+  - name: b
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: !cel "steps.a.result.id", turn: trn_1, message: { role: assistant, content: b } }
+  - name: c
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: !cel "steps.b.result.id", turn: trn_1, message: { role: user, content: c } }
+  - name: d
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: !cel "steps.c.result.id", turn: trn_1, message: { role: assistant, content: d } }
+  # Regenerate: a sibling of d.
+  - name: d2
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: !cel "steps.c.result.id", turn: trn_1, message: { role: assistant, content: d2 } }
+  # Edit the first message twice: two more roots.
+  - name: r2
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: null, turn: trn_1, message: { role: user, content: r2 } }
+  - name: r3
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: null, turn: trn_1, message: { role: user, content: r3 } }
+  - name: throughD
+    invoke: { kind: AiConversation.Entries, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", through: !cel "steps.d.result.id" }
+  - name: throughD2
+    invoke: { kind: AiConversation.Entries, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", through: !cel "steps.d2.result.id" }
+  # Below `a` the most recently appended child is followed: b, c, then d2.
+  - name: throughA
+    invoke: { kind: AiConversation.Entries, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", through: !cel "steps.a.result.id" }
+  - name: throughR2
+    invoke: { kind: AiConversation.Entries, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", through: !cel "steps.r2.result.id" }
+  - name: latest
+    invoke: { kind: AiConversation.Entries, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id" }
+  - name: branchD
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.throughD.result.rows.map(r, r.message.content)"
+      expected: [d, c, b, a]
+  - name: branchD2
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.throughD2.result.rows.map(r, r.message.content)"
+      expected: [d2, c, b, a]
+  - name: branchA
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.throughA.result.rows.map(r, r.message.content)"
+      expected: [d2, c, b, a]
+  - name: branchR2
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.throughR2.result.rows.map(r, r.message.content), steps.throughR2.result.total]"
+      expected: [[r2], 1]
+  - name: latestBranch
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.latest.result.rows.map(r, r.message.content), steps.latest.result.total, steps.latest.result.next]"
+      expected: [[r3], 1, null]
+  # Position and count among siblings, identical whichever branch d and d2 are read through.
+  - name: siblingsOnD
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.throughD.result.rows.map(r, [r.siblings.position, r.siblings.count])"
+      expected: [[1, 2], [1, 1], [1, 1], [1, 3]]
+  - name: siblingsOnD2
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.throughD2.result.rows.map(r, [r.siblings.position, r.siblings.count])"
+      expected: [[2, 2], [1, 1], [1, 1], [1, 3]]
+  - name: neighbours
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.throughD.result.rows[0].siblings.previous, steps.throughD.result.rows[0].siblings.next, steps.throughD2.result.rows[0].siblings.previous, steps.throughD2.result.rows[0].siblings.next, steps.throughA.result.rows[3].siblings.previous, steps.throughA.result.rows[3].siblings.next, steps.throughR2.result.rows[0].siblings.previous, steps.throughR2.result.rows[0].siblings.next]"
+      expected:
+        - null
+        - !cel "steps.d2.result.id"
+        - !cel "steps.d.result.id"
+        - null
+        - null
+        - !cel "steps.r2.result.id"
+        - !cel "steps.a.result.id"
+        - !cel "steps.r3.result.id"
+  - name: depthAndParents
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.throughD.result.rows.map(r, [r.depth, r.sequence, r.turn, r.parent == null])"
+      expected: [[4, 4, trn_1, false], [3, 3, trn_1, false], [2, 2, trn_1, false], [1, 1, trn_1, true]]

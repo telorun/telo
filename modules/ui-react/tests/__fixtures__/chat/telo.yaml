@@ -1,0 +1,47 @@
+# A page holding a chat over a conversation endpoint, served with Polish
+# available: the chat node carries what the endpoint offers and a button drawn
+# from a file of its own, and the application document carries the chat's own
+# texts in the language served.
+kind: Telo.Application
+metadata: { name: UiReactChatFixtureApp, version: 1.0.0 }
+requires: { telo: ">=0.129.0" }
+lang: en
+imports: { Http: ../../../../http-server, Ui: ../../../../ui, Fixture: ../../../../ui/tests/__fixtures__/conversation, UiReact: ../../../ }
+ports: { http: { env: PORT, default: 8140 } }
+translations:
+  catalogs: [!ref Ui.polishTranslations]
+targets: [!ref server]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: !cel "ports.http" }
+mounts:
+  - path: /
+    mount:
+      kind: UiReact.App
+      title: Assistant
+      theme: !ref UiReact.defaultTheme
+      pages:
+        - kind: Ui.Page
+          path: /
+          title: Assistant
+          children:
+            - type: composite
+              ref:
+                kind: Ui.Chat
+                source:
+                  kind: Ui.ConversationSource
+                  basePath: /api/chat
+                  conversation:
+                    kind: Fixture.Endpoint
+                    attachments:
+                      accepts: [{ type: image, mediaTypes: [image/png], maxBytes: 1048576 }]
+                      maxPerMessage: 2
+                    operations: [branch, cancel]
+                placeholder: Ask anything
+                starters: [Summarise this]
+                conversation: { parameter: conversation }
+                refreshes: [/api/chat/conversations]
+                buttons:
+                  regenerate: { kind: Ui.IconButton, label: shown, icon: { kind: Ui.FileIcon, file: !module-path ./glyph.svg } }
+                  send: { kind: Ui.IconButton }

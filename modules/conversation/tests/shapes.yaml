@@ -1,0 +1,116 @@
+# Each shape accepts representative values: a value reaching a resource whose
+# inputType is the shape is validated against it.
+kind: Telo.Application
+metadata: { name: ConversationShapesTest, version: 1.0.0 }
+imports: { Conversation: .., Run: ../../run, Assert: ../../assert }
+targets:
+  - !ref accepts
+---
+kind: Run.Value
+metadata: { name: checkSpec }
+inputType: !ref Conversation.Spec
+value: true
+---
+kind: Run.Value
+metadata: { name: checkEvent }
+inputType: !ref Conversation.Event
+value: true
+---
+kind: Run.Value
+metadata: { name: checkEntry }
+inputType: !ref Conversation.Entry
+value: true
+---
+kind: Run.Value
+metadata: { name: checkTurn }
+inputType: !ref Conversation.TurnRequest
+value: true
+---
+kind: Run.Value
+metadata: { name: checkSummary }
+inputType: !ref Conversation.ConversationSummary
+value: true
+---
+kind: Telo.Sequence
+metadata: { name: accepts }
+steps:
+  - name: specWithAttachments
+    invoke: !ref checkSpec
+    inputs:
+      attachments:
+        accepts:
+          - { type: image, mediaTypes: [image/png, image/jpeg], maxBytes: 5242880 }
+          - { type: file, mediaTypes: [application/pdf], maxBytes: 10485760 }
+        maxPerMessage: 4
+      operations: [branch, cancel]
+  - name: specWithoutAttachments
+    invoke: !ref checkSpec
+    inputs: { operations: [] }
+  - name: textDelta
+    invoke: !ref checkEvent
+    inputs: { type: text-delta, text: Hel }
+  - name: contentCitation
+    invoke: !ref checkEvent
+    inputs:
+      type: content
+      part: { type: citation, url: "https://example.com/a", title: A }
+  - name: contentImage
+    invoke: !ref checkEvent
+    inputs:
+      type: content
+      part: { type: image, url: conversations/c1/attachments/a1, mediaType: image/png }
+  - name: toolCall
+    invoke: !ref checkEvent
+    inputs: { type: tool-call, id: c1, name: lookup, arguments: { q: x } }
+  - name: approvalRequest
+    invoke: !ref checkEvent
+    inputs: { type: approval-request, id: a1, toolCallId: c1, name: lookup, arguments: {} }
+  - name: turnEnd
+    invoke: !ref checkEvent
+    inputs:
+      type: turn-end
+      reason: approval
+      usage: { inputTokens: 10, outputTokens: 4 }
+  - name: errorEvent
+    invoke: !ref checkEvent
+    inputs: { type: error, code: ERR_MODEL_RATE_LIMITED, detail: Slow down }
+  - name: entry
+    invoke: !ref checkEntry
+    inputs:
+      id: e2
+      parent: e1
+      turn: trn_1
+      siblings: { position: 2, count: 3, previous: e3, next: e4 }
+      role: assistant
+      parts:
+        - { type: reasoning, text: Considering }
+        - { type: text, text: Done }
+      toolCalls:
+        - { id: c1, name: lookup, arguments: {}, approval: { id: a1, decision: { approved: true } } }
+        - { id: c2, name: lookup, arguments: {}, approval: { id: a2, decision: null } }
+      toolResults: [{ id: c1, result: { found: true } }]
+      usage: { inputTokens: 10, outputTokens: 4 }
+  - name: rootEntry
+    invoke: !ref checkEntry
+    inputs:
+      id: e1
+      parent: null
+      turn: trn_1
+      siblings: { position: 1, count: 1, previous: null, next: null }
+      role: user
+      parts: [{ type: text, text: Hi }]
+  - name: turnRequest
+    invoke: !ref checkTurn
+    inputs:
+      message: ""
+      attachments: []
+      approvals: [{ id: a1, approved: false, reason: Not now }]
+  - name: messageTurnRequest
+    invoke: !ref checkTurn
+    inputs: { message: Hello, attachments: [a1] }
+  - name: rootTurnRequest
+    invoke: !ref checkTurn
+    inputs: { conversation: c1, parent: null, message: Again, attachments: [] }
+  - name: summary
+    invoke: !ref checkSummary
+    inputs: { id: c1, title: null, archived: false, updatedAt: "2026-01-01T00:00:00Z", turn: trn_1, running: true }

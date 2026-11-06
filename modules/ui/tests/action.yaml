@@ -59,7 +59,7 @@ kind: Ui.Action
 metadata: { name: generate }
 inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 result:
   type: stack
@@ -88,8 +88,11 @@ failure:
   type: value
   value: !cel "error.message"
 onSuccess:
-  navigate: !cel "result.location"
-  refreshes: [/api/reports, /api/archive]
+  navigate: { path: !cel "result.location" }
+  refreshes:
+    - /api/reports
+    - /api/archive
+    - { path: "/api/months/{month}/**", pathParams: { month: !cel "input.month" } }
 concurrency: serial
 clearAnswerOn: [month, formats]
 ---
@@ -101,21 +104,37 @@ inputModel:
     type: object
     required: [name]
     properties: { name: { type: string }, month: { type: string } }
-source: { path: /api/archive }
+request: { target: /api/archive }
 label: Archive
 onSuccess: { navigate: /files }
 ---
 kind: Ui.Action
 metadata: { name: chosen }
 inputModel: !ref ReportRequest
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Send
 fields: [formats, month]
 ---
 kind: Ui.Action
+metadata: { name: rename }
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id, title]
+    properties: { id: { type: string }, title: { type: string } }
+request:
+  method: PATCH
+  target:
+    path: "/api/chat/conversations/{id}"
+    pathParams: { id: !cel "input.id" }
+    queryParams: { source: !cel "input.title" }
+label: Rename
+---
+kind: Ui.Action
 metadata: { name: refresh }
 inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
-source: { path: /api/refresh }
+request: { target: /api/refresh }
 label: Refresh
 ---
 kind: Ui.Form
@@ -159,7 +178,7 @@ schema:
 kind: Ui.Action
 metadata: { name: archive }
 inputModel: !ref Archive
-source: { path: /api/todos/archive }
+request: { target: /api/todos/archive }
 label: Archive
 ---
 kind: Ui.Listing
@@ -189,7 +208,7 @@ rowActions:
       inputModel:
         kind: Telo.JsonSchema
         schema: { type: object, required: [name], properties: { name: { type: string } } }
-      source: { path: /api/todos/rename }
+      request: { target: /api/todos/rename }
       label: Rename
     inputs:
       name: !cel "row.name"
@@ -209,6 +228,8 @@ steps:
     invoke: { kind: Probe.Read, source: !ref chosen }
   - name: refresh
     invoke: { kind: Probe.Read, source: !ref refresh }
+  - name: rename
+    invoke: { kind: Probe.Read, source: !ref rename }
   - name: form
     invoke: { kind: Probe.Read, source: !ref requestForm }
   - name: page
@@ -222,15 +243,24 @@ steps:
         generate: !cel "steps.generate.result"
         chosen: !cel "steps.chosen.result.node.fields"
         refresh: !cel "steps.refresh.result.node"
+        rename: !cel "steps.rename.result.node.request"
         form: !cel "steps.form.result.node.fields"
         onPage: !cel "steps.page.result.node.children.map(c, {'type': c.type, 'label': c.label, 'style': c.style})"
         query: !cel "steps.todos.result.node.query"
-        rowActions: !cel "steps.todos.result.node.rowActions.map(r, {'path': r.action.path, 'label': r.action.label, 'inputs': r.inputs, 'confirm': has(r.confirm) ? r.confirm : null, 'prompt': has(r.prompt) ? r.prompt : null, 'enabled': has(r.enabled) ? r.enabled : null})"
+        rowActions: !cel "steps.todos.result.node.rowActions.map(r, {'path': r.action.request.target.path.value, 'label': r.action.label, 'inputs': r.inputs, 'confirm': has(r.confirm) ? r.confirm : null, 'prompt': has(r.prompt) ? r.prompt : null, 'enabled': has(r.enabled) ? r.enabled : null})"
       expected:
+        rename:
+          method: PATCH
+          target:
+            path: { value: "/api/chat/conversations/{id}" }
+            pathParams: { id: { root: input, path: [id] } }
+            queryParams: { source: { root: input, path: [title] } }
+          consumed: [id, title]
         generate:
           assets: []
           node:
             type: action
+            fill: false
             schema:
               type: object
               required: [month]
@@ -241,7 +271,7 @@ steps:
                 recipients: { type: [array, "null"], items: { type: string } }
                 options: { type: object, properties: { compact: { type: boolean } } }
                 pages: { type: array, items: { type: object } }
-            path: /api/reports
+            request: { method: POST, target: { path: { value: /api/reports }, pathParams: {}, queryParams: {} }, consumed: [] }
             label: { text: Generate, context: null, lang: und, computed: false }
             fields:
               - { type: input, property: month, label: { text: Month, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
@@ -264,8 +294,11 @@ steps:
                       url: { type: string, format: uri-reference }
             result:
               type: stack
+              fill: false
               children:
                 - type: list
+                  fill: false
+                  rowActionsDisplay: auto
                   heading: { text: Files, context: null, lang: und, computed: false }
                   rows: { root: result, path: [files] }
                   columns:
@@ -276,11 +309,12 @@ steps:
                   rowActions:
                     - action:
                         type: action
+                        fill: false
                         schema:
                           type: object
                           required: [name]
                           properties: { name: { type: string }, month: { type: string } }
-                        path: /api/archive
+                        request: { method: POST, target: { path: { value: /api/archive }, pathParams: {}, queryParams: {} }, consumed: [] }
                         label: { text: Archive, context: null, lang: und, computed: false }
                         fields:
                           - { type: input, property: name, label: { text: name, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
@@ -289,11 +323,12 @@ steps:
                         state: { address: false, store: { type: memory }, fields: [name, month] }
                         failure:
                           type: stack
+                          fill: false
                           style: danger
                           children:
-                            - { type: value, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
-                            - { type: value, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
-                        onSuccess: { navigate: { value: /files }, refreshes: [] }
+                            - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
+                            - { type: value, fill: false, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+                        onSuccess: { navigate: { path: { value: /files }, pathParams: {}, queryParams: {} }, refreshes: [] }
                         concurrency: parallel
                         clearAnswerOn: []
                       inputs: { name: { root: row, path: [name] }, month: { root: input, path: [month] } }
@@ -302,17 +337,22 @@ steps:
                         matches: { type: string }
                         disabledText: { text: Not stored yet., context: null, lang: und, computed: false }
                 - type: value
+                  fill: false
                   value: { root: values, path: [month] }
                   present: { type: string }
                   labels: []
             failure:
               type: value
+              fill: false
               value: { root: error, path: [message] }
               present: { type: string }
               labels: []
             onSuccess:
-              navigate: { root: result, path: [location] }
-              refreshes: [/api/reports, /api/archive]
+              navigate: { path: { root: result, path: [location] }, pathParams: {}, queryParams: {} }
+              refreshes:
+                - { path: { value: /api/reports }, pathParams: {}, queryParams: {} }
+                - { path: { value: /api/archive }, pathParams: {}, queryParams: {} }
+                - { path: { value: "/api/months/{month}/**" }, pathParams: { month: { root: input, path: [month] } }, queryParams: {} }
             concurrency: serial
             clearAnswerOn: [month, formats]
         chosen:
@@ -320,18 +360,20 @@ steps:
           - { type: input, property: month, label: { text: Month, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
         refresh:
           type: action
+          fill: false
           schema: { type: object, properties: {} }
-          path: /api/refresh
+          request: { method: POST, target: { path: { value: /api/refresh }, pathParams: {}, queryParams: {} }, consumed: [] }
           label: { text: Refresh, context: null, lang: und, computed: false }
           fields: []
           groups: []
           state: { address: false, store: { type: memory }, fields: [] }
           failure:
             type: stack
+            fill: false
             style: danger
             children:
-              - { type: value, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
-              - { type: value, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+              - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
+              - { type: value, fill: false, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
           onSuccess: { refreshes: [] }
           concurrency: parallel
           clearAnswerOn: []

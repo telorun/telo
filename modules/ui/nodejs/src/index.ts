@@ -17,6 +17,10 @@ export type { AssetFile } from "./composite.js";
 export { deliveredMenu, placed, presented, type AuthoredNode, type RootShapes } from "./node-resolution.js";
 export { modelShape, type Shape, type ShapeReader } from "./model-schema.js";
 export { placedRowAction } from "./row-actions.js";
+// An address or request target as a renderer receives it, with every default
+// filled, and the one way a renderer expands it (`conformance/addresses.json`).
+export { addressSpec, type AddressConfig } from "./address-spec.js";
+export { AddressUnresolvedError, expandAddress, isAddress, type AddressSpec } from "./address-expansion.js";
 // What a listing layout of another module is called with and answers.
 export type { LayoutAnswer, LayoutCollection, LayoutInputs, LayoutProblem } from "./listing-layout.js";
 // The requests a layout's read plan sends, as `conformance/listing-reads.json` pins them.
@@ -46,6 +50,8 @@ export {
   type PreparedNavigation,
 } from "./navigation.js";
 export { isIcon, type IconFile } from "./icon.js";
+// What counts as an icon file, read from its bytes: one reader for every place an icon is served.
+export { iconFormat, servedIconFormat, type IconFormat } from "./icon-format.js";
 // How a renderer's controller sends the texts of what `ui` provides: each text
 // of a `Ui.SpecNode` found by following its schema and translated; a keyed text
 // is looked up in its set.
@@ -59,6 +65,10 @@ export * as ViewController from "./view-controller.js";
 export * as PageController from "./page-controller.js";
 export * as DataController from "./data-controller.js";
 export * as CollectionSourceController from "./collection-source.js";
+export * as ConversationSourceController from "./conversation-source.js";
+export * as ChatController from "./chat-controller.js";
+export * as SplitViewController from "./split-view-controller.js";
+export { IconButtonController, TextButtonController } from "./button-display.js";
 export * as CollectionPresentationController from "./collection-presentation.js";
 export * as ListingController from "./listing-controller.js";
 export * as TableLayoutController from "./table-layout.js";

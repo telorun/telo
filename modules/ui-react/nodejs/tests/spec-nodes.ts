@@ -26,6 +26,13 @@ export const todos = [
 
 const row = (...path: string[]) => ({ root: "row", path });
 
+/** An address as `ui` provides it: every member present; a literal path is a template. */
+export const address = (path: string | { root: string; path: string[] }, pathParams: Record<string, unknown> = {}, queryParams: Record<string, unknown> = {}) => ({
+  path: typeof path === "string" ? { value: path } : path,
+  pathParams,
+  queryParams,
+});
+
 export const formNode = (basePath = "/api/todos"): SpecNode => ({
   type: "form",
   schema: todoSchema,
@@ -84,12 +91,14 @@ export const listingNode = ({ columns = todoColumns, layout, ...overrides }: Rec
   query: {},
   pageSize: 2,
   paging: "pages",
-  sort: ["text", "priority", "dueOn"],
+  sort: { sortable: ["text", "priority", "dueOn"], initial: null },
+  show: { count: true },
   rowStyle: { by: row("isDone"), cases: { true: "muted" } },
   create: opener(),
   edit: opener(),
   delete: true,
   rowActions: [],
+  rowActionsDisplay: "auto",
   relations: {},
   empty: { type: "text", text: uiText("noRows") },
   layout: layout ?? { type: "table", columns, reads: {} },
@@ -159,7 +168,7 @@ export const defaultFailure = {
 export const operation = (path: string, label: string, schema: Record<string, unknown>, overrides: Record<string, unknown> = {}): SpecNode => ({
   type: "action",
   schema,
-  path,
+  request: { method: "POST", target: address(path), consumed: [] },
   label,
   fields: Object.entries((schema.properties ?? {}) as Record<string, { title?: string }>).map(([property, { title }]) => ({
     type: "input",
@@ -217,7 +226,7 @@ const data = (...path: string[]) => ({ root: "data", path });
 export const dataNode = (overrides: Record<string, unknown> = {}): SpecNode => ({
   type: "data",
   schema: accountSchema,
-  source: { path: "/api/account", params: {} },
+  source: address("/api/account"),
   query: {},
   content: {
     type: "stack",

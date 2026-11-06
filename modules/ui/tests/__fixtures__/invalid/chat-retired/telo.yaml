@@ -1,0 +1,39 @@
+# What the chat no longer takes (its sidebar, the compact surface it became and the
+# button starting a conversation), and a parameter name the address cannot carry.
+kind: Telo.Application
+metadata: { name: UiInvalidChatRetiredApp, version: 1.0.0 }
+imports: { Ui: ../../../../, Fixture: ../../conversation }
+---
+kind: Fixture.Endpoint
+metadata: { name: conversation }
+operations: [cancel]
+---
+kind: Ui.ConversationSource
+metadata: { name: source }
+conversation: !ref conversation
+basePath: /api/chat
+---
+kind: Ui.Chat
+metadata: { name: sidebarSwitch }
+source: !ref source
+show: { sidebar: false }
+---
+kind: Ui.Chat
+metadata: { name: compactSidebar }
+source: !ref source
+compact: { sidebar: { kind: Ui.Drawer } }
+---
+kind: Ui.Chat
+metadata: { name: newConversationButton }
+source: !ref source
+buttons: { newConversation: { kind: Ui.IconButton } }
+---
+kind: Ui.Chat
+metadata: { name: parameterNotAName }
+source: !ref source
+conversation: { parameter: _telo.c }
+---
+kind: Ui.Chat
+metadata: { name: refreshReadsUnknown }
+source: !ref source
+refreshes: [{ path: "/api/chat/conversations/{id}", pathParams: { id: !cel "conversation.title" } }]

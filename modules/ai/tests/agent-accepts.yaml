@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata: { name: AgentAcceptsTest, version: 1.0.0 }
+imports: { Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
+targets:
+  - !ref checkAccepts
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+accepts:
+  - { type: image, mediaTypes: [image/png], maxBytes: 1024 }
+---
+kind: AiEcho.EchoModelStream
+metadata: { name: echoStream }
+accepts:
+  - { type: file, mediaTypes: [application/pdf] }
+---
+kind: Ai.Buffered
+metadata: { name: buffered }
+model: !ref echoStream
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model: !ref echo
+---
+kind: Ai.Agent
+metadata: { name: bufferedAgent }
+model: !ref buffered
+---
+kind: Ai.AgentStream
+metadata: { name: streamAgent }
+model: !ref echoStream
+---
+# An agent publishes what its model does, through Ai.Buffered as well.
+kind: Telo.Sequence
+metadata: { name: checkAccepts }
+steps:
+  - name: model
+    inputs:
+      actual: !cel "resources.agent.accepts"
+      expected: !cel "resources.echo.accepts"
+    invoke: { kind: Assert.Equals }
+  - name: agentValue
+    inputs:
+      actual: !cel "resources.agent.accepts"
+      expected: [{ type: image, mediaTypes: [image/png], maxBytes: 1024 }]
+    invoke: { kind: Assert.Equals }
+  - name: stream
+    inputs:
+      actual: !cel "resources.streamAgent.accepts"
+      expected: [{ type: file, mediaTypes: [application/pdf] }]
+    invoke: { kind: Assert.Equals }
+  - name: bufferedModel
+    inputs:
+      actual: !cel "resources.buffered.accepts"
+      expected: [{ type: file, mediaTypes: [application/pdf] }]
+    invoke: { kind: Assert.Equals }
+  - name: bufferedAgent
+    inputs:
+      actual: !cel "resources.bufferedAgent.accepts"
+      expected: [{ type: file, mediaTypes: [application/pdf] }]
+    invoke: { kind: Assert.Equals }

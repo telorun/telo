@@ -1,7 +1,7 @@
 /**
  * `@telorun/ui-react-contract`: the contract a theme's controls and stylesheets
  * are held to, as data — the part list and states, the reserved properties,
- * the control set of `ui_react_controls-2` with each control's props, parts,
+ * the control set of `ui_react_controls-3` with each control's props, parts,
  * states and behaviour vectors, and the scenes that draw every part — and the
  * interpreter that runs the vectors and the scenes in a DOM window — the layout
  * contract `ui_react_layouts-1` with its built-ins' parts and their vectors —
@@ -20,7 +20,8 @@ export interface PartsContract {
   parts: Record<string, string[]>;
   states: Record<string, { values: string[]; on: string[] }>;
   partStates: { values: string[]; on: string[] }[];
-  reserved: { part: string; properties: string[]; because: string }[];
+  /** Properties a theme does not declare: on `part`, while `state` is carried when one is named, or on any part carrying `state`. */
+  reserved: { part?: string; state?: { attribute: string; value: string }; properties: string[]; because: string }[];
   /** The design tokens the renderer's own layer reads: a theme gives each a
    *  value, and need not read it. */
   rendererTokens: string[];

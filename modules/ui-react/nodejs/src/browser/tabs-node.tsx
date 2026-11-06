@@ -35,6 +35,7 @@ export function TabsNode({ node }: { node: SpecNode }): ReactNode {
     <Tabs
       tabs={tabs.map((tab) => ({ key: tab.key, label: text(tab.text) }))}
       value={chosen.key}
+      fill={node.fill === true}
       onChange={(key) => (address === undefined ? setHeld(key) : store.open(address, key, [address]))}
     >
       <Nodes key={chosen.key} nodes={chosen.children} />

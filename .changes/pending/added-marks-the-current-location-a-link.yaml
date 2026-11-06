@@ -1,0 +1,10 @@
+modules:
+  modules/ui-react: Added
+body: "Marks the current location: a link to an app-relative address (a link node, a
+  menu item, a value or column href, a related label, a navigation link entry) carries
+  aria-current=\"page\" while its path equals the current path and its query equals the
+  current one with the _telo* parameters set aside, following the address without a
+  reload; a table row, list item, card, board card, calendar event, timeline bar or tree
+  item drawing such a link carries data-selected=\"true\" and the layout contract's
+  selected is true (the contract keeps its generation; a component layout still gets
+  false)."

@@ -1,7 +1,8 @@
 # Icons
 
 An icon is a resource: a single-colour glyph that provides one image file. A
-navigation entry declares one in place or names one by reference, and a renderer draws it in the colour
+navigation entry or a [chat](chat.md#buttons-as-icons) button declares one in
+place or names one by reference, and a renderer draws it in the colour
 of the text around it, so a theme colours an icon as it colours text — the
 current entry's glyph takes the current entry's colour with no rule of its own.
 
@@ -39,6 +40,8 @@ whatever colours it holds are replaced by the colour of the text beside it.
 
 `ui` hands a renderer's controller each icon's `file`; the renderer serves it
 under its content digest and draws it as a mask over the text's colour, never
-inserting the file's markup into the page. `ui-react` serves an SVG, PNG or
-WebP file and refuses any other with `ERR_UI_ICON_FORMAT_UNKNOWN` when the
-application starts — see [the application](../../ui-react/docs/app.md#icons).
+inserting the file's markup into the page. What counts as an icon file — an
+SVG, PNG or WebP image, read from the file's own bytes — is `ui`'s one rule
+(`servedIconFormat` in `@telorun/ui`): a navigation entry's icon is refused
+with `ERR_UI_ICON_FORMAT_UNKNOWN` when the application starts, a chat button's
+when the chat is first read — see [the application](../../ui-react/docs/app.md#icons).

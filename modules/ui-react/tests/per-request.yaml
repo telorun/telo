@@ -12,8 +12,8 @@ metadata:
     beside the ones it can, and so is a listing whose layout component is built
     for another contract than the layout one, beside two listings drawn by a
     module's layout component — through a kind of its own and named directly; a value that is not a valid node once evaluated is
-    replaced by an error node — a link whose address is a script, and one a
-    browser would read as another host — with the nodes beside it intact; an
+    replaced by an error node — a style that names none the renderer
+    knows, whichever the request chooses — with the nodes beside it intact; an
     app-relative image is served from a mount beneath the application's.
 imports:
   App: ../../app
@@ -126,10 +126,10 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/gallery" }
   - name: redirected
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/gallery" }
-    inputs: { headers: { x-next: "javascript:alert(1)" } }
+    inputs: { headers: { x-style: bogus } }
   - name: offsite
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/gallery" }
-    inputs: { headers: { x-next: "//evil.example" } }
+    inputs: { headers: { x-style: not-a-style } }
   - name: components
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/components" }
   - name: layouts
@@ -144,12 +144,12 @@ steps:
       actual:
         banner: !cel "steps.gallery.result.body.children[0]"
         badge: !cel "steps.gallery.result.body.children[1].children[1].children[0]"
-        lastLink: !cel "steps.gallery.result.body.children[1].children[6]"
-        invalidLink: !cel "steps.redirected.result.body.children[1].children[6].code"
+        lastText: !cel "steps.gallery.result.body.children[1].children[6]"
+        invalidStyle: !cel "steps.redirected.result.body.children[1].children[6].code"
         restIntact: !cel "steps.redirected.result.body.children[1].children[2]"
         offsite:
           status: !cel "steps.offsite.result.status"
-          link: !cel "steps.offsite.result.body.children[1].children[6].code"
+          node: !cel "steps.offsite.result.body.children[1].children[6].code"
           rest: !cel "steps.offsite.result.body.children[1].children[2]"
         components: !cel "steps.components.result.body.children.map(c, c.type == 'error' ? c.code : c.type)"
         hosted: !cel "steps.components.result.body.children[0].children.map(c, c.export)"
@@ -161,17 +161,18 @@ steps:
       expected:
         banner:
           type: stack
+          fill: false
           children:
-            - { type: text, text: { lang: en, message: [From a library] }, style: heading }
-            - { type: text, text: { lang: en, message: [Placed as one section] }, style: muted }
-        badge: { type: badge, text: { lang: en, message: [from 127.0.0.1] }, style: [accent, strong] }
-        lastLink: { type: link, text: { lang: en, message: [unsafe] }, href: / }
-        invalidLink: ERR_UI_NODE_INVALID
-        restIntact: { type: link, text: { lang: en, message: [Back to todos] }, href: / }
+            - { type: text, fill: false, text: { lang: en, message: [From a library] }, style: heading }
+            - { type: text, fill: false, text: { lang: en, message: [Placed as one section] }, style: muted }
+        badge: { type: badge, fill: false, text: { lang: en, message: [from 127.0.0.1] }, style: [accent, strong] }
+        lastText: { type: text, fill: false, text: { lang: en, message: [unsafe] }, style: muted }
+        invalidStyle: ERR_UI_NODE_INVALID
+        restIntact: { type: link, fill: false, text: { lang: en, message: [Back to todos] }, href: { path: { value: / }, pathParams: {}, queryParams: {} }, button: null }
         offsite:
           status: 200
-          link: ERR_UI_NODE_INVALID
-          rest: { type: link, text: { lang: en, message: [Back to todos] }, href: / }
+          node: ERR_UI_NODE_INVALID
+          rest: { type: link, fill: false, text: { lang: en, message: [Back to todos] }, href: { path: { value: / }, pathParams: {}, queryParams: {} }, button: null }
         components: [columns, ERR_UI_COMPONENT_ABI_UNSUPPORTED, ERR_UI_COMPONENT_IMPORT_UNSUPPLIED, listing]
         hosted: [HostProbe, Counter]
         layouts: [ui_react_layouts-1, ui_react_layouts-1, ERR_UI_COMPONENT_ABI_UNSUPPORTED]
