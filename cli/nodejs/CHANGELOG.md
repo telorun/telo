@@ -1,5 +1,27 @@
 # @telorun/cli
 
+## 0.130.0
+
+### Minor Changes
+
+- ba87b7a: A failure written to a log from the Node runtime carries a Telo stack trace instead of the JavaScript stack. The record's `error` gains `frames` (the resources and manifest positions the failure passed through, innermost first, bounded at 64 with `dropped_frames_count` counting the cut) and its `stack` is those frames as text with files relative to the entry module's directory; `pretty` shows the same lines with files relative to the working directory. A host stack is written as `host_stack` only for an uncoded failure (a `TypeError`, a library's exception, `ERR_FATAL`), on the entry that is one. The step engine and the boot runner state where each call is made (`calledAt` on the dispatch context), a `throw` step starts a fresh trace whose `cause` keeps the caught failure's frames, and `telo: failed to start` prints the Telo trace. The SDK exports the frame type, `errorValueOf` and the trace helpers; frames never reach a catch context, a durable record or a trace payload.
+
+### Patch Changes
+
+- Updated dependencies [6aa9a85]
+- Updated dependencies [1b0ddbe]
+- Updated dependencies [6aa9a85]
+- Updated dependencies [2ee5ef4]
+- Updated dependencies [1b0ddbe]
+- Updated dependencies [1b0ddbe]
+- Updated dependencies [ba87b7a]
+- Updated dependencies [2ee5ef4]
+  - @telorun/analyzer@0.130.0
+  - @telorun/sdk@0.130.0
+  - @telorun/kernel@0.130.0
+  - @telorun/ide-support@0.130.0
+  - @telorun/templating@0.130.0
+
 ## 0.129.0
 
 ### Minor Changes

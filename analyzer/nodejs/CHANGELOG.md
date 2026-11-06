@@ -1,5 +1,53 @@
 # @telorun/analyzer
 
+## 0.130.0
+
+### Minor Changes
+
+- 6aa9a85: An omitted argument map is now checked. Where a call through a reference slot paired by `x-telo-ref` `inputs:`, or a step, writes no `inputs:`, `telo check` judges it as the `default:` its property declares against the target's input contract and reports `CONTRACT_INPUTS_MISMATCH` at the reference, naming the default and asking for `inputs:`. A kind whose paired argument-map property may be omitted without a literal object `default:` (or whose pointer names no declared property) is refused at the declaring module as `ARGUMENT_MAP_DEFAULT_INVALID`, so `telo publish` refuses it. The built-in invoke step (a `Telo.Sequence` step and an Application's inline boot target) declares `inputs` with `default: {}`.
+- 1b0ddbe: Catch lists learn the codes a kind raises into them and where they arise, rule bindings judge only what a condition reads, and contract comparisons see through named shapes from other modules.
+
+  - **`x-telo-catches-for` gains an object form, `{ slot, raises: [<CODE>…] }`.** The string form stays as shorthand for `{ slot }`. `raises` names codes the kind raises into the list itself and renders by default, each declared in the kind's own `throws.codes`.
+    - A raised code may be named in a proving `when:`, and its `data` types `error.data` / `problem.data` in an entry naming it, on that list and on every list above it on the scope ladder. A third-party mount's raised codes therefore reach the server's list. A catch-all keeps the typing of what the handler throws.
+    - No site owes a raised code's coverage.
+    - The object form beside anything but `x-telo-outcome-list: catches`, or a raised code the kind does not declare, is `CATCHES_FOR_INVALID` at the kind.
+  - **`x-telo-raises: [<CODE>…]` on a field says where those codes arise.** Wherever a resource holds a value at the field, the codes reach the catch lists of the object holding it, every list of what that object reaches through a `throwsThrough` slot, and every scope list above those, each list receiving the codes its own `raises` names. A catch-all there is typed by them as well as by the handler's throws. A declaration listed in `exports.resources`, or one it reaches, receives every code its lists declare. A malformed or undeclared code is `RAISES_INVALID` at the kind.
+  - **A rule binding member the condition does not read no longer fails the binding.** An expression in a `peers:` entry, an unresolved peer or co-referrer reference and a library's kind-only input are judged only where the condition reads them; a peer read whole is scanned with everything it holds. A server whose mount entries carry a guard's `inputs` is now judged by a `peers: /mounts` rule instead of skipped.
+  - **A contract comparison reads a named shape in the module that wrote the reference.** A kind of an imported library whose contract names a shape of that library's own import used to compare as compatible with anything. Now `outputTo`, a step's or a reference slot's `inputs:`, `CONTRACT_NOT_SUBSTITUTABLE` and what an import supplies to a library variable typed by a shape all compare through the shape. A shape id this analysis holds nothing of no longer resolves to a same-named shape of another module.
+  - **A rule's `resolve:` pointer follows the shapes the kind's schema references.** A pointer reaching a field through a local `$defs` entry or a named shape is no longer `RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID`; a field the shape does not declare still is, and a pointer through a shape this analysis cannot read is not refused.
+
+- 2ee5ef4: A new schema annotation, `x-telo-path-params-for: { template, through? }`, relates a map of path variables to the path template beside it — a literal template, a `!ref` read through the named field of the declaration it names, or an expression, which is never expanded. `telo check` refuses a template whose braces are not whole segments of distinct names (`PATH_TEMPLATE_INVALID`), a variable no entry binds, an omitted map included (`PATH_PARAMETER_UNBOUND`), an entry naming no variable (`PATH_PARAMETER_UNUSED`) and a malformed or misplaced annotation (`PATH_PARAMS_FOR_INVALID`); the kernel raises each `ERR_`-prefixed from the same reader when it creates the resource or registers the kind.
+- 1b0ddbe: Two generic analyzer primitives for kind authors.
+
+  - **`x-telo-context-from-referrer`** now works on evaluated bindings as well as accessor ones, and also on a member beneath a binding. Its value becomes a path, `<binding>[/<member>…]` (for example `request/principal`).
+    - The referrer's scope is read at the annotated site's own eval mode.
+    - Each referrer's type replaces the node's own keywords. With no referrer, or where a referrer's scope lacks the path, the node keeps its own keywords.
+    - A parent's `x-telo-context-from` merge no longer overwrites a member that carries its own typing annotation.
+    - The accessor-only restriction is gone. `CONTEXT_FROM_REFERRER_INVALID` now covers the annotation outside a binding's subtree, or beside another typing annotation on the same node.
+  - **`x-telo-context-nullable-when: { at, equals, absent }`** is a new annotation. It makes a binding, or a member beneath one, nullable wherever the resource's value at `at` is one of `equals`, or, with `absent: true`, where nothing is there.
+    - `at` is a relative pointer from the context holder.
+    - A schema `default:` fills a member only when the object holding it is present.
+    - A computed or undecided value counts as a match.
+    - An unguarded member read where the node is nullable is `CEL_NULLABLE_ACCESS`.
+    - A misdirected rule is the warning `CONTEXT_NULLABLE_WHEN_INVALID`.
+  - **`x-telo-ref` gains `outputTo: { slot, member }`.** The slot's target's output, with null removed, must fit the input member `member` of the target in the sibling slot `slot`. A source that cannot fit is `CONTRACT_INPUTS_MISMATCH` at the source. A malformed or misdirected `outputTo` is `X_TELO_REF_INVALID_OUTPUT_TO`.
+
+- 1b0ddbe: Resource rules gain `coReferrers:`, so a kind can refuse two of its resources claiming one thing on a target they share.
+
+  - **`coReferrers: /<slot>`** names one reference slot of the declaring kind. The condition then reads `coReferrers`: every other resource of that kind, or of a descendant inheriting its rules, whose slot there names the same declaration. Each is bound as a referrer rule binds its co-referrers, with its references resolved one level. Two session sets with one `name` on one store is the case it was built for, written `!coReferrers.exists(o, o.name == self.name)`.
+    - The check is declared by the claimant, so the shared kind — usually another module's store — names none of its consumers.
+    - When `self`'s slot names nothing the analysis can compare (a library's kind-only `resources:` input, a reference to nothing loaded, an expression), the rule is `RESOURCE_RULE_SKIPPED` wherever the condition reads `coReferrers`. It is never a pass.
+    - A pointer naming a plain field or a collection is `RESOURCE_RULE_INVALID` at the kind.
+    - The rule runs once per resource, and an empty set is a pass. Each set is built once per kind, slot and target, so the cost stays linear in the resources analysed. A `base:` child inherits no rule and joins no set.
+  - **A referrers read may now stand inside a reference read** in the places a check declares it reads. A per-configuration judgement of a rule reading through a shared target is then keyed on that target's referrers.
+
+- 2ee5ef4: A `oneOf` / `anyOf` value is now matched to its branch by the `const` / `enum` pins its literals fall under, not only by kind and `required` keys: a branch is dropped when a literal the author wrote — the value itself, or an object member written as a plain scalar — falls outside a pin the branch carries, read through `$ref`, through a union of constants, through the branch's `allOf` parts and over the union's shared base, a branch that is itself a union fitting when one of its branches does. A union tagged on a member such as `type` is therefore decided by the tag, so `telo check` types the expressions inside it against the tagged branch alone and the kernel holds a compile-eval result to that branch at creation. A tag written as an expression decides nothing, as before. The Rust analyzer (`telo-analyzer`) selects a branch by the same rule.
+
+### Patch Changes
+
+- @telorun/templating@0.130.0
+- @telorun/cel@0.130.0
+
 ## 0.129.0
 
 ### Minor Changes
