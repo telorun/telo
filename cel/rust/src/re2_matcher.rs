@@ -14,8 +14,10 @@
 //! count, `$0`, an unknown name, a `$<` with no `>` before a space or the end, and a `$`
 //! ending the replacement are written as they stand. Positions are byte offsets on
 //! character boundaries, as the program's own; re2js's are UTF-16 offsets of the same
-//! places.
+//! places. The replacement is read once per call, and an answer past the longest text a
+//! string holds (`longest_text.rs`) is none, found before it is built.
 
+use crate::longest_text::{utf16_length, within_by_bytes, TextSize};
 use crate::re2_program::{Re2Program, Re2Span};
 
 /// A search through one text, as re2js's `Matcher` keeps it.
@@ -107,107 +109,182 @@ impl<'p, 't> Re2Matcher<'p, 't> {
         &self.text[self.span().end..]
     }
 
-    /// re2js's `appendReplacementInternalJs`: the replacement with its `$` forms expanded
-    /// for the last match, written onto `out`.
-    fn expand(&mut self, replacement: &str, out: &mut String) {
-        let bytes = replacement.as_bytes();
-        let count = self.group_count();
-        let mut last = 0;
-        let mut i = 0;
-        // A `$` in the replacement's last position is never read as a form.
-        while i + 1 < bytes.len() {
-            if bytes[i] != b'$' {
-                i += 1;
-                continue;
-            }
-            let next = bytes[i + 1];
-            match next {
-                b'$' | b'&' | b'`' | b'\'' => {
-                    out.push_str(&replacement[last..i]);
-                    match next {
-                        b'$' => out.push('$'),
-                        b'&' => out.push_str(self.group(0).expect("the whole match took part")),
-                        b'`' => out.push_str(self.before()),
-                        _ => out.push_str(self.after()),
-                    }
-                    i += 2;
-                    last = i;
-                }
-                b'1'..=b'9' => {
-                    out.push_str(&replacement[last..i]);
-                    let mut n = (next - b'0') as usize;
-                    let mut at = i + 2;
-                    while let Some(&digit) = bytes.get(at) {
-                        if !digit.is_ascii_digit() {
-                            break;
-                        }
-                        let longer = n * 10 + (digit - b'0') as usize;
-                        if longer > count {
-                            break;
-                        }
-                        n = longer;
-                        at += 1;
-                    }
-                    if n > count {
-                        out.push('$');
-                        out.push_str(&n.to_string());
-                    } else if let Some(text) = self.group(n) {
+    /// The replacement, as `template` read it, written onto `out` for the last match.
+    fn expand(&mut self, template: &[Piece<'_>], out: &mut String) {
+        for piece in template {
+            match *piece {
+                Piece::Literal(text) => out.push_str(text),
+                Piece::Group(index) => {
+                    if let Some(text) = self.group(index) {
                         out.push_str(text);
                     }
-                    i = at;
-                    last = at;
                 }
-                b'<' => {
-                    out.push_str(&replacement[last..i]);
-                    let name_start = i + 2;
-                    let close = bytes[name_start..].iter().position(|b| *b == b'>' || *b == b' ').map(|n| name_start + n);
-                    match close {
-                        Some(close) if bytes[close] == b'>' => {
-                            let name = &replacement[name_start..close];
-                            match self.program.named_group(name) {
-                                Some(index) => {
-                                    if let Some(text) = self.group(index) {
-                                        out.push_str(text);
-                                    }
-                                }
-                                None => out.push_str(&replacement[i..=close]),
-                            }
-                            i = close + 1;
-                        }
-                        // No `>` before a space or the end: written as it stands, the space
-                        // included.
-                        Some(space) => {
-                            out.push_str(&replacement[i..=space]);
-                            i = space + 1;
-                        }
-                        None => {
-                            out.push_str(&replacement[i..]);
-                            i = bytes.len();
-                        }
-                    }
-                    last = i;
-                }
-                _ => i += 1,
+                Piece::Before => out.push_str(self.before()),
+                Piece::After => out.push_str(self.after()),
             }
         }
-        out.push_str(&replacement[last..]);
     }
 }
 
-/// re2js's `matcher(text).replaceAll(replacement)` in its JavaScript mode: every match
-/// replaced, the text between matches kept.
-pub(crate) fn replace_all(program: &Re2Program, text: &str, replacement: &str) -> String {
+/// A part of a replacement as re2js's `appendReplacementInternalJs` reads it: text written
+/// as it stands, a group of the match (the whole match at 0), or the text before or after it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Piece<'r> {
+    Literal(&'r str),
+    Group(usize),
+    Before,
+    After,
+}
+
+/// The replacement's `$` forms read once, for a pattern of `count` groups: `$$`, `$&`,
+/// `` $` ``, `$'`, the longest `$n` / `$nn` up to the count, and `$<name>`; a `$` in the last
+/// position is never read as a form.
+fn template<'r>(program: &Re2Program, replacement: &'r str) -> Vec<Piece<'r>> {
+    let bytes = replacement.as_bytes();
+    let count = program.group_count();
+    let mut pieces = Vec::new();
+    let mut last = 0;
+    let mut i = 0;
+    let literal = |pieces: &mut Vec<Piece<'r>>, text: &'r str| {
+        if !text.is_empty() {
+            pieces.push(Piece::Literal(text));
+        }
+    };
+    while i + 1 < bytes.len() {
+        if bytes[i] != b'$' {
+            i += 1;
+            continue;
+        }
+        let next = bytes[i + 1];
+        match next {
+            b'$' | b'&' | b'`' | b'\'' => {
+                literal(&mut pieces, &replacement[last..i]);
+                pieces.push(match next {
+                    b'$' => Piece::Literal("$"),
+                    b'&' => Piece::Group(0),
+                    b'`' => Piece::Before,
+                    _ => Piece::After,
+                });
+                i += 2;
+                last = i;
+            }
+            b'1'..=b'9' => {
+                literal(&mut pieces, &replacement[last..i]);
+                let mut n = (next - b'0') as usize;
+                let mut at = i + 2;
+                while let Some(&digit) = bytes.get(at) {
+                    if !digit.is_ascii_digit() {
+                        break;
+                    }
+                    let longer = n * 10 + (digit - b'0') as usize;
+                    if longer > count {
+                        break;
+                    }
+                    n = longer;
+                    at += 1;
+                }
+                // A first digit past the count is never followed by a longer number.
+                pieces.push(if n > count { Piece::Literal(&replacement[i..i + 2]) } else { Piece::Group(n) });
+                i = at;
+                last = at;
+            }
+            b'<' => {
+                literal(&mut pieces, &replacement[last..i]);
+                let name_start = i + 2;
+                let close = bytes[name_start..].iter().position(|b| *b == b'>' || *b == b' ').map(|n| name_start + n);
+                match close {
+                    Some(close) if bytes[close] == b'>' => {
+                        match program.named_group(&replacement[name_start..close]) {
+                            Some(index) => pieces.push(Piece::Group(index)),
+                            None => literal(&mut pieces, &replacement[i..=close]),
+                        }
+                        i = close + 1;
+                    }
+                    // No `>` before a space or the end: written as it stands, the space
+                    // included.
+                    Some(space) => {
+                        literal(&mut pieces, &replacement[i..=space]);
+                        i = space + 1;
+                    }
+                    None => {
+                        literal(&mut pieces, &replacement[i..]);
+                        i = bytes.len();
+                    }
+                }
+                last = i;
+            }
+            _ => i += 1,
+        }
+    }
+    literal(&mut pieces, &replacement[last..]);
+    pieces
+}
+
+/// re2js's `matcher(text).replaceAll(replacement)` in its JavaScript mode — every match
+/// replaced, the text between matches kept — held to the longest text: nothing where the
+/// answer would be past it. The replacement is read once. Where the worst case — a match at
+/// every character, each writing the whole text at every form — is past the bound, one
+/// matching pass sums the answer's size first, and it is then built at exactly that size.
+pub(crate) fn replace_all(program: &Re2Program, text: &str, replacement: &str) -> Option<String> {
+    let template = template(program, replacement);
+    let per_match = template.iter().fold(0usize, |total, piece| {
+        total.saturating_add(match piece {
+            Piece::Literal(literal) => literal.len(),
+            _ => text.len(),
+        })
+    });
+    let worst = text.len().saturating_add(text.len().saturating_add(1).saturating_mul(per_match));
+    let mut out = if within_by_bytes(worst) {
+        String::new()
+    } else {
+        let size = replaced_size(program, text, &template);
+        if size.exceeds() {
+            return None;
+        }
+        String::with_capacity(size.bytes)
+    };
     let mut matcher = Re2Matcher::new(program, text);
-    let mut out = String::with_capacity(text.len());
     let mut kept = 0;
     while matcher.find() {
         let span = matcher.span();
         out.push_str(&text[kept..span.start]);
         kept = span.end;
-        matcher.expand(replacement, &mut out);
+        matcher.expand(&template, &mut out);
     }
     out.push_str(&text[kept..]);
-    out
+    Some(out)
+}
+
+/// The size of [`replace_all`]'s answer, found by one matching pass that writes nothing:
+/// the text before and after each match is measured off a cursor that only moves forward.
+fn replaced_size(program: &Re2Program, text: &str, template: &[Piece<'_>]) -> TextSize {
+    let mut matcher = Re2Matcher::new(program, text);
+    let mut size = TextSize::default();
+    // The UTF-16 offset of byte `cursor.0`.
+    let mut cursor = (0usize, 0usize);
+    let units_at = |byte: usize, cursor: &mut (usize, usize)| {
+        cursor.1 += utf16_length(&text[cursor.0..byte]);
+        cursor.0 = byte;
+        cursor.1
+    };
+    let total_units = utf16_length(text);
+    let mut kept = (0usize, 0usize);
+    while matcher.find() {
+        let span = matcher.span();
+        let start_units = units_at(span.start, &mut cursor);
+        size = size.plus(TextSize { units: start_units - kept.1, bytes: span.start - kept.0 });
+        let end_units = units_at(span.end, &mut cursor);
+        kept = (span.end, end_units);
+        for piece in template {
+            size = size.plus(match *piece {
+                Piece::Literal(literal) => TextSize::of(literal),
+                Piece::Group(index) => matcher.group(index).map(TextSize::of).unwrap_or_default(),
+                Piece::Before => TextSize { units: start_units, bytes: span.start },
+                Piece::After => TextSize { units: total_units - end_units, bytes: text.len() - span.end },
+            });
+        }
+    }
+    size.plus(TextSize { units: total_units - kept.1, bytes: text.len() - kept.0 })
 }
 
 #[cfg(test)]
@@ -229,7 +306,10 @@ mod tests {
     fn every_replacement_form_expands_as_re2js() {
         for &(pattern, flags, text, replacement, expected) in REPLACE_ROWS {
             let program = compiled(pattern, flags);
-            assert_eq!(replace_all(&program, text, replacement), expected, "{pattern:?} over {text:?} by {replacement:?}");
+            assert_eq!(replace_all(&program, text, replacement).unwrap(), expected, "{pattern:?} over {text:?} by {replacement:?}");
+            // The size a measuring pass finds is the size of what is built.
+            let measured = replaced_size(&program, text, &template(&program, replacement));
+            assert_eq!(measured, TextSize::of(expected), "{pattern:?} over {text:?} by {replacement:?}");
         }
     }
 

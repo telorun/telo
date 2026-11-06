@@ -43,7 +43,7 @@ fn answered(environment: &CelEnvironment, source: &str) -> String {
 /// from the differential, and the rows written to pin a reading — every refusal the
 /// catalog words, each empty-search and container rule, `Math.round`'s tie and the text
 /// order of `sort`.
-const ROWS: [(&str, &str); 473] = [
+const ROWS: [(&str, &str); 471] = [
     ("sha256(',.2f')", "value string \"sha256:,.2f\""),
     ("sha256('%')", "value string \"sha256:%\""),
     ("sha256('$\\'')", "value string \"sha256:$'\""),
@@ -91,7 +91,7 @@ const ROWS: [(&str, &str); 473] = [
     ("regexExtractAll('a', '(,.2f')", "error invalid_regular_expression [0, 29] regexExtractAll: invalid RE2 pattern \"(,.2f\": missing closing )"),
     ("regexExtractAll('ffffffff-ffff-ffff-ffff-ffffffffffff', 'a*')", "value list(string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\", string \"\")"),
     ("regexExtractAll('6ba7b810-9dad-91d1-80b4-00c04fd430c8', '6ba7b810-9dad-91d1-80b4-00c04fd430c8')", "value list(string \"6ba7b810-9dad-91d1-80b4-00c04fd430c8\")"),
-    ("regexExtractAll('ix', '#o', 'YW Jj\n')", "threw CelEngineError: \"regexExtractAll('ix', '#o', 'YW Jj\\n')\" could not be read: unterminated string"),
+    ("regexExtractAll('ix', '#o', 'YW Jj\\n')", "error invalid_argument [0, 38] regexExtractAll: unknown regex flag 'Y' (supported: i, m, s)"),
     ("parseJson('[1,2]')", "value list(double 1, double 2)"),
     ("parseJson('{\"a\":1,}')", "error invalid_conversion [0, 21] parseJson: invalid JSON at offset 7"),
     ("parseJson('\"\\\\u00e9\"')", "value string \"é\""),
@@ -224,7 +224,7 @@ const ROWS: [(&str, &str); 473] = [
     ("sha1('0x10')", "value string \"sha1:0x10\""),
     ("trim('x*')", "value string \"x*\""),
     ("trim('true')", "value string \"true\""),
-    ("trim('YW Jj\n')", "threw CelEngineError: \"trim('YW Jj\\n')\" could not be read: unterminated string"),
+    ("trim('YW Jj\\n')", "value string \"YW Jj\""),
     ("trim('%41%42')", "value string \"%41%42\""),
     ("trim('p')", "value string \"p\""),
     ("trim('aGVsbG8')", "value string \"aGVsbG8\""),
@@ -282,7 +282,7 @@ const ROWS: [(&str, &str); 473] = [
     ("avg([])", "value null"),
     ("avg([5, 9007199254740991, 120000, 1200, -5, 3, 0])", "value double 1286742750694599.5"),
     ("avg([123.456, 0.5, -2.5])", "value double 40.48533333333334"),
-    ("uuidv3('YW Jj\n', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')", "threw CelEngineError: \"uuidv3('YW Jj\\n', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')\" could not be read: unterminated string"),
+    ("uuidv3('YW Jj\\n', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')", "value string \"07056bd1-4d23-378c-8904-3f3f137bca36\""),
     ("uuidv3('n', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')", "value string \"e5112aea-cd39-3532-b1b1-3035d19d4ae1\""),
     ("uuidv3('GMT', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')", "value string \"216890fa-0bc1-362b-9689-3acd1d906f53\""),
     ("uuidv3('010d', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')", "value string \"de1f52d3-9e67-3d76-bb65-ca2d404133f2\""),
@@ -290,7 +290,7 @@ const ROWS: [(&str, &str); 473] = [
     ("uuidv3('%ED%A0%80', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')", "value string \"dec3bfdf-dfb3-3ae5-9ebc-7da0c6edc0d4\""),
     ("uuidValidate('UTC')", "value bool false"),
     ("uuidValidate('ffffffff-ffff-ffff-ffff-ffffffffffff')", "value bool true"),
-    ("uuidValidate('YW Jj\n')", "threw CelEngineError: \"uuidValidate('YW Jj\\n')\" could not be read: unterminated string"),
+    ("uuidValidate('YW Jj\\n')", "value bool false"),
     ("replace('😀😀', '😀', '$,.2f')", "value string \"$,.2f$,.2f\""),
     ("replace('.3~g', '😀', 'max')", "value string \".3~g\""),
     ("replace('i', 'b', '%')", "value string \"i\""),
@@ -305,8 +305,8 @@ const ROWS: [(&str, &str); 473] = [
     ("size(reverse(['aGVsbG8gd29ybGQ=', '%', '010d']))", "value int 3"),
     ("json('😀')", "value string \"json\""),
     ("json(-13u)", "error no_matching_overload [5, 9] no overload of \"-\" takes (uint)"),
-    ("json(['b', 'a{1001}', ' 3.5 ', 'YW Jj\n', '😀>8'])", "threw CelEngineError: \"json(['b', 'a{1001}', ' 3.5 ', 'YW Jj\\n', '😀>8'])\" could not be read: unterminated string"),
-    ("json('YW Jj\n')", "threw CelEngineError: \"json('YW Jj\\n')\" could not be read: unterminated string"),
+    ("json(['b', 'a{1001}', ' 3.5 ', 'YW Jj\\n', '😀>8'])", "value string \"json\""),
+    ("json('YW Jj\\n')", "value string \"json\""),
     ("formatDuration(2.675, 11)", "value string \"3m\""),
     ("formatDuration(2.5, 0)", "error invalid_argument [0, 22] formatDuration: minutesPerDay must be a positive number, got 0"),
     ("formatDuration(1234567.891, 10)", "value string \"123456d 8m\""),
@@ -333,7 +333,6 @@ const ROWS: [(&str, &str); 473] = [
     ("base64Decode('EST')", "value string \"plain:EST\""),
     ("uuidv5('\\\\d+', '6ba7b811-9dad-11d1-80b4-00c04fd430c8')", "value string \"2f02fcf5-f88a-50b6-acb5-5bb6f1d5a3c3\""),
     ("uuidv5('+05', '6ba7b811-9dad-11d1-80b4-00c04fd430c8')", "value string \"5e554462-6451-53f1-9b7f-cdb4ab6c9447\""),
-    ("uuidv5('a😀b', 'YW Jj\n')", "threw CelEngineError: \"uuidv5('a😀b', 'YW Jj\\n')\" could not be read: unterminated string"),
     ("uuidv5('.2r', 'ffffffff-ffff-ffff-ffff-ffffffffffff')", "value string \"5e2de373-2be6-5254-89c6-422e6d51fdad\""),
     ("uuidv5('-23:59', '6ba7b811-9dad-11d1-80b4-00c04fd430c8')", "value string \"3dca2c13-6a07-5ce7-9f91-3691741da36b\""),
     ("uuidv5('{\"a\":1}', '6ba7b811-9dad-11d1-80b4-00c04fd430c8')", "value string \"2ab8674e-66f1-513f-a4d4-bf4c6fae40ea\""),
@@ -364,7 +363,7 @@ const ROWS: [(&str, &str); 473] = [
     ("merge({'a': {'k': 1}, 2: 1}, {'b': 2.5, '__proto__': 'v', 2u: {'k': 1}, false: 'v'})", "value map(string \"a\": map(string \"k\": int 1), uint 2: map(string \"k\": int 1), string \"b\": double 2.5, string \"__proto__\": string \"v\", bool false: string \"v\")"),
     ("merge({2: null, 1: [12]}, parseJson('{\"x y\":\"\",\"b\":\"\"}'))", "value map(int 2: null, int 1: list(int 12), string \"x y\": string \"\", string \"b\": string \"\")"),
     ("merge({'b': '', '__proto__': {'k': 1}}, {2: 2.5})", "value map(string \"b\": string \"\", string \"__proto__\": map(string \"k\": int 1), int 2: double 2.5)"),
-    ("merge({'1': {'k': 1}}, {'b': ['YW Jj\n']})", "threw CelEngineError: \"merge({'1': {'k': 1}}, {'b': ['YW Jj\\n']})\" could not be read: unterminated string"),
+    ("merge({'1': {'k': 1}}, {'b': ['YW Jj\\n']})", "value map(string \"1\": map(string \"k\": int 1), string \"b\": list(string \"YW Jj\\n\"))"),
     ("merge(parseJson('{\"a\":\"\",\"b\":\"s\",\"x y\":{\"k\":1}}'), {})", "value record(a: string \"\", b: string \"s\", x y: record(k: double 1))"),
     ("merge({'__proto__': [1]}, {-1: 1})", "value map(string \"__proto__\": list(int 1), int -1: int 1)"),
     ("min([{1u: {'k': 1}, '1': null}, '', '1'])", "value map(uint 1: map(string \"k\": int 1), string \"1\": null)"),
@@ -393,7 +392,6 @@ const ROWS: [(&str, &str); 473] = [
     ("uuidVersion('6ba7b811-9dad-11d1-80b4-00c04fd430c8')", "value int 1"),
     ("uuidVersion('6BA7B810-9DAD-41D1-80B4-00C04FD430C8')", "value int 4"),
     ("uuidVersion('ffffffff-ffff-ffff-ffff-ffffffffffff')", "value int 15"),
-    ("uuidVersion('YW Jj\n')", "threw CelEngineError: \"uuidVersion('YW Jj\\n')\" could not be read: unterminated string"),
     ("replace('abc', '', '-')", "value string \"a-b-c\""),
     ("replace('', '', '-')", "value string \"\""),
     ("replace('aaa', 'a', 'b')", "value string \"bbb\""),
@@ -647,11 +645,73 @@ const SORT_DIGESTS: [u64; 200] = [
     0x8c60db9313b365f4, 0x56f81976624a0d4f,
 ];
 
+/// The list of an error seed, 200 to 299, exactly as the recorder generated it: a third of
+/// its elements have no text, under four refusals — a map, bytes that are not UTF-8, an
+/// optional and a type — so which one a list answers is decided by which element V8's
+/// comparisons reach first, and by which of a comparison's two texts is computed first.
+fn error_sort_source(seed: u32) -> String {
+    let mut x = seed.wrapping_mul(0x9e37_79b1) | 1;
+    let mut next = || {
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        x
+    };
+    let n = [2u32, 3, 5, 33, 64, 65, 130, 257][(seed % 8) as usize];
+    let pool = ["{'k': 1}", "b'\\xff'", "optional.of(1)", "int", "'b'", "'a'", "'😀'", "1", "null", "true", "2.5", "'c1'"];
+    let items: Vec<&str> = (0..n)
+        .map(|at| match pool[(next() % pool.len() as u32) as usize] {
+            "1" | "2.5" if at == 0 => "'z'",
+            picked => picked,
+        })
+        .collect();
+    format!("sort([{}])", items.join(", "))
+}
+
+/// Node's answers for seeds 200 to 299, 87 of them a refusal.
+const ERROR_SORT_DIGESTS: [u64; 100] = [
+    0x730c8cd971d2591b, 0x603847fae0fafbba, 0x77879d33a54718df, 0x1fa1fb045b47d34c, 0x24becb6a3060ab6e, 0x782d4ba2218129e1,
+    0xd5c4de7bed6d5993, 0x6b5072e24786576e, 0xdd45562b9a8c9b91, 0x8c11f53a9c820670, 0xa106ef173539e0d1, 0xe1d0bfd90091cf1b,
+    0x9cdd88f259ad8f00, 0x6a3c6f2313203fa6, 0x2199dbe724db92d1, 0x71cabed7e0b07322, 0x7fb6699582a532b7, 0x094b103ca02979b5,
+    0xf73c4dfd465d957d, 0xdd450d76e2f7466b, 0xb1c1aaa7145b06de, 0x1cc9ca08c50fb622, 0xb9b459811e035355, 0x79307e8af416d3ef,
+    0xc2f11165ad657864, 0xb8359dca404d267d, 0xb9155cae88945298, 0xa8f69f809b5077c1, 0xa68963ba54761fc7, 0xe202040dfdffc37a,
+    0x9777349ace73f0fc, 0xb0f86c036765ca5b, 0x26c56c7ac7eda9c0, 0xf88fed550f0ada81, 0x66a18693299bffdb, 0x675b7cd412059883,
+    0x71b874c23fda0213, 0xe9417ee9afc861ea, 0xb6029c93bdaed4b7, 0x5d629c39b089e2cd, 0x4da425b138b8633a, 0x6ee1d0cc80df4fa0,
+    0x5b8f5692da5e196d, 0xeb44ef93b5e2054d, 0x1be7ccd99cffcb79, 0xd0926a5427024ac7, 0xfa5db63c13f05788, 0x3c2cb2af457dc386,
+    0x7c3a2765cc6cc3e9, 0xb77de600368404a2, 0xf186e1ced9d459ac, 0x021bae69ce457f5e, 0xdf68b0724a6e6128, 0xa24e85293adb0d1e,
+    0x642421ac1b050d07, 0xa1be739e329ff9b7, 0x71034af668d9a89a, 0xe9a981a4db368cf2, 0x389c333155b55c56, 0x591e572aa780a0dc,
+    0xf25e3111cdeb0135, 0x50f6d36d15ed31ec, 0x931ac8359781164d, 0xc6bed93207cf74b4, 0xecb2eba772623a9c, 0xfdf7e8df15eb0ea3,
+    0x97470c3afb2852d6, 0x620e042a3835dd3a, 0x1ecff39371ef422a, 0xe66529ad37ef7702, 0x658bf88822141c5b, 0x55642d8bb36676ee,
+    0x54e0c476aac3a35b, 0x2034900798db3e84, 0x9f1a3278b70171c4, 0x1c6a6cc59a0470a9, 0x0095aea02dfb0cbf, 0xe58c5ad1222ec4ac,
+    0x159a9668ed470f39, 0x0b0181eff0138b24, 0x83de61e43b4a6ae7, 0x839b760300cffb48, 0x5b8f5692da5e196d, 0x7dbc43d7ff768146,
+    0xa7b97f75409df50f, 0x72470b60492ddac4, 0x3f49e81a19ada063, 0xbfe91bb0624d35e9, 0xecb2eba772623a9c, 0x62557b60d577f1c7,
+    0xcb8e4dff25e7fab2, 0x572be404b57d8eb9, 0xd55b87f95fb7771b, 0x0095aea02dfb0cbf, 0x088d4288dc0ae49b, 0x6b8459370c0e043e,
+    0xc2bb6666810ee6cd, 0xb8359dca404d267d, 0x1e8e02b57b6f8d80, 0x531277bb53976e59,
+];
+
 #[test]
 fn sorts_as_v8s_timsort_does_where_the_comparator_is_not_an_order() {
     let environment = environment_with(handlers());
     let differing: Vec<u32> =
         (0..200).filter(|seed| fnv(&answered(&environment, &sort_source(*seed))) != SORT_DIGESTS[*seed as usize]).collect();
+    assert_eq!(differing, Vec::<u32>::new());
+}
+
+/// The refusal a list answers is the first one V8's comparisons meet, the left operand's
+/// text computed before the right's.
+#[test]
+fn refuses_a_list_at_the_element_v8s_comparisons_reach_first() {
+    let environment = environment_with(handlers());
+    for (source, node) in [
+        ("sort([{'a': 1}, b'\\xff'])", "error invalid_conversion [0, 25] sort: the bytes are not UTF-8 text"),
+        ("sort([b'\\xff', {'a': 1}])", "error invalid_conversion [0, 25] sort: a value of type map has no text"),
+        ("sort(['a', {'a': 1}, b'\\xff'])", "error invalid_conversion [0, 30] sort: a value of type map has no text"),
+    ] {
+        assert_eq!(answered(&environment, source), node, "{source}");
+    }
+    let differing: Vec<u32> = (200..300)
+        .filter(|seed| fnv(&answered(&environment, &error_sort_source(*seed))) != ERROR_SORT_DIGESTS[(*seed - 200) as usize])
+        .collect();
     assert_eq!(differing, Vec::<u32>::new());
 }
 
@@ -810,6 +870,7 @@ fn interim_uuid_names_a_namespace_that_is_not_a_uuid() {
     difference(&[
         ("uuidv3('a', 'zz')", "threw TypeError: Invalid UUID", "error invalid_argument [0, 17] uuidv3: invalid namespace UUID \"zz\""),
         ("uuidv5('a', 'nil ')", "threw TypeError: Invalid UUID", "error invalid_argument [0, 19] uuidv5: invalid namespace UUID \"nil \""),
+        ("uuidv5('a😀b', 'YW Jj\\n')", "threw TypeError: Invalid UUID", "error invalid_argument [0, 25] uuidv5: invalid namespace UUID \"YW Jj\\n\""),
     ]);
 }
 
@@ -818,6 +879,7 @@ fn interim_uuid_version_names_a_text_that_is_not_a_uuid() {
     difference(&[
         ("uuidVersion('nope')", "threw TypeError: Invalid UUID", "error invalid_argument [0, 19] uuidVersion: invalid UUID \"nope\""),
         ("uuidVersion('max')", "threw TypeError: Invalid UUID", "error invalid_argument [0, 18] uuidVersion: invalid UUID \"max\""),
+        ("uuidVersion('YW Jj\\n')", "threw TypeError: Invalid UUID", "error invalid_argument [0, 22] uuidVersion: invalid UUID \"YW Jj\\n\""),
     ]);
 }
 

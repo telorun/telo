@@ -24,8 +24,12 @@
 //! UUID, a huge `format` width, a calendar result outside ECMAScript's time range, a random
 //! source that answers nothing, and a host handler's failure; a string holding half a
 //! surrogate pair, which Node answers from `slice`, `split`, `replace` and `parseJson`, is
-//! refused; and `merge` refuses a uint key into a record, where Node writes a JavaScript
-//! artifact as its key. `slice` over bytes copies them, where Node answers a view.
+//! refused; `merge` refuses a uint key into a record, where Node writes a JavaScript
+//! artifact as its key; and a text built past the longest string (`longest_text.rs`) —
+//! by `join`, `replace`, `regexReplace`, `urlEncode`, `upper`, `lower`, `bytesToBase64`, a
+//! list read as text, or a refusal holding a value — is refused before it is built, where
+//! Node throws its host's `RangeError`, crashes, exhausts its heap or calls decoded bytes
+//! not UTF-8. `slice` over bytes copies them, where Node answers a view.
 //!
 //! `sort` is V8's TimSort, comparison for comparison, so a comparator that is not a total
 //! order — NaN equal to everything, numbers beside text — answers the list Node answers.
@@ -36,10 +40,11 @@
 //! Node items with no twin: `CatalogImplementation`, the function from handlers to an
 //! implementation — [`catalog_implementation`] takes the handlers itself.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::hash_map::DefaultHasher;
+use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
-use std::hash::{BuildHasherDefault, Hash, Hasher};
+use std::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
 use std::sync::{Arc, LazyLock};
 
 use telorun_cel_value::{
@@ -55,12 +60,16 @@ use crate::json_text_scan::{read_json_text, JsonTextError};
 use crate::re2_matcher::{replace_all, Re2Matcher};
 use crate::re2_program::Re2Program;
 use crate::regular_expression::{re2_pattern, Re2Flags, RE2_FLAG_LETTERS};
-use crate::runtime_library::{base64_text, json_as_cel_value, mismatch, CelCallContext, CelImplementation};
+use crate::longest_text::{
+    decoded_size, json_quoted_size, json_quoted_worst, text_too_long, within_by_bytes, TextSize, LONGEST_TEXT,
+    TEXT_TOO_LONG_CODE,
+};
+use crate::runtime_library::{base64_length, base64_text, json_as_cel_value, mismatch, CelCallContext, CelImplementation};
 use crate::signature::LiteralArgumentCheck;
 use crate::uri_component::{decode_uri_component, encode_uri_component, UriDecodeFault};
 use crate::uuid::{uuid_v1, uuid_v3, uuid_v4, uuid_v5, uuid_v6, uuid_v7, uuid_validate, uuid_version};
 use crate::value_equality::cel_equal;
-use crate::value_text::{es_to_lower_case, es_to_upper_case};
+use crate::value_text::{es_to_lower_case_within, es_to_upper_case_within};
 use crate::zoned_calendar::{
     civil_time_in, date_text_in, days_in_month, instant_of_civil_time, iso_text_in, known_time_zone, CivilTime,
 };
@@ -205,6 +214,11 @@ fn scalar_text(what: &str, value: &CelValue) -> Result<String, CatalogRefusal> {
         CelValue::Null => "null".into(),
         CelValue::Timestamp(held) => format_timestamp(*held),
         CelValue::Duration(held) => format_duration(*held),
+        // Bytes that are not text are refused as such before their length is judged, and the
+        // length is judged before they are decoded.
+        CelValue::Bytes(held) if !within_by_bytes(held.len()) && decoded_size(held).is_some_and(TextSize::exceeds) => {
+            return Err(too_long(what))
+        }
         CelValue::Bytes(held) => match bytes_to_text(held) {
             Ok(decoded) => decoded,
             Err(_) => {
@@ -225,29 +239,122 @@ fn scalar_text(what: &str, value: &CelValue) -> Result<String, CatalogRefusal> {
 
 /// A value as text, for `join`, a specifier, a zone and ordering text: the text `string()`
 /// answers, a list its elements' texts joined by commas at every depth, and a value with no
-/// single written form refused. Walked on a work list.
-fn text_of(what: &str, value: &CelValue) -> Result<String, CatalogRefusal> {
-    let CelValue::List(items) = value else {
-        return scalar_text(what, value);
-    };
-    let mut out = String::new();
-    let mut stack: Vec<(&[CelValue], usize)> = vec![(items.as_slice(), 0)];
-    while let Some(top) = stack.last_mut() {
-        let (items, at) = *top;
-        let Some(item) = items.get(at) else {
-            stack.pop();
-            continue;
-        };
-        top.1 += 1;
-        if at > 0 {
-            out.push(',');
-        }
-        match item {
-            CelValue::List(inner) => stack.push((inner.as_slice(), 0)),
-            scalar => out.push_str(&scalar_text(what, scalar)?),
+/// single written form refused.
+fn text_of<'v>(what: &str, value: &'v CelValue) -> Result<Cow<'v, str>, CatalogRefusal> {
+    match value {
+        CelValue::List(items) => list_text(what, items, ",").map(Cow::Owned),
+        CelValue::String(held) => Ok(Cow::Borrowed(held)),
+        scalar => scalar_text(what, scalar).map(Cow::Owned),
+    }
+}
+
+/// A part of a list's text: an element's own text — borrowed where it is a string — or a
+/// separator.
+enum Part<'a> {
+    Borrowed(&'a str),
+    Owned(String),
+}
+
+impl Part<'_> {
+    fn text(&self) -> &str {
+        match self {
+            Part::Borrowed(text) => text,
+            Part::Owned(text) => text,
         }
     }
+}
+
+/// A list's text, its elements joined by `separator` and every nested list's by commas,
+/// held to the longest text. Walked on a work list, measured, then written: each list's
+/// text is judged when its last element is read, innermost first, in the order Node's joins
+/// build them, so a refusal of an element and the bound are met in Node's order.
+fn list_text(what: &str, items: &[CelValue], separator: &str) -> Result<String, CatalogRefusal> {
+    struct Frame<'a> {
+        items: &'a [CelValue],
+        at: usize,
+        size: TextSize,
+    }
+    let mut parts: Vec<Part<'_>> = Vec::new();
+    let mut stack = vec![Frame { items, at: 0, size: TextSize::default() }];
+    let total = loop {
+        let depth = stack.len();
+        let top = stack.last_mut().expect("the walk ends when its outermost list does");
+        let Some(item) = top.items.get(top.at) else {
+            let done = stack.pop().expect("a list is on the work list").size;
+            if done.exceeds() {
+                return Err(too_long(what));
+            }
+            match stack.last_mut() {
+                Some(parent) => parent.size = parent.size.plus(done),
+                None => break done,
+            }
+            continue;
+        };
+        if top.at > 0 {
+            let between = if depth == 1 { separator } else { "," };
+            top.size = top.size.plus(TextSize::of(between));
+            parts.push(Part::Borrowed(between));
+        }
+        top.at += 1;
+        match item {
+            CelValue::List(inner) => stack.push(Frame { items: inner.as_slice(), at: 0, size: TextSize::default() }),
+            CelValue::String(held) => {
+                top.size = top.size.plus(TextSize::of(held));
+                parts.push(Part::Borrowed(held));
+            }
+            scalar => {
+                let written = scalar_text(what, scalar)?;
+                top.size = top.size.plus(TextSize::of(&written));
+                parts.push(Part::Owned(written));
+            }
+        }
+    };
+    let mut out = String::with_capacity(total.bytes);
+    for part in &parts {
+        out.push_str(part.text());
+    }
     Ok(out)
+}
+
+/// The refusal of a text built past the longest text a string holds.
+fn too_long(what: &str) -> CatalogRefusal {
+    CatalogRefusal::coded(text_too_long(what), TEXT_TOO_LONG_CODE)
+}
+
+/// A part of a refusal's message: text as it stands, or a value written as a JSON string.
+enum Said<'a> {
+    Plain(&'a str),
+    Quoted(&'a str),
+}
+
+/// A refusal whose message holds a text an argument decided, held to the longest text: past
+/// it, the bound's own refusal instead. Measured only where its worst case is past it.
+fn refusal_saying(what: &str, said: &[Said<'_>], code: CelEvaluationCode) -> CatalogRefusal {
+    let worst = said.iter().fold(what.len(), |total, part| {
+        total.saturating_add(match part {
+            Said::Plain(text) => text.len(),
+            Said::Quoted(text) => json_quoted_worst(text.len()),
+        })
+    });
+    if !within_by_bytes(worst) {
+        let size = said.iter().fold(TextSize::of(what), |total, part| {
+            total.plus(match part {
+                Said::Plain(text) => TextSize::of(text),
+                Said::Quoted(text) => json_quoted_size(text),
+            })
+        });
+        if size.exceeds() {
+            return too_long(what);
+        }
+    }
+    let mut message = what.to_string();
+    for part in said {
+        match part {
+            Said::Plain(text) => message.push_str(text),
+            Said::Quoted(text) => message.push_str(&json_quote(text)),
+        }
+    }
+    CatalogRefusal::coded(message, code)
 }
 
 /// A map's entries, whichever container holds them. A list is named rather than joined.
@@ -370,7 +477,11 @@ fn digit_count(what: &str, digits: &CelValue) -> Result<usize, CatalogRefusal> {
     let count = number_of(digits);
     if !is_integer(count) || count < 0.0 || count > MAX_DECIMALS {
         let written = text_of(what, digits)?;
-        return refuse(format!("{what}: decimal places must be an integer 0-10, got {written}"));
+        return Err(refusal_saying(
+            what,
+            &[Said::Plain(": decimal places must be an integer 0-10, got "), Said::Plain(&written)],
+            CelEvaluationCode::InvalidArgument,
+        ));
     }
     Ok(count as usize)
 }
@@ -396,13 +507,15 @@ fn formatter(what: &str, specifier: &CelValue) -> Result<Arc<D3Format>, CatalogR
     if let Some(digits) = precision_digits(&written) {
         digit_count(what, &CelValue::String(digits.into()))?;
     }
-    d3_formatter(&written).map_err(|_| CatalogRefusal::new(format!("{what}: invalid format specifier {}", json_quote(&written))))
+    d3_formatter(&written).map_err(|_| {
+        refusal_saying(what, &[Said::Plain(": invalid format specifier "), Said::Quoted(&written)], CelEvaluationCode::InvalidArgument)
+    })
 }
 
 fn formatted(what: &str, formatter: &D3Format, value: f64) -> Result<String, CatalogRefusal> {
     formatter.format(value).map_err(|TooLong { width }| {
         CatalogRefusal::new(format!(
-            "{what}: width {} exceeds the longest text a string can hold (536870888 UTF-16 code units)",
+            "{what}: width {} exceeds the longest text a string can hold ({LONGEST_TEXT} UTF-16 code units)",
             es_number(width)
         ))
     })
@@ -436,13 +549,17 @@ fn duration_text(minutes: &CelValue, minutes_per_day: &CelValue) -> Result<Strin
 
 fn zone_arg(what: &str, value: Option<&CelValue>) -> Result<String, CatalogRefusal> {
     let zone = match value {
-        None => "UTC".to_string(),
+        None => Cow::Borrowed("UTC"),
         Some(value) => text_of(what, value)?,
     };
     if !known_time_zone(&zone) {
-        return refuse(format!("{what}: unknown IANA time zone {}", json_quote(&zone)));
+        return Err(refusal_saying(
+            what,
+            &[Said::Plain(": unknown IANA time zone "), Said::Quoted(&zone)],
+            CelEvaluationCode::InvalidArgument,
+        ));
     }
-    Ok(zone)
+    Ok(zone.into_owned())
 }
 
 // --- regular expressions ----------------------------------------------------
@@ -467,8 +584,9 @@ fn re2_flags(what: &str, flags: Option<&CelValue>) -> Result<Re2Flags, CatalogRe
 
 fn pattern_or_refusal(what: &str, written: &str, flags: Re2Flags) -> Result<Arc<Re2Program>, CatalogRefusal> {
     re2_pattern(written, flags).map_err(|refused| {
-        CatalogRefusal::coded(
-            format!("{what}: invalid RE2 pattern {}: {}", json_quote(written), refused.kind.as_str()),
+        refusal_saying(
+            what,
+            &[Said::Plain(": invalid RE2 pattern "), Said::Quoted(written), Said::Plain(": "), Said::Plain(refused.kind.as_str())],
             CelEvaluationCode::InvalidRegularExpression,
         )
     })
@@ -551,22 +669,58 @@ fn character_value(character: char) -> CelValue {
 }
 
 /// `replace`: the text split at every occurrence and joined around the replacement. An
-/// empty search splits between code units, so the replacement goes between them only.
+/// empty search splits between code units, so the replacement goes between them only. Held
+/// to the longest text, its answer sized only where its worst case is past it.
 fn replaced(value: &str, search: &str, replacement: &str) -> Result<CelValue, CatalogRefusal> {
-    if !search.is_empty() {
-        return Ok(CelValue::String(value.replace(search, replacement).into()));
-    }
-    if let Some(offset) = first_unit_cut_inside_pair(value) {
-        return Err(pair_cut("replace", offset));
-    }
-    let mut out = String::with_capacity(value.len() + replacement.len() * value.len());
-    for (at, character) in value.chars().enumerate() {
-        if at > 0 {
-            out.push_str(replacement);
+    if search.is_empty() {
+        if let Some(offset) = first_unit_cut_inside_pair(value) {
+            return Err(pair_cut("replace", offset));
         }
-        out.push(character);
+    }
+    let worst = if search.is_empty() {
+        value.len().saturating_add(value.len().saturating_mul(replacement.len()))
+    } else {
+        value.len().saturating_add((value.len() / search.len()).saturating_mul(replacement.len()))
+    };
+    let mut out = if within_by_bytes(worst) {
+        String::new()
+    } else {
+        let size = replaced_size(value, search, replacement);
+        if size.exceeds() {
+            return Err(too_long("replace"));
+        }
+        String::with_capacity(size.bytes)
+    };
+    if search.is_empty() {
+        for (at, character) in value.chars().enumerate() {
+            if at > 0 {
+                out.push_str(replacement);
+            }
+            out.push(character);
+        }
+    } else {
+        let mut kept = 0;
+        for (at, found) in value.match_indices(search) {
+            out.push_str(&value[kept..at]);
+            out.push_str(replacement);
+            kept = at + found.len();
+        }
+        out.push_str(&value[kept..]);
     }
     Ok(CelValue::String(out.into()))
+}
+
+/// The size of `replace`'s answer: by arithmetic for an empty search over a text holding no
+/// character outside the basic plane — `n + (n − 1) × replacement` — and by one counting pass
+/// for any other.
+fn replaced_size(value: &str, search: &str, replacement: &str) -> TextSize {
+    if search.is_empty() {
+        let characters = value.chars().count();
+        return TextSize { units: characters, bytes: value.len() }
+            .plus(TextSize::of(replacement).times(characters.saturating_sub(1)));
+    }
+    let count = value.matches(search).count();
+    TextSize::of(value).plus(TextSize::of(replacement).times(count)).minus(TextSize::of(search).times(count))
 }
 
 /// A relative index as `slice` resolves it: from the end where negative, clamped to the length.
@@ -727,7 +881,7 @@ fn sorted(what: &str, values: &[CelValue]) -> Result<CelValue, CatalogRefusal> {
             })
         })?;
     } else {
-        let mut texts: Vec<Option<String>> = vec![None; values.len()];
+        let mut texts: Vec<Option<Cow<'_, str>>> = vec![None; values.len()];
         tim_sort(&mut order, |left, right| -> Result<Ordering, CatalogRefusal> {
             if texts[left].is_none() {
                 texts[left] = Some(text_of(what, &values[left])?);
@@ -1255,8 +1409,12 @@ impl<E, C: FnMut(usize, usize) -> Result<Ordering, E>> TimSort<'_, C> {
 
 // --- distinct ---------------------------------------------------------------
 
+/// The keys of every value hash, drawn once per process, so no input can be chosen to put
+/// every value in one bucket.
+static HASH_KEYS: LazyLock<RandomState> = LazyLock::new(RandomState::new);
+
 fn hashed(tag: u8, value: impl Hash) -> u64 {
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = HASH_KEYS.build_hasher();
     tag.hash(&mut hasher);
     value.hash(&mut hasher);
     hasher.finish()
@@ -1534,7 +1692,13 @@ fn random(name: &str, made: Result<String, crate::host_random::RandomSourceUnava
 
 fn named_uuid(name: &str, made: Result<String, crate::uuid::InvalidUuid>, namespace: &str) -> Outcome {
     made.map(|text| CelValue::String(text.into()))
-        .map_err(|_| Failure::Refused(CatalogRefusal::new(format!("{name}: invalid namespace UUID {}", json_quote(namespace)))))
+        .map_err(|_| {
+            Failure::Refused(refusal_saying(
+                name,
+                &[Said::Plain(": invalid namespace UUID "), Said::Quoted(namespace)],
+                CelEvaluationCode::InvalidArgument,
+            ))
+        })
 }
 
 /// The implementations needing nothing of the host, by dispatch key, in Node's order.
@@ -1543,9 +1707,7 @@ const OWN: [(&str, Own); 77] = [
     ("join(list<dyn>, string)", |args| {
         arity(args, 2)?;
         let separator = text(&args[1])?;
-        let items = list("join", &args[0])?;
-        let parts = items.iter().map(|held| text_of("join", held)).collect::<Result<Vec<_>, _>>()?;
-        string_value(parts.join(separator))
+        string_value(list_text("join", list("join", &args[0])?, separator)?)
     }),
     ("keys(map<dyn, dyn>)", |args| {
         arity(args, 1)?;
@@ -1619,11 +1781,11 @@ const OWN: [(&str, Own); 77] = [
     // strings
     ("lower(string)", |args| {
         arity(args, 1)?;
-        string_value(es_to_lower_case(text(&args[0])?))
+        string_value(es_to_lower_case_within(text(&args[0])?).ok_or_else(|| too_long("lower"))?)
     }),
     ("upper(string)", |args| {
         arity(args, 1)?;
-        string_value(es_to_upper_case(text(&args[0])?))
+        string_value(es_to_upper_case_within(text(&args[0])?).ok_or_else(|| too_long("upper"))?)
     }),
     ("trim(string)", |args| {
         arity(args, 1)?;
@@ -1655,13 +1817,13 @@ const OWN: [(&str, Own); 77] = [
         arity(args, 3)?;
         let (subject, replacement) = (text(&args[0])?, text(&args[2])?);
         let program = pattern("regexReplace", &args[1], None)?;
-        string_value(replace_all(&program, subject, replacement))
+        string_value(replace_all(&program, subject, replacement).ok_or_else(|| too_long("regexReplace"))?)
     }),
     ("regexReplace(string, string, string, string)", |args| {
         arity(args, 4)?;
         let (subject, replacement) = (text(&args[0])?, text(&args[2])?);
         let program = pattern("regexReplace", &args[1], Some(&args[3]))?;
-        string_value(replace_all(&program, subject, replacement))
+        string_value(replace_all(&program, subject, replacement).ok_or_else(|| too_long("regexReplace"))?)
     }),
     ("regexExtract(string, string)", |args| {
         arity(args, 2)?;
@@ -1750,13 +1912,16 @@ const OWN: [(&str, Own); 77] = [
     ("bytesToBase64(bytes)", |args| {
         arity(args, 1)?;
         match &args[0] {
+            CelValue::Bytes(held) if TextSize::ascii(base64_length(held.len())).exceeds() => {
+                Err(too_long("bytesToBase64").into())
+            }
             CelValue::Bytes(held) => string_value(base64_text(held)),
             _ => Err(Failure::Mismatch),
         }
     }),
     ("urlEncode(string)", |args| {
         arity(args, 1)?;
-        string_value(encode_uri_component(text(&args[0])?))
+        string_value(encode_uri_component(text(&args[0])?).ok_or_else(|| too_long("urlEncode"))?)
     }),
     ("urlDecode(string)", |args| {
         arity(args, 1)?;
@@ -1906,7 +2071,11 @@ const OWN: [(&str, Own); 77] = [
         arity(args, 1)?;
         let written = text(&args[0])?;
         uuid_version(written).map(|version| CelValue::Int(i64::from(version))).map_err(|_| {
-            Failure::Refused(CatalogRefusal::new(format!("uuidVersion: invalid UUID {}", json_quote(written))))
+            Failure::Refused(refusal_saying(
+                "uuidVersion",
+                &[Said::Plain(": invalid UUID "), Said::Quoted(written)],
+                CelEvaluationCode::InvalidArgument,
+            ))
         })
     }),
 ];
@@ -2231,6 +2400,51 @@ mod tests {
                 CelEvaluationCode::UnboundFunction
             )
         );
+    }
+
+    fn texts(values: &[&str]) -> Vec<CelValue> {
+        values.iter().map(|text| CelValue::String((*text).into())).collect()
+    }
+
+    /// A list's text is built at exactly the size its measuring found, its nested lists'
+    /// texts joined by commas and its own by the separator.
+    #[test]
+    fn builds_a_list_text_at_exactly_its_measured_size() {
+        let nested = CelValue::List(vec![CelValue::Int(1), CelValue::List(texts(&["ß", ""]).into()), CelValue::List(CelList::new())].into());
+        let rows: [(Vec<CelValue>, &str, &str); 6] = [
+            (Vec::new(), "|", ""),
+            (texts(&[""]), "😀", ""),
+            (texts(&["İ", "a😀b", ""]), "ß", "İßa😀bß"),
+            (vec![nested.clone(), CelValue::List(CelList::new()), CelValue::String("x".into())], "|", "1,ß,,||x"),
+            (vec![CelValue::Bytes(b"hi".as_slice().into()), CelValue::Null, CelValue::Bool(true), CelValue::Double(1.5)], ",", "hi,null,true,1.5"),
+            (vec![CelValue::List(vec![nested].into())], "", "1,ß,,"),
+        ];
+        for (items, separator, expected) in rows {
+            let built = list_text("join", &items, separator).unwrap();
+            assert_eq!((built.as_str(), built.capacity()), (expected, expected.len()), "{expected:?}");
+        }
+    }
+
+    /// `replace`'s answer measures as it is built, by arithmetic for an empty search and by
+    /// counting for any other.
+    #[test]
+    fn measures_a_replacement_as_it_is_built() {
+        for (value, search, replacement) in [
+            ("", "", ""),
+            ("", "", "-"),
+            ("a", "", "😀"),
+            ("ßİ€", "", "😀ß"),
+            ("abc", "", ""),
+            ("a😀b😀", "😀", "ß"),
+            ("aaa", "a", ""),
+            ("aaaa", "aa", "İİ"),
+            ("", "a", "b"),
+            ("x", "y", "zz"),
+            ("ßßß", "ß", "😀😀"),
+        ] {
+            let Ok(CelValue::String(built)) = replaced(value, search, replacement) else { panic!("{value:?} answered") };
+            assert_eq!(replaced_size(value, search, replacement), TextSize::of(&built), "{value:?} {search:?} {replacement:?}");
+        }
     }
 
     /// Every merge V8's TimSort makes sorts what it is handed; a seeded step diverging from

@@ -27,7 +27,8 @@
 //! `json_value.rs`; the RE2 files, the matcher and the Unicode data, whose roles Node's
 //! dependency re2js and its host's V8 fill; the zone database, whose role its host's Intl
 //! fills; the catalog's text substrate — V8's number methods and URI component coding,
-//! and d3-format's specifier grammar; and the clock, the random source, UUIDs and their
+//! and d3-format's specifier grammar; V8's longest string, the bound on every text the
+//! engine builds; and the clock, the random source, UUIDs and their
 //! digests, the roles of Node's host and its dependency `uuid`. The exports below are the
 //! front-end block of Node's entry, its comprehension-binding table, the type system's and
 //! the checker's items, the value domain's `cel-value.ts` items, the pattern language's and
@@ -92,6 +93,7 @@
 //! - `es_number_text.rs`         — no twin: V8's number methods
 //! - `d3_format.rs`              — no twin: d3-format, the number-formatting grammar
 //! - `uri_component.rs`          — no twin: ECMAScript's URI component encoding
+//! - `longest_text.rs`           — no twin: V8's longest string, the bound on every text built
 //! - `function_catalog.rs`       — `function-catalog.ts`
 //! - `catalog_runtime.rs`        — `catalog-runtime.ts`
 //! - `zoned_calendar.rs`         — `zoned-calendar.ts`
@@ -127,6 +129,7 @@ mod json_schema_type;
 mod json_text_scan;
 mod json_value;
 mod lexer;
+mod longest_text;
 mod macro_check;
 mod macro_shape;
 mod member_read;

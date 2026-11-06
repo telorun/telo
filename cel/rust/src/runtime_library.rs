@@ -20,6 +20,12 @@
 //!   V8's `JSON.parse`, and refuses an escape naming an unpaired surrogate.
 //! - `lowerAscii` / `upperAscii` case with the engine's Unicode 17.0 data, and a getter
 //!   takes the zones of the engine's own database (`value_text.rs`, `timestamp_value.rs`).
+//! - A text built past the longest text a string holds (`longest_text.rs`) — by `+` on
+//!   strings, `join`, `lowerAscii`, `upperAscii`, `string(bytes)`, `bytes.string()`,
+//!   `bytes.hex()`, `bytes.base64()`, and the text `bytes.json()` reads — is the error
+//!   value that file words, its length found before it is built; Node throws its host's
+//!   `RangeError` there, answers bytes decoded past it as not UTF-8, and crashes casing
+//!   `İ` past it.
 //!
 //! An implementation called directly with values its signature does not take answers
 //! `no_matching_overload`, as a call that resolves to nothing does; through dispatch it
@@ -40,6 +46,7 @@ use crate::integer_arithmetic::{
 };
 use crate::json_text_scan::{read_json_text, JsonTextError};
 use crate::json_value::JsonValue;
+use crate::longest_text::{decoded_size, text_too_long, within_by_bytes, TextSize, TEXT_TOO_LONG_CODE};
 use crate::member_read::{cel_lookup, cel_terms, Lookup};
 use crate::regular_expression::cel_matches;
 use crate::signature::{signature_key, CelSignature};
@@ -49,8 +56,8 @@ use crate::timestamp_value::{
 };
 use crate::value_equality::{cel_compare, cel_equal};
 use crate::value_text::{
-    bytes_to_text, double_text, es_string_to_number, es_to_lower_case, es_to_upper_case, es_trim, json_quote,
-    text_to_bytes,
+    bytes_to_text, double_text, es_string_to_number, es_to_lower_case_within, es_to_upper_case_within, es_trim,
+    json_quote, text_to_bytes,
 };
 
 /// What an implementation knows about the call it is answering.
@@ -330,7 +337,55 @@ pub fn base64_text(input: &[u8]) -> String {
 }
 
 fn hex_text(input: &[u8]) -> String {
-    input.iter().map(|byte| format!("{byte:02x}")).collect()
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(input.len() * 2);
+    for &byte in input {
+        out.push(char::from(DIGITS[usize::from(byte >> 4)]));
+        out.push(char::from(DIGITS[usize::from(byte & 15)]));
+    }
+    out
+}
+
+/// The refusal of a text built past the longest text a string holds, by the function
+/// building it.
+fn too_long(ctx: &CelCallContext, name: &str) -> CelValue {
+    cel_error(TEXT_TOO_LONG_CODE, text_too_long(name), ctx.range).into()
+}
+
+/// Bytes as text: refused as not UTF-8 before its length is judged, and past the longest
+/// text before it is decoded.
+fn decoded(ctx: &CelCallContext, name: &str, input: &[u8]) -> Result<String, CelValue> {
+    if !within_by_bytes(input.len()) && decoded_size(input).is_some_and(TextSize::exceeds) {
+        return Err(too_long(ctx, name));
+    }
+    bytes_to_text(input).map_err(|error| ranged(ctx, error))
+}
+
+/// Bytes as hexadecimal or as base64, `name` the member building it, held to the longest
+/// text by its length alone.
+fn bytes_written(ctx: &CelCallContext, name: &str, input: &[u8], length: usize, write: fn(&[u8]) -> String) -> CelValue {
+    if TextSize::ascii(length).exceeds() {
+        return too_long(ctx, name);
+    }
+    CelValue::String(write(input).into())
+}
+
+/// The length of the base64 text of `length` bytes.
+pub(crate) fn base64_length(length: usize) -> usize {
+    length.div_ceil(3).saturating_mul(4)
+}
+
+/// Texts joined, held to the longest text: measured only where their UTF-8 length is past it.
+fn concatenated(ctx: &CelCallContext, name: &str, parts: &[&str], separator: &str) -> CelValue {
+    let separators = parts.len().saturating_sub(1);
+    let bytes = parts.iter().fold(separator.len().saturating_mul(separators), |total, part| total.saturating_add(part.len()));
+    if !within_by_bytes(bytes) {
+        let size = parts.iter().fold(TextSize::of(separator).times(separators), |total, part| total.plus(TextSize::of(part)));
+        if size.exceeds() {
+            return too_long(ctx, name);
+        }
+    }
+    CelValue::String(parts.join(separator).into())
 }
 
 /// JSON as CEL values: an object is a record, in its own-property order, an array a
@@ -376,9 +431,9 @@ pub fn json_as_cel_value(parsed: &JsonValue) -> CelValue {
 
 /// A JSON text in bytes, as a value, or why it is none.
 fn bytes_json(ctx: &CelCallContext, input: &[u8]) -> CelValue {
-    let decoded = match bytes_to_text(input) {
+    let decoded = match decoded(ctx, "json", input) {
         Ok(decoded) => decoded,
-        Err(error) => return ranged(ctx, error),
+        Err(refused) => return refused,
     };
     match read_json_text(&decoded) {
         Ok(parsed) => json_as_cel_value(&parsed),
@@ -570,7 +625,7 @@ fn join(ctx: &CelCallContext, items: &CelList, separator: &str) -> CelValue {
             }
         }
     }
-    CelValue::String(parts.join(separator).into())
+    concatenated(ctx, "join", &parts, separator)
 }
 
 fn size_of_map(value: &CelValue) -> usize {
@@ -762,7 +817,7 @@ fn keyed_table() -> Vec<(&'static str, Implementation)> {
         }),
         entry("string(bytes)", |ctx, args| {
             read!(ctx, args, "string"; a: bytes);
-            answer(ctx, bytes_to_text(a), |text| CelValue::String(text.into()))
+            decoded(ctx, "string", a).map_or_else(|refused| refused, |text| CelValue::String(text.into()))
         }),
         entry("string(google.protobuf.Timestamp)", |ctx, args| {
             read!(ctx, args, "string"; a: instant);
@@ -839,11 +894,11 @@ fn keyed_table() -> Vec<(&'static str, Implementation)> {
         // Named for ASCII and not limited to it — see the declaration's own `spec: false` reason.
         entry("string.lowerAscii()", |ctx, args| {
             read!(ctx, args, "lowerAscii"; a: text);
-            CelValue::String(es_to_lower_case(a).into())
+            es_to_lower_case_within(a).map_or_else(|| too_long(ctx, "lowerAscii"), |text| CelValue::String(text.into()))
         }),
         entry("string.upperAscii()", |ctx, args| {
             read!(ctx, args, "upperAscii"; a: text);
-            CelValue::String(es_to_upper_case(a).into())
+            es_to_upper_case_within(a).map_or_else(|| too_long(ctx, "upperAscii"), |text| CelValue::String(text.into()))
         }),
         entry("string.trim()", |ctx, args| {
             read!(ctx, args, "trim"; a: text);
@@ -898,15 +953,15 @@ fn keyed_table() -> Vec<(&'static str, Implementation)> {
         // bytes members, each a compatibility member rather than CEL's
         entry("bytes.string()", |ctx, args| {
             read!(ctx, args, "string"; a: bytes);
-            answer(ctx, bytes_to_text(a), |text| CelValue::String(text.into()))
+            decoded(ctx, "string", a).map_or_else(|refused| refused, |text| CelValue::String(text.into()))
         }),
         entry("bytes.hex()", |ctx, args| {
             read!(ctx, args, "hex"; a: bytes);
-            CelValue::String(hex_text(a).into())
+            bytes_written(ctx, "hex", a, a.len().saturating_mul(2), hex_text)
         }),
         entry("bytes.base64()", |ctx, args| {
             read!(ctx, args, "base64"; a: bytes);
-            CelValue::String(base64_text(a).into())
+            bytes_written(ctx, "base64", a, base64_length(a.len()), base64_text)
         }),
         entry("bytes.json()", |ctx, args| {
             read!(ctx, args, "json"; a: bytes);
@@ -948,7 +1003,7 @@ fn keyed_table() -> Vec<(&'static str, Implementation)> {
         }),
         entry("+(string, string)", |ctx, args| {
             read!(ctx, args, "+"; a: text, b: text);
-            CelValue::String([a, b].concat().into())
+            concatenated(ctx, "+", &[a, b], "")
         }),
         entry("+(bytes, bytes)", |ctx, args| {
             read!(ctx, args, "+"; a: bytes, b: bytes);
@@ -1242,6 +1297,16 @@ mod tests {
     use super::*;
     use crate::function_registry::FunctionRegistry;
     use crate::standard_library::{register_standard_library, StandardLibraryOptions};
+
+    /// The length a base64 or hexadecimal text is judged at is the length written.
+    #[test]
+    fn judges_bytes_written_as_text_at_the_length_written() {
+        for length in 0..10 {
+            let input = vec![0xa5; length];
+            assert_eq!(base64_length(length), base64_text(&input).len(), "{length}");
+            assert_eq!(length * 2, hex_text(&input).len(), "{length}");
+        }
+    }
 
     /// Node's `BY_NAME` is not exported, so its reverse direction is pinned here: every
     /// entry names a function the library registers, and there are seven.

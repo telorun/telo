@@ -18,8 +18,8 @@
 //! value that formats as zero loses its sign, judged by ECMAScript's `Number()` of the text.
 //! The number methods are `es_number_text.rs`.
 //!
-//! **A width past the longest text a string holds** — 536,870,888 UTF-16 code units, V8's
-//! limit — is too long where the padding would be written, which is wherever the width is
+//! **A width past the longest text a string holds** — `longest_text.rs`, V8's limit — is
+//! too long where the padding would be written, which is wherever the width is
 //! more than the number's own text; d3 throws V8's `RangeError` there. Each operation has its
 //! own refusal, worded by the caller: reading a specifier answers `InvalidSpecifier`, and
 //! formatting a value `TooLong`, carrying the width as d3 read it.
@@ -37,10 +37,8 @@ use crate::bounded_cache::BoundedCache;
 use crate::es_number_text::{
     math_round, radix_integer_text, to_exponential, to_fixed, to_precision, whole_number_digits,
 };
+use crate::longest_text::LONGEST_TEXT;
 use crate::value_text::es_string_to_number;
-
-/// The longest text a V8 string holds, in UTF-16 code units.
-pub(crate) const LONGEST_TEXT: f64 = 536_870_888.0;
 
 /// How many formatters the process keeps.
 pub(crate) const FORMATTER_CACHE_CAPACITY: usize = 256;
@@ -394,7 +392,7 @@ fn group(value: &str, width: f64) -> String {
 
 /// Whether padding a text of `length` code units to `width` writes more than a string holds.
 fn pads_past_longest_text(length: f64, width: f64) -> bool {
-    length < width && width > LONGEST_TEXT
+    length < width && width > LONGEST_TEXT as f64
 }
 
 fn code_units(text: &str) -> usize {
@@ -579,11 +577,12 @@ mod tests {
 
     #[test]
     fn the_longest_text_is_padded_to_and_no_further() {
-        assert!(!pads_past_longest_text(1.0, LONGEST_TEXT));
-        assert!(pads_past_longest_text(1.0, LONGEST_TEXT + 1.0));
+        let longest = LONGEST_TEXT as f64;
+        assert!(!pads_past_longest_text(1.0, longest));
+        assert!(pads_past_longest_text(1.0, longest + 1.0));
         assert!(pads_past_longest_text(1.0, f64::INFINITY));
         // A text as long as its width is not padded, whatever the width.
-        assert!(!pads_past_longest_text(LONGEST_TEXT + 1.0, LONGEST_TEXT + 1.0));
+        assert!(!pads_past_longest_text(longest + 1.0, longest + 1.0));
         // Recorded: d3 pads `1` to a million code units, the number last.
         let padded = parse_format("1000000").expect("a width").format(1.0).expect("within the limit");
         assert_eq!((padded.len(), &padded[padded.len() - 3..]), (1_000_000, "  1"));

@@ -3,7 +3,8 @@
 //! (Node v24.11.1).
 //!
 //! Encoding writes every character outside `A-Z a-z 0-9 - _ . ! ~ * ' ( )` as the
-//! percent-encoded bytes of its UTF-8, in upper-case hexadecimal. It never fails: the one
+//! percent-encoded bytes of its UTF-8, in upper-case hexadecimal. It fails only where its
+//! answer would be past the longest text a string holds (`longest_text.rs`): the one other
 //! text V8 refuses to encode holds an unpaired surrogate, which no Rust string does.
 //!
 //! Decoding is ECMA-262's `Decode` with an empty reserved set, in its order. V8 answers
@@ -27,11 +28,24 @@ fn unreserved(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')')
 }
 
+use crate::longest_text::{within_by_bytes, TextSize};
+
 const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
-/// `encodeURIComponent`.
-pub(crate) fn encode_uri_component(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
+/// `encodeURIComponent`, held to the longest text: nothing where the answer would be past
+/// it. A byte is written as at most three characters, so only a text past a third of the
+/// bound is measured first, and then built at exactly its size.
+pub(crate) fn encode_uri_component(text: &str) -> Option<String> {
+    let capacity = if within_by_bytes(text.len().saturating_mul(3)) {
+        text.len()
+    } else {
+        let size = encoded_size(text);
+        if size.exceeds() {
+            return None;
+        }
+        size.bytes
+    };
+    let mut out = String::with_capacity(capacity);
     for &byte in text.as_bytes() {
         if unreserved(byte) {
             out.push(byte as char);
@@ -41,7 +55,13 @@ pub(crate) fn encode_uri_component(text: &str) -> String {
             out.push(HEX_DIGITS[(byte & 15) as usize] as char);
         }
     }
-    out
+    Some(out)
+}
+
+/// The size of `encodeURIComponent`'s answer, found without writing it: a character for
+/// each unreserved byte, three for every other.
+fn encoded_size(text: &str) -> TextSize {
+    TextSize::ascii(text.bytes().map(|byte| if unreserved(byte) { 1 } else { 3 }).sum())
 }
 
 fn hex_value(byte: u8) -> Option<u8> {
@@ -173,9 +193,10 @@ mod tests {
     #[test]
     fn every_character_outside_the_unreserved_set_is_encoded() {
         let ascii: String = (0..128u8).map(char::from).collect();
-        assert_eq!(encode_uri_component(&ascii), EVERY_ASCII_ENCODED);
+        assert_eq!(encode_uri_component(&ascii).unwrap(), EVERY_ASCII_ENCODED);
         for &(text, expected) in ENCODE_ROWS {
-            assert_eq!(encode_uri_component(text), expected, "{text:?}");
+            assert_eq!(encode_uri_component(text).unwrap(), expected, "{text:?}");
+            assert_eq!(encoded_size(text), TextSize::of(expected), "{text:?}");
             assert_eq!(decode_uri_component(expected).as_deref(), Ok(text), "decoding {expected:?}");
         }
     }
