@@ -247,7 +247,7 @@ mod tests {
         }
     }
 
-    // Recorded by executing re2js 2.8.3's RE2JS.compile(pattern, flags).matcher(text).replaceAll(replacement) and its find() / group(n) loop under Node v24.11.1 (V8 13.6.233.10-node.28, ICU 77.1),
+    // Recorded by executing re2js 2.8.3's RE2JS.compile(pattern, flags).matcher(text).replaceAll(replacement) and its find() / group(n) loop under Node v24.21.0 (V8 13.6.233.17-node.53, ICU 78.3, tz 2026c),
     // against @telorun/cel 0.129.0 at 2ee5ef49.
     /// `(pattern, flags, text, replacement, answer)`.
     const REPLACE_ROWS: &[(&str, u32, &str, &str, &str)] = &[

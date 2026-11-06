@@ -179,7 +179,7 @@ mod tests {
             assert_eq!(decode_uri_component(expected).as_deref(), Ok(text), "decoding {expected:?}");
         }
     }
-    // Recorded by executing decodeURIComponent and encodeURIComponent under Node v24.11.1 (V8 13.6.233.10-node.28, ICU 77.1),
+    // Recorded by executing decodeURIComponent and encodeURIComponent under Node v24.21.0 (V8 13.6.233.17-node.53, ICU 78.3, tz 2026c),
     // against @telorun/cel 0.129.0 at 2ee5ef49.
     /// Every `%XX`, upper case then lower case, in byte order: FNV-1a 64 over V8's answers joined by
     /// line feeds, `!` where it throws.

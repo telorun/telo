@@ -525,7 +525,7 @@ mod tests {
         assert_eq!(to_exponential(f64::INFINITY, Some(101)), "Infinity");
         assert_eq!(to_precision(f64::NAN, 0), "NaN");
     }
-    // Recorded by executing Number.prototype.toFixed, toExponential, toPrecision, toString(2|8|16) and Math.round under Node v24.11.1 (V8 13.6.233.10-node.28, ICU 77.1),
+    // Recorded by executing Number.prototype.toFixed, toExponential, toPrecision, toString(2|8|16) and Math.round under Node v24.21.0 (V8 13.6.233.17-node.53, ICU 78.3, tz 2026c),
     // against @telorun/cel 0.129.0 at 2ee5ef49.
     /// `(value's bits, digest)`: FNV-1a 64 over the UTF-8 of every answer joined by line feeds —
     /// `toFixed(0..=100)`, `toExponential(0..=100)`, `toExponential()`, `toPrecision(1..=100)`,

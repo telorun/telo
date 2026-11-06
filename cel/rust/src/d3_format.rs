@@ -608,7 +608,7 @@ mod tests {
         let first = first.expect("one written");
         assert!(formatter_cache().lock().expect(CACHE_LOCK).get(first.as_str()).is_none(), "the oldest of 257 is dropped");
     }
-    // Recorded by executing d3-format 3.1.2's formatLocale({ decimal: ".", thousands: ",", grouping: [3], currency: ["$", ""], minus: "-", percent: "%", nan: "NaN" }) under Node v24.11.1 (V8 13.6.233.10-node.28, ICU 77.1),
+    // Recorded by executing d3-format 3.1.2's formatLocale({ decimal: ".", thousands: ",", grouping: [3], currency: ["$", ""], minus: "-", percent: "%", nan: "NaN" }) under Node v24.21.0 (V8 13.6.233.17-node.53, ICU 78.3, tz 2026c),
     // against @telorun/cel 0.129.0 at 2ee5ef49.
     /// The values every specifier formats, as bits.
     const D3_VALUES: &[u64] = &[
