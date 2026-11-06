@@ -20,10 +20,11 @@
 //! host vocabulary; and nothing recurses with the depth of its input.
 //!
 //! Each file twins the `cel/nodejs/src` file of its name, and each header lists the
-//! Node items with no twin. Six files have no Node twin, each header saying why:
-//! `json_value.rs`; the RE2 files and the Unicode data, whose roles Node's dependency
-//! re2js and its host's V8 fill; and the zone database, whose role its host's Intl
-//! fills. The exports below are the front-end block of Node's entry, its
+//! Node items with no twin. The files with no Node twin each say why in their header:
+//! `json_value.rs`; the RE2 files, the matcher and the Unicode data, whose roles Node's
+//! dependency re2js and its host's V8 fill; the zone database, whose role its host's Intl
+//! fills; and the catalog's text substrate — V8's number methods and URI component coding,
+//! and d3-format's specifier grammar. The exports below are the front-end block of Node's entry, its
 //! comprehension-binding table, the type system's and the checker's items, the value
 //! domain's `cel-value.ts` items, the pattern language's and the bounded cache, the
 //! runtime library's, member read's, equality's, the timestamp file's and `value-text.ts`'s,
@@ -82,6 +83,10 @@
 //! - `re2_onepass.rs`            — no twin: re2js's OnePass
 //! - `re2_backtracker.rs`        — no twin: re2js's backtracker
 //! - `re2_dfa.rs`                — no twin: re2js's DFA
+//! - `re2_matcher.rs`            — no twin: re2js's matcher and its replacement
+//! - `es_number_text.rs`         — no twin: V8's number methods
+//! - `d3_format.rs`              — no twin: d3-format, the number-formatting grammar
+//! - `uri_component.rs`          — no twin: ECMAScript's URI component encoding
 //! - `unicode_tables.rs`         — no twin: generated from the Unicode 17.0 archive
 
 mod activation;
@@ -92,6 +97,12 @@ mod cel_program;
 mod cel_type;
 mod cel_value;
 mod check_diagnostic;
+// The catalog's text substrate is crate-private and read only by the catalog, which is not
+// yet registered here; until it is, nothing outside the files' own tests calls them.
+#[allow(dead_code)]
+mod d3_format;
+#[allow(dead_code)]
+mod es_number_text;
 mod checker;
 mod closure_backend;
 mod comprehension_bindings;
@@ -116,6 +127,8 @@ mod qualified_calls;
 mod re2_backtracker;
 mod re2_dfa;
 mod re2_machine;
+#[allow(dead_code)]
+mod re2_matcher;
 mod re2_onepass;
 mod re2_prefilter;
 mod re2_program;
@@ -136,6 +149,8 @@ mod type_expression;
 // The dataset is generated whole; not every table has a reader in every build.
 #[allow(dead_code)]
 mod unicode_tables;
+#[allow(dead_code)]
+mod uri_component;
 mod value_equality;
 mod value_text;
 mod zone_database;
