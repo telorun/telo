@@ -37,8 +37,7 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: dummy-key-never-used
+    secrets: { anthropicApiKey: dummy-key-never-used }
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('identity/state')" }
     variables:
@@ -79,37 +78,31 @@ metadata: { name: testAllowedVerb }
 steps:
   - name: run
     invoke: !ref Chat.runTelo
-    inputs:
-      args: [cel, functions, --json]
+    inputs: { args: [cel, functions, --json] }
   - name: assertOk
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         exitCode: !cel "steps.run.result.exitCode"
         argv: !cel "trim(steps.run.result.output)"
-      expected:
-        exitCode: 0
-        argv: "cel functions --json"
+      expected: { exitCode: 0, argv: "cel functions --json" }
 ---
 # `["--version"]` alone reaches the CLI with no listed verb, and answers the telo
-# it is (`X`, or `X+unreleased` for a working copy) — which identity exactly is
-# the CLI's own test.
+# it is (`X`, `X-rc.N` for a candidate, either with `+unreleased` for a working
+# copy) — which identity exactly is the CLI's own test.
 kind: Run.Sequence
 metadata: { name: testIdentityQuery }
 steps:
   - name: run
     invoke: !ref Identity.runTelo
-    inputs:
-      args: [--version]
+    inputs: { args: [--version] }
   - name: assertIdentity
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         exitCode: !cel "steps.run.result.exitCode"
-        identity: !cel "trim(steps.run.result.output).matches('^[0-9]+[.][0-9]+[.][0-9]+([+]unreleased)?$')"
-      expected:
-        exitCode: 0
-        identity: true
+        identity: !cel "trim(steps.run.result.output).matches('^[0-9]+[.][0-9]+[.][0-9]+(-rc[.][0-9]+)?([+]unreleased)?$')"
+      expected: { exitCode: 0, identity: true }
 ---
 # Every verb that executes, publishes or writes must be refused BEFORE anything
 # is spawned. `run` is the one that matters most — and the bare-path case with
@@ -124,8 +117,7 @@ steps:
     try:
       - name: attempt
         invoke: !ref Chat.runTelo
-        inputs:
-          args: [run, ./anything.yaml]
+        inputs: { args: [run, ./anything.yaml] }
     catch:
       - name: assertCode
         invoke: { kind: Assert.Equals }
@@ -140,8 +132,7 @@ steps:
     try:
       - name: attempt
         invoke: !ref Chat.runTelo
-        inputs:
-          args: [./anything.yaml]
+        inputs: { args: [./anything.yaml] }
     catch:
       - name: assertCode
         invoke: { kind: Assert.Equals }
@@ -152,8 +143,7 @@ steps:
     try:
       - name: attempt
         invoke: !ref Chat.runTelo
-        inputs:
-          args: [publish, ./telo.yaml]
+        inputs: { args: [publish, ./telo.yaml] }
     catch:
       - name: assertCode
         invoke: { kind: Assert.Equals }
@@ -166,8 +156,7 @@ steps:
     try:
       - name: attempt
         invoke: !ref Chat.runTelo
-        inputs:
-          args: [--version, run, ./anything.yaml]
+        inputs: { args: [--version, run, ./anything.yaml] }
       - name: answered
         throw:
           code: ERR_TEST_EXPECTED_REFUSAL
@@ -182,8 +171,7 @@ steps:
     try:
       - name: attempt
         invoke: !ref Chat.runTelo
-        inputs:
-          args: []
+        inputs: { args: [] }
     catch:
       - name: assertCode
         invoke: { kind: Assert.Equals }
