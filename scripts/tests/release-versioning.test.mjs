@@ -28,7 +28,12 @@ function put(root, path, text) {
 }
 
 function run(root, command, args, env = {}) {
-  return spawnSync(command, args, { cwd: root, encoding: "utf8", env: { ...process.env, ...env } });
+  // The gate reads a pull request's refs from the environment; a test states its own,
+  // or on the Version PR every case runs exempt as `changeset-release/*`.
+  const inherited = { ...process.env };
+  delete inherited.GITHUB_HEAD_REF;
+  delete inherited.GITHUB_BASE_REF;
+  return spawnSync(command, args, { cwd: root, encoding: "utf8", env: { ...inherited, ...env } });
 }
 
 function git(root, ...args) {

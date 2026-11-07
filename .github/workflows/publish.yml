@@ -98,6 +98,11 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TELO_PACK_LINKS_TAG: ${{ steps.planned.outputs.tag }}
 
+      # Opening or updating the Version PR leaves the checkout on that PR's version
+      # commit, which would classify (and tag) a release that never merged.
+      - name: Return to the run's commit
+        run: git checkout --quiet --detach "$GITHUB_SHA"
+
       # Read from the commit, not from the action's output, so a re-run of an old
       # publish classifies as the first did.
       - name: Classify the release
