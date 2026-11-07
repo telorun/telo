@@ -1,5 +1,0 @@
-modules:
-  modules/domain-events: Added
-body: "New module: business events a library announces and its importers handle inside
-  the announcing call and its transaction — Domain.Event, Domain.Emit and
-  Domain.Handler."
