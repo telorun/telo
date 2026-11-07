@@ -3,39 +3,39 @@
 # `telo release verify` reconciles it against the registry.
 modules:
   apps/authoring-agent:
-    version: 0.32.0
+    version: 0.32.1
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-S29XyaO90FVEslIavVs6g6fihy9DEfdQ2EMu87EmYo0
+      image: sha256-lBQkeFtzEAkU9Pn5RTaOHplVwUQxStvChLAKwv1nHyk
   apps/hub:
-    version: 0.22.0
+    version: 0.22.1
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-MPs-T7UHEQa7ndFtPQyZZR_6aefor6HC73j0QBjQVDU
+      image: sha256-DnQb-jIyQfiIcMUUmQs9T3Sa6SLQdcnbDpanNiD_FOw
   blueprints/agent-app:
-    version: 0.4.5
+    version: 0.4.6
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-4-B1R8WmJiWcYX5TNPxk2J3fXYa4rq1RDsh_trywdpA
+      manifest: sha256-YlT3C1DeIZlO7LC2XD2jwT7STYgiddKMENSCijFR13U
   blueprints/approval-app:
-    version: 0.4.5
+    version: 0.4.6
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-5wMK-Bx79FH1EDpAPXYSjTJOG_EskZTKRi1UNj1_vCc
+      manifest: sha256-nJhyD8gCJ2qqdXtEwcW27ooa4gIdwEI3fjKxa0JhrNQ
   blueprints/scheduled-jobs-app:
-    version: 0.2.1
+    version: 0.2.2
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-fG0hNIYvOFs4kYDlcAQEcagUesvuEylCxBkWQUL7gc8
+      manifest: sha256-39cBWv36PhWY40Ae-d6STtmxRFfFJpq5j4nJhlsKvpA
   blueprints/workflow-app:
-    version: 0.4.0
+    version: 0.4.1
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-vnvjet6sYrJxtofk7x2lYLyhYbvaT7z9hRL2UiGmYT8
+      manifest: sha256-UnlQBcRQ8li3PiicF-hw31TblhRMl1Hil5oUf_uXXTo
   modules/ai:
     version: 0.34.0
     registry: oci://ghcr.io/telorun
@@ -297,6 +297,13 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-QXhp5ZwvsFjtoFRqS9F_x_FekQg60VaVLWQYCF4YC_Q
       manifest: sha256-Vn9bdUM0WNp1J2-78rzMyPUANlW6RIwbH8gfeEq4hFY
+  modules/domain-events:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-CdAssp2KeG1818kKBNxKc8PR8i4LhCKL12LEX5V5N24
+      manifest: sha256-HbL41d7EBdgsm_7TH0dK2vo8Zg0tK0Iq_5HMefm77yc
   modules/durable:
     version: 0.4.0
     registry: oci://ghcr.io/telorun
