@@ -23,8 +23,8 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
 use telo_templating::{
-    AnalyzeEnv, CallError, CelEngine, CelHandlers, CompileEnv, CompileOutcome, ModuleCallDispatch, ModuleCallFlagValues,
-    ModuleFunction, TemplatingEngine,
+    AnalyzeEnv, CallError, CelEngine, CelHandlers, CompileEnv, CompileOutcome, InterpolateEngine, ModuleCallDispatch,
+    ModuleCallFlagValues, ModuleFunction, SqlEngine, TemplatingEngine,
 };
 use telorun_cel::{
     CatalogRefusal, CelCallContext, CelEnvironment, FieldDeclaration, FunctionMetadata, NamespaceFunctionDeclaration,
@@ -86,11 +86,13 @@ pub fn conformance_handlers() -> CelHandlers {
     }
 }
 
-/// The engine driving a tag. This card's runner drives `cel` alone.
+/// The engine driving a tag — the one place a dialect tag is tied to an engine.
 fn engine_of(tag: &str) -> &'static dyn TemplatingEngine {
     match tag {
         "cel" => &CelEngine,
-        other => panic!("No dialect engine drives the tag '{other}' yet"),
+        "interpolate" => &InterpolateEngine,
+        "sql" => &SqlEngine,
+        other => panic!("No dialect engine drives the tag '{other}'"),
     }
 }
 

@@ -1,20 +1,27 @@
-//! Telo templating for the Rust kernel.
+//! Telo templating for the Rust kernel: the tag layer.
 //!
 //! Mirrors `templating/nodejs` file for file: the tagged-sentinel shape and the YAML tag
 //! configuration the kernel reads a manifest with, the engine contract (`engine.rs`), and
-//! the `!cel` engine over `telorun-cel` — the two environments, value-type registration,
-//! the verdict codes, compiling an expression with its module calls and written
-//! arguments, the call audit, what an expression reads and the verdict pipeline — beside
-//! the hole grammar. Nothing wires the engine in yet: the kernel's tag reader
+//! every tag engine over `telorun-cel` — `!cel`, `!interpolate`, `!sql` and `!literal`, the
+//! `!ref`, `!include-*` and `!module-path` markers, and the closed table and registry that
+//! list them. Beneath them the two environments with their brands, value-type registration,
+//! the verdict codes, the hole grammar, compiling an expression with its module calls and
+//! written arguments, the call audit, what an expression reads and the walk over a manifest
+//! value for its tagged scalars. Nothing wires the engines in yet: the kernel's tag reader
 //! (`yaml_tags.rs`) still refuses `!cel`, `!interpolate` and `!sql`.
 
+pub mod builtins;
 pub mod cel;
 pub mod engine;
 pub mod engines;
 pub mod expansion_tags;
+pub mod registry;
 pub mod sentinel;
 pub mod yaml_tags;
 
+pub use builtins::{
+    cel_expressions_of, default_registry, produced_type_of, repeatable_source, BUILTIN_ENGINES,
+};
 pub use cel::compile::{
     compile_expression, compiled_value_of, namespace_dispatch_of, repeatable_expression, site_environment,
     CallError, CompiledCall, CompiledValue,
@@ -36,12 +43,18 @@ pub use cel::interpolation_holes::{
     interpolation_shape, literal_fragments, read_interpolation_holes, HoleReading, InterpolationHole,
     InterpolationShape,
 };
+pub use cel::walk::walk_cel_expressions;
+pub use engines::hole_analysis::{analyze_holes, hole_regions, holes_repeatable, require_holes};
 pub use engines::include::{
-    is_include_engine, normalize_include_path, normalize_module_path, IncludePathError,
-    INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE,
+    is_include_engine, normalize_include_path, normalize_module_path, IncludeEngine, IncludePathError,
+    INCLUDE_BYTES, INCLUDE_BYTES_ENGINE, INCLUDE_TEXT, INCLUDE_TEXT_ENGINE,
 };
-pub use engines::module_path::MODULE_PATH_ENGINE;
-pub use engines::r#ref::{parse_ref_source, ParsedRef, RefIndex, RefVerdict, REF_MEMBER_INVALID};
+pub use engines::interpolate::{InterpolateEngine, INTERPOLATE_ENGINE};
+pub use engines::literal::{LiteralEngine, LITERAL_ENGINE};
+pub use engines::module_path::{ModulePathEngine, MODULE_PATH_ENGINE};
+pub use engines::r#ref::{parse_ref_source, ParsedRef, RefEngine, RefIndex, RefVerdict, REF_MEMBER_INVALID};
+pub use engines::sql::{SqlEngine, SQL_ENGINE};
+pub use registry::TemplatingEngineRegistry;
 pub use expansion_tags::{
     expansion_shape_code, expansion_tag_of, is_expansion_tag, EXPANSION_MARKER, EXPANSION_TAGS,
     SPLICE_KEY,
