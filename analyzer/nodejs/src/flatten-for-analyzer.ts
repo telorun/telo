@@ -1,6 +1,6 @@
 import { parseCanonicalTypeSchemaId, parseTeloTypeRef, type ResourceManifest } from "@telorun/sdk";
 import { isKindDocument } from "./kind-declaration.js";
-import type { LoadedGraph, LoadedModule } from "./loaded-types.js";
+import type { ImportEdge, LoadedGraph, LoadedModule, ScopedImportEdge } from "./loaded-types.js";
 import type { LoadedFile } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
 import { hostPathInputs as hostPathInputsOf, type HostPathInput } from "./host-path-slot.js";
@@ -17,6 +17,16 @@ import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { moduleCallSites } from "./cel-access-chains.js";
 import { moduleCallNamesOfFile, SELF_ALIAS } from "./module-call-names.js";
 import { isExpansionSentinel } from "@telorun/templating";
+import { scopedMemberPath } from "./scoped-imports.js";
+import {
+  scopedImportAnchorOf,
+  scopedImportMembers,
+  scopedImportPlace,
+  scopeHoldersOf,
+  type ScopedImportAnchor,
+  type ScopedImportMember,
+  type ScopedImportPlace,
+} from "./scoped-import-identity.js";
 
 /** One parsed `exports.resources` / `exports.kinds` entry. `name` is the exported
  *  instance name or kind suffix (the part after the dot, or the whole entry); `alias`
@@ -309,7 +319,7 @@ export interface ModuleGlobals {
  *  a false positive worse than the unchecked read it replaced. The consumer
  *  leaves a forwarded manifest's `resources` node open and the library's own
  *  analysis, which sees every name, does that check. */
-function readModuleGlobals(libDoc: ResourceManifest | undefined): ModuleGlobals | undefined {
+export function readModuleGlobals(libDoc: ResourceManifest | undefined): ModuleGlobals | undefined {
   const doc = libDoc as Record<string, any> | undefined;
   if (!doc) return undefined;
   const globals: ModuleGlobals = {};
@@ -370,10 +380,7 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
 
   while (queue.length > 0) {
     const fromSource = queue.shift()!;
-    const edges = graph.importEdges.get(fromSource);
-    if (!edges) continue;
-
-    for (const edge of edges.values()) {
+    for (const edge of edgesFrom(graph, fromSource)) {
       if (seen.has(edge.targetSource)) continue;
       seen.add(edge.targetSource);
       queue.push(edge.targetSource);
@@ -390,7 +397,7 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
       // path, stamped `metadata.importPath`, as that instance's.
       const stamped =
         instances(edge.targetSource) > 1 ||
-        [...(graph.importEdges.get(edge.targetSource)?.values() ?? [])].some((e) => instances(e.targetSource) > 1);
+        edgesFrom(graph, edge.targetSource).some((e) => instances(e.targetSource) > 1);
       if (!stamped) {
         result.push(...selected);
         continue;
@@ -407,6 +414,7 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
     }
   }
 
+  stampScopedImportIdentity(graph);
   forwardReExports(graph, result);
 
   // Stamp resolved import identity on every Telo.Import in the result by
@@ -433,6 +441,90 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
   return result;
 }
 
+/** An import edge as the walks over a graph read it, with its alias: an
+ *  `imports:` entry's or a scope member's. */
+type WalkedEdge = (ImportEdge & { alias: string }) | ScopedImportEdge;
+
+/** Every import edge of the module at `source` — its `imports:` entries, then
+ *  the `Telo.Import` documents its files declare as scope members. */
+export function edgesFrom(graph: LoadedGraph, source: string): WalkedEdge[] {
+  const out: WalkedEdge[] = [];
+  for (const [alias, edge] of graph.importEdges.get(source) ?? []) out.push({ ...edge, alias });
+  const mod = graph.modules.get(source);
+  const files = mod ? [mod.owner.source, ...mod.partials.map((p) => p.source)] : [source];
+  for (const file of files) out.push(...(graph.scopedImportEdges?.get(file) ?? []));
+  return out;
+}
+
+/** The holder names a scope member's import sits under; none for `imports:`. */
+function holdersOf(edge: WalkedEdge): string[] {
+  return "holders" in edge ? edge.holders.map((h) => h.name) : [];
+}
+
+/**
+ * Stamp each scoped `Telo.Import` member, in place, with the identity a
+ * top-level import is stamped with — `resolvedModuleName`, `resolvedNamespace`,
+ * `resolvedSource`, `sharedLibrary` — plus `scopeHolders`, the holder names from
+ * its module's top level down. Its alias is a scope's instance name, never a
+ * module alias, so nothing registers it as one.
+ */
+export function stampScopedImportIdentity(graph: LoadedGraph): void {
+  for (const [file, edges] of graph.scopedImportEdges ?? []) {
+    for (const edge of edges) stampScopedMember(edge.member, edge, file, graph);
+  }
+}
+
+/**
+ * {@link stampScopedImportIdentity} over another reading of the graph's files —
+ * `manifests`, top-level documents carrying `metadata.source` (a compiled load
+ * of the same files, which the kernel runs) — each member found by its place.
+ */
+export function stampScopedImportsIn(graph: LoadedGraph, manifests: readonly ResourceManifest[]): void {
+  if (!graph.scopedImportEdges?.size) return;
+  for (const m of manifests) {
+    const file = (m.metadata as { source?: string } | undefined)?.source;
+    const edges = file ? graph.scopedImportEdges.get(file) : undefined;
+    if (!edges) continue;
+    for (const edge of edges) {
+      if (edge.holders[0]!.name !== m.metadata?.name) continue;
+      let node: unknown = m;
+      for (const step of edge.holders) {
+        const array = (node as Record<string, unknown> | undefined)?.[step.field];
+        node = Array.isArray(array) ? array[step.index] : undefined;
+      }
+      const member = node as Record<string, unknown> | undefined;
+      if (member?.kind === "Telo.Import" && (member.metadata as { name?: unknown })?.name === edge.alias) {
+        stampScopedMember(member, edge, file!, graph);
+      }
+    }
+  }
+}
+
+function stampScopedMember(
+  member: Record<string, unknown>,
+  edge: ScopedImportEdge,
+  file: string,
+  graph: LoadedGraph,
+): void {
+  const target = graph.modules.get(edge.targetSource);
+  const libDoc = target?.owner.manifests.find((m) => m && isModuleKind(m.kind));
+  const meta = { ...((member.metadata as Record<string, unknown> | undefined) ?? {}) };
+  meta.resolvedModuleName = edge.targetModuleName;
+  meta.resolvedNamespace = edge.targetNamespace;
+  meta.resolvedSource = edge.targetSource;
+  meta.scopeHolders = edge.holders.map((h) => h.name);
+  meta.scopePath = scopedMemberPath(edge.holders);
+  meta.scopeAnchor = {
+    filePath: file,
+    resource: { kind: edge.holderKind, name: edge.holders[0]!.name },
+    path: meta.scopePath,
+  };
+  if (readLibraryLifecycle(libDoc) === "shared") meta.sharedLibrary = true;
+  member.metadata = meta;
+}
+
+export { scopeHoldersOf, scopedImportAnchorOf, scopedImportMembers, type ScopedImportAnchor, type ScopedImportMember };
+
 /** An exported instance or an internal one it calls — a module instance's own
  *  document, as opposed to the module's kinds, imports and named shapes. */
 function isForwardedInstance(m: ResourceManifest): boolean {
@@ -449,7 +541,8 @@ function isForwardedInstance(m: ResourceManifest): boolean {
 function importPathsOf(graph: LoadedGraph): Map<string, string[][]> {
   const out = new Map<string, string[][]>();
   const walk = (source: string, path: readonly string[], stack: ReadonlySet<string>) => {
-    for (const [alias, edge] of graph.importEdges.get(source) ?? []) {
+    for (const edge of edgesFrom(graph, source)) {
+      const alias = edge.alias;
       if (stack.has(edge.targetSource)) continue;
       const target = graph.modules.get(edge.targetSource);
       const libDoc = target?.owner.manifests.find((m) => m && isModuleKind(m.kind));
@@ -461,7 +554,7 @@ function importPathsOf(graph: LoadedGraph): Map<string, string[][]> {
         walk(edge.targetSource, reached, new Set([...stack, edge.targetSource]));
         continue;
       }
-      const reached = [...path, alias];
+      const reached = [...path, ...holdersOf(edge), alias];
       out.set(edge.targetSource, [...(out.get(edge.targetSource) ?? []), reached]);
       walk(edge.targetSource, reached, new Set([...stack, edge.targetSource]));
     }
@@ -802,6 +895,13 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
     if (edge?.targetModuleName) imports.push({ manifest: m, targetModule: edge.targetModuleName });
     if (edge?.targetSource) sources.push({ manifest: m, targetSource: edge.targetSource });
   }
+  for (const edges of graph.scopedImportEdges?.values() ?? []) {
+    for (const edge of edges) {
+      const manifest = edge.member as unknown as ResourceManifest;
+      imports.push({ manifest, targetModule: edge.targetModuleName });
+      sources.push({ manifest, targetSource: edge.targetSource });
+    }
+  }
   stampResolvedSource(sources);
   stampReExportedKinds(imports, exportedKinds);
   stampExportedKinds(imports, declaredKinds);
@@ -961,6 +1061,7 @@ function canonicalizeInputKind(
  *  consumer selects what it reads (the zone stage, the libraries exporting
  *  instances; the need graph, every library's declarations and imports). */
 export function collectModuleDocuments(graph: LoadedGraph): ModuleDocuments[] {
+  stampScopedImportIdentity(graph);
   const out: ModuleDocuments[] = [];
   for (const [source, mod] of graph.modules) {
     if (source === graph.rootSource) continue;
@@ -1050,6 +1151,23 @@ function stampFile(
     }
 
     out.push({ ...m, metadata: metadata as ResourceManifest["metadata"] });
+  }
+  return out;
+}
+
+/** Every scoped `Telo.Import` beneath `manifests`, by the module declaring its
+ *  holder, then by its name. */
+export function scopedImportsByModule(
+  manifests: readonly ResourceManifest[],
+): Map<string, Map<string, ScopedImportPlace>> {
+  const out = new Map<string, Map<string, ScopedImportPlace>>();
+  for (const { member, top } of scopedImportMembers(manifests)) {
+    const place = scopedImportPlace(member);
+    if (!place) continue;
+    const module = (top.metadata as { module?: string } | undefined)?.module ?? "";
+    let byName = out.get(module);
+    if (!byName) out.set(module, (byName = new Map()));
+    if (!byName.has(place.alias)) byName.set(place.alias, place);
   }
   return out;
 }

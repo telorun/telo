@@ -1,0 +1,14 @@
+# Exports a topic extending a shared payload.
+kind: Telo.Library
+metadata: { name: TypedTopics }
+imports: { Co: ../../kinds }
+exports: { resources: [Joined] }
+---
+kind: Telo.JsonSchema
+metadata: { name: UserPayload }
+schema: { type: object, required: [userId], properties: { userId: { type: string } } }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+extends: UserPayload
+schema: { type: object, properties: { email: { type: string } } }

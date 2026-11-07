@@ -1,0 +1,66 @@
+# A kind that inherits `Telo.Type` only through `extends: Telo.JsonSchema` is a
+# named shape: a contract naming it and an `x-telo-value-schema-from` over it are
+# enforced at `create()` / dispatch like a plain `Telo.JsonSchema`'s.
+kind: Telo.Application
+metadata: { name: SubtypeShapeContract, version: 1.0.0 }
+imports:
+  Kinds: ./__fixtures__/subtype-shape-contract/kinds.yaml
+  Run: ../modules/run
+  Assert: ../modules/assert
+variables: { badEvent: { env: BAD_EVENT, type: object, default: { userId: 1 } } }
+targets:
+  - !ref testInputType
+  - !ref testValueSchemaFrom
+---
+kind: Kinds.Event
+metadata: { name: UserCreated }
+schema:
+  type: object
+  required: [userId, email]
+  properties: { userId: { type: string }, email: { type: string } }
+---
+kind: Telo.Sequence
+metadata: { name: handler }
+inputType: !ref UserCreated
+steps:
+  - name: echo
+    value: !cel "inputs.email"
+---
+kind: Kinds.Echo
+metadata: { name: echo }
+event: !ref UserCreated
+---
+kind: Run.Sequence
+metadata: { name: testInputType }
+steps:
+  - name: attempt
+    try:
+      - name: bad
+        invoke: !ref handler
+        inputs: !cel "variables.badEvent"
+      - { name: notRefused, throw: { code: NOT_REFUSED } }
+    catch:
+      - name: assertRefused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+---
+kind: Run.Sequence
+metadata: { name: testValueSchemaFrom }
+steps:
+  - name: attempt
+    try:
+      - name: bad
+        invoke: !ref echo
+        inputs: { payload: !cel "variables.badEvent" }
+      - { name: notRefused, throw: { code: NOT_REFUSED } }
+    catch:
+      - name: assertRefused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+  - name: good
+    invoke: !ref echo
+    inputs: { payload: { userId: u1, email: e } }

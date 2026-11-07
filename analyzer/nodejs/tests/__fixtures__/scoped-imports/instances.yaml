@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata: { name: ScopedInstances }
+targets: [!ref seq, !ref outside]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./lib }
+steps:
+  - name: call
+    invoke: !ref Inner.greet
+  - name: read
+    value: !cel "resources.Inner.greet"
+---
+kind: Telo.Sequence
+metadata: { name: outside }
+steps:
+  - name: call
+    invoke: !ref Inner.greet
+  - name: read
+    value: !cel "resources.Inner.greet"

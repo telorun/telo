@@ -23,6 +23,7 @@ import {
   flattenForAnalyzer,
   formatAjvErrors,
   flattenLoadedModule,
+  stampScopedImportsIn,
   valueTypeRefusalCode,
   schemaIssues,
   serializableProblems,
@@ -97,7 +98,13 @@ import {
   type ReachSite,
   isDeclarationReadSite,
   isResolvedReference,
+  registeredCoReferrerCalls,
+  type CoReferrerCall,
 } from "@telorun/analyzer";
+import { CoReferrerIndex } from "./co-referrer-index.js";
+import { refuseOutlivingCoReferrers, refuseScopedCoReferrers } from "./scoped-co-referrers.js";
+import { sharedLibraries } from "./controllers/module/shared-libraries.js";
+import { CanonicalSlotKinds } from "./canonical-slot-kinds.js";
 import {
   ControllerContext,
   ControllerPolicy,
@@ -372,6 +379,16 @@ export class Kernel implements IKernel {
   private readonly includeCache: IncludeCache = new Map();
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
+  /** The co-referrers every `callsCoReferrers` slot reaches, built once the
+   *  application has initialized and again after each reconcile; absent while
+   *  either is under way. */
+  private coReferrers: CoReferrerIndex | undefined;
+  /** Every `callsCoReferrers` the registered kinds declare, with the registry's
+   *  definition generation it was read at. */
+  private coReferrerCallsMemo: { generation: number; calls: CoReferrerCall[] } | undefined;
+  /** Why the co-referrer index is absent while a reconcile has withdrawn it —
+   *  undefined before the application first initialized. */
+  private coReferrersWithdrawn: string | undefined;
   /** The load-time flattened set — the entry plus every library's forwarded
    *  declarations and exports. Kept apart from {@link staticManifests}, which
    *  becomes the entry-only normalized set, because an import normalizes its
@@ -665,6 +682,128 @@ export class Kernel implements IKernel {
     return this.registry;
   }
 
+  /** The co-referrer index the running application answers
+   *  `ctx.resolveCoReferrers` from. Asked before the application has
+   *  initialized, the set is not known yet: a deferral, which an init loop
+   *  retries. Asked while a reconcile has withdrawn it, the dispatch is
+   *  cancelled, as one reaching a resource the reconcile unwound is. */
+  coReferrerIndex(asking: string): CoReferrerIndex {
+    if (this.coReferrers) return this.coReferrers;
+    if (this.coReferrersWithdrawn) {
+      throw new RuntimeError(
+        "ERR_INVOKE_CANCELLED",
+        `${asking} was cancelled: ${this.coReferrersWithdrawn}, so its co-referrers are not ` +
+          `known until the reconcile has rebuilt them.`,
+      );
+    }
+    throw new RuntimeError(
+      "ERR_LOCAL_REF_PENDING",
+      `${asking}: its co-referrers are known once the application has initialized, so they ` +
+        `cannot be asked for yet. Dispatch it from a boot target or a request rather than from ` +
+        `another resource's initialization.`,
+    );
+  }
+
+  private indexCoReferrers(): void {
+    this.coReferrersWithdrawn = undefined;
+    // A `shared` library is the root's wherever first reached, a scoped
+    // import's included, so it is in the application's tree.
+    const shared = [...sharedLibraries(this.rootContext).values()].map((entry) => entry.context);
+    this.indexedSharedLibraries = shared.length;
+    this.coReferrers = new CoReferrerIndex(
+      this.rootContext,
+      this.staticManifests,
+      this.canonicalSlotKinds().resolver(),
+      shared,
+    );
+  }
+
+  /** How many `shared` libraries the application's index holds. */
+  private indexedSharedLibraries = 0;
+
+  /** Rebuild the application's index when a scope run has instantiated a
+   *  `shared` library it does not hold yet — nothing before the first index. */
+  reindexCoReferrers(): void {
+    if (this.coReferrers && sharedLibraries(this.rootContext).size !== this.indexedSharedLibraries) {
+      this.indexCoReferrers();
+    }
+  }
+
+  /** The index each scoped `Telo.Import` builds for its library instance, by
+   *  every declaration that instance's tree holds. */
+  private readonly scopedCoReferrers = new WeakMap<ResourceManifest, CoReferrerIndex>();
+
+  /**
+   * Index the library instance a scoped `Telo.Import` reached, for one run of
+   * its scope: the instance, then its imports depth-first. A co-referrer in it
+   * whose target lives outside it — in an instance that outlives the run — is
+   * refused (`ERR_CO_REFERRER_SCOPED`). The inverse withdraws the index, so a
+   * request after the run unwound is cancelled.
+   */
+  indexScopedLibrary(
+    library: ModuleContext,
+    scope: { alias: string; holder: string; field: string },
+  ): () => void {
+    const resolve = this.canonicalSlotKinds().resolver();
+    // A `shared` library beneath it is the root's, in the application's tree.
+    const shared = new Set([...sharedLibraries(this.rootContext).values()].map((entry) => entry.context));
+    const index = new CoReferrerIndex(library, [], resolve, [], shared);
+    refuseOutlivingCoReferrers(index, {
+      ...scope,
+      calls: this.registeredCoReferrerCalls(),
+      resolve,
+      kindOf: (d) => d.context.kindResolver?.(d.manifest.kind as string) ?? (d.manifest.kind as string),
+      sitesOf: (d) => this.referenceSitesIn(d.context as EvaluationContext, d.manifest),
+    });
+    for (const d of index.declarations) {
+      this.scopedCoReferrers.set(authoredDeclarationOf(d.manifest) ?? d.manifest, index);
+    }
+    return () => {
+      index.withdrawn = true;
+    };
+  }
+
+  /** The index answering for `target`'s tree: a scoped import's, else the
+   *  application's. */
+  coReferrerIndexFor(target: ResourceManifest, asking: string): CoReferrerIndex {
+    const scoped = this.scopedCoReferrers.get(target);
+    if (!scoped) return this.coReferrerIndex(asking);
+    if (scoped.withdrawn) {
+      throw new RuntimeError(
+        "ERR_INVOKE_CANCELLED",
+        `${asking} was cancelled: the scope run holding its target has ended, so its co-referrers ` +
+          `are gone with it.`,
+      );
+    }
+    return scoped;
+  }
+
+  /** Definitions with their slot kinds canonical, as the co-referrer readers
+   *  compare them. */
+  private canonicalSlotKinds(): CanonicalSlotKinds {
+    return new CanonicalSlotKinds((kind, module) => this.registry.resolveDefinitionIn(kind, module));
+  }
+
+  /** Every `callsCoReferrers` the registered kinds declare — what makes a scope
+   *  member a co-referrer whether or not anything calling it is loaded. */
+  private registeredCoReferrerCalls(): CoReferrerCall[] {
+    const generation = this.registry.definitionGeneration;
+    if (this.coReferrerCallsMemo?.generation !== generation) {
+      const canonical = this.canonicalSlotKinds();
+      this.coReferrerCallsMemo = {
+        generation,
+        calls: registeredCoReferrerCalls(
+          this.registry.allKinds().flatMap((kind) => {
+            const definition = this.registry.resolveDefinition(kind);
+            return definition ? [canonical.definition(definition)] : [];
+          }),
+          canonical.resolver(),
+        ),
+      };
+    }
+    return this.coReferrerCallsMemo.calls;
+  }
+
   /** The need table of the last load — what a need's outermost constraints and
    *  source are read from when a controller resolves or verifies one. */
   get needTable(): NeedTable | undefined {
@@ -681,6 +820,7 @@ export class Kernel implements IKernel {
       loadTimeManifests: this.loadTimeManifests,
       loadTimeDocuments: this.loadTimeDocuments,
       entryModule: this._appName,
+      loadedGraph: this._loadedGraph,
       loadModule: (url, options) => this.loadAdoptedModule(url, options),
       loadLibrary: async (url) => {
         const graph = await this.loader.loadGraph(url, { desugarImports: true, migrate: true });
@@ -1089,6 +1229,8 @@ export class Kernel implements IKernel {
       if (!isModuleKind(manifest.kind as string)) surviving.set(nameOf(manifest), manifest);
     }
 
+    this.coReferrers = undefined;
+    this.coReferrersWithdrawn = "the runtime is reconciling";
     await this.rootContext.unwindResources(impacted);
     for (const name of impacted) this.rootContext.deregisterManifest(name);
     // A rebuilt catalog is read again, from its new instance.
@@ -1122,6 +1264,7 @@ export class Kernel implements IKernel {
     try {
       if (order) this.rootContext.setInitOrder(order);
       await this.rootContext.initializeResources();
+      this.indexCoReferrers();
     } catch (error) {
       // The resources are already gone; there is no rollback to a state that no
       // longer exists. Say so rather than letting the caller read a validation
@@ -1489,8 +1632,11 @@ export class Kernel implements IKernel {
     // and then never execute.
     const lm = await this.loader.loadModule(sourceUrl, { compile: true, desugarImports: true, migrate: true });
     await this.celModules?.adopt(lm);
+    const runtimeManifests = flattenLoadedModule(lm);
+    // A scoped `Telo.Import` carries the identity the load resolved it to.
+    stampScopedImportsIn(analysisGraph, runtimeManifests);
     const allManifests = expandForConfiguration(
-      flattenLoadedModule(lm),
+      runtimeManifests,
       running.configuration,
       this.registry,
       staticManifests,
@@ -2183,6 +2329,7 @@ export class Kernel implements IKernel {
     await this.eventBus.emit("Kernel.ResourceInitializationStarting", {});
     await this.rootContext.initializeResources();
     this.attachImportedSinks();
+    this.indexCoReferrers();
 
     // Every declared sink has now attached, so the bootstrap buffer has done its
     // job. A consumer connecting later — the debug wire — wants the live stream,
@@ -2279,6 +2426,7 @@ export class Kernel implements IKernel {
     this.staticManifests = [];
     this.loadTimeManifests = [];
     this.loadTimeDocuments = [];
+    this.coReferrers = undefined;
     await this.eventBus.emit("Kernel.Stopped", { exitCode: this._exitCode });
   }
 
@@ -3897,9 +4045,19 @@ export class Kernel implements IKernel {
             );
           }
         }
-        (site.holder as Record<string | number, unknown>)[site.key!] = owner.createScopeHandle(
+        refuseScopedCoReferrers({
+          members: site.data,
+          field: site.path,
+          holder: resource,
+          kindOf: (kind) => owner.kindResolver?.(kind) ?? kind,
+          sitesOf: (member) => this.referenceSitesIn(owner, member),
+          calls: this.registeredCoReferrerCalls(),
+          resolve: this.canonicalSlotKinds().resolver(),
+        });
+        (site.holder as Record<string | number, unknown>)[site.key!] = (owner as unknown as EvaluationContext).createScopeHandle(
           site.data as ResourceManifest[],
           resource,
+          site.path,
         );
         continue;
       }

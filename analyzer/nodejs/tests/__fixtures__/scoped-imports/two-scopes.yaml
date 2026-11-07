@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata: { name: ScopedTwoScopes }
+imports: { Holder: ./holder }
+targets: [!ref pair]
+---
+kind: Holder.Pair
+metadata: { name: pair }
+left:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./lib }
+right:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./lib }
+steps: []

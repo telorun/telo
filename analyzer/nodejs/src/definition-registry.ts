@@ -171,12 +171,20 @@ export class DefinitionRegistry {
     this.add(definition, false);
   }
 
+  /** Bumped by every registration, a re-registration of a kind included: what
+   *  a reader memoizing over the registered definitions keys on. */
+  get generation(): number {
+    return this.registrations;
+  }
+  private registrations = 0;
+
   /** `trustedSchema` skips meta-validating the schema — only for the built-ins,
    *  whose validity a test asserts once. */
   private add(definition: ResourceDefinition, trustedSchema: boolean): void {
     const { name, module: mod } = definition.metadata;
     const key = mod ? `${mod}.${name}` : name;
     this.defs.set(key, definition);
+    this.registrations++;
     // The AUTHOR-FACING (inheritance-resolved) schema depends on the parent —
     // possibly registered after this child — so it recomputes lazily against the
     // now-larger def set.

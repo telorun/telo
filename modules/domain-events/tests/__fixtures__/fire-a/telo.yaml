@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata: { name: FireA, version: 0.1.0 }
+imports: { Domain: ../../../, Bus: ../bus-shared }
+exports: { resources: [fire] }
+---
+kind: Domain.Emit
+metadata: { name: fire }
+event: !ref Bus.Tick

@@ -1,0 +1,9 @@
+# Listens to a shared library's topic, which outlives any instance of this one.
+kind: Telo.Library
+metadata: { name: CoScopedOutliving }
+imports: { Co: ../kinds, Shared: ../announcer-shared }
+---
+kind: Co.Listener
+metadata: { name: onShared }
+topic: !ref Shared.Joined
+label: outliving

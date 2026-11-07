@@ -30,6 +30,7 @@ import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guar
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import { stampDeclaredDisplayMessages } from "../../declared-display-messages.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
+import { refuseInvalidCallsCoReferrers } from "./calls-co-referrers-guard.js";
 import { createTemplateController, type TemplateHost } from "./resource-template-controller.js";
 import type { RefPositionHost } from "../../refuse-computed-ref-slots.js";
 import {
@@ -197,6 +198,16 @@ class ResourceDefinition implements ResourceInstance {
       this.ownSchema as Record<string, unknown> | undefined,
       this.resource.schema as Record<string, unknown> | undefined,
       resolveDef,
+    );
+    refuseInvalidCallsCoReferrers(
+      this.resource as ResourceDefinitionManifest,
+      this.ownSchema as Record<string, unknown> | undefined,
+      (kind, module) =>
+        (
+          ctx as unknown as {
+            resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinitionManifest | undefined;
+          }
+        ).resolveDefinitionIn(kind, module),
     );
 
     // `base:` is the construction mapping of a kind that has NO body of its own:

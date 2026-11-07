@@ -1,0 +1,50 @@
+# An event is matched as declared in the module instance its reference reaches:
+# an isolated library imported twice has two events, a shared one has one
+# however many modules reach it.
+kind: Telo.Application
+metadata: { name: DomainEventsIdentity, version: 1.0.0 }
+imports:
+  Domain: ../
+  Assert: ../../assert
+  IsolatedOne: ./__fixtures__/bus-isolated
+  IsolatedTwo: ./__fixtures__/bus-isolated
+  Bus: ./__fixtures__/bus-shared
+  FireA: ./__fixtures__/fire-a
+  FireB: ./__fixtures__/fire-b
+targets:
+  - !ref test
+  - !ref expectIdentity
+---
+kind: Telo.Sequence
+metadata: { name: isolatedHandled }
+steps: []
+---
+kind: Telo.Sequence
+metadata: { name: sharedHandled }
+steps: []
+---
+kind: Domain.Handler
+metadata: { name: onIsolatedOne }
+event: !ref IsolatedOne.Tick
+invoke: !ref isolatedHandled
+---
+kind: Domain.Handler
+metadata: { name: onSharedOne }
+event: !ref Bus.Tick
+invoke: !ref sharedHandled
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - { name: isolatedOne, invoke: !ref IsolatedOne.fire, inputs: {} }
+  - { name: isolatedTwo, invoke: !ref IsolatedTwo.fire, inputs: {} }
+  - { name: sharedOne, invoke: !ref FireA.fire, inputs: {} }
+  - { name: sharedTwo, invoke: !ref FireB.fire, inputs: {} }
+---
+kind: Assert.Events
+metadata: { name: expectIdentity }
+filter:
+  - { type: "*.Invoked" }
+expect:
+  - { event: isolatedHandled.Invoked, times: 1 }
+  - { event: sharedHandled.Invoked, times: 2 }

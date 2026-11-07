@@ -1,0 +1,19 @@
+# Listeners in the root, in a shared library, and in an isolated library imported
+# twice that imports an isolated library of its own.
+kind: Telo.Application
+metadata: { name: CoAgreement }
+imports: { Co: ../kinds, Events: ../events, TwiceA: ./twice, TwiceB: ./twice }
+---
+kind: Co.Listener
+metadata: { name: rootFirst }
+topic: !ref Events.Joined
+label: rootFirst
+---
+kind: Co.Announce
+metadata: { name: announceJoined }
+topic: !ref Events.Joined
+---
+kind: Co.Listener
+metadata: { name: rootSecond }
+topic: !ref Events.Joined
+label: rootSecond

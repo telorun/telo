@@ -1,0 +1,22 @@
+# As `inside`, with the event also announced from a boot target.
+kind: Telo.Application
+metadata: { name: LentOutside }
+imports:
+  Z: ./kinds
+  Co: ../co-referrers/kinds
+  Signup: { source: ./lib, resources: { connection: !ref db } }
+targets:
+  - invoke: !ref Signup.create
+  - invoke: !ref reannounce
+---
+kind: Z.Conn
+metadata: { name: db }
+---
+kind: Co.Announce
+metadata: { name: reannounce }
+topic: !ref Signup.Created
+---
+kind: Co.Listener
+metadata: { name: onCreated }
+topic: !ref Signup.Created
+invoke: { kind: Z.Op, connection: !ref db }

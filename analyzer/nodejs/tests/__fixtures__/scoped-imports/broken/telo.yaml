@@ -1,0 +1,9 @@
+# Its own defects are its own check's, wherever it is imported from.
+kind: Telo.Library
+metadata: { name: ScopedBrokenLib }
+---
+kind: Telo.Sequence
+metadata: { name: broken }
+steps:
+  - name: call
+    invoke: !ref nothing

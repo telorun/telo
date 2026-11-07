@@ -1,0 +1,13 @@
+# Announces the shared topic detached.
+kind: Telo.Library
+metadata: { name: ComposedRelay }
+imports: { Co: ../../../co-referrers/kinds, F: ../../kinds, Events: ../events }
+exports: { resources: [relay] }
+---
+kind: F.Detach
+metadata: { name: relay }
+body: !ref announce
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Events.Joined

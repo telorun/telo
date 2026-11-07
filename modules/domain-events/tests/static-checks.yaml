@@ -1,0 +1,89 @@
+# What `telo check` reports for events, emits and handlers.
+kind: Telo.Application
+metadata: { name: DomainEventsStaticChecks, version: 1.0.0 }
+imports: { Assert: ../../assert }
+targets:
+  - !ref outboxOutsideTransaction
+  - !ref literalMismatch
+  - !ref unknownFieldSameModule
+  - !ref unknownFieldImported
+  - !ref inputsOmitted
+  - !ref forwardPayloadFits
+  - !ref forwardPayloadMismatch
+  - !ref plainSchema
+  - !ref nonExportedEvent
+  - !ref durableWaitInHandler
+---
+kind: Assert.Manifest
+metadata: { name: outboxOutsideTransaction }
+source: ./__fixtures__/outbox-outside-transaction.yaml
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "queueWelcomeEmail → reannounce"
+---
+kind: Assert.Manifest
+metadata: { name: literalMismatch }
+source: ./__fixtures__/literal-mismatch.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/userId must be string" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/userId must be string" }
+---
+kind: Assert.Manifest
+metadata: { name: unknownFieldSameModule }
+source: ./__fixtures__/unknown-field-same-module.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_FIELD, message: "Domain.Handler/misspelledWhen" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Domain.Handler/misspelledInput" }
+---
+kind: Assert.Manifest
+metadata: { name: unknownFieldImported }
+source: ./__fixtures__/unknown-field-imported.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_FIELD, message: "Domain.Handler/misspelledWhen" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Domain.Handler/misspelledInput" }
+---
+kind: Assert.Manifest
+metadata: { name: inputsOmitted }
+source: ./__fixtures__/inputs-omitted.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "writes no 'inputs:'" }
+---
+kind: Assert.Manifest
+metadata: { name: forwardPayloadFits }
+source: ./__fixtures__/forward-payload.yaml
+expect: { errors: [] }
+---
+kind: Assert.Manifest
+metadata: { name: forwardPayloadMismatch }
+source: ./__fixtures__/forward-non-fitting.yaml
+expect:
+  errors:
+    - { code: CEL_TYPE_ERROR, message: "/email: type mismatch" }
+---
+kind: Assert.Manifest
+metadata: { name: plainSchema }
+source: ./__fixtures__/plain-schema.yaml
+expect:
+  errors:
+    - { code: REFERENCE_KIND_MISMATCH, message: "Domain.Emit/announce" }
+    - { code: REFERENCE_KIND_MISMATCH, message: "Domain.Handler/handle" }
+---
+kind: Assert.Manifest
+metadata: { name: nonExportedEvent }
+source: ./__fixtures__/non-exported-event.yaml
+expect:
+  errors:
+    - { code: UNRESOLVED_REFERENCE, message: "'Events.Private' is not exported" }
+---
+kind: Assert.Manifest
+metadata: { name: durableWaitInHandler }
+source: ./__fixtures__/durable-wait-in-handler.yaml
+expect:
+  errors:
+    - { code: ZONE_REQUIREMENT_UNSATISFIED, message: "Durable.Sleep" }
+    - { code: ZONE_ATTRIBUTE_VIOLATED, message: "createUser" }

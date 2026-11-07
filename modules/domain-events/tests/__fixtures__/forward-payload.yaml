@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata: { name: ForwardPayload, version: 1.0.0 }
+imports: { Domain: ../../, Events: ./lib-events }
+---
+kind: Telo.Sequence
+metadata: { name: fitting }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, required: [email], properties: { email: { type: string } } } }
+steps: []
+---
+kind: Domain.Handler
+metadata: { name: forwardsFitting }
+event: !ref Events.UserCreated
+inputs: !cel "event"
+invoke: !ref fitting

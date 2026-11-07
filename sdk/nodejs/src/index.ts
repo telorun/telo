@@ -28,6 +28,7 @@ export * from "./module-context.js";
 export * from "./effect.js";
 export * from "./resource-context.js";
 export type { NeedConstraints, NeedObservation, NeedResolution } from "./need-resolution.js";
+export type { CoReferrer } from "./co-referrer.js";
 export * from "./resource-instance.js";
 export * from "./resource-manifest.js";
 export * from "./builtin-error-codes.js";

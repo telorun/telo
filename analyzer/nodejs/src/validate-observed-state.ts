@@ -30,6 +30,8 @@ import {
 import { addressOf, importPathThrough, ofInstance, ScopedNameResolver } from "./scoped-name-resolver.js";
 import type { ReachSite } from "./reference-reach.js";
 import type { ScopedResources } from "./kernel-globals.js";
+import { isScopedImport } from "./scoped-import-identity.js";
+import { scopesDeclaredBy } from "./scope-members.js";
 import { scopeMemberOf, walkOwnCelExpressions } from "./scope-members.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -347,9 +349,14 @@ export function scopedResourcesOf(
     ResourceManifest,
     { scopes: ReturnType<typeof declaredScopes>; holder: CelScopeHolder }
   >();
+  // A `Telo.Import` a scope declares publishes its import's reading under its
+  // name, as an `imports:` entry's does at module level: an open node.
+  const importsBySite = new Map<string, string[]>();
   return {
     at(m, path) {
-      if (bySite.size === 0) return undefined;
+      if (bySite.size === 0 && !scopesDeclaredBy(m).some((s) => s.declarations.some(isScopedImport))) {
+        return undefined;
+      }
       const address = addressOf(m);
       if (!address) return undefined;
       let known = holders.get(m);
@@ -358,14 +365,25 @@ export function scopedResourcesOf(
         holders.set(m, (known = { scopes: declaredScopes(sites), holder }));
       }
       const scope = celScopeAt(known.holder, known.scopes, path);
-      return scope ? { holder: address, field: scope.path } : undefined;
+      if (!scope) return undefined;
+      const site = { holder: address, field: scope.path };
+      const key = scopeSiteKey(site);
+      if (!importsBySite.has(key)) {
+        importsBySite.set(
+          key,
+          scope.declarations.filter(isScopedImport).map((d) => (d as ResourceManifest).metadata!.name as string),
+        );
+      }
+      return site;
     },
-    members: (site) =>
-      (bySite.get(scopeSiteKey(site)) ?? []).map((d) => ({
+    members: (site) => [
+      ...(bySite.get(scopeSiteKey(site)) ?? []).map((d) => ({
         name: d.name!,
         ...(d.resource.status ? { status: d.resource.status } : {}),
         ...(d.resource.reading ? { reading: d.resource.reading } : {}),
       })),
+      ...(importsBySite.get(scopeSiteKey(site)) ?? []).map((name) => ({ name })),
+    ],
     member: (site, name) => bySite.get(scopeSiteKey(site))?.find((d) => d.name === name)?.resource,
   };
 }

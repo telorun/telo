@@ -1,0 +1,19 @@
+# The relay and the audit library know nothing of each other; only the
+# application composes them.
+kind: Telo.Application
+metadata: { name: ComposedApp }
+imports:
+  Z: ../../zone-resource-inputs/kinds
+  Events: ./events
+  Relay: ./relay
+  Audit: { source: ./audit, resources: { connection: !ref db } }
+targets:
+  - invoke: !ref tx
+---
+kind: Z.Conn
+metadata: { name: db }
+---
+kind: Z.Tx
+metadata: { name: tx }
+connection: !ref db
+steps: !ref Relay.relay

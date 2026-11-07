@@ -1,0 +1,5 @@
+# Re-exports the shared library's announcer.
+kind: Telo.Library
+metadata: { name: CoScopedViaShared }
+imports: { Shared: ../scoped-shared }
+exports: { resources: [Shared.announce] }

@@ -1,0 +1,96 @@
+kind: Telo.Library
+metadata:
+  name: DomainEvents
+  version: 0.1.0
+  license: MIT
+  description: >-
+    Business events a library announces and its importers react to, inside the
+    announcing call and its transaction. A library declares an event as a typed
+    payload and emits it; any module handles it with a filter and a target. A
+    failing handler fails the call, so a rollback undoes every reaction.
+requires: { telo: ">=0.131.0" }
+exports: { kinds: [Event, Emit, Handler] }
+---
+kind: Telo.Definition
+metadata:
+  name: Event
+  description: >-
+    Declares one business event as the JSON Schema of its payload. Usable
+    anywhere a type is; only an event can be emitted or handled.
+extends: Telo.JsonSchema
+---
+kind: Telo.Definition
+metadata:
+  name: Emit
+  description: >-
+    Announces an event with its payload as the call's inputs, held to the
+    event's schema. Runs every handler of the event in order inside this call and
+    returns an empty object; a handler failure fails the call.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/domain-events.mjs&local_path=./nodejs/src/index.ts#Emit]
+throws:
+  codes:
+    ERR_DOMAIN_EVENT_HANDLER_FAILED:
+      description: A handler of the event failed; the failure is the cause.
+      data:
+        type: object
+        additionalProperties: false
+        required: [event, handler]
+        properties:
+          event: { type: string, description: The event's name. }
+          handler: { type: string, description: The failing handler's name. }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, x-telo-value-schema-from: /event }
+outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [event]
+  properties:
+    event:
+      title: Event
+      description: The event announced.
+      x-telo-ref:
+        kind: Self.Event
+        use: schema
+        callsCoReferrers: { kind: Self.Handler, slot: /event }
+---
+kind: Telo.Definition
+metadata:
+  name: Handler
+  description: >-
+    Reacts to one event: when its condition holds, calls its target with inputs
+    computed from the payload. Runs inside the announcing call, so its writes
+    share that call's transaction.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/domain-events.mjs&local_path=./nodejs/src/index.ts#Handler]
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, x-telo-value-schema-from: /event }
+schema:
+  type: object
+  additionalProperties: false
+  required: [event, invoke]
+  properties:
+    event:
+      title: Event
+      description: The event handled.
+      x-telo-ref: { kind: Self.Event, use: schema }
+    when:
+      title: When
+      description: Evaluated per event; false skips the target.
+      type: boolean
+      x-telo-eval: runtime
+      x-telo-context: { type: object, properties: { event: { x-telo-context-ref-from: event/schema } } }
+    invoke:
+      title: Target
+      description: What runs for the event; its result is discarded.
+      x-telo-ref: { kind: Telo.Executable, use: call, inputs: /inputs }
+    inputs:
+      title: Inputs
+      description: The target's inputs over `event`; omitted, the target is invoked with `{}`.
+      type: object
+      additionalProperties: true
+      default: {}
+      x-telo-context: { type: object, properties: { event: { x-telo-context-ref-from: event/schema } } }

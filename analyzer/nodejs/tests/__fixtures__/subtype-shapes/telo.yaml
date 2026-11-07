@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata: { name: SubtypeApp }
+imports:
+  Kinds: ./kinds
+  Lib: ./lib
+---
+kind: Kinds.Event
+metadata: { name: LocalCreated }
+schema:
+  type: object
+  required: [userId, email]
+  properties: { userId: { type: string }, email: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Plain }
+schema: { type: object }
+---
+kind: Telo.Sequence
+metadata: { name: local }
+inputType: !ref LocalCreated
+steps:
+  - name: ok
+    value: !cel "inputs.email"
+  - name: bad
+    value: !cel "inputs.kye"
+---
+kind: Telo.Sequence
+metadata: { name: imported }
+inputType: !ref Lib.UserCreated
+steps:
+  - name: ok
+    value: !cel "inputs.email"
+  - name: bad
+    value: !cel "inputs.kye"
+---
+kind: Kinds.Probe
+metadata: { name: good }
+event: !ref Lib.UserCreated
+value: { userId: u1, email: e }
+label: !cel "payload.email"
+---
+kind: Kinds.Probe
+metadata: { name: wrong }
+event: !ref Lib.UserCreated
+value: { userId: 1 }
+label: !cel "payload.nope"
+---
+kind: Kinds.Strict
+metadata: { name: acceptsSubtype }
+event: !ref LocalCreated
+---
+kind: Kinds.Strict
+metadata: { name: refusesPlain }
+event: !ref Plain

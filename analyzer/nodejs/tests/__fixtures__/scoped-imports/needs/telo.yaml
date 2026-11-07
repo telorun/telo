@@ -1,0 +1,4 @@
+# Needs a directory.
+kind: Telo.Library
+metadata: { name: ScopedNeedsLib }
+needs: { storage: { kind: Telo.DurableDirectory } }

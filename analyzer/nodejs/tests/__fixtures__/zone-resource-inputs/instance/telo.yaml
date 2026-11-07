@@ -1,0 +1,20 @@
+# As `lib`, announcing through a named export, so each instance's announce is a
+# declaration of that instance.
+kind: Telo.Library
+metadata: { name: SignupInstance }
+imports: { Z: ../kinds, Co: ../../co-referrers/kinds }
+resources: { connection: { kind: Z.Conn } }
+exports: { resources: [Created, create, announce] }
+---
+kind: Co.Topic
+metadata: { name: Created }
+schema: { type: object }
+---
+kind: Z.Tx
+metadata: { name: create }
+connection: !ref connection
+steps: !ref announce
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Created

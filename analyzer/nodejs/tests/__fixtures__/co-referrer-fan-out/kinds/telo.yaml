@@ -1,0 +1,14 @@
+# A kind dispatching its body detached, outside every zone its caller is in.
+kind: Telo.Library
+metadata: { name: FanOutKinds }
+exports: { kinds: [Detach] }
+---
+kind: Telo.Definition
+metadata: { name: Detach }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [body]
+  properties: { body: { x-telo-ref: { kind: Telo.Executable, use: detached } } }

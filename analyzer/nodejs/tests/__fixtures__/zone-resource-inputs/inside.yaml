@@ -1,0 +1,18 @@
+# The handler's operation on `db` runs in the transaction the library opens on
+# the connection `db` lends it.
+kind: Telo.Application
+metadata: { name: LentInside }
+imports:
+  Z: ./kinds
+  Co: ../co-referrers/kinds
+  Signup: { source: ./lib, resources: { connection: !ref db } }
+targets:
+  - invoke: !ref Signup.create
+---
+kind: Z.Conn
+metadata: { name: db }
+---
+kind: Co.Listener
+metadata: { name: onCreated }
+topic: !ref Signup.Created
+invoke: { kind: Z.Op, connection: !ref db }

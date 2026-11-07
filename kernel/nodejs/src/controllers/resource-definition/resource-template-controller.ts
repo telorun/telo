@@ -55,6 +55,7 @@ import {
 } from "./template-instance-expansion.js";
 import { isWithinSlot, stepValueSlots } from "./step-value-slots.js";
 import { TemplateBodyResources, type FamilyPlace } from "../../template-body-resources.js";
+import { recordTemplateBody } from "../../template-body-contexts.js";
 
 /**
  * WHICH NODES OF A TEMPLATE BODY SURVIVE init() UNEXPANDED.
@@ -588,7 +589,7 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
        *  instantiated many times across an application. */
       const readingByKind = new Map<string, NestedKindReading>();
 
-      return {
+      const instance: ResourceInstance = {
         // The template's own resources are its allocation, and tearing the child
         // context down is the inverse. `init()` still resumes rather than
         // restarting, because a deferral (a child ref naming a sibling that has
@@ -733,6 +734,8 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
         }),
 
       };
+      recordTemplateBody(instance, childContext);
+      return instance;
     },
   };
 }

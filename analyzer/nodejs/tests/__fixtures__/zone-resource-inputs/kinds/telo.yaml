@@ -1,0 +1,34 @@
+# Generic fixture kinds: a connection, a transaction opening a zone on the one
+# it holds, and an operation requiring that zone on its own connection.
+kind: Telo.Library
+metadata: { name: ZoneKinds }
+exports: { kinds: [Conn, Tx, Op] }
+---
+kind: Telo.Definition
+metadata: { name: Conn }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema: { type: object, additionalProperties: false, properties: {} }
+---
+kind: Telo.Definition
+metadata: { name: Tx }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection, steps]
+  properties:
+    connection: { x-telo-ref: { kind: Self.Conn, use: dependency } }
+    steps: { x-telo-ref: { kind: Telo.Executable, use: call }, x-telo-provides-zone: /connection }
+---
+kind: Telo.Definition
+metadata: { name: Op }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection]
+  x-telo-requires-zone: { zone: Self.Tx, key: [/connection], reason: the operation would run outside the transaction }
+  properties: { connection: { x-telo-ref: { kind: Self.Conn, use: dependency } } }

@@ -1,0 +1,12 @@
+# A scope sibling spells a kind through a scoped import, which names no module.
+kind: Telo.Application
+metadata: { name: ScopedImportKind }
+targets: [!ref seq]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./kinds-lib }
+  - { kind: Inner.Thing, metadata: { name: Shape }, schema: { type: string } }
+steps:
+  - { name: noop, value: 1 }

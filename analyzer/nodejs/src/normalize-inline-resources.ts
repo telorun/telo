@@ -83,6 +83,8 @@ interface Provenance {
   module: string | undefined;
   forwarded: boolean;
   moduleGlobals: unknown;
+  /** The module instance a dependency's copy belongs to (`metadata.importPath`). */
+  importPath: unknown;
 }
 
 /** A declaration waiting to have its inline slots extracted. */
@@ -270,6 +272,7 @@ export function normalizeInlineResources(
       module: parentModule,
       forwarded: current.forwarded,
       moduleGlobals: current.moduleGlobals,
+      importPath: current.importPath,
     };
 
     const scopes = declaredScopes(sites);
@@ -363,6 +366,7 @@ function provenanceOf(manifest: ResourceManifest, module: string | undefined): P
     module: moduleOf(manifest) ?? module,
     forwarded: isForwardedDeclaration(manifest),
     moduleGlobals: (manifest.metadata as { moduleGlobals?: unknown } | undefined)?.moduleGlobals,
+    importPath: (manifest.metadata as { importPath?: unknown } | undefined)?.importPath,
   };
 }
 
@@ -560,6 +564,7 @@ function buildManifest(
       ...(inherit.module && !existingMeta.module ? { module: inherit.module } : {}),
       ...(inherit.forwarded ? { forwardedInternal: true } : {}),
       ...(inherit.moduleGlobals !== undefined ? { moduleGlobals: inherit.moduleGlobals } : {}),
+      ...(inherit.importPath !== undefined && !existingMeta.importPath ? { importPath: inherit.importPath } : {}),
       ...(invocationContext ? { xTeloInvocationContext: invocationContext } : {}),
       xTeloOrigin: origin,
     },

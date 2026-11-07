@@ -32,6 +32,10 @@ import { DefinitionRegistry } from "./definition-registry.js";
 import type { ContractDirection } from "./extends-resolution.js";
 import { analyzerContractScope, resolveContract } from "./invocation-contract.js";
 import { buildCallGraph, referrerSlotsOf, type CallGraph } from "./call-graph.js";
+import { coReferrerStandIns } from "./co-referrer-stand-ins.js";
+import { normalizeInlineResources } from "./normalize-inline-resources.js";
+import { listResolution } from "./reference-resolution.js";
+import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
 import { findManifest } from "./find-manifest.js";
 import {
   buildModuleGraph,
@@ -131,10 +135,22 @@ export class ManifestAnalysis {
   /** What calls what. Built on first use and kept, so the projection and any
    *  other consumer over this set share one. */
   private get callGraph(): CallGraph {
-    return (this.callGraphMemo ??= buildCallGraph(this.manifests, this.ctx.defs, {
-      aliases: this.ctx.aliases,
-      aliasesByModule: this.ctx.aliasesByModule,
-    }));
+    return (this.callGraphMemo ??= buildCallGraph(
+      [...this.manifests, ...this.coReferrerStandIns()],
+      this.ctx.defs,
+      { aliases: this.ctx.aliases, aliasesByModule: this.ctx.aliasesByModule, libraries: this.moduleDocuments },
+    ));
+  }
+
+  /** The imported libraries' declarations the `callsCoReferrers` fan-out needs
+   *  in view, read as the analysis reads them (`co-referrer-stand-ins.ts`). */
+  private coReferrerStandIns(): ResourceManifest[] {
+    const { defs, aliases, aliasesByModule } = this.ctx;
+    const standIns = coReferrerStandIns(this.manifests, this.moduleDocuments, { defs, aliases, aliasesByModule });
+    if (standIns.length === 0) return [];
+    const normalized = normalizeInlineResources(standIns, defs, aliases, aliasesByModule);
+    resolveRefSentinels(normalized, aliases, aliasesByModule, listResolution([...this.manifests, ...normalized]), defs);
+    return normalized;
   }
 
   /**

@@ -240,6 +240,7 @@ export function refFieldEntryOf(
   if (slot.outputType) entry.outputType = slot.outputType;
   if (slot.outputTo) entry.outputTo = slot.outputTo;
   if (slot.observes) entry.observes = slot.observes;
+  if (slot.callsCoReferrers) entry.callsCoReferrers = slot.callsCoReferrers;
   return entry;
 }
 
@@ -257,6 +258,7 @@ export function refSlotOfEntry(entry: RefFieldEntry): RefSlot {
   if (entry.outputType) slot.outputType = entry.outputType;
   if (entry.outputTo) slot.outputTo = entry.outputTo;
   if (entry.observes) slot.observes = entry.observes;
+  if (entry.callsCoReferrers) slot.callsCoReferrers = entry.callsCoReferrers;
   return slot;
 }
 
@@ -1083,6 +1085,7 @@ export function siteRefEntry(site: ReachSite): RefFieldEntry {
     if (slot.outputType && !entry.outputType) entry.outputType = slot.outputType;
     if (slot.outputTo && !entry.outputTo) entry.outputTo = slot.outputTo;
     if (slot.observes && !entry.observes) entry.observes = slot.observes;
+    if (slot.callsCoReferrers && !entry.callsCoReferrers) entry.callsCoReferrers = slot.callsCoReferrers;
     valueBranches.push(...slot.valueBranches);
   }
   if (valueBranches.length > 0) entry.valueBranches = valueBranches;

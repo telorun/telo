@@ -1,0 +1,23 @@
+# Two sequences, each importing the same library in its own scope, beside a
+# shared library the root imports.
+kind: Telo.Application
+metadata: { name: CoScoped }
+imports: { Co: ./kinds, Shared: ./announcer-shared }
+---
+kind: Telo.Sequence
+metadata: { name: first }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./scoped-lib }
+steps:
+  - name: announce
+    invoke: !ref Inner.announce
+outputs: { ran: !cel "steps.announce.result.ran" }
+---
+kind: Telo.Sequence
+metadata: { name: second }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./scoped-lib }
+steps:
+  - name: announce
+    invoke: !ref Inner.announce
+outputs: { ran: !cel "steps.announce.result.ran" }

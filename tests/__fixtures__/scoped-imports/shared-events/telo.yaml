@@ -1,0 +1,14 @@
+# One instance for the whole application, owned by the root.
+kind: Telo.Library
+metadata: { name: ScopedSharedEvents }
+lifecycle: shared
+imports: { Domain: ../../../../modules/domain-events }
+exports: { resources: [Joined, announce] }
+---
+kind: Domain.Event
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Domain.Emit
+metadata: { name: announce }
+event: !ref Joined

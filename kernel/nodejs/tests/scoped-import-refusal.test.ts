@@ -9,8 +9,9 @@ import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const RUN = path.resolve(here, "../../../modules/run");
 
-/** A `Telo.Import` declared in a `with:` scope: the graph walk never reaches it,
- *  so the import controller is what judges its target, when the scope opens. */
+/** A `Telo.Import` declared in a `with:` scope: the graph walk reaches it like an
+ *  `imports:` entry, so the load refuses its target before anything boots,
+ *  located at the member inside its holder. */
 function appYaml(source: string): string {
   return `kind: Telo.Application
 metadata:
@@ -47,39 +48,37 @@ async function runScopedImport(source: string, files: Record<string, string>): P
   const appPath = path.join(dir, "telo.yaml");
   await fs.writeFile(appPath, appYaml(source));
   const kernel = new Kernel({ sources: [new LocalFileSource()], env: {} });
-  await kernel.load(appPath);
-  await kernel.boot();
   try {
-    await kernel.runTargets();
+    await kernel.load(appPath);
   } catch (error) {
     return error;
-  } finally {
-    await kernel.teardown();
   }
-  throw new Error("the scoped import was not refused");
+  await kernel.teardown();
+  throw new Error("the scoped import was not refused at load");
 }
 
-/** The run's init-failure entry for the scoped import. */
+/** The load failure's diagnostic, located at the member inside its holder. */
 function importEntry(error: unknown): unknown {
-  return (error as { diagnostics?: unknown[] }).diagnostics?.find(
-    (d) => (d as { resource?: unknown }).resource === "Inner",
-  );
+  const [diagnostic] = (error as { diagnostics?: unknown[] }).diagnostics ?? [];
+  return { code: (error as { code?: unknown }).code, diagnostic };
 }
+
+const AT_MEMBER = { origin: expect.objectContaining({ resource: { kind: "Run.Sequence", name: "seq" }, path: "with[0]" }) };
 
 describe("a scoped import whose source names no module", () => {
   it("refuses a source that does not resolve as ERR_IMPORT_UNRESOLVED", async () => {
     const error = await runScopedImport("./nope.yaml", {});
     expect(importEntry(error)).toMatchObject({
-      kind: "Telo.Import",
       code: "ERR_IMPORT_UNRESOLVED",
+      diagnostic: { code: "IMPORT_UNRESOLVED", ...AT_MEMBER },
     });
   });
 
   it("refuses a source that is no module reference as ERR_INVALID_IMPORT_SOURCE", async () => {
     const error = await runScopedImport('"foo bar baz"', {});
     expect(importEntry(error)).toMatchObject({
-      kind: "Telo.Import",
       code: "ERR_INVALID_IMPORT_SOURCE",
+      diagnostic: { code: "INVALID_IMPORT_SOURCE", ...AT_MEMBER },
     });
   });
 });
@@ -90,12 +89,15 @@ describe("a scoped import of a target that is not a library", () => {
       "other-app.yaml": "kind: Telo.Application\nmetadata:\n  name: OtherApp\n",
     });
     expect(importEntry(error)).toMatchObject({
-      kind: "Telo.Import",
       code: "ERR_INVALID_IMPORT_TARGET",
-      message:
-        "RuntimeError: Telo.Import target './other-app.yaml' is a Telo.Application. Only " +
-        "Telo.Library modules may be imported. Applications are run directly, not imported. " +
-        "Point this import at a library, or drop it and run that application on its own.",
+      diagnostic: {
+        code: "INVALID_IMPORT_TARGET",
+        message:
+          "Cannot use import 'Inner' → './other-app.yaml': Telo.Import target './other-app.yaml' is a " +
+          "Telo.Application. Only Telo.Library modules may be imported. Applications are run directly, " +
+          "not imported. Point this import at a library, or drop it and run that application on its own.",
+        ...AT_MEMBER,
+      },
     });
   });
 
@@ -104,11 +106,14 @@ describe("a scoped import of a target that is not a library", () => {
       "not-a-module.yaml": "kind: Telo.JsonSchema\nmetadata:\n  name: Thing\nschema:\n  type: string\n",
     });
     expect(importEntry(error)).toMatchObject({
-      kind: "Telo.Import",
       code: "ERR_INVALID_IMPORT_TARGET",
-      message: expect.stringContaining(
-        "RuntimeError: Telo.Import target './not-a-module.yaml' did not resolve to a Telo.Library.",
-      ),
+      diagnostic: {
+        code: "INVALID_IMPORT_TARGET",
+        message: expect.stringContaining(
+          "Telo.Import target './not-a-module.yaml' did not resolve to a Telo.Library.",
+        ),
+        ...AT_MEMBER,
+      },
     });
   });
 
@@ -117,9 +122,12 @@ describe("a scoped import of a target that is not a library", () => {
       "self-lib.yaml": "kind: Telo.Library\nmetadata:\n  name: Self\n  version: 1.0.0\n",
     });
     expect(importEntry(error)).toMatchObject({
-      kind: "Telo.Import",
       code: "ERR_KIND_PREFIX_RESERVED",
-      message: expect.stringContaining("'./self-lib.yaml' is a Telo.Library named 'Self'"),
+      diagnostic: {
+        code: "KIND_PREFIX_RESERVED",
+        message: expect.stringContaining("'./self-lib.yaml' is a Telo.Library named 'Self'"),
+        ...AT_MEMBER,
+      },
     });
   });
 });

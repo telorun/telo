@@ -1,3 +1,4 @@
+import { inheritedCapability } from "./extends-resolution.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -19,7 +20,10 @@ export interface ConfiguredShapeScope {
 export function declaresNamedShape(m: ResourceManifest, scope: ConfiguredShapeScope): boolean {
   if (typeof m.kind !== "string") return false;
   return (
-    definitionInScope(scope.defs, m.kind, m.metadata, scope.aliases, scope.aliasesByModule)?.capability === "Telo.Type"
+    inheritedCapability(
+      definitionInScope(scope.defs, m.kind, m.metadata, scope.aliases, scope.aliasesByModule),
+      (k) => scope.defs.resolve(k),
+    ) === "Telo.Type"
   );
 }
 
@@ -77,7 +81,7 @@ export function libraryNamedShapes(
       const name = doc.metadata?.name;
       if (typeof name !== "string" || typeof doc.kind !== "string") continue;
       if (!doc.schema || typeof doc.schema !== "object") continue;
-      if (defs.resolve(scope.resolveKind(doc.kind) ?? doc.kind)?.capability !== "Telo.Type") continue;
+      if (inheritedCapability(defs.resolve(scope.resolveKind(doc.kind) ?? doc.kind), (k) => defs.resolve(k)) !== "Telo.Type") continue;
       let canonical: Record<string, any> | undefined;
       out.push({
         module: library.module,

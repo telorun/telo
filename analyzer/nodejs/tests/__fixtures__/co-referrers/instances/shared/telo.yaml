@@ -1,0 +1,14 @@
+# Announces its own topic; every import of it reaches one instance.
+kind: Telo.Library
+metadata: { name: SharedAnnouncer }
+lifecycle: shared
+imports: { Co: ../../kinds }
+exports: { resources: [Joined, announce] }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object, required: [userId], properties: { userId: { type: string } } }
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Joined

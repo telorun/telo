@@ -1,3 +1,5 @@
+import type { ResourceDefinition } from "@telorun/sdk";
+import { inheritedCapability } from "./extends-resolution.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, parseCanonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -69,7 +71,7 @@ export function resolveSchemaTypeRefs(
     }
     if (!defs) continue;
     const namesShape = (kind: string): boolean =>
-      definitionInScope(defs, kind, r.metadata, aliases, aliasesByModule)?.capability === "Telo.Type";
+      inheritedCapability(definitionInScope(defs, kind, r.metadata, aliases, aliasesByModule), (k) => defs.resolve(k)) === "Telo.Type";
     for (const [field, value] of Object.entries(r)) {
       if (field === "kind" || field === "metadata" || SCHEMA_FIELDS.includes(field) || SIGNATURE_FIELDS.includes(field)) {
         continue;
@@ -81,7 +83,7 @@ export function resolveSchemaTypeRefs(
 
 /** The slice of the definition registry that tells a named shape's kind. */
 export interface ShapeKindSource {
-  resolve(kind: string): { capability?: unknown } | undefined;
+  resolve(kind: string): ResourceDefinition | undefined;
 }
 
 /**

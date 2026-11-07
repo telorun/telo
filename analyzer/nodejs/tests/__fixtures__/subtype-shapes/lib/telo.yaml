@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata: { name: SubtypeLib }
+imports:
+  Kinds: ../kinds
+exports:
+  resources: [UserCreated]
+---
+kind: Kinds.Event
+metadata: { name: UserCreated }
+schema:
+  type: object
+  required: [userId, email]
+  properties: { userId: { type: string }, email: { type: string } }

@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: ScopedNeeds }
+targets: [!ref first, !ref second]
+---
+kind: Telo.Sequence
+metadata: { name: first }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./needs }
+steps:
+  - { name: noop, value: 1 }
+---
+kind: Telo.Sequence
+metadata: { name: second }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./needs }
+steps:
+  - { name: noop, value: 1 }

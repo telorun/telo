@@ -12,7 +12,9 @@ import type {
   LoadedFile,
   LoadedGraph,
   LoadedModule,
+  ScopedImportEdge,
 } from "./loaded-types.js";
+import { scopedImportsOf, scopedMemberPath } from "./scoped-imports.js";
 import {
   BUILTIN_VOCABULARY_NOT_A_MODULE,
   builtinVocabularyImportMessage,
@@ -174,8 +176,9 @@ export interface ImportRequest {
   fromSource: string;
   /** The source exactly as authored. */
   source: string;
-  /** Its `imports:` key; absent for an import no `imports:` entry declares (one
-   *  in a `with:` scope), whose alias is guarded where it is registered. */
+  /** Its `imports:` key, or a scope member's name; absent for an import the
+   *  kernel loads with no name in hand, whose alias is guarded where it is
+   *  registered. */
   alias?: string;
   /** Line of the declaring `Telo.Import` document. */
   sourceLine?: number;
@@ -602,72 +605,128 @@ export class Loader {
       };
     }
     const importEdges = new Map<string, Map<string, ImportEdge>>();
+    const scopedImportEdges = new Map<string, ScopedImportEdge[]>();
     const errors: GraphLoadError[] = [];
 
     const queue: LoadedModule[] = [entry];
     const visited = new Set<string>([rootSource]);
+    const loadTarget = async (url: string): Promise<LoadedModule> => {
+      const known = modules.get(url);
+      if (known) return known;
+      const target = await this.loadModule(url, options);
+      const canonical = target.owner.source;
+      if (!modules.has(canonical)) modules.set(canonical, target);
+      return modules.get(canonical)!;
+    };
+    const port = {
+      resolve: (from: string, source: string) => this.resolveImportUrl(from, source),
+      load: loadTarget,
+    };
+    const scanned = new Set<string>();
 
-    while (queue.length > 0) {
-      const mod = queue.shift()!;
+    // Every module's `imports:` first, so a holder's kind resolves through its
+    // module's whole import closure; then the scoped imports of every module
+    // reached, whose targets are walked in turn, until nothing new is reached.
+    for (;;) {
+      while (queue.length > 0) {
+        const mod = queue.shift()!;
 
-      for (const file of [mod.owner, ...mod.partials]) {
-        const aliases = importEdges.get(file.source) ?? new Map<string, ImportEdge>();
+        for (const file of [mod.owner, ...mod.partials]) {
+          const aliases = importEdges.get(file.source) ?? new Map<string, ImportEdge>();
 
-        for (let i = 0; i < file.manifests.length; i++) {
-          const m = file.manifests[i];
-          if (!m || m.kind !== "Telo.Import") continue;
-          const importSource = (m as { source?: string }).source;
-          if (!importSource) continue;
-          const alias = m.metadata?.name as string | undefined;
-          if (!alias) continue;
-          // Source line of this Telo.Import doc — read from the LoadedFile's
-          // position table since `parseLoadedFile` doesn't stamp `sourceLine`
-          // onto manifest metadata. Used to pin import-resolution diagnostics
-          // to the line where the import was declared.
-          const sourceLine = file.positions[i]?.sourceLine ?? 0;
+          for (let i = 0; i < file.manifests.length; i++) {
+            const m = file.manifests[i];
+            if (!m || m.kind !== "Telo.Import") continue;
+            const importSource = (m as { source?: string }).source;
+            if (!importSource) continue;
+            const alias = m.metadata?.name as string | undefined;
+            if (!alias) continue;
+            // Source line of this Telo.Import doc — read from the LoadedFile's
+            // position table since `parseLoadedFile` doesn't stamp `sourceLine`
+            // onto manifest metadata. Used to pin import-resolution diagnostics
+            // to the line where the import was declared.
+            const sourceLine = file.positions[i]?.sourceLine ?? 0;
 
-          // The target is keyed by its canonical `source` — the modules-map key
-          // — so a module several imports reach is loaded once. A failure is
-          // recorded against this import, with no edge, and the rest of the
-          // graph still loads.
-          const loaded = await loadImportTarget(
-            { fromSource: file.source, source: importSource, alias, sourceLine },
-            {
-              resolve: (from, source) => this.resolveImportUrl(from, source),
-              load: async (url) => {
-                const known = modules.get(url);
-                if (known) return known;
-                const target = await this.loadModule(url, options);
-                const canonical = target.owner.source;
-                if (!modules.has(canonical)) modules.set(canonical, target);
-                return modules.get(canonical)!;
-              },
-            },
-          );
-          if ("failure" in loaded) {
-            errors.push(loaded.failure);
-            continue;
+            // The target is keyed by its canonical `source` — the modules-map key
+            // — so a module several imports reach is loaded once. A failure is
+            // recorded against this import, with no edge, and the rest of the
+            // graph still loads.
+            const loaded = await loadImportTarget(
+              { fromSource: file.source, source: importSource, alias, sourceLine },
+              port,
+            );
+            if ("failure" in loaded) {
+              errors.push(loaded.failure);
+              continue;
+            }
+            const { module: targetModule, identity } = loaded;
+            const targetCanonical = targetModule.owner.source;
+
+            // The identity is stamped on the edge — flattenForAnalyzer reads it
+            // from there, never re-deriving it from manifest.metadata.
+            aliases.set(alias, {
+              targetSource: targetCanonical,
+              targetRef: importSource,
+              targetModuleName: identity.name,
+              targetNamespace: identity.namespace,
+            });
+
+            if (!visited.has(targetCanonical)) {
+              visited.add(targetCanonical);
+              queue.push(targetModule);
+            }
           }
-          const { module: targetModule, identity } = loaded;
-          const targetCanonical = targetModule.owner.source;
 
-          // The identity is stamped on the edge — flattenForAnalyzer reads it
-          // from there, never re-deriving it from manifest.metadata.
-          aliases.set(alias, {
-            targetSource: targetCanonical,
-            targetRef: importSource,
-            targetModuleName: identity.name,
-            targetNamespace: identity.namespace,
-          });
+          if (aliases.size > 0) importEdges.set(file.source, aliases);
+        }
+      }
 
-          if (!visited.has(targetCanonical)) {
-            visited.add(targetCanonical);
-            queue.push(targetModule);
+      for (const source of [...visited]) {
+        if (scanned.has(source)) continue;
+        scanned.add(source);
+        const mod = modules.get(source);
+        if (!mod) continue;
+        for (const file of [mod.owner, ...mod.partials]) {
+          for (const site of scopedImportsOf({ modules, importEdges }, mod, file.manifests)) {
+            const importSource = (site.member as { source?: unknown }).source;
+            if (typeof importSource !== "string" || importSource === "") continue;
+            const holderIndex = file.manifests.findIndex((m) => m?.metadata?.name === site.holders[0]!.name);
+            const sourceLine = file.positions[holderIndex]?.sourceLine;
+            const loaded = await loadImportTarget(
+              { fromSource: file.source, source: importSource, alias: site.alias, sourceLine },
+              port,
+            );
+            if ("failure" in loaded) {
+              errors.push({
+                ...loaded.failure,
+                scope: {
+                  holder: { kind: site.holderKind, name: site.holders[0]!.name },
+                  path: scopedMemberPath(site.holders),
+                },
+              });
+              continue;
+            }
+            const targetCanonical = loaded.module.owner.source;
+            const edges = scopedImportEdges.get(file.source) ?? [];
+            edges.push({
+              targetSource: targetCanonical,
+              targetRef: importSource,
+              targetModuleName: loaded.identity.name,
+              targetNamespace: loaded.identity.namespace,
+              alias: site.alias,
+              holders: site.holders,
+              holderKind: site.holderKind,
+              member: site.member as unknown as Record<string, unknown>,
+            });
+            scopedImportEdges.set(file.source, edges);
+            if (!visited.has(targetCanonical)) {
+              visited.add(targetCanonical);
+              queue.push(loaded.module);
+            }
           }
         }
-
-        if (aliases.size > 0) importEdges.set(file.source, aliases);
       }
+      if (queue.length === 0) break;
     }
 
     // Collapse multiple versions of the same module identity onto one version
@@ -680,6 +739,7 @@ export class Loader {
       entry,
       modules,
       importEdges,
+      scopedImportEdges,
       overrides,
       migrationDiagnostics: collectMigrationDiagnostics(entry),
       versionDiagnostics: diagnostics,

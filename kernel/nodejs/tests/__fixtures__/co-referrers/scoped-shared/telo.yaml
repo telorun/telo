@@ -1,0 +1,19 @@
+# A shared library with a listener on its own topic, reached only by a scoped import.
+kind: Telo.Library
+metadata: { name: CoScopedShared }
+lifecycle: shared
+imports: { Co: ../kinds }
+exports: { resources: [announce] }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Joined
+---
+kind: Co.Listener
+metadata: { name: sharedOwn }
+topic: !ref Joined
+label: sharedOwn

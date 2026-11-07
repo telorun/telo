@@ -1,0 +1,149 @@
+{
+  "name": "Ref.CoReferrers",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "pointer": {
+        "description": "A JSON Pointer into the asking instance's manifest, naming a reference slot of its own kind that declares callsCoReferrers.",
+        "type": "string",
+        "pattern": "^(/([^/~]|~[01])*)+$"
+      }
+    },
+    "description": "The live co-referrers of the target held at a callsCoReferrers slot of the asking instance's own kind. Any other pointer is ERR_REF_UNRESOLVED.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "slot": {
+        "$ref": "#/definitions/pointer"
+      }
+    },
+    "required": [
+      "instance",
+      "slot"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "entryPoint": {
+        "description": "A capability entry point a controller implements.",
+        "type": "string",
+        "enum": [
+          "create",
+          "init",
+          "snapshot",
+          "run",
+          "invoke",
+          "provide",
+          "call",
+          "destroy",
+          "sink.write",
+          "sink.flush",
+          "sink.flushSync",
+          "sink.close"
+        ]
+      },
+      "refIdentity": {
+        "description": "Where an instance was declared: its kind, its name, and the declaration site.",
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(/([^/~]|~[01])*)*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "resourceHandle": {
+        "description": "A live resource instance, by the id the kernel minted for it.",
+        "type": "object",
+        "required": [
+          "id",
+          "ref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "$ref": "#/definitions/refIdentity"
+          }
+        },
+        "additionalProperties": false
+      },
+      "coReferrer": {
+        "description": "One co-referrer, answered as Ref.Resolve answers a target: its handle, the entry points reachable through it, and whether it is the live object.",
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/definitions/resourceHandle"
+          },
+          "entryPoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/entryPoint"
+            }
+          },
+          "local": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target",
+          "entryPoints",
+          "local"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "description": "Every co-referrer, in application load order (§7.1). Empty when nothing names the target.",
+    "type": "object",
+    "properties": {
+      "coReferrers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/coReferrer"
+        }
+      }
+    },
+    "required": [
+      "coReferrers"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_REF_UNRESOLVED",
+    "ERR_LOCAL_REF_PENDING",
+    "ERR_INVOKE_CANCELLED"
+  ],
+  "synchronous": true,
+  "reentrant": false
+}

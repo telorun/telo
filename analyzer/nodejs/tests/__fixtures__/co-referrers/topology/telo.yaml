@@ -1,0 +1,26 @@
+# A topic announced by a named announce and by one written inline in a step.
+kind: Telo.Application
+metadata: { name: CoReferrerTopology }
+imports: { Co: ../kinds }
+targets: [!ref announceAll]
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Co.Announce
+metadata: { name: announceNamed }
+topic: !ref Joined
+---
+kind: Telo.Sequence
+metadata: { name: announceAll }
+steps:
+  - name: named
+    invoke: !ref announceNamed
+  - name: inline
+    invoke: { kind: Co.Announce, topic: !ref Joined }
+---
+kind: Co.Listener
+metadata: { name: onJoined }
+topic: !ref Joined
+invoke: { kind: Telo.Sequence, steps: [] }

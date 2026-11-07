@@ -142,12 +142,16 @@ expect:
     - code: ZONE_EXPORT_UNSATISFIABLE
       message: "requires a GraphLayers.DraftSession zone on Layers.Store 'team', which this library does not export"
 ---
-# The consumer's entry-scoped check is silent, so the kind's own refusal at
-# dispatch is what remains: `ERR_ZONE_REQUIRED`, matched here by its message.
+# The consumer's check reaches the library's inline requirement through the
+# export it calls, and the run refuses at load with the same verdict.
 kind: Assert.Manifest
 metadata: { name: outsideSessionAtRuntime }
 source: ./__fixtures__/drafting/conflicts-outside-session-app.yaml
-expect: { errors: [], runFails: "no GraphLayers.DraftSession zone open on" }
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "the inline GraphLayers.NodeConflicts requires a GraphLayers.DraftSession zone on Layers.Store 'team', and the path the inline GraphLayers.NodeConflicts → outside → ConsumesLibrary.targets[1]"
+  runFails: ZONE_REQUIREMENT_UNSATISFIED
 ---
 kind: Assert.Manifest
 metadata: { name: setUnknownProperty }

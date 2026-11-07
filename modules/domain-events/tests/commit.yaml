@@ -1,0 +1,69 @@
+# Signing up commits the library's user row and the audit row an application
+# handler writes on the same connection; `when: false` skips the audit row.
+kind: Telo.Application
+metadata: { name: DomainEventsCommit, version: 1.0.0 }
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Domain: ../
+  Assert: ../../assert
+  Iam:
+    source: ./__fixtures__/iam
+    resources: { connection: !ref db }
+targets: [!ref appSchema, !ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns: { id: { type: text, primaryKey: true }, email: { type: text, nullable: false } }
+---
+kind: SQLite.Table
+metadata: { name: auditLog }
+table: audit_log
+columns:
+  action: { type: text, nullable: false }
+  subject: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref users, !ref auditLog]
+---
+kind: Domain.Handler
+metadata: { name: auditUserCreated }
+event: !ref Iam.UserCreated
+when: !cel "!event.email.endsWith('@example.com')"
+invoke: { kind: Sql.Command, connection: !ref db }
+inputs:
+  sql: "INSERT INTO audit_log (action, subject) VALUES ('user.created', ?)"
+  bindings: [!cel "event.userId"]
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: signUp
+    invoke: !ref Iam.createUser
+    inputs: { email: "ada@lovelace.dev" }
+  - name: signUpExample
+    invoke: !ref Iam.createUser
+    inputs: { email: "bot@example.com" }
+  - name: users
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: "SELECT email FROM users ORDER BY email" }
+  - name: audit
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: "SELECT action FROM audit_log" }
+  - name: assertUsers
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.users.result.rows"
+      expected: [{ email: "ada@lovelace.dev" }, { email: "bot@example.com" }]
+  - name: assertAudit
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.audit.result.rows"
+      expected: [{ action: user.created }]

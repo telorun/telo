@@ -1,0 +1,10 @@
+# Handles the shared topic with an operation on the connection it is lent.
+kind: Telo.Library
+metadata: { name: ComposedAudit }
+imports: { Z: ../../../zone-resource-inputs/kinds, Co: ../../../co-referrers/kinds, Events: ../events }
+resources: { connection: { kind: Z.Conn } }
+---
+kind: Co.Listener
+metadata: { name: audit }
+topic: !ref Events.Joined
+invoke: { kind: Z.Op, connection: !ref connection }

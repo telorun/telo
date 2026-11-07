@@ -54,10 +54,13 @@ import {
   possibleUses,
   readRefSlot,
   transfersControl,
+  type CoReferrerCall,
   type RefSlot,
   type RefUse,
   type RefUseCases,
 } from "./ref-slot.js";
+import { canonicalKindOf } from "./co-referrer-slot.js";
+import { CoReferrerSearch, type CoReferrerInstance } from "./co-referrers.js";
 import { isStepSlot } from "./step-slot.js";
 import { topologyRoleOf, type TopologyRole } from "./topology-role.js";
 import { type RefFieldEntry } from "./reference-field-map.js";
@@ -78,6 +81,15 @@ import { isModuleKind } from "./module-kinds.js";
 import { scopeAddress, type ScopeAddress, type ScopeSite } from "./scope-address.js";
 import { declaredScopes, scopeMembers, type DeclaredScope } from "./scope-declarations.js";
 import { isScopeMemberDeclaration } from "./scope-members.js";
+import { pointerToPath } from "./resource-rule.js";
+import {
+  instancesOf,
+  moduleInstanceTreeOfSet,
+  ROOT_INSTANCE,
+  type ImportDocument,
+  type ModuleInstance,
+} from "./module-instance-tree.js";
+import type { ModuleDocuments } from "./module-documents.js";
 import {
   importPathOf,
   importPathThrough,
@@ -234,6 +246,17 @@ export interface CallGraphEdge {
    * sites, and a body calling itself, directly or through another, is a cycle.
    */
   moduleCall?: boolean;
+  /** The slot declares `callsCoReferrers`: dispatching `from` also calls the
+   *  co-referrers of this edge's target, each an edge marked
+   *  {@link CallGraphEdge.coReferrer}. */
+  callsCoReferrers?: CoReferrerCall;
+  /**
+   * Added by a `callsCoReferrers` slot rather than written: `from` calls this
+   * co-referrer of the slot's target (`co-referrers.ts`). `slot` and `path` are
+   * the calling slot's; nothing at `path` names the target, so a reader of
+   * written references skips it. Not an injection site, so it orders no boot.
+   */
+  coReferrer?: boolean;
 }
 
 export interface CallGraph {
@@ -258,6 +281,24 @@ export interface CallGraph {
   /** Every edge whose `use` includes at least one control transfer, plus every
    *  edge whose slot declares no `use` at all — see {@link CallGraph.controlEdges}. */
   controlEdges(): CallGraphEdge[];
+  /**
+   * The LIFETIME DOMAIN of a module-scope resource node: undefined for one the
+   * application holds for its whole life (the root, its imports, every `shared`
+   * library), else the scoped `Telo.Import` whose instance — and its imports —
+   * lives as long as one run of its scope. A `callsCoReferrers` fan-out reaches
+   * the co-referrers of its target's domain alone.
+   */
+  lifetimeDomainOf?(nodeId: string): LifetimeDomain | undefined;
+}
+
+/** A scoped `Telo.Import`'s instance, as the domain its subtree lives in. */
+export interface LifetimeDomain {
+  /** The instance path (`seq/Inner`). */
+  readonly key: string;
+  /** The scope member's name, its holders and its scope field. */
+  readonly alias: string;
+  readonly holders: readonly string[];
+  readonly field: string;
 }
 
 export const resourceId = (kind: string, name: string): string => `${kind}\0${name}`;
@@ -593,6 +634,7 @@ function emitStepEdges(node: StepGraphNode, ctx: StepWalkContext): void {
     if (unresolved) edge.unresolved = unresolved;
     if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
     if (slot.inputs !== undefined) edge.inputs = slot.inputs;
+    if (slot.callsCoReferrers) edge.callsCoReferrers = slot.callsCoReferrers;
     ctx.edges.push(edge);
     ctx.stepEdgesByPath.set(`${node.owner}\0${edge.path}`, edge);
   }
@@ -710,6 +752,12 @@ function ownerStepOf(steps: StepGraphNode[], concretePath: string): StepGraphNod
 export interface BuildCallGraphOptions {
   aliases?: AliasResolver;
   aliasesByModule?: Map<string, AliasResolver>;
+  /** Whether a `callsCoReferrers` slot's fan-out edges are added. Off for a
+   *  library's zone summary: the importer's graph wires the fan-out, once. */
+  coReferrers?: boolean;
+  /** Every imported library's full documents — the order a library instance's
+   *  declarations are read in. */
+  libraries?: readonly ModuleDocuments[];
 }
 
 /**
@@ -778,13 +826,30 @@ export function buildCallGraph(
     source: ResourceManifest,
     name: string,
   ): ResourceGraphNode | undefined => {
-    const alias = (value as { alias?: unknown } | null)?.alias;
+    // A dependency's copy keeps its `!ref <Alias>.<name>` as written: it is
+    // read through the alias table of the module that wrote it.
+    const sentinel = refSentinelTarget(value);
+    const alias = sentinel ? sentinel.alias : (value as { alias?: unknown } | null)?.alias;
+    const target = sentinel ? sentinel.name : name;
     if (typeof alias !== "string" || alias === "Self") return undefined;
     const module = moduleAliasScope(source.metadata, options.aliases, options.aliasesByModule)?.moduleForAlias(alias);
-    if (!module || names.declarationsOf(name).filter((n) => declaringModule(n.manifest) === module).length < 2) {
-      return undefined;
-    }
-    return names.inModule(name, module, importPathThrough(source, alias));
+    if (!module) return undefined;
+    const declared = names.declarationsOf(target).filter((n) => declaringModule(n.manifest) === module);
+    if (declared.length === 0) return undefined;
+    if (declared.length === 1) return sentinel ? declared[0] : undefined;
+    return names.inModule(target, module, importPathThrough(source, alias));
+  };
+
+  /** The declaration of `found`'s name in `source`'s own module instance, where
+   *  `source` is one copy of a library imported as several. */
+  const ownInstance = (
+    source: ResourceManifest,
+    found: ResourceGraphNode | undefined,
+  ): ResourceGraphNode | undefined => {
+    const path = importPathOf(source);
+    const module = declaringModule(source);
+    if (!path || !found || found.scoped || declaringModule(found.manifest) !== module) return undefined;
+    return names.inModule(found.name, module, path);
   };
 
   // --- step nodes ---
@@ -912,6 +977,7 @@ export function buildCallGraph(
         if (unresolved) edge.unresolved = unresolved;
         if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
         if (entry.inputs !== undefined) edge.inputs = entry.inputs;
+        if (entry.callsCoReferrers) edge.callsCoReferrers = entry.callsCoReferrers;
         edges.push(edge);
       }
       // Its step arrays too, resolved scope-local first.
@@ -989,13 +1055,16 @@ export function buildCallGraph(
         };
         const found = names.locate(targetName, declaringModule(event.source), event.within);
         // A reference through an import of a module imported several times
-        // reaches that import's instance.
-        const instance = instanceThrough(event.value, event.source, targetName);
+        // reaches that import's instance; a bare one written in an instance's
+        // copy, that same instance's.
+        const instance =
+          instanceThrough(event.value, event.source, targetName) ?? ownInstance(event.source, found?.declaration);
         if (instance) edge.to = instance.id;
         else if (found) edge.to = found.declaration.id;
         if (unresolved) edge.unresolved = unresolved;
         if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
         if (event.entry.inputs !== undefined) edge.inputs = event.entry.inputs;
+        if (event.entry.callsCoReferrers) edge.callsCoReferrers = event.entry.callsCoReferrers;
         const alias = referenceAlias(event.value);
         if (alias !== undefined) edge.alias = alias;
         if (event.nested) edge.nested = true;
@@ -1058,6 +1127,22 @@ export function buildCallGraph(
     }
   }
 
+  let domainsMemo: ReturnType<typeof lifetimeDomains> | undefined;
+  const domainsOf = () => (domainsMemo ??= lifetimeDomains(resources, nodes, options.libraries));
+  if (options.coReferrers !== false) {
+    edges.push(
+      ...coReferrerEdges(
+        domainsOf,
+        edges,
+        (node) => {
+          const definition = definitionFor(node.manifest);
+          return definition ? canonicalKindOf(definition) : undefined;
+        },
+        (kind) => registry.resolve(kind),
+      ),
+    );
+  }
+
   const fromIndex = new Map<string, CallGraphEdge[]>();
   const toIndex = new Map<string, CallGraphEdge[]>();
   const push = (index: Map<string, CallGraphEdge[]>, key: string, edge: CallGraphEdge): void => {
@@ -1085,6 +1170,182 @@ export function buildCallGraph(
     resourceByName: (name, fromModule) => names.resolve(name, fromModule),
     steps: (ownerId) => stepsByOwner.get(ownerId) ?? [],
     controlEdges: () => edges.filter(reachesTarget),
+    lifetimeDomainOf: (id) => domainsOf().domainOf(id),
+  };
+}
+
+/**
+ * The `call` edges every `callsCoReferrers` slot adds: one from the slot's
+ * holder to each co-referrer of its target, read by the shared definition over
+ * the tree of the target's lifetime domain ({@link lifetimeDomains}); a node no
+ * instance of the tree holds is no co-referrer.
+ */
+function coReferrerEdges(
+  domainsOf: () => ReturnType<typeof lifetimeDomains>,
+  edges: readonly CallGraphEdge[],
+  kindOf: (node: ResourceGraphNode) => string | undefined,
+  resolve: (kind: string) => ResourceDefinition | undefined,
+): CallGraphEdge[] {
+  const calling = edges.filter((edge) => edge.callsCoReferrers && edge.to);
+  if (calling.length === 0) return [];
+
+  const written = new Map<string, Map<string, string>>();
+  for (const edge of edges) {
+    if (!edge.to || edge.nested || edge.moduleCall) continue;
+    let byPath = written.get(edge.from);
+    if (!byPath) written.set(edge.from, (byPath = new Map()));
+    if (!byPath.has(edge.path)) byPath.set(edge.path, edge.to);
+  }
+
+  const domains = domainsOf();
+  const searches = new Map<string, CoReferrerSearch<ResourceGraphNode, string>>();
+  const searchFor = (domain: string): CoReferrerSearch<ResourceGraphNode, string> | undefined => {
+    let search = searches.get(domain);
+    if (!search) {
+      const root = domains.roots.get(domain);
+      if (!root) return undefined;
+      search = new CoReferrerSearch<ResourceGraphNode, string>(
+        root,
+        { kindOf, targetAt: (node, call) => written.get(node.id)?.get(pointerToPath(call.slot)) },
+        resolve,
+      );
+      searches.set(domain, search);
+    }
+    return search;
+  };
+  const out: CallGraphEdge[] = [];
+  for (const edge of calling) {
+    // The co-referrers of the domain its target lives in.
+    const search = searchFor(domains.domainOf(edge.to!)?.key ?? APP_DOMAIN);
+    for (const coReferrer of search?.of(edge.callsCoReferrers!, edge.to!) ?? []) {
+      if (coReferrer.id === edge.from) continue;
+      out.push({
+        from: edge.from,
+        toName: coReferrer.name,
+        to: coReferrer.id,
+        slot: edge.slot,
+        ...(edge.slotKeys ? { slotKeys: edge.slotKeys } : {}),
+        path: edge.path,
+        use: ["call"],
+        coReferrer: true,
+      });
+    }
+  }
+  return out;
+}
+
+const APP_DOMAIN = "";
+
+/**
+ * The lifetime domains of a set's module-scope resource nodes, over the
+ * module-instance tree its imports — scope members' included — describe: the
+ * application's (the root, its imports, every `shared` library wherever first
+ * reached) and one per scoped `Telo.Import` (its instance and the isolated ones
+ * beneath it). Each domain's co-referrer tree holds an instance's nodes — a
+ * library's those stamped with its `metadata.importPath`, or unstamped when the
+ * library has one instance — in the order its documents are read.
+ */
+function lifetimeDomains(
+  resources: readonly ResourceManifest[],
+  nodes: ReadonlyMap<string, CallGraphNode>,
+  libraries: readonly ModuleDocuments[] | undefined,
+): {
+  roots: Map<string, CoReferrerInstance<ResourceGraphNode>>;
+  domainOf(nodeId: string): LifetimeDomain | undefined;
+} {
+  const { tree, rootModules } = moduleInstanceTreeOfSet(resources);
+  const ownerKey = (module: string | undefined) =>
+    module === undefined || rootModules.has(module) ? ROOT_INSTANCE : module;
+  const instances = instancesOf(tree);
+  const byPath = new Map<string, ModuleInstance<ImportDocument>>();
+  const firstOf = new Map<string, ModuleInstance<ImportDocument>>();
+  for (const instance of instances) {
+    byPath.set(`${instance.module}\0${instance.path.join("/")}`, instance);
+    if (!firstOf.has(instance.module)) firstOf.set(instance.module, instance);
+  }
+  const groups = new Map<ModuleInstance<ImportDocument>, ResourceGraphNode[]>();
+  const instanceOfNode = new Map<string, ModuleInstance<ImportDocument>>();
+  for (const node of nodes.values()) {
+    if (node.type !== "resource" || node.scoped) continue;
+    const module = ownerKey(declaringModule(node.manifest));
+    const path = importPathOf(node.manifest);
+    const instance =
+      module !== ROOT_INSTANCE && path ? byPath.get(`${module}\0${path.join("/")}`) : firstOf.get(module);
+    if (!instance) continue;
+    instanceOfNode.set(node.id, instance);
+    const group = groups.get(instance);
+    if (group) group.push(node);
+    else groups.set(instance, [node]);
+  }
+
+  // A library's declarations in the order its documents are read: forwarded
+  // copies and stand-ins enter the set at different points.
+  const rank = new Map<string, number>();
+  for (const library of libraries ?? []) {
+    library.manifests.forEach((m, index) => {
+      const meta = m.metadata as { source?: unknown; sourceLine?: unknown } | undefined;
+      rank.set(`${library.module}\0${String(meta?.source)}\0${String(meta?.sourceLine)}`, index);
+    });
+  }
+  const ordered = (module: string, declarations: ResourceGraphNode[]): ResourceGraphNode[] => {
+    if (module === ROOT_INSTANCE || rank.size === 0) return declarations;
+    let last = -1;
+    const keyed = declarations.map((node, index) => {
+      const meta = node.manifest.metadata as { source?: unknown; sourceLine?: unknown } | undefined;
+      const found = rank.get(`${module}\0${String(meta?.source)}\0${String(meta?.sourceLine)}`);
+      if (found !== undefined) last = found;
+      return { node, rank: found ?? last, index };
+    });
+    return keyed.sort((a, b) => a.rank - b.rank || a.index - b.index).map(({ node }) => node);
+  };
+
+  // Each instance's domain: a scoped import starts one, a shared library is the
+  // application's wherever it is reached, anything else is its importer's.
+  const domain = new Map<ModuleInstance<ImportDocument>, LifetimeDomain | undefined>();
+  const assign = (instance: ModuleInstance<ImportDocument>, inherited: LifetimeDomain | undefined): void => {
+    const via = instance.via;
+    const own = via?.shared
+      ? undefined
+      : instance.holders.length > 0
+        ? { key: instance.path.join("/"), alias: via!.alias, holders: instance.holders, field: via!.field ?? "" }
+        : inherited;
+    domain.set(instance, own);
+    for (const child of instance.imports) assign(child, own);
+  };
+  assign(tree, undefined);
+
+  const coInstances = new Map<ModuleInstance<ImportDocument>, CoReferrerInstance<ResourceGraphNode>>();
+  const instanceOf = (instance: ModuleInstance<ImportDocument>): CoReferrerInstance<ResourceGraphNode> => {
+    const known = coInstances.get(instance);
+    if (known) return known;
+    const mine = domain.get(instance)?.key;
+    const built: CoReferrerInstance<ResourceGraphNode> = {
+      key: `${instance.module}\0${instance.path.join("/")}`,
+      declarations: ordered(instance.module, groups.get(instance) ?? []),
+      imports: instance.imports.filter((child) => domain.get(child)?.key === mine).map(instanceOf),
+    };
+    coInstances.set(instance, built);
+    return built;
+  };
+  const roots = new Map<string, CoReferrerInstance<ResourceGraphNode>>();
+  const app = instanceOf(tree);
+  roots.set(APP_DOMAIN, app);
+  for (const instance of instances) {
+    if (instance === tree || !instance.importer) continue;
+    const own = domain.get(instance);
+    const parent = domain.get(instance.importer);
+    if (own?.key === parent?.key) continue;
+    // A shared library first reached beneath a scoped import is the
+    // application's, at its first reach.
+    if (own === undefined) (app.imports as CoReferrerInstance<ResourceGraphNode>[]).push(instanceOf(instance));
+    else roots.set(own.key, instanceOf(instance));
+  }
+  return {
+    roots,
+    domainOf: (nodeId) => {
+      const instance = instanceOfNode.get(nodeId);
+      return instance ? domain.get(instance) : undefined;
+    },
   };
 }
 
@@ -1172,7 +1433,7 @@ export function referrerSlotsOf(
 ): Array<{ manifest: ResourceManifest; path: string }> {
   const out: Array<{ manifest: ResourceManifest; path: string }> = [];
   for (const edge of graph.edgesTo(nodeIdFor(manifest))) {
-    if (edge.moduleCall) continue;
+    if (edge.moduleCall || edge.coReferrer) continue;
     const from = graph.nodes.get(edge.from);
     if (!from || from.type !== "resource") continue;
     out.push({ manifest: from.manifest, path: edge.path });

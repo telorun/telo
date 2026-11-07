@@ -1,0 +1,51 @@
+# Handlers run root first (its own document, then its `include:` partial), then
+# the imports depth-first in `imports:` order, each in document order.
+kind: Telo.Application
+metadata: { name: DomainEventsOrder, version: 1.0.0 }
+imports:
+  Domain: ../
+  Assert: ../../assert
+  Bus: ./__fixtures__/bus-shared
+  OrderA: ./__fixtures__/order-a
+  OrderB: ./__fixtures__/order-b
+include: [./__fixtures__/order-partial.yaml]
+targets:
+  - !ref test
+  - !ref expectOrder
+---
+kind: Domain.Handler
+metadata: { name: rootOne }
+event: !ref Bus.Tick
+invoke: { kind: Telo.Sequence, steps: [] }
+---
+kind: Domain.Handler
+metadata: { name: rootSkipped }
+event: !ref Bus.Tick
+when: false
+invoke: !ref skippedTarget
+---
+kind: Telo.Sequence
+metadata: { name: skippedTarget }
+steps: []
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: tick
+    invoke: !ref Bus.fire
+    inputs: {}
+---
+kind: Assert.Events
+metadata: { name: expectOrder }
+filter:
+  - { type: "*.Invoked" }
+expect:
+  - { event: rootOne.Invoked }
+  - { event: rootPartial.Invoked }
+  - { event: aOne.Invoked }
+  - { event: aTwo.Invoked }
+  - { event: cOne.Invoked }
+  - { event: bOne.Invoked }
+  - { event: fire.Invoked }
+  - { event: rootSkipped.Invoked, times: 1 }
+  - { event: skippedTarget.Invoked, times: 0 }

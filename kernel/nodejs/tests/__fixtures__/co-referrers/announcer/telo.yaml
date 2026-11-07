@@ -1,0 +1,13 @@
+# Announces its own topic; each import of it is a module instance of its own.
+kind: Telo.Library
+metadata: { name: CoAnnouncer }
+imports: { Co: ../kinds }
+exports: { resources: [Joined, announce] }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Joined

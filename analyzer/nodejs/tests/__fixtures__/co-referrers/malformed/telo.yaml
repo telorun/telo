@@ -1,0 +1,41 @@
+# One kind per refusal of `callsCoReferrers`.
+kind: Telo.Library
+metadata: { name: BadCalls }
+imports: { Co: ../kinds }
+exports: { kinds: [Unresolved, NoSlot, CannotHold, NotAnObject] }
+---
+kind: Telo.Definition
+metadata: { name: Unresolved }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    topic: { x-telo-ref: { kind: Co.Topic, use: schema, callsCoReferrers: { kind: Co.Listenr, slot: /topic } } }
+---
+kind: Telo.Definition
+metadata: { name: NoSlot }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    topic: { x-telo-ref: { kind: Co.Topic, use: schema, callsCoReferrers: { kind: Co.Listener, slot: /when } } }
+---
+kind: Telo.Definition
+metadata: { name: CannotHold }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    topic: { x-telo-ref: { kind: Co.Topic, use: schema, callsCoReferrers: { kind: Co.Listener, slot: /invoke } } }
+---
+kind: Telo.Definition
+metadata: { name: NotAnObject }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    topic: { x-telo-ref: { kind: Co.Topic, use: schema, callsCoReferrers: Co.Listener } }

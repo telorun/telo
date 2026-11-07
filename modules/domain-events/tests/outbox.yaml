@@ -1,0 +1,81 @@
+# A handler enqueueing on a queue-sql outbox: the requirement is proven through
+# the emit inside the transaction, and the message commits with the write.
+kind: Telo.Application
+metadata: { name: DomainEventsOutbox, version: 1.0.0 }
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  QueueSql: ../../queue-sql
+  QueueSqlite: ../../queue-sqlite
+  Domain: ../
+  Assert: ../../assert
+targets: [!ref appSchema, !ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Domain.Event
+metadata: { name: UserCreated }
+schema:
+  type: object
+  required: [userId, email]
+  properties: { userId: { type: string }, email: { type: string } }
+---
+kind: QueueSqlite.Table
+metadata: { name: messages }
+table: queue_messages
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns: { id: { type: text, primaryKey: true }, email: { type: text, nullable: false } }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref users, !ref messages]
+---
+kind: Domain.Handler
+metadata: { name: queueWelcomeEmail }
+event: !ref UserCreated
+invoke:
+  kind: QueueSql.Enqueue
+  queue:
+    kind: QueueSqlite.Queue
+    connection: !ref db
+    schema: !ref appSchema
+    table: !ref messages
+    name: welcome_emails
+    retention: 168h
+    messageType:
+      kind: Telo.JsonSchema
+      schema: { type: object, required: [email], properties: { email: { type: string } } }
+inputs:
+  id: !interpolate "welcome-${{ event.userId }}"
+  message: { email: !cel "event.email" }
+---
+kind: Sql.Transaction
+metadata: { name: createUser }
+connection: !ref db
+steps:
+  kind: Telo.Sequence
+  steps:
+    - name: insert
+      invoke: { kind: Sql.Command, connection: !ref db }
+      inputs: { sql: "INSERT INTO users (id, email) VALUES ('u-1', 'ada@lovelace.dev')" }
+    - name: announce
+      invoke: { kind: Domain.Emit, event: !ref UserCreated }
+      inputs: { userId: u-1, email: "ada@lovelace.dev" }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: signUp
+    invoke: !ref createUser
+  - name: outbox
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: "SELECT COUNT(*) AS n FROM queue_messages" }
+  - name: assertOutbox
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "steps.outbox.result.rows", expected: [{ n: 1 }] }

@@ -47,6 +47,7 @@ export {
     stampRequiredResources,
     stampResolvedSource,
     stampSharedLifecycle,
+    stampScopedImportsIn,
     type ParsedExportEntry,
     type ReExportSpec,
 } from "./flatten-for-analyzer.js";
@@ -149,6 +150,23 @@ export {
   observesProblems,
 } from "./observing-slot.js";
 export type { ObservationDeadline, ObservesProblem } from "./observing-slot.js";
+export {
+  CO_REFERRER_CALL_CODE,
+  canonicalKindOf,
+  coReferrerCallProblems,
+  coReferrerSlotKinds,
+  kindIsA,
+} from "./co-referrer-slot.js";
+export type { CoReferrerCallProblem } from "./co-referrer-slot.js";
+export {
+  coReferrerScopedMessage,
+  CoReferrerSearch,
+  instancesInLoadOrder,
+  registeredCoReferrerCalls,
+  scopedCoReferrerCalls,
+} from "./co-referrers.js";
+export type { CoReferrerInstance, CoReferrerReading } from "./co-referrers.js";
+export { CO_REFERRER_SCOPED } from "./validate-co-referrers.js";
 export type {
   NeedEnvField,
   NeedEnvironmentEntry,
@@ -628,10 +646,11 @@ export {
   readRefSlot,
   REF_USES,
   refSlotAnnotation,
+  rewriteCoReferrerKinds,
   rewriteRefSlotKinds,
   transfersControl,
 } from "./ref-slot.js";
-export type { NeedConstraint, RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
+export type { CoReferrerCall, NeedConstraint, RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
 export { isStepSlot, readStepSlot, STEP_FRAGMENT } from "./step-slot.js";
 export type { StepSlot } from "./step-slot.js";
 // The built-in text vocabulary: the fragments' and annotations' one reader, the
@@ -832,6 +851,7 @@ export {
   resolveRuleSubjects,
   findDynamicLeaf,
   dynamicNode,
+  pointerToPath,
   type DynamicLeaf,
   type ResourceRule,
   type ResourceRuleSeverity,

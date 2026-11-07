@@ -1,0 +1,20 @@
+# A library whose listener is declared in a sequence's `with:` scope.
+kind: Telo.Library
+metadata: { name: ScopedListenerLib }
+imports: { Co: ../kinds }
+exports: { resources: [announceTest] }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Telo.Sequence
+metadata: { name: announceTest }
+with:
+  - kind: Co.Listener
+    metadata: { name: captureJoined }
+    topic: !ref Joined
+    invoke: { kind: Telo.Sequence, steps: [] }
+steps:
+  - name: announce
+    invoke: { kind: Co.Announce, topic: !ref Joined }

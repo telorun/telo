@@ -1,0 +1,97 @@
+# The plan's Accounts shape: the library opens its transaction on the connection
+# the application lends it and emits inside it; the application's handlers write
+# an audit row and enqueue on an outbox over that connection. The enqueue's
+# requirement is proven through the library's transaction, and every row commits.
+kind: Telo.Application
+metadata: { name: DomainEventsLibraryOutbox, version: 1.0.0 }
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  QueueSql: ../../queue-sql
+  QueueSqlite: ../../queue-sqlite
+  Domain: ../
+  Assert: ../../assert
+  Iam:
+    source: ./__fixtures__/iam
+    resources: { connection: !ref db }
+targets: [!ref appSchema, !ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns: { id: { type: text, primaryKey: true }, email: { type: text, nullable: false } }
+---
+kind: SQLite.Table
+metadata: { name: auditLog }
+table: audit_log
+columns:
+  action: { type: text, nullable: false }
+  subject: { type: text, nullable: false }
+---
+kind: QueueSqlite.Table
+metadata: { name: messages }
+table: queue_messages
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref users, !ref auditLog, !ref messages]
+---
+kind: Domain.Handler
+metadata: { name: auditUserCreated }
+event: !ref Iam.UserCreated
+invoke: { kind: Sql.Command, connection: !ref db }
+inputs:
+  sql: "INSERT INTO audit_log (action, subject) VALUES ('user.created', ?)"
+  bindings: [!cel "event.userId"]
+---
+kind: Domain.Handler
+metadata: { name: queueWelcomeEmail }
+event: !ref Iam.UserCreated
+invoke:
+  kind: QueueSql.Enqueue
+  queue:
+    kind: QueueSqlite.Queue
+    connection: !ref db
+    schema: !ref appSchema
+    table: !ref messages
+    name: welcome_emails
+    retention: 168h
+    messageType:
+      kind: Telo.JsonSchema
+      schema: { type: object, required: [email], properties: { email: { type: string } } }
+inputs:
+  id: !interpolate "welcome-${{ event.userId }}"
+  message: { email: !cel "event.email" }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: signUp
+    invoke: !ref Iam.createUser
+    inputs: { email: "ada@lovelace.dev" }
+  - name: users
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: "SELECT email FROM users" }
+  - name: audit
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: "SELECT a.action FROM audit_log a JOIN users u ON a.subject = u.id" }
+  - name: outbox
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: "SELECT q.queue_name FROM queue_messages q JOIN users u ON q.message_id = 'welcome-' || u.id"
+  - name: assertCommitted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        users: !cel "steps.users.result.rows"
+        audit: !cel "steps.audit.result.rows"
+        outbox: !cel "steps.outbox.result.rows"
+      expected:
+        users: [{ email: "ada@lovelace.dev" }]
+        audit: [{ action: user.created }]
+        outbox: [{ queue_name: welcome_emails }]

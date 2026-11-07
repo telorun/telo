@@ -1,0 +1,4 @@
+kind: Domain.Handler
+metadata: { name: rootPartial }
+event: !ref Bus.Tick
+invoke: { kind: Telo.Sequence, steps: [] }

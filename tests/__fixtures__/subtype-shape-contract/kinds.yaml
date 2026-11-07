@@ -1,0 +1,27 @@
+# `Event` declares no capability: it is a named shape only by extending `Telo.JsonSchema`.
+# `Echo` types its `payload` input by whatever shape its `event` names.
+kind: Telo.Library
+metadata:
+  name: SubtypeShapeContract
+  version: 1.0.0
+  description: Fixture kinds — a named shape that only extends Telo.JsonSchema, and an invocable typed by one.
+exports: { kinds: [Event, Echo] }
+---
+kind: Telo.Definition
+metadata: { name: Event }
+extends: Telo.JsonSchema
+---
+kind: Telo.Definition
+metadata: { name: Echo }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./controllers.mjs#Echo]
+schema:
+  type: object
+  additionalProperties: false
+  required: [event]
+  properties: { event: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+inputType:
+  type: object
+  additionalProperties: false
+  required: [payload]
+  properties: { payload: { x-telo-value-schema-from: event } }

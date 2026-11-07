@@ -1,0 +1,9 @@
+# Handles the shared library's event, which outlives any instance of this one.
+kind: Telo.Library
+metadata: { name: ScopedOutlivingHandler }
+imports: { Domain: ../../../../modules/domain-events, Shared: ../shared-events }
+---
+kind: Domain.Handler
+metadata: { name: onShared }
+event: !ref Shared.Joined
+invoke: { kind: Telo.Sequence, steps: [] }

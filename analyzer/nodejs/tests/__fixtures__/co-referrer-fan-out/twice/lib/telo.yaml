@@ -1,0 +1,18 @@
+# Announces its own topic and handles it; each import is an instance of its own.
+kind: Telo.Library
+metadata: { name: TwiceAnnouncer }
+imports: { Co: ../../../co-referrers/kinds }
+exports: { resources: [announce] }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Joined
+---
+kind: Co.Listener
+metadata: { name: own }
+topic: !ref Joined
+invoke: { kind: Co.Guarded }

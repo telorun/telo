@@ -95,6 +95,15 @@ export { resourceKey };
 /** An edge in the resource dependency graph: a resolved `!ref` target. */
 type ResourceRef = { kind: string; name: string; alias?: string };
 
+/** What a `Telo.Import` declared as a scope member gives its scope run: the
+ *  names it exports and each one's terminal getter, read once it has built. */
+export interface ScopedImportScope {
+  readonly names: ReadonlySet<string>;
+  terminal(
+    name: string,
+  ): (() => { kind: string; instance: ResourceInstance; manifest?: ResourceManifest } | undefined) | undefined;
+}
+
 /** A resolved reference — the marked shape `resolveRefSentinels` produces
  *  (Phase 2.5). An inline definition (`{ kind, ...config }`) carries no marker
  *  and is its own node, so it is not an edge here; a live `ResourceInstance`
@@ -808,6 +817,46 @@ export class EvaluationContext implements IEvaluationContext {
    */
   owner?: ResourceOwner;
 
+  /** The holders of the scope run this context is, from its module's top level
+   *  down; empty outside every scope run. A `Telo.Import` declared in the scope
+   *  names its module instance beneath them. */
+  scopeHolders: readonly string[] = [];
+
+  /** The scope field (`with`) of the holder this scope run is, when known. */
+  scopeField?: string;
+
+  /** The `Telo.Import`s this scope run declares, by member name: instance names
+   *  only, never a module alias. */
+  private readonly scopedImports = new Map<string, ScopedImportScope>();
+
+  /** Register what a scoped `Telo.Import` exports — the inverse removes it. */
+  registerScopedImport(alias: string, scope: ScopedImportScope): () => void {
+    this.scopedImports.set(alias, scope);
+    return () => {
+      if (this.scopedImports.get(alias) === scope) this.scopedImports.delete(alias);
+    };
+  }
+
+  /** An instance a scoped `Telo.Import` of this scope run exports, or undefined
+   *  when no such import declares `alias` here. */
+  scopedImportInstance(alias: string, name: string): ResourceInstance | undefined {
+    const scope = this.scopedImports.get(alias);
+    if (!scope || !scope.names.has(name)) return undefined;
+    return scope.terminal(name)?.()?.instance;
+  }
+
+  /** The manifest half of {@link scopedImportInstance}. */
+  scopedImportManifest(alias: string, name: string): ResourceManifest | undefined {
+    const scope = this.scopedImports.get(alias);
+    if (!scope || !scope.names.has(name)) return undefined;
+    return scope.terminal(name)?.()?.manifest;
+  }
+
+  /** Whether this scope run declares a `Telo.Import` named `alias`. */
+  declaresScopedImport(alias: string): boolean {
+    return this.scopedImports.has(alias);
+  }
+
   /** Id prefix for a resource created in this context: `owner.id + "/"`, or ""
    *  at the top level. A resource's full id is `ownerPrefix + kind + "." + name`. */
   get ownerPrefix(): string {
@@ -1121,6 +1170,13 @@ export class EvaluationContext implements IEvaluationContext {
       node = node.parent as EvaluationContext | undefined;
     }
     return undefined;
+  }
+
+  /** Every name this context itself declares, with its declaration, in the
+   *  order the declarations were registered — a borrowed resource input is the
+   *  importer's declaration and is left out. */
+  ownDeclarations(): Array<[string, ResourceManifest]> {
+    return [...this.declaredManifests].filter(([name]) => !this.borrowedResources.has(name));
   }
 
   /** The manifest half of {@link resolveImportedInstance}. Overridden by
@@ -1629,7 +1685,7 @@ export class EvaluationContext implements IEvaluationContext {
    * resources hold x-telo-ref slots pointing to outer resources — those deps are already
    * live when the scope opens.
    */
-  createScopeHandle(manifests: ResourceManifest[], holder?: ResourceManifest): ScopeHandle {
+  createScopeHandle(manifests: ResourceManifest[], holder?: ResourceManifest, field?: string): ScopeHandle {
     const parent = this;
     // The resource owning the scope, as the issuer of its `targets:` runs.
     const holderCaller = (): DispatchCaller | undefined => {
@@ -1656,6 +1712,19 @@ export class EvaluationContext implements IEvaluationContext {
           ),
         );
         child.kindResolver = (kind) => parent.resolveKindSafe(kind);
+        const holderName = holder?.metadata?.name;
+        child.scopeHolders = typeof holderName === "string" ? [...parent.scopeHolders, holderName] : parent.scopeHolders;
+        child.scopeField = field;
+        // A `Telo.Import` this run declares gives its exports to the run's
+        // members and regions, innermost scope first, then the enclosing one's.
+        child.resolveImportedInstance = (alias, name) =>
+          child.declaresScopedImport(alias)
+            ? child.scopedImportInstance(alias, name)
+            : parent.resolveImportedInstance(alias, name);
+        child.resolveImportedManifest = (alias, name) =>
+          child.declaresScopedImport(alias)
+            ? child.scopedImportManifest(alias, name)
+            : parent.resolveImportedManifest(alias, name);
 
         // Per-run map of the scope's OWN resources. Fresh per run, so two
         // concurrent runs of the same sequence never observe each other's.
@@ -1673,7 +1742,11 @@ export class EvaluationContext implements IEvaluationContext {
         // pending — an outer resource is live by the time a scope opens — so the
         // child's own pending predicate suffices.
         child.injectionInstance = (name, alias) => {
-          if (alias && alias !== "Self") return parent.injectionInstance(name, alias);
+          if (alias && alias !== "Self") {
+            return child.declaresScopedImport(alias)
+              ? child.scopedImportInstance(alias, name)
+              : parent.injectionInstance(name, alias);
+          }
           const scoped = child.resourceInstances.get(name)?.instance;
           if (scoped) return scoped;
           // A name the scope DECLARES resolves to the scope's instance and to
@@ -1700,7 +1773,7 @@ export class EvaluationContext implements IEvaluationContext {
               // Cross-module exported instance (`!ref Alias.name` inside the scope) —
               // route into the owning import's child context, not scope-local resources.
               if (alias && alias !== "Self") {
-                const imported = parent.resolveImportedInstance(alias, name);
+                const imported = child.resolveImportedInstance(alias, name);
                 if (imported) return imported;
                 throw new RuntimeError(
                   "ERR_SCOPE_RESOURCE_NOT_FOUND",

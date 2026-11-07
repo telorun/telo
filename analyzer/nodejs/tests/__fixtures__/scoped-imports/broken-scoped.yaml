@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: ScopedBroken }
+targets: [!ref seq]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./broken }
+steps:
+  - { name: noop, value: 1 }

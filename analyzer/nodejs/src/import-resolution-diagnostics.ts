@@ -96,10 +96,11 @@ export function importResolutionDiagnostics(graph: LoadedGraph): AnalysisDiagnos
 }
 
 /**
- * The same conversion over import failures no graph recorded — an import the
- * graph walk never reaches, refused where it is loaded. `entrySource` is the
- * file a failure with no `fromSource` is reported against. A failure with no
- * `alias` has no `imports:` entry to anchor on and is located by its file alone.
+ * The same conversion over import failures no graph recorded — an import no
+ * load walked, refused where it is loaded. `entrySource` is the file a failure
+ * with no `fromSource` is reported against. A scope member's failure is located
+ * at the member inside its holder; any other with no `alias` has no `imports:`
+ * entry to anchor on and is located by its file alone.
  */
 export function importFailureDiagnostics(
   errors: readonly GraphLoadError[],
@@ -108,8 +109,16 @@ export function importFailureDiagnostics(
   return errors.map((e) => {
     const filePath = e.fromSource ?? entrySource;
     const code = importFailureCode(e);
-    const data: { filePath: string; path?: string; sourceLine?: number } = { filePath };
-    if (e.alias) data.path = `imports.${e.alias}`;
+    const data: {
+      filePath: string;
+      path?: string;
+      sourceLine?: number;
+      resource?: { kind: string; name: string };
+    } = { filePath };
+    if (e.scope) {
+      data.resource = e.scope.holder;
+      data.path = e.scope.path;
+    } else if (e.alias) data.path = `imports.${e.alias}`;
     if (e.sourceLine !== undefined) data.sourceLine = e.sourceLine;
     return {
       severity: DiagnosticSeverity.Error,

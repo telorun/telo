@@ -1,0 +1,36 @@
+kind: Telo.Library
+metadata: { name: SubtypeKinds }
+exports:
+  kinds: [Event, Probe, Strict]
+---
+kind: Telo.Definition
+metadata: { name: Event }
+extends: Telo.JsonSchema
+---
+kind: Telo.Definition
+metadata: { name: Probe }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    event: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    value: { type: object, x-telo-value-schema-from: /event }
+    label:
+      type: string
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          payload: { x-telo-context-eval: accessor, x-telo-context-ref-from: event/schema }
+---
+kind: Telo.Definition
+metadata: { name: Strict }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    event: { x-telo-ref: { kind: Self.Event, use: schema } }

@@ -1,0 +1,5 @@
+# An application importing the library: its scoped listener is the import's.
+kind: Telo.Application
+metadata: { name: ScopedListenerConsumer }
+imports: { Lib: ./telo.yaml }
+targets: [!ref Lib.announceTest]

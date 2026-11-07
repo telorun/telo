@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata: { name: Catching, version: 0.1.0 }
+imports: { Domain: ../../../ }
+exports: { resources: [Registered, register] }
+---
+kind: Domain.Event
+metadata: { name: Registered }
+schema: { type: object, required: [email], properties: { email: { type: string } } }
+---
+# Covers the wrapped failure; the importer's own code never reaches the library's callers.
+kind: Telo.Sequence
+metadata: { name: register }
+inputType: !ref Registered
+steps:
+  - name: attempt
+    try:
+      - name: announce
+        invoke: { kind: Domain.Emit, event: !ref Registered }
+        inputs: { email: !cel "inputs.email" }
+    catch:
+      - name: caught
+        value: !cel "error.code"
+  - name: outcome
+    value: !cel "steps.caught.result"

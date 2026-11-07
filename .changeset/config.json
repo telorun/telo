@@ -57,6 +57,7 @@
     "@telorun/crypto",
     "@telorun/data-model",
     "@telorun/docker-build",
+    "@telorun/domain-events-build",
     "@telorun/durable-build",
     "@telorun/durable-journal-file-build",
     "@telorun/durable-journal-postgres-build",

@@ -1,0 +1,4 @@
+kind: Co.Listener
+metadata: { name: rootPartial }
+topic: !ref Events.Joined
+label: rootPartial

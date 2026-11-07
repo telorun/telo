@@ -1,0 +1,9 @@
+# A library exporting a kind.
+kind: Telo.Library
+metadata: { name: ScopedKindsLib }
+exports: { kinds: [Thing] }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: Telo.Type
+extends: Telo.JsonSchema

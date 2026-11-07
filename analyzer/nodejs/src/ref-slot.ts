@@ -25,6 +25,7 @@
  *     outputType: { … }                         # optional: what the target must return
  *     outputTo: { slot: /verifier, member: x }  # optional: where the target's output goes
  *     observes: [version, features]             # optional: need constraints it reports
+ *     callsCoReferrers: { kind, slot }          # optional: dispatch calls the target's co-referrers
  */
 
 /** How control reaches a slot's target, relative to the declaring resource's own
@@ -160,6 +161,32 @@ export interface RefSlot {
    *  compares them with the outermost need. Absent: the slot observes nothing.
    *  Only recognised tokens are read; `observing-slot.ts` reports the rest. */
   observes?: NeedConstraint[];
+  /** Dispatching the declaring resource calls the co-referrers of this slot's
+   *  target — see {@link CoReferrerCall}. Absent unless the annotation holds an
+   *  object with a string `kind` and `slot`; `co-referrer-slot.ts` reports the
+   *  rest. */
+  callsCoReferrers?: CoReferrerCall;
+}
+
+/**
+ * `callsCoReferrers: { kind, slot }` — dispatching the declaring resource calls
+ * every module-scope declaration of `kind` (or a kind extending it) whose
+ * reference slot at `slot` names the same declaration as this slot, in the
+ * same module instance (`co-referrers.ts`).
+ */
+export interface CoReferrerCall {
+  /** Alias-qualified as authored; canonical `<module>.<Kind>` once
+   *  `resolveSchemaRefKinds` has run. */
+  kind: string;
+  /** JSON Pointer to the reference slot of `kind`, from its resource root. */
+  slot: string;
+}
+
+/** The co-referrer call an annotation value declares, when it is readable. */
+function readCoReferrerCall(raw: unknown): CoReferrerCall | undefined {
+  if (!isSchemaObject(raw)) return undefined;
+  const { kind, slot } = raw as { kind?: unknown; slot?: unknown };
+  return typeof kind === "string" && typeof slot === "string" ? { kind, slot } : undefined;
 }
 
 /** See {@link RefSlot.outputTo}. */
@@ -314,6 +341,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   let outputType: Record<string, any> | undefined;
   let outputTo: RefOutputTo | undefined;
   const observes = new Set<NeedConstraint>();
+  let callsCoReferrers: CoReferrerCall | undefined;
 
   for (const carrier of nodes) {
     const annotation = carrier["x-telo-ref"];
@@ -331,6 +359,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
     if (Array.isArray(obj.observes)) {
       for (const token of obj.observes) if (isNeedConstraint(token)) observes.add(token);
     }
+    callsCoReferrers ??= readCoReferrerCall(obj.callsCoReferrers);
   }
 
   const slot: RefSlot = {
@@ -345,6 +374,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   if (outputType) slot.outputType = outputType;
   if (outputTo) slot.outputTo = outputTo;
   if (observes.size > 0) slot.observes = NEED_CONSTRAINTS.filter((c) => observes.has(c));
+  if (callsCoReferrers) slot.callsCoReferrers = callsCoReferrers;
   return slot;
 }
 
@@ -378,6 +408,7 @@ export function refSlotAnnotation(slot: RefSlot): Record<string, unknown> {
   if (slot.outputType) annotation.outputType = slot.outputType;
   if (slot.outputTo) annotation.outputTo = { ...slot.outputTo };
   if (slot.observes) annotation.observes = [...slot.observes];
+  if (slot.callsCoReferrers) annotation.callsCoReferrers = { ...slot.callsCoReferrers };
   return annotation;
 }
 
@@ -409,6 +440,24 @@ export function rewriteRefSlotKinds(
   }
   if (Array.isArray(obj.kind)) {
     obj.kind = obj.kind.map((k) => (typeof k === "string" ? (map(k) ?? k) : k));
+  }
+}
+
+/**
+ * Rewrites the kind a `callsCoReferrers` names, in place, on every annotation
+ * of the slot node (its own and its `anyOf` / `oneOf` branches'). `map` returns
+ * the replacement or `undefined` to leave it as authored, which
+ * `co-referrer-slot.ts` then reports.
+ */
+export function rewriteCoReferrerKinds(
+  node: Record<string, any>,
+  map: (kind: string) => string | undefined,
+): void {
+  for (const carrier of annotationNodes(node)) {
+    const call = (carrier["x-telo-ref"] as { callsCoReferrers?: unknown } | undefined)?.callsCoReferrers;
+    if (!isSchemaObject(call) || typeof call.kind !== "string") continue;
+    const next = map(call.kind);
+    if (next !== undefined) call.kind = next;
   }
 }
 

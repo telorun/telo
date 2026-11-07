@@ -1,0 +1,25 @@
+# `event` is typed from the topic a listener names, imported or local.
+kind: Telo.Application
+metadata: { name: TypedListeners }
+imports: { Co: ../kinds, Lib: ./lib }
+---
+# Shares its name with the imported topic; `Lib.Joined` names the library's.
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object, properties: { handle: { type: string } } }
+---
+kind: Co.Topic
+metadata: { name: Left }
+schema: { type: object, required: [userId], properties: { userId: { type: string } } }
+---
+kind: Co.Listener
+metadata: { name: onImported }
+topic: !ref Lib.Joined
+when: !cel "event.userId != '' && event.email != '' && event.kye == 'x'"
+invoke: { kind: Telo.Sequence, steps: [] }
+---
+kind: Co.Listener
+metadata: { name: onLocal }
+topic: !ref Left
+when: !cel "event.userId != '' && event.kye == 'x'"
+invoke: { kind: Telo.Sequence, steps: [] }

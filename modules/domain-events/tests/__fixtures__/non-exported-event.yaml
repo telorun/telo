@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata: { name: NonExported, version: 1.0.0 }
+imports: { Domain: ../../, Events: ./lib-events }
+---
+kind: Telo.Sequence
+metadata: { name: target }
+steps: []
+---
+kind: Domain.Handler
+metadata: { name: handlesPrivate }
+event: !ref Events.Private
+invoke: !ref target

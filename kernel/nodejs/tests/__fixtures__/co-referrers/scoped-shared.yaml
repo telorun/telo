@@ -1,0 +1,12 @@
+# The shared library is first instantiated when the scope runs.
+kind: Telo.Application
+metadata: { name: CoScopedSharedApp }
+---
+kind: Telo.Sequence
+metadata: { name: run }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./scoped-via-shared }
+steps:
+  - name: announce
+    invoke: !ref Inner.announce
+outputs: { ran: !cel "steps.announce.result.ran" }

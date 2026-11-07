@@ -17,6 +17,7 @@ import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guar
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import { stampDeclaredDisplayMessages } from "../../declared-display-messages.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
+import { refuseInvalidCallsCoReferrers } from "./calls-co-referrers-guard.js";
 import {
   forgetRegisteredDefinition,
   recordRegisteredDefinition,
@@ -115,6 +116,16 @@ class ResourceAbstract implements ResourceInstance {
         | Record<string, unknown>
         | undefined,
       resolveDef,
+    );
+    refuseInvalidCallsCoReferrers(
+      this.resource as unknown as ResourceDefinition,
+      this.resource.schema as Record<string, unknown> | undefined,
+      (kind, module) =>
+        (
+          ctx as unknown as {
+            resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinition | undefined;
+          }
+        ).resolveDefinitionIn(kind, module),
     );
 
     // Fold the ancestors' schema and observed state in, in THIS scope, exactly

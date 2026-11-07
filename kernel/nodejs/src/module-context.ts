@@ -425,6 +425,13 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     this.importedKindScopes.set(alias, library);
   }
 
+  /** The library context an import alias reaches — a `shared` library's one
+   *  context under every alias reaching it — or undefined before the import has
+   *  registered it. */
+  importedLibrary(alias: string): ModuleContext | undefined {
+    return this.importedKindScopes.get(alias);
+  }
+
   /** This module's canonical kind for an exported suffix (local or re-exported), or undefined. */
   getExportedKind(suffix: string): string | undefined {
     return this.exportedKinds.get(suffix);

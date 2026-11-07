@@ -1,0 +1,5 @@
+kind: Telo.Application
+metadata: { name: WhollyInsideApp }
+imports: { Inside: ./lib }
+targets:
+  - invoke: !ref Inside.run

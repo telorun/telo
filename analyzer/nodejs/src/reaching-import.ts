@@ -1,15 +1,20 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { scopedImportMembers } from "./flatten-for-analyzer.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
 
-/** An `imports:` entry of the entry's own modules, as a diagnostic anchor. */
+/** An `imports:` entry of the entry's own modules — or a `Telo.Import` one of
+ *  them declares as a scope member — as a diagnostic anchor. */
 export interface ReachingImport {
   alias: string;
   filePath?: string;
-  /** `imports.<alias>` — the entry's line in its module doc. */
+  /** `imports.<alias>` — the entry's line in its module doc; for a scope
+   *  member, its place in its top-level holder (`with[0]`). */
   path: string;
+  /** The top-level holder of a scope member's import. */
+  resource?: { kind: string; name: string };
 }
 
 /** Which of the entry's imports reaches each dependency, over the flattened
@@ -70,17 +75,54 @@ export function importReach(
     else byOwner.set(owner, [edge]);
   }
 
-  const first = new Map<string, ReachingImport>();
-  const paths = new Map<string, string[]>();
+  // The entry's `imports:` entries first, then the imports its declarations
+  // hold as scope members, each anchored at the member inside its holder.
+  const entries: { edge: ImportEdge; anchor: ReachingImport; path: string[] }[] = [];
   for (const entry of edges) {
     if (!isEntry(ownerOf(entry))) continue;
-    const anchor: ReachingImport = {
-      alias: entry.alias,
-      filePath: (entry.manifest.metadata as { source?: string } | undefined)?.source,
-      path: `imports.${entry.alias}`,
+    entries.push({
+      edge: entry,
+      anchor: {
+        alias: entry.alias,
+        filePath: (entry.manifest.metadata as { source?: string } | undefined)?.source,
+        path: `imports.${entry.alias}`,
+      },
+      path: [entry.alias],
+    });
+  }
+  for (const { member, top, path } of scopedImportMembers(manifests)) {
+    const topMeta = top.metadata as { name?: string; source?: string; module?: string } | undefined;
+    const meta = member.metadata as {
+      name?: unknown;
+      resolvedModuleName?: string;
+      resolvedSource?: string;
+      scopeHolders?: string[];
     };
+    if (!isEntry(topMeta?.module) || typeof meta.name !== "string" || !meta.resolvedModuleName) continue;
+    const edge: ImportEdge = {
+      manifest: member,
+      alias: meta.name,
+      target: meta.resolvedModuleName,
+      ...(meta.resolvedSource ? { source: meta.resolvedSource } : {}),
+    };
+    edges.push(edge);
+    entries.push({
+      edge,
+      anchor: {
+        alias: meta.name,
+        filePath: topMeta?.source,
+        path,
+        resource: { kind: top.kind as string, name: topMeta?.name as string },
+      },
+      path: [...(meta.scopeHolders ?? []), meta.name],
+    });
+  }
+
+  const first = new Map<string, ReachingImport>();
+  const paths = new Map<string, string[]>();
+  for (const { edge: entry, anchor, path: entryPath } of entries) {
     const seen = new Set<string>();
-    const queue: { module: string; path: string[] }[] = [{ module: entry.target, path: [entry.alias] }];
+    const queue: { module: string; path: string[] }[] = [{ module: entry.target, path: entryPath }];
     while (queue.length > 0) {
       const { module, path } = queue.shift()!;
       if (seen.has(module) || rootModules.has(module)) continue;
@@ -122,6 +164,6 @@ export function importAnchoredDiagnostic(
     code,
     source: SOURCE,
     message: `Imported library '${module}', reached through import '${via.alias}': ${message}`,
-    data: { filePath: via.filePath, path: via.path },
+    data: { filePath: via.filePath, path: via.path, ...(via.resource ? { resource: via.resource } : {}) },
   };
 }

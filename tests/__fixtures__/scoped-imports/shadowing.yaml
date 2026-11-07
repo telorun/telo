@@ -1,0 +1,12 @@
+# A scoped import named like one of the module's `imports:` aliases.
+kind: Telo.Application
+metadata: { name: ScopedImportShadowing }
+imports: { Inner: ./kinds-lib }
+targets: [!ref seq]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./kinds-lib }
+steps:
+  - { name: noop, value: 1 }

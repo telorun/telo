@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata: { name: CoTwice }
+imports: { Co: ../../kinds, Events: ../../events, Inner: ./inner }
+---
+kind: Co.Listener
+metadata: { name: twiceListener }
+topic: !ref Events.Joined
+label: twice

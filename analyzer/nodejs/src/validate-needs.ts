@@ -1,3 +1,4 @@
+import { scopedImportAnchorOf } from "./flatten-for-analyzer.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { needSupplyOf, needTypeOf, readSuppliedNeeds } from "./need-type.js";
 import {
@@ -92,9 +93,11 @@ export function needTableDiagnostics(
         `Imported library '${p.module}', reached through import '${via.alias}': ${p.message} ` +
         `The repair is the library's — import a version of it that resolves this.`,
       data: {
-        resource: { kind: "Telo.Import", name: via.alias },
-        filePath: (via.manifest.metadata as { source?: string } | undefined)?.source,
-        path: "",
+        ...(scopedImportAnchorOf(via.manifest) ?? {
+          resource: { kind: "Telo.Import", name: via.alias },
+          filePath: (via.manifest.metadata as { source?: string } | undefined)?.source,
+          path: "",
+        }),
         [NEED_TABLE_MARK]: true,
       },
     });

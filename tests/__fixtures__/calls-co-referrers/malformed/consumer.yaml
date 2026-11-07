@@ -1,0 +1,4 @@
+# An application importing the library: its kinds' refusals are the import's.
+kind: Telo.Application
+metadata: { name: BadCallsConsumer }
+imports: { Bad: ./telo.yaml }

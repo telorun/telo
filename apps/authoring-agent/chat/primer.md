@@ -1231,6 +1231,20 @@ reached with `!ref`; read anywhere else it is an unknown field. Two members of o
 which it shadows inside the scope; members holding each other at reference slots
 are `DEPENDENCY_CYCLE`. The same holds for any kind's `x-telo-scope` field.
 
+A `Telo.Import` may be a `with:` member too: each run of the scope gets its own
+instance of the library, checked and loaded as an `imports:` entry is (a broken
+source is reported at the member and refused before the app starts). It gives
+the scope its EXPORTED INSTANCES only — `!ref Inner.greet` in a step,
+`resources.Inner.greet` in the steps' CEL — and never a module name: a
+`kind: Inner.Thing` or `Inner.fn(…)` is `UNDEFINED_KIND` / unresolved, so import
+the module under `imports:` to use its kinds or functions. Do not name a scoped
+import like one of the module's `imports:` aliases (`DUPLICATE_RESOURCE_NAME`).
+Its library's needs are named beneath the holder (`seq` importing `Inner` →
+`TELO_NEED_SEQ__INNER__<NEED>__<FIELD>`). A `Domain.Handler` in such a library
+handles only that library's own events, per run; one on a `shared` library's
+event is `CO_REFERRER_SCOPED` — declare it in the application or an `imports:`
+library instead.
+
 An inline step target (`invoke: { kind: … }`) is created where its sequence is,
 NOT in the `with:` scope, so nothing inside it may name a `with:` resource — a
 `!ref` is `SCOPED_NAME_OUT_OF_REACH`, a `resources.<name>` read
@@ -1860,6 +1874,57 @@ AFTER the change it announces (the PostgreSQL channel delivers a message publish
 inside a `Sql.Transaction` when it commits and never on rollback, and gives a
 subscription a gap when its database connection dropped and came back; the memory
 channel sends at once).
+
+## Business events — the `domain-events` module
+
+A library that must tell its importers "this happened" (a user was created)
+declares an EVENT and emits it; it never names who reacts. Import
+`domain-events` as `Domain` (`Domain: oci://ghcr.io/telorun/domain-events@<version>`).
+
+EMIT from the library: declare a `Domain.Event` — a named shape, written like a
+`Telo.JsonSchema`, whose schema is the payload — list it in `exports.resources`
+so importers can name it, and emit with `inputs` being the payload (held to the
+schema; a literal mismatch is refused before the app runs):
+
+    kind: Domain.Event
+    metadata: { name: UserCreated }
+    schema:
+      type: object
+      required: [userId, email]
+      properties:
+        userId: { type: string }
+        email: { type: string }
+    ---
+    # inside a Telo.Sequence step of the library
+    - name: announce
+      invoke: { kind: Domain.Emit, event: !ref UserCreated }
+      inputs: { userId: !cel "inputs.userId", email: !cel "inputs.email" }
+
+HANDLE as an importer: a NAMED top-level `Domain.Handler` — never declared in a
+`with:` scope (refused). `invoke` is any invocable or runnable; `when` is an optional
+boolean over `event`; omitted `inputs` means `{}`, and `inputs: !cel "event"`
+forwards the payload whole:
+
+    kind: Domain.Handler
+    metadata: { name: auditUserCreated }
+    event: !ref Iam.UserCreated
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO audit_log (action, subject) VALUES ('user.created', ?)"
+      bindings: [!cel "event.userId"]
+
+DELIVERY IS SYNCHRONOUS, inside the emitter's call: handlers run one at a time
+in application load order (root, then imports depth-first) and join the
+emitter's open transaction, so a failing handler rolls the emitter back. A
+failure leaves the emit as `ERR_DOMAIN_EVENT_HANDLER_FAILED` with
+`data: { event, handler }` (in a `catch:` read it as `error.code` and
+`error.data`). Do no external I/O inside a handler — for work that must happen after
+commit, make the handler a `QueueSql.Enqueue` on an outbox queue (queue `name`
+`^[A-Za-z_][A-Za-z0-9_]*$`, e.g. `welcome_emails`) and let a `Queue.Worker` do
+it. A library imported twice as `isolated` has two separate events. A kind whose
+dispatch reaches the other declarations naming the same target declares it on
+the slot as `x-telo-ref: { kind: …, use: …, callsCoReferrers: { kind:
+Self.Handler, slot: /event } }`.
 
 ## What a value IS — `x-telo-type`
 

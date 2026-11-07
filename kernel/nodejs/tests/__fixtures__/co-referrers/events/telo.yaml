@@ -1,0 +1,19 @@
+# One topic for the whole application, with a listener of its own.
+kind: Telo.Library
+metadata: { name: CoEvents }
+lifecycle: shared
+imports: { Co: ../kinds }
+exports: { resources: [Joined, announce] }
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Co.Announce
+metadata: { name: announce }
+topic: !ref Joined
+---
+kind: Co.Listener
+metadata: { name: eventsOwn }
+topic: !ref Joined
+label: events

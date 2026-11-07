@@ -1,0 +1,13 @@
+# A kind declaring an execution scope of its own.
+kind: Telo.Library
+metadata: { name: ScopeHolder }
+exports: { kinds: [Scoped] }
+---
+kind: Telo.Definition
+metadata: { name: Scoped }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties: { members: { type: array, x-telo-scope: /members, items: { type: object } } }

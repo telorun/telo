@@ -1,0 +1,28 @@
+# A listener declared in a sequence's `with:` scope, and one in a kind's own scope.
+kind: Telo.Application
+metadata: { name: ScopedListeners }
+imports: { Co: ../kinds, Holder: ./holder }
+targets: [!ref announceTest, !ref held]
+---
+kind: Co.Topic
+metadata: { name: Joined }
+schema: { type: object, properties: { userId: { type: string } } }
+---
+kind: Telo.Sequence
+metadata: { name: announceTest }
+with:
+  - kind: Co.Listener
+    metadata: { name: captureJoined }
+    topic: !ref Joined
+    invoke: { kind: Telo.Sequence, steps: [] }
+steps:
+  - name: announce
+    invoke: { kind: Co.Announce, topic: !ref Joined }
+---
+kind: Holder.Scoped
+metadata: { name: held }
+members:
+  - kind: Co.Listener
+    metadata: { name: heldListener }
+    topic: !ref Joined
+    invoke: { kind: Telo.Sequence, steps: [] }

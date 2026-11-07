@@ -298,6 +298,10 @@ Matching walks the stack **innermost first**. Correlation identity is the live
 instance (§2), which mirrors the runtime exactly: a transaction open on a
 different connection does not answer, and two live instances of one
 `with:`-scoped connection are different connections.
+A library's resource input is the instance its importer supplied, borrowed,
+so a key resolving to the input correlates on the importer's declaration — per
+import of an `isolated` library — and a static checker reads it as that
+declaration; an optional input left unsupplied correlates on nothing.
 
 ## 7. Clearing guarantees
 
