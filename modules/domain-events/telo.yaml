@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: DomainEvents
-  version: 0.1.0
+  version: 0.2.0
   license: MIT
   description: >-
     Business events a library announces and its importers react to, inside the
