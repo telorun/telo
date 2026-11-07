@@ -1,18 +1,19 @@
 //! What identifies an entry of a map, and that the ways a map is built agree about it —
-//! the twin of `cel/nodejs/tests/map-key-identity.test.ts`, less its `parseJson` case,
-//! which is the function catalog's.
+//! the twin of `cel/nodejs/tests/map-key-identity.test.ts`.
 //!
 //! One container holds int, uint, bool and string keys; `1`, `1u` and `1.0` are one key and
 //! a string `"1"` another; a key is never a property name, so a prototype member's name
 //! round-trips as data; a double that is not whole names no entry, and no map is built
 //! with one. Every expected answer is what Node's `CelEnvironment.evaluate` answered,
-//! executed — `@telorun/cel 0.120.1 at b4a2b6e9`.
+//! executed — `@telorun/cel 0.120.1 at b4a2b6e9`, and the `parseJson` case
+//! `@telorun/cel 0.129.0 at 2ee5ef49` under Node v24.21.0 (V8 13.6.233.17-node.53, ICU 78.3,
+//! tz 2026c).
 
 mod evaluation_support;
 mod value_support;
 
 use evaluation_support::{bindings, source_answer};
-use telorun_cel::{CelEnvironment, CelEnvironmentOptions};
+use telorun_cel::{register_function_catalog, CelEnvironment, CelEnvironmentOptions, RegisterCatalogOptions};
 use value_support::{i, rec};
 
 fn base() -> CelEnvironment {
@@ -132,5 +133,25 @@ fn compares_a_map_against_a_record_by_key_identity_across_the_two_representation
         ("record", "value record(1: int 2, a: int 1)"),
     ] {
         assert_eq!(source_answer(&environment, source, &record), expected, "{source}");
+    }
+}
+
+#[test]
+fn answers_the_same_questions_for_a_map_parse_json_built() {
+    // JSON gives string keys only, and a JSON object is a record: a non-string key cannot
+    // name an entry of it at all, which is a fact about the record, not the numeric types.
+    let mut environment = base();
+    register_function_catalog(&mut environment, RegisterCatalogOptions::default());
+    for (source, expected) in [
+        ("parseJson('{\"a\": 1, \"__proto__\": 2}')['__proto__']", "value double 2"),
+        ("size(parseJson('{\"a\": 1, \"b\": 2}'))", "value int 2"),
+        ("'a' in parseJson('{\"a\": 1}')", "value bool true"),
+        ("'1' in parseJson('{\"1\": 1}')", "value bool true"),
+        ("parseJson('{\"a\": 1}').map(k, k)", "value list(string \"a\")"),
+        ("parseJson('{\"1\": 7}')[1]", "error unsupported_key_type [0, 24] 1 cannot name an entry of this value"),
+        ("parseJson('{\"b\": 1, \"2\": 2, \"a\": 3, \"1\": 4}')", "value record(1: double 4, 2: double 2, b: double 1, a: double 3)"),
+        ("parseJson('{\"b\": 1, \"2\": 2, \"a\": 3, \"1\": 4}') == {'b': 1.0, '2': 2.0, 'a': 3.0, '1': 4.0}", "value bool true"),
+    ] {
+        assert_eq!(source_answer(&environment, source, &()), expected, "{source}");
     }
 }

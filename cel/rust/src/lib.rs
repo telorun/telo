@@ -13,22 +13,29 @@
 //! fields in a time zone over the IANA database it bundles, and ECMAScript's casing — and
 //! evaluation: an expression compiled to a flat program over a snapshot of its
 //! environment, run in one loop with errors as values, its comprehensions, per-site
-//! dispatch, the compiled cache and namespaced calls. It answers as the Node engine answers.
+//! dispatch, the compiled cache and namespaced calls — and the function catalog, with the
+//! host's handler seam, and the calendar in a time zone it reads. It answers as the Node
+//! engine answers.
 //!
-//! Three rules hold for every file here: two dependencies, the value crate by path and
-//! `jiff-tzdb` for the zone database's names and bytes, neither deciding a verdict; no
-//! host vocabulary; and nothing recurses with the depth of its input.
+//! Three rules hold for every file here: three dependencies, the value crate by path,
+//! `jiff-tzdb` for the zone database's names and bytes and `getrandom` for the operating
+//! system's random bytes, none deciding a verdict; no host vocabulary; and nothing recurses
+//! with the depth of its input.
 //!
 //! Each file twins the `cel/nodejs/src` file of its name, and each header lists the
-//! Node items with no twin. Six files have no Node twin, each header saying why:
-//! `json_value.rs`; the RE2 files and the Unicode data, whose roles Node's dependency
-//! re2js and its host's V8 fill; and the zone database, whose role its host's Intl
-//! fills. The exports below are the front-end block of Node's entry, its
-//! comprehension-binding table, the type system's and the checker's items, the value
-//! domain's `cel-value.ts` items, the pattern language's and the bounded cache, the
-//! runtime library's, member read's, equality's, the timestamp file's and `value-text.ts`'s,
-//! and evaluation's: the activation, the program and its options, the compile refusal,
-//! the call-site capacity and the comprehension functions.
+//! Node items with no twin. The files with no Node twin each say why in their header:
+//! `json_value.rs`; the RE2 files, the matcher and the Unicode data, whose roles Node's
+//! dependency re2js and its host's V8 fill; the zone database, whose role its host's Intl
+//! fills; the catalog's text substrate — V8's number methods and URI component coding,
+//! and d3-format's specifier grammar; V8's longest string, the bound on every text the
+//! engine builds; and the clock, the random source, UUIDs and their
+//! digests, the roles of Node's host and its dependency `uuid`. The exports below are the
+//! front-end block of Node's entry, its comprehension-binding table, the type system's and
+//! the checker's items, the value domain's `cel-value.ts` items, the pattern language's and
+//! the bounded cache, the runtime library's, member read's, equality's, the timestamp
+//! file's and `value-text.ts`'s, evaluation's — the activation, the program and its
+//! options, the compile refusal, the call-site capacity and the comprehension functions —
+//! the function catalog's, and the zoned calendar's.
 //!
 //! - `reserved_words.rs`         — `reserved-words.ts`
 //! - `syntax_diagnostic.rs`      — `syntax-diagnostic.ts`
@@ -82,6 +89,18 @@
 //! - `re2_onepass.rs`            — no twin: re2js's OnePass
 //! - `re2_backtracker.rs`        — no twin: re2js's backtracker
 //! - `re2_dfa.rs`                — no twin: re2js's DFA
+//! - `re2_matcher.rs`            — no twin: re2js's matcher and its replacement
+//! - `es_number_text.rs`         — no twin: V8's number methods
+//! - `d3_format.rs`              — no twin: d3-format, the number-formatting grammar
+//! - `uri_component.rs`          — no twin: ECMAScript's URI component encoding
+//! - `longest_text.rs`           — no twin: V8's longest string, the bound on every text built
+//! - `function_catalog.rs`       — `function-catalog.ts`
+//! - `catalog_runtime.rs`        — `catalog-runtime.ts`
+//! - `zoned_calendar.rs`         — `zoned-calendar.ts`
+//! - `host_clock.rs`             — no twin: the clock Node's host reads, `Date.now()`
+//! - `host_random.rs`            — no twin: the random source Node's host reads, `crypto`
+//! - `uuid.rs`                   — no twin: `uuid` 14.0.1, the UUIDs
+//! - `uuid_digests.rs`           — no twin: MD5 and SHA-1, which `uuid` takes from `node:crypto`
 //! - `unicode_tables.rs`         — no twin: generated from the Unicode 17.0 archive
 
 mod activation;
@@ -92,18 +111,25 @@ mod cel_program;
 mod cel_type;
 mod cel_value;
 mod check_diagnostic;
+mod catalog_runtime;
+mod d3_format;
+mod es_number_text;
 mod checker;
 mod closure_backend;
 mod comprehension_bindings;
 mod comprehension_runtime;
 mod declared_chain;
 mod environment;
+mod function_catalog;
 mod function_registry;
+mod host_clock;
+mod host_random;
 mod integer_arithmetic;
 mod json_schema_type;
 mod json_text_scan;
 mod json_value;
 mod lexer;
+mod longest_text;
 mod macro_check;
 mod macro_shape;
 mod member_read;
@@ -116,6 +142,7 @@ mod qualified_calls;
 mod re2_backtracker;
 mod re2_dfa;
 mod re2_machine;
+mod re2_matcher;
 mod re2_onepass;
 mod re2_prefilter;
 mod re2_program;
@@ -136,15 +163,23 @@ mod type_expression;
 // The dataset is generated whole; not every table has a reader in every build.
 #[allow(dead_code)]
 mod unicode_tables;
+mod uri_component;
 mod value_equality;
+mod uuid;
+mod uuid_digests;
 mod value_text;
 mod zone_database;
+mod zoned_calendar;
 
 pub use activation::CelActivation;
 pub use backend_runtime::{CelCompileError, CALL_SITE_CACHE_CAPACITY};
 pub use bounded_cache::BoundedCache;
 pub use cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
 pub use cel_program::{CelProgram, EvaluateOptions};
+pub use catalog_runtime::{
+    catalog_guarded_names, catalog_implementation, catalog_implemented_keys, catalog_literal_check, CatalogRefusal,
+    CelCatalogHandlers,
+};
 pub use cel_type::{
     admits_null, assignable, format_type, is_dyn, is_numeric, list_of, map_of, optional_of, parameter_of,
     types_equal, unify, union_of, without_null, without_parameters, CelType, ListType, MapType, NominalType,
@@ -172,6 +207,10 @@ pub use environment::{
     FunctionDefinition, DEFAULT_COMPILED_CACHE_CAPACITY,
     NamespaceFunctionDeclaration, NamespaceFunctionForm, NamespaceListing, NamespaceOptions, SchemaRegistrationReport,
     SignatureDeclaration, TypeDeclaration, TypeDefinitionListing, VariableDefinition, WithheldReturns,
+};
+pub use function_catalog::{
+    catalog_categories, catalog_signatures, function_catalog, register_function_catalog, CatalogFunction,
+    RegisterCatalogOptions, FUNCTION_CATALOG_GENERATION,
 };
 pub use function_registry::{
     describe_arguments, describe_candidates, substitute, FunctionRegistry, RegisteredFunction, Resolution,
@@ -229,3 +268,6 @@ pub use type_expression::{
 };
 pub use value_equality::{cel_compare, cel_equal};
 pub use value_text::{bytes_to_text, double_text, es_to_lower_case, es_to_upper_case, text_to_bytes};
+pub use zoned_calendar::{
+    civil_time_in, date_text_in, days_in_month, instant_of_civil_time, iso_text_in, known_time_zone, CivilTime,
+};

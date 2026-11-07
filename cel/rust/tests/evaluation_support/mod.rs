@@ -5,9 +5,12 @@
 
 #![allow(dead_code)]
 
+use std::sync::Arc;
+
 use telorun_cel::{
-    double_text, is_identifier_spelling, CelActivation, CelEnvironment, CelEnvironmentOptions, CelEvaluateError,
-    CelProgram, CelValue, EvaluateOptions, FunctionDefinition, PropertyMap,
+    double_text, is_identifier_spelling, register_function_catalog, CelActivation, CelCatalogHandlers,
+    CelEnvironment, CelEnvironmentOptions, CelEvaluateError, CelProgram, CelValue, EvaluateOptions,
+    FunctionDefinition, PropertyMap, RegisterCatalogOptions,
 };
 use telorun_cel_value::{format_duration, format_timestamp, json_quote};
 
@@ -23,6 +26,30 @@ pub fn language() -> CelEnvironment {
 /// Unlisted names `dyn`, and nothing else turned on.
 pub fn loose() -> CelEnvironment {
     CelEnvironment::new(CelEnvironmentOptions { unlisted_variables_are_dyn: true, ..Default::default() })
+}
+
+/// Deterministic stand-ins for the nine the host answers, as Node's `HANDLERS`, so their
+/// calls compare by value.
+pub fn handlers() -> CelCatalogHandlers {
+    CelCatalogHandlers {
+        sha256: Some(Arc::new(|text| Ok(format!("sha256:{text}")))),
+        md5: Some(Arc::new(|text| Ok(format!("md5:{text}")))),
+        sha1: Some(Arc::new(|text| Ok(format!("sha1:{text}")))),
+        sha512: Some(Arc::new(|text| Ok(format!("sha512:{text}")))),
+        hmac: Some(Arc::new(|algorithm, key, message| Ok(format!("hmac:{algorithm}:{key}:{message}")))),
+        base64_encode: Some(Arc::new(|text| Ok(format!("base64:{text}")))),
+        base64_decode: Some(Arc::new(|text| Ok(format!("plain:{text}")))),
+        json: Some(Arc::new(|_| Ok("json".into()))),
+        join_path: Some(Arc::new(|base, relative| Ok(format!("{base}/{relative}")))),
+    }
+}
+
+/// Node's `catalogEnvironment()`: CEL's own library with optional types on, and the
+/// function catalog beside it over the stand-in handlers.
+pub fn catalog_environment() -> CelEnvironment {
+    let mut environment = CelEnvironment::new(CelEnvironmentOptions { enable_optional_types: true, ..Default::default() });
+    register_function_catalog(&mut environment, RegisterCatalogOptions { handlers: handlers() });
+    environment
 }
 
 /// An activation of the names given.

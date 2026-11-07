@@ -1,20 +1,23 @@
-//! One call per signature the standard library registers with optional types on — 214 —
-//! each evaluated to the answer Node gave it (Q8 item 4).
+//! One call per signature the standard library and the function catalog register with
+//! optional types on — 214 and 86, 300 in all — each evaluated to the answer Node gave it.
 //!
 //! The sources are Node's own registry-call generator (`cel/nodejs/tests/registry-calls.ts`,
-//! `callSource`) run over Node's listing, and each answer is what Node's
-//! `CelEnvironment.evaluate` answered for it, executed — `@telorun/cel 0.120.1 at b4a2b6e9`.
-//! The generator is ported in `evaluation_support` and run over this crate's own listing, so the table is
-//! held to one call per registered signature in both directions: a signature with no row,
-//! and a row with no signature, both fail.
+//! `callSource`, a volatile call written inside `type(…)`) run over Node's listing of
+//! `catalogEnvironment()`, the nine host functions answered by its stand-ins
+//! (`sha256:<text>`, …), and each answer is what Node's `CelEnvironment.evaluate`
+//! answered for it, executed — `@telorun/cel 0.129.0 at 2ee5ef49`, Node v24.21.0
+//! (V8 13.6.233.17-node.53, ICU 78.3, tz 2026c), d3-format 3.1.2, `uuid` 14.0.1, re2js
+//! 2.8.3. The 214 standard rows are byte for byte what `@telorun/cel 0.120.1 at b4a2b6e9`
+//! answered before. The generator is ported in `evaluation_support` and run over this
+//! crate's own listing, so the table is held to one call per registered signature in both
+//! directions: a signature with no row, and a row with no signature, both fail.
 
 mod evaluation_support;
 
-use evaluation_support::{call_source, source_answer};
-use telorun_cel::{CelEnvironment, CelEnvironmentOptions};
+use evaluation_support::{call_source, catalog_environment, source_answer};
 
 /// `(source, Node's answer)`, in the listing's order.
-const ROWS: [(&str, &str); 214] = [
+const ROWS: [(&str, &str); 300] = [
     ("!(true)", "value bool false"),
     ("(optional.of(1)) != (optional.of(1))", "value bool false"),
     ("(3) != (3)", "value bool false"),
@@ -123,13 +126,29 @@ const ROWS: [(&str, &str); 214] = [
     ("(3u) >= (2.5)", "value bool true"),
     ("(2.5) >= (3)", "value bool false"),
     ("(2.5) >= (3u)", "value bool false"),
+    ("abs(dyn(2.5))", "value double 2.5"),
+    ("addMonths(timestamp('2024-03-04T05:06:07.008009010Z'), 3)", "value timestamp 2024-06-04T05:06:07Z"),
+    ("addMonths(timestamp('2024-03-04T05:06:07.008009010Z'), 3, 'ab')", "error invalid_argument [0, 63] addMonths: unknown IANA time zone \"ab\""),
     ("(b'ab').at(3)", "error index_out_of_range [1, 13] index out of range: 3"),
+    ("avg([1, 2])", "value double 1.5"),
     ("(b'ab').base64()", "value string \"YWI=\""),
+    ("base64Decode('ab')", "value string \"plain:ab\""),
+    ("base64Encode('ab')", "value string \"base64:ab\""),
     ("bool(true)", "value bool true"),
     ("bool('ab')", "error invalid_conversion [0, 10] bool() cannot convert \"ab\""),
     ("bytes(b'ab')", "value bytes 6162"),
     ("bytes('ab')", "value bytes 6162"),
+    ("bytesFromBase64('ab')", "value bytes 69"),
+    ("bytesToBase64(b'ab')", "value string \"YWI=\""),
+    ("ceil(dyn(2.5))", "value double 3"),
+    ("coalesce([1, 2])", "value int 1"),
+    ("compact([1, 2])", "value list(int 1, int 2)"),
+    ("compact({'a': 1})", "value map(string \"a\": int 1)"),
     ("('ab').contains('ab')", "value bool true"),
+    ("dateIn(timestamp('2024-03-04T05:06:07.008009010Z'))", "value string \"2024-03-04\""),
+    ("dateIn(timestamp('2024-03-04T05:06:07.008009010Z'), 'ab')", "error invalid_argument [0, 57] dateIn: unknown IANA time zone \"ab\""),
+    ("default(dyn(2.5), dyn(2.5))", "value double 2.5"),
+    ("distinct([1, 2])", "value list(int 1, int 2)"),
     ("double(2.5)", "value double 2.5"),
     ("double(3)", "value double 3"),
     ("double(3u)", "value double 3"),
@@ -138,6 +157,15 @@ const ROWS: [(&str, &str); 214] = [
     ("duration(duration('90.5s'))", "value duration 90.5s"),
     ("dyn(1)", "value int 1"),
     ("('ab').endsWith('ab')", "value bool true"),
+    ("enumerate([1, 2])", "value list(record(index: int 0, value: int 1), record(index: int 1, value: int 2))"),
+    ("fixed(2.5, 3)", "value string \"2.500\""),
+    ("fixed(3, 3)", "value string \"3.000\""),
+    ("flatten([1, 2])", "value list(int 1, int 2)"),
+    ("floor(dyn(2.5))", "value double 2"),
+    ("format(2.5, 'ab')", "error invalid_argument [0, 17] format: invalid format specifier \"ab\""),
+    ("format(3, 'ab')", "error invalid_argument [0, 15] format: invalid format specifier \"ab\""),
+    ("formatDuration(2.5, 3)", "value string \"1d\""),
+    ("formatDuration(3, 3)", "value string \"1d\""),
     ("(timestamp('2024-03-04T05:06:07.008009010Z')).getDate()", "value int 4"),
     ("(timestamp('2024-03-04T05:06:07.008009010Z')).getDate('ab')", "error invalid_argument [1, 59] \"ab\" is not a time zone"),
     ("(timestamp('2024-03-04T05:06:07.008009010Z')).getDayOfMonth()", "value int 3"),
@@ -164,6 +192,7 @@ const ROWS: [(&str, &str); 214] = [
     ("(duration('90.5s')).getSeconds()", "value int 90"),
     ("(optional.of(1)).hasValue()", "value bool true"),
     ("(b'ab').hex()", "value string \"6162\""),
+    ("hmac('ab', 'ab', 'ab')", "value string \"hmac:ab:ab:ab\""),
     ("(1) in ([1, 2])", "value bool true"),
     ("('a') in ({'a': 1})", "value bool true"),
     ("('ab').indexOf('ab')", "value int 0"),
@@ -174,16 +203,51 @@ const ROWS: [(&str, &str); 214] = [
     ("int('ab')", "error invalid_conversion [0, 9] int() cannot convert \"ab\""),
     ("int(timestamp('2024-03-04T05:06:07.008009010Z'))", "value int 1709528767"),
     ("int(duration('90.5s'))", "value int 90"),
+    ("isoIn(timestamp('2024-03-04T05:06:07.008009010Z'))", "value string \"2024-03-04T05:06:07.008Z\""),
+    ("isoIn(timestamp('2024-03-04T05:06:07.008009010Z'), 'ab')", "error invalid_argument [0, 56] isoIn: unknown IANA time zone \"ab\""),
     ("(['a', 'b']).join()", "value string \"ab\""),
     ("(['a', 'b']).join('ab')", "value string \"aabb\""),
+    ("join([1, 2], 'ab')", "value string \"1ab2\""),
+    ("('ab').joinPath('ab')", "value string \"ab/ab\""),
     ("(b'ab').json()", "error invalid_conversion [1, 14] the bytes are not JSON: Unexpected token 'a', \"ab\" is not valid JSON"),
+    ("json(dyn(2.5))", "value string \"json\""),
+    ("keys({'a': 1})", "value list(string \"a\")"),
     ("('ab').lastIndexOf('ab')", "value int 0"),
     ("('ab').lastIndexOf('ab', 3)", "error invalid_argument [1, 27] index 3 is outside the string"),
+    ("lower('ab')", "value string \"ab\""),
     ("('ab').lowerAscii()", "value string \"ab\""),
     ("matches('ab', 'ab')", "value bool true"),
     ("('ab').matches('ab')", "value bool true"),
+    ("max([1, 2])", "value int 2"),
+    ("md5('ab')", "value string \"md5:ab\""),
+    ("merge({'a': 1}, {'a': 1})", "value map(string \"a\": int 1)"),
+    ("min([1, 2])", "value int 1"),
+    ("type(now())", "value type google.protobuf.Timestamp"),
+    ("type(nowIso())", "value type string"),
+    ("type(nowIso('ab'))", "error invalid_argument [5, 17] nowIso: unknown IANA time zone \"ab\""),
+    ("type(nowMillis())", "value type int"),
+    ("type(nowSeconds())", "value type int"),
     ("(optional.of(1)).or(optional.of(1))", "value optional(int 1)"),
     ("(optional.of(1)).orValue(1)", "value int 1"),
+    ("parseJson('ab')", "error invalid_conversion [0, 15] parseJson: invalid JSON at offset 0"),
+    ("range(3)", "value list(int 0, int 1, int 2)"),
+    ("regexExtract('ab', 'ab')", "value string \"ab\""),
+    ("regexExtract('ab', 'ab', 'ab')", "error invalid_argument [0, 30] regexExtract: unknown regex flag 'a' (supported: i, m, s)"),
+    ("regexExtractAll('ab', 'ab')", "value list(string \"ab\")"),
+    ("regexExtractAll('ab', 'ab', 'ab')", "error invalid_argument [0, 33] regexExtractAll: unknown regex flag 'a' (supported: i, m, s)"),
+    ("regexGroups('ab', 'ab')", "value list()"),
+    ("regexGroups('ab', 'ab', 'ab')", "error invalid_argument [0, 29] regexGroups: unknown regex flag 'a' (supported: i, m, s)"),
+    ("regexReplace('ab', 'ab', 'ab')", "value string \"ab\""),
+    ("regexReplace('ab', 'ab', 'ab', 'ab')", "error invalid_argument [0, 36] regexReplace: unknown regex flag 'a' (supported: i, m, s)"),
+    ("replace('ab', 'ab', 'ab')", "value string \"ab\""),
+    ("reverse([1, 2])", "value list(int 2, int 1)"),
+    ("round(2.5)", "value double 3"),
+    ("round(3)", "value double 3"),
+    ("round(2.5, 3)", "value double 2.5"),
+    ("round(3, 3)", "value double 3"),
+    ("sha1('ab')", "value string \"sha1:ab\""),
+    ("sha256('ab')", "value string \"sha256:ab\""),
+    ("sha512('ab')", "value string \"sha512:ab\""),
     ("size('ab')", "value int 2"),
     ("size(b'ab')", "value int 2"),
     ("size([1, 2])", "value int 2"),
@@ -192,8 +256,15 @@ const ROWS: [(&str, &str); 214] = [
     ("(b'ab').size()", "value int 2"),
     ("([1, 2]).size()", "value int 2"),
     ("({'a': 1}).size()", "value int 1"),
+    ("slice(b'ab', 3, 3)", "value bytes "),
+    ("slice('ab', 3, 3)", "value string \"\""),
+    ("slice([1, 2], 3, 3)", "value list()"),
+    ("sort([1, 2])", "value list(int 1, int 2)"),
     ("('ab').split('ab')", "value list(string \"\", string \"\")"),
     ("('ab').split('ab', 3)", "value list(string \"\", string \"\")"),
+    ("split('ab', 'ab')", "value list(string \"\", string \"\")"),
+    ("startOfMonth(timestamp('2024-03-04T05:06:07.008009010Z'))", "value timestamp 2024-03-01T00:00:00Z"),
+    ("startOfMonth(timestamp('2024-03-04T05:06:07.008009010Z'), 'ab')", "error invalid_argument [0, 63] startOfMonth: unknown IANA time zone \"ab\""),
     ("('ab').startsWith('ab')", "value bool true"),
     ("string('ab')", "value string \"ab\""),
     ("string(true)", "value string \"true\""),
@@ -206,10 +277,16 @@ const ROWS: [(&str, &str); 214] = [
     ("(b'ab').string()", "value string \"ab\""),
     ("('ab').substring(3)", "error invalid_argument [1, 19] index 3 is outside the string"),
     ("('ab').substring(3, 3)", "error invalid_argument [1, 22] index 3 is outside the string"),
+    ("sum([1, 2])", "value double 3"),
     ("timestamp('ab')", "error invalid_conversion [0, 15] \"ab\" is not an RFC 3339 instant"),
     ("timestamp(3)", "value timestamp 1970-01-01T00:00:03Z"),
     ("timestamp(timestamp('2024-03-04T05:06:07.008009010Z'))", "value timestamp 2024-03-04T05:06:07.00800901Z"),
+    ("type(today())", "value type string"),
+    ("type(today('ab'))", "error invalid_argument [5, 16] today: unknown IANA time zone \"ab\""),
     ("('ab').trim()", "value string \"ab\""),
+    ("trim('ab')", "value string \"ab\""),
+    ("trimPrefix('ab', 'ab')", "value string \"\""),
+    ("trimSuffix('ab', 'ab')", "value string \"\""),
     ("type(3)", "value type int"),
     ("type(3u)", "value type uint"),
     ("type(2.5)", "value type double"),
@@ -227,32 +304,45 @@ const ROWS: [(&str, &str); 214] = [
     ("uint(3)", "value uint 3"),
     ("uint(2.5)", "value uint 2"),
     ("uint('ab')", "error invalid_conversion [0, 10] uint() cannot convert \"ab\""),
+    ("upper('ab')", "value string \"AB\""),
     ("('ab').upperAscii()", "value string \"AB\""),
+    ("urlDecode('ab')", "value string \"ab\""),
+    ("urlEncode('ab')", "value string \"ab\""),
+    ("uuidValidate('ab')", "value bool false"),
+    ("uuidVersion('ab')", "threw TypeError: Invalid UUID"),
+    ("type(uuidv1())", "value type string"),
+    ("uuidv3('ab', 'ab')", "threw TypeError: Invalid UUID"),
+    ("type(uuidv4())", "value type string"),
+    ("uuidv5('ab', 'ab')", "threw TypeError: Invalid UUID"),
+    ("type(uuidv6())", "value type string"),
+    ("type(uuidv7())", "value type string"),
     ("(optional.of(1)).value()", "value int 1"),
+    ("values({'a': 1})", "value list(int 1)"),
 ];
-
-fn environment() -> CelEnvironment {
-    CelEnvironment::new(CelEnvironmentOptions { enable_optional_types: true, ..Default::default() })
-}
 
 #[test]
 fn holds_one_row_per_registered_signature() {
-    let sources: Vec<String> = environment().definitions().functions.iter().map(call_source).collect();
+    let sources: Vec<String> = catalog_environment().definitions().functions.iter().map(call_source).collect();
     let rows: Vec<&str> = ROWS.iter().map(|(source, _)| *source).collect();
     assert_eq!(sources, rows);
 }
 
-/// The rows this crate answers otherwise, each an interim reading the crate's README names:
+/// The rows this crate answers otherwise, each a reading the crate's README names:
 /// `(source, this crate's answer)`.
-const PINNED: [(&str, &str); 1] = [
+const PINNED: [(&str, &str); 4] = [
     // `bytes.json()` words its refusal by the engine's JSON scan; Node quotes V8's
     // `JSON.parse` (the row's answer in `ROWS`).
     ("(b'ab').json()", "error invalid_conversion [1, 14] the bytes are not JSON: invalid JSON at offset 0"),
+    // A text that is not a UUID is an error value here, in the catalog's words, where Node's
+    // `uuid` throws a `TypeError` out of evaluation.
+    ("uuidVersion('ab')", "error invalid_argument [0, 17] uuidVersion: invalid UUID \"ab\""),
+    ("uuidv3('ab', 'ab')", "error invalid_argument [0, 18] uuidv3: invalid namespace UUID \"ab\""),
+    ("uuidv5('ab', 'ab')", "error invalid_argument [0, 18] uuidv5: invalid namespace UUID \"ab\""),
 ];
 
 #[test]
 fn answers_every_registered_call_as_node_does() {
-    let environment = environment();
+    let environment = catalog_environment();
     let differences: Vec<String> = ROWS
         .iter()
         .filter_map(|(source, node)| {
