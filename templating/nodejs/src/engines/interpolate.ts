@@ -21,8 +21,7 @@ const INTERPOLATE_ENGINE = "interpolate";
  * `string()` overloads (RFC 3339 for a timestamp, `5400s` for a duration, UTF-8
  * for bytes), never the host language's conversion, so any CEL engine renders
  * the same text. A hole whose type has no `string()` overload is refused
- * statically, and a `dyn` hole that turns out null, a list or a map is refused
- * at runtime with the hole it came from.
+ * statically, and a `dyn` hole whose value `string()` refuses (null, a list, a map, an optional, a type) is refused at runtime with the hole it came from.
  */
 export const interpolateEngine: TemplatingEngine = {
   name: INTERPOLATE_ENGINE,

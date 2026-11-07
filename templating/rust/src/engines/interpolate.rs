@@ -3,7 +3,7 @@
 //! `string(<hole>)` for each hole — every hole converts through CEL's own `string()`
 //! overloads (RFC 3339 for a timestamp, `5400s` for a duration, UTF-8 for bytes), never the
 //! host language's conversion. A hole whose type has no `string()` overload is refused
-//! statically, and a `dyn` hole that turns out null, a list or a map is refused at runtime
+//! statically, and a `dyn` hole whose value `string()` refuses (null, a list, a map, an optional, a type) is refused at runtime
 //! with the hole it came from; that runtime refusal, and its wording, are `cel/compile.rs`'s
 //! `CompiledValue::call`, where the conversion program lives.
 //!

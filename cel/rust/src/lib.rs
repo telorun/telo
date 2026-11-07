@@ -172,7 +172,7 @@ mod zone_database;
 mod zoned_calendar;
 
 pub use activation::CelActivation;
-pub use backend_runtime::{CelCompileError, CALL_SITE_CACHE_CAPACITY};
+pub use backend_runtime::{CelCompileError, HostFailure, NamespaceImplementation, CALL_SITE_CACHE_CAPACITY};
 pub use bounded_cache::BoundedCache;
 pub use cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
 pub use cel_program::{CelEvaluationError, CelProgram, EvaluateOptions};
@@ -242,8 +242,7 @@ pub use resolved_call::ResolvedCall;
 pub use root_references::root_references;
 pub use runtime_library::{
     base64_text, cel_type_value_of, implementation_of, implemented_keys, json_as_cel_value, optional_of_non_zero,
-    standard_constant_values, type_value_name, CelCallContext, CelImplementation, HostFailure, NamespaceImplementation,
-    CALL_SITE_DIRECT_ARITY,
+    standard_constant_values, type_value_name, CelCallContext, CelImplementation, CALL_SITE_DIRECT_ARITY,
 };
 pub use serializer::{serialize_tree, CelSerializeError};
 pub use signature::{

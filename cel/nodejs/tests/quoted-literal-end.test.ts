@@ -93,6 +93,18 @@ describe("quotedLiteralEnd", () => {
     ]).toEqual([4, 6, 6, 9, undefined]);
   });
 
+  // Blind spot: the enumeration cannot tell a raw from a plain literal where the lexer stops on
+  // invalid_escape_sequence, so these rows hold the prefix rule (a backslash before a line break).
+  it("holds the prefix rule where a raw and a plain literal end differently", () => {
+    expect([
+      quotedLiteralEnd("rb'\\\n'", 2),
+      quotedLiteralEnd("x'\\\n'", 1),
+      quotedLiteralEnd("bR'\\\n'", 2),
+      quotedLiteralEnd("Br'\\\n'", 2),
+      quotedLiteralEnd("BR'\\\n'", 2),
+    ]).toEqual([6, 5, undefined, undefined, undefined]);
+  });
+
   it("is a caller defect to ask at a character that opens no literal", () => {
     expect(() => quotedLiteralEnd("abc", 1)).toThrow("holds no quote");
   });

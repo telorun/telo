@@ -30,12 +30,7 @@
 //! An implementation called directly with values its signature does not take answers
 //! `no_matching_overload`, as a call that resolves to nothing does; through dispatch it
 //! never is.
-//!
-//! Declared here and not in the Node file: [`NamespaceImplementation`] and [`HostFailure`].
-//! Node's namespaced function throws its host's own error out of the evaluation; a Rust
-//! function answers it as a [`HostFailure`], which ends the evaluation where it is raised.
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, LazyLock};
@@ -77,51 +72,6 @@ pub struct CelCallContext {
 /// [`CALL_SITE_DIRECT_ARITY`]. Shared and thread-safe; it serves a registered function
 /// and a namespaced one alike.
 pub type CelImplementation = Arc<dyn Fn(&CelCallContext, &[CelValue]) -> CelValue + Send + Sync>;
-
-/// What a namespaced function IS: a value, an error value as any implementation answers
-/// one, or the host's own failure. A failure ends the evaluation at once — no later
-/// operand, element or call is evaluated, and no `&&`, `||`, `?:` or comprehension sees
-/// it — and leaves it as the evaluation's `Host` error, so a failure carrying a host's own
-/// code is never absorbed by a short circuit.
-pub type NamespaceImplementation =
-    Arc<dyn Fn(&CelCallContext, &[CelValue]) -> Result<CelValue, HostFailure> + Send + Sync>;
-
-/// A host's own failure, carried out of an evaluation whole. Opaque to the engine; the host
-/// that raised it reads it back with [`HostFailure::downcast`]. Two failures are equal only
-/// when they are the same failure.
-pub struct HostFailure(Box<dyn Any + Send + Sync>);
-
-impl HostFailure {
-    pub fn new<T: Any + Send + Sync>(payload: T) -> Self {
-        Self(Box::new(payload))
-    }
-
-    /// The payload, or the failure unchanged when it holds another type.
-    pub fn downcast<T: Any>(self) -> Result<T, HostFailure> {
-        match self.0.downcast::<T>() {
-            Ok(payload) => Ok(*payload),
-            Err(payload) => Err(Self(payload)),
-        }
-    }
-
-    pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
-        self.0.downcast_ref::<T>()
-    }
-}
-
-impl fmt::Debug for HostFailure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("HostFailure(..)")
-    }
-}
-
-impl PartialEq for HostFailure {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self, other)
-    }
-}
-
-impl Eq for HostFailure {}
 
 /// How many values an implementation receives — its arguments, and the receiver of a
 /// call written on a value. A signature declaring more is refused where it is registered.

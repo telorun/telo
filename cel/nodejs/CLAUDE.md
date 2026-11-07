@@ -174,7 +174,8 @@ just past a string, bytes or backtick-quoted literal, or `undefined` when it nev
 from the identifier run directly before the quote (`r`, `b`, `br` in any case — never `rb`) and decoding
 nothing, so a literal the lexer refuses for a bad escape still ends where the language ends it.
 `tests/quoted-literal-end.test.ts` holds it to the lexer over every string up to length 5 of the alphabet
-that matters, so the two cannot drift.
+that matters, and pins the prefix rule's explicit rows (a raw marker before a line break), which that
+enumeration cannot reach; the two agree on every row the test holds, not beyond it.
 
 **Two cel-go libraries ship and the rest do not.** The **optional** library enters whole under
 `enableOptionalTypes` — **whole including its presence reading**: cel-go answers "not found" for a

@@ -61,7 +61,8 @@ use crate::nominal_type::{
 };
 use crate::parse_limits::CelParseLimits;
 use crate::parser::ParseOptions;
-use crate::runtime_library::{standard_constant_values, HostFailure};
+use crate::backend_runtime::HostFailure;
+use crate::runtime_library::standard_constant_values;
 use crate::signature::{format_signature, parse_signature, CallForm, CelSignature, FunctionMetadata};
 use crate::standard_library::{register_standard_library, standard_constants, StandardLibraryOptions};
 use crate::type_expression::{

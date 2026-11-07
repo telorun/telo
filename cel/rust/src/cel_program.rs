@@ -28,7 +28,7 @@ use telorun_cel_value::{CelError, CelValue};
 use crate::activation::CelActivation;
 use crate::backend_runtime::EnvironmentSnapshot;
 use crate::closure_backend::{run, CompiledTree};
-use crate::runtime_library::{HostFailure, NamespaceImplementation};
+use crate::backend_runtime::{HostFailure, NamespaceImplementation};
 
 /// How one evaluation is run.
 #[derive(Clone, Copy, Default)]

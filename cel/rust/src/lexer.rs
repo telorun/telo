@@ -959,6 +959,22 @@ mod tests {
         );
     }
 
+    /// Blind spot: the enumeration cannot tell a raw from a plain literal where the lexer stops on
+    /// invalid_escape_sequence, so these rows hold the prefix rule (a backslash before a line break).
+    #[test]
+    fn quoted_literal_end_holds_the_prefix_rule_where_a_raw_and_a_plain_literal_end_differently() {
+        assert_eq!(
+            [
+                quoted_literal_end("rb'\\\n'", 2),
+                quoted_literal_end("x'\\\n'", 1),
+                quoted_literal_end("bR'\\\n'", 2),
+                quoted_literal_end("Br'\\\n'", 2),
+                quoted_literal_end("BR'\\\n'", 2),
+            ],
+            [Some(6), Some(5), None, None, None]
+        );
+    }
+
     #[test]
     #[should_panic(expected = "holds no quote")]
     fn quoted_literal_end_refuses_an_offset_that_opens_no_literal() {

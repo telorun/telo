@@ -5,6 +5,8 @@
 //! The table is recorded by running the Node engines at commit `2093db60` under Node
 //! v24.21.0; each row is the engine, the source, the code and message of the one diagnostic
 //! (none for a usable path) and the path claimed (none for an unusable one).
+//!
+//! No file twin: it holds Node-recorded answers for the `include.test.ts` and `module-path.test.ts` engines in one table.
 
 use serde_json::json;
 use telo_templating::{

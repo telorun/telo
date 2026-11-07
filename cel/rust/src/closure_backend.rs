@@ -50,7 +50,8 @@ use crate::comprehension_runtime::{filter_verdict, ComprehensionFold, Comprehens
 use crate::declared_chain::split_declared_chain;
 use crate::macro_check::is_macro_call;
 use crate::member_read::cel_iterable;
-use crate::runtime_library::{optional_of_non_zero, CelCallContext, HostFailure, NamespaceImplementation};
+use crate::backend_runtime::{HostFailure, NamespaceImplementation};
+use crate::runtime_library::{optional_of_non_zero, CelCallContext};
 use crate::signature::CallForm;
 use crate::syntax_tree::{CelBinaryOperator, CelNode, CelReceiverCallNode, CelSelectNode};
 
