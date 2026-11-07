@@ -40,12 +40,12 @@ lang: en
 # `http-server`, `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
-  Ui: oci://ghcr.io/telorun/ui@0.9.0#sha256-R22o2ZJUQCg7hpKkZiJUjvwj6ETOGDIdfyBRiRKYuPA
-  UiReact: oci://ghcr.io/telorun/ui-react@0.10.0#sha256-0Y70n6MqHB-Po1mOFQTlucCE4t1ynkL3BS9aW2lnGEs
+  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
+  Ui: oci://ghcr.io/telorun/ui@0.10.0#sha256-s8kb_jL0N5qNLqp9GDKFfgJ7K1IUQ5bf3Mz6h1sjS_k
+  UiReact: oci://ghcr.io/telorun/ui-react@0.11.0#sha256-Y0BOJSKmVUeEfRBkF6aC1pgBrGpaWQNPdlpf6C6l2FQ
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  OpenAI: oci://ghcr.io/telorun/openai@0.19.0#sha256-hSN3SLSlKffenUQIVyIAxLU17yP--y-33xQNzs1xZYA
-  Ai: oci://ghcr.io/telorun/ai@0.33.0#sha256-KDMSOuRajeJSspzt6IoopQcYRF9dqlpe_MHGZ7zJOQk
+  OpenAI: oci://ghcr.io/telorun/openai@0.20.0#sha256-AtYiWyXJ9Ixt3UnW4EAaiEb9h9sndXN0nnNui6hxfRE
+  Ai: oci://ghcr.io/telorun/ai@0.34.0#sha256-KOU81irDbfXWnLBF0bKhovfbSe0qhaBn8ook46M44Ek
   Embedding: oci://ghcr.io/telorun/embedding@0.12.1#sha256--HWfwJ_HlgbgxR5I1Pki0r45FkYhWRyfp_-UKmFbOF0
   VectorStore: oci://ghcr.io/telorun/vector-store@0.11.1#sha256-Btmgt0SXpUDgQ7Pd2E7LyX_LoZ3_-DSNgReYO5ru0Zk
   VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.9.2#sha256-TUizRmxbVxIQA_E4TlpOK3_9fGsIS_ro4-sq9q1gCco
@@ -479,7 +479,7 @@ pages:
           kind: Ui.Action
           inputModel: !ref Question
           outputModel: !ref Answer
-          source: { path: /api/ask }
+          request: { target: { path: /api/ask } }
           label: Ask
           result:
             type: stack
@@ -505,7 +505,7 @@ pages:
           kind: Ui.Action
           inputModel: !ref Question
           outputModel: !ref Matches
-          source: { path: /api/search }
+          request: { target: { path: /api/search } }
           label: Search
           result:
             type: list
@@ -525,7 +525,7 @@ pages:
           kind: Ui.Action
           inputModel: !ref Document
           outputModel: !ref Indexed
-          source: { path: /api/documents }
+          request: { target: { path: /api/documents } }
           label: Index
           # The form shows these two only; the id is left for the API to derive.
           fields: [title, text]

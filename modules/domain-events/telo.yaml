@@ -8,7 +8,7 @@ metadata:
     announcing call and its transaction. A library declares an event as a typed
     payload and emits it; any module handles it with a filter and a target. A
     failing handler fails the call, so a rollback undoes every reaction.
-requires: { telo: ">=0.131.0" }
+requires: { telo: ">=0.132.0" }
 exports: { kinds: [Event, Emit, Handler] }
 ---
 kind: Telo.Definition

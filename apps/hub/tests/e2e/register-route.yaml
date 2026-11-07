@@ -20,9 +20,9 @@ metadata:
     honestly claim. `GET /register/status?ref=` is what says when the module is
     actually searchable.
 imports:
-  McpClient: oci://ghcr.io/telorun/mcp-client@0.17.1#sha256-LxWVCjnZGCTVBvOppTCDpikWwPK6E1zzEw6c5bXtmOY
+  McpClient: oci://ghcr.io/telorun/mcp-client@0.18.0#sha256-4Kt7hdp8rXPewhAMWQN1w5b05iQB3KnWhzXMF52lQLM
   Yaml: oci://ghcr.io/telorun/yaml@0.11.1#sha256-s7o7ypsk5oWGomn3BQpnfbfH_j61uOwn3ZqkPNU24yg
-  Timer: oci://ghcr.io/telorun/timer@0.9.1#sha256-F6Tp_apDFGTnVzHXb_Jx45vtLkxZWDUCUasqE9ASBKk
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
   Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI

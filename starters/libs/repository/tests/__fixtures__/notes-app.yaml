@@ -7,7 +7,7 @@ metadata:
     build one: it supplies the database file, runs the library's migration, and
     serves routes whose handlers are the library's exported operations.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
   Notes:
     source: ../..
     variables:

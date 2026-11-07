@@ -25,10 +25,10 @@ requires:
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
-  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
-  Durable: oci://ghcr.io/telorun/durable@0.3.1#sha256-UiehHkLDGU0OvC6XlVv32Oict5oev_sKA-fiBAknxl8
-  DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.3#sha256-tort2fIa-8fHNd2LRKWvdbY_1ztwZxOyck50T9RyQwg
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.2#sha256-NuJ3V145M6FSbY0kaGgOX7YU9C0sWfa3Vdvh9CVZaWo
+  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
+  Durable: oci://ghcr.io/telorun/durable@0.4.0#sha256-ufhUzR3-6fqceQEzrl0f846dUfeVa20CQI1y6EkQvqE
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.6.0#sha256-HcsaMPNMPbTRgGfLxT_4JnVnduiY7_pUl8x8ANa-MZ0
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.8.0#sha256-N52v9ynhRXTDjX6NGeTE38zI9vbtoJrfgNKl5QdOo6Q
 exports: { kinds: [App] }
 ---
 kind: Telo.Definition
@@ -78,7 +78,7 @@ schema:
       description: >-
         How long a request waits for a reviewer before it is rejected, as a
         duration. Counted from submission and kept across restarts.
-      type: string
+      x-telo-type: Telo.Duration
       default: 168h
       x-telo-eval: compile
     journal:

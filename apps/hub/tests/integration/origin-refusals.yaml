@@ -26,19 +26,19 @@ metadata:
     own stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME, never a
     developer's database. Run only by the hub's own suite through that command.
 imports:
-  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
-  Postgres: oci://ghcr.io/telorun/postgres@0.11.0#sha256-kuSSQL7LYeJvzo4ub3c1h70vXufz-bNNrNiz6fibPXw
+  Sql: oci://ghcr.io/telorun/sql@0.31.0#sha256-QamrEtwX41Cim9gVjoKuuKQBGGrb19C0r63im-rRcmY
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.0#sha256-Ki7STbcpZFbPAbi_P-0iSfn4QZp0uf9Zf4NEMiujT1A
   Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
   Embedding: oci://ghcr.io/telorun/embedding@0.12.1#sha256--HWfwJ_HlgbgxR5I1Pki0r45FkYhWRyfp_-UKmFbOF0
-  OpenAI: oci://ghcr.io/telorun/openai@0.19.0#sha256-hSN3SLSlKffenUQIVyIAxLU17yP--y-33xQNzs1xZYA
+  OpenAI: oci://ghcr.io/telorun/openai@0.20.0#sha256-AtYiWyXJ9Ixt3UnW4EAaiEb9h9sndXN0nnNui6hxfRE
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
   VectorStore: oci://ghcr.io/telorun/vector-store@0.11.1#sha256-Btmgt0SXpUDgQ7Pd2E7LyX_LoZ3_-DSNgReYO5ru0Zk
-  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.19.0#sha256-ZRriwFEkj3AbkZjsGn8wlLnUTu5VLZwTRxhRTEYVjXQ
-  Timer: oci://ghcr.io/telorun/timer@0.9.1#sha256-F6Tp_apDFGTnVzHXb_Jx45vtLkxZWDUCUasqE9ASBKk
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.2#sha256-XsCdCjJvrSku0NeNCABW9cQJ0abAPIYYvJTlur36gm0
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.2#sha256-xYLABUrdDk9MUy19uaZ1fS6ZhiLfMK0BJYL-aTdwHBE
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.0#sha256-slYSARQWWzGgBG5_C8oxRbXtyUM6DYwngjCaSeIeu1M
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.0#sha256-WyLU2IJCzc0SNfpYXp_Mj4MR9lOneyBoWELrLdcYwEA
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.0#sha256-PpWQrYiyH4dm-2tAMaHTpTjMzaKgy8Met-ueLP2J4Pg
   Assert: ../../../../modules/assert
   Schema:
     source: ../../hub-schema.yaml

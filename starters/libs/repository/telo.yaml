@@ -32,9 +32,9 @@ variables:
     x-telo-type: { name: Telo.HostPath, entry: file }
     description: The SQLite file the notes are kept in.
 imports:
-  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
-  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
-  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.20.0#sha256-F8tGToPv8R4wnTP__oCkhLWiuZV3pFWFBZA7pbB2JJs
+  Sql: oci://ghcr.io/telorun/sql@0.31.0#sha256-QamrEtwX41Cim9gVjoKuuKQBGGrb19C0r63im-rRcmY
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.0#sha256-2bFuhkRBtPY9mcybUoFc1l4D009TOlYuW5zCJeKbrMU
+  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.21.0#sha256-UIS4Dm4USSDA2O_tXR-uto8aylO5QR-uYt3NtCuiDSU
 exports:
   resources:
     - migrate

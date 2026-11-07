@@ -31,8 +31,7 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: stub-key
+    secrets: { anthropicApiKey: stub-key }
     needs:
       agentState: { path: !cel "variables.libraryScratch.joinPath('state')" }
     variables:
@@ -41,14 +40,14 @@ imports:
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
-  Sse: oci://ghcr.io/telorun/sse-codec@0.14.1#sha256-w44c87Kw1Q94mg9JKdLMlDiAZ_PEwzHyM640DRgLqLo
+  Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
   Stream: ../../../../modules/stream
-  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
-  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.20.1#sha256-qk7BlBBJ6fefngJVqu8CAaeB03LJmuvNnjmruTujIa4
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.10.0#sha256-oc12VF94p9I3wa_Aj06jFQX09-DE4se4uTLJndGlQ7U
+  Sql: oci://ghcr.io/telorun/sql@0.31.0#sha256-QamrEtwX41Cim9gVjoKuuKQBGGrb19C0r63im-rRcmY
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.0#sha256-2bFuhkRBtPY9mcybUoFc1l4D009TOlYuW5zCJeKbrMU
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.0#sha256-uyIwGiJ8OuIOwYDsGLMlo6UZwWJm6XRntsnnjrn3DBA
   Run: ../../../../modules/run
-  Timer: oci://ghcr.io/telorun/timer@0.9.1#sha256-F6Tp_apDFGTnVzHXb_Jx45vtLkxZWDUCUasqE9ASBKk
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -87,9 +86,7 @@ metadata: { name: create }
 steps:
   - name: post
     invoke: !ref call
-    inputs:
-      url: http://127.0.0.1:18523/conversations
-      method: POST
+    inputs: { url: http://127.0.0.1:18523/conversations, method: POST }
 outputs:
   id: !cel "steps.post.result.body.id"
 ---
@@ -101,9 +98,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: post
     invoke: !ref call
@@ -126,8 +121,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: get
     timeout: 30000
@@ -155,8 +149,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: send
     invoke: !ref call
@@ -175,8 +168,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [path]
-    properties:
-      path: { type: string }
+    properties: { path: { type: string } }
 steps:
   - name: get
     invoke: !ref call
@@ -197,13 +189,11 @@ inputType:
     type: object
     additionalProperties: false
     required: [texts]
-    properties:
-      texts: { type: array, items: { type: string }, minItems: 1 }
+    properties: { texts: { type: array, items: { type: string }, minItems: 1 } }
 steps:
   - name: sent
     invoke: !ref call
-    inputs:
-      url: http://127.0.0.1:18522/requests
+    inputs: { url: http://127.0.0.1:18522/requests }
   - name: notYet
     if: !cel >-
       !steps.sent.result.body.requests.exists(r, inputs.texts.all(t, json(r).contains(t))
@@ -223,14 +213,11 @@ inputType:
     type: object
     additionalProperties: false
     required: [text, count]
-    properties:
-      text: { type: string }
-      count: { type: integer }
+    properties: { text: { type: string }, count: { type: integer } }
 steps:
   - name: sent
     invoke: !ref call
-    inputs:
-      url: http://127.0.0.1:18522/requests
+    inputs: { url: http://127.0.0.1:18522/requests }
   - name: notYet
     if: !cel >-
       size(steps.sent.result.body.requests.filter(r, json(r).contains(inputs.text)
@@ -283,8 +270,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 with:
   - kind: SQLite.Connection
     metadata: { name: agentDb }
@@ -341,8 +327,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18522/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         # ── a finished conversation ─────────────────────────────────────────
@@ -412,9 +397,7 @@ steps:
           inputs: { path: !interpolate "/conversations/${{ steps.y.result.id }}" }
         - name: release
           invoke: !ref call
-          inputs:
-            url: http://127.0.0.1:18522/release
-            method: POST
+          inputs: { url: http://127.0.0.1:18522/release, method: POST }
         - name: yDrained
           invoke: !ref drain
           inputs: { turnId: !cel "steps.yTurn.result.body.turnId" }
@@ -465,8 +448,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18522/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: racers
@@ -503,9 +485,7 @@ steps:
             pairs: !cel "flatten(steps.racers.result.map(r, [{'id': r.id, 'op': 'delete'}, {'id': r.id, 'op': 'chat'}]))"
         - name: releaseRacers
           invoke: !ref call
-          inputs:
-            url: http://127.0.0.1:18522/release
-            method: POST
+          inputs: { url: http://127.0.0.1:18522/release, method: POST }
         # The refused starts above and in the race alike.
         - name: raceKeys
           invoke: !ref keysWithoutTurns
@@ -523,10 +503,7 @@ steps:
                     + string(steps.race.result.filter(o, o.id == r.id && o.op == 'chat')[0].status)))
                   .filter(s, !(s in ['204/410', '409/200']))
               keysWithoutTurns: !cel "steps.raceKeys.result.states"
-            expected:
-              both: []
-              outcomes: []
-              keysWithoutTurns: [ 410 ]
+            expected: { both: [], outcomes: [], keysWithoutTurns: [410] }
   # ── deletion racing a continue ────────────────────────────────────────
   # Twenty conversations, each with one failed turn, then a DELETE and a
   # continue of that turn at once, staggered from the continue 30 ms behind
@@ -549,8 +526,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18522/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: turns
@@ -589,9 +565,7 @@ steps:
               items:
                 type: object
                 required: [id, turnId]
-                properties:
-                  id: { type: string }
-                  turnId: { type: string }
+                properties: { id: { type: string }, turnId: { type: string } }
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -602,8 +576,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18522/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: race
@@ -614,7 +587,7 @@ steps:
             steps:
               - name: stagger
                 invoke: { kind: Timer.Delay }
-                inputs: { duration: !cel "string(item.delay) + 'ms'" }
+                inputs: { duration: !cel "duration(string(item.delay) + 'ms')" }
               - name: send
                 if: !cel "item.op == 'delete'"
                 then:
@@ -646,9 +619,7 @@ steps:
             count: !cel "size(steps.race.result.filter(o, o.op == 'continue' && o.status == 200))"
         - name: releaseContinued
           invoke: !ref call
-          inputs:
-            url: http://127.0.0.1:18522/release
-            method: POST
+          inputs: { url: http://127.0.0.1:18522/release, method: POST }
         # A deleted conversation's turn key reads removed; a continued one ends.
         - name: keys
           invoke:
@@ -684,9 +655,7 @@ steps:
         # DELETE / continue / the turn's events.
         outcomes: !cel >-
           steps.contested.result.outcomes.filter(s, !(s in ['204/410/410', '204/404/410', '409/200/200']))
-      expected:
-        both: []
-        outcomes: []
+      expected: { both: [], outcomes: [] }
   # ── deletion beside a continue ────────────────────────────────────────
   - name: continuing
     invoke: !ref continueAndDelete
@@ -710,8 +679,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: ending
     try:
@@ -769,9 +737,7 @@ steps:
         value: !cel "[error.code, error.data.activeTurnId == steps.heldTurn.result.turnId]"
   - name: release
     invoke: !ref call
-    inputs:
-      url: http://127.0.0.1:18522/release
-      method: POST
+    inputs: { url: http://127.0.0.1:18522/release, method: POST }
   - name: attemptEnded
     invoke: !ref settled
     inputs: { turnId: !cel "steps.heldTurn.result.turnId" }
@@ -891,9 +857,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, turnId]
-    properties:
-      conversationId: { type: string }
-      turnId: { type: string }
+    properties: { conversationId: { type: string }, turnId: { type: string } }
 steps:
   - name: row
     invoke: !ref libraryCommand
@@ -928,9 +892,7 @@ inputType:
     required: [conversationId, turnIds]
     properties:
       conversationId: { type: string }
-      turnIds:
-        type: array
-        items: { type: string }
+      turnIds: { type: array, items: { type: string } }
 steps:
   - name: counts
     invoke: !ref libraryQuery
@@ -1006,8 +968,7 @@ steps:
         value: !cel "error.code"
   - name: earlierWindow
     invoke: !ref Chat.retentionSweep
-    inputs:
-      idleBefore: "2000-01-01T00:00:00Z"
+    inputs: { idleBefore: "2000-01-01T00:00:00Z" }
   - name: intact
     invoke: !ref hiddenState
     inputs:

@@ -22,9 +22,7 @@ targets:
 ---
 kind: HttpClient.Request
 metadata: { name: call }
-client:
-  kind: HttpClient.Client
-  baseUrl: http://127.0.0.1:8114
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8114 }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -37,11 +35,8 @@ with:
       - request:
           path: /embeddings
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
-        handler:
-          kind: Run.Value
-          value: {}
+          schema: { body: { type: object, additionalProperties: true } }
+        handler: { kind: Run.Value, value: {} }
         returns:
           - status: 200
             content:
@@ -60,11 +55,8 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
-        handler:
-          kind: Run.Value
-          value: {}
+          schema: { body: { type: object, additionalProperties: true } }
+        handler: { kind: Run.Value, value: {} }
         returns:
           - status: 200
             content:
@@ -81,50 +73,35 @@ with:
                   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
   - kind: Http.Server
     metadata: { name: provider }
-    listen:
-      port: 8070
+    listen: { port: 8070 }
     mounts:
       - path: /v1
         mount: !ref fakeOpenAi
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8114
+    ports: { http: 8114 }
     variables:
       openaiBaseUrl: http://127.0.0.1:8070/v1
       answerModel: test-model
       dimensions: 6
-    secrets:
-      openaiApiKey: not-a-real-key
+    secrets: { openaiApiKey: not-a-real-key }
 targets:
   - !ref provider
   - !ref app
 steps:
   - name: search
     invoke: !ref call
-    inputs:
-      url: /api/search
-      method: POST
-      body: { q: how do I undo a bad release }
+    inputs: { url: /api/search, method: POST, body: { q: how do I undo a bad release } }
   - name: ask
     invoke: !ref call
-    inputs:
-      url: /api/ask
-      method: POST
-      body: { q: what about database migrations }
+    inputs: { url: /api/ask, method: POST, body: { q: what about database migrations } }
   - name: unrelated
     invoke: !ref call
-    inputs:
-      url: /api/ask
-      method: POST
-      body: { q: what is for lunch }
+    inputs: { url: /api/ask, method: POST, body: { q: what is for lunch } }
   - name: noQuestion
     invoke: !ref call
-    inputs:
-      url: /api/search
-      method: POST
-      body: { q: "" }
+    inputs: { url: /api/search, method: POST, body: { q: "" } }
   - name: verifyRetrieval
     invoke: { kind: Assert.Equals }
     inputs:
@@ -163,10 +140,7 @@ steps:
 
   - name: beforeIndexing
     invoke: !ref call
-    inputs:
-      url: /api/search
-      method: POST
-      body: { q: vpn }
+    inputs: { url: /api/search, method: POST, body: { q: vpn } }
   - name: index
     invoke: !ref call
     inputs:
@@ -178,26 +152,16 @@ steps:
         text: Request VPN access from the IT desk; it is granted per project.
   - name: afterIndexing
     invoke: !ref call
-    inputs:
-      url: /api/search
-      method: POST
-      body: { q: vpn }
+    inputs: { url: /api/search, method: POST, body: { q: vpn } }
   - name: remove
     invoke: !ref call
-    inputs:
-      url: /api/documents/doc-vpn-access
-      method: DELETE
+    inputs: { url: /api/documents/doc-vpn-access, method: DELETE }
   - name: removeAgain
     invoke: !ref call
-    inputs:
-      url: /api/documents/doc-vpn-access
-      method: DELETE
+    inputs: { url: /api/documents/doc-vpn-access, method: DELETE }
   - name: afterRemoval
     invoke: !ref call
-    inputs:
-      url: /api/search
-      method: POST
-      body: { q: vpn }
+    inputs: { url: /api/search, method: POST, body: { q: vpn } }
   - name: verifyIndexing
     invoke: { kind: Assert.Equals }
     inputs:
@@ -225,30 +189,21 @@ steps:
     inputs: { url: /, method: GET }
   - name: askPage
     invoke: !ref call
-    inputs:
-      url: /_telo/ui/page
-      method: GET
-      query: { path: / }
+    inputs: { url: /_telo/ui/page, method: GET, query: { path: / } }
   - name: searchPage
     invoke: !ref call
-    inputs:
-      url: /_telo/ui/page
-      method: GET
-      query: { path: /search }
+    inputs: { url: /_telo/ui/page, method: GET, query: { path: /search } }
   - name: documentsPage
     invoke: !ref call
-    inputs:
-      url: /_telo/ui/page
-      method: GET
-      query: { path: /documents }
+    inputs: { url: /_telo/ui/page, method: GET, query: { path: /documents } }
   - name: verifyUi
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         shell: !cel "steps.shell.result.status"
-        ask: !cel "steps.askPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
-        search: !cel "steps.searchPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
-        documents: !cel "steps.documentsPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
+        ask: !cel "steps.askPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.request.target.path.value, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
+        search: !cel "steps.searchPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.request.target.path.value, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
+        documents: !cel "steps.documentsPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.request.target.path.value, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
       expected:
         shell: 200
         ask:

@@ -43,15 +43,15 @@ lang: en
 # changes are unreleased, with `http-server`, which `ui-react` reaches through
 # this repository's `codec`; `telo upgrade --pin-local` pins them once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
   DataModel: oci://ghcr.io/telorun/data-model@0.2.1#sha256-gLaIW4Dof6e-IOvGrjBOfWiOoUQUEcQ8jBMjukTzb7U
-  Ui: oci://ghcr.io/telorun/ui@0.9.0#sha256-R22o2ZJUQCg7hpKkZiJUjvwj6ETOGDIdfyBRiRKYuPA
-  UiReact: oci://ghcr.io/telorun/ui-react@0.10.0#sha256-0Y70n6MqHB-Po1mOFQTlucCE4t1ynkL3BS9aW2lnGEs
-  Durable: oci://ghcr.io/telorun/durable@0.3.1#sha256-UiehHkLDGU0OvC6XlVv32Oict5oev_sKA-fiBAknxl8
-  DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.3#sha256-tort2fIa-8fHNd2LRKWvdbY_1ztwZxOyck50T9RyQwg
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.2#sha256-NuJ3V145M6FSbY0kaGgOX7YU9C0sWfa3Vdvh9CVZaWo
-  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
-  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
+  Ui: oci://ghcr.io/telorun/ui@0.10.0#sha256-s8kb_jL0N5qNLqp9GDKFfgJ7K1IUQ5bf3Mz6h1sjS_k
+  UiReact: oci://ghcr.io/telorun/ui-react@0.11.0#sha256-Y0BOJSKmVUeEfRBkF6aC1pgBrGpaWQNPdlpf6C6l2FQ
+  Durable: oci://ghcr.io/telorun/durable@0.4.0#sha256-ufhUzR3-6fqceQEzrl0f846dUfeVa20CQI1y6EkQvqE
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.6.0#sha256-HcsaMPNMPbTRgGfLxT_4JnVnduiY7_pUl8x8ANa-MZ0
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.8.0#sha256-N52v9ynhRXTDjX6NGeTE38zI9vbtoJrfgNKl5QdOo6Q
+  Sql: oci://ghcr.io/telorun/sql@0.31.0#sha256-QamrEtwX41Cim9gVjoKuuKQBGGrb19C0r63im-rRcmY
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.0#sha256-2bFuhkRBtPY9mcybUoFc1l4D009TOlYuW5zCJeKbrMU
   Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
 targets:
   - !ref migrate
@@ -122,7 +122,7 @@ directory: !cel "variables.journal"
 kind: Durable.Await
 metadata: { name: decision }
 token: !cel "'approval:' + inputs.id"
-timeout: !cel "variables.reviewDeadline"
+timeout: !cel "duration(variables.reviewDeadline)"
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -588,14 +588,14 @@ pages:
             - action:
                 kind: Ui.Action
                 inputModel: !ref Decision
-                source: { path: /api/approve }
+                request: { target: { path: /api/approve } }
                 label: Approve
               inputs:
                 id: !cel "row.id"
             - action:
                 kind: Ui.Action
                 inputModel: !ref Decision
-                source: { path: /api/reject }
+                request: { target: { path: /api/reject } }
                 label: Reject
               inputs:
                 id: !cel "row.id"

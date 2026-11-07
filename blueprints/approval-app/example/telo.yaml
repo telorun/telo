@@ -52,7 +52,7 @@ request:
     amountCents: { type: integer, minimum: 1 }
     reason: { type: string, minLength: 1 }
 autoApprove: !cel "request.body.amountCents < 10000"
-timeout: !cel "variables.reviewDeadline"
+timeout: !cel "duration(variables.reviewDeadline)"
 onApproved:
   kind: Telo.Sequence
   inputType: &decided
