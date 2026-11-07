@@ -149,6 +149,9 @@ export interface ToolResult {
    *  write_file / edit_file / telo_check carry `{ path, checkExitCode,
    *  checkReport, … }` here. */
   output?: unknown;
+  /** `text` for the result of a text call: the tool the agent ran for the
+   *  fenced blocks of one reply, which has no `tool-call` record of its own. */
+  origin?: "text";
 }
 
 /** One diagnostic of a `telo check -o json` report. */
@@ -193,6 +196,9 @@ export interface ToolCallView {
   changes?: FileChange[];
   /** A write's or an edit's own line diff; null when a side is not comparable. */
   hunks?: DiffHunk[] | null;
+  /** A change set's line diff of each file it touched, in path order; a
+   *  file's hunks are null when a side is not comparable. */
+  files?: Array<{ path: string; hunks: DiffHunk[] | null }>;
   /** A command's exit code, stdout and stderr. */
   run?: { exitCode: number; output: string; messages: string };
 }

@@ -1,0 +1,649 @@
+kind: Telo.Application
+metadata:
+  name: ChatTextEdits
+  version: 1.0.0
+  description: |
+    A reply's `telo-edit` and `telo-file` blocks as the authoring agent runs
+    them, over the agent's routes and offline against the provider stub, whose
+    `STUB_REPLY:` directive writes a reply's text, fences included.
+
+    The blocks of one reply are one `apply_changes` call: a three-section edit
+    writes its file once and the next model call carries exactly one result;
+    blocks for two files are one call with one checkpoint call id, and a check
+    naming both files. Everything is decided before anything is written: a
+    second block whose section is absent, and a second file holding a
+    credential, each leave the first file untouched and record no entry, and
+    two files each under the checkpoint byte bound but over it together are
+    ERR_CHECKPOINT_TOO_LARGE. A `telo-file` followed by a `telo-edit` of the
+    same path writes the edited content with one entry for the path. One
+    revert of the turn restores every file of the set, a file written over an
+    existing one included. A block beside a JSON tool call runs after it and
+    its result follows the tool's in the next call's user message; a reply cut
+    off inside a block writes nothing and the next call carries the notice. A
+    change with both `patch` and `content`, or neither, is
+    ERR_CHANGE_FORM_INVALID.
+imports:
+  App: ../../../../modules/app
+  Fs: ../../../../modules/fs
+  HttpClient: ../../../../modules/http-client
+  Stream: ../../../../modules/stream
+  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
+  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
+  Run: ../../../../modules/run
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+variables:
+  scratch:
+    env: CHAT_TEST_TEXT_EDITS_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/text-edits
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+timeout: 60000
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: push }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [write]
+    properties: { write: { type: array, items: { type: object, additionalProperties: true } } }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18571/workspace
+      method: POST
+      body:
+        write: !cel "inputs.write"
+---
+# One turn in a conversation of its own, run to its end. `marker` tells the
+# turn's requests apart at the stub.
+kind: Telo.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [marker, reply]
+    properties:
+      marker: { type: string }
+      reply: { type: string }
+      # Continue this conversation instead of starting one.
+      conversationId: { type: string }
+      calls: { type: array, items: { type: object, additionalProperties: true } }
+steps:
+  - name: conversation
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18571/conversations, method: POST }
+  - name: start
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18571/chat
+      method: POST
+      body:
+        conversationId: !cel "has(inputs.conversationId) ? inputs.conversationId : steps.conversation.result.body.id"
+        message: !cel >-
+          inputs.marker + ' STUB_REPLY:' + base64Encode(inputs.reply)
+            + (has(inputs.calls) ? ' STUB_CALLS:' + base64Encode(json(inputs.calls)) : '')
+  - name: get
+    timeout: 60000
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:18571/chat/${{ steps.start.result.body.turnId }}/events"
+      responseType: stream
+  - name: all
+    timeout: 60000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.get.result.body"
+outputs:
+  turnId: !cel "string(steps.start.result.body.turnId)"
+  conversationId: !cel "string(steps.conversation.result.body.id)"
+---
+# What the turn's last model call was sent after the assistant's reply, one entry per part.
+kind: Telo.Sequence
+metadata: { name: followUp }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [marker]
+    properties: { marker: { type: string } }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18570/requests }
+  - name: agent
+    value: !cel >-
+      steps.sent.result.body.requests.filter(r, json(r).contains(inputs.marker)
+        && !json(r).contains('You name conversations'))
+outputs:
+  calls: !cel "size(steps.agent.result)"
+  # Every message of the last request: its role and the types of its parts.
+  shape: !cel >-
+    steps.agent.result[size(steps.agent.result) - 1].messages.map(m,
+      {'role': m.role, 'parts': type(m.content) == type([]) ? m.content.map(c, string(c.type)) : ['text'],
+       'head': type(m.content) == type([]) ? (has(m.content[0].text) ? slice(string(m.content[0].text), 0, 24) : '') : slice(string(m.content), 0, 24)})
+  parts: !cel >-
+    cel.bind(messages, steps.agent.result[size(steps.agent.result) - 1].messages,
+      cel.bind(replies, enumerate(messages).filter(e, e.value.role == 'assistant').map(e, e.index + 1),
+        flatten(slice(messages, size(replies) == 0 ? 0 : replies[size(replies) - 1], size(messages))
+          .map(m, m.content.map(c, c.type == 'tool_result' ? {'type': 'tool_result', 'text': string(c.content)}
+            : {'type': string(c.type), 'text': string(c.text)})))))
+---
+# A turn's checkpoint entries as `path before>after`, and how many distinct
+# calls recorded them.
+kind: Telo.Function
+metadata: { name: entryLines }
+params:
+  - { name: rows, schema: { type: array } }
+returns: { schema: { type: array, items: { type: string } } }
+body: !cel >-
+  rows.map(r, r.path + ' ' + (int(r.absent) != 0 ? 'absent' : 'file') + '>'
+    + (int(r.deleted) != 0 ? 'absent' : 'file') + (int(r.confirmed) != 0 ? '' : ' unconfirmed'))
+---
+kind: Telo.Function
+metadata: { name: callCount }
+params:
+  - { name: rows, schema: { type: array } }
+returns: { schema: { type: integer } }
+body: !cel "size(distinct(rows.map(r, r.call_id)))"
+---
+kind: Telo.Sequence
+metadata: { name: revert }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties: { turnId: { type: string } }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18571/chat/${{ inputs.turnId }}/revert"
+      method: POST
+outputs:
+  status: !cel "steps.post.result.status"
+---
+# The content at each path, null where there is no file.
+kind: Telo.Sequence
+metadata: { name: disk }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [paths]
+    properties: { paths: { type: array, items: { type: string } } }
+steps:
+  - name: files
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.paths"
+      steps:
+        - name: get
+          invoke: !ref call
+          inputs:
+            url: !cel "'http://127.0.0.1:18571/workspace/file?path=' + item"
+      outputs:
+        content: !cel "steps.get.result.status == 200 ? dyn(steps.get.result.body.content) : null"
+    inputs:
+      paths: !cel "inputs.paths"
+outputs:
+  contents: !cel "steps.files.result.map(f, f.content)"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18570 }
+targets: [ !ref stub ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('workspace'))"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Telo.Sequence
+      with:
+        - kind: SQLite.Connection
+          metadata: { name: agentDb }
+          file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
+        - kind: Sql.Query
+          metadata: { name: agentQuery }
+          connection: !ref agentDb
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18571 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+            modelEndpoint: http://127.0.0.1:18570/v1
+            teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
+            # Each file below is under it; two of the 100-byte ones are not.
+            maxCheckpointBytes: 150
+          secrets: { anthropicApiKey: stub-key }
+      targets: [ !ref agent ]
+      steps:
+        - name: samples
+          value:
+            entriesSql: "SELECT path, before_hash IS NULL AS absent, after_hash IS NULL AS deleted, confirmed, call_id FROM checkpoint_entries WHERE turn_id = ? ORDER BY id"
+            # Assembled, so no credential-shaped literal sits in the repository.
+            key: !cel "'sk-' + 'proj-' + 'Aa1Bb2Cc3Dd4Ee5Ff6Gg7Hh8Jj9Kk0'"
+            hundred: !cel "'kind: Telo.Library\\nmetadata:\\n  name: Big\\n# ' + join(range(60).map(i, 'x'), '') + '\\n'"
+            threeSections: |
+              ```telo-edit path=a.yaml
+              <<<<<<< SEARCH
+              # alpha
+              =======
+              # ALPHA
+              >>>>>>> REPLACE
+              <<<<<<< SEARCH
+              # beta
+              =======
+              # BETA
+              >>>>>>> REPLACE
+              <<<<<<< SEARCH
+              # gamma
+              =======
+              # GAMMA
+              >>>>>>> REPLACE
+              ```
+            twoFiles: |
+              ```telo-file path=x1.yaml
+              kind: Telo.Library
+              metadata:
+                name: 7demo
+              ```
+
+              ```telo-file path=x2.yaml
+              kind: Telo.Library
+              metadata:
+                name: 8demo
+              ```
+            secondAbsent: |
+              ```telo-edit path=b1.yaml
+              <<<<<<< SEARCH
+              # one
+              =======
+              # ONE
+              >>>>>>> REPLACE
+              ```
+
+              ```telo-edit path=b2.yaml
+              <<<<<<< SEARCH
+              # missing
+              =======
+              # MISSING
+              >>>>>>> REPLACE
+              ```
+            composed: |
+              ```telo-file path=c.yaml
+              kind: Telo.Library
+              metadata:
+                name: Fresh
+              # first
+              ```
+
+              ```telo-edit path=c.yaml
+              <<<<<<< SEARCH
+              # first
+              =======
+              # second
+              >>>>>>> REPLACE
+              ```
+            mixed: |
+              ```telo-file path=m.yaml
+              kind: Telo.Library
+              metadata:
+                name: Mixed
+              ```
+            cut: |
+              ```telo-file path=cut.yaml
+              kind: Telo.Library
+              metadata:
+                name: Cut
+        # ── seeds ────────────────────────────────────────────────────────────
+        - name: seed
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: a.yaml, content: "kind: Telo.Library\nmetadata:\n  name: A\n# alpha\n# beta\n# gamma\n" }
+              - { path: b1.yaml, content: "kind: Telo.Library\nmetadata:\n  name: B1\n# one\n" }
+              - { path: b2.yaml, content: "kind: Telo.Library\nmetadata:\n  name: B2\n# two\n" }
+              - { path: s1.yaml, content: "kind: Telo.Library\nmetadata:\n  name: S1\n" }
+              - { path: h1.yaml, content: !cel "steps.samples.result.hundred" }
+              - { path: h2.yaml, content: !cel "steps.samples.result.hundred" }
+              - { path: c.yaml, content: "kind: Telo.Library\nmetadata:\n  name: Old\n" }
+              - { path: r1.yaml, content: "kind: Telo.Library\nmetadata:\n  name: R1\n# r1\n" }
+              - { path: r3.yaml, content: "kind: Telo.Library\nmetadata:\n  name: R3\n# r3\n" }
+              - { path: j.yaml, content: "kind: Telo.Library\nmetadata:\n  name: J\n" }
+        # ── a three-section edit ─────────────────────────────────────────────
+        - name: edit
+          invoke: !ref turn
+          inputs: { marker: scenario-edit, reply: !cel "steps.samples.result.threeSections" }
+        - name: editFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-edit }
+        - name: editCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.edit.result.turnId" ]
+        - name: editDisk
+          invoke: !ref disk
+          inputs: { paths: [a.yaml] }
+        # ── the next turn replays the change set's result as a user message ──
+        - name: historyTurn
+          invoke: !ref turn
+          inputs:
+            marker: scenario-history
+            reply: ""
+            conversationId: !cel "steps.edit.result.conversationId"
+        - name: historyFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-history }
+        # ── blocks for two files ─────────────────────────────────────────────
+        - name: two
+          invoke: !ref turn
+          inputs: { marker: scenario-two, reply: !cel "steps.samples.result.twoFiles" }
+        - name: twoFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-two }
+        - name: twoCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.two.result.turnId" ]
+        # ── the second block's section is absent ─────────────────────────────
+        - name: absent
+          invoke: !ref turn
+          inputs: { marker: scenario-absent, reply: !cel "steps.samples.result.secondAbsent" }
+        - name: absentFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-absent }
+        - name: absentCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.absent.result.turnId" ]
+        - name: absentDisk
+          invoke: !ref disk
+          inputs: { paths: [b1.yaml, b2.yaml] }
+        # ── a credential in the second file ──────────────────────────────────
+        - name: secretReply
+          value: !cel >-
+            '```telo-file path=ok.yaml\nkind: Telo.Library\nmetadata:\n  name: Ok\n```\n\n'
+              + '```telo-file path=bad.yaml\nkind: Telo.Library\nmetadata:\n  name: Bad\n# ' + steps.samples.result.key + '\n```\n'
+        - name: secret
+          invoke: !ref turn
+          inputs: { marker: scenario-secret, reply: !cel "steps.secretReply.result" }
+        - name: secretFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-secret }
+        - name: secretCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.secret.result.turnId" ]
+        - name: secretDisk
+          invoke: !ref disk
+          inputs: { paths: [ok.yaml, bad.yaml] }
+        # ── the checkpoint bound counted across the set ──────────────────────
+        - name: boundReply
+          value: !cel >-
+            '```telo-file path=h1.yaml\nkind: Telo.Library\nmetadata:\n  name: H1\n```\n\n'
+              + '```telo-file path=h2.yaml\nkind: Telo.Library\nmetadata:\n  name: H2\n```\n'
+        - name: bound
+          invoke: !ref turn
+          inputs: { marker: scenario-bound, reply: !cel "steps.boundReply.result" }
+        - name: boundFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-bound }
+        - name: boundCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.bound.result.turnId" ]
+        - name: boundDisk
+          invoke: !ref disk
+          inputs: { paths: [h1.yaml, h2.yaml] }
+        # ── a file, then an edit of it ───────────────────────────────────────
+        - name: composed
+          invoke: !ref turn
+          inputs: { marker: scenario-composed, reply: !cel "steps.samples.result.composed" }
+        - name: composedCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.composed.result.turnId" ]
+        - name: composedDisk
+          invoke: !ref disk
+          inputs: { paths: [c.yaml] }
+        # ── one revert restores the whole set ────────────────────────────────
+        - name: revertReply
+          value: |
+            ```telo-file path=r1.yaml
+            kind: Telo.Library
+            metadata:
+              name: R1Rewritten
+            ```
+
+            ```telo-file path=r2.yaml
+            kind: Telo.Library
+            metadata:
+              name: R2
+            ```
+
+            ```telo-edit path=r3.yaml
+            <<<<<<< SEARCH
+            # r3
+            =======
+            # R3
+            >>>>>>> REPLACE
+            ```
+        - name: reverting
+          invoke: !ref turn
+          inputs: { marker: scenario-revert, reply: !cel "steps.revertReply.result" }
+        - name: revertedCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.reverting.result.turnId" ]
+        - name: beforeRevert
+          invoke: !ref disk
+          inputs: { paths: [r1.yaml, r2.yaml, r3.yaml] }
+        - name: reverted
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.reverting.result.turnId" }
+        - name: afterRevert
+          invoke: !ref disk
+          inputs: { paths: [r1.yaml, r2.yaml, r3.yaml] }
+        # ── a block beside a JSON tool call ──────────────────────────────────
+        - name: mixedTurn
+          invoke: !ref turn
+          inputs:
+            marker: scenario-mixed
+            reply: !cel "steps.samples.result.mixed"
+            calls:
+              - { name: read_file, arguments: { path: j.yaml } }
+        - name: mixedFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-mixed }
+        - name: mixedDisk
+          invoke: !ref disk
+          inputs: { paths: [m.yaml] }
+        # ── a reply cut off inside a block ───────────────────────────────────
+        - name: cutTurn
+          invoke: !ref turn
+          inputs: { marker: scenario-cut, reply: !cel "steps.samples.result.cut" }
+        - name: cutFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-cut }
+        - name: cutDisk
+          invoke: !ref disk
+          inputs: { paths: [cut.yaml] }
+        # ── a change of neither or both forms ────────────────────────────────
+        - name: formTurn
+          invoke: !ref turn
+          inputs:
+            marker: scenario-form
+            reply: ""
+            calls:
+              - name: apply_changes
+                arguments:
+                  changes: [ { path: s1.yaml, patch: "x", content: "y" } ]
+              - name: apply_changes
+                arguments:
+                  changes: [ { path: s1.yaml } ]
+        - name: formFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-form }
+        - name: formDisk
+          invoke: !ref disk
+          inputs: { paths: [s1.yaml] }
+        - name: verify
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              edit:
+                parts: !cel "steps.editFollowUp.result.parts"
+                disk: !cel "steps.editDisk.result.contents"
+                entries: !cel "Self.entryLines(steps.editCheckpoint.result.rows)"
+                modelCalls: !cel "steps.editFollowUp.result.calls"
+              history:
+                roles: !cel "steps.historyFollowUp.result.shape.map(m, m.role)"
+                toolMessages: !cel "steps.historyFollowUp.result.shape.exists(m, 'tool_result' in m.parts)"
+                results: !cel "steps.historyFollowUp.result.shape.filter(m, m.head.startsWith('apply_changes ('))"
+              two:
+                parts: !cel >-
+                  steps.twoFollowUp.result.parts.map(p, {'type': p.type,
+                    'header': p.text.split('\n')[0],
+                    'wrote': p.text.split('\n')[1],
+                    'namesBoth': p.text.contains('x1.yaml:') && p.text.contains('x2.yaml:')})
+                entries: !cel "Self.entryLines(steps.twoCheckpoint.result.rows)"
+                calls: !cel "Self.callCount(steps.twoCheckpoint.result.rows)"
+              absent:
+                parts: !cel >-
+                  steps.absentFollowUp.result.parts.map(p, {'type': p.type, 'header': p.text.split('\n')[0],
+                    'names': p.text.contains('ERR_EDIT_SECTION_ABSENT change 2 (b2.yaml) section 1')})
+                entries: !cel "Self.entryLines(steps.absentCheckpoint.result.rows)"
+                disk: !cel "steps.absentDisk.result.contents"
+              secret:
+                refused: !cel >-
+                  steps.secretFollowUp.result.parts.map(p, p.text.contains('ERR_SECRET_IN_MANIFEST') && p.text.contains('bad.yaml'))
+                keyNeverEchoed: !cel "!steps.secretFollowUp.result.parts.exists(p, p.text.contains(steps.samples.result.key))"
+                entries: !cel "Self.entryLines(steps.secretCheckpoint.result.rows)"
+                disk: !cel "steps.secretDisk.result.contents"
+              bound:
+                refused: !cel >-
+                  steps.boundFollowUp.result.parts.map(p, p.text.contains('ERR_CHECKPOINT_TOO_LARGE'))
+                entries: !cel "Self.entryLines(steps.boundCheckpoint.result.rows)"
+                unchanged: !cel "steps.boundDisk.result.contents == [steps.samples.result.hundred, steps.samples.result.hundred]"
+              composed:
+                entries: !cel "Self.entryLines(steps.composedCheckpoint.result.rows)"
+                disk: !cel "steps.composedDisk.result.contents"
+              revert:
+                entries: !cel "Self.entryLines(steps.revertedCheckpoint.result.rows)"
+                calls: !cel "Self.callCount(steps.revertedCheckpoint.result.rows)"
+                written: !cel "steps.beforeRevert.result.contents"
+                status: !cel "steps.reverted.result.status"
+                restored: !cel "steps.afterRevert.result.contents"
+              mixed:
+                types: !cel "steps.mixedFollowUp.result.parts.map(p, p.type)"
+                results: !cel "steps.mixedFollowUp.result.parts.map(p, p.text.split('\\n')[0])"
+                disk: !cel "steps.mixedDisk.result.contents"
+              cut:
+                parts: !cel "steps.cutFollowUp.result.parts"
+                disk: !cel "steps.cutDisk.result.contents"
+              form:
+                parts: !cel "steps.formFollowUp.result.parts.map(p, p.text.startsWith('Error: ERR_CHANGE_FORM_INVALID change 1 (s1.yaml)'))"
+                disk: !cel "steps.formDisk.result.contents"
+            expected:
+              edit:
+                parts:
+                  - { type: text, text: "apply_changes (telo-edit path=a.yaml):\nwrote a.yaml\ncheck: clean" }
+                disk: [ "kind: Telo.Library\nmetadata:\n  name: A\n# ALPHA\n# BETA\n# GAMMA\n" ]
+                entries: [ "a.yaml file>file" ]
+                modelCalls: 2
+              history:
+                roles: [ user, user, assistant, user, assistant, user, user, user ]
+                toolMessages: false
+                results:
+                  - { role: user, parts: [text], head: "apply_changes (telo-edit" }
+              two:
+                parts:
+                  - type: text
+                    header: "apply_changes (telo-file path=x1.yaml, telo-file path=x2.yaml):"
+                    wrote: "wrote x1.yaml, x2.yaml"
+                    namesBoth: true
+                entries: [ "x1.yaml absent>file", "x2.yaml absent>file" ]
+                calls: 1
+              absent:
+                parts:
+                  - type: text
+                    header: "apply_changes (telo-edit path=b1.yaml, telo-edit path=b2.yaml):"
+                    names: true
+                entries: []
+                disk:
+                  - "kind: Telo.Library\nmetadata:\n  name: B1\n# one\n"
+                  - "kind: Telo.Library\nmetadata:\n  name: B2\n# two\n"
+              secret:
+                refused: [ true ]
+                keyNeverEchoed: true
+                entries: []
+                disk: [ null, null ]
+              bound: { refused: [true], entries: [], unchanged: true }
+              composed:
+                entries: [ "c.yaml file>file" ]
+                disk: [ "kind: Telo.Library\nmetadata:\n  name: Fresh\n# second\n" ]
+              revert:
+                entries: [ "r1.yaml file>file", "r2.yaml absent>file", "r3.yaml file>file" ]
+                calls: 1
+                written:
+                  - "kind: Telo.Library\nmetadata:\n  name: R1Rewritten\n"
+                  - "kind: Telo.Library\nmetadata:\n  name: R2\n"
+                  - "kind: Telo.Library\nmetadata:\n  name: R3\n# R3\n"
+                status: 200
+                restored:
+                  - "kind: Telo.Library\nmetadata:\n  name: R1\n# r1\n"
+                  - null
+                  - "kind: Telo.Library\nmetadata:\n  name: R3\n# r3\n"
+              mixed:
+                types: [ tool_result, text ]
+                results: [ "kind: Telo.Library", "apply_changes (telo-file path=m.yaml):" ]
+                disk: [ "kind: Telo.Library\nmetadata:\n  name: Mixed\n" ]
+              cut:
+                parts:
+                  - type: text
+                    text: "the reply ended inside telo-file path=cut.yaml before its closing fence; no block of this reply was run. Send the change again in smaller blocks."
+                disk: [ null ]
+              form:
+                parts: [ true, true ]
+                disk: [ "kind: Telo.Library\nmetadata:\n  name: S1\n" ]
