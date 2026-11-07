@@ -4,7 +4,7 @@ version = "0.131.0"
 license = "MIT"
 edition = "2021"
 publish = false
-description = "Telo templating — YAML tag sentinels shared by the manifest loader and the future CEL engine."
+description = "Telo templating — YAML tag sentinels shared by the manifest loader, and the CEL tag engines over telorun-cel."
 
 [dependencies]
 # Written order is part of what a manifest says (a tag's keys, a `...`
@@ -15,3 +15,11 @@ serde_yaml = "0.9"
 # crate's ECMAScript whitespace.
 telorun-cel = { path = "../../cel/rust" }
 telorun-cel-value = { path = "../../cel/rust/value" }
+# The value-type vocabulary the dialect registers, the host seam a value crosses on its way
+# out, and the typed frame the conformance vectors are written in.
+telorun-sdk-core = { path = "../../sdk/rust/core" }
+
+[dev-dependencies]
+# The conformance vectors pin doubles to the last digit, and serde_json's default float
+# parsing is not correctly rounded.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }

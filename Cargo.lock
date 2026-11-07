@@ -1432,6 +1432,7 @@ dependencies = [
  "serde_yaml",
  "telorun-cel",
  "telorun-cel-value",
+ "telorun-sdk-core",
 ]
 
 [[package]]

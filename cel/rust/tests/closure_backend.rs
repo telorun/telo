@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use evaluation_support::{answer, bindings, language, loose, program_answer};
 use telorun_cel::{
     CelBinaryNode, CelBinaryOperator, CelCallContext, CelEngineErrorCode, CelEnvironment, CelEnvironmentOptions,
-    CelExpression, CelImplementation, CelLiteral, CelLiteralNode, CelNode, CelProgramError, CelReceiverCallNode,
+    CelEvaluateError, CelEvaluationError, CelExpression, HostFailure, NamespaceImplementation, CelLiteral, CelLiteralNode, CelNode, CelProgramError, CelReceiverCallNode,
     CelUnparsedNode, CelValue, EvaluateOptions, NamespaceOptions, SourceRange, CALL_SITE_CACHE_CAPACITY,
     DEFAULT_COMPILED_CACHE_CAPACITY, PATTERN_CACHE_CAPACITY,
 };
@@ -35,10 +35,10 @@ fn dispatches_a_namespaced_call_through_what_the_host_bound_and_fails_where_noth
     let program = environment.compile("Billing.total(2, 3) + 1").unwrap();
     let dispatched: Arc<Mutex<Vec<Vec<CelValue>>>> = Arc::default();
     let seen = Arc::clone(&dispatched);
-    let total: CelImplementation = Arc::new(move |context: &CelCallContext, args: &[CelValue]| {
+    let total: NamespaceImplementation = Arc::new(move |context: &CelCallContext, args: &[CelValue]| {
         seen.lock().unwrap().push(args.to_vec());
         match args {
-            [CelValue::Int(a), CelValue::Int(b)] => CelValue::Int(a * b),
+            [CelValue::Int(a), CelValue::Int(b)] => Ok(CelValue::Int(a * b)),
             _ => unreachable!("the call hands two ints"),
         }
     });
@@ -56,7 +56,7 @@ fn dispatches_a_namespaced_call_through_what_the_host_bound_and_fails_where_noth
 #[allow(unused_variables)]
 fn decides_an_unbound_namespaced_call_before_evaluating_any_argument() {
     let environment = billing();
-    let one: CelImplementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| i(1));
+    let one: NamespaceImplementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| Ok(i(1)));
     let bind = |namespace: &str, name: &str| Some(Arc::clone(&one));
     let bound = EvaluateOptions { namespace_function: Some(&bind) };
     let run = |source: &str, options: &EvaluateOptions<'_>| answer(environment.evaluate(source, &(), options));
@@ -66,6 +66,68 @@ fn decides_an_unbound_namespaced_call_before_evaluating_any_argument() {
     );
     assert_eq!(run("Billing.total(1 / 0, 2)", &bound), "error division_by_zero [14, 19] division by zero");
     assert_eq!(run("Billing.total(2, 1 / 0)", &bound), "error division_by_zero [17, 22] division by zero");
+}
+
+/// This crate's own seam, with no Node twin: Node's namespaced function throws its host's
+/// error out of evaluation, and here it answers a `HostFailure`, which must end the
+/// evaluation as a throw does — nothing after it runs, and no operator absorbs it.
+#[test]
+#[allow(unused_variables)]
+fn a_namespaced_host_failure_ends_the_evaluation_wherever_it_is_raised() {
+    let mut environment = language();
+    environment
+        .register_namespace("Ns", vec![], NamespaceOptions { open: true })
+        .unwrap();
+    for source in [
+        "Ns.fail(1) || true",
+        "Ns.fail(1) && false",
+        "Ns.fail(1) ? 1 : 2",
+        "true ? Ns.fail(1) : 2",
+        "[Ns.fail(1), Ns.count(2)]",
+        "{'a': Ns.fail(1), 'b': Ns.count(2)}",
+        "{Ns.fail(1): 1, Ns.count(2): 2}",
+        "[1, 2].all(x, Ns.fail(x))",
+        "[1, 2].exists(x, Ns.fail(x))",
+        "[1, 2].exists_one(x, Ns.fail(x))",
+        "[1, 2].filter(x, Ns.fail(x))",
+        "[1, 2].map(x, Ns.fail(x))",
+        "[1, 2].map(x, Ns.fail(x), x)",
+        "[1, 2].map(x, true, Ns.fail(x))",
+        "{'a': 1, 'b': 2}.exists(k, Ns.fail(k))",
+        "optional.of(1).optMap(x, Ns.fail(x))",
+        "optional.of(1).optFlatMap(x, Ns.fail(x))",
+        "cel.bind(v, Ns.fail(1), Ns.count(v))",
+    ] {
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let record = Arc::clone(&calls);
+        let fail: NamespaceImplementation = Arc::new(move |context: &CelCallContext, args: &[CelValue]| {
+            record.lock().unwrap().push("fail".into());
+            Err(HostFailure::new("refused"))
+        });
+        let record = Arc::clone(&calls);
+        let count: NamespaceImplementation = Arc::new(move |context: &CelCallContext, args: &[CelValue]| {
+            record.lock().unwrap().push("count".into());
+            Ok(i(0))
+        });
+        let bind = |namespace: &str, name: &str| match name {
+            "fail" => Some(Arc::clone(&fail)),
+            "count" => Some(Arc::clone(&count)),
+            _ => None,
+        };
+        let answered = environment.compile(source).unwrap().evaluate(&(), &EvaluateOptions { namespace_function: Some(&bind) });
+        match answered {
+            Err(CelEvaluationError::Host(failure)) => assert_eq!(failure.downcast::<&str>().ok(), Some("refused"), "{source}"),
+            other => panic!("{source} answered {other:?}"),
+        }
+        assert_eq!(*calls.lock().unwrap(), vec!["fail".to_string()], "{source}");
+    }
+    let bind = |namespace: &str, name: &str| -> Option<NamespaceImplementation> {
+        Some(Arc::new(|context: &CelCallContext, args: &[CelValue]| Err(HostFailure::new(7_u8))))
+    };
+    assert!(matches!(
+        environment.evaluate("Ns.fail(1)", &(), &EvaluateOptions { namespace_function: Some(&bind) }),
+        Err(CelEvaluateError::Host(failure)) if failure.downcast_ref::<u8>() == Some(&7)
+    ));
 }
 
 #[test]
