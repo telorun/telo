@@ -1,0 +1,80 @@
+# What is refused about an agent's `textTools`: a tool no static provider
+# declares and a tag listed by two entries, at the declaration by `telo check`
+# and again by the agent from a consumer whose entry-scoped check is silent
+# (`runFails:`); a discovered tool name, and arguments the advertised schema
+# refuses, when the agent first lists its tools.
+kind: Telo.Application
+metadata:
+  name: AgentTextToolsRefusalsTest
+  version: 1.0.0
+  description: The textTools rules hold at check and at run, and a discovered tool is held to what it advertises.
+imports: { Assert: ../../assert }
+targets:
+  - !ref unknownTool
+  - !ref unknownToolAtRuntime
+  - !ref tagListedTwice
+  - !ref tagListedTwiceAtRuntime
+  - !ref accepted
+  - !ref discoveredUnknown
+  - !ref argumentUnknown
+  - !ref argumentMissing
+---
+kind: Assert.Manifest
+metadata: { name: unknownTool }
+source: ./__fixtures__/text-tools-unknown/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.Agent/agent at 'textTools[0]': names a tool no tool provider declares"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.AgentStream/stream at 'textTools[0]': names a tool no tool provider declares"
+---
+kind: Assert.Manifest
+metadata: { name: unknownToolAtRuntime }
+source: ./__fixtures__/text-tools-unknown-app.yaml
+expect:
+  errors: []
+  runFails: "ERR_AI_TEXT_TOOL_UNKNOWN: Ai.Agent \"agent\": textTools[0] names the tool \"apply_changes\", which no tool provider advertises. Advertised: files_apply_changes."
+---
+kind: Assert.Manifest
+metadata: { name: tagListedTwice }
+source: ./__fixtures__/text-tools-tag-duplicate/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.Agent/agent at 'textTools[0]': lists a tag another textTools entry lists too"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.Agent/agent at 'textTools[1]': lists a tag another textTools entry lists too"
+---
+kind: Assert.Manifest
+metadata: { name: tagListedTwiceAtRuntime }
+source: ./__fixtures__/text-tools-tag-duplicate-app.yaml
+expect:
+  errors: []
+  runFails: "[ERR_AI_TEXT_TOOL_TAG_DUPLICATE] InvokeError: Ai.Agent \"agent\": textTools[1] lists the tag \"telo-file\", which textTools[0] lists too."
+---
+kind: Assert.Manifest
+metadata: { name: accepted }
+source: ./__fixtures__/text-tools-accepted.yaml
+expect: { errors: [] }
+---
+kind: Assert.Manifest
+metadata: { name: discoveredUnknown }
+source: ./__fixtures__/text-tools-runtime/discovered.yaml
+expect:
+  errors: []
+  runFails: "ERR_AI_TEXT_TOOL_UNKNOWN: Ai.Agent \"agent\": textTools[0] names the tool \"apply_changes\", which no tool provider advertises. Advertised: search."
+---
+kind: Assert.Manifest
+metadata: { name: argumentUnknown }
+source: ./__fixtures__/text-tools-runtime/argument-unknown.yaml
+expect:
+  errors: []
+  runFails: "ERR_AI_TEXT_TOOL_ARGUMENT_UNKNOWN: Ai.Agent \"agent\": textTools[0] maps the argument \"force\", which the parameters of \"apply_changes\" do not allow."
+---
+kind: Assert.Manifest
+metadata: { name: argumentMissing }
+source: ./__fixtures__/text-tools-runtime/argument-missing.yaml
+expect:
+  errors: []
+  runFails: "ERR_AI_TEXT_TOOL_ARGUMENT_MISSING: Ai.Agent \"agent\": textTools[0] leaves the required parameter \"changes\" of \"apply_changes\" unmapped."

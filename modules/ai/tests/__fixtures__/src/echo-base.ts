@@ -22,6 +22,12 @@ export interface EchoFailRule {
   reason: string;
 }
 
+export interface EchoReply {
+  text: string;
+  toolCalls?: Array<{ id: string; name: string; arguments?: Record<string, unknown> }>;
+  finishReason?: "stop" | "length" | "tool-calls";
+}
+
 export interface EchoResource {
   metadata: { name: string; module?: string };
   /** What the fixture publishes as accepted; every type when unset, since it echoes any part. */
@@ -61,6 +67,9 @@ export interface EchoResource {
    *  call, `received` being the `providerState` that call was given (null when
    *  none) — so a test sees what reached each call and what is replayed. */
   echoProviderState?: boolean;
+  /** Test-only: the reply the call whose request holds n assistant messages
+   *  answers with; a call past the list echoes. */
+  replies?: EchoReply[];
   /** Test-only: the token usage every call reports. Zero when unset. */
   usage?: {
     promptTokens: number;
@@ -146,6 +155,26 @@ export abstract class EchoBase {
     const { emitToolCall, emitToolCalls } = this.resource;
     const planned = emitToolCalls ?? (emitToolCall ? [{ id: "echo-call-1", ...emitToolCall }] : []);
     return planned.map((call) => ({ id: call.id, name: call.name, arguments: call.arguments ?? {} }));
+  }
+
+  /** The scripted reply this call answers with, if the conversation is not past
+   *  the script: entry n for a request holding n assistant messages. */
+  protected scriptedReply(
+    input: ModelInvokeInput,
+  ): { text: string; toolCalls: ToolCall[]; finishReason: NonNullable<EchoReply["finishReason"]> } | undefined {
+    const index = input.messages.filter((m) => m.role === "assistant").length;
+    const reply = this.resource.replies?.[index];
+    if (!reply) return undefined;
+    const toolCalls: ToolCall[] = (reply.toolCalls ?? []).map((call) => ({
+      id: call.id,
+      name: call.name,
+      arguments: call.arguments ?? {},
+    }));
+    return {
+      text: reply.text,
+      toolCalls,
+      finishReason: reply.finishReason ?? (toolCalls.length > 0 ? "tool-calls" : "stop"),
+    };
   }
 
   protected maybeThrow(messages: Message[]): void {

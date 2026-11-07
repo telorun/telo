@@ -199,8 +199,11 @@ For a media part:
 - `name` is the part's file name (`report.pdf`), for a model that shows or needs one.
 
 A part a caller sends may also carry `cacheBreakpoint` (see
-[Prompt-cache breakpoints](#prompt-cache-breakpoints)). It carries nothing else: there
-is no per-part provider directive.
+[Prompt-cache breakpoints](#prompt-cache-breakpoints)). A text part may carry
+`kind: text-tool-result` with the `toolCallId` it answers, which is how an agent records
+a [text call](./ai-agent.md#text-tools)'s result; `toolCallId` is required beside `kind`,
+and neither is legal on another part. A provider sends such a part as plain text. A part
+carries nothing else: there is no per-part provider directive.
 
 ```yaml
 messages:

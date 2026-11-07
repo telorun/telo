@@ -1,0 +1,51 @@
+# Text tools `telo check` accepts: a name carrying its entry's `prefix`, a tool
+# named by its resource, and any name beside a provider that declares no tools.
+kind: Telo.Library
+metadata: { name: TextToolsAccepted }
+imports: { Ai: ../.., AiEcho: ./ai-echo.yaml, Run: ../../../run }
+---
+kind: Run.Value
+metadata: { name: summarize }
+value: { done: true }
+---
+kind: Ai.Tools
+metadata: { name: fileTools }
+tools:
+  - name: apply_changes
+    tool: { kind: Run.Value, value: { wrote: true } }
+    parameters: { type: object, properties: { changes: { type: array } } }
+  - tool: !ref summarize
+    parameters: { type: object, properties: { text: { type: string } } }
+---
+kind: Ai.Agent
+metadata: { name: prefixed }
+model: { kind: AiEcho.EchoModel }
+textTools:
+  - tags: [telo-edit]
+    tool: files_apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, b.body)"
+  - tags: [summary]
+    tool: files_summarize
+    arguments:
+      text: !cel "blocks[0].body"
+toolProviders:
+  - provider: !ref fileTools
+    prefix: files_
+    include: [apply_changes, summarize]
+---
+kind: AiEcho.EchoToolProvider
+metadata: { name: discovered }
+advertises: [search]
+---
+kind: Ai.AgentStream
+metadata: { name: discovering }
+model: { kind: AiEcho.EchoModelStream }
+textTools:
+  - tags: [telo-edit]
+    tool: search
+    arguments:
+      query: !cel "blocks[0].body"
+toolProviders:
+  - provider: !ref fileTools
+  - provider: !ref discovered

@@ -1,0 +1,31 @@
+# One tag listed by two entries: refused by `telo check` at the declaration, and
+# by the agent when it is created.
+kind: Telo.Library
+metadata: { name: TextToolsTagDuplicate }
+imports: { Ai: ../../.., AiEcho: ../ai-echo.yaml, Run: ../../../../run }
+exports: { resources: [agent] }
+---
+kind: Ai.Tools
+metadata: { name: fileTools }
+tools:
+  - name: apply_changes
+    tool: { kind: Run.Value, value: { wrote: true } }
+    parameters: { type: object, properties: { changes: { type: array } } }
+  - name: take_note
+    tool: { kind: Run.Value, value: { noted: true } }
+    parameters: { type: object, properties: { text: { type: string } } }
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model: { kind: AiEcho.EchoModel }
+textTools:
+  - tags: [telo-edit, telo-file]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, b.body)"
+  - tags: [telo-file]
+    tool: take_note
+    arguments:
+      text: !cel "blocks[0].body"
+toolProviders:
+  - provider: !ref fileTools

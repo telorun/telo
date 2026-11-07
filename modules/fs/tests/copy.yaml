@@ -1,0 +1,144 @@
+kind: Telo.Application
+metadata:
+  name: FsCopy
+  version: 1.0.0
+  description: |
+    Fs.Copy copies a file and a directory tree, creating missing parents and leaving
+    the source as it was, and refuses an existing destination, a destination inside
+    the source, an absent source and a source holding a symbolic link with their
+    codes, leaving the tree as it was.
+imports: { Fs: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Fs.TreeSync
+metadata: { name: sync }
+cwd: !module-path ./__fixtures__
+---
+kind: Fs.TreeSnapshot
+metadata: { name: snapshot }
+cwd: !module-path ./__fixtures__
+---
+kind: Fs.Copy
+metadata: { name: copy }
+cwd: !module-path ./__fixtures__
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: reset
+    inputs: { delete: [scratch-copy] }
+    invoke: !ref sync
+  - name: seed
+    inputs:
+      write:
+        - { path: scratch-copy/solo.txt, content: solo }
+        - { path: scratch-copy/tree/one.txt, content: one }
+        - { path: scratch-copy/tree/sub/two.txt, content: two }
+        - { path: scratch-copy/taken.txt, content: taken }
+    invoke: !ref sync
+  - name: beforeCopies
+    inputs: { paths: [scratch-copy] }
+    invoke: !ref snapshot
+
+  - name: copyFile
+    inputs: { path: scratch-copy/solo.txt, destination: scratch-copy/new/deep/solo.txt }
+    invoke: !ref copy
+  - name: assertCopyFile
+    inputs:
+      actual: !cel "steps.copyFile.result"
+      expected:
+        { copied: scratch-copy/solo.txt, destination: scratch-copy/new/deep/solo.txt, files: 1 }
+    invoke: !ref Assert.equals
+  - name: copyTree
+    inputs: { path: scratch-copy/tree, destination: scratch-copy/other/tree }
+    invoke: !ref copy
+  - name: assertCopyTree
+    inputs:
+      actual: !cel "steps.copyTree.result"
+      expected: { copied: scratch-copy/tree, destination: scratch-copy/other/tree, files: 2 }
+    invoke: !ref Assert.equals
+
+  - name: afterCopies
+    inputs: { paths: [scratch-copy] }
+    invoke: !ref snapshot
+  - name: assertCopyPaths
+    inputs:
+      actual: !cel "steps.afterCopies.result.files.map(f, f.path)"
+      expected: [scratch-copy/new/deep/solo.txt, scratch-copy/other/tree/one.txt, scratch-copy/other/tree/sub/two.txt, scratch-copy/solo.txt, scratch-copy/taken.txt, scratch-copy/tree/one.txt, scratch-copy/tree/sub/two.txt]
+    invoke: !ref Assert.equals
+  - name: assertSourceUnchanged
+    inputs:
+      actual: !cel >-
+        steps.afterCopies.result.files.filter(f, f.path.startsWith('scratch-copy/tree/') || f.path == 'scratch-copy/solo.txt' || f.path == 'scratch-copy/taken.txt')
+      expected: !cel "steps.beforeCopies.result.files"
+    invoke: !ref Assert.equals
+  - name: assertCopiedContent
+    inputs:
+      actual: !cel >-
+        steps.afterCopies.result.files.filter(f, f.path.startsWith('scratch-copy/other/tree/')).map(f, f.hash)
+      expected: !cel >-
+        steps.beforeCopies.result.files.filter(f, f.path.startsWith('scratch-copy/tree/')).map(f, f.hash)
+    invoke: !ref Assert.equals
+
+  - name: existingDestination
+    try:
+      - name: doCopy
+        inputs: { path: scratch-copy/taken.txt, destination: scratch-copy/new/deep/solo.txt }
+        invoke: !ref copy
+      - name: unexpected
+        inputs: { actual: copied, expected: refused }
+        invoke: !ref Assert.equals
+    catch:
+      - name: assertCode
+        inputs: { actual: !cel "error.code", expected: ERR_PATH_EXISTS }
+        invoke: !ref Assert.equals
+  - name: intoItself
+    try:
+      - name: doCopy
+        inputs: { path: scratch-copy/tree, destination: scratch-copy/tree/sub/inner }
+        invoke: !ref copy
+      - name: unexpected
+        inputs: { actual: copied, expected: refused }
+        invoke: !ref Assert.equals
+    catch:
+      - name: assertCode
+        inputs: { actual: !cel "error.code", expected: ERR_COPY_INTO_ITSELF }
+        invoke: !ref Assert.equals
+  - name: absentSource
+    try:
+      - name: doCopy
+        inputs: { path: scratch-copy/absent.txt, destination: scratch-copy/elsewhere/absent.txt }
+        invoke: !ref copy
+      - name: unexpected
+        inputs: { actual: copied, expected: refused }
+        invoke: !ref Assert.equals
+    catch:
+      - name: assertCode
+        inputs: { actual: !cel "error.code", expected: ERR_PATH_NOT_FOUND }
+        invoke: !ref Assert.equals
+  - name: symlinkInSource
+    try:
+      - name: doCopy
+        inputs: { path: copy-with-link, destination: scratch-copy/linked/copy }
+        invoke: !ref copy
+      - name: unexpected
+        inputs: { actual: copied, expected: refused }
+        invoke: !ref Assert.equals
+    catch:
+      - name: assertCode
+        inputs: { actual: !cel "error.code", expected: ERR_COPY_UNSUPPORTED_ENTRY }
+        invoke: !ref Assert.equals
+
+  - name: afterRefusals
+    inputs: { paths: [scratch-copy] }
+    invoke: !ref snapshot
+  - name: assertUnchanged
+    inputs:
+      actual: !cel "steps.afterRefusals.result"
+      expected: !cel "steps.afterCopies.result"
+    invoke: !ref Assert.equals
+
+  - name: cleanup
+    inputs: { delete: [scratch-copy] }
+    invoke: !ref sync

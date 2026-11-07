@@ -1,0 +1,179 @@
+kind: Telo.Application
+metadata:
+  name: ApplyPatchTest
+  description: |
+    `TextDiff.applyPatch(text, patch)` as a manifest sees it: sections apply in
+    order, each seeing the earlier ones; a missing or ambiguous section is refused
+    with its number; a malformed patch and an over-limit input are refused with no
+    section; an empty REPLACE deletes; CRLF text matches only a CRLF search.
+imports: { TextDiff: ../, Run: ../../run, Assert: ../../assert }
+targets:
+  - !ref test
+---
+# An instance of its own, with a limit small enough to cross in a test.
+kind: TextDiff.ApplyPatch
+metadata: { name: tiny }
+maxInputBytes: 16
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: threeSections
+    value:
+      text: "one\ntwo\nthree\n"
+      patch: |
+        <<<<<<< SEARCH
+        one
+        =======
+        ONE
+        >>>>>>> REPLACE
+        <<<<<<< SEARCH
+        ONE
+        =======
+        uno
+        >>>>>>> REPLACE
+        <<<<<<< SEARCH
+        three
+        =======
+        >>>>>>> REPLACE
+
+  - name: assertThreeSections
+    inputs:
+      actual: !cel "TextDiff.applyPatch(steps.threeSections.result.text, steps.threeSections.result.patch)"
+      expected: { applied: true, text: "uno\ntwo\n", code: null, section: null, lines: null }
+    invoke: !ref Assert.equals
+
+  - name: absentSection
+    value:
+      text: "one\n"
+      patch: |
+        <<<<<<< SEARCH
+        one
+        =======
+        ONE
+        >>>>>>> REPLACE
+        <<<<<<< SEARCH
+        one
+        =======
+        x
+        >>>>>>> REPLACE
+
+  - name: assertAbsentSection
+    inputs:
+      actual: !cel "TextDiff.applyPatch(steps.absentSection.result.text, steps.absentSection.result.patch)"
+      expected: { applied: false, text: null, code: EDIT_SECTION_ABSENT, section: !cel "2", lines: null }
+    invoke: !ref Assert.equals
+
+  - name: ambiguousSection
+    value:
+      text: "x\na\nx\n"
+      patch: |
+        <<<<<<< SEARCH
+        x
+        =======
+        y
+        >>>>>>> REPLACE
+
+  - name: assertAmbiguousSection
+    inputs:
+      actual: !cel "TextDiff.applyPatch(steps.ambiguousSection.result.text, steps.ambiguousSection.result.patch)"
+      expected: { applied: false, text: null, code: EDIT_SECTION_AMBIGUOUS, section: !cel "1", lines: [!cel "1", !cel "3"] }
+    invoke: !ref Assert.equals
+
+  - name: emptySearch
+    value:
+      text: "a\n"
+      patch: |
+        <<<<<<< SEARCH
+        =======
+        x
+        >>>>>>> REPLACE
+
+  - name: assertEmptySearch
+    inputs:
+      actual: !cel "TextDiff.applyPatch(steps.emptySearch.result.text, steps.emptySearch.result.patch)"
+      expected: { applied: false, text: null, code: EDIT_BLOCK_MALFORMED, section: !cel "1", lines: null }
+    invoke: !ref Assert.equals
+
+  - name: strayLine
+    value:
+      text: "a\n"
+      patch: |
+        stray
+        <<<<<<< SEARCH
+        a
+        =======
+        b
+        >>>>>>> REPLACE
+
+  - name: assertStrayLine
+    inputs:
+      actual: !cel "TextDiff.applyPatch(steps.strayLine.result.text, steps.strayLine.result.patch)"
+      expected: { applied: false, text: null, code: EDIT_BLOCK_MALFORMED, section: null, lines: null }
+    invoke: !ref Assert.equals
+
+  - name: missingDivider
+    value:
+      text: "a\n"
+      patch: |
+        <<<<<<< SEARCH
+        a
+        >>>>>>> REPLACE
+
+  - name: assertMissingDivider
+    inputs:
+      actual: !cel "TextDiff.applyPatch(steps.missingDivider.result.text, steps.missingDivider.result.patch)"
+      expected: { applied: false, text: null, code: EDIT_BLOCK_MALFORMED, section: !cel "1", lines: null }
+    invoke: !ref Assert.equals
+
+  # The search is "a\r\n": a CR belongs to the line, so the CRLF text matches.
+  - name: crlf
+    value:
+      text: "a\r\nb\r\n"
+      patch: "<<<<<<< SEARCH\na\r\n=======\nA\n>>>>>>> REPLACE\n"
+
+  - name: assertCrlf
+    inputs:
+      actual: !cel "TextDiff.applyPatch(steps.crlf.result.text, steps.crlf.result.patch)"
+      expected: { applied: true, text: "A\nb\r\n", code: null, section: null, lines: null }
+    invoke: !ref Assert.equals
+
+  # An LF search does not match CRLF text.
+  - name: crlfLfSearch
+    value:
+      text: "a\r\nb\r\n"
+      patch: "<<<<<<< SEARCH\na\n=======\nA\n>>>>>>> REPLACE\n"
+
+  - name: assertCrlfLfSearch
+    inputs:
+      actual: !cel "TextDiff.applyPatch(steps.crlfLfSearch.result.text, steps.crlfLfSearch.result.patch)"
+      expected: { applied: false, text: null, code: EDIT_SECTION_ABSENT, section: !cel "1", lines: null }
+    invoke: !ref Assert.equals
+
+  # The text has no final newline; its last line is matched all the same.
+  - name: noFinalNewline
+    value:
+      text: "a\nb"
+      patch: |
+        <<<<<<< SEARCH
+        b
+        =======
+        c
+        >>>>>>> REPLACE
+
+  - name: assertNoFinalNewline
+    inputs:
+      actual: !cel "TextDiff.applyPatch(steps.noFinalNewline.result.text, steps.noFinalNewline.result.patch)"
+      expected: { applied: true, text: "a\nc", code: null, section: null, lines: null }
+    invoke: !ref Assert.equals
+
+  # 17 bytes against a 16-byte limit, on either side.
+  - name: assertOverLimit
+    inputs:
+      actual:
+        text: !cel "Self.tiny('aaaaaaaaaaaaaaaaa', '<<<<<<< SEARCH')"
+        patch: !cel "Self.tiny('a', 'xxxxxxxxxxxxxxxxx')"
+      expected:
+        text: { applied: false, text: null, code: EDIT_BLOCK_MALFORMED, section: null, lines: null }
+        patch: { applied: false, text: null, code: EDIT_BLOCK_MALFORMED, section: null, lines: null }
+    invoke: !ref Assert.equals

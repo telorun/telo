@@ -44,6 +44,8 @@ A provider that knows which of its calls are sensitive implements `toolRequiresA
 
 A value is a content part **exactly when it satisfies [`Ai.ContentPart`](./ai-model.md#modality-lives-in-the-parts)** — for a media part: a `mediaType`, exactly one of `data` or `uri`, a `uri` that is absolute and not `data:`, and no key the shape does not declare. Anything else — a media-looking object with a relative `uri`, with both `data` and `uri`, or with an extra key — is data, and reaches the model as JSON text. So a value recognised as a part is never refused by the next model call's contract. Whether the model can *carry* the part is still its provider's answer.
 
+**`tools` is a reserved key.** A provider declaration holding a top-level `tools` list states its complete, static tool list in `Ai.Tools`' entry shape (`name`, else the `tool` resource's name; `parameters`). `telo check` reads such a provider's tools to judge an agent's [`textTools`](./ai-agent.md#text-tools) — a tool no provider declares — so a provider of another shape must not declare a `tools` key. Arguments are judged against the advertised parameters when the agent first lists its tools, as is every provider without a `tools` key.
+
 Implementing one: declare `capability: Telo.Mount, extends: Ai.ToolProvider` (use `Self.ToolProvider` from inside `@telorun/ai` itself) and return an instance exposing `listTools`/`callTool`. Two ship today — `Ai.Tools` (below) and [`AiMcp.ToolProvider`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai-mcp/).
 
 ## `Ai.Tools`

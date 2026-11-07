@@ -18,7 +18,7 @@ requires:
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
   telo: ">=0.121.0"
 exports:
-  kinds: [File, FileWrite, FileEdit, DirectoryListing, DirectoryCreation, TreeSnapshot, TreeSync, FileRemoval]
+  kinds: [File, FileWrite, FileEdit, DirectoryListing, DirectoryCreation, TreeSnapshot, TreeSync, FileRemoval, Move, Copy]
 ---
 # Read a file. Returns its contents (utf8 text or, with `encoding: base64`, the
 # bytes base64-encoded) and byte size.
@@ -634,6 +634,192 @@ outputType:
     required: [removed]
     properties:
       removed: { title: Removed, description: True when the path was removed., type: boolean }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
+      type: string
+      x-telo-type: { name: Telo.HostPath, entry: directory }
+      x-telo-eval: compile
+  examples:
+    - { cwd: /srv/workspace }
+---
+# Rename a file or directory in one rename(2). Refuses before changing anything.
+kind: Telo.Definition
+metadata:
+  name: Move
+  description: >-
+    Renames a file or a directory to a new path in one atomic step, creating the
+    destination's missing parent directories, and returns both paths. Refuses
+    an existing destination, a destination inside the source, an absent source
+    and a move across filesystems, leaving the tree as it was.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#PathMoveController]
+throws:
+  codes:
+    ERR_PATH_EXISTS:
+      description: >-
+        The destination already exists; nothing was moved.
+      data:
+        type: object
+        additionalProperties: false
+        required: [path]
+        properties: { path: { type: string, description: The resolved destination. } }
+    ERR_PATH_NOT_FOUND:
+      description: >-
+        The source does not exist.
+      data:
+        type: object
+        additionalProperties: false
+        required: [path]
+        properties: { path: { type: string, description: The resolved source. } }
+    ERR_MOVE_INTO_ITSELF:
+      description: >-
+        The destination is the source or lies inside it.
+      data:
+        type: object
+        additionalProperties: false
+        required: [path, destination]
+        properties:
+          path: { type: string, description: The resolved source. }
+          destination: { type: string, description: The resolved destination. }
+    ERR_MOVE_CROSS_DEVICE:
+      description: >-
+        Source and destination are on different filesystems, which a rename cannot cross. Nothing was moved.
+      data:
+        type: object
+        additionalProperties: false
+        required: [path, destination]
+        properties:
+          path: { type: string, description: The resolved source. }
+          destination: { type: string, description: The resolved destination. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path, destination]
+    properties:
+      path:
+        title: Path
+        description: File or directory to move, relative to `cwd` (an absolute path is used as-is).
+        type: string
+        minLength: 1
+      destination:
+        title: Destination
+        description: New path, relative to `cwd`. Missing parent directories are created; it must not exist.
+        type: string
+        minLength: 1
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [moved, destination]
+    properties:
+      moved: { title: Moved, description: The `path` that was moved, as given., type: string }
+      destination: { title: Destination, description: The new path, as given., type: string }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    cwd:
+      title: Working directory
+      description: >-
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
+      type: string
+      x-telo-type: { name: Telo.HostPath, entry: directory }
+      x-telo-eval: compile
+  examples:
+    - { cwd: /srv/workspace }
+---
+# Copy a file or directory tree all or nothing: built beside the destination,
+# renamed into place, removed on failure.
+kind: Telo.Definition
+metadata:
+  name: Copy
+  description: >-
+    Copies a file, or a directory with everything beneath it, to a new path,
+    creating the destination's missing parent directories, and returns both
+    paths with the number of files copied. All or nothing: a failure part-way
+    leaves no destination. Refuses an existing destination, a destination inside
+    the source, an absent source and any symbolic link or special file.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#PathCopyController]
+throws:
+  codes:
+    ERR_PATH_EXISTS:
+      description: >-
+        The destination already exists; nothing was copied.
+      data:
+        type: object
+        additionalProperties: false
+        required: [path]
+        properties: { path: { type: string, description: The resolved destination. } }
+    ERR_PATH_NOT_FOUND:
+      description: >-
+        The source does not exist.
+      data:
+        type: object
+        additionalProperties: false
+        required: [path]
+        properties: { path: { type: string, description: The resolved source. } }
+    ERR_COPY_INTO_ITSELF:
+      description: >-
+        The destination is the source or lies inside it.
+      data:
+        type: object
+        additionalProperties: false
+        required: [path, destination]
+        properties:
+          path: { type: string, description: The resolved source. }
+          destination: { type: string, description: The resolved destination. }
+    ERR_COPY_UNSUPPORTED_ENTRY:
+      description: >-
+        The source is, or holds anywhere beneath it, a symbolic link or a special file. Nothing was copied.
+      data:
+        type: object
+        additionalProperties: false
+        required: [path]
+        properties:
+          path: { type: string, description: The resolved path of the offending entry. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path, destination]
+    properties:
+      path:
+        title: Path
+        description: File or directory to copy, relative to `cwd` (an absolute path is used as-is).
+        type: string
+        minLength: 1
+      destination:
+        title: Destination
+        description: Where the copy goes, relative to `cwd`. Missing parent directories are created; it must not exist.
+        type: string
+        minLength: 1
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [copied, destination, files]
+    properties:
+      copied: { title: Copied, description: The `path` that was copied, as given., type: string }
+      destination: { title: Destination, description: The copy's path, as given., type: string }
+      files: { title: Files, description: Number of regular files copied., type: integer }
 schema:
   type: object
   additionalProperties: false
