@@ -90,6 +90,13 @@ export const CONTROL_MECHANICS: Readonly<Partial<Record<ControlName, string>>> =
   ]),
   Select: layer(choiceList),
   MultiSelect: layer(choiceList),
+  Combobox: layer([
+    '[data-telo-part="search-input"] { box-sizing: border-box; flex: 1 1 8rem; min-width: 0; }',
+    "/* Placed against its box: the placement sets the anchor's width, the height left and the corner it grows from. */",
+    '[data-telo-part="combobox-content"] { box-sizing: border-box; z-index: 50; overflow-x: hidden; overflow-y: auto; min-width: max(9rem, var(--ui-react-control-anchor-width, 0px)); max-height: var(--ui-react-control-available-height, 100vh); transform-origin: var(--ui-react-control-origin); }',
+    '[data-telo-part="combobox-item"] { position: relative; display: flex; align-items: center; cursor: default; user-select: none; }',
+    '[data-telo-part="combobox-item"] [data-telo-part="icon"] { position: absolute; flex: none; pointer-events: none; }',
+  ]),
   Dialog: layer([
     overlay,
     centred("dialog"),

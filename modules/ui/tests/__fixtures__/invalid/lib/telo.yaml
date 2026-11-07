@@ -16,7 +16,7 @@ metadata:
     row action is given inputs that make no record of its input model.
 imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
 exports:
-  resources: [sourceFilter, sourceFilterNotAccepted, sortNotAccepted, formField, formFieldUnsupported, filterNotAccepted, filterValuesNotFaceted, filterOptionValueMismatch, compactAddressed, compactNested, splitCompactAddressed, splitCompactNested, filterDuplicate, filterDefaultInvalid, filterControlUnsupported, presetUnknownFilter, presetValueInvalid, presetLabelDuplicate, toggleOverText, toggleUntyped, toggleDefaultOff, togglePresetOff, actionFieldUnknown, actionFieldUnsupported, actionRequiredNotEntered, actionRequiredNotEnterable, actionClearUnknown, rowActionInputs, listRowActionInputs]
+  resources: [sourceFilter, sourceFilterNotAccepted, sortNotAccepted, formField, formFieldUnsupported, filterNotAccepted, filterValuesNotFaceted, filterOptionValueMismatch, compactAddressed, compactNested, splitCompactAddressed, splitCompactNested, filterDuplicate, filterDefaultInvalid, filterControlUnsupported, presetUnknownFilter, searchUndeclared, presetSearchUnset, presetValueInvalid, presetLabelDuplicate, toggleOverText, toggleUntyped, toggleDefaultOff, togglePresetOff, actionFieldUnknown, actionFieldUnsupported, actionRequiredNotEntered, actionRequiredNotEnterable, actionClearUnknown, rowActionInputs, listRowActionInputs]
 ---
 kind: Telo.JsonSchema
 metadata: { name: Todo }
@@ -135,6 +135,31 @@ kind: DataModel.Collection
 metadata: { name: todoValues }
 model: !ref Todo
 query: { filters: [{ property: text, operator: in }], sort: [] }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: searchable }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/todos
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query: { search: { properties: [text] }, filters: [{ property: isDone, operator: eq }], sort: [] }
+---
+kind: Ui.Filters
+metadata: { name: searchUndeclared }
+presentation: !ref flags
+search: {}
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata: { name: presetSearchUnset }
+presentation: !ref searchable
+fields:
+  - { property: isDone, operator: eq }
+presets:
+  - { label: Back, search: back, values: [] }
+content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
 metadata: { name: filterDuplicate }

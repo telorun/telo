@@ -280,6 +280,9 @@ steps:
           - [ /components, Components ]
           - [ /crud, CRUD ]
           - [ /records, Related records ]
+          - [ /search, Search posts ]
+          - [ /search-beside, Posts beside their filters ]
+          - [ /search-releases, Release posts ]
           - [ /themes, Themes ]
         compactBelow: [ 48rem, 48rem, 48rem, 48rem ]
         samePages: true
@@ -296,6 +299,7 @@ steps:
             - [ /components, puzzle.svg ]
             - [ /crud, list-checks.svg ]
             - [ /records, network.svg ]
+            - [ Search, search.svg, [ [ /search, text-search.svg ], [ /search-beside, panel-left.svg ], [ /search-releases, rocket.svg ] ] ]
             - [ /themes, palette.svg ]
           - *tree
           - *tree
@@ -324,7 +328,7 @@ steps:
           - [ renderer.css, default-theme.css, showcase.css ]
         sets:
           - []
-          - &radixControls [ [ Select, MultiSelect, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation, Tabs, Icon ] ]
+          - &radixControls [ [ Select, MultiSelect, Combobox, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation, Tabs, Icon ] ]
           - *radixControls
           - []
         vary:
@@ -433,7 +437,7 @@ steps:
       expected:
         polish:
           lang: pl
-          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Motywy ]
+          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Motywy ]
           logo: { lang: pl, message: [ Logo pokazu interfejsu ] }
           menus: [ Język, Motyw ]
         english: { lang: en, title: { lang: en, message: [UI showcase] } }
@@ -498,7 +502,7 @@ steps:
       expected:
         lang: pl
         title: { lang: pl, message: [ Pokaz interfejsu ] }
-        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Motywy ]
+        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Motywy ]
         save: { lang: pl, message: [ Zapisz ] }
         heading: { lang: pl, message: [ Każdy rodzaj węzła ] }
 
@@ -984,7 +988,7 @@ steps:
       actual:
         bars: !cel >-
           steps.nodes.result.filters.filter(c, c.type == 'filters').map(b, [
-            b.show, b.controls, b.apply, b.summary, b.placement, b.state,
+            b.apply, b.placement, b.state,
             b.fields.map(f, has(f.default) ? [f.property, f.operator, f.control, f.pinned, f.default] : [f.property, f.operator, f.control, f.pinned]),
             b.presets.map(p, [p.label.message[0], p.values])])
         content: !cel "steps.nodes.result.filters.filter(c, c.type == 'filters').map(b, [b.content.type, b.content.basePath, b.content.pageSize])"
@@ -993,11 +997,8 @@ steps:
       expected:
         bars:
           # Every filter the collection accepts.
-          - - all
-            - direct
-            - commit
-            - none
-            - { type: above }
+          - - commit
+            - { type: above, show: all, controls: direct, summary: none }
             - { address: false, store: { type: memory }, fields: [ title, projectCode, assigneeEmail, status, priority, estimate, dueOn, label, blocked ] }
             - - [ title, contains, auto, false ]
               - [ projectCode, eq, auto, false ]
@@ -1016,11 +1017,8 @@ steps:
               - [ blocked, eq, auto, false ]
             - []
           # Every control.
-          - - all
-            - direct
-            - commit
-            - chips
-            - { type: above, compact: { type: collapsible, open: false } }
+          - - commit
+            - { type: above, show: all, controls: direct, summary: chips, compact: { type: collapsible, show: all, controls: direct, summary: chips, open: false } }
             - { key: board, address: true, store: { type: memory }, fields: [ title, status, label, assigneeEmail, priority, blocked, dueOn, projectCode ] }
             - - [ title, contains, auto, true ]
               - [ status, in, options, false, [ todo, doing, review ] ]
@@ -1035,14 +1033,17 @@ steps:
               - [ Atlas only, [ { property: projectCode, operator: eq, value: [ TEL-42 ] } ] ]
               - [ Stuck, [ { property: blocked, operator: eq, value: [ true ] } ] ]
           # Beside, as chips, while typing.
-          - - chosen
-            - chips
-            - typing
-            - none
+          - - typing
             - type: aside
+              show: chosen
+              controls: chips
+              summary: none
               side: start
               compact:
                 type: overlay
+                show: chosen
+                controls: chips
+                summary: none
                 surface: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
             - { key: aside, address: false, store: { type: local }, fields: [ title, status, label, estimate, assigneeEmail ] }
             - - [ title, contains, auto, false ]
@@ -1053,11 +1054,8 @@ steps:
               - [ assigneeEmail, eq, auto, false ]
             - []
           # Beside at the end, applied by a button.
-          - - all
-            - direct
-            - button
-            - chips
-            - { type: aside, side: end, compact: { type: collapsible, open: false } }
+          - - button
+            - { type: aside, show: all, controls: direct, summary: chips, side: end, compact: { type: collapsible, show: all, controls: direct, summary: chips, open: false } }
             - { key: review, address: false, store: { type: session }, fields: [ status, assigneeEmail, priority, dueOn ] }
             - - [ status, in, auto, false ]
               - [ assigneeEmail, in, auto, false ]
@@ -1065,11 +1063,8 @@ steps:
               - [ dueOn, lte, auto, false ]
             - - [ Due by October, [ { property: dueOn, operator: lte, value: [ "2026-10-31" ] }, { property: status, operator: in, value: [ todo, doing, review ] } ] ]
           # Folded, starting open.
-          - - chosen
-            - direct
-            - commit
-            - none
-            - { type: collapsible, open: true }
+          - - commit
+            - { type: collapsible, show: chosen, controls: direct, summary: none, open: true }
             - { key: folded, address: true, store: { type: local }, fields: [ title, status, blocked, label ] }
             - - [ title, contains, auto, true ]
               - [ status, eq, auto, false, [ doing ] ]
@@ -1077,22 +1072,19 @@ steps:
               - [ label, eq, auto, false ]
             - []
           # Folded, starting closed.
-          - - all
-            - direct
-            - button
-            - none
-            - { type: collapsible, open: false }
+          - - button
+            - { type: collapsible, show: all, controls: direct, summary: none, open: false }
             - { address: false, store: { type: memory }, fields: [ title, label, status ] }
             - - [ title, contains, auto, true ]
               - [ label, in, options, false, [ bug ] ]
               - [ status, in, select, false ]
             - []
           # In a dialog.
-          - - all
-            - direct
-            - commit
-            - chips
+          - - commit
             - type: overlay
+              show: all
+              controls: direct
+              summary: chips
               surface: { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true }, address: { name: taskFilters } }
             - { address: false, store: { type: memory }, fields: [ title, status, label, blocked ] }
             - - [ title, contains, auto, true ]
@@ -1101,11 +1093,11 @@ steps:
               - [ blocked, eq, auto, false ]
             - []
           # In a drawer.
-          - - all
-            - direct
-            - typing
-            - none
+          - - typing
             - type: overlay
+              show: all
+              controls: direct
+              summary: none
               surface: { type: drawer, side: start, size: small, modal: true, dismiss: { escape: true, outside: false, closeButton: true } }
             - { address: false, store: { type: memory }, fields: [ priority, estimate, dueOn ] }
             - - [ priority, gte, slider, false ]
@@ -1113,11 +1105,11 @@ steps:
               - [ dueOn, gte, auto, false ]
             - []
           # In a popover.
-          - - all
-            - direct
-            - commit
-            - none
+          - - commit
             - type: overlay
+              show: all
+              controls: direct
+              summary: none
               surface:
                 type: popover
                 side: bottom
@@ -1534,7 +1526,7 @@ steps:
       actual:
         kinds: !cel "steps.nodes.result.crud.map(c, c.type)"
         bar: !cel >-
-          cel.bind(f, steps.nodes.result.crud[4], [f.show, f.controls, f.apply, f.summary, f.placement, f.state.key, f.state.address,
+          cel.bind(f, steps.nodes.result.crud[4], [f.apply, f.placement, f.state.key, f.state.address,
             f.state.store, size(f.fields)])
         sharedState: !cel "[steps.nodes.result.crud[4].state.key, steps.nodes.result.crud[4].state.store] == [steps.nodes.result.filters[8].state.key, steps.nodes.result.filters[8].state.store]"
         table: !cel >-
@@ -1545,7 +1537,7 @@ steps:
         polish: !cel "steps.polishCrud.result.body.children[0].children[0].text"
       expected:
         kinds: [ text, text, text, text, filters ]
-        bar: [ chosen, chips, commit, chips, { type: aside, side: end, compact: { type: collapsible, open: false } }, aside, false, { type: local }, 15 ]
+        bar: [ commit, { type: aside, side: end, show: chosen, controls: chips, summary: chips, compact: { type: collapsible, open: false, show: chosen, controls: chips, summary: chips } }, aside, false, { type: local }, 15 ]
         sharedState: true
         table:
           - /api/tasks

@@ -69,6 +69,10 @@ expect:
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/presetUnknownFilter at 'presets[0]': sets a property and operator the bar does not show"
     - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/searchUndeclared: holds a search with nothing to read it: the bar writes `search` over a collection declaring no `query.search`, or a preset sets a search on a bar that has none"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/presetSearchUnset: holds a search with nothing to read it: the bar writes `search` over a collection declaring no `query.search`, or a preset sets a search on a bar that has none"
+    - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/presetValueInvalid at 'presets[0]': sets a value its filter cannot hold"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/presetLabelDuplicate at 'presets[1]': has the label of another preset"

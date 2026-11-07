@@ -23,6 +23,7 @@ texts:
   # The navigation's groups.
   - { text: Building blocks, translation: Елементи }
   - { text: Input, translation: Введення }
+  - { text: Search, translation: Пошук }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
@@ -593,3 +594,11 @@ texts:
   - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "Тіло запиту перевищує {$maxBodyBytes} байт, які приймає цей сервер." }
   - { text: "This server does not serve the host {$host}.", translation: "Цей сервер не обслуговує хост {$host}." }
   - { text: "The list request is not valid.", translation: "Запит списку недійсний." }
+
+  # Search.
+  - { text: "Search posts", translation: "Пошук дописів" }
+  - { text: "Posts beside their filters", translation: "Дописи поруч із фільтрами" }
+  - { text: "Release posts", translation: "Дописи про релізи" }
+  - { text: "Everything", translation: "Усе" }
+  - { text: "Drafts about releases", translation: "Чернетки про релізи" }
+  - { text: "Search posts, or filter by author, status or date", translation: "Шукайте дописи або фільтруйте за автором, статусом чи датою" }

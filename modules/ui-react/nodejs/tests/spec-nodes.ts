@@ -117,6 +117,9 @@ export const filterField = (property: keyof typeof todoSchema.properties, operat
   ...more,
 });
 
+/** What a placement that draws controls carries beside its own members. */
+export const display = { show: "all", controls: "direct", summary: "none" } as const;
+
 /** A filter bar with the policy a bar that declares none carries. */
 export const filtersNode = (content: SpecNode, overrides: Record<string, unknown> = {}): SpecNode => ({
   type: "filters",
@@ -130,11 +133,8 @@ export const filtersNode = (content: SpecNode, overrides: Record<string, unknown
     filterField("dueOn", "lte"),
   ],
   content,
-  show: "all",
-  placement: { type: "above" },
-  controls: "direct",
+  placement: { type: "above", ...display },
   apply: "commit",
-  summary: "none",
   state: { address: false, store: { type: "memory" }, fields: Object.keys(todoSchema.properties) },
   presets: [],
   ...overrides,

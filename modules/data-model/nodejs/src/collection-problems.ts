@@ -21,7 +21,7 @@ const OPERATOR_APPLIES: Record<string, (property: ModelProperty) => boolean> = {
 
 /** A query parameter the list endpoint reads itself. */
 const isReservedName = (name: string) =>
-  ["limit", "cursor", "sort", "facet"].includes(name) || name.startsWith("_telo");
+  ["limit", "cursor", "sort", "facet", "search"].includes(name) || name.startsWith("_telo");
 
 const sameTypes = (a: string[], b: string[]) => a.every((type) => b.includes(type)) && b.every((type) => a.includes(type));
 
@@ -49,7 +49,7 @@ export function collectionProblems(
     if (isReservedName(property)) {
       problems.push({
         code: "DATA_MODEL_FILTER_RESERVED_NAME",
-        message: `'query.filters[${index}]' filters by '${property}', named as a query parameter the list endpoint owns: 'limit', 'cursor', 'sort', 'facet', and every name beginning '_telo'. Rename the property, or leave it out of 'query.filters'.`,
+        message: `'query.filters[${index}]' filters by '${property}', named as a query parameter the list endpoint owns: 'limit', 'cursor', 'sort', 'facet', 'search', and every name beginning '_telo'. Rename the property, or leave it out of 'query.filters'.`,
       });
     }
     const declared = typed.get(property);
@@ -64,6 +64,21 @@ export function collectionProblems(
       problems.push({
         code: "DATA_MODEL_FILTER_OPERATOR_UNSUPPORTED",
         message: `'query.filters[${index}]' uses an operator the property's type does not support ('${operator}' on '${property}', declared ${declared.types.join(" or ") || "untyped"}): 'contains' needs a string, 'gt' / 'gte' / 'lt' / 'lte' a string or a number, 'absent' a property the model leaves optional or admits null, and no operator applies to an object or a list.`,
+      });
+    }
+  }
+  for (const property of query.search?.properties ?? []) {
+    const declared = typed.get(property);
+    if (!declared) {
+      problems.push({
+        code: "DATA_MODEL_SEARCH_UNKNOWN_PROPERTY",
+        message: `search property '${property}' is not declared by the model (declared: ${[...typed.keys()].join(", ")}). Use a property of 'model', or add this one to it.`,
+      });
+    } else if (!isText(declared)) {
+      const article = /^[aeiou]/.test(declared.types[0]) ? "an" : "a";
+      problems.push({
+        code: "DATA_MODEL_SEARCH_UNSUPPORTED",
+        message: `search property '${property}' is ${article} ${declared.types.join(" or ")}; a search reads string properties only`,
       });
     }
   }

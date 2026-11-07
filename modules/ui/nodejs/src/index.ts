@@ -107,6 +107,7 @@ export {
   AsidePlacementController,
   CollapsiblePlacementController,
   OverlayPlacementController,
+  SearchBoxPlacementController,
 } from "./filter-placement.js";
 export { LocalStoreController, SessionStoreController } from "./state-store.js";
 export {

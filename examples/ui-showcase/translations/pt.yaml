@@ -23,6 +23,7 @@ texts:
   # The navigation's groups.
   - { text: Building blocks, translation: Blocos de construção }
   - { text: Input, translation: Entrada }
+  - { text: Search, translation: Pesquisa }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
@@ -582,3 +583,11 @@ texts:
   - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "O corpo da solicitação é maior que os {$maxBodyBytes} bytes que este servidor aceita." }
   - { text: "This server does not serve the host {$host}.", translation: "Este servidor não atende o host {$host}." }
   - { text: "The list request is not valid.", translation: "A solicitação da lista não é válida." }
+
+  # Search.
+  - { text: "Search posts", translation: "Pesquisar artigos" }
+  - { text: "Posts beside their filters", translation: "Artigos ao lado dos seus filtros" }
+  - { text: "Release posts", translation: "Artigos sobre lançamentos" }
+  - { text: "Everything", translation: "Tudo" }
+  - { text: "Drafts about releases", translation: "Rascunhos sobre lançamentos" }
+  - { text: "Search posts, or filter by author, status or date", translation: "Pesquise artigos ou filtre por autor, estado ou data" }

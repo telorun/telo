@@ -1,4 +1,4 @@
-// The eight layer controls of the first generation, without the navigation.
+// The nine layer controls of the third generation, without the combobox.
 const none = () => null;
 
 export const Select = none;
@@ -9,3 +9,4 @@ export const Popover = none;
 export const Confirmation = none;
 export const Menu = none;
 export const Tooltip = none;
+export const Navigation = none;

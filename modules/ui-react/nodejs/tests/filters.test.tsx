@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
-import { dialogSurface, filterField, filtersNode, opener, listingNode, todos, todoSchema } from "./spec-nodes.js";
+import { dialogSurface, display, filterField, filtersNode, opener, listingNode, todos, todoSchema } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 beforeEach(() => {
@@ -54,7 +54,8 @@ const status = (more: Record<string, unknown> = {}) => filterField("status", "in
 const task = (more: Record<string, unknown> = {}) => filterField("text", "contains", more);
 const kept = (state: Record<string, unknown>) => ({ state: { key: "todos", address: false, store: { type: "memory" }, fields: Object.keys(todoSchema.properties), ...state } });
 const panel = (name: string) => ({ type: "panel", side: "end", size: "medium", dismiss: { escape: true, closeButton: true }, address: { name } });
-const overlay = (surface: Record<string, unknown> = {}) => ({ type: "overlay", surface: { ...dialogSurface, ...surface } });
+const overlay = (surface: Record<string, unknown> = {}, more: Record<string, unknown> = {}) => ({ type: "overlay", ...display, ...more, surface: { ...dialogSurface, ...surface } });
+const above = (more: Record<string, unknown> = {}) => ({ type: "above", ...display, ...more });
 const titles = (r: Rendered) => r.parts("surface-title").map((title) => title.textContent);
 const presets = [
   { label: "All", values: [] },
@@ -74,7 +75,7 @@ describe("a filter bar", () => {
   });
 
   it("shows the filters pinned, added or holding a value under `show: chosen`, and clears the one removed", async () => {
-    rendered = await show({ show: "chosen", fields: [task({ pinned: true }), done(), status({ default: ["open"] }), filterField("priority", "gte")] });
+    rendered = await show({ placement: above({ show: "chosen" }), fields: [task({ pinned: true }), done(), status({ default: ["open"] }), filterField("priority", "gte")] });
     expect(labels(rendered)).toEqual(["Task", "Status"]);
     expect(asked(rendered)).toBe("status.in=open");
     // A pinned filter is never removable.
@@ -102,9 +103,9 @@ describe("a filter bar", () => {
   });
 
   it.each([
-    [{ type: "above" }, null],
-    [{ type: "aside", side: "start" }, "start"],
-    [{ type: "aside", side: "end" }, "end"],
+    [above(), null],
+    [{ type: "aside", ...display, side: "start" }, "start"],
+    [{ type: "aside", ...display, side: "end" }, "end"],
   ])("draws its controls in a bar beside what it filters: %o", async (placement, side) => {
     rendered = await show({ placement });
     const bar = rendered.part("filters");
@@ -117,7 +118,7 @@ describe("a filter bar", () => {
 
   it("folds behind a toggle counting the filters that hold a value, pinned ones staying outside", async () => {
     const fields = [task({ pinned: true }), done({ default: [false] }), status()];
-    rendered = await show({ placement: { type: "collapsible", open: false }, fields });
+    rendered = await show({ placement: { type: "collapsible", ...display, open: false }, fields });
     const toggle = rendered.part("filters-toggle");
     const bar = rendered.part("filters-bar");
     expect(rendered.part("filters").getAttribute("data-placement")).toBe("collapsible");
@@ -131,7 +132,7 @@ describe("a filter bar", () => {
     await rendered.choose(within(filterOf(rendered, "Done"), "filter-select"), "Any");
     expect(rendered.parts("filters-count")).toEqual([]);
     rendered.unmount();
-    rendered = await show({ placement: { type: "collapsible", open: true }, fields });
+    rendered = await show({ placement: { type: "collapsible", ...display, open: true }, fields });
     expect(rendered.part("filters-bar").getAttribute("data-state")).toBe("open");
   });
 
@@ -140,7 +141,7 @@ describe("a filter bar", () => {
     ["drawer", { type: "drawer", side: "end", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } }],
     ["popover", { type: "popover", side: "bottom", align: "start", dismiss: { escape: true, outside: true } }],
   ])("opens its controls in a %s that Done closes, pinned ones staying on the page", async (type, surface) => {
-    rendered = await show({ placement: { type: "overlay", surface }, fields: [task({ pinned: true }), done({ control: "toggle" })] });
+    rendered = await show({ placement: { type: "overlay", ...display, surface }, fields: [task({ pinned: true }), done({ control: "toggle" })] });
     expect(rendered.part("filters").getAttribute("data-placement")).toBe("overlay");
     expect(rendered.parts("filters-bar")).toEqual([]);
     expect(labels(rendered)).toEqual(["Task"]);
@@ -160,7 +161,7 @@ describe("a filter bar", () => {
   });
 
   it("opens an addressed overlay under its name with an empty value, as a history entry that back closes", async () => {
-    const bar = { placement: { type: "overlay", surface: { ...dialogSurface, address: { name: "filters" } } } };
+    const bar = { placement: overlay({ address: { name: "filters" } }) };
     rendered = await show(bar);
     await rendered.click(rendered.part("filters-toggle"));
     expect([window.location.search, position()]).toEqual(["?_telo.open.filters=", 1]);
@@ -200,7 +201,7 @@ describe("a filter bar", () => {
     ["dialog", dialogSurface],
     ["popover", { type: "popover", side: "bottom", align: "start", dismiss: { escape: true, outside: true } }],
   ])("keeps its %s overlay open through a touch press that moves the focus inside a chip's popover, and closes it on one outside", async (type, surface) => {
-    rendered = await show({ controls: "chips", placement: { type: "overlay", surface }, fields: [filterField("dueOn", "gte"), filterField("dueOn", "lte")] });
+    rendered = await show({ placement: { type: "overlay", ...display, controls: "chips", surface }, fields: [filterField("dueOn", "gte"), filterField("dueOn", "lte")] });
     // A touch press is judged at its click, after the focus it moved.
     const touch = async (element: HTMLElement) => {
       await act(async () => {
@@ -223,7 +224,7 @@ describe("a filter bar", () => {
   });
 
   it("uses its compact placement below the application's breakpoint", async () => {
-    const bar = { placement: { type: "aside", side: "start", compact: { type: "collapsible", open: false } } };
+    const bar = { placement: { type: "aside", ...display, side: "start", compact: { type: "collapsible", ...display, open: false } } };
     rendered = await show(bar, { narrow: true });
     expect([rendered.part("filters").getAttribute("data-placement"), rendered.part("filters").getAttribute("data-side")]).toEqual(["collapsible", null]);
     expect(rendered.part("filters-bar").getAttribute("data-state")).toBe("closed");
@@ -234,7 +235,7 @@ describe("a filter bar", () => {
   });
 
   it("draws each filter as a chip naming it and its value, titled with its whole text, which opens its control in a popover", async () => {
-    rendered = await show({ controls: "chips", fields: [task(), done({ control: "options" })] });
+    rendered = await show({ placement: above({ controls: "chips" }), fields: [task(), done({ control: "options" })] });
     expect(rendered.parts("filter")).toEqual([]);
     const chip = rendered.parts("filter-chip")[1];
     expect(rendered.parts("filter-chip").map((each) => [each.textContent, each.getAttribute("data-state"), each.getAttribute("data-active")])).toEqual([
@@ -309,8 +310,7 @@ describe("a filter bar", () => {
 
   it("draws a filter with no control nowhere, and still asks for what its default holds", async () => {
     rendered = await show({
-      placement: { type: "collapsible", open: true },
-      summary: "chips",
+      placement: { type: "collapsible", ...display, open: true, summary: "chips" },
       fields: [task(), filterField("priority", "gte", { control: "none", default: [3] })],
     });
     expect(asked(rendered)).toBe("priority.gte=3");
@@ -348,7 +348,7 @@ describe("a filter bar", () => {
   });
 
   it.each([
-    ["collapsible", { type: "collapsible", open: false }],
+    ["collapsible", { type: "collapsible", ...display, open: false }],
     ["overlay", overlay()],
   ])("keeps Apply and Reset beside the toggle of a folded %s bar, where a pinned filter waits for Apply and a preset does not", async (type, placement) => {
     rendered = await show({ apply: "button", placement, presets, fields: [task({ pinned: true }), done({ control: "none" }), status()] });
@@ -375,7 +375,7 @@ describe("a filter bar", () => {
   });
 
   it("acts at once on a preset, a summary chip's removal and Reset under `apply: button`, applying with each whatever was waiting", async () => {
-    rendered = await show({ apply: "button", summary: "chips", presets, fields: [task(), done(), status({ default: ["open"] })] });
+    rendered = await show({ apply: "button", placement: above({ summary: "chips" }), presets, fields: [task(), done(), status({ default: ["open"] })] });
     const before = lists(rendered);
     const pending = () => rendered!.part("filters").getAttribute("data-pending");
     const type = async (text: string) => {
@@ -405,7 +405,7 @@ describe("a filter bar", () => {
   });
 
   it("summarises the filters holding a value as chips, each removing its own", async () => {
-    rendered = await show({ summary: "chips", fields: [task(), done({ default: [false] }), status({ default: ["open", "blocked"] })] });
+    rendered = await show({ placement: above({ summary: "chips" }), fields: [task(), done({ default: [false] }), status({ default: ["open", "blocked"] })] });
     expect(rendered.part("filters-summary").previousElementSibling).toBe(rendered.part("filters-bar"));
     expect(rendered.parts("summary-chip").map((chip) => chip.textContent)).toEqual(["Done is No", "Status one of open, blocked"]);
     await rendered.click(rendered.parts("summary-chip-remove")[0]);
@@ -448,6 +448,118 @@ describe("a filter bar", () => {
     await rendered.choose(statusSelect, "open");
     await rendered.escape();
     expect(states()).toEqual(["on", "off"]);
+  });
+});
+
+describe("a filter bar's placement", () => {
+  it("reads what it shows from the placement in force: its compact one below the application's breakpoint", async () => {
+    const fields = [task(), done({ default: [false] }), status()];
+    const bar = {
+      fields,
+      placement: {
+        type: "aside",
+        ...display,
+        show: "chosen",
+        controls: "chips",
+        summary: "chips",
+        side: "start",
+        compact: { type: "collapsible", open: true, show: "all", controls: "direct", summary: "none" },
+      },
+    };
+    rendered = await show(bar);
+    expect([labels(rendered), rendered.parts("filter-chip").map((chip) => chip.textContent), rendered.parts("summary-chip").length]).toEqual([[], ["Done: No"], 1]);
+    rendered.unmount();
+    rendered = await show(bar, { narrow: true });
+    expect([labels(rendered), rendered.parts("filter-chip"), rendered.parts("summary-chip")]).toEqual([["Task", "Done", "Status"], [], []]);
+  });
+
+  it("draws a placement it does not know as the bar above the content", async () => {
+    rendered = await show({ placement: { type: "mystery" } });
+    expect([rendered.part("filters").getAttribute("data-placement"), labels(rendered).length]).toEqual(["above", 5]);
+  });
+});
+
+describe("a filter bar's search", () => {
+  const searching = (more: Record<string, unknown> = {}) => ({ search: { pinned: false, default: null }, ...more });
+  const searchBox = (r: Rendered) => within(filterOf(r, "Search"), "filter-input") as HTMLInputElement;
+
+  it("is the first filter, a typed box labelled Search that sends what is typed as `search`", async () => {
+    rendered = await show(searching({ fields: [task()] }));
+    expect(labels(rendered)).toEqual(["Search", "Task"]);
+    expect(rendered.parts("filter-input")[0]).toBe(searchBox(rendered));
+    await rendered.enter(searchBox(rendered), "back");
+    await rendered.commit(searchBox(rendered), "enter");
+    await rendered.enter(rendered.parts("filter-input")[1], "the");
+    await rendered.commit(rendered.parts("filter-input")[1], "enter");
+    expect(asked(rendered)).toBe("search=back&text.contains=the");
+  });
+
+  it("is a filter of the bar's state: held in the address under `search`, and read back from it", async () => {
+    const bar = searching({ ...kept({ address: true, fields: ["text", "search"] }), fields: [task()] });
+    rendered = await show(bar);
+    await rendered.enter(searchBox(rendered), "back");
+    await rendered.commit(searchBox(rendered), "enter");
+    expect(window.location.search).toBe("?_telo.f.todos.search=back");
+    rendered.unmount();
+    rendered = await show(bar, { path: "/?_telo.f.todos.search=plan" });
+    expect([asked(rendered), searchBox(rendered).value]).toEqual(["search=plan", "plan"]);
+  });
+
+  it("starts at its default, waits for Apply under `apply: button`, and returns to its default on Reset", async () => {
+    rendered = await show(searching({ search: { pinned: false, default: "release" }, apply: "button", fields: [task()] }));
+    expect([asked(rendered), searchBox(rendered).value]).toEqual(["search=release", "release"]);
+    const before = lists(rendered);
+    await rendered.enter(searchBox(rendered), "back");
+    await rendered.commit(searchBox(rendered), "enter");
+    expect([lists(rendered), rendered.part("filters").getAttribute("data-pending")]).toEqual([before, "true"]);
+    await rendered.click(rendered.part("filters-apply"));
+    expect(asked(rendered)).toBe("search=back");
+    await rendered.click(rendered.part("filters-reset"));
+    expect([asked(rendered), searchBox(rendered).value]).toEqual(["search=release", "release"]);
+  });
+
+  it("stays outside the fold when pinned, like a pinned field", async () => {
+    rendered = await show(searching({ search: { pinned: true, default: null }, placement: { type: "collapsible", ...display, open: false }, fields: [task()] }));
+    expect(filterOf(rendered, "Search").parentElement).toBe(rendered.part("filters"));
+    expect(rendered.part("filters-bar").contains(filterOf(rendered, "Task"))).toBe(true);
+  });
+
+  it("is summarised as a chip worded Search: <text>, removing which clears it", async () => {
+    rendered = await show(searching({ search: { pinned: false, default: "back" }, placement: above({ summary: "chips" }), fields: [task()] }));
+    expect(rendered.parts("summary-chip").map((chip) => chip.textContent)).toEqual(["Search: back"]);
+    await rendered.click(rendered.part("summary-chip-remove"));
+    expect([asked(rendered), rendered.parts("summary-chip")]).toEqual(["", []]);
+  });
+
+  it("is what a preset holding only a search is active for: exactly while the bar holds that search", async () => {
+    rendered = await show(
+      searching({
+        fields: [task()],
+        presets: [{ label: "Back", search: "back", values: [] }],
+      }),
+    );
+    const state = () => rendered!.part("filters-preset").getAttribute("data-state");
+    expect(state()).toBe("off");
+    await pick(rendered, "filters-preset", "Back");
+    expect([asked(rendered), searchBox(rendered).value, state()]).toEqual(["search=back", "back", "on"]);
+    await rendered.enter(searchBox(rendered), "bac");
+    await rendered.commit(searchBox(rendered), "enter");
+    expect(state()).toBe("off");
+    await rendered.enter(searchBox(rendered), "back");
+    await rendered.commit(searchBox(rendered), "enter");
+    expect(state()).toBe("on");
+    // Presets that set no search clear it.
+    rendered.unmount();
+    rendered = await show(
+      searching({
+        search: { pinned: false, default: "back" },
+        fields: [task()],
+        presets: [{ label: "Back", search: "back", values: [] }, { label: "All", values: [] }],
+      }),
+    );
+    expect(rendered.parts("filters-preset").map((preset) => preset.getAttribute("data-state"))).toEqual(["on", "off"]);
+    await pick(rendered, "filters-preset", "All");
+    expect([asked(rendered), searchBox(rendered).value]).toEqual(["", ""]);
   });
 });
 
@@ -582,7 +694,7 @@ describe("a filter bar's state", () => {
   });
 
   it("drops what a stored entry holds that the bar no longer declares or cannot hold, and rewrites it", async () => {
-    const bar = { ...kept({ store: { type: "local" } }), placement: { type: "collapsible", open: false }, fields: [done(), filterField("priority", "gte")] };
+    const bar = { ...kept({ store: { type: "local" } }), placement: { type: "collapsible", ...display, open: false }, fields: [done(), filterField("priority", "gte")] };
     localStorage.setItem("telo.ui:/:f:todos", JSON.stringify({ v: 1, values: { isDone: ["false"], gone: ["x"], "priority.gte": ["many"] }, open: true }));
     rendered = await show(bar);
     expect(asked(rendered)).toBe("isDone=false");
@@ -595,7 +707,7 @@ describe("a filter bar's state", () => {
   });
 
   it("stores the fold its placement declares until the viewer chooses one", async () => {
-    const bar = { ...kept({ store: { type: "local" } }), placement: { type: "collapsible", open: true }, fields: [done()] };
+    const bar = { ...kept({ store: { type: "local" } }), placement: { type: "collapsible", ...display, open: true }, fields: [done()] };
     rendered = await show(bar);
     await noDone(rendered);
     expect(stored(localStorage)).toEqual({ "telo.ui:/:f:todos": { v: 1, values: { isDone: ["false"] }, open: true } });

@@ -5,6 +5,8 @@ export interface AcceptedQuery {
   filters: { property: string; operator: string }[];
   sort: { property: string }[];
   facets: { property: string }[];
+  /** Absent: a request carries no `search`. */
+  search?: { properties: string[] };
 }
 
 /** What a relation's guards read of the collection it points at. */

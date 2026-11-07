@@ -2,7 +2,7 @@
 
 Data files a renderer's tests read, so every renderer answers what `ui`
 answers. Each is one JSON object, `{ description, rows }`, every row carrying a
-`name` and the case's inputs and expected outcome. All six ship with the
+`name` and the case's inputs and expected outcome. All seven ship with the
 module through `files:`.
 
 | File | Pins |
@@ -13,6 +13,7 @@ module through `files:`.
 | `addresses.json` | the text an address or request target resolves to, or the parameter it is unresolved for |
 | `current-location.json` | whether a link to an address is marked as the current location |
 | `refreshes.json` | which readers a refresh entry, with its `*` / `**` segments, reads again |
+| `filter-tokens.json` | how text typed into a search-box filter bar becomes the bar's values |
 
 ## `listing-reads.json`
 
@@ -91,3 +92,32 @@ none included (`/a/7/**` covers `/a/7`). A segment is a wildcard only when the
 whole segment is `*` or `**` in a literal template: a `{name}` value is
 encoded, so a star in it is text, and a path read from data is exact. An entry
 with no wildcard matches only its own path. Only renderers read this file.
+
+## `filter-tokens.json`
+
+`{ description, fields, rows }`. `fields` is the bar the rows are read over
+unless a row brings its own: each filter is `{ property, operator, schema,
+labels?, relation? }` — `labels` the text each listed value is shown as,
+`relation` set where its values are records of another collection. A filter
+is named in a row by its key: the property, with `.<operator>` unless the
+operator is `eq`.
+
+| Member | |
+| --- | --- |
+| `name` | what the row shows |
+| `fields` | the bar's filters, where the row does not use the file's |
+| `typed` | the text in the box |
+| `holding` | the bar's values before the text is read, by filter key; absent for an empty bar |
+| `result` | the reading: `kind` `text` (no property named), `open` (a property and operator, no value yet), `query` (a relation's property: `query` is the text for its records, never a value), `token` (`values` the filter would hold) or `invalid` (`reason`, and the filter's key where the property and operator were found); `field` is the filter's key |
+| `after` | with a `token`: the bar's values once it is committed — the filter holds the token's values and nothing it held |
+
+A token is `<property><operator><value>`, read from the text alone. The
+property is matched ignoring case. `:` picks the property's `contains` filter,
+else its `in`, else its `eq`; `=` its `in`, else its `eq`; `>`, `>=`, `<` and
+`<=` its `gt`, `gte`, `lt` and `lte`. Under `in` commas separate values, and
+each is matched by its value or its label, ignoring case; under every other
+operator the whole text is one value, commas and spaces included. A relation's
+text is never a value. The reasons: `unknown-property` (the bar has no filter
+on it), `operator-unsupported` (none of its filters takes the operator),
+`value-not-listed` (an enumeration or boolean value that is not listed) and
+`value-invalid` (not a number, or not a date). Only renderers read this file.

@@ -11,6 +11,7 @@ and `telo check` refuses a declaration that contradicts the record shape.
 | `query.filters` | required | the accepted filters: `{ property, operator }` each, no pair twice; `[]` for none |
 | `query.sort` | required | the properties a list may be sorted by: `{ property }` each; `[]` for none |
 | `query.facets` | none | properties whose present values, with counts, the endpoint answers: `{ property }` each |
+| `query.search` | none | `{ properties }`, at least one string property: one `search` text matches a record when any of them contains it, ignoring case |
 | `relations` | none | `<property>: { collection }`, where `collection` is another `DataModel.Collection` |
 
 `operator` is one of `eq`, `contains`, `gt`, `gte`, `lt`, `lte`, `in`, `absent`.
@@ -40,6 +41,7 @@ query:
     - { property: publishedOn, operator: absent }
   sort: [{ property: title }]
   facets: [{ property: authorId }]
+  search: { properties: [title] }
 relations:
   authorId: { collection: !ref authors }
 ```
@@ -51,6 +53,13 @@ keys); the entry never restates which property of the target it matches. The
 reference reads the target's declaration only, so a collection may relate to
 itself (`employees.managerId`) and two may relate to each other without an
 initialization cycle.
+
+## Search
+
+`query.search` lists the string properties one text is looked for in. It is
+not a filter: a request sends `search=<text>` and gets the records any listed
+property contains it in, ignoring case, together with whatever the other
+filters select. A collection that declares none accepts no `search`.
 
 ## Operators
 
@@ -71,11 +80,13 @@ with an `ERR_` prefix, when the collection is created.
 | `DATA_MODEL_KEY_UNDECLARED` | the model does not declare `key`, or does not list it as required |
 | `DATA_MODEL_FILTER_UNKNOWN_PROPERTY` | a filter names a property the model does not declare |
 | `DATA_MODEL_FILTER_OPERATOR_UNSUPPORTED` | the operator does not fit the property's type |
-| `DATA_MODEL_FILTER_RESERVED_NAME` | a filter property is a reserved query name: `limit`, `cursor`, `sort`, `facet`, or anything starting `_telo` |
+| `DATA_MODEL_FILTER_RESERVED_NAME` | a filter property is a reserved query name: `limit`, `cursor`, `sort`, `facet`, `search`, or anything starting `_telo` |
 | `DATA_MODEL_SORT_UNKNOWN_PROPERTY` | a sort names a property the model does not declare |
 | `DATA_MODEL_SORT_UNSUPPORTED` | the sorted property does not hold one plain value |
 | `DATA_MODEL_FACET_UNKNOWN_PROPERTY` | a facet names a property the model does not declare |
 | `DATA_MODEL_FACET_UNSUPPORTED` | the faceted property does not hold one plain value |
+| `DATA_MODEL_SEARCH_UNKNOWN_PROPERTY` | a search property is not declared by the model |
+| `DATA_MODEL_SEARCH_UNSUPPORTED` | a search property is not a string (`null` aside) |
 | `DATA_MODEL_RELATION_UNKNOWN_PROPERTY` | a relation names a property the model does not declare |
 | `DATA_MODEL_RELATION_VALUE_MISMATCH` | the property's type (`null` aside, by item type for a list) differs from the type of the target's key |
 | `DATA_MODEL_RELATION_KEY_NOT_FILTERABLE` | the target does not accept `{ property: <its key>, operator: in }`, so related records cannot be fetched in one batched request |

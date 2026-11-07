@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata:
+  name: UiNarrowPlacement
+  version: 1.0.0
+  description: >-
+    Test fixture shipping a folding filter placement of another module: a
+    collapsible placement that starts unfolded and declares no display members.
+imports: { Ui: ../../../ }
+exports: { kinds: [Narrow] }
+---
+kind: Telo.Definition
+metadata:
+  name: Narrow
+  description: A filter placement folded behind a toggle that starts unfolded, leaving its display to the placement holding it.
+extends: Ui.CollapsiblePlacement
+schema: { type: object, additionalProperties: false }
+base: { open: true }

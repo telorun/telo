@@ -1,5 +1,5 @@
 {
-  "generation": "ui_react_controls-3",
+  "generation": "ui_react_controls-4",
   "supplied": ["react", "react/jsx-runtime", "react-dom"],
   "stateAttributes": ["data-state", "data-invalid", "data-placeholder", "data-highlighted", "data-current", "data-layout", "data-fill"],
   "icons": [
@@ -238,6 +238,27 @@
       ],
       "semantics": true,
       "portal": ["select-content"]
+    },
+    "Combobox": {
+      "group": "choice",
+      "layer": true,
+      "description": "A text box that keeps the focus while a list of labelled sections opens under it, its highlighted entry announced by the box: a filter bar's search.",
+      "props": [
+        "id", "label", "describedBy", "invalid", "required", "disabled", "placeholder", "value", "open", "anchor", "groups", "highlighted",
+        "onChange", "onOpenChange", "onHighlight", "onPick", "onBackspace"
+      ],
+      "roots": ["search-input"],
+      "rootProp": null,
+      "subParts": ["combobox-content", "combobox-group", "combobox-item", "icon"],
+      "intents": { "onChange": "value", "onOpenChange": "open", "onHighlight": "highlighted", "onPick": null, "onBackspace": null },
+      "states": [
+        { "attribute": "data-state", "values": ["open", "closed"], "on": ["$root", "combobox-content"] },
+        { "attribute": "data-invalid", "values": ["true"], "on": ["$root"] },
+        { "attribute": "data-state", "values": ["checked", "unchecked"], "on": ["combobox-item"] },
+        { "attribute": "data-highlighted", "values": [""], "on": ["combobox-item"] }
+      ],
+      "semantics": true,
+      "portal": ["combobox-content"]
     },
     "Listbox": {
       "group": "choice",

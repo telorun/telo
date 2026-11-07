@@ -1,0 +1,172 @@
+kind: Telo.Application
+metadata:
+  name: CrudListSearchTest
+  version: 1.0.0
+  description: |
+    A collection that declares `query.search` answers `search=<text>` on the list
+    route: a row matches when any declared property contains the text, ignoring
+    case, together with the other filters, and a facet request counts under the
+    search too. A collection that declares none refuses `search` as it refuses
+    any undeclared parameter.
+imports:
+  Crud: ../
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref migrate
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: authorsTable }
+table: authors
+columns:
+  id: { type: integer, primaryKey: true }
+  name: { type: text, nullable: false }
+seeds:
+  key: [id]
+  rows:
+    - { id: 1, name: Sofia Rossi }
+    - { id: 2, name: Maya Harris }
+---
+kind: SQLite.Table
+metadata: { name: postsTable }
+table: posts
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  seed_key: { type: text, unique: true }
+  title: { type: text, nullable: false }
+  body: { type: text, nullable: false, default: "" }
+  author_id: { type: integer }
+  status: { type: text, nullable: false, default: draft }
+  published_on: { type: text }
+seeds:
+  key: [seed_key]
+  rows:
+    - { seed_key: P01, title: How we plan a sprint, body: We start from the backlog., author_id: 1, status: published, published_on: "2026-10-05" }
+    - { seed_key: P02, title: Backups that restore, body: Test the restore first., author_id: 2, status: review, published_on: "2026-11-02" }
+    - { seed_key: P03, title: Writing release notes, body: Lead with what changed and go back to it last., author_id: 1, status: draft }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables: [!ref authorsTable, !ref postsTable]
+---
+kind: Telo.JsonSchema
+metadata: { name: AuthorDraft }
+schema:
+  type: object
+  additionalProperties: false
+  required: [name]
+  properties: { name: { type: string, minLength: 1 } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+extends: AuthorDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: PostDraft }
+schema:
+  type: object
+  additionalProperties: false
+  required: [title, body, status]
+  properties:
+    title: { type: string, minLength: 1 }
+    body: { type: string }
+    authorId: { type: integer }
+    status: { type: string, enum: [draft, review, published] }
+    publishedOn: { type: string, format: date }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+extends: PostDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Crud.Collection
+metadata: { name: authors }
+model: !ref Author
+table: !ref authorsTable
+schemas: { list: !ref Author, create: !ref AuthorDraft, update: !ref AuthorDraft }
+query:
+  filters: [{ property: id, operator: in }, { property: name, operator: contains }]
+  sort: [{ property: name }]
+---
+kind: Crud.Collection
+metadata: { name: posts }
+model: !ref Post
+table: !ref postsTable
+schemas: { list: !ref Post, create: !ref PostDraft, update: !ref PostDraft }
+query:
+  search: { properties: [title, body] }
+  filters: [{ property: status, operator: in }]
+  sort: [{ property: title }]
+  facets: [{ property: authorId }, { property: status }]
+---
+kind: Crud.Api
+metadata: { name: postsApi }
+connection: !ref db
+singular: post
+plural: posts
+collection: !ref posts
+---
+kind: Crud.Api
+metadata: { name: authorsApi }
+connection: !ref db
+singular: author
+plural: authors
+collection: !ref authors
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 19314 }
+    mounts:
+      - { path: /posts, mount: !ref postsApi }
+      - { path: /authors, mount: !ref authorsApi }
+targets:
+  - !ref server
+steps:
+  - name: searchWithFilter
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/posts?search=BACK&status.in=draft&status.in=review" }
+  - name: searchFacet
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/posts?facet=authorId&search=back" }
+  - name: undeclared
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/authors?search=sofia" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        searchWithFilter: !cel "steps.searchWithFilter.result.body"
+        searchFacet: !cel "steps.searchFacet.result.body"
+        undeclared:
+          status: !cel "steps.undeclared.result.status"
+          body: !cel "steps.undeclared.result.body"
+      expected:
+        searchWithFilter:
+          rows:
+            - { id: 2, title: Backups that restore, body: Test the restore first., authorId: 2, status: review, publishedOn: "2026-11-02" }
+            - { id: 3, title: Writing release notes, body: Lead with what changed and go back to it last., authorId: 1, status: draft }
+          total: 2
+          next: null
+        searchFacet:
+          values: [{ value: 1, count: 2 }, { value: 2, count: 1 }]
+          next: null
+        undeclared:
+          status: 400
+          body:
+            type: "about:blank"
+            title: Bad Request
+            status: 400
+            detail: The list request is not valid.
+            code: ERR_CRUD_QUERY_INVALID
+            data:
+              issues: [{ pointer: /query/search, keyword: additionalProperties, params: { additionalProperty: search } }]

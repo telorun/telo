@@ -52,6 +52,9 @@
         "filterControl": {"message":[{"placeholder":"label"}," ",{"placeholder":"operator"}],"lang":"en"},
         "filterChip": {"message":[{"placeholder":"label"}," ",{"placeholder":"operator"}," ",{"placeholder":"value"}],"lang":"en"},
         "filterGroupSummary": {"message":[{"placeholder":"label"},": ",{"placeholder":"summary"}],"lang":"en"},
+        "searchFilter": {"message":["Search"],"lang":"en"},
+        "searchChip": {"message":["Search: ",{"placeholder":"text"}],"lang":"en"},
+        "searchAndFilter": {"message":["Search and filter"],"lang":"en"},
         "rangeFrom": {"message":["From"],"lang":"en"},
         "rangeTo": {"message":["To"],"lang":"en"},
         "rangeStartsAfterEnd": {"message":["Must not start after it ends"],"lang":"en"},
@@ -425,11 +428,8 @@
                   "reads": {}
                 }
               },
-              "show": "all",
-              "placement": {"type":"above"},
-              "controls": "direct",
+              "placement": {"type":"above","show":"all","controls":"direct","summary":"none"},
               "apply": "commit",
-              "summary": "none",
               "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","isDone","priority","status","dueOn","notes"]},
               "presets": []
             },
@@ -621,11 +621,8 @@
                   "reads": {}
                 }
               },
-              "show": "chosen",
-              "placement": {"type":"collapsible","open":true},
-              "controls": "direct",
+              "placement": {"type":"collapsible","show":"chosen","controls":"direct","summary":"chips","open":true},
               "apply": "button",
-              "summary": "chips",
               "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","isDone","priority","status","dueOn","notes"]},
               "presets": [{"label":{"message":["Open"],"lang":"en"},"values":[{"property":"status","operator":"in","value":["open"]}]}]
             },
@@ -778,11 +775,8 @@
                   "reads": {}
                 }
               },
-              "show": "all",
-              "placement": {"type":"above"},
-              "controls": "chips",
+              "placement": {"type":"above","show":"all","controls":"chips","summary":"none"},
               "apply": "commit",
-              "summary": "none",
               "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","isDone","priority","status","dueOn","notes"]},
               "presets": []
             },
@@ -2558,11 +2552,8 @@
                   "reads": {}
                 }
               },
-              "show": "all",
-              "placement": {"type":"above"},
-              "controls": "direct",
+              "placement": {"type":"above","show":"all","controls":"direct","summary":"none"},
               "apply": "commit",
-              "summary": "none",
               "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","isDone","priority","status","dueOn","notes"]},
               "presets": []
             },
@@ -2888,11 +2879,8 @@
                   "reads": {}
                 }
               },
-              "show": "chosen",
-              "placement": {"type":"collapsible","open":true},
-              "controls": "direct",
+              "placement": {"type":"collapsible","show":"chosen","controls":"direct","summary":"chips","open":true},
               "apply": "button",
-              "summary": "chips",
               "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","isDone","priority","status","dueOn","notes"]},
               "presets": [{"label":{"message":["Open"],"lang":"en"},"values":[{"property":"status","operator":"in","value":["open"]}]}]
             },
@@ -3045,11 +3033,8 @@
                   "reads": {}
                 }
               },
-              "show": "all",
-              "placement": {"type":"above"},
-              "controls": "chips",
+              "placement": {"type":"above","show":"all","controls":"chips","summary":"none"},
               "apply": "commit",
-              "summary": "none",
               "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","isDone","priority","status","dueOn","notes"]},
               "presets": []
             },
@@ -3480,11 +3465,8 @@
                   "reads": {}
                 }
               },
-              "show": "all",
-              "placement": {"type":"overlay","surface":{"type":"popover","side":"bottom","align":"start","dismiss":{"escape":true,"outside":true}}},
-              "controls": "chips",
+              "placement": {"type":"overlay","show":"all","controls":"chips","summary":"none","surface":{"type":"popover","side":"bottom","align":"start","dismiss":{"escape":true,"outside":true}}},
               "apply": "commit",
-              "summary": "none",
               "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","status","labels"]},
               "presets": []
             }
@@ -3685,11 +3667,8 @@
                   "reads": {}
                 }
               },
-              "show": "chosen",
-              "placement": {"type":"overlay","surface":{"type":"dialog","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}},
-              "controls": "direct",
+              "placement": {"type":"overlay","show":"chosen","controls":"direct","summary":"none","surface":{"type":"dialog","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}},
               "apply": "commit",
-              "summary": "none",
               "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","status","labels"]},
               "presets": []
             }
@@ -7339,6 +7318,25 @@
       "responses": {"GET /api/todos":{"status":200,"body":{"rows":[{"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"},{"id":2,"text":"Review the plan","isDone":false,"priority":1,"status":"open","dueOn":"2026-10-07"}],"total":5,"next":"Mg"}},"GET /api/todos/*":{"status":200,"body":{"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}},"POST /api/todos":{"status":201,"body":{"id":6,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}},"DELETE /api/todos/*":{"status":204},"GET /api/empty":{"status":200,"body":{"rows":[],"total":0,"next":null}},"GET /api/account":{"status":200,"body":{"authorized":true,"email":"ada@example.com","files":[{"name":"a.pdf"}]}}},
       "modules": {"/_telo/ui/assets/cc/components.js":["Counter","StatusPill","HostProbe"]},
       "steps": [{"wait":500},{"expect":{"present":[{"part":"app","attributes":{"data-fill":"true"}},{"part":"main","attributes":{"data-fill":"true"}},{"part":"page","attributes":{"data-fill":"true"}},{"part":"box","attributes":{"data-fill":"true"}},{"part":"stack","attributes":{"data-fill":"true"}},{"part":"columns","attributes":{"data-fill":"true"}},{"part":"text","attributes":{"data-fill":"true"}},{"part":"badge","attributes":{"data-fill":"true"}},{"part":"link","attributes":{"data-fill":"true"}},{"part":"image","attributes":{"data-fill":"true"}},{"part":"svg","attributes":{"data-fill":"true"}},{"part":"value","attributes":{"data-fill":"true"}},{"part":"list","attributes":{"data-fill":"true"}},{"part":"bar","attributes":{"data-fill":"true"}},{"part":"command","attributes":{"data-fill":"true"}},{"part":"data","attributes":{"data-fill":"true"}},{"part":"listing","attributes":{"data-fill":"true"}},{"part":"form","attributes":{"data-fill":"true"}},{"part":"action","attributes":{"data-fill":"true"}},{"part":"filters","attributes":{"data-fill":"true"}},{"part":"component","attributes":{"data-fill":"true"}},{"part":"chat","attributes":{"data-fill":"true"}},{"part":"split","attributes":{"data-fill":"true"}},{"part":"split-aside","attributes":{"data-fill":"true"}},{"part":"split-content","attributes":{"data-fill":"true"}},{"part":"markdown","attributes":{"data-fill":"true"}},{"part":"navigation","attributes":{"data-fill":"true"}},{"part":"tabs","attributes":{"data-fill":"true"}},{"part":"tab-panel","attributes":{"data-fill":"true"}}]}}]
+    },
+    {
+      "name": "a filter bar drawn as one search box: its chips before the input, and its suggestions in sections under it, taken from the keyboard",
+      "path": "/",
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Data"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"data","path":"/","text":{"message":["Data"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Data"],"lang":"en"},"lang":"en","query":{},"width":"contained","children":[{"type":"filters","basePath":"/api/todos","fields":[{"property":"text","operator":"contains","label":{"message":["Task"],"lang":"en"},"schema":{"type":"string","title":"Task","minLength":2},"pinned":false,"control":"auto","values":"all"},{"property":"status","operator":"in","label":{"message":["Status"],"lang":"en"},"schema":{"title":"Status","enum":["open","blocked","done"]},"pinned":false,"control":"auto","values":"all","default":["open"],"labels":[{"value":"open","label":{"message":["Open"],"lang":"en"}},{"value":"blocked","label":{"message":["Blocked"],"lang":"en"}},{"value":"done","label":{"message":["Done"],"lang":"en"}}]},{"property":"priority","operator":"gte","label":{"message":["Priority"],"lang":"en"},"schema":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"pinned":false,"control":"auto","values":"all"}],"content":{"type":"text","text":{"message":["Matching tasks"],"lang":"en"}},"placement":{"type":"searchBox","placeholder":{"message":["Search tasks, or filter by status"],"lang":"en"}},"apply":"commit","state":{"address":false,"store":{"type":"memory"},"fields":["search","text","status","priority"]},"presets":[{"label":{"message":["Open"],"lang":"en"},"values":[{"property":"status","operator":"in","value":["open"]}]}],"search":{"pinned":false,"default":"plan"}}]}},
+      "responses": {},
+      "steps": [
+        {"expect":{"present":[{"part":"search-box"},{"part":"search-token","text":"Search: plan"},{"part":"search-token","text":"Status one of Open"},{"part":"search-token-remove"}],"absent":[{"part":"combobox-content"}]}},
+        {"click":{"part":"search-input"}},
+        {"expect":{"present":[{"part":"combobox-content"},{"part":"combobox-group"},{"part":"combobox-item","text":"Open"}]}},
+        {"key":"Escape"},
+        {"expect":{"absent":[{"part":"combobox-content"}]}},
+        {"fill":{"part":"search-input"},"value":"status:"},
+        {"expect":{"present":[{"part":"combobox-item","text":"Blocked"}]}},
+        {"key":"ArrowDown","on":{"part":"search-input"}},
+        {"key":"Enter","on":{"part":"search-input"}},
+        {"expect":{"present":[{"part":"search-token","text":"Status one of Open, Blocked"}]}}
+      ]
     }
   ]
 }

@@ -46,8 +46,8 @@ tokens only.
 
 ## The controls
 
-`Radix.controls` implements thirteen controls of
-[`ui_react_controls-3`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) in one browser
+`Radix.controls` implements fourteen controls of
+[`ui_react_controls-4`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) in one browser
 entry, `@telorun/ui-react-radix`, which leaves only `react`,
 `react/jsx-runtime` and `react-dom` to the page:
 
@@ -55,6 +55,7 @@ entry, `@telorun/ui-react-radix`, which leaves only `react`,
 | --- | --- |
 | `Select` | Radix's select, placed against its trigger |
 | `MultiSelect` | Radix's dropdown menu of checkbox items, open while choices are made |
+| `Combobox` | the search box's input, its list Radix's popover placed against the box (or the chips' container) without taking the focus |
 | `Listbox` | the list a picker shows, one option per entry |
 | `Checkbox` | Radix's checkbox |
 | `Dialog`, `Drawer` | Radix's dialog; the mechanics place a drawer at its edge |
@@ -68,24 +69,27 @@ entry, `@telorun/ui-react-radix`, which leaves only `react`,
 
 Every other control — the text boxes, dates and times, tags, ranges,
 switches, sliders and option groups — is the renderer's built-in. The
-mechanics the thirteen need (where a list, a panel or a dialog sits, its
+mechanics the fourteen need (where a list, a panel or a dialog sits, its
 stacking and size) are the stylesheet the entry builds, which the application places in
 the `telo.control` layer in place of the built-ins' own.
 
 ### One stack of layers
 
-The nine [layer controls](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) —
-`Select`, `MultiSelect`, `Dialog`, `Drawer`, `Popover`, `Confirmation`,
-`Menu`, `Tooltip`, `Navigation` — are all here, drawn by one copy of the primitives, which
+The ten [layer controls](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) —
+`Select`, `MultiSelect`, `Combobox`, `Dialog`, `Drawer`, `Popover`,
+`Confirmation`, `Menu`, `Tooltip`, `Navigation` — are all here, drawn by one copy of the primitives, which
 keeps one stack of every layer a page opens:
 
 - Escape closes only the top layer.
 - A press outside the top layer reaches each layer from the top down, as far
   as the first that shields what is beneath it: a modal dialog or drawer, a
   confirmation, an open select, multi-select or menu list. A popover, a
-  non-modal dialog or drawer and a tooltip do not shield, so a press on the
+  combobox list, a non-modal dialog or drawer and a tooltip do not shield, so a press on the
   page closes a filter chip's popover and the popover holding the chip
   together.
+- A combobox list never takes the focus: it stays in the search box, and a
+  press or the focus on the box or the chips holding it is not one outside
+  the list.
 - A press or the focus inside a layer drawn after one is never one outside it.
 - The root of every live layer at the end of `<body>` carries
   `data-telo-layer` — the element Radix places a list, a menu, a popover or a
@@ -123,12 +127,12 @@ The theme's stylesheet styles every part and gives every token a value, as
 any theme's must; nothing of `Radix.theme`'s look is inherited. A set of its
 own may add controls `Radix.controls` does not implement — the entries, the
 switch, the slider, the option group — bundling whatever it uses. It cannot
-replace one of the nine layer controls beside `Radix.controls`: two entries
+replace one of the ten layer controls beside `Radix.controls`: two entries
 of a theme's `controls` implementing one control are refused
 (`UI_THEME_CONTROL_DUPLICATE`), and a set
-implementing one layer control implements all nine
+implementing one layer control implements all ten
 (`UI_CONTROLS_LAYERS_PARTIAL`). A theme wanting other layer controls ships all
-nine in a set of its own and does not list `Radix.controls`.
+ten in a set of its own and does not list `Radix.controls`.
 
 ## Checking it
 

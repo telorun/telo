@@ -1,0 +1,6 @@
+modules:
+  apps/authoring-agent: Added
+body: "The primer teaches search in a filter bar: a collection's query.search and the
+  search= request parameter, the bar's search, the Ui.SearchBoxPlacement search box with
+  its typed filter tokens (status:draft,review, publishedOn>=2026-11-01), and show,
+  controls and summary written on the filter placement."

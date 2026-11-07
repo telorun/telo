@@ -1,0 +1,6 @@
+modules:
+  apps/hub: Added
+body: "The build-ui guide teaches search in a filter bar: a collection's query.search
+  and the search= request parameter, the bar's search, the Ui.SearchBoxPlacement search
+  box with its typed filter tokens, and show, controls and summary written on the filter
+  placement."

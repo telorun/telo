@@ -16,16 +16,18 @@ this way can serve one.
 | `<property>.gt=` `.gte=` `.lt=` `.lte=` | greater than, at least, less than, at most |
 | `<property>.in=<value>` | one of; repeated once per value |
 | `<property>.absent=true\|false` | the property is null or missing (`true`), or present (`false`) |
+| `search=<text>` | contains the text, ignoring case, in any property of `query.search`; combined with every filter (facet requests included) |
 | `facet=<property>` | answers the property's present values instead of rows (below) |
 
-The reserved query names are `limit`, `cursor`, `sort`, `facet`, and anything
-starting `_telo`: no filter property may be named one, and `_telo` keys are
+The reserved query names are `limit`, `cursor`, `sort`, `facet`, `search`, and
+anything starting `_telo`: no filter property may be named one, and `_telo` keys are
 reserved to the renderer.
 
 A renderer sends only declared pairs: a filter parameter for a
 `{ property, operator }` the collection lists under `query.filters`, a `sort`
 by a property under `query.sort` and a `facet` for a property under
-`query.facets`. A collection may refuse the rest with a 400.
+`query.facets`. A `search` is sent only for a collection declaring
+`query.search`. A collection may refuse the rest with a 400.
 
 The response:
 
