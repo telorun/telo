@@ -160,7 +160,7 @@ you did not recognise.
 
 - [Collapsing a region](./collapsing-a-region.md) — and `Durable.Value`, which is
   what keeps an impure expression honest inside one.
-- [durable-local](../../durable-local/README.md) — the delivering, scheduling and
+- [durable-local](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-local/) — the delivering, scheduling and
   cancelling half for the local backend.
-- [Durable execution](../../../kernel/specs/durable-execution.md) — the normative
+- [Durable execution](https://telo.run/learn/durable-execution) — the normative
   contract, including the conformance rules a backend keeps.

@@ -11,6 +11,9 @@ RUN corepack enable
 COPY . .
 
 RUN pnpm install --frozen-lockfile --filter "@telorun/studio..."
+# The starters gallery a released build loads (its release tag's); unset, main's.
+ARG VITE_TELO_STARTERS_URL
+ENV VITE_TELO_STARTERS_URL=${VITE_TELO_STARTERS_URL}
 # Studio's own build imports the built output of its workspace dependencies.
 RUN pnpm --filter "@telorun/studio..." build
 

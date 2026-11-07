@@ -1,7 +1,7 @@
 import type { VersionBound, VersionInterval } from "@telorun/editor-protocol";
 
 const PLAIN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const IDENTITY = /^((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const IDENTITY = /^((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(-rc\.(?:0|[1-9]\d*))?(\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 /** `major.minor.patch` with nothing else — the only versions the registry
  *  offers and the only form an interval edge is compared in. `undefined` for
@@ -14,13 +14,15 @@ export function parsePlainVersion(version: string): [number, number, number] | u
 /**
  * An engine identity (`@telorun/editor-protocol` § Handshake): a plain version,
  * optionally with build metadata — `0.102.0+unreleased` for a build made while
- * 0.102.0 is still pending. Its precedence is the plain version's; the build
- * metadata only tells it apart. `undefined` for anything else.
+ * 0.102.0 is still pending — or a release candidate `0.102.0-rc.1`, the engine a
+ * candidate build bundles. Its precedence is the plain version's (a candidate
+ * implements its release's surface); the candidate suffix and the build metadata
+ * only tell it apart. A registry catalog never offers a candidate. `undefined` for anything else.
  */
 export function parseEngineIdentity(identity: string): { precedence: [number, number, number]; build?: string } | undefined {
   const match = IDENTITY.exec(identity);
   if (!match) return undefined;
-  return { precedence: parsePlainVersion(match[1]!)!, ...(match[2] ? { build: match[2].slice(1) } : {}) };
+  return { precedence: parsePlainVersion(match[1]!)!, ...(match[3] ? { build: match[3].slice(1) } : {}) };
 }
 
 /** Semver precedence of two engine identities — build metadata ignored, so

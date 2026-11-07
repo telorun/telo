@@ -23,7 +23,7 @@ A key or endpoint column may be any type whose values the engine returns as its 
 
 ### Indexes the paging promises rest on
 
-The rules above make a graph correct; these make a page cost what [`graph` says it costs](../../graph/docs/graph.md#what-a-page-costs). Nothing checks them — a table without one still answers, by reading and sorting more than a page.
+The rules above make a graph correct; these make a page cost what [`graph` says it costs](https://hub.telo.run/module/oci/ghcr.io/telorun/graph/). Nothing checks them — a table without one still answers, by reading and sorting more than a page.
 
 | Read | Index it needs | Who declares it |
 | --- | --- | --- |

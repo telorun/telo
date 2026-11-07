@@ -43,5 +43,5 @@ imports:
 - [Topics and patterns](docs/topics-and-patterns.md)
 - [The subscription](docs/subscription.md)
 - [Publishing in a transaction](docs/publishing-in-a-transaction.md)
-- Backends: [`broadcast-postgres`](../broadcast-postgres/README.md) carries a channel
+- Backends: [`broadcast-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/broadcast-postgres/) carries a channel
   across instances on one PostgreSQL database.

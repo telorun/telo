@@ -7,7 +7,7 @@ sidebar_label: Embedding.Model
 
 > Examples assume this module is imported under alias `Embedding`, `openai` under `OpenAI`, and `http-client` under `Http`. Substitute if you import under different names.
 
-`Embedding.Model` is the abstract every embedding backend implements — a `Telo.Provider` representing a configured model, **not** an operation you invoke. [`Embedding.Query`](./embedding-query) and [`Embedding.Passage`](./embedding-passage) reference it via `x-telo-ref: Self.Model`; a concrete backend such as [`OpenAI.EmbeddingModel`](../../openai/docs/embedding-model.md) satisfies the ref by declaring `extends: Embedding.Model`.
+`Embedding.Model` is the abstract every embedding backend implements — a `Telo.Provider` representing a configured model, **not** an operation you invoke. [`Embedding.Query`](./embedding-query.md) and [`Embedding.Passage`](./embedding-passage.md) reference it via `x-telo-ref: Self.Model`; a concrete backend such as [`OpenAI.EmbeddingModel`](https://hub.telo.run/module/oci/ghcr.io/telorun/openai/) satisfies the ref by declaring `extends: Embedding.Model`.
 
 ## Prompt templates
 
@@ -74,4 +74,4 @@ Then declare the kind with `extends: Embedding.Model` and a `Telo.Provider` capa
 
 ## Available backends
 
-- [`OpenAI.EmbeddingModel`](../../openai/docs/embedding-model.md) — OpenAI `/embeddings` HTTP API, plus any OpenAI-compatible endpoint.
+- [`OpenAI.EmbeddingModel`](https://hub.telo.run/module/oci/ghcr.io/telorun/openai/) — OpenAI `/embeddings` HTTP API, plus any OpenAI-compatible endpoint.

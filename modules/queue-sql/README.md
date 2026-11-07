@@ -1,6 +1,6 @@
 # Queue — SQL
 
-Durable work queues kept in a table of the application's own database. Because the queue lives beside your data, a message can be enqueued **in the same transaction** as the rows it is about — the transactional outbox: a rollback discards both, a commit keeps both. This is the SQL family's shared half: the `Queue` contract, the transactional `Enqueue` / `EnqueueMany` operations and the engine-neutral store. Declare a queue with an engine module — [`queue-postgres`](../queue-postgres/README.md) or [`queue-sqlite`](../queue-sqlite/README.md) — and process it with the [`queue`](../queue/README.md) module's `Queue.Worker`.
+Durable work queues kept in a table of the application's own database. Because the queue lives beside your data, a message can be enqueued **in the same transaction** as the rows it is about — the transactional outbox: a rollback discards both, a commit keeps both. This is the SQL family's shared half: the `Queue` contract, the transactional `Enqueue` / `EnqueueMany` operations and the engine-neutral store. Declare a queue with an engine module — [`queue-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/queue-postgres/) or [`queue-sqlite`](https://hub.telo.run/module/oci/ghcr.io/telorun/queue-sqlite/) — and process it with the [`queue`](https://hub.telo.run/module/oci/ghcr.io/telorun/queue/) module's `Queue.Worker`.
 
 ## Why use this
 
@@ -10,7 +10,7 @@ Durable work queues kept in a table of the application's own database. Because t
 - **Declared storage** — the table is a resource you declare and list in the engine `Schema`, which creates and migrates it. The module issues no DDL; several queues share one table under different names.
 - **Cleans up after itself** — completed and cancelled messages past `retention` are removed in small batches by the workers' own claims. Dead messages are kept until requeued or cancelled.
 
-Delivery is at-least-once. A handler whose effects live in the same database makes them happen once per message by recording `delivery.messageId` in the same transaction as the effects — [`IdempotencySql.Once`](../idempotency-sql/README.md).
+Delivery is at-least-once. A handler whose effects live in the same database makes them happen once per message by recording `delivery.messageId` in the same transaction as the effects — [`IdempotencySql.Once`](https://hub.telo.run/module/oci/ghcr.io/telorun/idempotency-sql/).
 
 ## Kinds
 

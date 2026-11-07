@@ -65,4 +65,4 @@ The instance must serve JSON: add `json` to `search.formats` in its
 
 - [`SearXNG.WebSearchEngine`](./docs/web-search-engine.md): configuration, how
   the query and hints map onto SearXNG, paging, dates and failures.
-- The contract it implements: [`WebSearch.Engine`](../web-search/docs/engine.md).
+- The contract it implements: [`WebSearch.Engine`](https://hub.telo.run/module/oci/ghcr.io/telorun/web-search/).

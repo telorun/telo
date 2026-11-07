@@ -1,6 +1,6 @@
 # UI React conformance
 
-Checks a theme or a set of controls for [`ui-react`](../ui-react/README.md)
+Checks a theme or a set of controls for [`ui-react`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/)
 against the renderer's contract, from the tests of the module that publishes it.
 Every screen element the renderer has is drawn in a simulated browser, and the
 check answers what is wrong: a part the theme leaves unstyled, a layout property

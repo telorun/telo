@@ -2,7 +2,7 @@
 
 `BroadcastPostgres.Channel` extends `Broadcast.Channel` and adds one field,
 `connection`, a `Postgres.Connection`. The delivery rules are
-[the channel contract](../../broadcast/docs/channel-contract.md); this page is what
+[the channel contract](https://hub.telo.run/module/oci/ghcr.io/telorun/broadcast/); this page is what
 the PostgreSQL backend does to keep them.
 
 ## The notification channel

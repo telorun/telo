@@ -29,6 +29,12 @@ describe("unreleasedEdge", () => {
     expect(unreleasedEdge("0.77.0", ["v0.77.0"])).toBeUndefined();
   });
 
+  it("skips release candidates when choosing the latest published version", () => {
+    const withCandidate = [...published, "0.79.0-rc.1"];
+    expect(unreleasedEdge("0.79.0", withCandidate)).toBe("0.78.0");
+    expect(unreleasedEdge("0.79.0-rc.1", withCandidate)).toBeUndefined();
+  });
+
   it("leaves a version BELOW the latest to the run", () => {
     // Absent but not forward-declared — a yanked or never-published patch. The
     // run's own "could not run" is honest about it, and inventing a second rule

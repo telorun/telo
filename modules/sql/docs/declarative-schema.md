@@ -57,8 +57,8 @@ Each side names columns the table declares, in `columns` or `internalColumns`
 table of any engine, something reading `foreignKeys` through a `Sql.Table`
 reference — `Crud.Collection` checking a relation against its table — needs no
 knowledge of the backend. The engine pages describe what each one emits:
-[PostgreSQL](../../postgres/docs/foreign-keys.md) and
-[SQLite](../../sqlite/docs/foreign-keys.md).
+[PostgreSQL](https://hub.telo.run/module/oci/ghcr.io/telorun/postgres/) and
+[SQLite](https://hub.telo.run/module/oci/ghcr.io/telorun/sqlite/).
 
 ## Domains — a type refinement, always declared
 
@@ -423,7 +423,7 @@ there.
 
 **Most of those are reported by `telo check`**, before anything runs at all. The
 `Table` kind declares them as resource rules (`x-telo-resource-rules`, see the
-[Resource Rules](../../../docs/extend/resource-rules.md) guide), so a mistyped
+[Resource Rules](https://telo.run/extend/resource-rules) guide), so a mistyped
 index column is a diagnostic in CI and in the editor rather than a boot failure —
 which matters because `prepare:` executes before reconciliation, so a
 manifest wrong in a way only reconciliation notices has already changed the

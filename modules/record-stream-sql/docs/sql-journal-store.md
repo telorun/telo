@@ -5,7 +5,7 @@ sidebar_label: SQL journal store
 
 # `RecordStreamSql.JournalStore`
 
-A `RecordStream.JournalStore` over any `Sql.Connection` whose backend meets two requirements: its dialect renders the database clock (`renderCurrentTimeMillis`, required of every SQL dialect), and it accepts `INSERT … ON CONFLICT (…) DO NOTHING`. A connection whose backend predates the clock member is refused at start-up with `ERR_INVALID_VALUE`, before any statement. It implements the eight primitives of the [journal store contract](../../record-stream/docs/store-contract.md) and nothing else: the journal protocol (claims, heartbeats, removal, expiry, reader states) is `RecordStream.Journal`'s, above it. No statement here names a journal state; every condition is a version comparison or an age.
+A `RecordStream.JournalStore` over any `Sql.Connection` whose backend meets two requirements: its dialect renders the database clock (`renderCurrentTimeMillis`, required of every SQL dialect), and it accepts `INSERT … ON CONFLICT (…) DO NOTHING`. A connection whose backend predates the clock member is refused at start-up with `ERR_INVALID_VALUE`, before any statement. It implements the eight primitives of the [journal store contract](https://hub.telo.run/module/oci/ghcr.io/telorun/record-stream/) and nothing else: the journal protocol (claims, heartbeats, removal, expiry, reader states) is `RecordStream.Journal`'s, above it. No statement here names a journal state; every condition is a version comparison or an age.
 
 ## Tables
 

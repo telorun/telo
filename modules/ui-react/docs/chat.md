@@ -1,7 +1,7 @@
 # The `chat` node
 
-The renderer's client of the [conversation contract](../../conversation/docs/conversation-contract.md):
-the node [`Ui.Chat`](../../ui/docs/chat.md) provides. It draws a conversation
+The renderer's client of the [conversation contract](https://hub.telo.run/module/oci/ghcr.io/telorun/conversation/):
+the node [`Ui.Chat`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) provides. It draws a conversation
 — its transcript, a message box and, only where the endpoint offers it, an
 upload control — and speaks the contract's
 routes under the node's `basePath` through `host.fetch`, so every request

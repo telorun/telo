@@ -7,13 +7,13 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 | --- | --- | --- |
 | `title` | required | the application's name, a text shown in its header and as the document title |
 | `theme` | required | one [`UiReact.Theme`](theme.md): `!ref UiReact.defaultTheme`, a theme another module publishes, or one of your own |
-| `tokens` | | your brand: one [`Ui.DesignTokens`](../../ui/docs/design-tokens.md), or a list of `{ tokens, when? }` |
+| `tokens` | | your brand: one [`Ui.DesignTokens`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), or a list of `{ tokens, when? }` |
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
 | `compactBelow` | `40rem` | the viewport width below which every surface's `compact` replacement applies: a CSS length in `px`, `rem` or `em` |
 | `pageWidth` | `contained` | how wide a page's content is drawn when the page declares no `width`: `contained` or `full` — see [Page width](#page-width) |
 | `header` | | `{ start?, end?, width? }`: nodes of your own in the header, before the title and after the navigation, and how wide its content is drawn — see [Header](#header) |
-| `pages` | required, at least one | the [`Ui.Page`](../../ui/docs/page.md)s the application routes to, written in place or `!ref` |
-| `navigation` | | the [`Ui.Navigation`](../../ui/docs/navigation.md) tree and how it is drawn — see [Navigation](#navigation) |
+| `pages` | required, at least one | the [`Ui.Page`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)s the application routes to, written in place or `!ref` |
+| `navigation` | | the [`Ui.Navigation`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) tree and how it is drawn — see [Navigation](#navigation) |
 
 ## Pages
 
@@ -29,7 +29,7 @@ pages:
   - !ref Billing.invoices      # a page a library exports
 ```
 
-- Each entry is a [`Ui.Page`](../../ui/docs/page.md): its `path`, `title`,
+- Each entry is a [`Ui.Page`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): its `path`, `title`,
   `query` and `children`. The application invokes it for every request to its
   path; the page's composites are resolved once, when the page is created.
 - Two pages at one path are refused: `RESOURCE_RULE_VIOLATED` with
@@ -52,7 +52,7 @@ pages:
 ```
 
 - A `contained` page's content is drawn no wider than the look's page measure,
-  the `width.page` [design token](../../ui/docs/design-tokens.md), and
+  the `width.page` [design token](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), and
   centred; a `full` one takes all the room it has.
 - A page's own `width` wins; with none, the application's `pageWidth`
   applies; with neither, `contained`. The default is filled by `ui`'s page,
@@ -70,7 +70,7 @@ pages:
 
 The navigation is a tree of entries naming pages by reference — never by path
 — beside links and groups nested to any depth; how it is drawn is a placement.
-The whole vocabulary is [`ui`'s](../../ui/docs/navigation.md).
+The whole vocabulary is [`ui`'s](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/).
 
 ```yaml
 navigation:
@@ -105,7 +105,7 @@ file: !module-path ./icons/reports.svg
   lists them; with no `placement`, the tree is drawn in the header, and below
   `compactBelow` behind a menu button opening a drawer from the start edge.
   Every other default is filled by `ui` (see
-  [its defaults](../../ui/docs/navigation.md#defaults)).
+  [its defaults](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)).
 - An entry's `when` is evaluated per request over `request`, and the headers
   it reads join the application document's `Vary`. A group none of whose
   entries is delivered is left out.
@@ -154,7 +154,7 @@ file: !module-path ./icons/reports.svg
 
 ### Icons
 
-An entry's `icon` (a [`Ui.Icon`](../../ui/docs/icons.md)) is drawn as the
+An entry's `icon` (a [`Ui.Icon`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)) is drawn as the
 `glyph` part before its text — above it in a tab bar, in its place in a rail.
 The application reads the icon's file when it starts and serves it under
 `_telo/ui/assets/<digest>/<name>` like every other file. The glyph is an empty
@@ -177,7 +177,7 @@ below it the header wraps; the default theme then keeps the menu button,
 `start`, the title and `end` on one row, and lets the header scroll away with
 the page (see [the default theme](theme.md#the-default-theme)). The `header`
 slots are the same under every navigation placement. A switch belongs in a
-[`menu`](../../ui/docs/nodes.md#menus), which takes one button's room:
+[`menu`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), which takes one button's room:
 
 ```yaml
 header:
@@ -200,7 +200,7 @@ header:
       when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
 ```
 
-- Each is a [`Ui.Node`](../../ui/docs/nodes.md), resolved as a page's own
+- Each is a [`Ui.Node`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), resolved as a page's own
   nodes are: its `when:` — and a menu item's — and leaf values are [evaluated per
   request](#what-is-evaluated-per-request) over `request`, its texts are
   translated, a composite is resolved once when the application starts, and
@@ -237,7 +237,7 @@ header:
 
 ## What the browser decides
 
-A node's `shown` is a [condition](../../ui/docs/conditions.md), and a `value`
+A node's `shown` is a [condition](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), and a `value`
 or `list` node names what it draws; on a page's own nodes they read `query` —
 the declared parameters, from the address — in the browser. They never read
 `request`, which only the server has: a condition naming it is
@@ -302,7 +302,7 @@ titles and enumeration labels — is written in the `lang:` of the module that
 wrote it. The application translates them through its own `translations:`
 block, the one set every surface of the application shares. What the renderer
 draws on its own — "Save", the pager, each validation message — is
-[`ui`'s own texts](../../ui/docs/texts.md#uis-own-texts), keys of the set
+[`ui`'s own texts](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), keys of the set
 `Ui.Translations`: English with nothing listed, and in another language once its
 shipped translation is listed:
 
@@ -391,8 +391,8 @@ is started again, under a new address.
 
 ## Listings and filter bars
 
-A [`Ui.Listing`](../../ui/docs/listing.md) is drawn by its
-[layout](../../ui/docs/listing-layouts.md) — a table, a list, cards, a board,
+A [`Ui.Listing`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) is drawn by its
+[layout](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) — a table, a list, cards, a board,
 a calendar, a timeline, a tree, or a module's own component — and everything
 but the drawing is the listing's, whatever the layout:
 
@@ -400,7 +400,7 @@ but the drawing is the listing's, whatever the layout:
   read per group value, per shown period and per tree level, each paged by
   `pageSize` and carrying the listing's `filters`, every filter bar around it
   and the viewer's sort, in the order
-  [`conformance/listing-reads.json`](../../ui/conformance/README.md) pins.
+  [`conformance/listing-reads.json`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) pins.
   While a fixed filter holds nothing, nothing is read.
 - **Paging.** Under `paging: pages` a pager keeps the cursors read, so
   previous replays a page. Under `more` a Load more button at the end appends
@@ -473,7 +473,7 @@ of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
 - A filter bar shows the filters on one property together: one label, and
   each control captioned by its operator — `from` and `to` for a range
   (`gte`, `lte`), `after` and `before` for `gt` and `lt`.
-- A listing's create and edit forms open in the [surface](../../ui/docs/surfaces.md)
+- A listing's create and edit forms open in the [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   their opener names — a dialog when it names none — and a delete asks first
   in a confirmation. A modal dialog or drawer holds the keyboard focus and the
   page behind it does not scroll. Escape, a close button and a click outside
@@ -494,7 +494,7 @@ of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
   with `options` of its own, offers the records of that source by their
   label, a page more as its list is scrolled to its end. Under
   `values: present` it offers only the values the
-  [facet request](../../data-model/docs/collection-contract.md) answers at the
+  [facet request](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/) answers at the
   bar's `basePath`, under every other filter of the bar and of the bars
   around it but never its own, each shown with its count (`valueCount`);
   related keys are labelled with one batched `in` request per page of values.
@@ -508,7 +508,7 @@ of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
 - A value whose model property declares `format: uri` or `uri-reference` is
   drawn as a link showing the value, in a table layout's cell, in a `list` node and
   in a `value` node. The value must be an address [a `link` node may
-  hold](../../ui/docs/nodes.md#addresses): an app-relative path, which leads
+  hold](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): an app-relative path, which leads
   under the application's mount as a `link` node's does, or one starting
   `https://`, `http://` or `mailto:`. Anything else — `//host/x`,
   `javascript:…`, a path with a tab in it — is shown as plain text. A link
@@ -519,7 +519,7 @@ of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
 
 ### Row actions
 
-A listing's [`rowActions`](../../ui/docs/listing.md#row-actions) — and a `list`
+A listing's [`rowActions`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) — and a `list`
 node's, drawn the same way in a last cell of each row — are text buttons in
 each row, showing each action's label in the order declared, before edit and
 delete.
@@ -619,7 +619,7 @@ delete.
 
 ## Actions
 
-An [`action` node](../../ui/docs/action.md) is a form with one button, and
+An [`action` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) is a form with one button, and
 below it what the operation answered.
 
 - The fields are a form's: the same controls, derived the same way, and the

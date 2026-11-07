@@ -62,7 +62,7 @@ model: !ref Painter
 | `mask` | `{ data, mediaType }` whose transparent region marks what to repaint |
 | `options` | per-call overrides, shallow-merged over the resource's |
 
-`Ai.Image` enforces only what follows from the shape: an intent is what says the references are *for*, so one implies the other, and with neither there is nothing to work from but a prompt. **What a particular mode needs — whether it can run without a prompt, whether it takes a mask — is the provider's rule**, because the provider owns the vocabulary. Ask your provider's docs; the OpenAI one is [here](../../openai/docs/image-model.md).
+`Ai.Image` enforces only what follows from the shape: an intent is what says the references are *for*, so one implies the other, and with neither there is nothing to work from but a prompt. **What a particular mode needs — whether it can run without a prompt, whether it takes a mask — is the provider's rule**, because the provider owns the vocabulary. Ask your provider's docs; the OpenAI one is [here](https://hub.telo.run/module/oci/ghcr.io/telorun/openai/).
 
 The result is `{ images, finishReason, usage?, text? }` — see the [provider contract](./ai-image-model.md) for the full shape. `images[].data` is **raw bytes**, so it goes straight into `Fs.FileWrite`, `Image.Overlay`, or a multimodal message part.
 

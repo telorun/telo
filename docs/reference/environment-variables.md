@@ -120,10 +120,10 @@ environment variable — bind one in the manifest.
 A runner (`telo runner`, the Docker runner, the Kubernetes runner) is configured
 by its own `RUNNER_*` variables, and an agent it hosts by `AGENT_*` ones; they
 configure the runner process, not the applications it runs. Each runner documents
-its own: [`apps/docker-runner`](https://github.com/telorun/telo/blob/main/apps/docker-runner/README.md),
-[`apps/k8s-runner`](https://github.com/telorun/telo/blob/main/apps/k8s-runner/README.md)
+its own: [`apps/docker-runner`](../../apps/docker-runner/README.md),
+[`apps/k8s-runner`](../../apps/k8s-runner/README.md)
 and the shared contract in
-[`packages/runner-core`](https://github.com/telorun/telo/blob/main/packages/runner-core/README.md).
+[`packages/runner-core`](../../packages/runner-core/README.md).
 A runner starts each application with `--no-input`, so a missing input is a
 refusal, and passes `TELO_CACHE_DIR`, `TELO_HOST_STATE_DIR` and the public-URL
 templates for the sandbox it provides.

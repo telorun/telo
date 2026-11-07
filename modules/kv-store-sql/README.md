@@ -1,6 +1,6 @@
 # Durable Store — SQL
 
-`KvStoreSql.Store` — a [`KvStore.Store`](../kv-store/README.md) backed by any `Sql.Connection`.
+`KvStoreSql.Store` — a [`KvStore.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/kv-store/) backed by any `Sql.Connection`.
 
 ## Why use this
 

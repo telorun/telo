@@ -5,7 +5,7 @@ sidebar_label: Drafted layers — SQL
 
 # Drafted layers in SQL
 
-`GraphLayersSql.DraftedStore` is the SQL family's store for the [drafted level](../../graph-layers/docs/drafting.md) of the layered contract. A strategy module — `graph-layers-drafts-sqlite`, `graph-layers-drafts-postgres` — declares the concrete kinds; this page is what they share. The node and relationship abstracts, their rules and everything in [Layered tables](layered-sql.md) apply unchanged.
+`GraphLayersSql.DraftedStore` is the SQL family's store for the [drafted level](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/) of the layered contract. A strategy module — `graph-layers-drafts-sqlite`, `graph-layers-drafts-postgres` — declares the concrete kinds; this page is what they share. The node and relationship abstracts, their rules and everything in [Layered tables](layered-sql.md) apply unchanged.
 
 ## How a drafted layer is stored
 
@@ -58,7 +58,7 @@ Every probe of a layer above is a scalar subquery, never `NOT EXISTS`: a planner
 
 **Outside a session** the store takes the layer's row in the layers table, writes the published row in place stamped with the next revision, and advances `head_revision` — one atomic operation. Published writes to one layer are therefore applied one at a time; a bulk load belongs in a draft. An operation that changes nothing leaves the revision where it was.
 
-**Inside a session** every write is preceded, in its own transaction, by a conditional update of the draft's row in the drafts table that matches only while the draft is open. It holds that row until the write commits, so the database decides between the write and the draft being published or discarded. When it matches nothing, the store ends the session ([the contract](../../graph-layers/docs/store-contract.md#sessions-and-cancellation)).
+**Inside a session** every write is preceded, in its own transaction, by a conditional update of the draft's row in the drafts table that matches only while the draft is open. It holds that row until the write commits, so the database decides between the write and the draft being published or discarded. When it matches nothing, the store ends the session ([the contract](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/)).
 
 | Operation in a session | What is written |
 | --- | --- |

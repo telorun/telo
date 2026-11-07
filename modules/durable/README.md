@@ -4,7 +4,7 @@ Work that survives process death, backend-neutral.
 
 A body of steps whose progress is recorded as it runs, so a crash and a restart continue where the work stopped instead of repeating every effect or losing them all. This module supplies the pieces a body uses whatever engine is underneath; an **engine module** supplies the recording and the resumption.
 
-Today that engine is [`durable-local`](../durable-local/README.md), which needs nothing deployed.
+Today that engine is [`durable-local`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-local/), which needs nothing deployed.
 
 ## What is here
 
@@ -45,7 +45,7 @@ steps:
 
 ### Asserted, not earned
 
-`Durable.Idempotent` takes your word. [`Idempotency.Once`](../idempotency/README.md) makes the same claim about its region and *enforces* it — the claim settles the key with the body's result, so a second execution replays it. Both declare the same property because the region's property is the same; which one you reach for is a cost decision, and it stays visible in the manifest as a different kind rather than as a boolean on one.
+`Durable.Idempotent` takes your word. [`Idempotency.Once`](https://hub.telo.run/module/oci/ghcr.io/telorun/idempotency/) makes the same claim about its region and *enforces* it — the claim settles the key with the body's result, so a second execution replays it. Both declare the same property because the region's property is the same; which one you reach for is a cost decision, and it stays visible in the manifest as a different kind rather than as a boolean on one.
 
 **Impure expressions inside are a `telo check` error** (`DURABLE_NONDETERMINISM`). An idempotent region re-runs with its earlier effects *intact* — nothing discarded them — so a `uuidv4()` inside it writes record A on the first pass and record B on the second, and the claim you signed is false. The same expression in an ordinary durable step is fine: it is recorded once and replayed identically, which is what a durable identifier should do.
 
@@ -77,7 +77,7 @@ outputType:
 
 **Waiting releases the process.** A parked run holds nothing: the application may exit, be redeployed, and pick the work up in a different process days later. That is the difference between this and a `sleep` — and it is why a wait measured in days is an ordinary thing to write here.
 
-**The delivering side is native.** There is no shared "deliver" kind, because waking a run is genuinely different per engine — a [`DurableLocal.Deliver`](../durable-local/README.md), a Restate awakeable, a Temporal signal. What ties the two halves together is a reference, not a second contract: a backend's deliver kind takes an `await:` ref and checks its payload against *that instance's* `outputType`.
+**The delivering side is native.** There is no shared "deliver" kind, because waking a run is genuinely different per engine — a [`DurableLocal.Deliver`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-local/), a Restate awakeable, a Temporal signal. What ties the two halves together is a reference, not a second contract: a backend's deliver kind takes an `await:` ref and checks its payload against *that instance's* `outputType`.
 
 ### Waiting where waiting is forbidden
 
@@ -101,5 +101,5 @@ Collapse suppresses per-step records, never the recording itself, so this replay
 
 - [Waiting](./docs/waiting.md) — what a wait actually does, where it is forbidden, and what must not swallow it.
 - [Collapsing a region](./docs/collapsing-a-region.md) — when one record is enough, and the check that keeps the claim honest.
-- [Durable execution](../../kernel/specs/durable-execution.md) — the normative contract.
+- [Durable execution](https://telo.run/learn/durable-execution) — the normative contract.
 - [Execution zones](https://telo.run/extend/execution-zones) — the mechanism `Durable.Idempotent` declares through.

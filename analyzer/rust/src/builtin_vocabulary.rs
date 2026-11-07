@@ -61,7 +61,7 @@ mod tests {
         std::fs::read_to_string(&path).unwrap_or_else(|err| {
             panic!(
                 "{} is not generated ({err}): run `node scripts/generate-telo-version.mjs && \
-                 node scripts/render-builtin-vocabulary.mjs` (or `pnpm install`) first.",
+                 node scripts/render-builtin-vocabulary.mjs` in an installed workspace (or `pnpm install`) first.",
                 path.display()
             )
         })

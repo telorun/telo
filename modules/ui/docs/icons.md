@@ -16,7 +16,7 @@ The abstract every source of glyphs extends. What it provides:
 
 Each source of glyphs is a kind of its own: `Ui.FileIcon` for a file of your
 own, and an icon set's kind for its named glyphs —
-[`UiLucide.Icon`](../../ui-lucide/README.md) for the Lucide set. A kind of
+[`UiLucide.Icon`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-lucide/) for the Lucide set. A kind of
 another module extending `Ui.Icon` is accepted wherever an icon goes, with no
 change to `ui`.
 
@@ -44,4 +44,4 @@ inserting the file's markup into the page. What counts as an icon file — an
 SVG, PNG or WebP image, read from the file's own bytes — is `ui`'s one rule
 (`servedIconFormat` in `@telorun/ui`): a navigation entry's icon is refused
 with `ERR_UI_ICON_FORMAT_UNKNOWN` when the application starts, a chat button's
-when the chat is first read — see [the application](../../ui-react/docs/app.md#icons).
+when the chat is first read — see [the application](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/).

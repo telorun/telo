@@ -1,7 +1,7 @@
 # Ui.ConversationSource
 
 A conversation endpoint as the browser reaches it: the
-[conversation](../../conversation/README.md) — what the endpoint offers before
+[conversation](https://hub.telo.run/module/oci/ghcr.io/telorun/conversation/) — what the endpoint offers before
 any message — and where its routes are served.
 
 | Field | | |
@@ -17,7 +17,7 @@ basePath: /api/chat
 ```
 
 Whatever serves `basePath` speaks
-[the conversation contract](../../conversation/docs/conversation-contract.md):
+[the conversation contract](https://hub.telo.run/module/oci/ghcr.io/telorun/conversation/):
 `<basePath>/turns`, `<basePath>/conversations`, `<basePath>/attachments`, and
 the rest. One source written once is what every [`Ui.Chat`](chat.md) over the
 endpoint names, so the page and the endpoint cannot be given different ones.

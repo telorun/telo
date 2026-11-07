@@ -167,4 +167,4 @@ aggregation over spans — the count of `execute_tool` spans, the durations of
 
 ## Reference
 
-The normative contract is [`kernel/specs/tracing.md`](https://github.com/telorun/telo/blob/main/kernel/specs/tracing.md).
+The normative contract is [`kernel/specs/tracing.md`](../../kernel/specs/tracing.md).

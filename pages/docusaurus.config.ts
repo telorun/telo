@@ -8,6 +8,7 @@ import { generateExamplesIndex } from "./lib/generate-examples-index";
 import { generateStandardLibrary } from "./lib/generate-standard-library";
 import landingSample from "./lib/landing-sample";
 import { substituteVersions } from "./lib/version-map";
+import remarkRepoLinks from "./plugins/remark-repo-links";
 import remarkShiki from "./plugins/remark-shiki";
 import remarkVersions from "./plugins/remark-versions";
 import sidebars from "./sidebars";
@@ -39,6 +40,16 @@ function collectDocIds(items: unknown): string[] {
 }
 
 const docInclude = collectDocIds(sidebars.docs).map((id) => `${id}.md`);
+
+// Build inputs, set by the workflow that builds the site from a release tag.
+// Unset, a local build is the tree as it is on main: links into the repository
+// read `main`, the site is served at `/`, and there is no banner.
+//   TELO_SITE_TAG       git tag being built (`v0.85.0-rc.1`); repo links point at it.
+//   TELO_SITE_BASE_URL  `/` for the final, `/next/` for the candidate; fixed at build.
+//   TELO_SITE_PREVIEW   the release a `/next/` build previews (`0.85.0`); shows the banner.
+const siteTag = process.env.TELO_SITE_TAG || "main";
+const siteBaseUrl = process.env.TELO_SITE_BASE_URL || "/";
+const sitePreview = process.env.TELO_SITE_PREVIEW;
 
 // Mirrored in plugins/llms-txt.
 const hubGuideSlugs: Record<string, string> = {
@@ -79,7 +90,7 @@ const config: Config = {
   title: "Telo",
   tagline: "Define how your app works. Telo builds and runs it.",
   url: "https://telo.run",
-  baseUrl: process.env.BASE_URL ?? "/",
+  baseUrl: siteBaseUrl,
   trailingSlash: false,
   favicon: "telo.svg",
   // `../assets` holds the repo's one Telo mark, served as `/telo.svg`.
@@ -201,6 +212,7 @@ const config: Config = {
         routeBasePath: "/",
         include: docInclude,
         sidebarPath: "./sidebars.ts",
+        beforeDefaultRemarkPlugins: [[remarkRepoLinks, { rendered: docInclude, tag: siteTag }]],
         remarkPlugins: [remarkVersions, remarkShiki],
       },
     ],
@@ -213,6 +225,15 @@ const config: Config = {
   ],
 
   themeConfig: {
+    ...(sitePreview
+      ? {
+          announcementBar: {
+            id: `preview-${sitePreview}`,
+            content: `You are reading the preview of Telo ${sitePreview}. <a href="https://telo.run/">Go to the documentation of the current release</a>.`,
+            isCloseable: false,
+          },
+        }
+      : {}),
     navbar: {
       title: "Telo",
       logo: { alt: "Telo", src: "telo.svg" },

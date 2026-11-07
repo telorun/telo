@@ -209,9 +209,9 @@ export function unreleasedEdge(edge: string, published: string[] | null): string
   if (published === null) return undefined;
   const normalized = published.map((v) => (v.startsWith("v") ? v.slice(1) : v));
   if (normalized.includes(edge)) return undefined;
-  // Prereleases included: an `-rc` build is installable, so the newest thing
-  // that exists is the honest comparison point for "does this edge exist yet".
-  const latest = newestModuleVersion(normalized, { includePrerelease: true });
+  // Candidates are skipped: a floor is a final release, so an `-rc` build of
+  // the release that will carry it must not make the edge look published.
+  const latest = newestModuleVersion(normalized);
   if (latest === undefined) return undefined;
   return isNewerModuleVersion(edge, latest) ? latest : undefined;
 }

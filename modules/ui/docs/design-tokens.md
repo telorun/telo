@@ -59,5 +59,5 @@ its declaration.
 `ui` declares the vocabulary only. With `ui-react`, a token set is a theme's
 defaults (`UiReact.Theme.tokens`) or an application's brand
 (`UiReact.App.tokens`, one set or a list chosen per request); see
-[the application](../../ui-react/docs/app.md#look) and
-[themes](../../ui-react/docs/theme.md).
+[the application](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) and
+[themes](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/).

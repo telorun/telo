@@ -18,7 +18,7 @@ check` reports a statement wired onto a path that reaches it outside any
 transaction before the route is ever exercised.
 
 The runtime contract is normative in
-[`kernel/specs/execution-zones.md`](https://github.com/telorun/telo/blob/main/kernel/specs/execution-zones.md);
+[`kernel/specs/execution-zones.md`](../../kernel/specs/execution-zones.md);
 this page is the authoring guide.
 
 ## The shape

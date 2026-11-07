@@ -39,7 +39,7 @@ pair.
 | Key | | |
 | --- | --- | --- |
 | `property` | required | a property of the collection's `model` |
-| `operator` | required | `eq`, `contains`, `gt`, `gte`, `lt`, `lte`, `in`, `absent` — sent as [the collection contract](../../data-model/docs/collection-contract.md) spells them |
+| `operator` | required | `eq`, `contains`, `gt`, `gte`, `lt`, `lte`, `in`, `absent` — sent as [the collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/) spells them |
 | `pinned` | `false` | kept outside whatever the bar folds into, always on show, never removable |
 | `control` | `auto` | how the value is entered — [below](#controls) |
 | `values` | `all` | which choices are offered — [below](#related-records-and-present-values) |
@@ -93,7 +93,7 @@ relation or not; its value must be of the property's type.
   record, or every value of its `enum`.
 - `present` — only the values that occur in the records the bar's other
   filters leave, each shown with its count, from the
-  [facet request](../../data-model/docs/collection-contract.md); related keys
+  [facet request](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/); related keys
   are labelled through the relation, or the field's `options`, one batched
   `in` request per page of the answer. It works for any faceted property, a
   relation or not, and needs the property listed under the collection's
@@ -196,7 +196,7 @@ back.
 Each is refused by `telo check` and, under the same name prefixed `ERR_`, by
 the filter bar itself when it is first read. That a filter names a property
 of the model with an operator its type carries is
-[the collection's own guarantee](../../data-model/docs/collection.md). The
+[the collection's own guarantee](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/). The
 default and preset rules judge a property where it declares one plain
 `type`. The control rule
 reads a property's types with `null` set aside, so a nullable boolean takes a

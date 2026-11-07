@@ -191,7 +191,7 @@ HTTP twin.
   exactly as `telo builtins <name>` prints it. A `telo` the hub tracks no
   vocabulary at is refused as `-32602` (`ERR_UNKNOWN_TELO_VERSION`), naming the
   versions it does track. The argument is a release as `telo --version` prints
-  it (`X`); a working copy prints `X+unreleased`, which no hub ever tracks, so
+  it (`X`); a working copy prints `X+unreleased` and a candidate build `X-rc.N`, neither of which a hub ever tracks, so
   the tool text sends that caller to `telo builtins <names>` instead.
 - `list_libraries` takes an optional `publisher` (`ghcr.io/telorun`) and lists
   every tracked library at its latest version: `ref`, `name`, a `summary` (the
@@ -800,7 +800,9 @@ archive (`kernel/specs/builtin-vocabulary.md`): the kinds that need no import,
 the schema fragments, value types, zone attributes and formats they name — at
 `oci://ghcr.io/telorun/telo@<release>`. The hub tracks it like a module at
 `BUILTINS_REF`, which it registers on every boot, before `SEED_REFS`: a
-deployment that left it out of the seed would otherwise never index it.
+deployment that left it out of the seed would otherwise never index it. It
+tracks final releases only: a release candidate's archive (`X-rc.N`) is never
+read, so the newest telo the hub knows is always a final.
 
 - **Only there.** Registration is open, so nobody else may publish "built-in"
   kinds: ingest records a `Telo.Builtins` root at `BUILTINS_REF` as root kind

@@ -202,6 +202,7 @@ steps:
         invoke: !ref Origin.moduleVersions
         inputs:
           ref: !cel "inputs.ref"
+          finalOnly: !cel "inputs.ref == variables.builtinsRef"
       # Reading the latest version's telo.yaml confirms the ref actually serves
       # a Telo manifest (a non-module OCI artifact fails here).
       - name: hasVersions

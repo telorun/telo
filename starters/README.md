@@ -14,7 +14,8 @@ editor.
 
 Starters are **not bundled** into the editor. The editor fetches them over
 http(s) from its configured starters base URL (the `startersBaseUrl` setting, or
-a built-in default when unset) using the same remote-open machinery as
+a built-in default when unset — a released build's is the `starters/` of its own
+release tag, a local build's `main`'s) using the same remote-open machinery as
 `?open=<url>`, so multi-file starters — relative imports, include partials, and
 listed `files:` assets — work unchanged. This directory is the unit intended to
 move to its own repository; nothing here imports editor code.

@@ -68,4 +68,4 @@ steps:
 - [`Kagi.WebSearchEngine`](./docs/web-search-engine.md): credentials,
   configuration, how the query and hints map onto Kagi, paging, dates and
   failures.
-- The contract it implements: [`WebSearch.Engine`](../web-search/docs/engine.md).
+- The contract it implements: [`WebSearch.Engine`](https://hub.telo.run/module/oci/ghcr.io/telorun/web-search/).

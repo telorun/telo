@@ -7,7 +7,7 @@ sidebar_label: API keys — PostgreSQL
 
 > Examples assume this module is imported under alias `Keys`, `api-key-sql` under `ApiKeySql` and `postgres` under `PostgreSQL`.
 
-What a store guarantees, retention, the sweep and atomicity are [`api-key-sql`'s](../../api-key-sql/docs/sql-store.md); this page is what is particular to PostgreSQL.
+What a store guarantees, retention, the sweep and atomicity are [`api-key-sql`'s](https://hub.telo.run/module/oci/ghcr.io/telorun/api-key-sql/); this page is what is particular to PostgreSQL.
 
 ## Kinds
 

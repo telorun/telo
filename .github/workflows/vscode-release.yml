@@ -1,40 +1,54 @@
 name: Release VS Code Extension
 
-# Packages the Telo VS Code extension and publishes the `.vsix` as a GitHub
-# Release on this repo. Nothing is pushed to the VS Code Marketplace or Open
-# VSX — the release asset is the deliverable, installed with
-# `code --install-extension`.
+# Packages the Telo VS Code extension and publishes it from the branch's Publish
+# run, which calls this workflow on every channel that released a CLI:
+#   candidate   the `.vsix` is an asset of the GitHub pre-release `v<cli version>`;
+#               the Marketplace accepts only `major.minor.patch`, so it gets none.
+#               The `.vsix` bundles its own engine, and the editor's version
+#               catalog never selects a candidate engine.
+#   final/patch the same asset, and the VS Code Marketplace — moved only forward.
 #
-# `telo-vscode` is a private workspace member, so changesets versions it but
-# never publishes it and it never lands in `publishedPackages`. The release
-# signal is therefore its `package.json` version field actually moving on main,
-# which happens when a Version PR merges (including the automatic
-# `updateInternalDependencies` patch bumps that follow an analyzer/kernel
-# release). `workflow_dispatch` forces a (re)build of the current version.
+# `telo-vscode` is a private workspace member, so changesets versions it but never
+# publishes it and it never lands in `publishedPackages`. The release signal is its
+# `package.json` version field moving in the commit Publish ran on, which happens
+# when a Version PR merges (including the automatic `updateInternalDependencies`
+# bumps that follow an analyzer/kernel release). A run where it did not move
+# packages nothing. Recovery is a re-run of the Publish run.
+#
+# The links in the packed README resolve to the release tag `v<cli version>`, the
+# tag whose tree this `.vsix` is built from.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'ide/vscode/package.json'
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      channel:
+        description: 'candidate, final or patch.'
+        type: string
+        required: true
+      version:
+        description: 'The CLI version released.'
+        type: string
+        required: true
+      tag:
+        description: 'The release tag (v<version>), whose draft release the .vsix is attached to.'
+        type: string
+        required: true
 
 permissions:
-  contents: write
-
-concurrency:
-  group: vscode-release-${{ github.ref }}
-  cancel-in-progress: false
+  contents: read
 
 jobs:
   release:
     name: Package and publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Check extension version
         id: check
@@ -43,27 +57,19 @@ jobs:
           NEW=$(jq -r .version ide/vscode/package.json)
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Manual dispatch -> releasing v$NEW"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          BEFORE="${{ github.event.before }}"
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            echo "No baseline commit -> releasing v$NEW"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          OLD=$(git show "$BEFORE:ide/vscode/package.json" 2>/dev/null | jq -r .version || echo "")
+          OLD=$(git show HEAD^:ide/vscode/package.json 2>/dev/null | jq -r .version || echo "")
           if [ "$NEW" != "$OLD" ]; then
             echo "Extension version changed: ${OLD:-<none>} -> $NEW"
             echo "release=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Extension version unchanged ($NEW); skipping release."
+            echo "Extension version unchanged ($NEW); nothing to package."
             echo "release=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Does the Marketplace move forward
+        id: pointers
+        if: steps.check.outputs.release == 'true' && inputs.channel != 'candidate'
+        run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"
 
       - name: Setup pnpm
         if: steps.check.outputs.release == 'true'
@@ -87,30 +93,33 @@ jobs:
       # script changed, so both callers keep one code path.
       - name: Package the extension
         if: steps.check.outputs.release == 'true'
+        env:
+          TELO_PACK_LINKS_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           pnpm --filter "./ide/vscode" vsix
           mv ide/vscode/telo-vscode.vsix \
              "ide/vscode/telo-vscode-${{ steps.check.outputs.version }}.vsix"
 
-      # softprops creates the tag/release if absent and reuses it (replacing
-      # assets) on a re-run of the same version.
-      - name: Publish GitHub Release
+      - name: Attach the .vsix to the release
         if: steps.check.outputs.release == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: vscode-v${{ steps.check.outputs.version }}
-          name: Telo VS Code Extension v${{ steps.check.outputs.version }}
-          files: ide/vscode/telo-vscode-${{ steps.check.outputs.version }}.vsix
-          fail_on_unmatched_files: true
-          body: |
-            YAML diagnostics, completions and import upgrades for Telo manifests.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/release-assets.mjs "${{ inputs.tag }}" "ide/vscode/telo-vscode-${{ steps.check.outputs.version }}.vsix"
 
-            Install the attached `.vsix`:
-
-            ```
-            code --install-extension telo-vscode-${{ steps.check.outputs.version }}.vsix
-            ```
-
-            Or in VS Code: **Extensions → … → Install from VSIX…**
+      # `--skip-duplicate` so a re-run of the Publish run finds the version
+      # already there and succeeds.
+      - name: Publish to the VS Code Marketplace
+        if: steps.check.outputs.release == 'true' && steps.pointers.outputs.latest == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -euo pipefail
+          # Optional: without it the .vsix is only attached to the release, for a manual Marketplace upload.
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::notice::VSCE_PAT is not set, so the Marketplace is not published to; upload telo-vscode-${{ steps.check.outputs.version }}.vsix from the release by hand."
+            exit 0
+          fi
+          pnpm --filter "./ide/vscode" exec vsce publish --skip-duplicate \
+            --packagePath "telo-vscode-${{ steps.check.outputs.version }}.vsix"

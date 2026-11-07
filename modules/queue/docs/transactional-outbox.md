@@ -83,7 +83,7 @@ writes in a transaction and record `delivery.messageId` in it with
 
 ## Enqueueing from an event handler
 
-A library that announces a business event with `Domain.Emit` knows nothing of the queue. The application adds a `Domain.Handler` whose target is `QueueSql.Enqueue`: it runs inside the emitter's transaction, so the message is committed with the emitter's writes and lost with a rollback, and `telo check` proves the transaction through the emit. See [Work after commit](../../domain-events/docs/after-commit.md).
+A library that announces a business event with `Domain.Emit` knows nothing of the queue. The application adds a `Domain.Handler` whose target is `QueueSql.Enqueue`: it runs inside the emitter's transaction, so the message is committed with the emitter's writes and lost with a rollback, and `telo check` proves the transaction through the emit. See [Work after commit](https://hub.telo.run/module/oci/ghcr.io/telorun/domain-events/) in the domain-events docs.
 
 ## Order
 

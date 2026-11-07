@@ -113,7 +113,7 @@ rules:
 
 Inside `condition`, `this` is bound to the value being validated. Rules fire after the JSON Schema check passes — so you can assume structural correctness.
 
-Rule codes are invocation error codes (see [Run.Sequence structured errors](../run/docs/structured-errors.md)) — any catch block that matches the code can react to a specific business-rule failure. The kernel raises them as structured errors so `error.code` inside a `catch` is the code you declared, not a generic one.
+Rule codes are invocation error codes (see [Run.Sequence structured errors](https://hub.telo.run/module/oci/ghcr.io/telorun/run/)) — any catch block that matches the code can react to a specific business-rule failure. The kernel raises them as structured errors so `error.code` inside a `catch` is the code you declared, not a generic one.
 
 ## Referencing a type from another schema (`$ref`)
 

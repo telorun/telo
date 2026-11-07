@@ -46,8 +46,8 @@
     "check:types": "pnpm run generate:cldr-module && tsc -p tsconfig.json --noEmit",
     "check:browser-safe": "pnpm run generate:cldr-module && node scripts/check-browser-safe.mjs",
     "prepare": "node scripts/generate-cldr-module.mjs",
-    "prepack": "cp ../LICENSE . && cp ../cldr/LICENSE LICENSE-CLDR && node scripts/check-cldr-notice.mjs",
-    "postpack": "rm -f LICENSE LICENSE-CLDR"
+    "prepack": "cp ../LICENSE . && cp ../cldr/LICENSE LICENSE-CLDR && node scripts/check-cldr-notice.mjs && node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE LICENSE-CLDR"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

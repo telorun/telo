@@ -5,9 +5,9 @@ sidebar_label: Queue — SQL
 
 # `QueueSql`
 
-> Examples assume this module is imported under alias `QueueSql`, the [`queue`](../../queue/README.md) module under `Queues` (its kinds are written `Queue.*` in its own docs) and an engine module under `Queue`.
+> Examples assume this module is imported under alias `QueueSql`, the [`queue`](https://hub.telo.run/module/oci/ghcr.io/telorun/queue/) module under `Queues` (its kinds are written `Queue.*` in its own docs) and an engine module under `Queue`.
 
-`QueueSql.Queue` implements the queue module's [store contract](../../queue/docs/store-contract.md) over one table of the application's own database. What delivery, retries and dead-lettering mean is the [queue module's](../../queue/docs/delivery.md), decided by `Queue.Worker` the same way on every backend; this page is what is particular to keeping a queue in SQL.
+`QueueSql.Queue` implements the queue module's [store contract](https://hub.telo.run/module/oci/ghcr.io/telorun/queue/) over one table of the application's own database. What delivery, retries and dead-lettering mean is the [queue module's](https://hub.telo.run/module/oci/ghcr.io/telorun/queue/), decided by `Queue.Worker` the same way on every backend; this page is what is particular to keeping a queue in SQL.
 
 ## Declaring a queue
 

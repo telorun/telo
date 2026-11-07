@@ -1,6 +1,6 @@
 # AI MCP
 
-Bridges an MCP server to the [`Ai.ToolProvider`](../ai/docs/ai-tool-provider.md) contract, so an [`Ai.Agent`](../ai/docs/ai-agent.md) can discover and call a whole MCP server's tools — and its prompts, each offered as a tool that renders the prompt.
+Bridges an MCP server to the [`Ai.ToolProvider`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) contract, so an [`Ai.Agent`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) can discover and call a whole MCP server's tools — and its prompts, each offered as a tool that renders the prompt.
 
 ## Why use this
 
@@ -72,5 +72,5 @@ toolProviders:
 
 - [`AiMcp.ToolProvider`](docs/ai-mcp-tool-provider.md) — fields and behavior.
 - [`AiMcp.PromptToolProvider`](docs/ai-mcp-prompt-tool-provider.md) — how prompts become tools, and what a call returns.
-- [`Ai.Agent`](../ai/docs/ai-agent.md) — the consuming agent loop.
-- [`Ai.ToolProvider`](../ai/docs/ai-tool-provider.md) — the contract this implements.
+- [`Ai.Agent`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) — the consuming agent loop.
+- [`Ai.ToolProvider`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) — the contract this implements.

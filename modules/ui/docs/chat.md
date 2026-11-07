@@ -49,7 +49,7 @@ Branching includes the first message of a conversation (a new root, sent with
 `parent: null`); the switcher is drawn from each entry's `siblings`, and a
 conversation opened while its turn runs continues live, a turn waiting on
 approval showing its approval cards after a reload. The client's behaviour is
-described in the [renderer's chat page](../../ui-react/docs/chat.md).
+described in the [renderer's chat page](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/).
 
 A `show` switch can only hide: `reasoning` the model's reasoning panels,
 `toolDetail` the arguments and result of tool calls, `usage` the token counts

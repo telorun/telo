@@ -1,33 +1,49 @@
 name: Deploy Studio
 
+# Builds the Studio web build from the release's commit, attaches it to the GitHub
+# Release as `studio-web.tar.gz`, and deploys it to studio.telo.run. Called by the
+# branch's Publish workflow on finals and patches only, so a candidate publishes
+# no Studio. The deploy moves only forward: re-running an old publish attaches its
+# build and leaves the pages alone.
+
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'pnpm-lock.yaml'
-      - 'apps/studio/**'
-      - 'analyzer/**'
-      - 'sdk/**'
-      - 'templating/**'
-      - 'packages/ide-support/**'
-      - 'packages/language-server/**'
-      - 'packages/language-host/**'
-      - 'packages/editor-protocol/**'
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      channel:
+        description: 'final or patch.'
+        type: string
+        required: true
+      version:
+        description: 'The CLI version released.'
+        type: string
+        required: true
+      tag:
+        description: 'The release tag (v<version>), whose release the web build is attached to.'
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
   group: studio-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Does the deploy move forward
+        id: pointers
+        run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -43,11 +59,23 @@ jobs:
 
       - name: Build studio
         run: pnpm --filter "@telorun/studio..." build
+        env:
+          VITE_TELO_STARTERS_URL: https://raw.githubusercontent.com/telorun/telo/${{ inputs.tag }}/starters
 
       - name: SPA deep-link fallback
         run: cp apps/studio/dist/index.html apps/studio/dist/404.html
 
+      - name: Attach the web build to the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/studio-web.tar.gz" -C apps/studio/dist .
+          node scripts/release-assets.mjs "${{ inputs.tag }}" "$RUNNER_TEMP/studio-web.tar.gz"
+
       - name: Deploy to telorun/studio
+        if: steps.pointers.outputs.latest == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
           personal_token: ${{ secrets.STUDIO_PAGES_TOKEN }}

@@ -7,11 +7,11 @@ sidebar_label: OpenAI.EmbeddingModel
 
 > Examples assume the `embedding` module is imported under alias `Embedding` and this module under `OpenAI`. Substitute if you import under different names.
 
-`OpenAI.EmbeddingModel` is an OpenAI-compatible backend for the [`Embedding.Model`](../../embedding/docs/embedding-model) abstract. It calls the OpenAI `/embeddings` HTTP API directly — no vendor SDK — so the same controller serves OpenAI plus every OpenAI-compatible endpoint via `baseUrl`.
+`OpenAI.EmbeddingModel` is an OpenAI-compatible backend for the [`Embedding.Model`](https://hub.telo.run/module/oci/ghcr.io/telorun/embedding/) abstract. It calls the OpenAI `/embeddings` HTTP API directly — no vendor SDK — so the same controller serves OpenAI plus every OpenAI-compatible endpoint via `baseUrl`.
 
 OpenAI's own embedding models are **symmetric**: there is no query/passage wire parameter, so with no prompt templates configured the retrieval intent from `Embedding.Query` / `Embedding.Passage` has no effect and both produce identical vectors for the same text.
 
-Self-hosted checkpoints served over the same API are frequently **not** symmetric — embeddinggemma, E5 and BGE encode the intent as a text prefix. Set `queryPrompt` / `passagePrompt` (inherited from `Embedding.Model`) to express that, and the intent reaches the model without this controller needing to know which checkpoint is behind the endpoint. See [prompt templates](../../embedding/docs/embedding-model#prompt-templates).
+Self-hosted checkpoints served over the same API are frequently **not** symmetric — embeddinggemma, E5 and BGE encode the intent as a text prefix. Set `queryPrompt` / `passagePrompt` (inherited from `Embedding.Model`) to express that, and the intent reaches the model without this controller needing to know which checkpoint is behind the endpoint. See [prompt templates](https://hub.telo.run/module/oci/ghcr.io/telorun/embedding/).
 
 ## Schema
 

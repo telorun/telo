@@ -1,6 +1,6 @@
 # Rate Limit
 
-`RateLimit.Guard` — a transport-neutral sliding-window rate limiter. Counters live in any [`Cache.Store`](../cache/README.md), so the limiter composes with whichever backend is wired (`cache-memory` for a single instance, `cache-redis` for shared limits).
+`RateLimit.Guard` — a transport-neutral sliding-window rate limiter. Counters live in any [`Cache.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/cache/), so the limiter composes with whichever backend is wired (`cache-memory` for a single instance, `cache-redis` for shared limits).
 
 ## Why use this
 

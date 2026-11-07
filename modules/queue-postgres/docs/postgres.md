@@ -7,7 +7,7 @@ sidebar_label: Queue — PostgreSQL
 
 > Examples assume this module is imported under alias `Queue`, `queue-sql` under `QueueSql`, the `queue` module under `Queues` and `postgres` under `Postgres`.
 
-What a queue guarantees, the transactional enqueue, claiming, groups and retention are [`queue-sql`'s](../../queue-sql/docs/sql-queue.md); delivery, retries and dead-lettering are [the queue module's](../../queue/docs/delivery.md). This page is what is particular to PostgreSQL.
+What a queue guarantees, the transactional enqueue, claiming, groups and retention are [`queue-sql`'s](https://hub.telo.run/module/oci/ghcr.io/telorun/queue-sql/); delivery, retries and dead-lettering are [the queue module's](https://hub.telo.run/module/oci/ghcr.io/telorun/queue/). This page is what is particular to PostgreSQL.
 
 ## Kinds
 

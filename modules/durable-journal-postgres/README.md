@@ -8,18 +8,18 @@ metadata: { name: runs }
 connection: !ref db
 ```
 
-Point a [`DurableLocal.Workflow`](../durable-local/README.md) at it and its runs survive the process *and* the machine.
+Point a [`DurableLocal.Workflow`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-local/) at it and its runs survive the process *and* the machine.
 
 ## Why a second journal, rather than options on the first
 
-[`durable-journal-file`](../durable-journal-file/README.md) can record and read back. What it cannot do is settle a race between two processes reaching for the same run, and it says so rather than faking it with a lock file. Both of the operations that decide whether a journal works are native here:
+[`durable-journal-file`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-journal-file/) can record and read back. What it cannot do is settle a race between two processes reaching for the same run, and it says so rather than faking it with a lock file. Both of the operations that decide whether a journal works are native here:
 
 - **Claiming** is one conditional `UPDATE`, so two pollers never both take a run whatever the interleaving.
 - **Waking** is `LISTEN`/`NOTIFY`, so a delivery reaches a poller in milliseconds instead of at its next interval.
 
 ## Exactly-once
 
-This is the part no journal on separate storage can offer. When a durable body's writes run inside an [`Sql.Transaction`](../sql/README.md) opened on **this same connection**, the journal's own `INSERT` lands inside that transaction — so a rollback discards the record along with the effect it described. The step engine reads that attestation and journals the region **step by step** instead of collapsing it to one entry that re-runs whole.
+This is the part no journal on separate storage can offer. When a durable body's writes run inside an [`Sql.Transaction`](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/) opened on **this same connection**, the journal's own `INSERT` lands inside that transaction — so a rollback discards the record along with the effect it described. The step engine reads that attestation and journals the region **step by step** instead of collapsing it to one entry that re-runs whole.
 
 Point the journal at a different database and the attestation is false, the collapse returns, and the region is at-least-once again. That is correct, and it is why the resolution is reported rather than assumed:
 
@@ -43,7 +43,7 @@ The entry key is the primary key, so **first writer wins** is `ON CONFLICT DO NO
 
 Write order is a separate column, because entries are keyed by path and still have to read back in the order they were written.
 
-A recorded value arrives already written down, under the codec version beside it in `codec_version`, and this store keeps the two together and looks inside neither. That is the whole of its obligation: what [`durable-local`](../durable-local/docs/what-is-recorded.md) wrote is what it reads back, so a timestamp replays as a timestamp and a 64-bit integer keeps its last digit. A row with `codec_version` NULL predates that codec and is read as the plain JSON this store has always written, `{"$bigint": …}` included — so a run parked then still resumes. A `NULL` value is a step that produced nothing, which is not the same as one that produced `null`. A run's own `inputs` and `result` are kept the same way, beside `inputs_codec_version` and `result_codec_version` — one version per value, because a run admitted by one runtime may be settled by another. On boot the entries table gains `codec_version` and the runs table `inputs_codec_version` and `result_codec_version` where they are missing.
+A recorded value arrives already written down, under the codec version beside it in `codec_version`, and this store keeps the two together and looks inside neither. That is the whole of its obligation: what [`durable-local`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-local/) wrote is what it reads back, so a timestamp replays as a timestamp and a 64-bit integer keeps its last digit. A row with `codec_version` NULL predates that codec and is read as the plain JSON this store has always written, `{"$bigint": …}` included — so a run parked then still resumes. A `NULL` value is a step that produced nothing, which is not the same as one that produced `null`. A run's own `inputs` and `result` are kept the same way, beside `inputs_codec_version` and `result_codec_version` — one version per value, because a run admitted by one runtime may be settled by another. On boot the entries table gains `codec_version` and the runs table `inputs_codec_version` and `result_codec_version` where they are missing.
 
 **Stop every older worker before an upgraded one writes.** A worker released before these columns existed never reads them: it reads a typed frame as the plain JSON text it is and replays a step's value as that text, with no error. Only a worker that reads the version can refuse what it does not understand, so a rolling upgrade across that boundary over one database is not safe.
 
@@ -67,7 +67,7 @@ createTable: false
 
 ## Waking
 
-Wakes go over a `NOTIFY` channel named from the table prefix (`<prefix>_wake`), overridable with `notifyChannel:`. A [`DurableLocal.Resumer`](../durable-local/README.md) subscribes automatically.
+Wakes go over a `NOTIFY` channel named from the table prefix (`<prefix>_wake`), overridable with `notifyChannel:`. A [`DurableLocal.Resumer`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-local/) subscribes automatically.
 
 A wake only makes recovery **prompt**; the poller's interval is what makes it **certain**. A missed notification — a dropped connection, a process that was not listening yet — is invisible by nature, so nothing here treats it as the guarantee, and a connection that cannot `LISTEN` simply waits for the next pass.
 

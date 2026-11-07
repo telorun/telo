@@ -25,6 +25,17 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** A release version in a package format's own vocabulary. A candidate
+ *  (`0.85.0-rc.1`) must sort before its final: deb and rpm take `~` for that (a
+ *  `-` starts the deb revision and is illegal in an rpm version), and an MSI
+ *  version is the `X.Y.Z` triple alone. File NAMES keep the plain version. */
+export function nativeVersion(format, version) {
+  if (format === "msi") return version.split(/[-+]/)[0];
+  if (format === "deb" || format === "rpm") return version.replace("-", "~");
+  return version;
+}
 
 /** Each target's name in the package formats' own vocabularies. `deb` and `rpm`
  *  spell the architecture their own way, and that is their namespace rather than
@@ -123,7 +134,7 @@ function buildDeb({ target, version, dir }) {
     path.join(control, "control"),
     [
       "Package: telo",
-      `Version: ${version}`,
+      `Version: ${nativeVersion("deb", version)}`,
       `Architecture: ${arch}`,
       "Maintainer: Telo <noreply@telo.run>",
       "Section: devel",
@@ -161,7 +172,7 @@ function buildRpm({ target, version, dir }) {
       // into place.
       "%define __os_install_post %{nil}",
       "Name: telo",
-      `Version: ${version}`,
+      `Version: ${nativeVersion("rpm", version)}`,
       "Release: 1",
       "Summary: Telo — a declarative runtime for YAML manifests",
       "License: SEE LICENSE IN LICENSE",
@@ -182,8 +193,8 @@ function buildRpm({ target, version, dir }) {
   // `BuildArch: noarch` is not the way out either: rpm refuses arch-dependent
   // binaries in a noarch package, which this is.
   run("rpmbuild", ["--define", `_topdir ${root}`, "--target", arch, "-bb", spec]);
-  const built = path.join(root, "RPMS", arch, `telo-${version}-1.${arch}.rpm`);
-  const out = path.join(dir, path.basename(built));
+  const built = path.join(root, "RPMS", arch, `telo-${nativeVersion("rpm", version)}-1.${arch}.rpm`);
+  const out = path.join(dir, `telo-${version}-1.${arch}.rpm`);
   fs.copyFileSync(built, out);
   return out;
 }
@@ -227,7 +238,7 @@ function buildMsi({ target, version, dir }) {
     wxs,
     `<?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="Telo CLI" Manufacturer="Telo" Version="${version}" UpgradeCode="6F1F6A1E-9F0A-4F3A-9A3F-1B0C7E5D42A7" Scope="perMachine">
+  <Package Name="Telo CLI" Manufacturer="Telo" Version="${nativeVersion("msi", version)}" UpgradeCode="6F1F6A1E-9F0A-4F3A-9A3F-1B0C7E5D42A7" Scope="perMachine">
     <MajorUpgrade DowngradeErrorMessage="A newer version of Telo is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -289,4 +300,4 @@ function main() {
   }
 }
 
-main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

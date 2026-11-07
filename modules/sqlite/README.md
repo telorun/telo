@@ -1,6 +1,6 @@
 # SQL SQLite
 
-`SQLite.Connection` — a SQLite backend for the [`sql`](../sql/README.md) module's `Sql.Connection` abstract. Opens a file-backed or in-memory database (`better-sqlite3` on Node, `bun:sqlite` on Bun) with transactional DDL; the `sql` core itself depends on no driver. better-sqlite3's addon ships prebuilt per platform inside the module — the Node hosts it covers are in [the Node implementation notes](./nodejs/docs/platforms.md).
+`SQLite.Connection` — a SQLite backend for the [`sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/) module's `Sql.Connection` abstract. Opens a file-backed or in-memory database (`better-sqlite3` on Node, `bun:sqlite` on Bun) with transactional DDL; the `sql` core itself depends on no driver. better-sqlite3's addon ships prebuilt per platform inside the module — the Node hosts it covers are in [the Node implementation notes](./nodejs/docs/platforms.md).
 
 Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transaction`) and this module's own `Schema` kind references the connection driver-agnostically via `x-telo-ref: Sql.Connection`; this module satisfies that ref.
 
@@ -154,7 +154,7 @@ A name may appear in only one of the two maps (`SQL_COLUMN_DECLARED_TWICE`), and
 internal column's `renamedFrom` may name neither itself
 (`SQL_INTERNAL_COLUMN_RENAME_FROM_SELF`) nor a column either map still declares
 (`SQL_INTERNAL_COLUMN_RENAME_SOURCE_STILL_DECLARED`). See
-[Internal columns](../sql/docs/declarative-schema.md#internal-columns--outside-the-row-contract).
+[Internal columns](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/).
 
 ### Domains, predicates and reference data
 
@@ -218,5 +218,5 @@ histories stay apart; two on one connection naming the same one are refused.
 
 Foreign keys are described in [Foreign keys](docs/foreign-keys.md).
 
-See [Declarative schema](../sql/docs/declarative-schema.md) for tombstoning,
+See [Declarative schema](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/) for tombstoning,
 reclamation, renames, seeds and the ledger rule.

@@ -68,7 +68,7 @@ a sibling repeating a key taking `~2`, `~3` in declaration order (`Reports`
 → `reports`, its `Archive` group → `reports/archive`). A stored or addressed
 state names an entry by that key, never by its position, so an entry gated
 off by `when` or added elsewhere moves no other entry's key. The rule is
-spelled out in [`ui-react`'s URLs](../../ui-react/docs/urls.md#entry-keys).
+spelled out in [`ui-react`'s URLs](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/).
 
 **Every page an entry names must be one the application lists.** An entry
 naming any other page, at any depth of the tree, leads nowhere: it is

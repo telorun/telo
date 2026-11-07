@@ -7,7 +7,7 @@ sidebar_label: AiMcp.PromptToolProvider
 
 > Examples assume aliases `Ai` (`@telorun/ai`), `AiMcp` (`@telorun/ai-mcp`) and `Mcp` (`@telorun/mcp-client`).
 
-`AiMcp.PromptToolProvider` wraps any `Mcp.Client` as an [`Ai.ToolProvider`](../../ai/docs/ai-tool-provider.md) over the server's **prompts**: every prompt the server lists becomes a tool an [`Ai.Agent`](../../ai/docs/ai-agent.md) can call, and a call renders the prompt and hands its messages back to the model. A server's prompt catalogue — guides, templates, canned instructions — reaches the model on demand, and a prompt the server adds later reaches it with no manifest change.
+`AiMcp.PromptToolProvider` wraps any `Mcp.Client` as an [`Ai.ToolProvider`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) over the server's **prompts**: every prompt the server lists becomes a tool an [`Ai.Agent`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) can call, and a call renders the prompt and hands its messages back to the model. A server's prompt catalogue — guides, templates, canned instructions — reaches the model on demand, and a prompt the server adds later reaches it with no manifest change.
 
 ## Listing — `prompts/list`
 
@@ -23,7 +23,7 @@ The provider sends `prompts/list` and follows `nextCursor` until a page carries 
 
 ## Calling — `prompts/get`
 
-A model's call sends `prompts/get` with `{ name, arguments }` — the call's arguments as given — and returns the `content` block of every returned message, **in order**. Roles are not carried: a tool result has one author. The blocks are translated into [Ai content parts](../../ai/docs/ai-model.md) exactly as [`AiMcp.ToolProvider`](./ai-mcp-tool-provider.md) translates a tool's content — a text block stays a text part, an image block becomes an image part with `mimeType` renamed to `mediaType`, and a result holding any other block kind (an embedded resource, audio, …) is passed through untouched for the agent to serialize. The result passes through the agent's `maxToolResultBytes` like any tool result.
+A model's call sends `prompts/get` with `{ name, arguments }` — the call's arguments as given — and returns the `content` block of every returned message, **in order**. Roles are not carried: a tool result has one author. The blocks are translated into [Ai content parts](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) exactly as [`AiMcp.ToolProvider`](./ai-mcp-tool-provider.md) translates a tool's content — a text block stays a text part, an image block becomes an image part with `mimeType` renamed to `mediaType`, and a result holding any other block kind (an embedded resource, audio, …) is passed through untouched for the agent to serialize. The result passes through the agent's `maxToolResultBytes` like any tool result.
 
 ## Failures
 
@@ -59,4 +59,4 @@ toolProviders:
 | -------- | ------------------ | -------- | ---------------------------------------------------------- |
 | `client` | ref (`Mcp.Client`) | yes      | Any `Mcp.Client` (`Mcp.HttpClient`, `Mcp.StdioClient`, …). |
 
-The prompt set is **statically opaque** — known only at run time, as the server lists it. `prefix` / `include` / `exclude` / `approval` live on the consuming [`Ai.Agent`](../../ai/docs/ai-agent.md)'s `toolProviders` entry.
+The prompt set is **statically opaque** — known only at run time, as the server lists it. `prefix` / `include` / `exclude` / `approval` live on the consuming [`Ai.Agent`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/)'s `toolProviders` entry.

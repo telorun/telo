@@ -1,6 +1,6 @@
 # API keys — SQL
 
-Keep API keys in a table of the application's own database, so every replica sees an issued, revoked or rotated key at its next request. This is the SQL family's shared half: the `Store` contract and the engine-neutral implementation of [`api-key`](../api-key/README.md)'s store interface. Declare a store with an engine module — [`api-key-postgres`](../api-key-postgres/README.md) or [`api-key-sqlite`](../api-key-sqlite/README.md).
+Keep API keys in a table of the application's own database, so every replica sees an issued, revoked or rotated key at its next request. This is the SQL family's shared half: the `Store` contract and the engine-neutral implementation of [`api-key`](https://hub.telo.run/module/oci/ghcr.io/telorun/api-key/)'s store interface. Declare a store with an engine module — [`api-key-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/api-key-postgres/) or [`api-key-sqlite`](https://hub.telo.run/module/oci/ghcr.io/telorun/api-key-sqlite/).
 
 ## Why use this
 

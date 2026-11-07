@@ -1,6 +1,6 @@
 # UI React
 
-Serves a [`Ui`](../ui/README.md) interface as a web application. `UiReact.App`
+Serves a [`Ui`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) interface as a web application. `UiReact.App`
 is a mount: put it on an `Http.Server` and the pages it declares become a
 working application — navigation, listings, forms, filters, buttons that
 run an operation and draw its answer, swappable themes — drawn in the browser
@@ -19,7 +19,7 @@ by a React renderer this module ships prebuilt.
   — written as data, naming pages by reference so a library's pages join it
   unchanged. An entry's [icon](docs/app.md#icons) is drawn in the colour of
   its text, so a theme colours it as it colours text.
-- **Data on page load, drawn by condition.** A [`Ui.Data`](../ui/docs/data.md)
+- **Data on page load, drawn by condition.** A [`Ui.Data`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   is read when it is drawn — a loading state first, a failure state for a
   refused read — and read again on window focus or when a request inside it
   answers 401, so a sign-in gate is a reader and a condition. A node's `shown`
@@ -31,10 +31,10 @@ by a React renderer this module ships prebuilt.
   the page, and a serial action's presses run one after another.
 - **Swappable themes, separate brand.** An application picks its look with one
   reference — [`theme: !ref UiReact.defaultTheme`](docs/theme.md), or a theme
-  another module publishes — and its brand with [`Ui.DesignTokens`](../ui/docs/design-tokens.md)
+  another module publishes — and its brand with [`Ui.DesignTokens`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   under `tokens:`, so changing one keeps the other. A theme may also draw its
   own selects, menus and dialogs, and is held to the renderer's contract by
-  [`ui-react-conformance`](../ui-react-conformance/README.md) from its own tests.
+  [`ui-react-conformance`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react-conformance/) from its own tests.
 - **Contained or full-width pages.** A page is drawn within the look's measure,
   centred, or across all the room beside the navigation — chosen for the whole
   application (`pageWidth`) or per page (`width`), the measure and the inset
@@ -52,16 +52,16 @@ by a React renderer this module ships prebuilt.
 - **Accessible controls.** Dialogs trap the focus and close on Escape, choice
   lists and checkboxes work from the keyboard, and icon buttons are named —
   in a light and a dark scheme that follow the viewer's system.
-- **Forms open where the manifest says.** Every [surface](../ui/docs/surfaces.md)
+- **Forms open where the manifest says.** Every [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   is drawn — dialog, drawer, popover, inline, panel, page — with an open form
   in the address, a replacement below a breakpoint, and a question before
   unsaved input is lost.
-- **Fields that keep up with the viewer.** Every [field kind](../ui/docs/field-kinds.md)
+- **Fields that keep up with the viewer.** Every [field kind](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   is drawn — named controls, choices and pickers over options read, searched
   and labelled from an API, date ranges with presets in the viewer's time zone,
   labelled groups — checked against the model as values are entered, and kept
   in the address or a store between visits.
-- **Listings that keep their place.** A [`Ui.Listing`](../ui/docs/listing.md)
+- **Listings that keep their place.** A [`Ui.Listing`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   is drawn as a table, a list, cards, a kanban board, a calendar, a timeline
   or a tree — read as its layout's read plan says, and paged by a pager, a
   "Load more" button or infinite scroll, drawing only the pages in view. A
@@ -71,14 +71,14 @@ by a React renderer this module ships prebuilt.
   on the page reloads every listing of that collection without losing the
   viewer's place, an open form or what it holds, and a related record is shown
   by its label, looked up in batches. [How listings behave](docs/app.md#listings-and-filter-bars).
-- **Filter bars as declared.** Every [placement](../ui/docs/filter-placement.md)
+- **Filter bars as declared.** Every [placement](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   and every control is drawn — a bar above or beside the list, folded behind
   a toggle or in an overlay; chips, switches, sliders, tags, presets — and the
   chosen filters are kept [in the address or the browser's
   storage](docs/urls.md#filter-state) when the bar says so. A filter over a
   related record offers those records by name, and can offer only the values
   present under the other filters, each with its count.
-- **Operations without a script.** A [`Ui.Action`](../ui/docs/action.md) is
+- **Operations without a script.** A [`Ui.Action`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) is
   drawn as a form and a button: the record is checked in the page, posted,
   and the lists the action declares are drawn from the answer — links
   included. A listing offers the same operations on each record, with a question
@@ -205,7 +205,7 @@ mounts:
 ```
 
 The renderer's own texts — button labels, the pager, validation messages — are
-[`ui`'s own texts](../ui/docs/texts.md#uis-own-texts): English with nothing
+[`ui`'s own texts](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): English with nothing
 written, and translated by listing one of `ui`'s shipped translations
 (`Ui.polishTranslations`, …) in the application's `translations:` block; see
 [Languages](docs/app.md#languages).

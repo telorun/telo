@@ -5,7 +5,7 @@ layout, text, links, images — and of **composites**: a listing of a REST
 collection's records, a form over a data model, a button that runs an operation and
 draws its answer, a filter bar, a custom component. This
 module holds the vocabulary and the controllers that resolve it; it ships no
-code for a browser. A renderer, such as [`ui-react`](../ui-react/README.md),
+code for a browser. A renderer, such as [`ui-react`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/),
 turns what it produces into a web application.
 
 ## Why use this
@@ -19,7 +19,7 @@ turns what it produces into a web application.
   with no fields shows every filter the collection accepts. Adding a property
   changes nothing you have to edit.
 - **A screen offers only what its API accepts.** A
-  [collection](../data-model/docs/collection.md) declares the filters, sorts
+  [collection](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/) declares the filters, sorts
   and facets its list takes, and listings and filter bars are drawn from that
   declaration, never from a guess about the row's types.
 - **Related records by name.** Where a collection's property points at another
@@ -124,7 +124,7 @@ Which fields are texts, a text over data (`Ui.BoundText`), `ui`'s own texts and 
 The node vocabulary and the style list are in [Nodes](docs/nodes.md);
 `when`, `shown`, `Ui.Condition`, `Ui.Enablement`, `Ui.QueryParameters` and the
 interpreted profile `Ui.Match` are in [Conditions](docs/conditions.md). What a
-collection source speaks is [the collection contract](../data-model/docs/collection-contract.md),
+collection source speaks is [the collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/),
 what a reader's speaks is [the record contract](docs/record-contract.md), and
 what an action's speaks is [the action contract](docs/action-contract.md).
 A renderer's controller addresses browser files through the module's code

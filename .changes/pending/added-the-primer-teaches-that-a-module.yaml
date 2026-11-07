@@ -1,0 +1,4 @@
+modules:
+  apps/authoring-agent: Added
+body: The primer teaches that a module's docs link only to telo.run pages or another
+  module's hub page, never into the repository tree or to telo.run/next.

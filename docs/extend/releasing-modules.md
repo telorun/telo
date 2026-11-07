@@ -235,6 +235,17 @@ running from a source checkout stages the one file it needs on first use, so
 running a manifest needs no `stage`; publish, which reads every tuple, does. See
 [Native Files](./native-files.md#where-the-files-come-from-sources).
 
+## When modules publish
+
+Modules publish from a release branch (`release/<major>.<minor>`), never from `main`, and only after that branch's final:
+
+- **No module publishes during candidates.** The Module Release PR does not open on a branch holding `.changeset/pre.json`, nor while the branch's changesets still plan a release, so every floor a module declares (`requires: telo:`) names a published telo. A module adopting grammar of the release in candidates declares that release's floor and is tried in the checkout through relative imports.
+- **After the final** the Module Release PR opens on the branch as it used to on main; merging it publishes the changed modules. Each such release is tagged `modules-<major>.<minor>-<n>` (`n` counts the branch's module releases) and merged back into `main` by a pull request, so the ledger on `main` holds every published version and the next cut never plans one twice. `telo release check` does not ask for a fragment for files a `v*`, `modules-*` or `packages-*` tag contains.
+- **Image modules** build their images in the same Publish run: `:latest` moves only forward and only on a final, patch or module release; a push to `main` publishes no image.
+- **Module docs link only to `https://telo.run/…` pages or another module's hub page** (`https://hub.telo.run/module/oci/ghcr.io/telorun/<name>/`), never into the repository tree, so a module's bytes do not depend on which release publishes it. `pnpm run check:links` refuses the rest.
+
+The whole procedure, with recovery, is in [RELEASING.md](../../RELEASING.md).
+
 ## Consumers in the same repository
 
 An example, a starter or an application that lives beside the modules it uses

@@ -15,6 +15,10 @@
 //   suites              whether the example / starter / blueprint / plan-approval
 //                       suites and the cross-platform manifest checks run
 //   rust                whether the cargo job runs
+//   core                { mode, buildArgs, testArgs } for the analyzer, kernel and
+//                       CLI alone — the macOS and Windows core job. mode is "full"
+//                       (all three run) or "none"; every runtime change, shared
+//                       file or unowned file reaches them
 //
 // CONSERVATIVE BY CONSTRUCTION. A package's tests are selected only when every
 // changed file is either inside a package outside the runtime and the standard
@@ -41,6 +45,9 @@ const SHARED =
 const INERT = /\.md$|^(docs|\.changeset|\.changes|\.claude|\.github|\.vscode)\//;
 const SUITES = /^(examples|starters|blueprints|apps\/plan-approval[^/]*)\//;
 const RUST = /(^|\/)rust\/|\.rs$|(^|\/)Cargo\.(toml|lock)$|^rust-toolchain/;
+
+/** The packages the macOS and Windows core job tests. */
+const CORE = ["@telorun/analyzer", "@telorun/kernel", "@telorun/cli"];
 
 /** A selected package's tests may start the CLI without declaring it. */
 const ALWAYS_BUILT = "@telorun/cli";
@@ -101,6 +108,29 @@ function withDependents(names, packages) {
 }
 
 const filters = (names, suffix = "") => names.flatMap((name) => ["--filter", `${name}${suffix}`]);
+
+/** Whether the diff reaches the core packages; same fail-open rules as below. */
+export function selectCoreTests(changed, packages) {
+  const none = { mode: "none", buildArgs: [], testArgs: [] };
+  const touched = new Set();
+  let reached = false;
+  for (const file of changed) {
+    if (RUNTIME.test(file) || SHARED.test(file)) {
+      reached = true;
+      break;
+    }
+    const owner = ownerOf(file, packages);
+    if (owner) touched.add(owner.name);
+    else if (!INERT.test(file) && !SUITES.test(file) && !RUST.test(file)) {
+      reached = true;
+      break;
+    }
+  }
+  if (!reached) reached = CORE.some((name) => withDependents(touched, packages).has(name));
+  if (!reached) return none;
+  const present = CORE.filter((name) => packages.some((pkg) => pkg.name === name));
+  return { mode: "full", buildArgs: filters(present, "..."), testArgs: filters(present) };
+}
 
 export function selectPackageTests(changed, packages) {
   const everything = (reason) => ({
@@ -163,5 +193,7 @@ if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  process.stdout.write(`${JSON.stringify(selectPackageTests(changed, workspacePackages()))}\n`);
+  const packages = workspacePackages();
+  const answer = { ...selectPackageTests(changed, packages), core: selectCoreTests(changed, packages) };
+  process.stdout.write(`${JSON.stringify(answer)}\n`);
 }

@@ -1,6 +1,6 @@
 # Graph SQL
 
-A [`graph`](../graph/README.md) backend over ordinary SQL tables, on SQLite and PostgreSQL alike. Every node type and every relationship type is its own table, written as a plain `SQLite.Table` / `Postgres.Table` and listed in the engine `Schema`, which creates and migrates it. `GraphSql` maps the graph onto those tables, performs every write and query, and never issues DDL.
+A [`graph`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph/) backend over ordinary SQL tables, on SQLite and PostgreSQL alike. Every node type and every relationship type is its own table, written as a plain `SQLite.Table` / `Postgres.Table` and listed in the engine `Schema`, which creates and migrates it. `GraphSql` maps the graph onto those tables, performs every write and query, and never issues DDL.
 
 ## Why use this
 

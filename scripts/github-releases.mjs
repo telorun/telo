@@ -55,6 +55,7 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, loadWorkspace } from "./module-ownership.mjs";
+import { channelOf, githubReleaseFlags } from "./release-channel.mjs";
 
 const dryRun = process.argv.includes("--dry-run");
 
@@ -308,7 +309,25 @@ async function fillRelease(release, { tag, name, body }) {
   }
 }
 
-async function createRelease({ tag, name, body, draft = false }) {
+/**
+ * Flags for the cycle's release: a candidate is a pre-release and never `latest`; a
+ * final or patch is `latest` unless the current latest release is a higher version,
+ * so re-running an old publish moves nothing. `RELEASE_CHANNEL` comes from the
+ * Publish workflow; without it the version decides.
+ */
+async function releaseFlags(version) {
+  const channel =
+    process.env.RELEASE_CHANNEL || channelOf({ preMode: undefined, cliVersion: version });
+  if (channel === "candidate") return githubReleaseFlags({ channel, version });
+  const response = dryRun ? null : await github("/releases/latest");
+  if (response && !response.ok && response.status !== 404) {
+    throw new Error(`Reading the latest release failed: ${response.status} ${await response.text()}`);
+  }
+  const latest = response?.ok ? await response.json() : null;
+  return githubReleaseFlags({ channel, version, latestTag: latest?.tag_name });
+}
+
+async function createRelease({ tag, name, body, draft = false, flags = {} }) {
   const response = await github("/releases", {
     method: "POST",
     body: JSON.stringify({
@@ -316,6 +335,7 @@ async function createRelease({ tag, name, body, draft = false }) {
       name,
       body: body || undefined,
       draft,
+      ...(flags.prerelease === undefined ? {} : { prerelease: flags.prerelease, make_latest: flags.makeLatest }),
       ...(commit ? { target_commitish: commit } : {}),
     }),
   });
@@ -424,5 +444,5 @@ if (dryRun) {
   // from — and `releases/latest`, which the install scripts read, skips drafts,
   // so a build that fails leaves the previous release standing rather than
   // pointing users at an empty one.
-  await createRelease({ tag, name: `Telo ${tag}`, body, draft: true });
+  await createRelease({ tag, name: `Telo ${tag}`, body, draft: true, flags: await releaseFlags(cli.version) });
 }

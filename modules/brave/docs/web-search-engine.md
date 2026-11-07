@@ -7,7 +7,7 @@ sidebar_label: Brave.WebSearchEngine
 
 > Examples assume this module is imported under the alias `Brave`, `http-client` under `Http`. Substitute your own aliases.
 
-`Brave.WebSearchEngine` implements [`WebSearch.Engine`](../../web-search/docs/engine.md) over the Brave Search API's `GET /res/v1/web/search`. Declare it where the application chooses its search engine; everything that consumes it types against the contract.
+`Brave.WebSearchEngine` implements [`WebSearch.Engine`](https://hub.telo.run/module/oci/ghcr.io/telorun/web-search/) over the Brave Search API's `GET /res/v1/web/search`. Declare it where the application chooses its search engine; everything that consumes it types against the contract.
 
 It is a templated kind with no controller: the request, paging, date handling and error mapping are all in its `telo.yaml`.
 

@@ -146,7 +146,7 @@ tools) needs none of those; stateless is the right default.
 
 ## Authentication
 
-Authentication is the host mount's: give the `Http.Server` mount an `authentication:` with a verifier such as `AuthBearer.Jwt` ([Http.Server authentication](../../http-server/docs/authentication.md)). An MCP client learns where to sign in from the resource's metadata (RFC 9728), so an endpoint served behind authentication that denies anonymous callers needs the mount's `protectedResource:`:
+Authentication is the host mount's: give the `Http.Server` mount an `authentication:` with a verifier such as `AuthBearer.Jwt` ([Http.Server authentication](https://hub.telo.run/module/oci/ghcr.io/telorun/http-server/)). An MCP client learns where to sign in from the resource's metadata (RFC 9728), so an endpoint served behind authentication that denies anonymous callers needs the mount's `protectedResource:`:
 
 ```yaml
 mounts:

@@ -125,7 +125,7 @@
   "scripts": {
     "build": "pnpm --filter \"telo-vscode^...\" build && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "vsix": "pnpm run build && node scripts/stage-license.mjs && vsce package --no-dependencies --out telo-vscode.vsix",
+    "vsix": "pnpm run build && node scripts/stage-license.mjs && node scripts/pack-vsix.mjs",
     "test": "vitest run"
   },
   "dependencies": {

@@ -305,7 +305,7 @@ const sections = {
 
 let version;
 try {
-  version = teloGeneration().identity;
+  version = (await teloGeneration()).identity;
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }

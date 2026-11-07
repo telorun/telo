@@ -4,7 +4,7 @@
 entry every `Sql.Table` takes: `columns`, `references: { table, columns }`, and
 optionally `onDelete` and `onUpdate` (`cascade`, `restrict`, `set null`,
 `set default`, `no action`), described under
-[Foreign keys](../../sql/docs/declarative-schema.md#foreign-keys).
+[Foreign keys](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/).
 
 ```yaml
 kind: SQLite.Table

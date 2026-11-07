@@ -39,8 +39,8 @@
     "build": "tsc -p tsconfig.lib.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "prepack": "cp ../../LICENSE .",
-    "postpack": "rm -f LICENSE"
+    "prepack": "cp ../../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE"
   },
   "dependencies": {
     "@telorun/editor-protocol": "workspace:*",

@@ -18,7 +18,8 @@ fn main() {
             "\n{} does not exist.\n\
              The `telo` binary embeds the built-in vocabulary archive, which is rendered from \
              sdk/builtins and never committed. Render it from the repository root with \
-             `pnpm install`, or with no install at all:\n\n    \
+             `pnpm install`, or, once the workspace is installed (the version generator reads \
+             changesets' release plan):\n\n    \
              node scripts/generate-telo-version.mjs && node scripts/render-builtin-vocabulary.mjs\n",
             archive.display()
         );

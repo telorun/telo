@@ -1,6 +1,6 @@
 # Markdown
 
-A [`markdown` node](../../ui/docs/nodes.md) draws a string as formatted text,
+A [`markdown` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) draws a string as formatted text,
 and so does the chat renderer for a conversation's text: one renderer, shared.
 Its `text` is a binding, read like any other bound leaf — `{ value }` for a
 fixed string, `{ root, path }` for a path into a root in scope. A path that
@@ -33,7 +33,7 @@ else is parsed — footnotes, for one, stay literal text.
   characters is drawn plain. The language is shown above the block, beside a
   button copying the block's code to the clipboard; it reads `Copy code`, then
   `Copied` for two seconds — the `chatCopyCode` and `chatCopied` keys of
-  [`ui`'s own texts](../../ui/docs/texts.md#uis-own-texts), in the viewer's
+  [`ui`'s own texts](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), in the viewer's
   language. A browser that refuses the copy shows the `error` node
   `ERR_UI_COPY_FAILED` beside the button.
 

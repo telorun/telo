@@ -16,7 +16,8 @@
 # And the built-in vocabulary at the ref the hub's tests track it at, with a
 # module written against it:
 #
-# - `oci://example.test/telo` (0.119.0, 0.118.0): `builtins-0.119.0.yaml` is the
+# - `oci://example.test/telo` (0.120.0-rc.1, 0.119.0, 0.118.0): the candidate
+#   has no recorded manifest, since the hub must never read it. `builtins-0.119.0.yaml` is the
 #   archive the renderer writes (`analyzer/nodejs/src/builtin-vocabulary/`), as
 #   `telo publish` publishes it — its `layers:` index appended to the root
 #   document; `builtins-0.118.0.yaml` an older, smaller one with a different
@@ -38,32 +39,16 @@ imports:
   Console: ../../../../../../modules/console
   Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
 variables:
-  group:
-    type: string
-    arg: { position: 0 }
-    default: ""
-  verb:
-    type: string
-    arg: { position: 1 }
-    default: ""
-  ref:
-    type: string
-    arg: { position: 2 }
-    default: ""
-  json:
-    type: boolean
-    arg: json
-    default: false
-  digests:
-    type: boolean
-    arg: digests
-    default: false
+  group: { type: string, arg: { position: 0 }, default: "" }
+  verb: { type: string, arg: { position: 1 }, default: "" }
+  ref: { type: string, arg: { position: 2 }, default: "" }
+  json: { type: boolean, arg: json, default: false }
+  digests: { type: boolean, arg: digests, default: false }
 targets:
   - !ref answer
 ---
 kind: Run.Sequence
-metadata:
-  name: answer
+metadata: { name: answer }
 steps:
   - name: verbGate
     if: !cel >-
@@ -80,6 +65,7 @@ steps:
       oci://example.test/definition-first:
         - { version: 1.0.0, digest: sha256:definition-first-1.0.0 }
       oci://example.test/telo:
+        - { version: 0.120.0-rc.1, digest: sha256:telo-0.120.0-rc.1 }
         - { version: 0.119.0, digest: sha256:telo-0.119.0 }
         - { version: 0.118.0, digest: sha256:telo-0.118.0 }
       oci://example.test/not-telo:

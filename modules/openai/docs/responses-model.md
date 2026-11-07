@@ -116,9 +116,9 @@ other than `json_schema` pass through untouched.
 
 ### Content parts
 
-[Content parts](../../ai/docs/ai-model.md#modality-lives-in-the-parts) in a message are carried as follows.
+[Content parts](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) in a message are carried as follows.
 
-Declare what the model takes with [`accepts`](../../ai/docs/ai-model.md#accepts--what-a-model-takes-beside-text); with none it takes text only, and a part outside it is refused before anything is sent. This kind narrows it to what the responses API can carry at all: images of any `image/…` type and files of any media type (audio and video have no input shape here), so an entry outside that is a `SCHEMA_VIOLATION` under `telo check`.
+Declare what the model takes with [`accepts`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/); with none it takes text only, and a part outside it is refused before anything is sent. This kind narrows it to what the responses API can carry at all: images of any `image/…` type and files of any media type (audio and video have no input shape here), so an entry outside that is a `SCHEMA_VIOLATION` under `telo check`.
 
 ```yaml
 kind: OpenAI.ResponsesModel
@@ -139,7 +139,7 @@ The endpoint decides which media types it really reads: `accepts` states what *y
 
 The model publishes its list as `resources.<name>.accepts`.
 
-`ERR_MODEL_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, `error.data.mediaType` its media type when it has one, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
+`ERR_MODEL_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, `error.data.mediaType` its media type when it has one, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/), refused by the contract (`ERR_INPUT_INVALID`).
 
 On this API's wire an image is `{type: input_image, image_url}` — the part's `uri`, or a `data:<mediaType>;base64,…` URL built from its bytes — and a file is `{type: input_file, filename, file_data}` by bytes (`filename` the part's `name`, `file_data` the same `data:` URL form) or `{type: input_file, file_url}` by reference.
 
@@ -193,7 +193,7 @@ Lifecycle frames (`response.created`, `.in_progress`, `.content_part.*`, the `.d
 
 ## Errors
 
-This kind raises only the failures [`Ai.Model` declares](../../ai/README.md#catching-a-models-errors) — the thirteen codes every provider raises — and restates the whole list in its `throws:`. How a status, the endpoint's own error object, a transport failure or an unreadable answer becomes one of them is the same for all four language kinds: [Errors](../README.md#errors).
+This kind raises only the failures [`Ai.Model` declares](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) — the thirteen codes every provider raises — and restates the whole list in its `throws:`. How a status, the endpoint's own error object, a transport failure or an unreadable answer becomes one of them is the same for all four language kinds: [Errors](../README.md#errors).
 
 | Code | On this API |
 | ---- | ---- |

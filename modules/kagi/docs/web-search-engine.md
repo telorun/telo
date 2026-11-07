@@ -7,7 +7,7 @@ sidebar_label: Kagi.WebSearchEngine
 
 > Examples assume this module is imported under the alias `Kagi`, `http-client` under `Http`. Substitute your own aliases.
 
-`Kagi.WebSearchEngine` implements [`WebSearch.Engine`](../../web-search/docs/engine.md) over the Kagi Search API's `POST /api/v1/search`. Declare it where the application chooses its search engine; everything that consumes it types against the contract.
+`Kagi.WebSearchEngine` implements [`WebSearch.Engine`](https://hub.telo.run/module/oci/ghcr.io/telorun/web-search/) over the Kagi Search API's `POST /api/v1/search`. Declare it where the application chooses its search engine; everything that consumes it types against the contract.
 
 It is a templated kind with no controller: the request, paging, date handling and error mapping are all in its `telo.yaml`.
 

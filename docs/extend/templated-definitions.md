@@ -159,7 +159,7 @@ resources:
 mount: !ref api
 ```
 
-See [`modules/crud/telo.yaml`](https://github.com/telorun/telo/blob/main/modules/crud/telo.yaml) for the full CRUD surface.
+See [`modules/crud/telo.yaml`](../../modules/crud/telo.yaml) for the full CRUD surface.
 
 ## Starting several entries — `targets:`
 

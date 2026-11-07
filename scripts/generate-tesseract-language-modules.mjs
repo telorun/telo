@@ -26,8 +26,9 @@ const languages = JSON.parse(readFileSync(tablePath, "utf8")).filter(
 );
 
 const INITIAL_VERSION = "0.1.0";
-// Absolute: each language module is published, and shown on the hub, on its own.
-const DOCS = "https://github.com/telorun/telo/blob/main/modules/tesseract/docs";
+// Absolute: each language module is published, and shown on the hub, on its own,
+// and a module's files hold no reference into the repository tree.
+const TESSERACT = "https://hub.telo.run/module/oci/ghcr.io/telorun/tesseract/";
 const TESSDATA_VERSION = "1.0.0";
 
 const pascal = (code) =>
@@ -124,8 +125,7 @@ pins each one to the version it resolved.
 
 ## Documentation
 
-- [Languages and models](${DOCS}/languages.md)
-- [Getting started with Tesseract](${DOCS}/getting-started.md)
+- [Tesseract: languages, models and getting started](${TESSERACT})
 `;
 }
 

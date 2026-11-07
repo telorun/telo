@@ -25,8 +25,8 @@ import {
   type ModuleKey,
 } from "@telorun/analyzer";
 import { computeFilesIntegrity } from "@telorun/kernel";
+import { changedFilesSinceBase } from "./changed-since-base.js";
 import { lastMatchIndex, selectByPatterns } from "@telorun/glob";
-import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
@@ -282,20 +282,16 @@ function ownerOf(
  * needs no merge base in the first place.
  */
 function changedModules(workspace: Workspace, baseRef: string): Set<ModuleKey> {
-  let diff: string;
+  let files: string[];
   try {
-    diff = execFileSync("git", ["diff", "--name-only", `${baseRef}...HEAD`], {
-      cwd: workspace.root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+    files = changedFilesSinceBase(workspace.root, baseRef);
   } catch {
     return new Set();
   }
 
   const nearestFirst = [...workspace.modules].sort((a, b) => b.key.length - a.key.length);
   const changed = new Set<ModuleKey>();
-  for (const file of diff.split("\n").map((line) => line.trim()).filter(Boolean)) {
+  for (const file of files) {
     const module = nearestFirst.find((candidate) => file.startsWith(`${candidate.key}/`));
     if (!module) continue;
     const rest = file.slice(module.key.length + 1);

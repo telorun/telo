@@ -1,8 +1,8 @@
 # The theme and its controls
 
 `ui-react-radix` exports two resources and nothing else: a
-[`UiReact.Theme`](../../ui-react/docs/theme.md) named `theme`, and the
-[`UiReact.Controls`](../../ui-react/docs/theme.md#control-sets) set named
+[`UiReact.Theme`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) named `theme`, and the
+[`UiReact.Controls`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) set named
 `controls` that the theme draws with. It imports `ui-react` and `ui`; neither
 imports it.
 
@@ -29,7 +29,7 @@ headings in small uppercase letters. It holds:
   contained page's measure (`width.page`) `72rem` and the page inset
   (`space.page`) `1.5rem` among them;
 - `stylesheets` — one stylesheet, `themes/radix-theme.css`, styling every part
-  of [the styling contract](../../ui-react/docs/styling.md), giving the
+  of [the styling contract](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/), giving the
   typeface tokens and every dark-scheme value, and declaring no reserved
   property;
 - `controls` — `Radix.controls`.
@@ -47,7 +47,7 @@ tokens only.
 ## The controls
 
 `Radix.controls` implements thirteen controls of
-[`ui_react_controls-3`](../../ui-react/docs/controls-abi.md) in one browser
+[`ui_react_controls-3`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) in one browser
 entry, `@telorun/ui-react-radix`, which leaves only `react`,
 `react/jsx-runtime` and `react-dom` to the page:
 
@@ -74,7 +74,7 @@ the `telo.control` layer in place of the built-ins' own.
 
 ### One stack of layers
 
-The nine [layer controls](../../ui-react/docs/controls-abi.md#layers) —
+The nine [layer controls](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) —
 `Select`, `MultiSelect`, `Dialog`, `Drawer`, `Popover`, `Confirmation`,
 `Menu`, `Tooltip`, `Navigation` — are all here, drawn by one copy of the primitives, which
 keeps one stack of every layer a page opens:

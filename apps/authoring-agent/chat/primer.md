@@ -3190,6 +3190,12 @@ file beside `telo.yaml`, which `telo publish` and `telo package` carry with no
 user's module or application — which license their work is under is theirs
 to say.
 
+Links in a published module's docs and manifest descriptions stay inside the
+module (relative) or leave it only as a docs page (`https://telo.run/…`) or
+another module's hub page (`https://hub.telo.run/module/oci/ghcr.io/telorun/<name>/`).
+Never link into the repository tree (`github.com/telorun/telo/blob/main/…`) or
+to `telo.run/next/`: a module's bytes must not depend on which release publishes it.
+
 - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The ONLY two
   sources you may write are an OCI ref `oci://host/repo@VERSION` (the version
   is EXACT — never `@latest` or a range; may carry a `#sha256-…` integrity

@@ -1,6 +1,6 @@
 # Durable Store — Redis
 
-`KvStoreRedis.Store` — a [`KvStore.Store`](../kv-store/README.md) backed by Redis.
+`KvStoreRedis.Store` — a [`KvStore.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/kv-store/) backed by Redis.
 
 ## Why use this
 

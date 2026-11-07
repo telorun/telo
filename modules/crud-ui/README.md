@@ -38,4 +38,4 @@ layout: { kind: Ui.BoardLayout, groups: { property: status } }
 
 - [Admin](docs/admin.md) — the fields, what the screen does, what it expands into and how to eject it
 
-The collection and its API are [`Crud.Collection`](../crud/docs/collection.md) and [`Crud.Api`](../crud/docs/api.md); the listing and its layouts are [`Ui.Listing`](../ui/docs/listing.md) and [the listing layouts](../ui/docs/listing-layouts.md).
+The collection and its API are [`Crud.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) and [`Crud.Api`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/); the listing and its layouts are [`Ui.Listing`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) and [the listing layouts](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/).

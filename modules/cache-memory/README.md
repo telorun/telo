@@ -1,6 +1,6 @@
 # Cache Memory
 
-`CacheMemory.Store` — an in-process implementation of the [`Cache.Store`](../cache/README.md) abstract. Zero external dependencies; ideal for single-instance deployments, tests, and as the `fallback` behind `CacheRedis.Store`.
+`CacheMemory.Store` — an in-process implementation of the [`Cache.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/cache/) abstract. Zero external dependencies; ideal for single-instance deployments, tests, and as the `fallback` behind `CacheRedis.Store`.
 
 ## Why use this
 

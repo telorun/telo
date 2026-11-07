@@ -2,28 +2,35 @@ name: Release Studio
 
 # Builds the Tauri desktop binaries for Telo Studio and publishes them as a
 # GitHub Release on the external `telorun/studio` repo (the same repo the web
-# build is deployed to via Pages in `studio-pages.yml`).
+# build is deployed to via Pages in `studio-pages.yml`), and publishes the web
+# image and its chart.
 #
-# Trigger is coupled to the changesets release: `@telorun/studio` is private so
-# it never lands in `publishedPackages`, so we instead fire whenever its
-# `package.json` version field actually moves on main (which happens when a
-# Version PR merges, including the automatic `updateInternalDependencies` patch
-# bumps). The `gate` job confirms the version changed before spending matrix
-# minutes. `workflow_dispatch` forces a (re)build of the current version.
+# Called by the branch's Publish workflow on finals and patches only: a candidate
+# carries an rc version of Studio and publishes none of it. `@telorun/studio` is
+# private so it never lands in `publishedPackages`; the `gate` job instead
+# confirms its `package.json` version moved in the commit Publish ran on (which
+# happens when a Version PR merges, including the automatic
+# `updateInternalDependencies` patch bumps) before spending matrix minutes. A
+# re-run of the Publish run answers as the first did.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/studio/package.json'
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      channel:
+        description: 'final or patch.'
+        type: string
+        required: true
+      version:
+        description: 'The CLI version released (the release this Studio build belongs to).'
+        type: string
+        required: true
+      tag:
+        description: 'The release tag (v<version>).'
+        type: string
+        required: true
 
 permissions:
   contents: read
-
-concurrency:
-  group: studio-release-${{ github.ref }}
-  cancel-in-progress: false
 
 jobs:
   gate:
@@ -32,11 +39,14 @@ jobs:
     outputs:
       release: ${{ steps.check.outputs.release }}
       version: ${{ steps.check.outputs.version }}
+      # Whether the image's `latest` tag moves forward (release-pointers.mjs).
+      latest: ${{ steps.pointers.outputs.latest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Check studio version
         id: check
@@ -45,31 +55,16 @@ jobs:
           NEW=$(jq -r .version apps/studio/package.json)
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Manual dispatch -> releasing v$NEW"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          BEFORE="${{ github.event.before }}"
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            echo "No baseline commit -> releasing v$NEW"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # A path absent at the baseline is a move (the editor -> studio rename)
+          # A path absent at the parent is a move (the editor -> studio rename)
           # or a brand-new app — neither is a version bump, and treating one as
-          # a bump republishes whatever version happens to be in the file. Left
-          # to `git show ... || echo ""` this reads as OLD="" and always fires.
-          # A genuine first release goes through workflow_dispatch.
-          if ! git cat-file -e "$BEFORE:apps/studio/package.json" 2>/dev/null; then
-            echo "apps/studio/package.json did not exist at $BEFORE -> not a version bump; skipping."
+          # a bump republishes whatever version happens to be in the file.
+          if ! git cat-file -e "HEAD^:apps/studio/package.json" 2>/dev/null; then
+            echo "apps/studio/package.json did not exist at HEAD^ -> not a version bump; skipping."
             echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          OLD=$(git show "$BEFORE:apps/studio/package.json" | jq -r .version)
+          OLD=$(git show "HEAD^:apps/studio/package.json" | jq -r .version)
           if [ "$NEW" != "$OLD" ]; then
             echo "Studio version changed: $OLD -> $NEW"
             echo "release=true" >> "$GITHUB_OUTPUT"
@@ -77,6 +72,10 @@ jobs:
             echo "Studio version unchanged ($NEW); skipping release."
             echo "release=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Does the latest tag move forward
+        id: pointers
+        run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"
 
   build:
     name: Build (${{ matrix.label }})
@@ -175,6 +174,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A released Studio shows its own release's starters, never main's.
+          VITE_TELO_STARTERS_URL: https://raw.githubusercontent.com/telorun/telo/${{ inputs.tag }}/starters
         with:
           projectPath: apps/studio
           args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
@@ -226,11 +227,13 @@ jobs:
           context: .
           file: apps/studio/Dockerfile
           target: production
+          build-args: |
+            VITE_TELO_STARTERS_URL=https://raw.githubusercontent.com/telorun/telo/${{ inputs.tag }}/starters
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
             ghcr.io/telorun/studio-web:${{ needs.gate.outputs.version }}
-            ghcr.io/telorun/studio-web:latest
+            ${{ needs.gate.outputs.latest == 'true' && 'ghcr.io/telorun/studio-web:latest' || '' }}
           cache-from: type=gha,scope=studio-web
           cache-to: type=gha,mode=max,scope=studio-web
 

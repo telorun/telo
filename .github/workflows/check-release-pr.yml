@@ -1,16 +1,16 @@
 name: Check release PR
 
-# Guards the changesets Version PR (`changeset-release/main`) against the
+# Guards the changesets Version PR (`changeset-release/release/<x>.<y>`, opened by the bot token so checks run) against the
 # 0.x → 1.0.0 peer-dep cascade bug that's bitten the repo twice. See
 # scripts/check-no-major-bump.mjs for the rationale.
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "release/*"]
 
 jobs:
   no-major-bump:
-    if: github.head_ref == 'changeset-release/main'
+    if: startsWith(github.head_ref, 'changeset-release/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

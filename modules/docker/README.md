@@ -1,6 +1,6 @@
 # Docker
 
-`docker` — a [`Container.Engine`](../container/README.md) over the Docker
+`docker` — a [`Container.Engine`](https://hub.telo.run/module/oci/ghcr.io/telorun/container/) over the Docker
 Engine API. `Docker.Engine` runs the containers `Container.Instance` declares on
 a local Docker or Podman daemon, or on an engine a runner serves its session,
 reached over a unix socket or HTTP(S) with an optional bearer token.

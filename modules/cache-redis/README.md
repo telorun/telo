@@ -1,6 +1,6 @@
 # Cache Redis
 
-`CacheRedis.Store` — a Redis-backed implementation of the [`Cache.Store`](../cache/README.md) abstract, for caching and rate-limit counters shared across instances.
+`CacheRedis.Store` — a Redis-backed implementation of the [`Cache.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/cache/) abstract, for caching and rate-limit counters shared across instances.
 
 ## Why use this
 

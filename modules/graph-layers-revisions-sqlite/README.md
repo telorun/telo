@@ -1,6 +1,6 @@
 # Graph Layers — revisions, SQLite
 
-Versioned knowledge graphs in SQLite: named layers over one set of tables, where **every revision a layer publishes is kept** and a layer is built on revisions of others it pins. Drafts are parallel and each reads a consistent snapshot; publishing is atomic; a draft that fell behind, and a layer taking a newer revision of a base, are merged three ways, property by property. This is the *revisions* strategy of [`graph-layers`](../graph-layers/README.md) for SQLite — declare your storage with these kinds, then use the `Graph` operations and the `GraphLayers` drafting, pinning and history operations over a store.
+Versioned knowledge graphs in SQLite: named layers over one set of tables, where **every revision a layer publishes is kept** and a layer is built on revisions of others it pins. Drafts are parallel and each reads a consistent snapshot; publishing is atomic; a draft that fell behind, and a layer taking a newer revision of a base, are merged three ways, property by property. This is the *revisions* strategy of [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/) for SQLite — declare your storage with these kinds, then use the `Graph` operations and the `GraphLayers` drafting, pinning and history operations over a store.
 
 ## Why use this
 
@@ -153,11 +153,11 @@ steps:
     inputs: { revision: !cel "steps.pin.result.bases[0].revision", label: "2026.10" }
 ```
 
-`pin` builds `team` on `shared` at its newest revision, as one revision of `team`; from then on `team` reads `shared` as that revision left it. `release` names that revision of `shared` for good — it must be a published one, so `shared` has to have been written at least once. Taking a later one is `PinBase` again — outside a draft when nothing can collide, and otherwise inside a draft session, where the conflicts it leaves are listed, decided and published ([Revisions](../graph-layers/docs/revisions.md#upgrading-is-a-pin-move)).
+`pin` builds `team` on `shared` at its newest revision, as one revision of `team`; from then on `team` reads `shared` as that revision left it. `release` names that revision of `shared` for good — it must be a published one, so `shared` has to have been written at least once. Taking a later one is `PinBase` again — outside a draft when nothing can collide, and otherwise inside a draft session, where the conflicts it leaves are listed, decided and published ([Revisions](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/)).
 
 ## Docs
 
 - [Declaring storage, and exactly what exists in the database](docs/revisions-sqlite.md)
-- [Revisions — pinned stacks, upgrades, labels, parallel drafts, three-way merge, the change feed](../graph-layers/docs/revisions.md)
-- [Drafting — sessions, publish, rebase, conflicts](../graph-layers/docs/drafting.md)
-- [Revisioned tables in SQL — the index set, the pin-move pass and what each operation costs](../graph-layers-sql/docs/revisioned-sql.md)
+- [Revisions — pinned stacks, upgrades, labels, parallel drafts, three-way merge, the change feed](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/)
+- [Drafting — sessions, publish, rebase, conflicts](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/)
+- [Revisioned tables in SQL — the index set, the pin-move pass and what each operation costs](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-sql/)

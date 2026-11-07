@@ -33,6 +33,7 @@
     "check:controller-protocol": "node scripts/check-controller-protocol.mjs",
     "check:cel-conformance": "node scripts/check-cel-conformance.mjs",
     "check:licenses": "node scripts/check-licenses.mjs",
+    "check:links": "node scripts/check-links.mjs",
     "test": "bun ./cli/nodejs/bin/telo.ts ./test-suite.yaml",
     "test:integration": "bun ./cli/nodejs/bin/telo.ts ./test-suite-integration.yaml",
     "test:e2e:hub": "node scripts/hub-e2e.mjs",
@@ -45,6 +46,7 @@
     "release": "changeset publish",
     "publish-modules": "node scripts/publish-modules.mjs",
     "register-modules": "node scripts/register-modules.mjs",
+    "version-release": "node scripts/release-version.mjs",
     "version-packages": "changeset version && node scripts/version-line.mjs && node scripts/stamp-chart-version.mjs",
     "check:charts": "node scripts/stamp-chart-version.mjs --check"
   },

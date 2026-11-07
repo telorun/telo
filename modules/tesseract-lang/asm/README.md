@@ -27,5 +27,4 @@ pins each one to the version it resolved.
 
 ## Documentation
 
-- [Languages and models](https://github.com/telorun/telo/blob/main/modules/tesseract/docs/languages.md)
-- [Getting started with Tesseract](https://github.com/telorun/telo/blob/main/modules/tesseract/docs/getting-started.md)
+- [Tesseract: languages, models and getting started](https://hub.telo.run/module/oci/ghcr.io/telorun/tesseract/)

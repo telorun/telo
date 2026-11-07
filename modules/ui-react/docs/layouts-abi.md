@@ -1,15 +1,15 @@
 # The layout contract — `ui_react_layouts-1`
 
 What a listing layout component is written against: a browser component
-drawing the records a [`Ui.Listing`](../../ui/docs/listing.md) reads, named by a
-[`Ui.ComponentLayout`](../../ui/docs/listing-layouts.md#uicomponentlayout) — a
+drawing the records a [`Ui.Listing`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) reads, named by a
+[`Ui.ComponentLayout`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) — a
 map, a seat plan, a gallery of one's own. The renderer's built-in list, card,
 board, calendar, timeline and tree layouts are its reference implementation:
 the renderer draws them through this contract, as it draws any other.
 
 A layout component is a **named export** of a browser entry that declares
 `abi: ui_react_layouts-1`, published with a
-[`Ui.ComponentExport`](../../ui/docs/component-export.md). It is **fully
+[`Ui.ComponentExport`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/). It is **fully
 controlled**: it fetches nothing and holds nothing the renderer holds.
 
 | | The renderer | The component |

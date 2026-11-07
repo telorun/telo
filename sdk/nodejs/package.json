@@ -38,8 +38,8 @@
     "build": "tsc -p tsconfig.lib.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepack": "cp ../LICENSE .",
-    "postpack": "rm -f LICENSE"
+    "prepack": "cp ../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE"
   },
   "dependencies": {
     "@telorun/cel": "workspace:*",

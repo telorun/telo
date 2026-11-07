@@ -37,4 +37,4 @@ relations:
 - [Collection](docs/collection.md) — the fields, operators, relations and the rules
 - [The collection contract](docs/collection-contract.md) — the requests and answers an endpoint speaks, including facets and `absent`
 
-The SQL-backed collection and its API are [`Crud.Collection`](../crud/docs/collection.md) and [`Crud.Api`](../crud/docs/api.md).
+The SQL-backed collection and its API are [`Crud.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) and [`Crud.Api`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/).

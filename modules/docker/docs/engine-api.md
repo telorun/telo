@@ -1,6 +1,6 @@
 # Docker.Engine — the Engine API it speaks
 
-`Docker.Engine` implements [`Container.Engine`](../../container/docs/engine-contract.md)
+`Docker.Engine` implements [`Container.Engine`](https://hub.telo.run/module/oci/ghcr.io/telorun/container/)
 over the Docker Engine API, version 1.41, as raw HTTP. The requests below are
 **all** it sends: an endpoint that answers them — a Docker or Podman daemon, or
 a runner serving its sessions an engine — is an endpoint it can use.

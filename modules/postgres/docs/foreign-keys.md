@@ -4,7 +4,7 @@
 key's durable identity. Each entry is the entry every `Sql.Table` takes:
 `columns`, `references: { table, columns }`, and optionally `onDelete` and
 `onUpdate` (`cascade`, `restrict`, `set null`, `set default`, `no action`). The
-entry is described under [Foreign keys](../../sql/docs/declarative-schema.md#foreign-keys).
+entry is described under [Foreign keys](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/).
 
 ```yaml
 kind: Postgres.Table

@@ -1,6 +1,6 @@
 # Graph Layers — drafts, SQLite
 
-Layered knowledge graphs in SQLite **edited in drafts**: several graphs kept as named layers over one set of tables, each layer's changes staged in a draft and published atomically as a numbered revision. This is the *drafts* strategy of [`graph-layers`](../graph-layers/README.md) for SQLite — declare your storage with these kinds, then use the `Graph` operations and the `GraphLayers` drafting operations over a store.
+Layered knowledge graphs in SQLite **edited in drafts**: several graphs kept as named layers over one set of tables, each layer's changes staged in a draft and published atomically as a numbered revision. This is the *drafts* strategy of [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/) for SQLite — declare your storage with these kinds, then use the `Graph` operations and the `GraphLayers` drafting operations over a store.
 
 ## Why use this
 
@@ -10,7 +10,7 @@ Layered knowledge graphs in SQLite **edited in drafts**: several graphs kept as 
 - **Declared storage** — every table, the two bookkeeping tables included, is a resource you declare and list in the `SQLite.Schema`. The module issues no DDL.
 - **Still a layered graph** — a store reads its own statements over its bases', writes only to itself, and every `Graph` operation works unchanged.
 
-What it does not do: keep earlier revisions, open two drafts on one layer, or merge two sides' changes to different properties of one key by itself. Those are the revisioned level of [`graph-layers`](../graph-layers/README.md#the-three-levels).
+What it does not do: keep earlier revisions, open two drafts on one layer, or merge two sides' changes to different properties of one key by itself. Those are the revisioned level of [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/).
 
 ## Kinds
 
@@ -137,5 +137,5 @@ steps:
 ## Docs
 
 - [Declaring storage, and exactly what exists in the database](docs/drafts-sqlite.md)
-- [Drafting — sessions, publish, rebase, conflicts](../graph-layers/docs/drafting.md)
-- [Drafted tables in SQL — rows, revisions and what each operation writes](../graph-layers-sql/docs/drafted-sql.md)
+- [Drafting — sessions, publish, rebase, conflicts](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/)
+- [Drafted tables in SQL — rows, revisions and what each operation writes](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-sql/)

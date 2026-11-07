@@ -2,7 +2,7 @@
 
 A second Telo kernel, written in Rust. It loads a manifest, resolves resources, loads Rust controllers out of `cdylib`s, and dispatches invocations — no JavaScript anywhere in the path.
 
-This is step one. It exists to prove the kernel itself can be a different language, not to reach parity with `kernel/nodejs`. See [`plans/rust-kernel-hello-world.md`](../../plans/rust-kernel-hello-world.md).
+This is step one. It exists to prove the kernel itself can be a different language, not to reach parity with `kernel/nodejs`.
 
 ## Running
 

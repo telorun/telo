@@ -5,7 +5,7 @@ sidebar_label: Layered store contract
 
 # The layered store contract
 
-`graph-layers` owns what a layer means and the lifecycle operations. A **strategy module** owns how layers are stored for one engine. This page is what a strategy implements; it extends [the graph store contract](../../graph/docs/store-contract.md), all of which still applies.
+`graph-layers` owns what a layer means and the lifecycle operations. A **strategy module** owns how layers are stored for one engine. This page is what a strategy implements; it extends [the graph store contract](https://hub.telo.run/module/oci/ghcr.io/telorun/graph/), all of which still applies.
 
 ## The kinds a strategy declares
 

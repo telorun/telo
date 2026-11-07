@@ -32,7 +32,9 @@
 //
 // Usage: node scripts/version-line.mjs
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -97,69 +99,167 @@ export function workspacePackages() {
   return byName;
 }
 
-const VERSION = /^(\d+)\.(\d+)\.(\d+)(-.+)?$/;
+const VERSION = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 
-function compareVersions(a, b) {
-  const [, am, an, ap] = VERSION.exec(a).map(Number);
-  const [, bm, bn, bp] = VERSION.exec(b).map(Number);
-  return am - bm || an - bn || ap - bp;
-}
-
-/** The strongest bump any pending changeset declares for a member of the line.
- *  The front matter is a YAML mapping of `"name": bump`, one per line — the same
- *  shape `check-changeset-status.mjs` reads. */
-function pendingBump(members) {
-  const dir = join(ROOT, ".changeset");
-  const rank = { patch: 1, minor: 2, major: 3 };
-  let strongest;
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith(".md") || file === "README.md") continue;
-    const frontMatter = readFileSync(join(dir, file), "utf8").split(/^---$/m)[1];
-    if (!frontMatter) continue;
-    for (const line of frontMatter.split("\n")) {
-      const match = /^\s*["']?(@?[^"':]+)["']?\s*:\s*(major|minor|patch)\s*$/.exec(line);
-      if (!match || !members.has(match[1].trim())) continue;
-      const bump = match[2];
-      if (strongest === undefined || rank[bump] > rank[strongest]) strongest = bump;
-    }
+/** Semver precedence of two versions, prerelease included (`0.85.0-rc.1` < `0.85.0`).
+ *  Build metadata is not part of a package version and is not read. */
+export function compareVersions(a, b) {
+  const left = VERSION.exec(a);
+  const right = VERSION.exec(b);
+  for (let part = 1; part <= 3; part++) {
+    const difference = Number(left[part]) - Number(right[part]);
+    if (difference !== 0) return difference;
   }
-  return strongest;
+  if (left[4] === right[4]) return 0;
+  if (left[4] === undefined) return 1;
+  if (right[4] === undefined) return -1;
+  const ours = left[4].split(".");
+  const theirs = right[4].split(".");
+  for (let i = 0; i < Math.min(ours.length, theirs.length); i++) {
+    const [x, y] = [ours[i], theirs[i]];
+    if (x === y) continue;
+    const numeric = [/^\d+$/.test(x), /^\d+$/.test(y)];
+    if (numeric[0] && numeric[1]) return Number(x) - Number(y);
+    if (numeric[0] !== numeric[1]) return numeric[0] ? -1 : 1;
+    return x < y ? -1 : 1;
+  }
+  return ours.length - theirs.length;
 }
 
-/** `version` with `bump` applied, by plain semver — pre-1.0 is NOT special-cased,
- *  because changesets does not special-case it either: a minor on 0.78.0 is
- *  0.79.0, which is precisely how this repo ships a breaking change. */
-function applyBump(base, bump) {
-  const [, major, minor, patch] = VERSION.exec(base).map(Number);
-  if (bump === "major") return `${major + 1}.0.0`;
-  if (bump === "minor") return `${major}.${minor + 1}.0`;
-  return `${major}.${minor}.${patch + 1}`;
+/** `major.minor.patch` of a version, prerelease dropped. */
+export function releaseTriple(version) {
+  return version.split(/[-+]/)[0];
+}
+
+/** `.changeset/pre.json` as changesets wrote it, or undefined outside prerelease
+ *  mode. `mode` is `pre` while candidates are being cut and `exit` between
+ *  `changeset pre exit` and the Version PR that consumes the file. */
+export function readPreState() {
+  const file = join(ROOT, ".changeset", "pre.json");
+  return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : undefined;
+}
+
+/** A `release/*` branch, given as a bare name or as `origin/<name>`. */
+export function isReleaseBranch(name) {
+  return /^(?:origin\/)?release\/.+/.test(name ?? "");
+}
+
+/** Whether a release branch (`release/<major>.<minor>`, or `origin/…`) has published
+ *  its first final — `v<major>.<minor>.0` exists. Before it, the branch is fresh or
+ *  in candidates; after it, it takes patches only. */
+export function finalPublished({ cwd = ROOT, branch }) {
+  const match = /^(?:origin\/)?release\/(\d+)\.(\d+)$/.exec(branch);
+  if (!match) throw new Error(`${branch} is not a release/<major>.<minor> branch.`);
+  const tags = execFileSync("git", ["tag", "--list", `v${match[1]}.${match[2]}.0`], { cwd, encoding: "utf8" });
+  return tags.trim() !== "";
 }
 
 /**
- * The telo generation this tree builds: `surface`, the line's highest member
- * version with the strongest pending changeset bump applied — the number
- * `changeset version` will write — and `identity`, that number as a build of
- * this tree reports itself: `surface` for the release, `surface+unreleased`
- * while a line changeset is pending. `generate-telo-version.mjs` writes both;
- * `render-builtin-vocabulary.mjs` stamps `identity` on the archive. One
- * computation, so the two can never name different versions. Throws when the
- * line cannot be read.
+ * changesets' own release plan for this tree, `.changeset/pre.json` honoured.
+ * Resolved THROUGH `@changesets/cli` rather than added as a dependency of this
+ * repo, so it is the same version the CLI itself uses — the two are released
+ * together and read the config the same way. Not through the `changeset status`
+ * CLI, which diffs against the config's `baseBranch` and fails in a CI checkout
+ * that has no local `main`.
  */
-export function teloGeneration(packages = workspacePackages()) {
+export async function readReleasePlan() {
+  const here = createRequire(import.meta.url);
+  const fromCli = createRequire(here.resolve("@changesets/cli/package.json"));
+  // `getReleasePlan` validates the config against the workspace itself and cannot
+  // take a trimmed one, so its four steps are run here over `presentConfig`.
+  const fromPlan = createRequire(fromCli.resolve("@changesets/get-release-plan"));
+  const [assemble, read, pre, config, packagesModule] = await Promise.all([
+    import(pathToFileURL(fromPlan.resolve("@changesets/assemble-release-plan")).href),
+    import(pathToFileURL(fromPlan.resolve("@changesets/read")).href),
+    import(pathToFileURL(fromPlan.resolve("@changesets/pre")).href),
+    import(pathToFileURL(fromPlan.resolve("@changesets/config")).href),
+    import(pathToFileURL(fromPlan.resolve("@manypkg/get-packages")).href),
+  ]);
+  // These ship as CJS with an interop default, so importing one yields either the
+  // function or a namespace wrapping it depending on the bundle.
+  const callable = (module, name) => {
+    const found = module.default?.default ?? module.default;
+    if (typeof found !== "function") throw new Error(`${name} did not export a callable default`);
+    return found;
+  };
+  const found = await packagesModule.getPackages(ROOT);
+  // A changeset naming a package this checkout lacks releases only the rest.
+  const present = new Set(found.packages.map((pkg) => pkg.packageJson.name));
+  const changesets = (await callable(read, "@changesets/read")(ROOT, undefined))
+    .map((changeset) => ({ ...changeset, releases: changeset.releases.filter((release) => present.has(release.name)) }))
+    .filter((changeset) => changeset.releases.length > 0);
+  const preState = await pre.readPreState(ROOT);
+  return callable(assemble, "@changesets/assemble-release-plan")(
+    changesets,
+    found,
+    config.parse(presentConfig(found), found),
+    preState,
+  );
+}
+
+/**
+ * `.changeset/config.json` with every package-name list cut to the workspace
+ * packages this checkout holds. changesets rejects a name it cannot find, but a
+ * partial checkout — the kernel image's build context holds only what the CLI
+ * builds from — legitimately lacks most of the ignored modules.
+ */
+function presentConfig(found) {
+  const written = JSON.parse(readFileSync(join(ROOT, ".changeset", "config.json"), "utf8"));
+  const present = new Set(found.packages.map((pkg) => pkg.packageJson.name));
+  const keep = (names) => names.filter((name) => present.has(name));
+  const groups = (list) => (list ?? []).map(keep).filter((group) => group.length > 0);
+  return {
+    ...written,
+    ignore: keep(written.ignore ?? []),
+    fixed: groups(written.fixed),
+    linked: groups(written.linked),
+  };
+}
+
+/**
+ * The telo generation this tree builds, from changesets' release plan:
+ *
+ *  - `next`: the version the line moves to when the plan is applied (a candidate's
+ *    `0.85.0-rc.1`, an exit's `0.85.0`), or the line's current highest version when
+ *    nothing is pending;
+ *  - `surface`: `next`'s triple — the manifest generation `requires: telo:` is
+ *    checked against, so a candidate reports the release it previews;
+ *  - `identity`: `next` as a build of this tree reports itself, with
+ *    `+unreleased` while a line release is pending.
+ *
+ * `generate-telo-version.mjs` writes both; `render-builtin-vocabulary.mjs` stamps
+ * `identity` on the archive. One computation, so they can never name different
+ * versions. Throws when the line cannot be read.
+ */
+export async function teloGeneration(packages = workspacePackages()) {
   const members = new Set(versionLineMembers());
   let highest;
   for (const name of members) {
     const pkg = packages.get(name);
     if (!pkg) throw new Error(`the version line names ${name}, which is not a workspace package.`);
     if (typeof pkg.version !== "string" || !VERSION.test(pkg.version)) {
-      throw new Error(`${name}'s version '${pkg.version}' is not a three-part semantic version.`);
+      throw new Error(`${name}'s version '${pkg.version}' is not a semantic version.`);
     }
     if (highest === undefined || compareVersions(pkg.version, highest) > 0) highest = pkg.version;
   }
-  const bump = pendingBump(members);
-  const surface = bump ? applyBump(highest, bump) : highest;
-  return { surface, identity: bump ? `${surface}+unreleased` : surface, highest, bump };
+  const plan = await readReleasePlan();
+  let pending;
+  for (const release of plan.releases) {
+    if (!members.has(release.name) || release.type === "none") continue;
+    if (release.newVersion === release.oldVersion) continue;
+    if (pending === undefined || compareVersions(release.newVersion, pending.newVersion) > 0) {
+      pending = release;
+    }
+  }
+  const next = pending && compareVersions(pending.newVersion, highest) > 0 ? pending.newVersion : highest;
+  const unreleased = next !== highest;
+  return {
+    surface: releaseTriple(next),
+    identity: unreleased ? `${next}+unreleased` : next,
+    highest,
+    next,
+    bump: unreleased ? pending.type : undefined,
+  };
 }
 
 /** `[package]`'s body in a `Cargo.toml`: its span and text. */
