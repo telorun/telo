@@ -41,7 +41,6 @@ import {
   isCelUint,
   parseDuration,
   parseTimestamp,
-  timestampNanos,
   type CelValue,
 } from "../src/index.js";
 
@@ -124,16 +123,7 @@ export function encodeConformanceValue(value: CelValue): ConformanceValue {
   if (typeof value === "bigint") return tagged("int", String(value));
   if (isCelUint(value)) return tagged("uint", String(value.value));
   if (isCelBytes(value)) return tagged("bytes", base64url(value));
-  if (isCelTimestamp(value)) {
-    if (value.nanos % 1_000_000 !== 0) {
-      throw new ConformanceValueError(
-        `the instant ${formatTimestamp(value)} is finer than a millisecond, which the encoding does not carry`,
-      );
-    }
-    const whole = timestampNanos(value) % 1_000_000_000n === 0n;
-    const text = formatTimestamp(value);
-    return tagged("google.protobuf.Timestamp", whole ? `${text.slice(0, -1)}.000Z` : padMilliseconds(text));
-  }
+  if (isCelTimestamp(value)) return tagged("google.protobuf.Timestamp", formatTimestamp(value));
   if (isCelDuration(value)) return tagged("google.protobuf.Duration", formatDuration(value));
   if (isCelTypeValue(value)) return { [CEL_TAG]: "type", value: recordedTypeName(value.name) };
   if (isCelOptional(value)) {
@@ -159,12 +149,6 @@ export function encodeConformanceValue(value: CelValue): ConformanceValue {
     };
   }
   throw new ConformanceValueError("this value is of no CEL type");
-}
-
-/** The millisecond form the encoding carries: exactly three fractional digits. */
-function padMilliseconds(text: string): string {
-  const [body, fraction] = text.slice(0, -1).split(".");
-  return `${body}.${(fraction ?? "").padEnd(3, "0").slice(0, 3)}Z`;
 }
 
 function encodeMap(pairs: readonly (readonly [CelValue, CelValue])[]): ConformanceValue {
@@ -203,7 +187,22 @@ export function decodeConformanceValue(node: ConformanceValue): CelValue {
   return expectValue(celMapFromEntries(flat));
 }
 
-function decodeCel(node: { [key: string]: ConformanceValue }): CelValue {
+/**
+ * A recorded node read only in its canonical writing: it must be exactly what the writer
+ * writes for the value it reads, so a file holds one text per value.
+ */
+export function readCanonicalConformanceValue(node: ConformanceValue): CelValue {
+  const value = decodeConformanceValue(node);
+  const written = JSON.stringify(encodeConformanceValue(value));
+  if (written !== JSON.stringify(node)) {
+    throw new ConformanceValueError(
+      `${JSON.stringify(node)} is not the canonical writing of its value, which is ${written}`,
+    );
+  }
+  return value;
+}
+
+function decodeCel(node:{ [key: string]: ConformanceValue }): CelValue {
   const form = node[CEL_TAG];
   if (form === "type" && typeof node.value === "string") {
     return celTypeValue(engineTypeName(node.value));

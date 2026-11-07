@@ -1,11 +1,10 @@
 /**
  * Every conformance row, answered by **both** backends and compared against each other.
  *
- * The two replays beside this one ask whether the engine's answer is RIGHT — against the
- * recording, against cel-spec. This one asks whether the two backends give the SAME answer,
- * which is a different question and is not implied by either: both drivers run the closure
- * backend, so an emitter that disagreed on 200 rows would leave every count in this
- * directory untouched. The comparison is per row, on the canonical text of the answer, so a
+ * The replays beside this one ask whether the engine's answer is the one a row records.
+ * This one asks whether the two backends give the SAME answer, which is a different
+ * question and is not implied by that one: the replays run the closure backend, so an
+ * emitter that disagreed on 200 rows would leave every count in this directory untouched. The comparison is per row, on the canonical text of the answer, so a
  * difference of CEL type or of error range is a difference of text.
  *
  * **One module per environment, not per row.** Rows share an environment unless they
@@ -26,8 +25,7 @@
 
 import { CelCompileError, type CelEnvironment, type CelProgram, type CelValue } from "../src/index.js";
 import { answerText, loadEmittedPrograms } from "../tests/emitted-host.js";
-import { languageEnvironment, type LanguageRow } from "./language-replay.js";
-import { activationOf, evaluationEnvironment } from "./value-replay.js";
+import { activationOf, evaluationEnvironment, languageEnvironment, type LanguageRow } from "./language-replay.js";
 
 export interface IdentityDifference {
   readonly id: string;

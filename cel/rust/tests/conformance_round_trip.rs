@@ -17,7 +17,7 @@
 //! expression.
 //!
 //! **What is Node's answer, executed** on the same selection under the same options
-//! (`@telorun/cel` 0.112.0, this branch's build): each file's row, selected and excluded
+//! (`@telorun/cel` 0.131.0, this branch's build): each file's row, selected and excluded
 //! counts, every id that does not read with its syntax code, and — for `language.json`
 //! — the number Node's own replay of that file reports as written back and re-read.
 //! Everything not listed as refused must round-trip.
@@ -36,7 +36,7 @@ use telorun_cel::{
 
 /// `(file, its rows, the rows selected, the rows excluded, the selected rows that do not read)`.
 const NODE_COUNTS: [(&str, usize, usize, usize, usize); 6] = [
-    ("language.json", 1814, 1814, 0, 0),
+    ("language.json", 1815, 1815, 0, 0),
     ("catalog.json", 186, 186, 0, 0),
     ("types.json", 74, 74, 0, 0),
     ("holes.json", 97, 5, 92, 2),
@@ -52,7 +52,7 @@ const NODE_REFUSED: [(&str, CelSyntaxCode); 4] = [
     ("verdicts/CEL_SYNTAX_ERROR/unterminated_string", CelSyntaxCode::UnterminatedString),
 ];
 
-const NODE_LANGUAGE_ROUND_TRIPPED: usize = 1814;
+const NODE_LANGUAGE_ROUND_TRIPPED: usize = 1815;
 
 /// The files every row of which is an expression.
 const WHOLE_FILES: [&str; 3] = ["language.json", "catalog.json", "types.json"];
