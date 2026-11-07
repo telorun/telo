@@ -62,7 +62,7 @@ describe("a theme implementing every control", () => {
     expect([...drawn].sort()).toEqual(
       // What the scenes draw before anything is done on them: forms open at their address, no question asked yet.
       [
-        "Checkbox", "DateInput", "DateRangeInput", "Dialog", "Drawer", "Icon", "Menu", "MultiSelect", "Navigation", "NumberInput", "OptionGroup",
+        "Checkbox", "Combobox", "DateInput", "DateRangeInput", "Dialog", "Drawer", "Icon", "Menu", "MultiSelect", "Navigation", "NumberInput", "OptionGroup",
         "Select", "Slider", "Switch", "Tabs", "TagsInput", "TextArea", "TextInput", "Tooltip",
       ].sort(),
     );

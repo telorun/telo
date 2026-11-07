@@ -14,7 +14,7 @@ exports:
     - specifier: "@fixture/switches"
       path: ./browser/switch.js
       source: ./switch.js
-      abi: ui_react_controls-3
+      abi: ui_react_controls-4
       external: [react, react/jsx-runtime, react-dom]
       exports: [Switch]
 ---

@@ -53,6 +53,10 @@ const presentation = (basePath: string, collection: Schema = facts()) => ({
   presentation: () => ({ basePath, collection, relations: {} }),
 });
 
+/** A placement's display members declare no default, so a `compact` placement
+ *  can tell an omitted one from a written one and inherit it. */
+const displayDefaults = { show: "all", controls: "direct", summary: "none" };
+
 describe("a default the manifest declares", () => {
   it.each(["Dialog", "Drawer", "Popover", "InlineSurface", "Panel"] as const)("is what %s provides for a member left out", async (kind) => {
     const { type, ...members } = await provided(surfaces[`${kind}Controller`]);
@@ -61,12 +65,12 @@ describe("a default the manifest declares", () => {
 
   it.each(["AbovePlacement", "CollapsiblePlacement"] as const)("is what %s provides for a member left out", async (kind) => {
     const { type, ...members } = await provided(placements[`${kind}Controller`]);
-    expect(members).toEqual(defaultsOf(declared(kind)));
+    expect(members).toEqual({ ...defaultsOf(declared(kind)), ...displayDefaults });
   });
 
   it("is what AsidePlacement provides for a member left out, its compact a collapsible placement with its defaults", async () => {
     const { type, compact, ...members } = await provided(placements.AsidePlacementController);
-    expect(members).toEqual(defaultsOf(declared("AsidePlacement")));
+    expect(members).toEqual({ ...defaultsOf(declared("AsidePlacement")), ...displayDefaults });
     expect(compact).toEqual(await provided(placements.CollapsiblePlacementController));
   });
 
@@ -83,11 +87,11 @@ describe("a default the manifest declares", () => {
       });
     const policy = defaultsOf(declared("FilterPolicy"));
     // Members holding nothing, as a template forwards absent ones.
-    for (const written of [undefined, { show: undefined, placement: undefined, controls: undefined, apply: undefined, summary: undefined, state: undefined }]) {
+    for (const written of [undefined, { placement: undefined, apply: undefined, state: undefined }]) {
       const { node } = await bar(written);
-      expect({ show: node.show, controls: node.controls, apply: node.apply, summary: node.summary }).toEqual(policy);
+      expect({ apply: node.apply }).toEqual(policy);
       const { type, ...placement } = node.placement;
-      expect([type, placement]).toEqual(["above", defaultsOf(declared("AbovePlacement"))]);
+      expect([type, placement]).toEqual(["above", { ...defaultsOf(declared("AbovePlacement")), ...displayDefaults }]);
       expect(node.state).toEqual({ address: false, store: { type: "memory" }, fields: ["text"] });
       const { pinned, control, values } = node.fields[0];
       expect({ pinned, control, values }).toEqual(defaultsOf(declared("Filters").properties.fields.items));

@@ -23,6 +23,7 @@ texts:
   # The navigation's groups.
   - { text: Building blocks, translation: "基础元素" }
   - { text: Input, translation: "输入" }
+  - { text: Search, translation: "搜索" }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
@@ -561,3 +562,11 @@ texts:
   - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "请求正文超过了此服务器接受的 {$maxBodyBytes} 字节。" }
   - { text: "This server does not serve the host {$host}.", translation: "此服务器不提供主机 {$host} 的服务。" }
   - { text: "The list request is not valid.", translation: "列表请求无效。" }
+
+  # Search.
+  - { text: "Search posts", translation: "搜索文章" }
+  - { text: "Posts beside their filters", translation: "筛选器旁的文章" }
+  - { text: "Release posts", translation: "发布相关文章" }
+  - { text: "Everything", translation: "全部" }
+  - { text: "Drafts about releases", translation: "关于发布的草稿" }
+  - { text: "Search posts, or filter by author, status or date", translation: "搜索文章，或按作者、状态、日期筛选" }

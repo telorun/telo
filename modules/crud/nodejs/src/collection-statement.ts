@@ -1,5 +1,5 @@
 import type { SqlDialect } from "@telorun/sql";
-import type { CollectionQuery, FacetQuery, Filter } from "./collection-query.js";
+import type { CollectionQuery, FacetQuery, Filter, Search } from "./collection-query.js";
 import { KEY, type ModelProperty } from "./model-properties.js";
 
 export interface Statement {
@@ -33,6 +33,16 @@ class Rendering {
 
   column(property: ModelProperty | string): string {
     return this.dialect.quoteIdentifier(typeof property === "string" ? property : property.column);
+  }
+
+  /** The text in any of the properties, as `contains` matches it. */
+  search(search: Search | undefined): string | undefined {
+    if (!search) return undefined;
+    const pattern = containsPattern(search.text);
+    const matches = search.properties.map(
+      (property) => `LOWER(${this.column(property)}) LIKE LOWER(${this.bind(pattern)}) ESCAPE '${LIKE_ESCAPE}'`,
+    );
+    return matches.length > 1 ? `(${matches.join(" OR ")})` : matches[0];
   }
 
   filter(filter: Filter): string {
@@ -90,7 +100,11 @@ export function pageStatement(
   const columns = [...properties]
     .map((property) => `${rendering.column(property)} AS ${rendering.column(property.name)}`)
     .join(", ");
-  const where = rendering.where([...query.filters.map((filter) => rendering.filter(filter)), rendering.after(query)]);
+  const where = rendering.where([
+    ...query.filters.map((filter) => rendering.filter(filter)),
+    rendering.search(query.search),
+    rendering.after(query),
+  ]);
   const sql = `SELECT ${columns} FROM ${table}${where} ORDER BY ${rendering.order(query)} LIMIT ${rendering.bind(query.limit + 1)}`;
   return { sql, params: rendering.params };
 }
@@ -98,7 +112,7 @@ export function pageStatement(
 /** How many rows the filters match, whatever the page. */
 export function countStatement(dialect: SqlDialect, table: string, query: CollectionQuery): Statement {
   const rendering = new Rendering(dialect);
-  const where = rendering.where(query.filters.map((filter) => rendering.filter(filter)));
+  const where = rendering.where([...query.filters.map((filter) => rendering.filter(filter)), rendering.search(query.search)]);
   return { sql: `SELECT COUNT(*) AS ${rendering.column("total")} FROM ${table}${where}`, params: rendering.params };
 }
 
@@ -112,6 +126,7 @@ export function facetStatement(dialect: SqlDialect, table: string, query: FacetQ
   const column = rendering.column(query.property);
   const where = rendering.where([
     ...query.filters.map((filter) => rendering.filter(filter)),
+    rendering.search(query.search),
     `${column} IS NOT NULL`,
     query.after ? `${column} > ${rendering.bind(query.after.value)}` : undefined,
   ]);

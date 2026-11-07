@@ -27,21 +27,26 @@ interface FieldConfig {
 
 interface PresetConfig {
   label: TextRecord;
+  search?: string;
   values: { property: string; operator: Operator; value: unknown }[];
 }
 
 /** The bar's policy as written. A member holding nothing is one left out. */
 interface PolicyConfig {
-  show?: string;
   placement?: unknown;
-  controls?: string;
   apply?: string;
-  summary?: string;
   state?: StateConfig;
+}
+
+/** The bar's search as written. A member holding nothing is one left out. */
+interface SearchConfig {
+  pinned?: boolean;
+  default?: string;
 }
 
 type FiltersResource = RuntimeResource & {
   presentation: unknown;
+  search?: SearchConfig;
   fields?: FieldConfig[];
   presets?: PresetConfig[];
   policy?: PolicyConfig;
@@ -63,6 +68,7 @@ export interface FilterField {
 
 export interface FilterPreset {
   label: TextRecord;
+  search?: string;
   values: { property: string; operator: Operator; value: Scalar[] }[];
 }
 
@@ -185,9 +191,25 @@ export function filterFields(
   });
 }
 
+/** Whether the bar has a search: it wrote one, or it left `fields` and
+ *  `search` out over a collection declaring one. */
+export const barSearches = (search: SearchConfig | undefined | null, listed: FieldConfig[] | undefined | null, query: AcceptedQuery): boolean =>
+  search != null || (!listed && query.search !== undefined);
+
 /** The presets as a renderer receives them, each value a list. */
-export function filterPresets(fields: FilterField[], declared: PresetConfig[] | undefined, owner: string): FilterPreset[] {
+export function filterPresets(
+  fields: FilterField[],
+  declared: PresetConfig[] | undefined,
+  owner: string,
+  searches = false,
+): FilterPreset[] {
   return (declared ?? []).map((preset, index) => {
+    if (preset.search != null && !searches) {
+      throw new RuntimeError(
+        "ERR_UI_FILTER_SEARCH_UNDECLARED",
+        `${owner}: 'presets[${index}]' sets a search, but the bar has none. Write 'search' on the bar, or remove the preset's 'search'.`,
+      );
+    }
     if (declared?.findIndex((other) => sameWritten(other.label, preset.label)) !== index) {
       throw new RuntimeError(
         "ERR_UI_FILTER_PRESET_LABEL_DUPLICATE",
@@ -211,7 +233,7 @@ export function filterPresets(fields: FilterField[], declared: PresetConfig[] | 
       }
       return { property, operator, value: held };
     });
-    return { label: preset.label, values };
+    return { label: preset.label, ...(preset.search != null ? { search: preset.search } : {}), values };
   });
 }
 
@@ -232,7 +254,14 @@ class Filters implements ResourceInstance {
       overrides.set(index, await source.provide());
     }
     const fields = filterFields(schema, collection.query, this.resource.fields, owner, { overrides, relations });
-    const presets = filterPresets(fields, this.resource.presets, owner);
+    if (this.resource.search != null && collection.query.search === undefined) {
+      throw new RuntimeError(
+        "ERR_UI_FILTER_SEARCH_UNDECLARED",
+        `${owner}: 'search' searches, but the collection declares no 'query.search'. Declare the properties a search reads under the collection's 'query.search', or remove 'search'.`,
+      );
+    }
+    const searches = barSearches(this.resource.search, this.resource.fields, collection.query);
+    const presets = filterPresets(fields, this.resource.presets, owner, searches);
     const content = await resolveNode(this.resource.content, this.ctx, `${owner} content`);
     // Filters over nothing are nothing.
     if (!content?.node) return { assets: [] };
@@ -243,17 +272,16 @@ class Filters implements ResourceInstance {
         : await this.ctx
             .resolveRef(policy.placement, isFilterPlacement, () => `'policy.placement' of ${owner}`, "Ui.FilterPlacement")
             .provide();
-    const state = await stateSpec(policy.state, fields.map((field) => field.property), schema, this.ctx, owner, "policy.state", "filter");
+    const shown = fields.map((field) => field.property);
+    const state = await stateSpec(policy.state, searches ? ["search", ...shown] : shown, schema, this.ctx, owner, "policy.state", "filter");
     const node: SpecNode = {
       type: "filters",
       basePath,
       fields,
       content: content.node,
-      show: policy.show ?? "all",
+      ...(searches ? { search: { pinned: this.resource.search?.pinned ?? false, default: this.resource.search?.default ?? null } } : {}),
       placement,
-      controls: policy.controls ?? "direct",
       apply: policy.apply ?? "commit",
-      summary: policy.summary ?? "none",
       state,
       presets,
     };

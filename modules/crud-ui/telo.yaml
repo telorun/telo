@@ -75,9 +75,10 @@ schema:
     filters:
       title: Filters
       description: >-
-        How the filter bar behaves: which filters are on show, where its
-        controls sit, how each is entered, when a change applies, what
-        summarises it and where its state is kept.
+        How the filter bar behaves: where its controls sit and how they are
+        drawn (which filters are on show, how each is entered, what summarises
+        the bar, written on the placement), when a change applies and where its
+        state is kept.
       $ref: "telo://UiKit/FilterPolicy"
     create:
       title: Create

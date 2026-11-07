@@ -450,12 +450,14 @@ button's text, one `{ property, label, shown? }` per field, its `failure` tree
 [what an action provides](action.md#what-a-renderer-receives). A `data` node is
 described in [what a reader provides](data.md#what-a-renderer-receives).
 
-A `filters` node likewise carries its whole policy: `show`, `placement` (a
-[`Ui.FilterPlacementSpec`](filter-placement.md#what-a-renderer-receives)),
-`controls`, `apply`, `summary`, `state` (`{ address, store, key? }`, `store` a
+A `filters` node likewise carries its whole policy: `placement` (a
+[`Ui.FilterPlacementSpec`](filter-placement.md#what-a-renderer-receives), which
+holds `show`, `controls` and `summary`), `apply`, `state` (`{ address, store, key? }`, `store` a
 [`Ui.StateStoreSpec`](state-store.md#what-a-renderer-receives), `key` present
 exactly when the bar declared `state`) and `presets` — an empty list when
-there are none. Each of its `fields` carries `pinned` and `control`, and
+there are none, a preset carrying `search` only when it sets one. `search`
+(`{ pinned, default }`, `default` null when none is written) is present exactly
+when [the bar has a search](filters.md#search). Each of its `fields` carries `pinned` and `control`, and
 `default` only when one is declared. A default and a preset value are always a
 list, whatever was written: one value is a list of one.
 

@@ -1,0 +1,64 @@
+kind: Telo.Application
+metadata:
+  name: UiFilterCompactInheritanceTest
+  version: 1.0.0
+  description: |
+    A compact placement that leaves its display out takes the display of the
+    placement holding it, whatever kind it is: a placement of another module
+    written through a template, declared apart or inline, folds showing the
+    chosen filters as chips when its aside holds them so, while one that
+    writes a member keeps it.
+imports:
+  Ui: ../
+  Narrow: ./__fixtures__/narrow-placement
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Narrow.Narrow
+metadata: { name: narrow }
+---
+kind: Ui.AsidePlacement
+metadata: { name: declared }
+show: chosen
+controls: chips
+compact: !ref narrow
+---
+kind: Ui.AsidePlacement
+metadata: { name: inline }
+show: chosen
+controls: chips
+compact: { kind: Narrow.Narrow }
+---
+kind: Ui.CollapsiblePlacement
+metadata: { name: writesControls }
+controls: direct
+---
+kind: Ui.AbovePlacement
+metadata: { name: mixed }
+show: chosen
+summary: chips
+compact: !ref writesControls
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: declared
+    invoke: { kind: Probe.Read, source: !ref declared }
+  - name: inline
+    invoke: { kind: Probe.Read, source: !ref inline }
+  - name: mixed
+    invoke: { kind: Probe.Read, source: !ref mixed }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        declared: !cel "steps.declared.result.compact"
+        inline: !cel "steps.inline.result.compact"
+        mixed: !cel "steps.mixed.result.compact"
+      expected:
+        declared: { type: collapsible, open: true, show: chosen, controls: chips, summary: none }
+        inline: { type: collapsible, open: true, show: chosen, controls: chips, summary: none }
+        mixed: { type: collapsible, open: false, show: chosen, controls: direct, summary: chips }

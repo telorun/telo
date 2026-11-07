@@ -23,6 +23,7 @@ texts:
   # The navigation's groups.
   - { text: Building blocks, translation: Yapı taşları }
   - { text: Input, translation: Girdi }
+  - { text: Search, translation: Arama }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
@@ -568,3 +569,11 @@ texts:
   - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "İstek gövdesi, bu sunucunun kabul ettiği {$maxBodyBytes} baytı aşıyor." }
   - { text: "This server does not serve the host {$host}.", translation: "Bu sunucu {$host} ana bilgisayarına hizmet vermiyor." }
   - { text: "The list request is not valid.", translation: "Liste isteği geçerli değil." }
+
+  # Search.
+  - { text: "Search posts", translation: "Yazılarda ara" }
+  - { text: "Posts beside their filters", translation: "Filtrelerinin yanında yazılar" }
+  - { text: "Release posts", translation: "Sürüm yazıları" }
+  - { text: "Everything", translation: "Hepsi" }
+  - { text: "Drafts about releases", translation: "Sürümler hakkında taslaklar" }
+  - { text: "Search posts, or filter by author, status or date", translation: "Yazılarda arayın veya yazara, duruma ya da tarihe göre süzün" }

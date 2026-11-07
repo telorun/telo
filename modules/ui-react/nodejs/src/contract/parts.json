@@ -76,13 +76,14 @@
       "filters-apply", "filters-reset", "filters-presets", "filters-preset", "filters-summary", "summary-chip",
       "summary-chip-remove", "filter", "filter-label", "filter-group", "filter-bound", "filter-caption",
       "filter-remove", "filter-chip", "filter-input", "filter-select", "filter-options", "filter-option",
-      "filter-toggle", "filter-slider", "filter-slider-value", "filter-tags", "filter-tag", "filter-tag-remove"
+      "filter-toggle", "filter-slider", "filter-slider-value", "filter-tags", "filter-tag", "filter-tag-remove",
+      "search-box", "search-input", "search-token", "search-token-remove"
     ],
     "surface": [
       "surface-overlay", "surface", "surface-header", "surface-title", "surface-description", "surface-body",
       "surface-close"
     ],
-    "shared": ["icon", "glyph", "select-content", "select-item", "menu", "menu-item", "tooltip"],
+    "shared": ["icon", "glyph", "select-content", "select-item", "combobox-content", "combobox-group", "combobox-item", "menu", "menu-item", "tooltip"],
     "status": ["component", "error", "error-code", "error-message", "loading"]
   },
   "states": {

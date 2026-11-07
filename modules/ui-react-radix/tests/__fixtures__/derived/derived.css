@@ -90,3 +90,12 @@ body { margin: 0; background: var(--telo-color-background); color: var(--telo-co
 [data-style~="warning"] { color: var(--telo-color-warning); }
 [data-style~="success"] { color: var(--telo-color-success); }
 [data-telo-part="surface-overlay"] { background: rgb(43 33 24 / 40%); box-shadow: none; padding: 0; }
+
+/* search box */
+[data-telo-part="search-box"] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--telo-space-xs); padding: var(--telo-space-xs) var(--telo-space-sm); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); }
+[data-telo-part="search-input"] { flex: 1 1 8rem; min-width: 0; border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
+[data-telo-part="search-token"] { gap: var(--telo-space-xs); padding: 0 var(--telo-space-sm); border-radius: var(--telo-radius-sm); background: var(--telo-color-border); font-size: var(--telo-font-size-sm); }
+[data-telo-part="search-token-remove"] { color: var(--telo-color-muted); }
+[data-telo-part="combobox-content"] { border-radius: var(--telo-radius-lg); background: var(--telo-color-surface); box-shadow: var(--telo-shadow-md); padding: var(--telo-space-sm); }
+[data-telo-part="combobox-group"] { padding: var(--telo-space-xs); color: var(--telo-color-muted); }
+[data-telo-part="combobox-item"] { padding: var(--telo-space-xs) var(--telo-space-sm); border-radius: var(--telo-radius-sm); }

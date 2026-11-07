@@ -95,6 +95,7 @@ With `address: true`, one query key per filter:
 | `eq` on `isDone` | `_telo.f.<key>.isDone` |
 | any other operator, e.g. `gte` on `dueOn` | `_telo.f.<key>.dueOn.gte` |
 | `in` on `status` | `_telo.f.<key>.status.in`, once per value |
+| the bar's search | `_telo.f.<key>.search` |
 
 `/todos?_telo.f.todos.isDone=false&_telo.f.todos.status.in=open&_telo.f.todos.status.in=blocked`
 

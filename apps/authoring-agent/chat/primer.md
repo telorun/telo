@@ -2440,7 +2440,10 @@ A `DataModel.Collection` holds `model` (the record shape, a `Telo.JsonSchema`),
 [{ property, operator }], sort: [{ property }] }` (both required, `[]` for
 none; operators `eq`, `contains`, `gt`, `gte`, `lt`, `lte`, `in`, `absent`),
 optional `query.facets: [{ property }]` (properties whose present values, with
-counts, the endpoint answers) and optional `relations: { <property>: {
+counts, the endpoint answers), optional `query.search: { properties: [..] }`
+(at least one string property; one `search=<text>` matches any of them,
+ignoring case, AND-ed with the filters; a filter on a property named `search`
+is refused) and optional `relations: { <property>: {
 collection: !ref <other collection> } }` — the property holds the target's key,
 and the target must accept `in` on its key. A collection may relate to itself
 or to another that relates back. `telo check` refuses a filter, sort, facet or
@@ -2500,8 +2503,10 @@ optional — in step CEL over a fetched row test `has(row.dueOn)`, never
   `query.sort` — `id` included, which is never implied. ONE sort property; with
   none the order is `id`; `id` breaks ties; rows with no value sort last.
 - `?facet=<property>` plus filters answers `{ values: [{ value, count }], next
-  }` for a property under `query.facets`. `facet` is reserved beside `limit`,
-  `cursor`, `sort` and `_telo…`.
+  }` for a property under `query.facets`. `search=<text>` (only where the
+  collection declares `query.search`) matches its properties, and a facet
+  request answers under it. `facet` is reserved beside `limit`, `cursor`,
+  `sort`, `search` and `_telo…`.
 - It answers `{ rows, total, next }` — read rows as `result.body.rows`, never
   `result.body[0]`. `total` counts the filtered set; `next` is `null` on the
   last page, otherwise sent back as `cursor`.
@@ -4633,6 +4638,27 @@ Where to start:
     event or tree item is dragged. `telo check` refuses a layout whose filter
     the collection does not accept. `Ui.Collection`, `Ui.Table` and `Crud.Ui`
     no longer exist.
+    A `Ui.Filters` bar's `policy` is `{ placement, apply, state }`; the display
+    options `show` (`all` | `chosen`), `controls` (`direct` | `chips`) and
+    `summary` (`none` | `chips`) sit on the placement that draws controls
+    (`Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`,
+    `Ui.OverlayPlacement`; a `compact` placement inherits the omitted ones),
+    never on the policy. The bar's `search: { pinned?, default? }` adds a text
+    search sent as `search` and kept in the address as `_telo.f.<key>.search`;
+    a bar with no `fields` has it when the collection declares `query.search`,
+    a bar listing `fields` only by writing `search`, and a preset may carry
+    `search: <text>` (`telo check` refuses a search the collection does not
+    declare). `Ui.SearchBoxPlacement { placeholder? }` is the fifth placement:
+    the bar as one search box whose filters are chips, suggesting the search
+    and a filter per field, and taking `<property><op><value>` tokens
+    (`status:draft,review`, `publishedOn>=2026-11-01`: `:` contains, else in,
+    else eq; `=` in, else eq; `>` `>=` `<` `<=`; a relation is picked by name,
+    never typed). It takes no `show`, `controls`, `summary` or `compact`, and
+    `pinned` has no effect under it. The renderer draws it with the `Combobox`
+    layer control: a controls set implementing any layer control (`Select`,
+    `MultiSelect`, `Combobox`, `Dialog`, `Drawer`, `Popover`, `Confirmation`,
+    `Menu`, `Tooltip`, `Navigation`) implements all ten, built for the
+    `ui_react_controls-4` generation.
   - `ui-react` renders it: `UiReact.App` is a mount holding the pages — each
     a `Ui.Page`, inline or `!ref` — and their `navigation` tree, which names
     pages by `!ref`, never by path, and is drawn by a placement kind: a
