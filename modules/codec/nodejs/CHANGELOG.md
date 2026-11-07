@@ -1,5 +1,7 @@
 # @telorun/codec
 
+## 0.9.2
+
 ## 0.5.0
 
 ### Minor Changes

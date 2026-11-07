@@ -1,5 +1,7 @@
 # @telorun/record-stream
 
+## 0.21.1
+
 ## 0.8.1
 
 ### Patch Changes
@@ -62,8 +64,8 @@
   `resolveVectorStore`, `resolveEmbeddingModel`, `resolveJournal`) were one-line
   shims; call sites now pass the module's own type guard and the slot's `x-telo-ref`
   contract, so a mis-wire names the owning resource and what the slot wanted —
-  `` Cache.Entry "page": 'store' … did not resolve to a resource satisfying
-`std/cache#Store`  ``. Each module still
+  ``Cache.Entry "page": 'store' … did not resolve to a resource satisfying
+`std/cache#Store` ``. Each module still
   exports its guard (`isCacheStore`, `isShellHost`, `isVectorStore`,
   `isEmbeddingModel`, `isJournalStore`, `isSqlConnection`) for consumers that
   resolve the slot themselves; `isJournalStore` is now duck-typed rather than

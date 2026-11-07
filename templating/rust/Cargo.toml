@@ -1,6 +1,6 @@
 [package]
 name = "telo-templating"
-version = "0.132.0-rc.0"
+version = "0.132.0"
 license = "MIT"
 edition = "2021"
 publish = false
