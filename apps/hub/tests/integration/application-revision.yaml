@@ -65,33 +65,17 @@ imports:
       connection: !ref db
       bucketGet: !ref getManifest
 variables:
-  dbHost:
-    env: DB_HOST
-    type: string
-    default: localhost
-  dbPort:
-    env: DB_PORT
-    type: integer
-    default: 5432
-  dbUser:
-    env: DB_USER
-    type: string
-    default: postgres
-  dbPassword:
-    env: DB_PASSWORD
-    type: string
-    default: postgres
-  dbName:
-    env: DB_NAME
-    type: string
-    default: postgres
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
 targets:
   - !ref Schema.migrations
   - !ref test
 ---
 kind: Postgres.Connection
-metadata:
-  name: db
+metadata: { name: db }
 access:
   kind: Postgres.DatabaseAccess
   fields:
@@ -106,13 +90,11 @@ access:
 # The origin reads run in the fixtures directory, so the local ref `./hello-app`
 # is read from there.
 kind: Shell.LocalHost
-metadata:
-  name: localShell
+metadata: { name: localShell }
 cwd: !module-path __fixtures__
 ---
 kind: S3.Bucket
-metadata:
-  name: standInBucket
+metadata: { name: standInBucket }
 bucketName: fixture-bucket
 endpoint: http://127.0.0.1:8988
 forcePathStyle: true
@@ -120,71 +102,59 @@ accessKeyId: fixture
 secretAccessKey: fixture
 ---
 kind: S3.Put
-metadata:
-  name: putManifest
+metadata: { name: putManifest }
 bucketRef: !ref standInBucket
 ---
 kind: S3.Get
-metadata:
-  name: getManifest
+metadata: { name: getManifest }
 bucketRef: !ref standInBucket
 ---
 kind: OpenAI.EmbeddingModel
-metadata:
-  name: standInEmbedder
+metadata: { name: standInEmbedder }
 model: stand-in
 request:
   kind: HttpClient.Request
-  client:
-    kind: HttpClient.Client
-    baseUrl: http://127.0.0.1:8988
+  client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8988 }
 ---
 kind: Embedding.Passage
-metadata:
-  name: embedPassage
+metadata: { name: embedPassage }
 model: !ref standInEmbedder
 ---
 kind: Embedding.Query
-metadata:
-  name: embedQuery
+metadata: { name: embedQuery }
 model: !ref standInEmbedder
 ---
 kind: VectorStorePgvector.Store
-metadata:
-  name: vectorIndex
+metadata: { name: vectorIndex }
 connection: !ref db
 dimensions: 3
 metric: cosine
 table: resource_vectors
 ---
 kind: VectorStore.Record
-metadata:
-  name: vectorUpsert
+metadata: { name: vectorUpsert }
 store: !ref vectorIndex
 ---
 kind: VectorStore.Removal
-metadata:
-  name: vectorRemove
+metadata: { name: vectorRemove }
 store: !ref vectorIndex
 ---
 kind: VectorStore.Match
-metadata:
-  name: vectorMatch
+metadata: { name: vectorMatch }
 store: !ref vectorIndex
 topK: 5
 ---
 # The embedder and the manifest bucket, on one port: a fixed vector for every
 # passage and query, and a bucket that accepts every put.
 kind: Http.Api
-metadata:
-  name: standInApi
+metadata: { name: standInApi }
 routes:
   - request: { path: /embeddings, method: POST }
     handler:
       kind: Run.Value
       value:
         data:
-          - embedding: [1.0, 0.0, 0.0]
+          - { embedding: [1.0, 0.0, 0.0] }
     returns:
       - status: 200
         content:
@@ -193,37 +163,27 @@ routes:
   - request:
       path: /fixture-bucket/*
       method: PUT
-      schema:
-        body:
-          x-telo-type: { name: Telo.Stream }
-    handler:
-      kind: Run.Value
-      value: {}
+      schema: { body: { x-telo-type: { name: Telo.Stream } } }
+    handler: { kind: Run.Value, value: {} }
     returns:
-      - status: 200
+      - { status: 200 }
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref db
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref db
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: StandIns }
-    listen:
-      address: 127.0.0.1
-      port: 8988
+    listen: { address: 127.0.0.1, port: 8988 }
     contentTypeParsers:
-      - contentType: text/yaml
-        stream: true
+      - { contentType: text/yaml, stream: true }
     mounts:
       - path: /
         mount: !ref standInApi
@@ -232,8 +192,7 @@ targets:
 steps:
   - name: reset
     invoke: !ref exec
-    inputs:
-      sql: DELETE FROM modules WHERE id = 9301
+    inputs: { sql: DELETE FROM modules WHERE id = 9301 }
   # What the revision-5 pipeline left for an application seeded from disk: the
   # version with no root kind, and the application's own kind stored exported.
   - name: seedModule
@@ -292,10 +251,8 @@ steps:
       expected:
         claimed: false
         rows:
-          - rootKind: null
-            exported: true
-    invoke:
-      kind: Assert.Equals
+          - { rootKind: null, exported: true }
+    invoke: { kind: Assert.Equals }
   - name: claimAtRev6
     invoke: !ref Schema.claimVersion
     inputs:
@@ -321,10 +278,7 @@ steps:
       maxIterations: 60
       condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
       steps:
-        - name: wait
-          invoke: { kind: Timer.Delay }
-          inputs:
-            duration: 1s
+        - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
         - name: state
           invoke: !ref query
           inputs:
@@ -359,9 +313,7 @@ steps:
       entry: [kind, instance]
   - name: detail
     invoke: !ref Catalog.moduleDetail
-    inputs:
-      ref: ./hello-app
-      version: ""
+    inputs: { ref: ./hello-app, version: "" }
   - name: assertRev6CorrectsIt
     inputs:
       actual:
@@ -419,7 +371,7 @@ steps:
                 description: Presented upstream without a license.
                 required: true
                 requiredWhen:
-                  - secrets.licenseKey: absent
+                  - { secrets.licenseKey: absent }
                 env: TRIAL_TOKEN
                 schema: { type: string }
             ports:
@@ -431,11 +383,8 @@ steps:
                 arg: null
                 protocol: tcp
             dimensions:
-              - key: secrets.licenseKey
-                values: [present, absent]
-                env: [LICENSE_KEY]
-    invoke:
-      kind: Assert.Equals
+              - { key: secrets.licenseKey, values: [present, absent], env: [LICENSE_KEY] }
+    invoke: { kind: Assert.Equals }
   # A secret's `default:` is a value, and no value of a secret is indexed.
   - name: contractRows
     invoke: !ref query
@@ -448,9 +397,5 @@ steps:
         rows: !cel "steps.contractRows.result.rows.exists(r, r.row.contains('fixture-secret-default-value'))"
         detail: !cel "json(steps.detail.result.application).contains('fixture-secret-default-value')"
         hits: !cel "json(steps.asApplication.result.hits).contains('fixture-secret-default-value')"
-      expected:
-        rows: false
-        detail: false
-        hits: false
-    invoke:
-      kind: Assert.Equals
+      expected: { rows: false, detail: false, hits: false }
+    invoke: { kind: Assert.Equals }

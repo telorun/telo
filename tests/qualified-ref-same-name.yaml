@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: QualifiedRefSameNameTest
+  version: 1.0.0
+  description: >-
+    A resource named like an instance it references through an import alias
+    (`counters` holding `!ref Lib.counters`) depends on the import, not on
+    itself: no circular dependency is reported by the check or at boot.
+imports:
+  Lib: ./__fixtures__/qualified-ref-same-name
+  RateLimit: ../modules/rate-limit
+  Assert: ../modules/assert
+targets: [!ref test]
+---
+kind: RateLimit.Guard
+metadata: { name: counters }
+store: !ref Lib.counters
+limit: 1
+window: 1m
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: first
+    invoke: !ref counters
+    inputs: { key: caller }
+  - name: second
+    invoke: !ref counters
+    inputs: { key: caller }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.first.result.allowed, steps.second.result.allowed]"
+      expected: [true, false]

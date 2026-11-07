@@ -1,4 +1,5 @@
-# Open, unauthenticated self-service registration.
+# Open self-service registration. Anonymous callers share a per-address budget;
+# a publisher presenting an API key that grants `register:unlimited` skips it.
 #
 # The whole sanity check is SYNCHRONOUS — the ref is validated, the origin is
 # read, and the module row is inserted before anything is answered — while the
@@ -157,7 +158,11 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties: { ref: { type: string }, clientIp: { type: string } }
+    properties:
+      ref: { type: string }
+      clientIp: { type: string }
+      # The caller presented a key granting `register:unlimited`: no per-address budget applies.
+      unlimited: { type: boolean, default: false }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -173,10 +178,14 @@ steps:
   # Per-IP budget, checked before anything else — this endpoint is open and does
   # real work, so it must not be free to hammer. Non-throwing: the verdict maps
   # to a 429. An empty key fails closed (denied) rather than sharing one bucket.
-  - name: limit
-    invoke: !ref rateLimit
-    inputs:
-      key: !cel "inputs.clientIp"
+  # A keyed caller spends none of it.
+  - name: budget
+    if: !cel "!inputs.unlimited"
+    then:
+      - name: limit
+        invoke: !ref rateLimit
+        inputs:
+          key: !cel "inputs.clientIp"
   # Shape gate — the FIRST thing that touches the submitted ref, before any
   # subprocess. Only a remote module ref is accepted: an optional `oci://` or
   # `https://` scheme, then host/path segments of safe characters, with at least
@@ -194,7 +203,7 @@ steps:
   # positional. The transport-egress guard only covers refs that actually reach
   # the network; this gate is what keeps local refs from getting that far.
   - name: accepted
-    if: !cel "steps.limit.result.allowed && inputs.ref.matches('^(oci://|https://)[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)+(@[A-Za-z0-9][A-Za-z0-9._+-]*)?$')"
+    if: !cel "!('limit' in steps && !steps.limit.result.allowed) && inputs.ref.matches('^(oci://|https://)[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)+(@[A-Za-z0-9][A-Za-z0-9._+-]*)?$')"
     then:
       # Enumerating versions proves the transport resolves the ref to a module
       # repo, so the submitter supplies no version.
@@ -289,14 +298,14 @@ outputs:
   # its content is searchable yet is a separate question, answered by the status
   # route rather than by this response.
   accepted: !cel "'insert' in steps"
-  rateLimited: !cel "!steps.limit.result.allowed"
-  retryAfter: !cel "steps.limit.result.retryAfter"
+  rateLimited: !cel "'limit' in steps && !steps.limit.result.allowed"
+  retryAfter: !cel "'limit' in steps ? steps.limit.result.retryAfter : 0"
   # Each branch is reachable only once the step it reads has run — CEL ternaries
   # short-circuit, so an absent step is never dereferenced. `versions` absent
   # means the rate limit or the shape gate stopped the call before any
   # subprocess ran.
   error: !cel >-
-    !steps.limit.result.allowed
+    'limit' in steps && !steps.limit.result.allowed
       ? 'too many registrations from this address — retry in ' + string(steps.limit.result.retryAfter) + 's'
       : (!('versions' in steps)
           ? 'invalid module ref — expected oci://<host>/<path> or https://<host>/<path>'

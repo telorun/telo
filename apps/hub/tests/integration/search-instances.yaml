@@ -36,33 +36,17 @@ imports:
       embedQuery: !ref embedQuery
       vectorMatch: !ref vectorMatch
 variables:
-  dbHost:
-    env: DB_HOST
-    type: string
-    default: localhost
-  dbPort:
-    env: DB_PORT
-    type: integer
-    default: 5432
-  dbUser:
-    env: DB_USER
-    type: string
-    default: postgres
-  dbPassword:
-    env: DB_PASSWORD
-    type: string
-    default: postgres
-  dbName:
-    env: DB_NAME
-    type: string
-    default: postgres
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
 targets:
   - !ref Schema.migrations
   - !ref test
 ---
 kind: Postgres.Connection
-metadata:
-  name: db
+metadata: { name: db }
 access:
   kind: Postgres.DatabaseAccess
   fields:
@@ -75,20 +59,16 @@ access:
       path: !cel "'/' + variables.dbName"
 ---
 kind: Embedding.Query
-metadata:
-  name: embedQuery
+metadata: { name: embedQuery }
 model:
   kind: OpenAI.EmbeddingModel
   model: stand-in
   request:
     kind: HttpClient.Request
-    client:
-      kind: HttpClient.Client
-      baseUrl: http://127.0.0.1:8986
+    client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8986 }
 ---
 kind: VectorStore.Match
-metadata:
-  name: vectorMatch
+metadata: { name: vectorMatch }
 store:
   kind: VectorStorePgvector.Store
   connection: !ref db
@@ -98,15 +78,14 @@ store:
 topK: 5
 ---
 kind: Http.Api
-metadata:
-  name: embedderApi
+metadata: { name: embedderApi }
 routes:
   - request: { path: /embeddings, method: POST }
     handler:
       kind: Run.Value
       value:
         data:
-          - embedding: [1.0, 0.0, 0.0]
+          - { embedding: [1.0, 0.0, 0.0] }
     returns:
       - status: 200
         content:
@@ -114,19 +93,15 @@ routes:
             body: !cel "result"
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref db
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Embedder }
-    listen:
-      address: 127.0.0.1
-      port: 8986
+    listen: { address: 127.0.0.1, port: 8986 }
     mounts:
       - path: /
         mount: !ref embedderApi
@@ -178,16 +153,10 @@ steps:
         ON CONFLICT DO NOTHING
   - name: byDescription
     invoke: !ref Search.searchResources
-    inputs:
-      q: sign a webhook payload
-      category: ""
-      runtime: ""
+    inputs: { q: sign a webhook payload, category: "", runtime: "" }
   - name: builtInKind
     invoke: !ref Search.searchResources
-    inputs:
-      q: instant in the past
-      category: ""
-      runtime: ""
+    inputs: { q: instant in the past, category: "", runtime: "" }
   # Of one publisher: the shared database holds other tests' entries, and a
   # browse of all of them would cut this module's off at the limit.
   - name: browse
@@ -201,10 +170,7 @@ steps:
   # never under those of a local kind that shares the suffix.
   - name: importedKindCategory
     invoke: !ref Search.searchResources
-    inputs:
-      q: parcel deliveries
-      category: storage
-      runtime: ""
+    inputs: { q: parcel deliveries, category: storage, runtime: "" }
   - name: assertInstanceHits
     inputs:
       actual:
@@ -231,9 +197,5 @@ steps:
         builtInKind:
           - [isStale, Function]
         browseInstances: [hmacSha256, isStale, parcelRoutes]
-        importedKindCategory:
-          kindHits: [Api]
-          filterKept: true
-          instances: []
-    invoke:
-      kind: Assert.Equals
+        importedKindCategory: { kindHits: [Api], filterKept: true, instances: [] }
+    invoke: { kind: Assert.Equals }

@@ -332,6 +332,30 @@ describe("the language router", () => {
       expect(harness.router.status()).toMatchObject({ version: BUNDLED, starting: false });
       expect(harness.router.status().error).toBeUndefined();
     });
+
+    // A stopped engine did not fail: the editor drops a ContentModified answer
+    // silently and asks again.
+    it("rejects what was pending on an engine stopped for idleness as ContentModified", async () => {
+      const registry = await fakeRegistry(["0.103.0"], {}, (v) => engineCode(v, "hangs on hover"));
+      const harness = new RouterHarness({ fetch: registry.fetch });
+      harness.requirements.set(OWNER, requirementsFor(OWNER, [OWNER], [{ module: OWNER, text: ">=0.103.0", min: "0.103.0" }]));
+      await harness.initialize();
+      await harness.router.markVersions();
+      harness.open(OWNER);
+      await onEngine(harness, "0.103.0", OWNER);
+      const hover = harness.client.sendRequest("textDocument/hover", {
+        textDocument: { uri: OWNER },
+        position: { line: 0, character: 0 },
+      });
+      await harness.until(() => harness.engine("0.103.0")!.asked("textDocument/hover").length === 1, "the hover");
+      harness.close(OWNER);
+      await expect(hover).rejects.toMatchObject({
+        code: -32801,
+        message: "the telo 0.103.0 engine was stopped: no open document uses it.",
+      });
+      expect(harness.engine("0.103.0")!.terminated).toBe(true);
+      expect(harness.logs.some((m) => /0\.103\.0/.test(m))).toBe(false);
+    });
   });
 
   describe("an engine that fails at the edge of its handshake", () => {

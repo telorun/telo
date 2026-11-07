@@ -70,6 +70,7 @@ imports:
   VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.0#sha256-slYSARQWWzGgBG5_C8oxRbXtyUM6DYwngjCaSeIeu1M
   Scheduler: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
   Durable: oci://ghcr.io/telorun/durable-local@0.6.0#sha256-HcsaMPNMPbTRgGfLxT_4JnVnduiY7_pUl8x8ANa-MZ0
+  ApiKey: oci://ghcr.io/telorun/api-key@0.2.0#sha256-743LoVZkoEbwWDRImNVFgjFlREB1vMpo5ozSmOeV2C4
   # ── The hub's own libraries ────────────────────────────────────────────────
   # Each is handed the instances declared below. `hub-schema` and `hub-origin`
   # declare `lifecycle: shared`, so the imports of them here and inside
@@ -370,6 +371,12 @@ metadata: { name: registerRateLimit }
 store: !ref rateLimitCounters
 limit: !cel "variables.registerRateLimit"
 window: !cel "duration(variables.registerRateWindow)"
+---
+# A publisher's key on `/register`, sent as `Authorization: Bearer <key>`.
+# Keys are issued and revoked by `admin.yaml`.
+kind: ApiKey.Verifier
+metadata: { name: publisherKeyVerifier }
+sources: [!ref Schema.publisherKeys]
 ---
 # ── Local shell (origin reads → telo CLI) ────────────────────────────────────
 # Every transport-specific read goes through the generic `telo module …` CLI
@@ -1008,10 +1015,11 @@ routes:
       - status: 404
         content: { application/json: { body: { error: Module not tracked } } }
 
-  # Open, unauthenticated self-service registration (the reader's browser on
-  # hub.telo.run, served by apps/hub-web, POSTs here cross-origin). Validates
-  # the ref resolves to a real Telo module and, on success, records it and
-  # schedules its first ingest.
+  # Open self-service registration (the reader's browser on hub.telo.run,
+  # served by apps/hub-web, POSTs here cross-origin). Validates the ref resolves
+  # to a real Telo module and, on success, records it and schedules its first
+  # ingest. A key granting `register:unlimited` skips the per-address limit; a
+  # key that is presented and refused is a 401, never an anonymous call.
   #
   # 202, not 200: indexing is asynchronous now, so "accepted" is the honest
   # claim and `GET /register/status?ref=` is what says when it is searchable.
@@ -1028,10 +1036,16 @@ routes:
               minLength: 1
               description: "Module ref to register (e.g. oci://ghcr.io/acme/telo-s3 or https://host/path/telo.yaml)."
           required: [ref]
+    authentication:
+      verifiers:
+        - verifier: !ref publisherKeyVerifier
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }
+      anonymous: allow
     handler: !ref Registry.registerAndValidate
     inputs:
       ref: !cel "request.body.ref"
       clientIp: !cel "request.ip"
+      unlimited: !cel "request.principal != null && 'register:unlimited' in request.principal.scopes"
     returns:
       - status: 429
         when: !cel "result.rateLimited"
@@ -1064,6 +1078,22 @@ routes:
       - status: 400
         when: !cel "error.code == 'ERR_PARSE_FAILED'"
         content: { application/json: { body: { error: could not read module metadata } } }
+      # A presented key that is malformed, unknown, revoked or expired. The
+      # server has already set `WWW-Authenticate`.
+      - status: 401
+        when: !cel "error.code == 'ERR_HTTP_UNAUTHENTICATED'"
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: !cel "'API key refused (' + error.data.reason + ')'"
+      - status: 503
+        when: !cel "error.code == 'ERR_HTTP_ACCESS_CHECK_UNAVAILABLE'"
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: the API key could not be checked
       - status: 500
         content:
           application/json:

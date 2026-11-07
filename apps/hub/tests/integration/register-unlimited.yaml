@@ -1,0 +1,157 @@
+kind: Telo.Application
+metadata:
+  name: HubRegisterUnlimitedTest
+  version: 1.0.0
+  description: |
+    `registerAndValidate` (what POST /register runs) with a budget of one call
+    per address: the second anonymous call from an address is refused as rate
+    limited, and the same call made with `unlimited` — what a publisher's API
+    key granting `register:unlimited` sets — is not, and spends nothing.
+
+    The ref is one the recorded origin serves with a Telo.Definition root, so
+    each call that passes the limit is refused for its root kind and nothing is
+    recorded. The address is fresh per run, so a rerun inside the window starts
+    with a full budget.
+
+    NEEDS A LIVE POSTGRES — a database `pnpm run test:e2e:hub` supplies from its
+    own stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME, never a
+    developer's database. Run only by the hub's own suite through that command.
+imports:
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.0#sha256-Ki7STbcpZFbPAbi_P-0iSfn4QZp0uf9Zf4NEMiujT1A
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.1#sha256--HWfwJ_HlgbgxR5I1Pki0r45FkYhWRyfp_-UKmFbOF0
+  OpenAI: oci://ghcr.io/telorun/openai@0.20.0#sha256-AtYiWyXJ9Ixt3UnW4EAaiEb9h9sndXN0nnNui6hxfRE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.1#sha256-Btmgt0SXpUDgQ7Pd2E7LyX_LoZ3_-DSNgReYO5ru0Zk
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.0#sha256-slYSARQWWzGgBG5_C8oxRbXtyUM6DYwngjCaSeIeu1M
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.0#sha256-WyLU2IJCzc0SNfpYXp_Mj4MR9lOneyBoWELrLdcYwEA
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.0#sha256-PpWQrYiyH4dm-2tAMaHTpTjMzaKgy8Met-ueLP2J4Pg
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources: { connection: !ref db }
+  Ingest:
+    source: ../../hub-ingest.yaml
+    resources:
+      connection: !ref db
+      bucketPut: !ref putManifest
+      embedPassage: !ref embedPassage
+      vectorUpsert: !ref vectorUpsert
+      vectorRemove: !ref vectorRemove
+      shellHost: !ref localShell
+    variables:
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts, recorded-origin]
+      ingestRev: 6
+  Registry:
+    source: ../../hub-registry.yaml
+    resources:
+      connection: !ref db
+      rateLimit: !ref registerRateLimit
+      shellHost: !ref localShell
+      scheduleIngest: !ref Ingest.scheduleIngest
+    variables:
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts, recorded-origin]
+      ingestRev: 6
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref Schema.migrations
+  - !ref unlimitedSkipsLimit
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: !cel "variables.dbUser"
+      password: !cel "variables.dbPassword"
+      path: !cel "'/' + variables.dbName"
+---
+kind: Shell.LocalHost
+metadata: { name: localShell }
+cwd: !module-path __fixtures__
+---
+kind: S3.Put
+metadata: { name: putManifest }
+bucketRef:
+  kind: S3.Bucket
+  bucketName: unused
+  endpoint: http://127.0.0.1:1
+  forcePathStyle: true
+  accessKeyId: unused
+  secretAccessKey: unused
+---
+kind: Embedding.Passage
+metadata: { name: embedPassage }
+model:
+  kind: OpenAI.EmbeddingModel
+  model: unused
+  request:
+    kind: HttpClient.Request
+    client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:1 }
+---
+kind: VectorStorePgvector.Store
+metadata: { name: vectorIndex }
+connection: !ref db
+dimensions: 3
+metric: cosine
+table: resource_vectors
+---
+kind: VectorStore.Record
+metadata: { name: vectorUpsert }
+store: !ref vectorIndex
+---
+kind: VectorStore.Removal
+metadata: { name: vectorRemove }
+store: !ref vectorIndex
+---
+# Named rather than inline: a library's resource input takes only a `!ref`.
+kind: RateLimit.Guard
+metadata: { name: registerRateLimit }
+store: { kind: CacheMemory.Store }
+limit: 1
+window: 1m
+---
+kind: Telo.Sequence
+metadata: { name: unlimitedSkipsLimit }
+steps:
+  - name: address
+    value: !cel "uuidv4()"
+  - name: first
+    invoke: !ref Registry.registerAndValidate
+    inputs: { ref: oci://example.test/definition-first, clientIp: !cel "steps.address.result" }
+  - name: limited
+    invoke: !ref Registry.registerAndValidate
+    inputs: { ref: oci://example.test/definition-first, clientIp: !cel "steps.address.result" }
+  - name: keyed
+    invoke: !ref Registry.registerAndValidate
+    inputs:
+      ref: oci://example.test/definition-first
+      clientIp: !cel "steps.address.result"
+      unlimited: true
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "steps.first.result.rateLimited"
+        limited: !cel "[steps.limited.result.rateLimited, steps.limited.result.accepted, steps.limited.result.retryAfter > 0]"
+        keyed: !cel "[steps.keyed.result.rateLimited, steps.keyed.result.retryAfter, steps.keyed.result.error]"
+      expected:
+        first: false
+        limited: [true, false, true]
+        keyed:
+          - false
+          - 0
+          - >-
+            the root document of oci://example.test/definition-first is
+            Telo.Definition; only a Telo.Library or Telo.Application can be
+            registered

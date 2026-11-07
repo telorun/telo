@@ -65,10 +65,7 @@ metadata: { name: searchResources_ReturnsKindHits }
 steps:
   - name: call
     invoke: !ref mcpToolCall
-    inputs:
-      name: search_resources
-      arguments:
-        query: delay a task
+    inputs: { name: search_resources, arguments: { query: delay a task } }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -85,11 +82,8 @@ steps:
           steps.parse.result.docs[0].results[0].modules.exists(m,
             m.ref == 'oci://ghcr.io/telorun/timer' && m.version != ''
               && m.hits.exists(h, h.name == 'Delay' && h.capability == 'Telo.Invocable'))
-      expected:
-        queries: [delay a task]
-        foundTimerDelay: true
-    invoke:
-      kind: Assert.Equals
+      expected: { queries: [delay a task], foundTimerDelay: true }
+    invoke: { kind: Assert.Equals }
 ---
 # A hit carries only what says something: a kind hit has no `entry`, a hit that
 # extends nothing no `extends`, and the response no category facet — each of
@@ -101,8 +95,7 @@ steps:
     invoke: !ref mcpToolCall
     inputs:
       name: search_resources
-      arguments:
-        query: repeat a step while a condition holds
+      arguments: { query: repeat a step while a condition holds }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -121,8 +114,7 @@ steps:
         topLevel: [results]
         resultKeys: [modules, query]
         loopKeys: [capability, description, name, runtimes]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # Several needs in one call: each query is answered on its own, in the order
 # asked, and `limit` bounds each answer's hits.
@@ -133,9 +125,7 @@ steps:
     invoke: !ref mcpToolCall
     inputs:
       name: search_resources
-      arguments:
-        queries: [delay a task, repeat a step while a condition holds]
-        limit: 2
+      arguments: { queries: [delay a task, repeat a step while a condition holds], limit: 2 }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -150,8 +140,7 @@ steps:
       expected:
         queries: [delay a task, repeat a step while a condition holds]
         withinLimit: true
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # A query that spells a module and one of its kinds leads with that kind, the
 # rest of the module's matching kinds beside it — the name is a vote of its own
@@ -163,9 +152,7 @@ steps:
     invoke: !ref mcpToolCall
     inputs:
       name: search_resources
-      arguments:
-        queries: [scheduler cron, run loop]
-        limit: 3
+      arguments: { queries: [scheduler cron, run loop], limit: 3 }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -178,8 +165,7 @@ steps:
       expected:
         - ["oci://ghcr.io/telorun/scheduler", Cron]
         - ["oci://ghcr.io/telorun/run", Loop]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # Neither `query` nor `queries` is an error result, not an empty answer. The
 # call must fail — reaching the step after it is itself the failure.
@@ -190,9 +176,7 @@ steps:
     try:
       - name: call
         invoke: !ref mcpToolCall
-        inputs:
-          name: search_resources
-          arguments: {}
+        inputs: { name: search_resources, arguments: {} }
       - name: answered
         throw:
           code: ERR_TEST_EXPECTED_REFUSAL
@@ -202,8 +186,7 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_MCP_TOOL_ERROR
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
 ---
 # get_kinds answers with exactly what a caller writes against: the `imports:`
 # line for the version read, the asked kind's own document without its
@@ -241,8 +224,7 @@ steps:
         noControllers: true
         redisStore: true
         inheritedParent: true
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # A name the module does not define is said so, beside what it does export — and
 # an alias-qualified name is read by its suffix, an alias being the caller's own.
@@ -266,11 +248,8 @@ steps:
         notDefined: !cel >-
           size(regexExtract(steps.text.result,
             '# NOT DEFINED by this module: Nope\\. It exports: [A-Za-z, ]*Loop')) > 0
-      expected:
-        loopDefinition: true
-        notDefined: true
-    invoke:
-      kind: Assert.Equals
+      expected: { loopDefinition: true, notDefined: true }
+    invoke: { kind: Assert.Equals }
 ---
 # A definition whose `kind:` and `name:` are quoted YAML scalars is found, not
 # reported as undefined beside an export list naming it.
@@ -291,11 +270,8 @@ steps:
       actual:
         definition: !cel "steps.text.result.contains('\\n  name: \"Quoted\"\\n')"
         notDefined: !cel "steps.text.result.contains('NOT DEFINED')"
-      expected:
-        definition: true
-        notDefined: false
-    invoke:
-      kind: Assert.Equals
+      expected: { definition: true, notDefined: false }
+    invoke: { kind: Assert.Equals }
 ---
 # `implementation: true` keeps what the default answer cuts — here a kind's
 # `controllers:` — for a caller tracing a runtime error into a kind.
@@ -316,10 +292,8 @@ steps:
     inputs:
       actual:
         controllers: !cel "steps.text.result.contains('\\ncontrollers:')"
-      expected:
-        controllers: true
-    invoke:
-      kind: Assert.Equals
+      expected: { controllers: true }
+    invoke: { kind: Assert.Equals }
 ---
 # A call naming only refs the hub does not track is an error result.
 kind: Run.Sequence
@@ -343,8 +317,7 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_MCP_TOOL_ERROR
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
 ---
 # An empty `version` is no version: a model whose tool calls must fill every
 # property sends `""` for one it means to omit, and is answered with the latest.
@@ -368,11 +341,8 @@ steps:
           size(regexExtract(steps.text.result,
             '#   Timer: oci://ghcr\\.io/telorun/timer@[0-9.]+#sha256-[A-Za-z0-9_-]+')) > 0
         delayDefinition: !cel "steps.text.result.contains('\\n  name: Delay\\n')"
-      expected:
-        timerImport: true
-        delayDefinition: true
-    invoke:
-      kind: Assert.Equals
+      expected: { timerImport: true, delayDefinition: true }
+    invoke: { kind: Assert.Equals }
 ---
 # A tracked ref asked for at a version the hub does not hold is said so, with
 # the versions it does — never reported as an untracked ref.
@@ -400,11 +370,8 @@ steps:
             namesVersions: !cel >-
               size(regexExtract(string(error.data.content[0].text),
                 'is tracked by the hub, but not at version 0[.]0[.]1 [(]asked for: Delay[)][.] Its latest version is [0-9.]+;')) > 0
-          expected:
-            code: ERR_MCP_TOOL_ERROR
-            namesVersions: true
-        invoke:
-          kind: Assert.Equals
+          expected: { code: ERR_MCP_TOOL_ERROR, namesVersions: true }
+        invoke: { kind: Assert.Equals }
 ---
 # A parent kind is read at the version the CHILD pins it at, not at whatever is
 # latest: an older child was written against an older parent.
@@ -425,11 +392,8 @@ steps:
       actual:
         child: !cel "steps.text.result.contains('oci://ghcr.io/telorun/kv-store-redis@0.6.0')"
         parent: !cel "regexGroups(steps.text.result, 'oci://ghcr[.]io/telorun/kv-store@([0-9.]+)')"
-      expected:
-        child: true
-        parent: [0.4.0]
-    invoke:
-      kind: Assert.Equals
+      expected: { child: true, parent: [0.4.0] }
+    invoke: { kind: Assert.Equals }
 ---
 # An empty `kinds` list is an error result saying what to pass.
 kind: Run.Sequence
@@ -439,9 +403,7 @@ steps:
     try:
       - name: call
         invoke: !ref mcpToolCall
-        inputs:
-          name: get_kinds
-          arguments: { kinds: [] }
+        inputs: { name: get_kinds, arguments: { kinds: [] } }
       - name: answered
         throw:
           code: ERR_TEST_EXPECTED_REFUSAL
@@ -451,8 +413,7 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_MCP_TOOL_ERROR
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
 ---
 # A `telo` version the hub tracks no built-in vocabulary at is a bad argument,
 # answered with the versions it does track. 0.0.1 predates the vocabulary.
@@ -479,11 +440,8 @@ steps:
           actual:
             rpcCode: !cel "error.data.code"
             teloCode: !cel "error.data.data.code"
-          expected:
-            rpcCode: -32602
-            teloCode: ERR_UNKNOWN_TELO_VERSION
-        invoke:
-          kind: Assert.Equals
+          expected: { rpcCode: -32602, teloCode: ERR_UNKNOWN_TELO_VERSION }
+        invoke: { kind: Assert.Equals }
 ---
 # A `limit` outside 1–50 is a bad argument, not an internal failure.
 kind: Run.Sequence
@@ -493,11 +451,7 @@ steps:
     try:
       - name: call
         invoke: !ref mcpToolCall
-        inputs:
-          name: search_resources
-          arguments:
-            query: delay
-            limit: 500
+        inputs: { name: search_resources, arguments: { query: delay, limit: 500 } }
       - name: answered
         throw:
           code: ERR_TEST_EXPECTED_REFUSAL
@@ -508,11 +462,8 @@ steps:
           actual:
             code: !cel "error.code"
             rpcCode: !cel "error.data.code"
-          expected:
-            code: ERR_MCP_JSON_RPC_ERROR
-            rpcCode: -32602
-        invoke:
-          kind: Assert.Equals
+          expected: { code: ERR_MCP_JSON_RPC_ERROR, rpcCode: -32602 }
+        invoke: { kind: Assert.Equals }
 ---
 # list_libraries is the whole of a publisher's library in one answer: a summary
 # no longer than a line, and the kinds each library exports.
@@ -521,10 +472,7 @@ metadata: { name: listLibraries_ListsAPublishersLibraries }
 steps:
   - name: call
     invoke: !ref mcpToolCall
-    inputs:
-      name: list_libraries
-      arguments:
-        publisher: ghcr.io/telorun
+    inputs: { name: list_libraries, arguments: { publisher: ghcr.io/telorun } }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -538,22 +486,15 @@ steps:
         onlyThePublisher: !cel >-
           steps.parse.result.docs[0].libraries.all(l, l.ref.startsWith('oci://ghcr.io/telorun/'))
         oneLine: !cel "steps.parse.result.docs[0].libraries.all(l, size(l.summary) <= 160)"
-      expected:
-        timerKinds: [Delay]
-        onlyThePublisher: true
-        oneLine: true
-    invoke:
-      kind: Assert.Equals
+      expected: { timerKinds: [Delay], onlyThePublisher: true, oneLine: true }
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: getModuleManifest_ReturnsCachedYaml }
 steps:
   - name: call
     invoke: !ref mcpToolCall
-    inputs:
-      name: get_module_manifest
-      arguments:
-        ref: oci://ghcr.io/telorun/timer
+    inputs: { name: get_module_manifest, arguments: { ref: oci://ghcr.io/telorun/timer } }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -567,11 +508,8 @@ steps:
       actual:
         docKind: !cel "steps.parse.result.docs[0].kind"
         moduleName: !cel "steps.parse.result.docs[0].metadata.name"
-      expected:
-        docKind: Telo.Library
-        moduleName: Timer
-    invoke:
-      kind: Assert.Equals
+      expected: { docKind: Telo.Library, moduleName: Timer }
+    invoke: { kind: Assert.Equals }
 ---
 # Same refusal as the HTTP route: an application's runtime reach is not indexed.
 # The call must fail — reaching the step after it is itself the failure.
@@ -584,10 +522,7 @@ steps:
         invoke: !ref mcpToolCall
         inputs:
           name: search_resources
-          arguments:
-            query: agent
-            runtime: rust
-            entry: [application]
+          arguments: { query: agent, runtime: rust, entry: [application] }
       - name: answered
         throw:
           code: ERR_TEST_EXPECTED_REFUSAL
@@ -603,8 +538,7 @@ steps:
             code: ERR_MCP_JSON_RPC_ERROR
             rpcCode: -32602
             teloCode: ERR_RUNTIME_FILTER_UNSUPPORTED
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
 ---
 # A tool's arguments are not validated against its `argumentsSchema`, so an
 # unknown entry type reaches the search — which refuses it rather than answering
@@ -616,11 +550,7 @@ steps:
     try:
       - name: call
         invoke: !ref mcpToolCall
-        inputs:
-          name: search_resources
-          arguments:
-            query: delay
-            entry: [kinds]
+        inputs: { name: search_resources, arguments: { query: delay, entry: [kinds] } }
       - name: answered
         throw:
           code: ERR_TEST_EXPECTED_REFUSAL
@@ -631,11 +561,8 @@ steps:
           actual:
             rpcCode: !cel "error.data.code"
             teloCode: !cel "error.data.data.code"
-          expected:
-            rpcCode: -32602
-            teloCode: ERR_UNKNOWN_ENTRY_TYPE
-        invoke:
-          kind: Assert.Equals
+          expected: { rpcCode: -32602, teloCode: ERR_UNKNOWN_ENTRY_TYPE }
+        invoke: { kind: Assert.Equals }
 ---
 # get_module mirrors GET /module: keyed facts about the seeded timer module,
 # not ranked hits — the kind list carries its Delay kind either way.
@@ -644,10 +571,7 @@ metadata: { name: getModule_ReturnsTrackedModuleFacts }
 steps:
   - name: call
     invoke: !ref mcpToolCall
-    inputs:
-      name: get_module
-      arguments:
-        ref: oci://ghcr.io/telorun/timer
+    inputs: { name: get_module, arguments: { ref: oci://ghcr.io/telorun/timer } }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -657,11 +581,8 @@ steps:
       actual:
         moduleRef: !cel "steps.parse.result.docs[0].module.ref"
         foundDelayKind: !cel "steps.parse.result.docs[0].kinds.exists(k, k.kind == 'Delay')"
-      expected:
-        moduleRef: oci://ghcr.io/telorun/timer
-        foundDelayKind: true
-    invoke:
-      kind: Assert.Equals
+      expected: { moduleRef: oci://ghcr.io/telorun/timer, foundDelayKind: true }
+    invoke: { kind: Assert.Equals }
 ---
 # list_module_versions mirrors GET /module/versions: the pin an agent needs to
 # write a reproducible `imports:` entry.
@@ -670,10 +591,7 @@ metadata: { name: listModuleVersions_ReturnsPinnedVersions }
 steps:
   - name: call
     invoke: !ref mcpToolCall
-    inputs:
-      name: list_module_versions
-      arguments:
-        ref: oci://ghcr.io/telorun/timer
+    inputs: { name: list_module_versions, arguments: { ref: oci://ghcr.io/telorun/timer } }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -688,8 +606,7 @@ steps:
         ref: oci://ghcr.io/telorun/timer
         hasVersions: true
         firstHasVersionField: true
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # find_implementations mirrors GET /implementations: the seeded redis and
 # memory backends both extend kv-store's Store abstract from their own module.
@@ -700,9 +617,7 @@ steps:
     invoke: !ref mcpToolCall
     inputs:
       name: find_implementations
-      arguments:
-        ref: oci://ghcr.io/telorun/kv-store
-        kind: Store
+      arguments: { ref: oci://ghcr.io/telorun/kv-store, kind: Store }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -716,11 +631,8 @@ steps:
         foundMemory: !cel >-
           steps.parse.result.docs[0].implementations.exists(i,
             i.ref == 'oci://ghcr.io/telorun/kv-store-memory')
-      expected:
-        foundRedis: true
-        foundMemory: true
-    invoke:
-      kind: Assert.Equals
+      expected: { foundRedis: true, foundMemory: true }
+    invoke: { kind: Assert.Equals }
 ---
 # find_instances mirrors GET /instances: the seeded language packs each export
 # one model of tesseract-model's `Language` kind and define no kind of their own.
@@ -733,9 +645,7 @@ steps:
     invoke: !ref mcpToolCall
     inputs:
       name: find_instances
-      arguments:
-        ref: ./modules/tesseract-model
-        kind: Language
+      arguments: { ref: ./modules/tesseract-model, kind: Language }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -747,8 +657,7 @@ steps:
           steps.parse.result.docs[0].instances.exists(i,
             i.name == code && i.module.ref == './modules/tesseract-lang/' + code))
       expected: [true, true, true]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # list_categories mirrors GET /categories: browsable without a search query.
 kind: Run.Sequence
@@ -756,9 +665,7 @@ metadata: { name: listCategories_CarriesSchedulingSlug }
 steps:
   - name: call
     invoke: !ref mcpToolCall
-    inputs:
-      name: list_categories
-      arguments: {}
+    inputs: { name: list_categories, arguments: {} }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -767,10 +674,8 @@ steps:
     inputs:
       actual:
         knowsScheduling: !cel "steps.parse.result.docs[0].categories.exists(c, c.category == 'scheduling')"
-      expected:
-        knowsScheduling: true
-    invoke:
-      kind: Assert.Equals
+      expected: { knowsScheduling: true }
+    invoke: { kind: Assert.Equals }
 ---
 # suggest_module_refs mirrors GET /refs: lexical typeahead, not semantic search.
 kind: Run.Sequence
@@ -778,10 +683,7 @@ metadata: { name: suggestModuleRefs_ResolvesPartialToken }
 steps:
   - name: call
     invoke: !ref mcpToolCall
-    inputs:
-      name: suggest_module_refs
-      arguments:
-        query: consol
+    inputs: { name: suggest_module_refs, arguments: { query: consol } }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -791,10 +693,8 @@ steps:
       actual:
         foundConsole: !cel >-
           steps.parse.result.docs[0].refs.exists(r, r.ref == 'oci://ghcr.io/telorun/console')
-      expected:
-        foundConsole: true
-    invoke:
-      kind: Assert.Equals
+      expected: { foundConsole: true }
+    invoke: { kind: Assert.Equals }
 ---
 # find_dependents answers in the short form a model is re-sent: ref, name and a
 # one-sentence summary, never the whole description, with the total and paging.
@@ -803,10 +703,7 @@ metadata: { name: findDependents_ListsImportersInOneLine }
 steps:
   - name: call
     invoke: !ref mcpToolCall
-    inputs:
-      name: find_dependents
-      arguments:
-        ref: oci://ghcr.io/telorun/kv-store
+    inputs: { name: find_dependents, arguments: { ref: oci://ghcr.io/telorun/kv-store } }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -815,9 +712,7 @@ steps:
     invoke: !ref mcpToolCall
     inputs:
       name: find_dependents
-      arguments:
-        ref: oci://ghcr.io/telorun/kv-store
-        limit: 1
+      arguments: { ref: oci://ghcr.io/telorun/kv-store, limit: 1 }
   - name: parseOne
     invoke: !ref parsePayload
     inputs:
@@ -839,8 +734,7 @@ steps:
         summarised: true
         paged: 1
         pagedTotal: true
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # `publisher` keeps a search inside one host and org; one with no module selects
 # nothing rather than being refused.
@@ -851,9 +745,7 @@ steps:
     invoke: !ref mcpToolCall
     inputs:
       name: search_resources
-      arguments:
-        query: key value store
-        publisher: ghcr.io/telorun
+      arguments: { query: key value store, publisher: ghcr.io/telorun }
   - name: parse
     invoke: !ref parsePayload
     inputs:
@@ -862,9 +754,7 @@ steps:
     invoke: !ref mcpToolCall
     inputs:
       name: search_resources
-      arguments:
-        query: key value store
-        publisher: example.invalid/nobody
+      arguments: { query: key value store, publisher: example.invalid/nobody }
   - name: parseNone
     invoke: !ref parsePayload
     inputs:
@@ -877,5 +767,4 @@ steps:
            m.ref.startsWith('oci://ghcr.io/telorun/')),
          'unknownSelectsNothing': size(steps.parseNone.result.docs[0].results[0].modules)}
       expected: { some: true, onlyTheirs: true, unknownSelectsNothing: 0 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

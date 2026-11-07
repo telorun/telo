@@ -502,7 +502,9 @@ interface StepWalkContext {
   slotPrefix: string;
   nodes: Map<string, CallGraphNode>;
   order: StepGraphNode[];
-  resolveName: (name: string) => ResourceGraphNode | undefined;
+  /** The node a step's target reaches: `written` is the value as the step holds
+   *  it, so a reference through an import alias is read through that alias. */
+  resolveName: (name: string, written: unknown) => ResourceGraphNode | undefined;
   edges: CallGraphEdge[];
   /** `${ownerId}\0${concretePath}` → the edge a step slot emitted, so the
    *  field-map walk can stamp `injected` on sites it also reaches
@@ -629,7 +631,7 @@ function emitStepEdges(node: StepGraphNode, ctx: StepWalkContext): void {
       path: `${node.path}.${key}`,
       use,
     };
-    const target = ctx.resolveName(targetName);
+    const target = ctx.resolveName(targetName, written);
     if (target) edge.to = target.id;
     if (unresolved) edge.unresolved = unresolved;
     if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
@@ -824,19 +826,21 @@ export function buildCallGraph(
   const instanceThrough = (
     value: unknown,
     source: ResourceManifest,
-    name: string,
   ): ResourceGraphNode | undefined => {
     // A dependency's copy keeps its `!ref <Alias>.<name>` as written: it is
     // read through the alias table of the module that wrote it.
     const sentinel = refSentinelTarget(value);
     const alias = sentinel ? sentinel.alias : (value as { alias?: unknown } | null)?.alias;
-    const target = sentinel ? sentinel.name : name;
+    const target = sentinel ? sentinel.name : (value as { name?: unknown } | null)?.name;
+    if (typeof target !== "string") return undefined;
     if (typeof alias !== "string" || alias === "Self") return undefined;
     const module = moduleAliasScope(source.metadata, options.aliases, options.aliasesByModule)?.moduleForAlias(alias);
     if (!module) return undefined;
     const declared = names.declarationsOf(target).filter((n) => declaringModule(n.manifest) === module);
     if (declared.length === 0) return undefined;
-    if (declared.length === 1) return sentinel ? declared[0] : undefined;
+    // The alias names the module, so a bare-name lookup — same module first —
+    // would land on a same-named resource of the referring module instead.
+    if (declared.length === 1) return declared[0];
     return names.inModule(target, module, importPathThrough(source, alias));
   };
 
@@ -855,7 +859,7 @@ export function buildCallGraph(
   // --- step nodes ---
   const collectStepsFor = (
     node: ResourceGraphNode,
-    resolveName: (name: string) => ResourceGraphNode | undefined,
+    resolveName: (name: string, written: unknown) => ResourceGraphNode | undefined,
   ): void => {
     const definition = definitionFor(node.manifest);
     const schema = definition?.schema as Record<string, any> | undefined;
@@ -881,7 +885,11 @@ export function buildCallGraph(
   };
 
   for (const node of topLevel) {
-    collectStepsFor(node, (name) => names.resolve(name, declaringModule(node.manifest)));
+    collectStepsFor(
+      node,
+      (name, written) =>
+        instanceThrough(written, node.manifest) ?? names.resolve(name, declaringModule(node.manifest)),
+    );
   }
 
   /** Re-resolve `ownerId`'s step edges against the scopes it declares. */
@@ -981,7 +989,10 @@ export function buildCallGraph(
         edges.push(edge);
       }
       // Its step arrays too, resolved scope-local first.
-      collectStepsFor(node, (name) => names.resolve(name, module, site));
+      collectStepsFor(
+        node,
+        (name, written) => instanceThrough(written, view) ?? names.resolve(name, module, site),
+      );
       if (declareScopedMembers(node.id, address, ownScopes, module)) {
         rescopeStepEdges(node.id, address, ownScopes, module);
       }
@@ -1058,7 +1069,7 @@ export function buildCallGraph(
         // reaches that import's instance; a bare one written in an instance's
         // copy, that same instance's.
         const instance =
-          instanceThrough(event.value, event.source, targetName) ?? ownInstance(event.source, found?.declaration);
+          instanceThrough(event.value, event.source) ?? ownInstance(event.source, found?.declaration);
         if (instance) edge.to = instance.id;
         else if (found) edge.to = found.declaration.id;
         if (unresolved) edge.unresolved = unresolved;
@@ -1366,7 +1377,10 @@ function refTargetName(value: unknown): string | undefined {
   const sentinel = refSentinelTarget(value);
   // A family member's edge reaches the family: one box, whichever member.
   if (sentinel) return sentinel.indexes.length > 0 ? sentinel.name : sentinel.source;
-  return isResolvedReference(value) ? value.name : undefined;
+  if (!isResolvedReference(value)) return undefined;
+  // Qualified like the `!ref` it was resolved from, so a bare-name lookup never
+  // lands on a same-named resource of the referring module.
+  return value.alias !== undefined && value.alias !== "Self" ? `${value.alias}.${value.name}` : value.name;
 }
 
 export interface ProjectToPairsOptions {

@@ -52,8 +52,7 @@ steps:
       # anonymous OCI token handshake. The client's 10s default is marginal
       # against that on a loaded CI runner.
       timeout: 30000
-      body:
-        ref: oci://ghcr.io/telorun/console
+      body: { ref: oci://ghcr.io/telorun/console }
   - name: assert
     inputs:
       status: !cel "steps.hit.result.status"
@@ -121,10 +120,7 @@ metadata: { name: pollRegisterStatus }
 maxIterations: 30
 condition: !cel "iteration == 0 || previous.status.result.body.status != 'ready'"
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 2s
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
   - name: status
     invoke:
       kind: HttpClient.Request
@@ -150,8 +146,7 @@ steps:
       # Reaches the network too: the ref clears the shape gate, so the hub tries
       # to resolve it before deciding it is unregisterable.
       timeout: 30000
-      body:
-        ref: e2e/nonexistent-module-xyz
+      body: { ref: e2e/nonexistent-module-xyz }
   - name: assert
     inputs:
       status: !cel "steps.hit.result.status"
@@ -165,8 +160,7 @@ steps:
           status: { const: 400 }
           body:
             type: object
-            properties:
-              error: { type: string, minLength: 1 }
+            properties: { error: { type: string, minLength: 1 } }
             required: [error]
         required: [status, body]
 ---
@@ -184,16 +178,14 @@ steps:
       metadata: { name: PostLocalExisting }
       url: http://localhost:8040/register
       method: POST
-      body:
-        ref: /etc/passwd
+      body: { ref: /etc/passwd }
   - name: missing
     invoke:
       kind: HttpClient.Request
       metadata: { name: PostLocalMissing }
       url: http://localhost:8040/register
       method: POST
-      body:
-        ref: /etc/telo-e2e-definitely-absent
+      body: { ref: /etc/telo-e2e-definitely-absent }
   - name: assert
     inputs:
       existingStatus: !cel "steps.existing.result.status"
@@ -262,10 +254,7 @@ steps:
       maxIterations: 30
       condition: !cel "iteration == 0 || previous.status.result.body.status != 'ready'"
       steps:
-        - name: wait
-          invoke: { kind: Timer.Delay }
-          inputs:
-            duration: 2s
+        - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
         - name: status
           invoke:
             kind: HttpClient.Request
@@ -314,10 +303,7 @@ steps:
         kind: McpClient.HttpClient
         url: http://localhost:8040/mcp
         clientInfo: { name: telo-test, version: 1.0.0 }
-    inputs:
-      name: suggest_module_refs
-      arguments:
-        query: agent-console
+    inputs: { name: suggest_module_refs, arguments: { query: agent-console } }
   - name: suggested
     invoke: { kind: Yaml.Parse }
     inputs:
@@ -373,5 +359,4 @@ steps:
         entriesRanked: [true, true, true]
         refs: 0
         suggested: 0
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

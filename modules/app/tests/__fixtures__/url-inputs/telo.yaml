@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata: { name: UrlInputs }
+imports: { Console: ../../../../console }
+variables:
+  endpoint:
+    env: URL_INPUTS_ENDPOINT
+    type: string
+    x-telo-type: { name: Telo.Url, scheme: { enum: [https] } }
+needs: { access: { kind: Self.Access, env: { url: URL_INPUTS_ACCESS_URL } } }
+targets: [!ref print]
+---
+kind: Telo.NeedType
+metadata: { name: Access }
+fields: { url: { x-telo-type: { name: Telo.Url, scheme: { enum: [postgres] } } } }
+required: [url]
+---
+kind: Telo.Sequence
+metadata: { name: print }
+steps:
+  - name: line
+    invoke: { kind: Console.WriteLine }
+    inputs:
+      output: !interpolate "${{ variables.endpoint.host }} ${{ resources.access.url.host }}"

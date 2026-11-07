@@ -44,33 +44,17 @@ imports:
       connection: !ref db
       bucketGet: !ref getManifest
 variables:
-  dbHost:
-    env: DB_HOST
-    type: string
-    default: localhost
-  dbPort:
-    env: DB_PORT
-    type: integer
-    default: 5432
-  dbUser:
-    env: DB_USER
-    type: string
-    default: postgres
-  dbPassword:
-    env: DB_PASSWORD
-    type: string
-    default: postgres
-  dbName:
-    env: DB_NAME
-    type: string
-    default: postgres
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
 targets:
   - !ref Schema.migrations
   - !ref test
 ---
 kind: Postgres.Connection
-metadata:
-  name: db
+metadata: { name: db }
 access:
   kind: Postgres.DatabaseAccess
   fields:
@@ -83,8 +67,7 @@ access:
       path: !cel "'/' + variables.dbName"
 ---
 kind: S3.Get
-metadata:
-  name: getManifest
+metadata: { name: getManifest }
 bucketRef:
   kind: S3.Bucket
   bucketName: unused
@@ -94,20 +77,16 @@ bucketRef:
   secretAccessKey: unused
 ---
 kind: Embedding.Query
-metadata:
-  name: embedQuery
+metadata: { name: embedQuery }
 model:
   kind: OpenAI.EmbeddingModel
   model: stand-in
   request:
     kind: HttpClient.Request
-    client:
-      kind: HttpClient.Client
-      baseUrl: http://127.0.0.1:8987
+    client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8987 }
 ---
 kind: VectorStore.Match
-metadata:
-  name: vectorMatch
+metadata: { name: vectorMatch }
 store:
   kind: VectorStorePgvector.Store
   connection: !ref db
@@ -117,15 +96,14 @@ store:
 topK: 5
 ---
 kind: Http.Api
-metadata:
-  name: embedderApi
+metadata: { name: embedderApi }
 routes:
   - request: { path: /embeddings, method: POST }
     handler:
       kind: Run.Value
       value:
         data:
-          - embedding: [1.0, 0.0, 0.0]
+          - { embedding: [1.0, 0.0, 0.0] }
     returns:
       - status: 200
         content:
@@ -133,19 +111,15 @@ routes:
             body: !cel "result"
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref db
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Embedder }
-    listen:
-      address: 127.0.0.1
-      port: 8987
+    listen: { address: 127.0.0.1, port: 8987 }
     mounts:
       - path: /
         mount: !ref embedderApi
@@ -203,20 +177,13 @@ steps:
         ON CONFLICT DO NOTHING
   - name: instances
     invoke: !ref Catalog.instances
-    inputs:
-      ref: oci://example.test/ocr-model
-      kind: Language
+    inputs: { ref: oci://example.test/ocr-model, kind: Language }
   - name: detail
     invoke: !ref Catalog.moduleDetail
-    inputs:
-      ref: oci://example.test/ocr-model
-      version: ""
+    inputs: { ref: oci://example.test/ocr-model, version: "" }
   - name: kindHit
     invoke: !ref Search.searchResources
-    inputs:
-      q: recognition model
-      category: ""
-      runtime: ""
+    inputs: { q: recognition model, category: "", runtime: "" }
   - name: moduleHit
     invoke: !ref Search.searchModules
     inputs:
@@ -227,10 +194,7 @@ steps:
       offset: 0
   - name: byLanguage
     invoke: !ref Search.searchResources
-    inputs:
-      q: polish
-      category: ""
-      runtime: ""
+    inputs: { q: polish, category: "", runtime: "" }
   - name: packModuleHit
     invoke: !ref Search.searchModules
     inputs:
@@ -249,14 +213,10 @@ steps:
       offset: 0
   - name: broadResources
     invoke: !ref Search.searchResources
-    inputs:
-      q: latin script
-      category: ""
-      runtime: ""
+    inputs: { q: latin script, category: "", runtime: "" }
   - name: vocabulary
     invoke: !ref Search.categoryVocabulary
-    inputs:
-      category: ""
+    inputs: { category: "" }
   - name: assert
     inputs:
       actual:
@@ -315,5 +275,4 @@ steps:
             - [[pol, "oci://example.test/ocr-lang/pol"]]
         packCategory: [2]
         visionModules: [1]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

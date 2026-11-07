@@ -66,14 +66,9 @@ COPY --chown=node:node ./*.yaml ./
 # fails the load with INCLUDE_FILE_NOT_FOUND.
 COPY --chown=node:node ./guides ./guides
 
-# Pre-fetch every controller declared in the manifest graph so boot does
-# no network I/O. Cache writes to $TELO_CACHE_DIR (/srv/.telo-cache).
-# NOTE: requires every import to resolve from the registry. Until
-# vector-store-pgvector is published, its import in telo.yaml is a relative path
-# (`../../modules/...`) that only resolves in the repo-mounted `development`
-# target; flip it to `std/vector-store-pgvector@0.1.0` before building this
-# stage. See README.md.
-RUN telo install telo.yaml
+# Pre-fetch every controller declared in both entry graphs — the hub and its
+# administration CLI — so neither boot does network I/O.
+RUN telo install telo.yaml admin.yaml
 
 FROM telorun/node:${TELO_NODE_VERSION}-slim as production
 
