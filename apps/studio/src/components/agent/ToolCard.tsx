@@ -250,17 +250,23 @@ function FileToolCard({ tool, diffs }: { tool: ToolCallView; diffs: boolean }) {
       )}
       {changes && tool.path === undefined && (
         <ul className="space-y-0.5">
-          {changes.map((change) => (
-            <li key={change.path} className="flex items-center gap-2">
-              <span className="text-muted-foreground">{change.status}</span>
-              {change.status === "deleted" ? (
-                <span className="font-mono">{change.path}</span>
-              ) : (
-                <WorkspaceFileLink path={change.path} className="font-mono" />
-              )}
-              <LineCounts change={change} />
-            </li>
-          ))}
+          {changes.map((change) => {
+            const fileHunks = tool.files?.find((file) => file.path === change.path)?.hunks;
+            return (
+              <li key={change.path}>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">{change.status}</span>
+                  {change.status === "deleted" ? (
+                    <span className="font-mono">{change.path}</span>
+                  ) : (
+                    <WorkspaceFileLink path={change.path} line={fileHunks?.[0]?.newStart} className="font-mono" />
+                  )}
+                  <LineCounts change={change} />
+                </div>
+                {fileHunks && fileHunks.length > 0 && <DiffHunks hunks={fileHunks} />}
+              </li>
+            );
+          })}
         </ul>
       )}
       {!changes && !checkFailed && <ToolOutput className="p-0" output={tool.output} />}

@@ -11,6 +11,7 @@ import type {
   ToolCall,
   ToolResult,
   TurnError,
+  ToolCallView,
   TurnRecords,
 } from "./types";
 
@@ -47,12 +48,13 @@ export function toolOutputFields(result: ToolResult | undefined): {
   diagnostics?: CheckDiagnostic[];
   changes?: FileChange[];
   hunks?: DiffHunk[] | null;
+  files?: Array<{ path: string; hunks: DiffHunk[] | null }>;
   run?: { exitCode: number; output: string; messages: string };
 } {
   const output = result?.output;
   if (!output || typeof output !== "object" || Array.isArray(output)) return {};
   const fields = output as Record<string, unknown>;
-  const { path, checkExitCode, checkReport, changes, hunks, exitCode, messages } = fields;
+  const { path, checkExitCode, checkReport, changes, hunks, files, exitCode, messages } = fields;
   const diagnostics =
     checkReport && typeof checkReport === "object" ? (checkReport as { diagnostics?: unknown }).diagnostics : undefined;
   return {
@@ -61,6 +63,7 @@ export function toolOutputFields(result: ToolResult | undefined): {
     diagnostics: Array.isArray(diagnostics) ? (diagnostics as CheckDiagnostic[]) : undefined,
     ...(Array.isArray(changes) ? { changes: changes as FileChange[] } : {}),
     ...(Array.isArray(hunks) ? { hunks: hunks as DiffHunk[] } : hunks === null && "hunks" in fields ? { hunks: null } : {}),
+    ...(Array.isArray(files) ? { files: files as Array<{ path: string; hunks: DiffHunk[] | null }> } : {}),
     ...(typeof exitCode === "number" && typeof fields.output === "string"
       ? { run: { exitCode, output: fields.output, messages: typeof messages === "string" ? messages : "" } }
       : {}),
@@ -165,17 +168,27 @@ function fold(messages: ChatMessage[], turnId: string, record: JournalRecord): C
       const result = (part as { toolResult?: ToolResult }).toolResult;
       if (!result) return messages;
       const { checkExitCode, diagnostics, ...structured } = toolOutputFields(result);
+      const settle = (tool: ToolCallView): ToolCallView => ({
+        ...tool,
+        state: result.error === true ? "error" : "done",
+        output: result.content,
+        checkExitCode,
+        diagnostics,
+        ...("output" in result ? { structured: result.output } : {}),
+        ...structured,
+      });
+      // A text call (the tool the agent ran for one reply's fenced blocks) has
+      // no `tool-call` record to settle: its result is the whole card.
+      if (result.origin === "text") {
+        const id = result.toolCallId ?? `${result.name ?? "tool"}-${record.id}`;
+        return withAssistant(messages, turnId, (m) => ({
+          ...m,
+          parts: appendToolCall(m.parts, settle({ toolCallId: id, name: result.name ?? "tool", state: "running" })),
+        }));
+      }
       return withAssistant(messages, turnId, (m) => ({
         ...m,
-        parts: settleToolCall(m.parts, result, (tool) => ({
-          ...tool,
-          state: result.error === true ? "error" : "done",
-          output: result.content,
-          checkExitCode,
-          diagnostics,
-          ...("output" in result ? { structured: result.output } : {}),
-          ...structured,
-        })),
+        parts: settleToolCall(m.parts, result, settle),
       }));
     }
     case "context-summary": {

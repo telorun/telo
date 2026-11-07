@@ -1,0 +1,7 @@
+modules:
+  apps/authoring-agent: Added
+body: "The agent writes file changes as telo-edit and telo-file blocks in its reply: a
+  reply's blocks are one apply_changes call, decided before anything is written and
+  checked once, and a patch that does not apply names its change, path and section. It
+  also gains move_file and copy_file for files and directories, checkpointed so one
+  revert undoes them, and the primer teaches the blocks and the new tools."
