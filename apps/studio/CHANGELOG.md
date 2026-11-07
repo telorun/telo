@@ -1,5 +1,30 @@
 # @telorun/studio
 
+## 0.34.6-rc.0
+
+### Patch Changes
+
+- e457b1a: A released Studio loads its starter gallery from its own release tag's `starters/` instead of main's, so the starters it offers match the telo it ships with. A build without `VITE_TELO_STARTERS_URL` still loads main's.
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [e457b1a]
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [e457b1a]
+- Updated dependencies [eac0220]
+- Updated dependencies [e457b1a]
+- Updated dependencies [ba2e682]
+- Updated dependencies [e457b1a]
+- Updated dependencies [ba2e682]
+- Updated dependencies [1bcbfd7]
+  - @telorun/sdk@0.132.0-rc.0
+  - @telorun/analyzer@0.132.0-rc.0
+  - @telorun/editor-protocol@0.3.1-rc.0
+  - @telorun/language-host@0.4.1-rc.0
+  - @telorun/debug-ui@0.6.9-rc.0
+  - @telorun/debug-wire@0.4.7-rc.0
+  - @telorun/glob@0.3.2-rc.0
+  - @telorun/ide-support@0.132.0-rc.0
+  - @telorun/templating@0.132.0-rc.0
+
 ## 0.34.5
 
 ### Patch Changes

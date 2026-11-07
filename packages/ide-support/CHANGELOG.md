@@ -1,5 +1,22 @@
 # @telorun/ide-support
 
+## 0.132.0-rc.0
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [e457b1a]
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [eac0220]
+- Updated dependencies [e457b1a]
+- Updated dependencies [ba2e682]
+- Updated dependencies [1bcbfd7]
+  - @telorun/analyzer@0.132.0-rc.0
+  - @telorun/editor-protocol@0.3.1-rc.0
+  - @telorun/cel@0.132.0-rc.0
+  - @telorun/templating@0.132.0-rc.0
+
 ## 0.131.0
 
 ### Patch Changes

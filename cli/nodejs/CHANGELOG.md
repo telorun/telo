@@ -1,5 +1,26 @@
 # @telorun/cli
 
+## 0.132.0-rc.0
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- e457b1a: `telo release check` no longer asks for a changelog entry for files a `v*`, `modules-*` or `packages-*` release tag already carries, so a release branch's merge-back passes. Floor verification names the newest published final release when a declared bound is not published yet, never a release candidate.
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [eac0220]
+- Updated dependencies [e457b1a]
+- Updated dependencies [ba2e682]
+- Updated dependencies [e457b1a]
+- Updated dependencies [1bcbfd7]
+  - @telorun/kernel@0.132.0-rc.0
+  - @telorun/sdk@0.132.0-rc.0
+  - @telorun/analyzer@0.132.0-rc.0
+  - @telorun/glob@0.3.2-rc.0
+  - @telorun/ide-support@0.132.0-rc.0
+  - @telorun/runner-core@0.24.1-rc.0
+  - @telorun/templating@0.132.0-rc.0
+
 ## 0.131.0
 
 ### Patch Changes
