@@ -3,7 +3,9 @@ import { lookup } from "node:dns/promises";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import net, { type AddressInfo, type Socket } from "node:net";
 import tls, { type TLSSocket } from "node:tls";
+import type { ClaimedListener, HandedConnection } from "@telorun/sdk";
 import type { HttpsOptions } from "./tls-material.js";
+import { HandedSocket } from "./handed-socket.js";
 
 /** How long a TLS handshake may take before its connection is dropped. */
 export const TLS_HANDSHAKE_TIMEOUT_MS = 120_000;
@@ -33,6 +35,9 @@ export interface ConnectionListenerSettings {
   onAddressUnavailable(unavailable: UnavailableAddress): void;
   /** Resolves a hostname to its addresses; DNS by default. */
   resolve?(hostname: string): Promise<string[]>;
+  /** Claims the host's socket for the port, handing each connection it admits
+   *  to `accept`; null when the host holds none, and the port is bound. */
+  claim?(port: number, accept: (connection: HandedConnection) => void): Promise<ClaimedListener | null>;
 }
 
 /** The bind failures that mean the host lacks the address or its family, not that the bind is wrong. */
@@ -65,6 +70,9 @@ export class ConnectionListener {
   private readonly served = new WeakMap<Socket, Connection>();
   private http: http.Server | undefined;
   private draining = false;
+  /** The host's socket, when the server serves it instead of binding. */
+  private supplied: { claim: ClaimedListener; listener: net.Server } | undefined;
+  private onIdle: (() => void) | undefined;
 
   constructor(settings: ConnectionListenerSettings) {
     this.settings = settings;
@@ -101,12 +109,21 @@ export class ConnectionListener {
     return this.listeners.map((listener) => listener.address() as AddressInfo);
   }
 
+  /** The address of the host's socket when the server serves it, else undefined. */
+  get suppliedAddress(): string | undefined {
+    return this.supplied?.claim.address;
+  }
+
   /**
    * Binds every address: an IP literal alone, a hostname each address it
    * resolves to. A resolved address the host has no interface for is reported
    * and left unbound; any other failure, or none bound, fails and closes what bound.
    */
   async listen(): Promise<void> {
+    if (await this.claimSupplied()) {
+      this.httpLayer().emit("listening");
+      return;
+    }
     const { address } = this.settings;
     const literal = net.isIP(address) !== 0;
     const addresses = literal ? [address] : await this.resolve(address);
@@ -146,13 +163,42 @@ export class ConnectionListener {
    */
   async close(): Promise<void> {
     this.draining = true;
-    const closed = this.closeListeners();
+    const closed = this.supplied ? this.releaseSupplied() : this.closeListeners();
     for (const connection of this.connections.values()) {
       if (connection.inFlight === 0) end(connection);
     }
     await closed;
     // Stops the HTTP layer's timeout checks; it never listened, so nothing else closes.
     this.httpLayer().close();
+  }
+
+  /**
+   * Claims the host's socket, before anything binds. Each handed connection is
+   * emitted on a listener that never binds, which serves it as an accepted one —
+   * through the TLS handshake when `tls` is set.
+   */
+  private async claimSupplied(): Promise<boolean> {
+    if (!this.settings.claim) return false;
+    const listener = this.createListener();
+    const claim = await this.settings.claim(this.settings.port, (connection) => {
+      if (this.draining) {
+        void connection.close({ code: "ECONNREFUSED", message: "the server is closing" });
+        return;
+      }
+      listener.emit("connection", new HandedSocket(connection));
+    });
+    if (!claim) return false;
+    this.supplied = { claim, listener };
+    return true;
+  }
+
+  /** Releases the host's socket, then resolves once every handed connection has closed. */
+  private async releaseSupplied(): Promise<void> {
+    await this.supplied!.claim.release();
+    if (this.connections.size === 0) return;
+    await new Promise<void>((resolve) => {
+      this.onIdle = resolve;
+    });
   }
 
   private async resolve(hostname: string): Promise<string[]> {
@@ -266,6 +312,7 @@ export class ConnectionListener {
 
   private closed(connection: Connection, peer: string | undefined): void {
     this.connections.delete(connection.socket);
+    if (this.connections.size === 0) this.onIdle?.();
     if (peer !== undefined && this.handshaking.get(peer) === connection) this.handshaking.delete(peer);
     if (connection.served || (this.draining && !connection.failure)) return;
     this.settings.onHandshakeFailure({

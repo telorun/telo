@@ -345,14 +345,28 @@ same directories on every restart, reload and redeployment.
 A state directory serves exactly one application: two applications sharing
 one would read each other's directories. `TELO_HOST_STATE_DIR` is hidden from
 the running application, as a need's variables are, and an application started
-with `App.Instance` does not inherit it.
+with `App.Instance` does not inherit it — it is handed a state directory of its
+own instead (below).
+
+### Child applications under a state directory
+
+An application started by a resource that runs a child (`App.Instance`) gets
+its own state directory, `<state dir>/apps/<path>`, the path being the
+resource's module path and name joined with `.`: `apps/web` at the root,
+`apps/Admin.web` for the `web` of a library imported as `Admin`; a resource declared in a `with:` scope sits beneath its
+holder, as a scoped import's needs do (`apps/seq.web`). The kernel creates the
+directory at load, and it is the
+child's `TELO_HOST_STATE_DIR`, so the child's durable directories sit at
+`apps/web/needs/<need path>` and its own children nest beneath it.
 
 ### Renamed needs under a state directory
 
 Renaming a need, or the import alias it is reached through, gives it a new
-path, and so a new, empty directory. At load, an entry under
+path, and so a new, empty directory; renaming a child application's instance
+does the same for `<state dir>/apps/`. At load, an entry under
 `<state dir>/needs/` that no `Telo.DurableDirectory` need of the application
-names is an orphan:
+names, or under `<state dir>/apps/` that no child application of it names, is
+an orphan:
 
 - when the load would create a fresh directory while an orphan exists, it is
   refused with `ERR_NEED_ORPHANED` before any resource initializes, naming both
@@ -370,6 +384,20 @@ every need:
 ```bash
 TELO_HOST_STATE_DIR=./data telo run ./shop
 ```
+
+## Desktop hosts
+
+`Telo.DesktopHost` is the need a desktop application asks the desktop shell for.
+It is supplied like every root need, from the environment only: the shell's
+control channel is `TELO_NEED_<NEED>__ENDPOINT` (a `unix:` or `npipe:` address)
+and `TELO_NEED_<NEED>__TOKEN` (sensitive), or the names the need's `env:` binds.
+Setting one and not the other is refused as partly supplied; setting neither is
+refused as unmet, naming both variables. `telo needs report` lists the
+parameters (`identifier`, `productName`, `icon` as a module-relative path,
+`port`, `showInDock`, `callbackPaths`) and both variables.
+
+`telo run` does not yet act as the desktop host, and a runner never supplies
+one, so today the variables must be set by whatever starts the application.
 
 ## Needs supplied by a parent
 

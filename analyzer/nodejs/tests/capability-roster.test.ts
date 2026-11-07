@@ -66,6 +66,7 @@ describe("the roster", () => {
     expect(marked.sort()).toEqual(
       [
         "ConsoleSink",
+        "DesktopHost",
         "DurableDirectory",
         "FileSink",
         "Function",

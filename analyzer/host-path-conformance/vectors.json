@@ -32,6 +32,21 @@
       "anywhere": {
         "type": "string",
         "x-telo-type": "Telo.HostPath"
+      },
+      "icon": {
+        "type": "string",
+        "x-telo-type": {
+          "name": "Telo.HostPath",
+          "entry": "file",
+          "mediaType": "image/png"
+        }
+      },
+      "badge": {
+        "type": "string",
+        "x-telo-type": {
+          "name": "Telo.HostPath",
+          "mediaType": "image/png"
+        }
       }
     },
     "$defs": {
@@ -90,6 +105,38 @@
       "message": "'/root' takes the path of a directory, but what is at '{unreadable}' cannot be read ({reason})."
     },
     {
+      "id": "entry/before-the-media-type",
+      "value": {
+        "icon": "{directory}"
+      },
+      "code": "ERR_HOST_PATH_ENTRY_MISMATCH",
+      "message": "'/icon' takes the path of a file, but '{directory}' is a directory."
+    },
+    {
+      "id": "content/png-slot-given-a-jpeg",
+      "value": {
+        "icon": "{jpeg}"
+      },
+      "code": "ERR_HOST_PATH_CONTENT_MISMATCH",
+      "message": "icon: '{jpeg}' is image/jpeg; this slot takes image/png."
+    },
+    {
+      "id": "content/png-slot-given-a-file-of-no-known-media-type",
+      "value": {
+        "icon": "{file}"
+      },
+      "code": "ERR_HOST_PATH_CONTENT_MISMATCH",
+      "message": "icon: '{file}' carries no known media type's signature; this slot takes image/png."
+    },
+    {
+      "id": "content/media-type-slot-given-a-directory",
+      "value": {
+        "badge": "{directory}"
+      },
+      "code": "ERR_HOST_PATH_CONTENT_MISMATCH",
+      "message": "badge: '{directory}' is a directory; this slot takes image/png."
+    },
+    {
       "id": "relative/literal",
       "value": {
         "root": "data"
@@ -138,6 +185,24 @@
       "id": "accepted/union-constant",
       "value": {
         "file": ":memory:"
+      },
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "accepted/matching-media-type",
+      "value": {
+        "icon": "{png}",
+        "badge": "{png}"
+      },
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "accepted/absent-media-type-path",
+      "value": {
+        "icon": "{absent}",
+        "badge": "{absent}"
       },
       "code": null,
       "message": null

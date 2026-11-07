@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: Refusal
+  version: 1.0.0
+  description: |
+    The first call over the control channel is refused by the handshake: the host speaks
+    another generation, or does not accept the token. Nothing else is served.
+lang: en
+imports: { Desktop: ../../.., Fixture: ../host, Assert: ../../../../assert }
+variables:
+  generation: { env: FIXTURE_GENERATION, type: string, default: desktop_host-1 }
+  expectedToken: { env: FIXTURE_EXPECTED_TOKEN, type: string, default: s3cret-token }
+  expectCode: { env: EXPECT_CODE, type: string }
+  expectMessage: { env: EXPECT_MESSAGE, type: string }
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.test, productName: Test, icon: !module-path icon.png, port: http }
+targets:
+  - !ref verify
+---
+kind: Fixture.Host
+metadata: { name: fixture }
+host: !ref desktopHost
+generation: !cel "variables.generation"
+expectedToken: !cel "variables.expectedToken"
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - name: refused
+    try:
+      - name: quit
+        invoke: { kind: Desktop.Quit, host: !ref desktopHost }
+    catch:
+      - name: code
+        invoke: { kind: Assert.Equals }
+        inputs: { actual: !cel "error.code", expected: !cel "variables.expectCode" }
+      - name: message
+        invoke: { kind: Assert.Contains }
+        inputs: { actual: !cel "error.message", value: !cel "variables.expectMessage" }
+  - name: served
+    invoke: { kind: Fixture.Frames, fixture: !ref fixture }
+  - name: onlyHello
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.served.result.frames.map(frame, frame.type)"
+      expected: [Host.Hello]

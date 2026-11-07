@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { refuseMisplacedHostEntries, refuseRelativeHostPaths } from "../src/host-paths.js";
+import { refuseMismatchedHostPaths, refuseRelativeHostPaths } from "../src/host-paths.js";
 
 const VECTORS = JSON.parse(
   fs.readFileSync(
@@ -20,13 +20,17 @@ const places: Record<string, string> = {
   file: path.join(scratch, "file"),
   directory: path.join(scratch, "directory"),
   absent: path.join(scratch, "absent"),
+  png: path.join(scratch, "image.png"),
+  jpeg: path.join(scratch, "image.jpg"),
   unreadable: path.join(scratch, "a".repeat(300)),
 };
 fs.writeFileSync(places.file!, "x");
+fs.writeFileSync(places.png!, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]));
+fs.writeFileSync(places.jpeg!, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00]));
 fs.mkdirSync(places.directory!);
 afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
 
-const PLACEHOLDER = /\{(file|directory|absent|unreadable)\}/g;
+const PLACEHOLDER = /\{(file|directory|absent|unreadable|png|jpeg)\}/g;
 const placed = (text: string) => text.replace(PLACEHOLDER, (_, name: string) => places[name]!);
 /** The same inside JSON text, where a Windows path's backslashes must be escaped. */
 const placedInJson = (text: string) =>
@@ -41,7 +45,7 @@ describe("host-path conformance vectors", () => {
       const resource = JSON.parse(placedInJson(JSON.stringify(row.value))) as Record<string, unknown>;
       // The order the kernel checks a resource in at creation.
       const create = () => {
-        refuseMisplacedHostEntries(resource, VECTORS.schema, "App.Store/store");
+        refuseMismatchedHostPaths(resource, VECTORS.schema, "App.Store/store");
         refuseRelativeHostPaths(resource, VECTORS.schema, "App.Store/store");
       };
       if (row.code === null) {

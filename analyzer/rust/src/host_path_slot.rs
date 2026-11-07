@@ -1,10 +1,12 @@
 //! What a schema node says of a host path: whether it holds one, what its path
-//! names (`entry: file | directory`) and the anchor that applies to a given
-//! text. Mirrors the slot readers of `../../nodejs/src/host-path-slot.ts`; the
+//! names (`entry: file | directory`), the media type its file holds
+//! (`mediaType`) and the anchor that applies to a given text. Mirrors the slot readers of `../../nodejs/src/host-path-slot.ts`; the
 //! static findings built on them have no Rust counterpart yet.
 
 use serde_json::Value;
-use telorun_sdk_core::value_type::{host_anchor_of, host_entry_of};
+use telorun_sdk_core::value_type::{
+    host_anchor_of, host_entry_of, host_media_type_mismatch, host_media_type_of, HostMediaTypeMismatch,
+};
 
 use crate::schema_compat::union_branches;
 
@@ -29,6 +31,47 @@ pub fn host_entry_at(schema: &Value) -> Option<&'static str> {
         .into_iter()
         .find(|branch| host_anchor_of(branch).is_some())
         .and_then(host_entry_of)
+}
+
+/// The node declaring a host path — the node itself, or a union's host-path branch.
+fn host_path_node(schema: &Value) -> Option<&Value> {
+    if host_anchor_of(schema).is_some() {
+        return Some(schema);
+    }
+    union_branches(schema)?
+        .into_iter()
+        .find(|branch| host_anchor_of(branch).is_some())
+}
+
+/// The media type a host-path node says its file holds — the node's own, or a
+/// union's host-path branch's — or `None` when it says nothing, which matches any.
+pub fn host_media_type_at(schema: &Value) -> Option<&'static str> {
+    host_path_node(schema).and_then(host_media_type_of)
+}
+
+/// A file's leading bytes judged against the media type its host-path node
+/// declares, or `None` when it declares none or the head carries it.
+pub fn host_media_type_mismatch_at(schema: &Value, head: &[u8]) -> Option<HostMediaTypeMismatch> {
+    host_path_node(schema).and_then(|node| host_media_type_mismatch(node, head))
+}
+
+/// What a file the content refusal names holds: a media type (`None` when its
+/// head carries no known one), or a directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeldContent {
+    MediaType(Option<&'static str>),
+    Directory,
+}
+
+/// How a file's content refusal reads after its subject (`'tray.jpg'`), and the
+/// media type the slot takes.
+pub fn host_media_type_finding(subject: &str, found: HeldContent, declared: &str) -> String {
+    let held = match found {
+        HeldContent::Directory => "is a directory".to_string(),
+        HeldContent::MediaType(Some(media_type)) => format!("is {media_type}"),
+        HeldContent::MediaType(None) => "carries no known media type's signature".to_string(),
+    };
+    format!("{subject} {held}; this slot takes {declared}")
 }
 
 /// How a host entry reads in a message.
@@ -88,6 +131,26 @@ mod tests {
         assert_eq!(host_anchor_for(&sqlite_file(), ":memory:"), None);
         assert_eq!(host_anchor_for(&sqlite_file(), "/srv/app.db"), Some("working-directory"));
         assert_eq!(host_anchor_for(&json!({ "type": "string" }), "/srv"), None);
+    }
+
+    #[test]
+    fn reads_a_media_type_through_a_union_branch() {
+        let icon = json!({
+            "anyOf": [
+                { "const": "none" },
+                { "type": "string", "x-telo-type": { "name": "Telo.HostPath", "entry": "file", "mediaType": "image/png" } }
+            ]
+        });
+        assert_eq!(host_media_type_at(&icon), Some("image/png"));
+        assert_eq!(host_media_type_at(&sqlite_file()), None);
+        assert_eq!(
+            host_media_type_mismatch_at(&icon, &[0xff, 0xd8, 0xff]).map(|m| m.found),
+            Some(Some("image/jpeg"))
+        );
+        assert_eq!(
+            host_media_type_finding("icon: 'tray.jpg'", HeldContent::MediaType(Some("image/jpeg")), "image/png"),
+            "icon: 'tray.jpg' is image/jpeg; this slot takes image/png"
+        );
     }
 
     #[test]

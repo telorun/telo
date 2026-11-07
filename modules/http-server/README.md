@@ -99,6 +99,7 @@ value:
 
 - [`Http.Server` / `Http.Api` returns & catches](docs/returns-and-catches.md) — outcome lists, MIME negotiation, stream mode.
 - [Request bodies](docs/request-bodies.md) — buffered, parsed and streamed bodies, `maxBodyBytes` on the server and per route, the 413 a larger body gets and why no `catches:` entry sees it.
+- [Serving a host-supplied socket](docs/host-supplied-sockets.md) — a port whose socket the embedding host owns: the server serves the connections it admits instead of binding, what is held and what gets `503`.
 - [Routing by host](docs/host-routing.md) — `listen:`, `mounts[].hostnames` over `Telo.PublicUrl` / `Telo.PublicHostPattern` needs, precedence, `unknownHosts`, `request.host`, and the scenario table: one server with several addresses, several servers, tenant subdomains, customer domains, and `status.localUrl`, the URL the socket listens on (not a public address).
 - [Authentication and authorization](docs/authentication.md) — `mounts[].authentication` and `authorization`, the credential sources, route overrides, how `request.principal` is typed, the 401 / 403 / 503 refusals and their `catches:`, `protectedResource` and its derived metadata, the origin check, and what is refused before the app runs.
 - [Mount guards](docs/mount-guard.md) — `mounts[].guard`: per-mount inbound checks, their CEL context, ordering against CORS and body parsing, and how a refusal renders.
@@ -260,7 +261,9 @@ session or a proxy in front of the app requires. `127.0.0.1` accepts connections
 from the same machine only — right for a mock server inside a test. A hostname
 (`localhost`) is bound on every address it resolves to. The top-level
 `host:` / `port:` spelling is refused (`HTTP_SERVER_LISTEN_MOVED`, `ERR_HTTP_SERVER_LISTEN_MOVED`
-at creation), naming where each moved.
+at creation), naming where each moved. When the process embedding the kernel holds
+the socket of `listen.port` itself, the server serves the connections that host
+admits and binds nothing — see [host-supplied sockets](docs/host-supplied-sockets.md).
 
 The address a server is REACHED at is not its socket. It is a public address need
 the application declares, and a mount names in `hostnames` — see

@@ -94,6 +94,27 @@ export class LocalFileSource implements ManifestSource {
     }
   }
 
+  async readHead(base: string, relative: string, length: number): Promise<Uint8Array | undefined> {
+    let handle: fs.FileHandle;
+    try {
+      handle = await fs.open(this.locate(base, relative), "r");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return undefined;
+      throw error;
+    }
+    try {
+      const buffer = new Uint8Array(length);
+      const { bytesRead } = await handle.read(buffer, 0, length, 0);
+      return buffer.subarray(0, bytesRead);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EISDIR") return undefined;
+      throw error;
+    } finally {
+      await handle.close();
+    }
+  }
+
   locate(base: string, relative: string): string {
     return path.resolve(path.dirname(path.resolve(toFilePath(base))), relative);
   }

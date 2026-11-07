@@ -24,6 +24,13 @@ and module assets — already warmed. Nothing is fetched at run time.
   (`!include-text` / `!include-bytes`) files, every file under a
   `!module-path` directory, and module assets.
 - **Every module you import**, materialized for the platform you named.
+- **Every child application**: an application started by a resource whose kind
+  declares `x-telo-application-source` (`App.Instance`) travels with its parent —
+  its manifest, files, import closure and built local modules, each held to the
+  same portability check — and its relative `source:` resolves inside the
+  unpacked tree. The child loads from the payload's sealed cache, offline, and
+  `telo package inspect` lists its modules with the parent's. Under a
+  `TELO_HOST_STATE_DIR` the child's state is `apps/<path>` beneath it.
 - **A local module's built code.** A module reached by a relative `source:` —
   including the application's own `Telo.Definition`s — is built at package time
   and travels as its `path=` bundle. Its TypeScript sources do not travel, which

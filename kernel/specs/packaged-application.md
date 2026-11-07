@@ -48,7 +48,11 @@ packages, starts, nor accepts a packaged executable as a manifest source.
 1. The payload is one gzipped tar, framed with every header field pinned but the entry's
    name, contents, kind and link target, so one closure always produces the same bytes.
 2. It holds `telo-app.json` (the **index**) at its root, the application's own files under
-   `app/`, and the warmed cache tree under `cache/`. Every entry and every link target stays
+   `app/`, and the warmed cache tree under `cache/`. A child application — one started by a
+   resource whose kind declares `x-telo-application-source` — is part of the closure,
+   transitively: its manifest, files, import closure and built local modules are carried and
+   judged exactly as the entry's, its relative `source:` keeps resolving inside `app/`, its
+   modules are listed in the index's `modules`, and it loads against the sealed `cache/`. Every entry and every link target stays
    inside the directory it is unpacked into, or the payload is refused.
 3. The index is JSON:
 

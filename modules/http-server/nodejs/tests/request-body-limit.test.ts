@@ -135,6 +135,7 @@ async function startServer() {
     log: NOOP_LOGGER,
     effect: (reason: string, body: (input: unknown) => Promise<any>) => chain([body]),
     acquireHold: () => () => {},
+    claimListener: async () => null,
     emitEvent: async () => {},
     setStatus: async () => {},
     readPlainEncoded: (value: unknown) => value,

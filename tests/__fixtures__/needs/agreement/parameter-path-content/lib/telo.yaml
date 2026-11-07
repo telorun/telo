@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: ParameterPathContent
+  version: 0.0.0
+  description: A need parameter naming a JPEG where its type takes a PNG.
+imports: { Fx: ../../../types }
+needs:
+  printer:
+    kind: Fx.LabelPrinter
+    optional: true
+    parameters: { logo: !module-path logo.jpg }

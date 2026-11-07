@@ -177,6 +177,43 @@ ${extra}`;
     });
   });
 
+  describe("a Telo.DesktopHost need", () => {
+    const desktop = `kind: Telo.Application
+metadata:
+  name: Desktop
+ports:
+  http: { env: PORT }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.test, productName: Test, port: http }
+`;
+    const loadDesktop = async (env: Record<string, string>) => {
+      const memory = new MemorySource();
+      memory.set("app", desktop);
+      const kernel = new Kernel({ sources: [memory], env, stderr: new Capture().stream });
+      await kernel.load("memory://app");
+    };
+    const endpoint = "TELO_NEED_DESKTOP_HOST__ENDPOINT";
+
+    it("is refused as partly supplied when only the endpoint is set", async () => {
+      await expect(loadDesktop({ PORT: "8080", [endpoint]: "unix:///run/desktop.sock" })).rejects.toMatchObject({
+        code: "ERR_NEED_PARTIALLY_SUPPLIED",
+        message: expect.stringContaining(
+          `${endpoint} is set, and the required TELO_NEED_DESKTOP_HOST__TOKEN is not`,
+        ),
+      });
+    });
+
+    it("refuses an endpoint whose scheme is neither unix nor npipe", async () => {
+      await expect(
+        loadDesktop({ PORT: "8080", [endpoint]: "http://localhost/control", TELO_NEED_DESKTOP_HOST__TOKEN: "t" }),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("its scheme must be one of unix, npipe"),
+      });
+    });
+  });
+
   it("joins a value that does not decode to the application's validation failure, never printing a sensitive one", async () => {
     const secret = "mysql://root:hunter2@db";
     const failure = load({ PORT: "eighty", DATABASE_URL: secret, TELO_NEED_DATABASE__POOL: "many" });

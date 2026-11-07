@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: WithShell, version: 1.0.0 }
+imports: { Shell: ./lib }

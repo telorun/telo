@@ -3,27 +3,34 @@ metadata:
   name: NeedFixtures
   version: 0.0.0
   description: Need types the needs tests ask for.
-exports:
-  kinds: [DatabaseAccess, SigningKey]
+exports: { kinds: [DatabaseAccess, SigningKey, LabelPrinter] }
 ---
 kind: Telo.NeedType
 metadata:
   name: DatabaseAccess
   description: The address and credentials of a database.
-fields:
-  url: { type: string, x-telo-sensitive: true }
-  schema: { type: string }
+fields: { url: { type: string, x-telo-sensitive: true }, schema: { type: string } }
 required: [url]
 parameters:
   type: object
-  properties:
-    extensions: { type: array, items: { type: string } }
+  properties: { extensions: { type: array, items: { type: string } } }
   additionalProperties: false
 ---
 kind: Telo.NeedType
-metadata:
-  name: SigningKey
-  description: A key to sign with.
-fields:
-  value: { type: string, x-telo-sensitive: true }
+metadata: { name: SigningKey, description: A key to sign with. }
+fields: { value: { type: string, x-telo-sensitive: true } }
 required: [value]
+---
+kind: Telo.NeedType
+metadata:
+  name: LabelPrinter
+  description: The one label printer a module prints through, with the logo printed on every label.
+unique: true
+fields: { device: { type: string } }
+required: [device]
+parameters:
+  type: object
+  properties:
+    logo: { x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png } }
+    caption: { type: string }
+  additionalProperties: false

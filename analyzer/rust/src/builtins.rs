@@ -21,6 +21,7 @@ const ENTRY_FILES: &[(&str, &str)] = &[
     ("Callable.json", include_str!("../../../sdk/builtins/Callable.json")),
     ("ConsoleSink.json", include_str!("../../../sdk/builtins/ConsoleSink.json")),
     ("Definition.json", include_str!("../../../sdk/builtins/Definition.json")),
+    ("DesktopHost.json", include_str!("../../../sdk/builtins/DesktopHost.json")),
     ("DurableDirectory.json", include_str!("../../../sdk/builtins/DurableDirectory.json")),
     ("Executable.json", include_str!("../../../sdk/builtins/Executable.json")),
     ("FileSink.json", include_str!("../../../sdk/builtins/FileSink.json")),

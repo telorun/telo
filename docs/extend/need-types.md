@@ -1,7 +1,7 @@
 ---
 sidebar_label: Need Types
 slug: /extend/need-types
-description: "Declare what a module can ask its host or importer for — the fields a fulfilment hands over, which are required and sensitive, the parameters a need may state, and whether fulfilments are versioned or carry features — with a Telo.NeedType."
+description: "Declare what a module can ask its host or importer for — the fields a fulfilment hands over, which are required and sensitive, the parameters a need may state, whether fulfilments are versioned or carry features, and whether a module asks for one at most — with a Telo.NeedType."
 ---
 
 # Writing a need type
@@ -37,10 +37,11 @@ parameters:
 | --- | --- |
 | `fields` | A JSON Schema property map: what every fulfilment hands over. |
 | `required` | The fields every fulfilment must yield. A name that is not a field is `NEED_FIELD_UNDECLARED`. |
-| `parameters` | The JSON Schema of the literal `parameters:` a need may state. A need of a type with none states none. |
+| `parameters` | The JSON Schema of the `parameters:` a need may state — literals, and `!module-path` at a `Telo.HostPath` parameter. A need of a type with none states none. |
 | `version` | `semver` when fulfilments are versioned. Only then may a need state a `version:` range. |
 | `features` | The closed list of feature names a fulfilment may carry. A need may ask for a subset. |
 | `supply` | `root` when a need of the type is fulfilled only through a root need, forwarded whole. |
+| `unique` | `true` when a module declares at most one need of the type. |
 
 The document registers the kind `<Module>.<Name>` — `Postgres.DatabaseAccess`
 here — exported through `exports.kinds` and gated like any other kind. A
@@ -93,6 +94,49 @@ compares. A constraint no observing slot can reach is refused
 (`NEED_CONSTRAINT_UNVERIFIED`). A pure provisioning request — a disk size, a
 region — is a `parameters` field, which nothing has to observe. See
 [A kind that consumes and verifies a need](./consuming-needs.md).
+
+## Parameters
+
+A need's `parameters:` are read when the application loads, before anything is
+evaluated, so each is a literal. The one tag a parameter takes is `!module-path`,
+where the type declares the parameter a `Telo.HostPath`: it names a file or
+directory that ships with the module declaring the need.
+
+```yaml
+# the need type
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    logo: { x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png } }
+---
+# a module asking for it, with logo.png beside its telo.yaml
+needs:
+  printer:
+    kind: Printing.LabelPrinter
+    parameters: { logo: !module-path logo.png }
+```
+
+It is a module file claim like one on a resource: `telo publish` and `telo
+package` carry the file with no `files:` entry, a path naming nothing is
+`MODULE_PATH_NOT_FOUND`, a path naming a directory where the parameter
+declares `entry: file` (or the reverse) is `HOST_PATH_ENTRY_MISMATCH`, and a file
+whose leading bytes are not the declared `mediaType` (a JPEG named `logo.png`) is
+`HOST_PATH_CONTENT_MISMATCH`, naming the type found and the one declared. The kernel
+resolves it at load, against the module declaring the need, so `ctx.resolveNeed`
+hands the consuming kind the absolute path; `telo needs report` prints it
+module-root-relative (`"./logo.png"`). Any other tag in `parameters:` — `!cel`,
+`!interpolate`, `!include-text`, `!ref` — and a `!module-path` at a parameter that
+is not a host path are `NEED_PARAMETERS_INVALID`. A plain relative string is a
+relative host path, which is refused like everywhere else.
+
+## One per module
+
+`unique: true` says a module asks for at most one need of the type — the thing it
+names is singular for the application, such as the one host it runs on. A second
+need of the type in one module's `needs:` is `NEED_DUPLICATE`, naming both needs,
+at `telo check`, and `ERR_NEED_DUPLICATE` at load. Two modules each declaring
+one is not a duplicate.
 
 ## Sensitive fields
 
@@ -169,6 +213,19 @@ need, two primaries and two `customDomains` needs on one port are
 `NEED_PARAMETERS_INVALID`. How an address is supplied — environment, the host's
 templates, collisions — is in [Providing needs](/learn/providing-needs); how a
 server routes by them is `http-server`'s host-routing guide.
+
+## Kernel-declared desktop host
+
+`Telo.DesktopHost` (`supply: root`, `unique: true`) is the desktop shell an
+application runs inside. Fields: `endpoint`, a `Telo.Url` of scheme `unix` or
+`npipe` with no credentials, and `token`, sensitive. Parameters: `identifier`
+(reverse-DNS) and `productName` are required; `icon` is a PNG file written
+`!module-path`; `port` names a `tcp` key of `ports:`; `showInDock` defaults to
+`true`; `callbackPaths` lists literal app-relative paths (`/auth/callback`)
+with no query or fragment. A library declares it with no parameters; a `udp` or
+undeclared `port`, a malformed callback path or parameters on a library are
+`NEED_PARAMETERS_INVALID`, and a second one in a module is `NEED_DUPLICATE`.
+Supply is in [Providing needs](/learn/providing-needs).
 
 ## Kernel-declared durable directories
 

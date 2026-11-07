@@ -148,6 +148,12 @@ export interface ManifestSource {
    *  entry, is refused by the runtime alone. */
   entryAt?(base: string, relative: string): Promise<"file" | "directory" | undefined>;
 
+  /** The first `length` bytes (fewer when the file is shorter) of the file at
+   *  `relative`, resolved as `entryAt` resolves it, or `undefined` when no file is
+   *  there. Optional, like `entryAt`; without it a module file's media type is
+   *  judged by the runtime alone. */
+  readHead?(base: string, relative: string, length: number): Promise<Uint8Array | undefined>;
+
   /** Where `relative`, resolved as `entryAt` resolves it, is on this host — for
    *  a message a reader acts on. Optional, like `entryAt`. */
   locate?(base: string, relative: string): string;

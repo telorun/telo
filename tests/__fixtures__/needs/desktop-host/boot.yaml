@@ -1,0 +1,27 @@
+kind: Telo.Application
+metadata: { name: DesktopHostBoot, version: 1.0.0 }
+imports: { Run: ../../../../modules/run, Assert: ../../../../modules/assert }
+ports: { http: { env: DESKTOP_HOST_TEST_PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters:
+      identifier: run.telo.test
+      productName: Test
+      icon: !module-path icon.png
+      port: http
+      callbackPaths: [/auth/callback]
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata: { name: verify }
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        scheme: !cel "resources.desktopHost.endpoint.scheme"
+        path: !cel "resources.desktopHost.endpoint.path"
+        tokenMatches: !cel "resources.desktopHost.token == 's3cret-token'"
+      expected: { scheme: unix, path: /run/telo-desktop.sock, tokenMatches: true }

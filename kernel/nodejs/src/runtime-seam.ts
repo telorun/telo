@@ -31,7 +31,7 @@ import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import type { Kernel } from "./kernel.js";
 import { defaultTransportRegistry } from "./transports/transport-registry.js";
-import { withoutHostValues } from "./host-values.js";
+import { childEnvironment } from "./durable-directories.js";
 
 /**
  * How many unconsumed chunks a channel holds before it stops acknowledging the
@@ -261,6 +261,9 @@ export class KernelRuntimeSeam implements RuntimeSeam {
   constructor(
     private readonly kernel: Kernel,
     private readonly caller?: string,
+    /** The resource asking, as a child application: its kind, name and path
+     *  (the module instance's path and the name), which places its state. */
+    private readonly child?: { kind: string; name: string; path: readonly string[]; source?: string },
   ) {}
 
   async run(source: string, options?: RuntimeRunOptions): Promise<RuntimeRun> {
@@ -274,18 +277,31 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     const stdin = new InputChannel();
 
     const child = new ChildKernel({
-      // The parent's host values answer the parent's needs, never the child's.
-      env: options?.env ?? withoutHostValues(this.kernel.env),
+      // The parent's host values answer the parent's needs, never the child's;
+      // its state directory is replaced by the child's own.
+      env: options?.env ?? childEnvironment(this.kernel.env, this.child?.path),
       stdout: stdout.writable,
       stderr: stderr.writable,
       sources: [...this.kernel.injectedSources],
       inputs: options?.inputs && {
         ...options.inputs,
         ...(this.caller !== undefined ? { suppliedBy: this.caller } : {}),
+        ...(this.child
+          ? {
+              child: {
+                kind: this.child.kind,
+                name: this.child.name,
+                parent: this.kernel.applicationName,
+                ...(this.child.source !== undefined ? { source: this.child.source } : {}),
+              },
+            }
+          : {}),
       },
       // A child reads what the caller writes it, never the host's own input:
       // two children sharing one terminal would race for the same lines.
       stdin: stdin.readable,
+      // A port number the host holds a socket for reaches the child's server.
+      ...(this.kernel.hostListeners ? { listeners: this.kernel.hostListeners } : {}),
     });
 
     // Subscribed BEFORE the child is started, or a child that starts within the

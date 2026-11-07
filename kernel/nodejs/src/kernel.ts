@@ -127,7 +127,7 @@ import {
   type BrowserEntryFiles,
   type ApplicationTranslations,
 } from "@telorun/sdk";
-import type { RuntimeDiagnostic, TextRecord } from "@telorun/sdk";
+import type { ClaimedListener, HandedConnection, RuntimeDiagnostic, TextRecord } from "@telorun/sdk";
 import { TELO_RUNTIME_VERSION } from "./telo-runtime-version.js";
 import { ControllerRegistry } from "./controller-registry.js";
 import { loadBuiltinControllers } from "./builtin-controllers.js";
@@ -142,9 +142,11 @@ import {
   environmentDirectories,
   refuseUnusableDirectories,
   scanStateDirectory,
+  createApplicationDirectories,
   stateDirectoryAnswers,
 } from "./durable-directories.js";
 import { KERNEL_HOST_VALUES } from "./host-values.js";
+import { attachListeners, type HostListeners, type KernelListeners } from "./host-listeners.js";
 
 /** One resolved inbound port of the root Application, as a runner is told it. */
 export interface ResolvedPort {
@@ -153,6 +155,9 @@ export interface ResolvedPort {
   protocol: "tcp" | "udp";
   /** Each `Telo.PublicUrl` naming the port, with the host its URL resolved to. */
   publicUrls?: Array<{ need: string; host: string }>;
+  /** Set when the host holds the port's socket: the address it is bound to. */
+  address?: string;
+  suppliedBy?: "host";
 }
 import { acceptsBy, buildMembersValues, redactedTextsWithin } from "./members-values.js";
 import { KernelTracer } from "./tracing.js";
@@ -220,7 +225,8 @@ import {
 import { NeedObservations, trackNeedObservations } from "./need-observation.js";
 import { observingPointers } from "./need-resolution.js";
 import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
-import { refuseMisplacedHostEntries, refuseRelativeHostPaths } from "./host-paths.js";
+import { resolveNeedParameterPaths } from "./need-parameter-paths.js";
+import { refuseMismatchedHostPaths, refuseRelativeHostPaths } from "./host-paths.js";
 import { refuseMalformedFormats } from "./telo-format-results.js";
 import { refuseComputedRefSlots } from "./refuse-computed-ref-slots.js";
 import { resolveTypeFieldSchema } from "./type-field-schema.js";
@@ -286,6 +292,7 @@ import {
 import { BundlePreparations } from "./controller-loaders/bundle-preparations.js";
 import { defaultTransportRegistry } from "./transports/transport-registry.js";
 import {
+  childInputRefusal,
   collectDeclaredEnvKeys,
   type ApplicationInputs,
   type InputDemand,
@@ -361,6 +368,27 @@ export interface KernelOptions {
    *  constructor option, not a `load()` one, so a host rebuilding its kernel
    *  (`--watch`) keeps its own once-per-session memory behind the one function. */
   openUrl?: (url: string) => void | Promise<void>;
+  /** Sockets the host owns and supplies per `tcp` port number: a server
+   *  configured with a held number serves the host's socket and binds nothing.
+   *  A child application this kernel starts claims through the same set. */
+  listeners?: HostListeners;
+}
+
+/** What `Kernel.load` is told beyond the manifest's URL. */
+export interface KernelLoadOptions {
+  analyzeOnly?: boolean;
+  cacheDir?: string | null;
+  writeCache?: boolean;
+  /** The identity a PACKAGED application's analysis verdict is filed and
+   *  signed under — a digest of its payload — in place of the entry URL and
+   *  the absolute source paths of the files it covers, neither of which
+   *  survives the payload being unpacked somewhere other than where it was
+   *  built. See `computeAnalysisSignature`. */
+  analysisKey?: string;
+  /** Asked for the root Application's inputs no channel supplies — the
+   *  fifth source (`kernel/specs/application-arguments.md` §4.1). Without
+   *  one, a missing value is refused as it always was. */
+  inputResolver?: ApplicationInputResolver;
 }
 
 /**
@@ -495,6 +523,11 @@ export class Kernel implements IKernel {
   // appears as the trace root with its targets nested beneath.
   private _appName?: string;
 
+  /** The root Application's name, once its manifests are installed. */
+  get applicationName(): string | undefined {
+    return this._appName;
+  }
+
   /** This kernel instance's identity, read by controllers as
    *  `ctx.kernelInstanceId`: minted at construction, kept across `reconcile()`,
    *  never reused. A child manifest runs as a kernel of its own, so it has
@@ -523,6 +556,9 @@ export class Kernel implements IKernel {
    *  kernel inherits the parent's sink configuration through the injected
    *  streams, so a test harness can capture child output (§13.1). */
   readonly logging: KernelLogging;
+  /** The host's sockets, handed on to a child application this kernel starts. */
+  readonly hostListeners?: HostListeners;
+  private readonly listenerClaims?: KernelListeners;
 
   constructor(options: KernelOptions) {
     this.stdin = options.stdin ?? process.stdin;
@@ -573,6 +609,8 @@ export class Kernel implements IKernel {
       this.loader.register(source);
     }
     this._inputs = options.inputs;
+    this.hostListeners = options.listeners;
+    this.listenerClaims = options.listeners && attachListeners(options.listeners, this.kernelInstanceId);
   }
 
   async registerController(
@@ -930,24 +968,16 @@ export class Kernel implements IKernel {
    * session rootfs — hits the stamp and skips the validation walk entirely
    * instead of failing to write the caches on every boot.
    */
-  async load(
-    url: string,
-    options?: {
-      analyzeOnly?: boolean;
-      cacheDir?: string | null;
-      writeCache?: boolean;
-      /** The identity a PACKAGED application's analysis verdict is filed and
-       *  signed under — a digest of its payload — in place of the entry URL and
-       *  the absolute source paths of the files it covers, neither of which
-       *  survives the payload being unpacked somewhere other than where it was
-       *  built. See `computeAnalysisSignature`. */
-      analysisKey?: string;
-      /** Asked for the root Application's inputs no channel supplies — the
-       *  fifth source (`kernel/specs/application-arguments.md` §4.1). Without
-       *  one, a missing value is refused as it always was. */
-      inputResolver?: ApplicationInputResolver;
-    },
-  ): Promise<void> {
+  async load(url: string, options?: KernelLoadOptions): Promise<void> {
+    try {
+      await this.loadManifest(url, options);
+    } catch (err) {
+      this.listenerClaims?.startupFailed(err);
+      throw err;
+    }
+  }
+
+  private async loadManifest(url: string, options?: KernelLoadOptions): Promise<void> {
     // `writeCache: false` (`telo run --no-cache-write`) keeps the cache
     // READ-only: compiled validators, parsed YAML and the analysis stamp are
     // still loaded from disk, but never written back — so an ephemeral,
@@ -1556,6 +1586,12 @@ export class Kernel implements IKernel {
       return;
     }
 
+    // A need parameter naming a module file is the absolute path of what it
+    // names from here on, for every reader of the table.
+    if (this._needTable) {
+      await resolveNeedParameterPaths(this._needTable, (entry) => this.needShapeOf(entry), this);
+    }
+
     // The configuration this process starts in: the dimensions' inputs —
     // everything a choice reads, the application's own and a library's through
     // its import binding — resolved and held to their domains first, before
@@ -1832,7 +1868,9 @@ export class Kernel implements IKernel {
           needs: { entries: environment, shapeOf },
         },
         inputResolver,
-      );
+      ).catch((error: unknown) => {
+        throw this._inputs?.child ? childInputRefusal(error, this._inputs.child) : error;
+      });
       if (help !== undefined) {
         this._applicationHelp = help;
         return;
@@ -1845,15 +1883,25 @@ export class Kernel implements IKernel {
       const supplied = suppliedNeedEntries(environment, this._inputs);
       const unsupplied = environment.filter((entry) => !supplied.has(entry));
       const stateAnswers = stateDirectoryAnswers(unsupplied, this.env);
-      const { orphans } = scanStateDirectory(this.env, stateAnswers, this._needTable?.entries ?? []);
+      const { orphans } = scanStateDirectory(
+        this.env,
+        stateAnswers,
+        this._needTable?.entries ?? [],
+        this._needTable?.applications ?? [],
+      );
       for (const orphan of orphans) {
         this.logging.kernelLogger().warn(
-          `${STATE_DIR_HOST_VALUE} holds '${orphan}', which no ${DURABLE_DIRECTORY_TYPE} need of this ` +
-            `application names — left by a renamed need or import alias, or by another application ` +
-            `sharing the state directory. Nothing is moved or deleted.`,
+          orphan.startsWith("apps/")
+            ? `${STATE_DIR_HOST_VALUE} holds '${orphan}', which no application of this one names — left ` +
+                `by a renamed instance or import alias, or by another application sharing the state ` +
+                `directory. Nothing is moved or deleted.`
+            : `${STATE_DIR_HOST_VALUE} holds '${orphan}', which no ${DURABLE_DIRECTORY_TYPE} need of this ` +
+                `application names — left by a renamed need or import alias, or by another application ` +
+                `sharing the state directory. Nothing is moved or deleted.`,
           { "telo.diagnostic.code": "NEED_ORPHANED" },
         );
       }
+      createApplicationDirectories(this.env, this._needTable?.applications ?? []);
       refuseUnusableDirectories([
         ...environmentDirectories(unsupplied, fromEnvironment, stateAnswers),
         ...environmentDirectories([...supplied], fromEnvironment, new Map()).map((directory) => ({
@@ -1927,12 +1975,17 @@ export class Kernel implements IKernel {
       );
       this._addresses = addresses;
       const publicUrls = publicUrlsByPort(addresses);
-      this._resolvedPorts = Object.entries(ports).map(([name, port]) => ({
-        name,
-        port,
-        protocol: portDecls[name]?.protocol === "udp" ? "udp" : "tcp",
-        ...(publicUrls.has(name) ? { publicUrls: publicUrls.get(name)! } : {}),
-      }));
+      this._resolvedPorts = Object.entries(ports).map(([name, port]) => {
+        const protocol = portDecls[name]?.protocol === "udp" ? "udp" : "tcp";
+        const address = protocol === "tcp" ? this.listenerClaims?.addressOf(port) : undefined;
+        return {
+          name,
+          port,
+          protocol,
+          ...(publicUrls.has(name) ? { publicUrls: publicUrls.get(name)! } : {}),
+          ...(address === undefined ? {} : { address, suppliedBy: "host" as const }),
+        };
+      });
 
       this.applyLoggingConfig(rootApplicationManifest as Record<string, any>);
       this.listSinks(rootApplicationManifest as Record<string, any>);
@@ -2257,6 +2310,15 @@ export class Kernel implements IKernel {
    * second call, or after teardown.
    */
   async boot(): Promise<void> {
+    try {
+      await this.bootResources();
+    } catch (err) {
+      this.listenerClaims?.startupFailed(err);
+      throw err;
+    }
+  }
+
+  private async bootResources(): Promise<void> {
     if (this._isTornDown) {
       throwInvalidState("boot", "kernel has been torn down");
     }
@@ -2384,8 +2446,41 @@ export class Kernel implements IKernel {
       telo: TELO_RUNTIME_VERSION,
       configuration: { ...(this._runningConfiguration?.configuration ?? {}) },
     });
-    await this.rootContext.runTargets(this.bootCancellation.context, this._appName);
+    try {
+      await this.rootContext.runTargets(this.bootCancellation.context, this._appName);
+    } catch (err) {
+      this.listenerClaims?.startupFailed(err);
+      throw err;
+    }
+    this.endListenerStartup();
     await this.eventBus.emit("Kernel.Started", {});
+  }
+
+  /** Startup is over: a host socket no server claimed is answered `503` from
+   *  now on, and warned about by its port key. */
+  private endListenerStartup(): void {
+    for (const port of this.listenerClaims?.startupEnded() ?? []) {
+      const keys = this._resolvedPorts.filter((resolved) => resolved.port === port).map((resolved) => `ports.${resolved.name}`);
+      const named = keys.length > 0 ? keys.join(", ") : "no port of the application";
+      this.logging
+        .kernelLogger()
+        .warn(
+          `no server claimed the host's socket for port ${port} (${named}) by the end of startup — ` +
+            `configure a server with that port to serve it; until one claims it, its connections are answered 503.`,
+          { "server.port": port, ...(keys.length > 0 ? { "telo.port.key": keys.join(",") } : {}) },
+          { eventName: "telo.host_listener.unclaimed" },
+        );
+    }
+  }
+
+  /** `ctx.claimListener` (`Listener.Claim`): the host's socket for `port`, or
+   *  null when the host holds none. */
+  claimListener(
+    port: number,
+    accept: (connection: HandedConnection) => void,
+    holder: string,
+  ): ClaimedListener | null {
+    return this.listenerClaims?.claim(port, accept, holder) ?? null;
   }
 
   /** The boot run's cancellation source, created on first access so a signal
@@ -2417,8 +2512,12 @@ export class Kernel implements IKernel {
 
     await this.eventBus.emit("Kernel.Stopping", {});
     for (const detach of this.importedSinkDetachers.splice(0)) await detach();
-    if (this.rootContext) {
-      await this.rootContext.teardownResources();
+    try {
+      if (this.rootContext) {
+        await this.rootContext.teardownResources();
+      }
+    } finally {
+      this.listenerClaims?.stopped();
     }
     // Sinks tear down last (they are pinned in the teardown order), so by this
     // point their own teardown has already flushed and closed them. This drains
@@ -3323,9 +3422,10 @@ export class Kernel implements IKernel {
         `${resourceLabel}: ${unbuilt.pointer} is not a ${unbuilt.type}: ${unbuilt.reason}`,
       );
     }
-    // A host path that exists as the other kind of entry than its slot names —
-    // a module file, an expression's result or a variable's value alike.
-    refuseMisplacedHostEntries(
+    // A host path that exists as the other kind of entry than its slot names, or
+    // a file of another media type — a module file, an expression's result or a
+    // variable's value alike.
+    refuseMismatchedHostPaths(
       expandedResource as Record<string, unknown>,
       configSchema as Record<string, any>,
       resourceLabel,

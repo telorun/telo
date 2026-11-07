@@ -2,7 +2,7 @@
   "kind": "Telo.Definition",
   "metadata": {
     "name": "NeedType",
-    "description": "Declares a type of dependency a module can ask whoever runs it for — a database, a credential, a public address — as the fields a fulfilment hands over, which are required, the parameters a request may state, and whether fulfilments are versioned, carry features or must come from the root."
+    "description": "Declares a type of dependency a module can ask whoever runs it for — a database, a credential, a public address — as the fields a fulfilment hands over, which are required, the parameters a request may state, and whether fulfilments are versioned, carry features, must come from the root or are asked for at most once per module."
   },
   "capability": "Telo.Template",
   "schema": {
@@ -45,7 +45,7 @@
       },
       "parameters": {
         "title": "Parameters",
-        "description": "JSON Schema of the literal parameters a need of this type may state.",
+        "description": "JSON Schema of the parameters a need of this type may state. Each is a literal, or a `!module-path` where the parameter is a `Telo.HostPath`.",
         "$ref": "telo://manifest#/$defs/JsonSchema7"
       },
       "version": {
@@ -71,6 +71,11 @@
         "enum": [
           "root"
         ]
+      },
+      "unique": {
+        "title": "Unique",
+        "description": "`true` when a module declares at most one need of this type.",
+        "type": "boolean"
       }
     },
     "required": [

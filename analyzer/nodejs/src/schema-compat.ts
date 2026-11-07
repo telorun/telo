@@ -235,8 +235,8 @@ function compare(
       // A bound constrains the value, as JSON Schema's `minimum` does a number's, and
       // is judged on the value; two types differing in their bounds may still share it.
       if (targetType.entry?.parameters.some((p) => p.bound && p.name === argument)) continue;
-      // A host-entry argument is a token, compared by equality.
-      if (targetType.entry?.parameters.some((p) => p.hostEntry && p.name === argument)) {
+      // A host-entry or media-type argument is a token, compared by equality.
+      if (targetType.entry?.parameters.some((p) => (p.hostEntry || p.hostMediaType) && p.name === argument)) {
         if (sourceArg !== targetArg) {
           conflicts.push({
             message:

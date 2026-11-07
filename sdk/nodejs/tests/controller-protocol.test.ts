@@ -3,13 +3,14 @@
  * conformance vector files are read from `sdk/controller-protocol/vectors/`, which
  * the Rust SDK reads too, and the message schemas from the directory beside them.
  *
- * The framing codec below is **private to this test** and is written from §3's
- * prose, never from the vectors: whoever writes the real carrier re-derives it, so
- * the vectors never end up testing a codec against itself.
+ * The frame codec is the SDK's exported one (`controller-frame.ts`); these vectors are
+ * its proof. The envelope rules (§3.2) and the data frame's `Channel.Data` rule stay
+ * here, since the codec knows the frame and not the message set.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import Ajv, { type ValidateFunction } from "ajv";
 import { describe, expect, it } from "vitest";
+import { decodeFrame, encodeFrame, FrameRefusal, type Frame } from "../src/controller-frame.js";
 import { decodeTypedFrame, encodeTypedFrame } from "../src/typed-frame.js";
 
 const PROTOCOL = new URL("../../controller-protocol/", import.meta.url);
@@ -44,12 +45,7 @@ const equivalence = readJson("vectors/carrier-equivalence.json");
 // --------------------------------------------------------------------- framing
 // §3.1, §3.3. Nothing here is exported.
 
-const MAX_FRAME_LENGTH = 16777216;
 const CHUNK_CEILING = 8388608;
-const CLASS_MESSAGE = 0x01;
-const CLASS_DATA = 0x02;
-
-class FrameRefusal extends Error {}
 
 interface Envelope {
   id: number;
@@ -58,10 +54,7 @@ interface Envelope {
   payload: any;
 }
 
-interface Frame {
-  class: "message" | "data";
-  meta: string;
-  data: Uint8Array;
+interface DecodedFrame extends Frame {
   envelope: Envelope;
 }
 
@@ -72,21 +65,6 @@ function hex(bytes: Uint8Array): string {
 function unhex(text: string): Uint8Array {
   const out = new Uint8Array(text.length / 2);
   for (let i = 0; i < out.length; i++) out[i] = Number.parseInt(text.slice(i * 2, i * 2 + 2), 16);
-  return out;
-}
-
-/** length u32be | class u8 | metaLength u32be | meta | data */
-function encodeFrame(cls: "message" | "data", meta: string, data: Uint8Array): Uint8Array {
-  const metaBytes = new TextEncoder().encode(meta);
-  const length = 1 + 4 + metaBytes.length + data.length;
-  if (length > MAX_FRAME_LENGTH) throw new FrameRefusal(`a frame of ${length} bytes exceeds MAX_FRAME_LENGTH`);
-  const out = new Uint8Array(4 + length);
-  const view = new DataView(out.buffer);
-  view.setUint32(0, length);
-  out[4] = cls === "message" ? CLASS_MESSAGE : CLASS_DATA;
-  view.setUint32(5, metaBytes.length);
-  out.set(metaBytes, 9);
-  out.set(data, 9 + metaBytes.length);
   return out;
 }
 
@@ -114,39 +92,21 @@ function readEnvelope(meta: string): Envelope {
   return { id, session, type, payload };
 }
 
-function decodeFrame(bytes: Uint8Array): Frame {
-  if (bytes.length < 4) throw new FrameRefusal("a frame's four-byte length prefix is truncated");
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const length = view.getUint32(0);
-  // Refused on the length field alone, before any body is read or allocated.
-  if (length > MAX_FRAME_LENGTH) throw new FrameRefusal(`a length of ${length} exceeds MAX_FRAME_LENGTH`);
-  if (length < 5) throw new FrameRefusal(`a frame of length ${length} carries no class byte and no metaLength`);
-  if (bytes.length !== 4 + length) {
-    throw new FrameRefusal(`a frame of length ${length} is ${bytes.length - 4} bytes long`);
+/** The shared frame codec, plus what only this protocol's envelope decides. */
+function decodeFrameWithEnvelope(bytes: Uint8Array): DecodedFrame {
+  const frame = decodeFrame(bytes);
+  const envelope = readEnvelope(frame.meta);
+  if (frame.class === "data") {
+    if (envelope.type !== "Channel.Data") throw new FrameRefusal("Channel.Data is the only data frame");
+    if (frame.data.length > CHUNK_CEILING) {
+      throw new FrameRefusal(`a chunk of ${frame.data.length} bytes exceeds the chunk ceiling`);
+    }
+    const declared = envelope.payload?.byteLength;
+    if (declared !== frame.data.length) {
+      throw new FrameRefusal(`a chunk declared ${declared} bytes and ${frame.data.length} follow the meta`);
+    }
   }
-  const cls = bytes[4];
-  if (cls !== CLASS_MESSAGE && cls !== CLASS_DATA) throw new FrameRefusal(`no frame class is 0x${cls!.toString(16)}`);
-  const metaLength = view.getUint32(5);
-  if (metaLength > length - 5) throw new FrameRefusal(`a metaLength of ${metaLength} exceeds length - 5`);
-  let meta: string;
-  try {
-    meta = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(9, 9 + metaLength));
-  } catch {
-    throw new FrameRefusal("a frame's meta is not well-formed UTF-8");
-  }
-  const data = bytes.subarray(9 + metaLength);
-  const envelope = readEnvelope(meta);
-  if (cls === CLASS_MESSAGE) {
-    if (data.length > 0) throw new FrameRefusal("a message frame's whole content is its envelope");
-    return { class: "message", meta, data, envelope };
-  }
-  if (envelope.type !== "Channel.Data") throw new FrameRefusal("Channel.Data is the only data frame");
-  if (data.length > CHUNK_CEILING) throw new FrameRefusal(`a chunk of ${data.length} bytes exceeds the chunk ceiling`);
-  const declared = envelope.payload?.byteLength;
-  if (declared !== data.length) {
-    throw new FrameRefusal(`a chunk declared ${declared} bytes and ${data.length} follow the meta`);
-  }
-  return { class: "data", meta, data, envelope };
+  return { ...frame, envelope };
 }
 
 // -------------------------------------------------------------------- schemas
@@ -176,7 +136,7 @@ function refusalPointers(validate: ValidateFunction): string[] {
 
 describe("framed carrier", () => {
   it.each(framing.frames)("frames and reads $name", (row: any) => {
-    const decoded = decodeFrame(unhex(row.frame));
+    const decoded = decodeFrameWithEnvelope(unhex(row.frame));
     expect(decoded.class).toBe(row.class);
     expect(decoded.meta).toBe(row.meta);
     expect(hex(decoded.data)).toBe(row.data);
@@ -187,7 +147,7 @@ describe("framed carrier", () => {
   });
 
   it.each(framing.undecodable)("refuses $name", (row: any) => {
-    expect(() => decodeFrame(unhex(row.frame))).toThrow(FrameRefusal);
+    expect(() => decodeFrameWithEnvelope(unhex(row.frame))).toThrow(FrameRefusal);
   });
 
   // A table with no rows is the silent zero the vectors exist to prevent.
@@ -245,7 +205,7 @@ function checkSequence(row: any): void {
   const channels = new Map<string, { granted: number; spent: number; nextSeq: number; closed: boolean }>();
 
   row.frames.forEach((frame: any, index: number) => {
-    const decoded = decodeFrame(unhex(frame.frame));
+    const decoded = decodeFrameWithEnvelope(unhex(frame.frame));
     expect(decoded.meta, frame.meta).toBe(frame.meta);
     expect(hex(decoded.data)).toBe(frame.data ?? "");
 
@@ -337,7 +297,7 @@ function checkSequence(row: any): void {
         index > call!.index &&
         index < call!.response! &&
         frame.from !== row.frames[call!.index].from &&
-        decodeFrame(unhex(frame.frame)).envelope.type === row.reentrancy.inner,
+        decodeFrameWithEnvelope(unhex(frame.frame)).envelope.type === row.reentrancy.inner,
     );
     expect(
       inner,
@@ -349,7 +309,7 @@ function checkSequence(row: any): void {
     const codeOf = (type: string) => {
       const request = settled.find((settledRequest) => settledRequest.type === type);
       expect(request, `no '${type}' exchange in this row`).toBeDefined();
-      const answer = decodeFrame(unhex(row.frames[request!.response!].frame)).envelope.payload;
+      const answer = decodeFrameWithEnvelope(unhex(row.frames[request!.response!].frame)).envelope.payload;
       return { code: answer.error?.code, at: request!.response! };
     };
     const raised = codeOf(row.signal.raisedBy);
@@ -377,7 +337,7 @@ describe("carrier equivalence", () => {
     const payloadBytes = new TextEncoder().encode(row.payload);
     expect(row.abi.buffer).toBe(hex(payloadBytes));
 
-    const decoded = decodeFrame(unhex(row.framed.frame));
+    const decoded = decodeFrameWithEnvelope(unhex(row.framed.frame));
     expect(decoded.meta).toBe(row.framed.meta);
     expect(decoded.envelope.type).toBe(row.message);
     expect(encodeTypedFrame(decoded.envelope.payload)).toBe(row.payload);

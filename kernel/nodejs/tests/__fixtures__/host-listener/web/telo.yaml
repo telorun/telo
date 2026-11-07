@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata: { name: Web, version: 1.0.0 }
+imports:
+  Http: ../../../../../../modules/http-server
+  Run: ../../../../../../modules/run
+ports:
+  http: { env: WEB_PORT, protocol: tcp }
+  plain: { env: PLAIN_PORT, protocol: tcp }
+targets:
+  - !ref held
+  - !ref plain
+---
+kind: Http.Server
+metadata: { name: held }
+listen: { address: 127.0.0.1, port: !cel "ports.http" }
+mounts:
+  - path: /v1
+    mount: !ref api
+---
+kind: Http.Server
+metadata: { name: plain }
+listen: { address: 127.0.0.1, port: !cel "ports.plain" }
+mounts:
+  - path: /v1
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /hello, method: GET }
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, properties: { probe: { type: string } } }
+      value:
+        probe: !cel "inputs.probe"
+    inputs:
+      probe: !cel "request.headers['x-probe']"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              probe: !cel "result.probe"

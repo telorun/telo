@@ -1035,6 +1035,16 @@ export function stampRequiredNeeds(
   }
 }
 
+/** The dotted path of every `parameters:` the `metadata.requiredNeeds` stamp
+ *  on an import carries — the target's own, copied, never authored here. */
+export function stampedNeedParametersPaths(manifest: ResourceManifest): string[] {
+  const stamp = (manifest.metadata as { requiredNeeds?: unknown } | undefined)?.requiredNeeds;
+  if (!stamp || typeof stamp !== "object") return [];
+  return Object.entries(stamp as Record<string, RequiredNeed>)
+    .filter(([, need]) => need?.parameters !== undefined)
+    .map(([name]) => `metadata.requiredNeeds.${name}.parameters`);
+}
+
 /** `Alias.Kind` → `<owning module>.Kind` in the DECLARING library's scope.
  *  `Self.` names the library itself and `Telo.` the kernel built-ins, both of
  *  which cross no import edge. An unresolvable prefix is returned unchanged. */

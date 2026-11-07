@@ -196,6 +196,7 @@ export {
   PUBLIC_URL_TYPE,
 } from "./public-address.js";
 export type { HostPattern } from "./public-address.js";
+export { DESKTOP_HOST_TYPE } from "./desktop-host.js";
 export {
   directoryForwardRefusal,
   directorySizeBytes,
@@ -1098,7 +1099,15 @@ export {
   readMembersValue,
   type MembersSlot,
 } from "./members-value-slot.js";
-export { describeHostEntry, holdsHostPath, hostAnchorFor, hostEntryAt } from "./host-path-slot.js";
+export {
+  describeHostEntry,
+  holdsHostPath,
+  hostAnchorFor,
+  hostEntryAt,
+  hostMediaTypeAt,
+  hostMediaTypeFinding,
+  hostMediaTypeMismatchAt,
+} from "./host-path-slot.js";
 export {
   compiledResultSlots,
   formatSlotPath,

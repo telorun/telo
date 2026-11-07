@@ -81,7 +81,7 @@ async function adoptGroup(
   const file = store.pathOf(module.key);
   let programs;
   try {
-    const loaded = (await import(pathToFileURL(file).href)) as {
+    const loaded = (await import(emittedModuleUrl(file))) as {
       readonly integrity?: unknown;
       readonly default?: unknown;
     };
@@ -94,6 +94,16 @@ async function adoptGroup(
   }
   const bySource = new Map(sources.map((source, at) => [source, programs[at]!]));
   for (const site of sites) site.use(bySource.get(site.source)!);
+}
+
+/**
+ * Bun on macOS can miss a file written into a directory its resolver has already read, so
+ * under Bun the module is imported from its own text; it imports nothing, so no resolution is
+ * lost. Node keeps the file import.
+ */
+function emittedModuleUrl(file: string): string {
+  if (!process.versions.bun) return pathToFileURL(file).href;
+  return `data:text/javascript;base64,${readFileSync(file).toString("base64")}`;
 }
 
 function groupByEnvironment(

@@ -1,0 +1,10 @@
+kind: Telo.Library
+metadata: { name: Admin, version: 1.0.0 }
+imports:
+  App: ../../../../../../modules/app
+exports:
+  resources: [web]
+---
+kind: App.Instance
+metadata: { name: web }
+source: ../web

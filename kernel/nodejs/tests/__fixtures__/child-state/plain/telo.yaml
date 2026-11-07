@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata: { name: Plain, version: 1.0.0 }
+imports:
+  Console: ../../../../../../modules/console
+  Run: ../../../../../../modules/run
+targets:
+  - !ref say
+---
+kind: Run.Sequence
+metadata: { name: say }
+steps:
+  - name: say
+    invoke: { kind: Console.WriteLine }
+    inputs: { output: plain }

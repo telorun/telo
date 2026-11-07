@@ -28,6 +28,7 @@ describe("Http.Server stop", () => {
       log: NOOP_LOGGER,
       effect: (reason: string, body: () => Promise<any>) => chain([body]),
       acquireHold: () => () => {},
+      claimListener: async () => null,
       emitEvent: async () => {},
       setStatus: async () => {},
       readPlainEncoded: (value: unknown) => value,

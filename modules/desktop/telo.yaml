@@ -1,0 +1,179 @@
+kind: Telo.Library
+metadata:
+  name: Desktop
+  version: 0.0.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Transport]
+  description: >-
+    Native desktop windows and a system tray icon for a web application: open
+    windows on the app's local origin, hide or close them, show a menu bar or
+    notification-area icon whose menu items run actions, and ask the desktop shell
+    to quit. Works against any desktop shell that supplies the desktop host need.
+requires: { telo: ">=unreleased" }
+exports: { kinds: [Window, TrayIcon, ShowWindow, Quit] }
+---
+kind: Telo.Definition
+metadata:
+  name: Window
+  description: >-
+    A native window showing a page of the application on its local origin. It opens when
+    the application runs and closes when it stops, keeps the application alive while
+    open, and can start hidden or hide instead of closing when the user closes it.
+capability: Telo.Service
+controllers: [pkg:telo/local/js?path=./nodejs/desktop.mjs&local_path=./nodejs/src/index.ts#Window]
+schema:
+  type: object
+  required: [host]
+  additionalProperties: false
+  properties:
+    host:
+      title: Host
+      type: object
+      description: The desktop host need the window opens in.
+      x-telo-ref: { kind: Telo.DesktopHost, use: dependency }
+    path:
+      title: Path
+      type: string
+      pattern: "^/"
+      default: /
+      description: App-relative path the window opens at. The page's document title replaces `title` once loaded.
+    title:
+      title: Title
+      $ref: telo://manifest#/$defs/Text
+      description: Window title until the page sets its own.
+    size:
+      title: Size
+      type: object
+      required: [width, height]
+      additionalProperties: false
+      properties: { width: { type: integer, minimum: 1 }, height: { type: integer, minimum: 1 } }
+      description: Initial size in logical pixels.
+    minSize:
+      title: Minimum size
+      type: object
+      required: [width, height]
+      additionalProperties: false
+      properties: { width: { type: integer, minimum: 1 }, height: { type: integer, minimum: 1 } }
+      description: Smallest size the user can resize the window to, in logical pixels.
+    resizable: { title: Resizable, type: boolean, default: true }
+    visible:
+      title: Visible
+      type: boolean
+      default: true
+      description: "`false` starts the window hidden, until something shows it."
+    onClose:
+      title: On close
+      type: string
+      enum: [close, hide]
+      default: close
+      description: "`hide` keeps the window and the application running when the user closes it; `close` destroys it and stops holding the application."
+---
+kind: Telo.Definition
+metadata:
+  name: TrayIcon
+  description: >-
+    An icon in the notification area or menu bar with a tooltip and a menu whose items run
+    actions in the application. Where the session has no tray, a warning is logged and
+    nothing is shown. A failing action is logged and the menu stays usable.
+capability: Telo.Service
+controllers: [pkg:telo/local/js?path=./nodejs/desktop.mjs&local_path=./nodejs/src/index.ts#Tray]
+schema:
+  type: object
+  required: [host, icon]
+  additionalProperties: false
+  $defs:
+    action:
+      type: object
+      required: [invoke]
+      additionalProperties: false
+      properties:
+        invoke:
+          title: Invoke
+          type: object
+          description: The invocable dispatched when the action is chosen.
+          x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
+        inputs:
+          title: Inputs
+          type: object
+          additionalProperties: true
+          default: {}
+          description: Inputs forwarded to the invocable each time the action runs.
+          x-telo-context: { type: object, properties: {} }
+  properties:
+    host:
+      title: Host
+      type: object
+      description: The desktop host need the icon is shown by.
+      x-telo-ref: { kind: Telo.DesktopHost, use: dependency }
+    icon:
+      title: Icon
+      type: string
+      x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png }
+      description: PNG file of the module, written `!module-path`; the host scales it.
+    monochrome:
+      title: Monochrome
+      type: boolean
+      default: false
+      description: Draws the icon as a macOS template image that follows the menu bar's appearance.
+    tooltip: { title: Tooltip, $ref: telo://manifest#/$defs/Text }
+    action:
+      title: Action
+      description: What a primary click on the icon does where the platform separates it from opening the menu (Windows).
+      $ref: "#/$defs/action"
+    menu:
+      title: Menu
+      type: array
+      description: Fixed list of entries, in order. An item with no action does nothing when chosen.
+      items:
+        oneOf:
+          - type: object
+            required: [type, label]
+            additionalProperties: false
+            properties:
+              type: { const: item }
+              label: { title: Label, $ref: "telo://manifest#/$defs/Text" }
+              enabled: { type: boolean, default: true, description: Literal; a disabled item cannot be chosen. }
+              action: { $ref: "#/$defs/action" }
+          - type: object
+            required: [type]
+            additionalProperties: false
+            properties: { type: { const: separator } }
+---
+kind: Telo.Definition
+metadata:
+  name: ShowWindow
+  description: >-
+    Shows a window and gives it focus, bringing back one that was started hidden or hidden
+    when closed. Meant as a tray action or any other trigger.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/desktop.mjs&local_path=./nodejs/src/index.ts#ShowWindow]
+schema:
+  type: object
+  required: [window]
+  additionalProperties: false
+  properties:
+    window:
+      title: Window
+      type: object
+      description: The window to show.
+      x-telo-ref: { kind: Self.Window, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Quit
+  description: >-
+    Asks the desktop host to stop the application gracefully, the same stop a termination
+    signal gives. Meant as a tray menu item.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/desktop.mjs&local_path=./nodejs/src/index.ts#Quit]
+schema:
+  type: object
+  required: [host]
+  additionalProperties: false
+  properties:
+    host:
+      title: Host
+      type: object
+      description: The desktop host need to ask.
+      x-telo-ref: { kind: Telo.DesktopHost, use: dependency }

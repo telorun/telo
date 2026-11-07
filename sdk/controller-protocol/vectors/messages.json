@@ -1650,6 +1650,64 @@
           }
         }
       }
+    },
+    {
+      "message": "Channel.Open",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "channelId": "c12",
+        "purpose": "connection",
+        "credit": 0,
+        "encoding": "bytes"
+      }
+    },
+    {
+      "message": "Listener.Accept",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "listener": "l1",
+        "inbound": "c12",
+        "outbound": "c13",
+        "peer": "127.0.0.1:53901"
+      }
+    },
+    {
+      "message": "Listener.Claim",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "port": 53817
+      }
+    },
+    {
+      "message": "Listener.Claim",
+      "part": "response",
+      "body": {
+        "listener": "l1",
+        "address": "127.0.0.1"
+      }
+    },
+    {
+      "message": "Listener.Claim",
+      "part": "response",
+      "body": {
+        "listener": null
+      }
+    },
+    {
+      "message": "Listener.Release",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "listener": "l1"
+      }
+    },
+    {
+      "message": "Listener.Release",
+      "part": "response",
+      "body": {}
     }
   ],
   "invalid": [
@@ -2042,6 +2100,29 @@
         }
       },
       "pointer": "/carrier/traceparent"
+    },
+    {
+      "name": "a claim for a port number no tcp port has",
+      "message": "Listener.Claim",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "port": 0
+      },
+      "pointer": "/port"
+    },
+    {
+      "name": "an accepted connection naming no peer",
+      "message": "Listener.Accept",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "listener": "l1",
+        "inbound": "c12",
+        "outbound": "c13",
+        "peer": ""
+      },
+      "pointer": "/peer"
     }
   ]
 }

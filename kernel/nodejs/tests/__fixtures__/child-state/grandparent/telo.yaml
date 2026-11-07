@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: Grandparent, version: 1.0.0 }
+imports:
+  App: ../../../../../../modules/app
+targets:
+  - !ref mid
+---
+kind: App.Instance
+metadata: { name: mid }
+source: ../mid

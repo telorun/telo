@@ -1,0 +1,86 @@
+{
+  "kind": "Telo.NeedType",
+  "metadata": {
+    "name": "DesktopHost",
+    "description": "The desktop shell an application runs inside: native windows, a tray icon and a quit command for a web application, with an identity (application id, product name, icon) and the local port its windows show. Reached over a private local control channel the host opens."
+  },
+  "fields": {
+    "endpoint": {
+      "description": "The host's control channel: a local socket, `unix:` on Linux and macOS, `npipe:` on Windows.",
+      "x-telo-type": {
+        "name": "Telo.Url",
+        "scheme": {
+          "enum": [
+            "unix",
+            "npipe"
+          ]
+        },
+        "user": {
+          "not": {}
+        },
+        "password": {
+          "not": {}
+        }
+      }
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "x-telo-sensitive": true,
+      "description": "The secret the application presents to the host on the control channel."
+    }
+  },
+  "required": [
+    "endpoint",
+    "token"
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "identifier": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9-]*(\\.[A-Za-z][A-Za-z0-9-]*)+$",
+        "description": "The application's reverse-DNS identifier (`run.telo.hello`)."
+      },
+      "productName": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The name a person sees: window titles, the menu bar and the installed application."
+      },
+      "icon": {
+        "type": "string",
+        "x-telo-type": {
+          "name": "Telo.HostPath",
+          "entry": "file",
+          "mediaType": "image/png"
+        },
+        "description": "The application icon, a PNG file of the module written `!module-path`."
+      },
+      "port": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The key of the root's `ports:` the windows show, a `tcp` port."
+      },
+      "showInDock": {
+        "type": "boolean",
+        "default": true,
+        "description": "`false` gives a macOS application no Dock icon and no app menu, for one that lives in the menu bar. Other platforms ignore it."
+      },
+      "callbackPaths": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "description": "App-relative paths an external identity provider returns to (`/auth/callback`), each starting with `/` and holding no query or fragment."
+      }
+    },
+    "required": [
+      "identifier",
+      "productName"
+    ],
+    "additionalProperties": false
+  },
+  "supply": "root",
+  "unique": true
+}

@@ -1,0 +1,34 @@
+{
+  "name": "Listener.Release",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Release a listener handle, the inverse of `Listener.Claim`. No connection is handed over after it is answered; the host holds what it admits until the port is claimed again. Connections already handed over are untouched. Idempotent.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "listener": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance",
+      "listener"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Released.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

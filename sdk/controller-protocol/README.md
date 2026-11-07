@@ -85,7 +85,8 @@ both carriers and some controller must be able to count on it — a third-party
 entry would be half a message: data with no implementation on either side, and no
 vector proving the two carriers agree about it.
 
-**Adding a message is a generation bump.** The generation is a complete message
+**Adding a message is a generation bump** — except to a generation no carrier
+speaks yet, which grows additively (`10`, spec §0.3). The generation is a complete message
 set, which is why the handshake refuses a mismatch instead of negotiating down: a
 kernel that spoke "generation 9 minus two messages" would fail at the moment a
 controller reached for one, arbitrarily far from the pairing that accepted it.

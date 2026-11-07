@@ -95,6 +95,7 @@ function testContext(behaviours: Record<string, (inputs: any, context: InvokeCon
     declaredDisplayMessage: (code: string) => builtinErrorCode(code)?.record,
     effect: (_reason: string, body: (input: unknown) => Promise<any>) => chain([body]),
     acquireHold: () => () => {},
+    claimListener: async () => null,
     emitEvent: async () => {},
     setStatus: async () => {},
     readPlainEncoded: (value: unknown) => value,

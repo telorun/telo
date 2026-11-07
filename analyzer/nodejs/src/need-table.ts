@@ -31,25 +31,36 @@ import {
   readResourceInputs,
 } from "./resource-input.js";
 import { findDynamicLeaf } from "./resource-rule.js";
-import { validateAgainstSchema } from "./schema-compat.js";
+import { navigateSchemaToExprPath, substituteCelFields, validateAgainstSchema } from "./schema-compat.js";
+import {
+  describeHostEntry,
+  holdsHostPath,
+  hostEntryAt,
+  hostMediaTypeAt,
+  hostMediaTypeFinding,
+  hostMediaTypeMismatchAt,
+} from "./host-path-slot.js";
+import { foundEntryOf, foundHeadOf } from "./module-file-existence.js";
 import { membersSlotOf } from "./members-value-slot.js";
 import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import type { ModuleDocuments } from "./module-documents.js";
-import { isRefSentinel } from "@telorun/templating";
+import { isModulePathSentinel, isRefSentinel, isTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { templateBodyEntries } from "./template-body.js";
 import type { ReachSite } from "./reference-reach.js";
 import type { NeedConstraint } from "./ref-slot.js";
 import { isUnsatisfiable, parseVersionRange, rangeWithin, type VersionRange } from "./version-range.js";
-import { isAddressNeedType, PUBLIC_URL_TYPE } from "./public-address.js";
+import { callbackPathRefusal, DESKTOP_HOST_TYPE, isPortNeedType } from "./desktop-host.js";
+import { PUBLIC_URL_TYPE } from "./public-address.js";
 import {
   directoryForwardRefusal,
   DURABLE_DIRECTORY_TYPE,
   durableDirectoryParameters,
 } from "./durable-directory.js";
 import { isInlineDeclaration, isResolvedReference } from "./resolved-reference.js";
+import { isScopeMember } from "./scope-declarations.js";
 
 /**
  * THE NEED TABLE — every need of a loaded application, where it sits in the
@@ -130,6 +141,10 @@ export interface NeedGraphModule {
   shared: boolean;
   needs: NeedGraphNeed[];
   resourceInputs: Array<{ name: string; kind: string; type?: string }>;
+  /** The places of the declarations whose kind runs a child application
+   *  (`x-telo-application-source`), relative to the module instance: the name,
+   *  beneath the names of the scope holders for a scope member. */
+  applications?: string[][];
   /** Every resource the module declares, or undefined when this graph cannot
    *  see them (a dependency of an analysis given no library documents). */
   declarations?: NeedGraphDeclaration[];
@@ -250,6 +265,10 @@ export interface NeedTable {
    *  every need reaching it unsupplied, its own included — what an operator
    *  provisions. Empty under a Library root, which reads no environment. */
   environment: NeedEnvironmentEntry[];
+  /** The child applications the application's resources run, by path: the
+   *  module instance's path and the resource's name (`web`, `Admin.web`) — the
+   *  paths a host gives each child a state directory by. */
+  applications: string[][];
 }
 
 const STATIC_TO_RUNTIME: Record<string, string> = {
@@ -302,7 +321,7 @@ export function resolveNeedTable(graph: NeedGraph): NeedTable {
   }
   checkConstraintsVerified(graph, problem);
 
-  const { entries, environment } = walkTree(graph);
+  const { entries, environment, applications } = walkTree(graph);
   const root = graph.modules.get(graph.root);
   checkLibraryAddressNeeds(graph, problem);
   if (root?.application) {
@@ -310,7 +329,7 @@ export function resolveNeedTable(graph: NeedGraph): NeedTable {
     checkAddressNeeds(root, problem);
     checkEnvNames(root, environment, problem);
   }
-  return { entries, problems, environment };
+  return { entries, problems, environment, applications };
 }
 
 /** A need of a root-only type is fulfilled through a root need forwarded whole,
@@ -349,14 +368,19 @@ function checkLibraryAddressNeeds(graph: NeedGraph, report: Report): void {
   for (const module of graph.modules.values()) {
     if (!module.checked || module.application) continue;
     for (const need of module.needs) {
-      if (!isAddressNeedType(need.type) || need.parameters === undefined) continue;
+      if (!isPortNeedType(need.type) || need.parameters === undefined) continue;
       report(
         module,
         "NEED_PARAMETERS_INVALID",
-        `Need '${need.name}' (type '${need.type}') states parameters, and a library's address ` +
-          `need states none: the port, the primary and custom domains are the application's to ` +
-          `say. Drop 'parameters:'; the application declares its own '${need.kind}' naming a ` +
-          `port and forwards it at the import.`,
+        need.type === DESKTOP_HOST_TYPE
+          ? `Need '${need.name}' (type '${need.type}') states parameters, and a library's ` +
+            `desktop host states none: the identity, the icon and the port are the ` +
+            `application's to say. Drop 'parameters:'; the application declares its own ` +
+            `'${need.kind}' and forwards it at the import.`
+          : `Need '${need.name}' (type '${need.type}') states parameters, and a library's address ` +
+            `need states none: the port, the primary and custom domains are the application's to ` +
+            `say. Drop 'parameters:'; the application declares its own '${need.kind}' naming a ` +
+            `port and forwards it at the import.`,
         { path: `needs.${need.name}.parameters` },
       );
     }
@@ -377,7 +401,7 @@ function checkAddressNeeds(root: NeedGraphModule, report: Report): void {
   let primary: string | undefined;
   const customDomains = new Map<string, string>();
   for (const need of root.needs) {
-    if (!isAddressNeedType(need.type)) continue;
+    if (!isPortNeedType(need.type)) continue;
     const parameters =
       need.parameters && typeof need.parameters === "object" && !Array.isArray(need.parameters)
         ? (need.parameters as Record<string, unknown>)
@@ -388,7 +412,7 @@ function checkAddressNeeds(root: NeedGraphModule, report: Report): void {
       report(
         root,
         "NEED_PARAMETERS_INVALID",
-        `Need '${need.name}' (type '${need.type}') names no port. An address is served on a ` +
+        `Need '${need.name}' (type '${need.type}') names no port. It is served on a ` +
           `port of this application: write 'parameters: { port: <key of ports:> }'. Ports: ` +
           `${list(Object.keys(declaredPorts))}.`,
         { path },
@@ -405,10 +429,26 @@ function checkAddressNeeds(root: NeedGraphModule, report: Report): void {
       report(
         root,
         "NEED_PARAMETERS_INVALID",
-        `Need '${need.name}' names port '${port}', which is a 'udp' port. An address is served ` +
-          `over HTTP, on a 'tcp' port.`,
+        need.type === DESKTOP_HOST_TYPE
+          ? `Need '${need.name}' names port '${port}', which is a 'udp' port; a ` +
+            `${DESKTOP_HOST_TYPE} names a tcp key of ports:.`
+          : `Need '${need.name}' names port '${port}', which is a 'udp' port. An address is ` +
+            `served over HTTP, on a 'tcp' port.`,
         { path: `${path}.port` },
       );
+    }
+    if (need.type === DESKTOP_HOST_TYPE && Array.isArray(parameters.callbackPaths)) {
+      parameters.callbackPaths.forEach((callback, i) => {
+        const refusal = callbackPathRefusal(callback);
+        if (refusal === undefined) return;
+        report(
+          root,
+          "NEED_PARAMETERS_INVALID",
+          `Need '${need.name}' callbackPaths[${i}]: ${refusal}. A callback path is a literal ` +
+            `app-relative path.`,
+          { path: `${path}.callbackPaths[${i}]` },
+        );
+      });
     }
     if (need.type !== PUBLIC_URL_TYPE) continue;
     if (parameters.primary === true) {
@@ -493,9 +533,25 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report):
     }
   }
 
+  const firstOfUniqueType = new Map<string, NeedGraphNeed>();
   for (const need of module.needs) {
     const at = { path: `needs.${need.name}.kind` };
     const shape = need.type ? graph.needType(need.type) : undefined;
+    if (shape?.unique && need.type) {
+      const first = firstOfUniqueType.get(need.type);
+      if (first) {
+        report(
+          module,
+          "NEED_DUPLICATE",
+          `Needs '${first.name}' and '${need.name}' are both ${need.kind}, which a module ` +
+            `declares at most once. Keep one need of the type and reference it wherever both ` +
+            `were used.`,
+          { path: `needs.${need.name}` },
+        );
+      } else {
+        firstOfUniqueType.set(need.type, need);
+      }
+    }
     if (!shape) {
       report(
         module,
@@ -628,7 +684,76 @@ function checkParameters(
     );
     return;
   }
-  const [issue] = validateAgainstSchema(need.parameters ?? {}, shape.parameters);
+  // A library's port-naming need states none: the application says them.
+  if (need.parameters === undefined && !module.application && isPortNeedType(need.type)) return;
+  // Parameters are read at load, before anything is evaluated: a literal, or a
+  // module file named by location where the parameter is a host path.
+  let tagRefused = false;
+  for (const { at, sentinel } of taggedParameters(need.parameters, "")) {
+    const where = at ? `${path}.${at}` : path;
+    if (!isModulePathSentinel(sentinel)) {
+      report(
+        module,
+        "NEED_PARAMETERS_INVALID",
+        `${where}: a need parameter takes a literal or !module-path, not !${sentinel.engine} — ` +
+          `parameters are read when the application loads, before anything is evaluated.`,
+        { path: where },
+      );
+      tagRefused = true;
+      continue;
+    }
+    const slot = at ? navigateSchemaToExprPath(shape.parameters, at) : shape.parameters;
+    if (!holdsHostPath(slot)) {
+      report(
+        module,
+        "NEED_PARAMETERS_INVALID",
+        `${where}: a !module-path names a location on the host, and this parameter of need ` +
+          `type '${need.kind}' is not a Telo.HostPath.`,
+        { path: where },
+      );
+      tagRefused = true;
+      continue;
+    }
+    const wanted = hostEntryAt(slot);
+    const found = foundEntryOf(sentinel);
+    if (wanted !== undefined && found !== undefined && wanted !== found) {
+      report(
+        module,
+        "HOST_PATH_ENTRY_MISMATCH",
+        `${where}: '${sentinel.source.trim()}' is ${describeHostEntry(found)}; this slot takes ` +
+          `${describeHostEntry(wanted)}.`,
+        { path: where },
+      );
+      continue;
+    }
+    const declared = hostMediaTypeAt(slot);
+    const head = foundHeadOf(sentinel);
+    const mismatch =
+      declared === undefined
+        ? undefined
+        : found === "directory"
+          ? ("directory" as const)
+          : head
+            ? hostMediaTypeMismatchAt(slot, head)
+            : undefined;
+    if (declared !== undefined && mismatch) {
+      report(
+        module,
+        "HOST_PATH_CONTENT_MISMATCH",
+        hostMediaTypeFinding(
+          `${where}: '${sentinel.source.trim()}'`,
+          mismatch === "directory" ? mismatch : { mediaType: mismatch.found },
+          declared,
+        ) + ".",
+        { path: where },
+      );
+    }
+  }
+  if (tagRefused) return;
+  const [issue] = validateAgainstSchema(
+    substituteCelFields(need.parameters ?? {}, shape.parameters),
+    shape.parameters,
+  );
   if (!issue) return;
   report(
     module,
@@ -637,6 +762,24 @@ function checkParameters(
       `${issue.path ? `at '${issue.path}': ` : ""}${issue.message}.`,
     { path: issue.path ? `${path}.${issue.path}` : path },
   );
+}
+
+/** Every tagged value in a need's parameters, with its dotted path. */
+function taggedParameters(
+  value: unknown,
+  at: string,
+  out: Array<{ at: string; sentinel: TaggedSentinel }> = [],
+): Array<{ at: string; sentinel: TaggedSentinel }> {
+  if (isTaggedSentinel(value)) {
+    out.push({ at, sentinel: value });
+  } else if (Array.isArray(value)) {
+    value.forEach((item, i) => taggedParameters(item, `${at}[${i}]`, out));
+  } else if (value !== null && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      taggedParameters(item, at ? `${at}.${key}` : key, out);
+    }
+  }
+  return out;
 }
 
 /** The range a need states, when it parses — what forwarding and the kernel's
@@ -1282,6 +1425,7 @@ export function outermostNeedEntry(
 function walkTree(graph: NeedGraph): {
   entries: NeedTableEntry[];
   environment: NeedEnvironmentEntry[];
+  applications: string[][];
 } {
   const entries: NeedTableEntry[] = [];
   const root = graph.modules.get(graph.root);
@@ -1353,9 +1497,13 @@ function walkTree(graph: NeedGraph): {
       add(target, need, [...instance.path, need.name], supply, instance.reachedVia, link);
     }
   }
+  const applications = instancesOf(tree).flatMap((instance) =>
+    (graph.modules.get(instance.module)?.applications ?? []).map((place) => [...instance.path, ...place]),
+  );
   return {
     entries,
     environment: entries.filter((entry): entry is NeedEnvironmentEntry => entry.supply === "environment"),
+    applications,
   };
 }
 
@@ -1402,6 +1550,8 @@ export interface NeedGraphScope {
   /** For a canonical kind running a child application, the keys of the field
    *  feeding the child's `needs:` (`x-telo-application-source`). */
   applicationNeedsFeed?(kind: string): readonly string[] | undefined;
+  /** Whether a canonical kind runs a child application, whatever it feeds it. */
+  runsApplication?(kind: string): boolean;
 }
 
 /**
@@ -1423,6 +1573,11 @@ export function needGraphScopeOf(
       const { definitions } = registry._context();
       const definition = registry.resolveDefinition(kind);
       return definition ? readApplicationSourceSlot(definitions?.effectiveSchemaOf(definition))?.feeds.needs : undefined;
+    },
+    runsApplication: (kind) => {
+      const { definitions } = registry._context();
+      const definition = registry.resolveDefinition(kind);
+      return definition ? readApplicationSourceSlot(definitions?.effectiveSchemaOf(definition)) !== undefined : false;
     },
   };
 }
@@ -1497,6 +1652,7 @@ function moduleUnit(
     needs: readNeeds(doc).map((need) => ({ ...need, type: resolve(need.kind) })),
     resourceInputs,
     declarations,
+    applications: applicationsOf(declarations, resolve, scope),
     ...(scope.referenceSites
       ? {
           references: referencesOf(declarations, bodies, resolve, scope.referenceSites, (kind) =>
@@ -1509,6 +1665,33 @@ function moduleUnit(
     imports,
     checked: true,
   };
+}
+
+/** The places of a module's child applications: each top-level declaration
+ *  whose kind runs one, and each scope member that does, beneath its holders'
+ *  names as a scoped import's instance is. */
+function applicationsOf(
+  declarations: readonly NeedGraphDeclaration[],
+  resolve: (kind: string) => string | undefined,
+  scope: NeedGraphScope,
+): string[][] {
+  const out: string[][] = [];
+  const visit = (manifest: ResourceManifest, type: string | undefined, holders: readonly string[]): void => {
+    const name = manifest.metadata?.name as string;
+    const place = [...holders, name];
+    if (type !== undefined && scope.runsApplication?.(type) === true) out.push(place);
+    if (type === undefined || !scope.referenceSites) return;
+    const view = manifest.kind === type ? manifest : ({ ...manifest, kind: type } as ResourceManifest);
+    for (const site of scope.referenceSites(view)) {
+      if (site.scopes.length === 0 || !Array.isArray(site.data)) continue;
+      for (const entry of site.data) {
+        if (!isScopeMember(entry)) continue;
+        visit(entry, resolve(entry.kind as string), place);
+      }
+    }
+  };
+  for (const declaration of declarations) visit(declaration.manifest, declaration.type, []);
+  return out;
 }
 
 /** What a reference slot's value names: a `!ref` sentinel, or the `{kind, name}`

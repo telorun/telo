@@ -7,6 +7,7 @@ import {
   holdsSensitiveMember,
   hostEntryOf,
   hostAnchorOf,
+  hostMediaTypeMismatch,
   isAbsoluteHostPath,
   markExactRendering,
   parseValueTypeEntry,
@@ -336,5 +337,40 @@ describe("a host path's entry parameter", () => {
         ),
       ),
     ).toThrow(/at most one parameter may declare 'hostEntry'/);
+  });
+});
+
+describe("a host path's media-type parameter", () => {
+  const png = { "x-telo-type": { name: "Telo.HostPath", entry: "file", mediaType: "image/png" } };
+  const head = (...bytes: number[]) => new Uint8Array(bytes);
+
+  it("judges a file's head against the declared type's signature, naming what it found", () => {
+    expect(hostMediaTypeMismatch(png, head(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0))).toBeUndefined();
+    expect(hostMediaTypeMismatch(png, head(0xff, 0xd8, 0xff, 0xe0))).toEqual({
+      declared: "image/png",
+      found: "image/jpeg",
+    });
+    expect(hostMediaTypeMismatch(png, head(0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50))).toEqual({
+      declared: "image/png",
+      found: "image/webp",
+    });
+    expect(hostMediaTypeMismatch(png, head(0x89, 0x50))).toEqual({ declared: "image/png", found: undefined });
+    expect(hostMediaTypeMismatch({ "x-telo-type": "Telo.HostPath" }, head(0xff, 0xd8, 0xff))).toBeUndefined();
+  });
+
+  it("refuses a malformed signature", () => {
+    const entry = (signatures: unknown) => ({
+      name: "Telo.Path2",
+      representation: "json",
+      base: "string",
+      fromHost: "working-directory",
+      description: "x",
+      parameters: [{ name: "mediaType", hostMediaType: true, signatures }],
+    });
+    expect(() => parseValueTypeEntry("x.json", entry({ "image/png": ["89PN"] }))).toThrow(
+      /must be lower-case hex byte pairs/,
+    );
+    expect(() => parseValueTypeEntry("x.json", entry({ "image/png": ["????"] }))).toThrow(/at least one byte fixed/);
+    expect(() => parseValueTypeEntry("x.json", entry({ PNG: ["89"] }))).toThrow(/is not a lower-case media type/);
   });
 });

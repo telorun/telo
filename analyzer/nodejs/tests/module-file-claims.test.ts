@@ -65,6 +65,13 @@ describe("collectModuleFileClaims", () => {
     expect(paths(text, "assets")).toEqual(["assets/bg.svg", "assets/f.ttf"]);
   });
 
+  it("claims the file a need parameter names with `!module-path`, so publish carries it", () => {
+    const text =
+      "kind: Telo.Application\nmetadata:\n  name: Labels\n" +
+      "needs:\n  printer:\n    kind: Printing.LabelPrinter\n    parameters: { logo: !module-path ./logo.png }\n";
+    expect(paths(text, "assets")).toEqual(["logo.png"]);
+  });
+
   it("names the tag and the value's path as the claim's origin", () => {
     const [claim] = collectModuleFileClaims(
       withDocs("kind: Demo.Thing\nmetadata:\n  name: t\nfont: !include-bytes assets/f.ttf\n"),

@@ -87,7 +87,8 @@ variables:
 
 A path on the machine running the app is not a plain string. Mark the variable
 `x-telo-type: Telo.HostPath` (add `entry: file` or `entry: directory` to say
-which it names):
+which it names, and `mediaType: image/png` to say what media type a file holds,
+judged by its leading bytes):
 
 ```yaml
 variables:

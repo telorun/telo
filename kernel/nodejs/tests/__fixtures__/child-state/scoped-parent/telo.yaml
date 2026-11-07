@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata: { name: ScopedSupervisor, version: 1.0.0 }
+imports:
+  App: ../../../../../../modules/app
+targets:
+  - !ref seq
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+with:
+  - kind: App.Instance
+    metadata: { name: web }
+    source: ../web
+targets:
+  - !ref web
+steps: []

@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata:
+  name: ParameterPathEntryConsumer
+  version: 0.0.0
+  description: Imports the library beside it; this check reports the library's defect at the import, and the kernel refuses it at load.
+imports: { Lib: ./lib }

@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: Scoped
+  version: 1.0.0
+  description: |
+    A window and a tray icon that live only for a Telo.Sequence: they unwind while the
+    connection is alive, so the host receives Window.Close and Tray.Close.
+lang: en
+imports: { Desktop: ../../.., Fixture: ../host, Assert: ../../../../assert }
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.test, productName: Test, icon: !module-path icon.png, port: http }
+targets:
+  - !ref verify
+---
+kind: Fixture.Host
+metadata: { name: fixture }
+host: !ref desktopHost
+---
+kind: Telo.Sequence
+metadata: { name: scoped }
+with:
+  - kind: Desktop.Window
+    metadata: { name: scopedWindow }
+    host: !ref desktopHost
+    title: Scoped
+  - kind: Desktop.TrayIcon
+    metadata: { name: scopedTray }
+    host: !ref desktopHost
+    icon: !module-path icon.png
+    menu: [{ type: item, label: Hi }]
+targets:
+  - !ref scopedWindow
+  - !ref scopedTray
+steps:
+  - name: during
+    invoke: { kind: Fixture.Frames, fixture: !ref fixture }
+  - name: duringIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.during.result.frames.map(frame, frame.type)"
+      expected: [Host.Hello, Window.Open, Tray.Open]
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - name: scope
+    invoke: !ref scoped
+  - name: after
+    invoke: { kind: Fixture.Frames, fixture: !ref fixture }
+  - name: afterIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "slice(steps.after.result.frames, 3, 5)"
+      expected:
+        - { type: Tray.Close, payload: { tray: scopedTray } }
+        - { type: Window.Close, payload: { window: scopedWindow } }

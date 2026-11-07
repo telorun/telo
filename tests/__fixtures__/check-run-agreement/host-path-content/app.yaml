@@ -1,0 +1,6 @@
+# Consumes the library next door. Its analysis is entry-scoped, so the
+# library's JPEG icon is invisible here by design — the kernel is what refuses
+# it when it creates the resource.
+kind: Telo.Application
+metadata: { name: HostPathContentApp, version: 1.0.0 }
+imports: { Lib: ./lib }

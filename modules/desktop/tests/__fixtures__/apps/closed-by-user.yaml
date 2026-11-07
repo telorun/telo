@@ -1,0 +1,32 @@
+kind: Telo.Application
+metadata:
+  name: ClosedByUser
+  version: 1.0.0
+  description: |
+    The host reports that the user closed a window declared onClose: close; the window no
+    longer holds the application, which therefore ends.
+lang: en
+imports: { Desktop: ../../.., Fixture: ../host }
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.test, productName: Test, icon: !module-path icon.png, port: http }
+targets:
+  - !ref window
+  - !ref userClosesIt
+---
+kind: Fixture.Host
+metadata: { name: fixture }
+host: !ref desktopHost
+---
+kind: Desktop.Window
+metadata: { name: window }
+host: !ref desktopHost
+---
+kind: Telo.Sequence
+metadata: { name: userClosesIt }
+steps:
+  - name: closed
+    invoke: { kind: Fixture.Send, fixture: !ref fixture }
+    inputs: { type: Window.Closed, payload: { window: window } }

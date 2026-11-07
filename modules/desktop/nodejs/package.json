@@ -1,0 +1,17 @@
+{
+  "name": "@telorun/desktop-build",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "description": "Build-only package for the std/desktop module's bundled controllers. Never published — the controllers ship inside the module artifact as a pkg:telo/local/js bundle. This package exists solely to type-check the sources.",
+  "type": "module",
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json"
+  }
+}

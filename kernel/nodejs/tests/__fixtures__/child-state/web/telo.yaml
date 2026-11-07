@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: Web, version: 1.0.0 }
+imports:
+  Console: ../../../../../../modules/console
+  Run: ../../../../../../modules/run
+needs:
+  data: { kind: Telo.DurableDirectory }
+targets:
+  - !ref report
+---
+kind: Run.Sequence
+metadata: { name: report }
+steps:
+  - name: say
+    invoke: { kind: Console.WriteLine }
+    inputs:
+      output: !interpolate "data=${{ string(resources.data.path) }}"
