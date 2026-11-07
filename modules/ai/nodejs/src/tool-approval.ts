@@ -168,7 +168,7 @@ export async function* settleToolCalls(
 }
 
 /** One call's outcome: its record, or nothing while it waits for a decision. */
-async function settleToolCall(
+export async function settleToolCall(
   settlement: ToolSettlement,
   call: ToolCall,
   approval: ToolApproval | undefined,

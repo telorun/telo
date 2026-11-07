@@ -9,7 +9,7 @@ sidebar_label: Ai.AgentStream
 
 `Ai.AgentStream` is the streaming counterpart of [`Ai.Agent`](./ai-agent.md): it stands to `Ai.Agent` as [`Ai.TextStream`](./ai-text-stream.md) stands to [`Ai.Text`](./ai-text.md). Same tool-use loop, same configuration — but instead of returning a buffered object, it forwards the run as a `Stream` on `result.output` (the streaming-Invocable convention), so the assistant's text streams token-by-token and every tool call surfaces the moment it happens.
 
-Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxSteps`, `onMaxSteps`, `conclusionPrompt`, `onToolError`, `maxToolResultBytes`, `maxParallelTools`, `toolProviders`, `approver` — and tool assembly, dispatch, approval and the recorded conversation are literally shared code, so the two agents never diverge on tool semantics. Only the output shape differs.
+Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxSteps`, `onMaxSteps`, `conclusionPrompt`, `onToolError`, `maxToolResultBytes`, `maxParallelTools`, `toolProviders`, `approver`, `resolver`, `textTools` — and tool assembly, dispatch, approval and the recorded conversation are literally shared code, so the two agents never diverge on tool semantics. Only the output shape differs.
 
 ## The event stream
 
@@ -24,7 +24,7 @@ Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxStep
 | `tool-call`       | `toolCall: { id, name, arguments }`                 | The model requested a tool. The id is fixed for the rest of the run.   |
 | `provider-state`  | `providerState`                                     | Opaque provider state, forwarded as produced (see below).              |
 | `step-finish`     | `usage`, `finishReason`                             | One model call ended: that call's usage and finish reason.             |
-| `tool-result`     | `toolResult: { toolCallId, name, content, output?, error?, denied? }` | A tool the agent executed: `content` is what the model was told, `output` what the tool returned. `error: true` on a failed call; `denied: true` on a call that was decided against and never ran. |
+| `tool-result`     | `toolResult: { toolCallId, name, content, output?, error?, denied?, origin? }` | A tool the agent executed: `content` is what the model was told, `output` what the tool returned. `error: true` on a failed call; `denied: true` on a call that was decided against and never ran; `origin: text` on a [text call](#text-tools). |
 | `message`         | `message`                                           | A message the run appended to the conversation — see [The `message` part is the record](#the-message-part-is-the-record). |
 | `tool-approval-decision` | `approvalDecision: { toolCallId, name, decision, reason? }` | What the agent's approver answered for one call — see [Tool approval](#tool-approval). |
 | `tool-approval-request` | `toolCall: { id, name, arguments }`          | A call waiting for a decision; the run ends after these.               |
@@ -45,6 +45,14 @@ tool-call-delta(id)… · tool-call(id) · step-finish(u1) · message(assistant)
 - The `tool-result` record is an entry of `Ai.Agent`'s `toolResults` plus `output` (see [Tool results](#tool-results)), so a streaming consumer is never a poorer signal than the buffered output.
 
 A consumer that stores the parts types them by reference — `items: !ref Ai.AgentStreamPart` — and `telo check` then reports a misspelled field (`inputs.records[0].usge`) as `CEL_UNKNOWN_FIELD`.
+
+### Text tools
+
+[`textTools`](./ai-agent.md#text-tools) work as for `Ai.Agent` — the block extractor, the ids and the dispatch are shared code. A reply's blocks stream out as `text-delta` parts as the model writes them; nothing runs until the model call has finished, since a block is gathered only once its closing fence arrives and a reply that ends inside one runs none. After the call's `step-finish` and its assistant `message`, the JSON calls run as above, then each text call in order, each reporting its own `tool-result` with `origin: text` and the call's `block_` id as `toolCallId`; once the reply's text calls have run, one `message` part carries the user message of their `kind: text-tool-result` parts. A text call waiting for a decision is named by a `tool-approval-request` and ends the run, as a JSON call is.
+
+```
+text-delta… · step-finish · message(assistant) · tool-result(block_…, origin: text) · message(user: text results) · text-delta… · step-finish · message(assistant) · finish
+```
 
 ### Tool-call argument deltas
 
@@ -202,7 +210,7 @@ The kind declares `throws: { inherit: true }`: its model's codes — the same [t
 - **`onToolError: feedback`** (default) — a failed tool emits a `tool-result` with `error: true`; the tools running beside it finish, and the loop continues so the model can react.
 - **`onToolError: throw`** — the first tool error cancels the tools still running and rejects the iteration.
 - **`onMaxSteps: return`** — a terminal `finish` with the last call's `finishReason` and `limit: max-steps`.
-- **`onMaxSteps: conclude`** — one more model call beyond `maxSteps`, declaring the same tools but forbidden to use one (`toolChoice: none`) and ending with `conclusionPrompt` as a user message. Its text and reasoning parts are emitted like any call's and closed by a `step-finish`; a tool call it returns anyway is neither emitted nor run, and neither are its argument deltas. Then the terminal `finish`, with `limit: max-steps` and that call's usage in the total.
+- **`onMaxSteps: conclude`** — one more model call beyond `maxSteps`, declaring the same tools but forbidden to use one (`toolChoice: none`) and ending with `conclusionPrompt` as a user message. Its text and reasoning parts are emitted like any call's and closed by a `step-finish`; a tool call or a text-tool block it returns anyway is neither emitted nor run, and neither are its argument deltas. Then the terminal `finish`, with `limit: max-steps` and that call's usage in the total.
 - **`onMaxSteps: throw`** (default) — rejects with `ERR_AGENT_MAX_STEPS`.
 - A model stream that ends without a `finish` part, that carries a `tool-call-delta` naming no call id, or that carries two tool calls sharing an id, rejects with `ERR_CONTRACT_VIOLATION`.
 

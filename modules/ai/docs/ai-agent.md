@@ -72,6 +72,7 @@ toolProviders:
 | `toolProviders` | array           | no       | Tool sources — see below.                                                                |
 | `approver`      | object          | no       | What decides a tool call that needs a decision — see [Tool approval](#tool-approval).    |
 | `resolver`      | object          | no       | Fetches referenced content for the model — see [Referenced content](#referenced-content). |
+| `textTools`     | array           | no       | Tools fed from fenced blocks in the model's reply — see [Text tools](#text-tools). |
 
 ### `toolProviders[]`
 
@@ -122,8 +123,8 @@ A call that does not satisfy them is `CONTRACT_INPUTS_MISMATCH` at its `inputs:`
 - `usage` — token usage summed across every model call in the loop. `cachedPromptTokens` (the part of `promptTokens` read from a cache), `cacheWritePromptTokens` (the part written to one) and `reasoningTokens` (the part of `completionTokens` spent reasoning) are summed the same way when the model reports them, and absent when no call did — absent is not zero.
 - `finishReason` — from the final turn.
 - `limit` — `max-steps` when the step budget ended the run (`onMaxSteps: return` or `conclude`); absent when the model finished on its own.
-- `steps` — one entry per model call the run made, the answering and the concluding call included: `{ text, toolCalls }`. A run that [resumes](#resuming-a-run-that-ended-asking) pending calls adds no entry for them. A call's id is fixed when the model requests it — a model that supplies none gets a generated `call_<uuid>`, unique across runs — and its result's `toolCallId` and the replayed assistant message carry the same one. The number of entries is the run's `ai.agent.steps`.
-- `toolResults` — one entry per tool call the run settled — ran, failed or was denied — including calls a previous run left pending, in the order they were recorded: `{ toolCallId, name, content, error?, denied? }`. A call still waiting has none and is listed in `approvalRequests`. `content` is what the model was told — a string, or **content parts** (`ContentPart[]`) when a tool answered with an image; the agent carries parts through to the model untouched rather than JSON-stringifying them. A failure is listed here with `error: true` (not swallowed), and a call that was decided against and never ran with `denied: true`. Empty when the run settled none.
+- `steps` — one entry per model call the run made, the answering and the concluding call included: `{ text, toolCalls, textCalls? }`, `textCalls` present when the agent declares [`textTools`](#text-tools). A run that [resumes](#resuming-a-run-that-ended-asking) pending calls adds no entry for them. A call's id is fixed when the model requests it — a model that supplies none gets a generated `call_<uuid>`, unique across runs — and its result's `toolCallId` and the replayed assistant message carry the same one. The number of entries is the run's `ai.agent.steps`.
+- `toolResults` — one entry per tool call the run settled — ran, failed or was denied — including calls a previous run left pending, in the order they were recorded: `{ toolCallId, name, content, error?, denied?, origin? }`, `origin: text` marking a [text call](#text-tools). A call still waiting has none and is listed in `approvalRequests`. `content` is what the model was told — a string, or **content parts** (`ContentPart[]`) when a tool answered with an image; the agent carries parts through to the model untouched rather than JSON-stringifying them. A failure is listed here with `error: true` (not swallowed), and a call that was decided against and never ran with `denied: true`. Empty when the run settled none.
 
 - `messages` — every message the run appended to the conversation — see [The record](#the-record).
 - `interrupt` / `approvalRequests` — set when the run ended with tool calls waiting for a decision — see [When the run ends asking](#when-the-run-ends-asking).
@@ -136,7 +137,7 @@ A call that does not satisfy them is `CONTRACT_INPUTS_MISMATCH` at its `inputs:`
 
 ## Errors
 
-The agent throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION`, `ERR_AGENT_MAX_STEPS`, `ERR_AGENT_UNKNOWN_TOOL`, `ERR_AGENT_TOOL_COLLISION`, `ERR_AGENT_APPROVAL_UNKNOWN_TOOL`, `ERR_AGENT_APPROVAL_DECISION_INVALID`, `ERR_CONTENT_RESOLUTION_INVALID` — **and whatever its model, its approver or its resolver throws**, unchanged: the kind declares `throws: { inherit: true }`, so their declared codes are part of the agent's own throw union. Every model raises the same [thirteen codes](../README.md#catching-a-models-errors), whichever provider it is. A `catch:` step or a route's `catches:` may name them, and a list with no catch-all must cover them (`UNCOVERED_THROW_CODE`). See [Ai.Text → Errors](./ai-text.md#errors) for a route that does.
+The agent throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION`, `ERR_AGENT_MAX_STEPS`, `ERR_AGENT_UNKNOWN_TOOL`, `ERR_AGENT_TOOL_COLLISION`, `ERR_AGENT_APPROVAL_UNKNOWN_TOOL`, `ERR_AI_TEXT_TOOL_UNKNOWN`, `ERR_AI_TEXT_TOOL_ARGUMENT_UNKNOWN`, `ERR_AI_TEXT_TOOL_ARGUMENT_MISSING`, `ERR_AGENT_APPROVAL_DECISION_INVALID`, `ERR_CONTENT_RESOLUTION_INVALID` — **and whatever its model, its approver or its resolver throws**, unchanged: the kind declares `throws: { inherit: true }`, so their declared codes are part of the agent's own throw union. Every model raises the same [thirteen codes](../README.md#catching-a-models-errors), whichever provider it is. A `catch:` step or a route's `catches:` may name them, and a list with no catch-all must cover them (`UNCOVERED_THROW_CODE`). See [Ai.Text → Errors](./ai-text.md#errors) for a route that does.
 
 The shape of the call — its messages and their content parts included, and a `tool` turn naming the call it answers by a non-empty `toolCallId` — is the declared input type's: a malformed literal is `CONTRACT_INPUTS_MISMATCH` under `telo check`, a malformed computed value `ERR_INPUT_INVALID` at dispatch; `ERR_INVALID_INPUT` is what the shape cannot state: both `prompt` and `messages`, or neither, and an `approvals` list that cannot be placed.
 
@@ -156,7 +157,7 @@ A run makes at most `maxSteps` model calls inside the loop. When that many pass 
 
 - `throw` (default) — the invocation fails with `ERR_AGENT_MAX_STEPS`.
 - `return` — the last turn is handed back as it stands: its text (often empty, since the model was asking for a tool) and its `finishReason`.
-- `conclude` — the agent makes **one more** model call, beyond `maxSteps`, and returns its answer. That call declares the same tools — so the tool calls already in the conversation stay valid — but may not use one (`toolChoice: none`), and its last message is `conclusionPrompt` as a user turn. If the model returns a tool call anyway, it is not run and not recorded. The call is one more entry in `steps`, and its usage is in the total.
+- `conclude` — the agent makes **one more** model call, beyond `maxSteps`, and returns its answer. That call declares the same tools — so the tool calls already in the conversation stay valid — but may not use one (`toolChoice: none`), and its last message is `conclusionPrompt` as a user turn. If the model returns a tool call anyway, or writes a text-tool block, it is not run and not recorded. The call is one more entry in `steps`, and its usage is in the total.
 
 `return` and `conclude` both set `limit: max-steps` on the output, which is how a caller tells a budget-ended run from one the model finished — `finishReason` stays the model's own reason. A converged run carries no `limit`.
 
@@ -298,7 +299,7 @@ Invoke an agent again — any instance with the same tools — with the conversa
     providerState: !cel "steps.load.result.providerState"
 ```
 
-The pending calls are read from `messages`: when they end with an assistant turn carrying tool calls, followed only by tool messages, the pending calls are those with no tool message. They are settled before any model call, each by the first of:
+The pending calls are read from `messages`: when they end with an assistant turn followed only by tool messages and by user messages made only of [text call results](#text-tools), the pending calls are its tool calls with no tool message, then its text calls — derived again from the turn's text — with no result part. The tool calls settle first; no text call runs while one of them is still pending. They are settled before any model call, each by the first of:
 
 1. **A decision in `approvals`.** `approved: true` runs the call, without judging it again and without asking the approver. `approved: false` does not run it: the model is told it was denied, with `reason`, and its `toolResults` entry is marked `denied: true`. A denial is not a tool error and ignores `onToolError`.
 2. **The approver**, when the call is still gated and no decision was given.
@@ -314,7 +315,62 @@ The pending calls are read from `messages`: when they end with an assistant turn
 
 `messages` on the output is every message the run appended to the conversation, in the order it appended them: each assistant turn, each tool result, the final answer. **The input messages followed by `messages` is the conversation to persist and to pass to the next run** — after an interrupt and after an ordinary answer alike. (Called with `prompt`, the input is the one user message `{ role: user, content: <prompt> }`.)
 
+A [text call](#text-tools)'s result is a text part of a user message following the turn, `{ type: text, text, kind: text-tool-result, toolCallId }`, so a replay is exact and a resume knows which text calls were answered.
+
 The record is append-only, so tool messages are in completion order, and a call approved on a later run lands after its siblings. That is fine to store as it is: whenever the agent builds a model request it puts each assistant turn's tool messages back into that turn's call order.
+
+## Text tools
+
+A JSON tool call carries its arguments as one JSON object, so a model writing a file or an edit through one escapes every newline, quote and backslash. `textTools` lets it write them as **fenced blocks in its reply** instead — raw text, never decoded — which the agent gathers into an ordinary call of one of its tools:
+
+```yaml
+textTools:
+  - tags: [telo-edit, telo-file]
+    tool: apply_changes
+    arguments:
+      changes: !cel >-
+        blocks.map(b, b.tag == 'telo-edit'
+          ? { 'path': b.attributes.path, 'patch': b.body }
+          : { 'path': b.attributes.path, 'content': b.body })
+```
+
+````
+```telo-file path=apps/orders/tests/create.yaml
+kind: Telo.Sequence
+metadata: { name: createOrder }
+```
+````
+
+| Field | Purpose |
+| --- | --- |
+| `tags` | The fence tags the entry collects, each `^[a-z][a-z0-9-]*$`, each listed by one entry only. A fence whose tag no entry lists is ordinary text. |
+| `tool` | The tool called, by the name the model is told — the provider entry's `prefix` included. |
+| `arguments` | The call's arguments: literal keys, each value CEL over `blocks` — the reply's blocks with the entry's tags, in reply order, each `{ tag, attributes, body }` (`attributes` a map of strings, `body` a string). |
+
+**The blocks.** A block opens with a fence at column 0 — three or more backticks, a tag, then `name=value` attributes separated by spaces (a value holds no space and no quote) — and closes on a line of only backticks (trailing spaces or tabs allowed), at least as many as the opener. A shorter backtick line inside is body, and so is everything up to the closing line, its final newline included. A fence that is not inside another fence opens a block, so a model shows a listed tag as an example by wrapping it in a longer fence of another info string (` ````text `). A fence that never closes is incomplete. An attribute must be exactly `name=value`; a fence whose first word is a listed tag but whose attributes do not read that way (`path="a.yaml"`, a tab for the space) is never silently text: it fails its entry's call with the offending token and the rule, and no block of the reply runs — the same all-or-nothing as a reply cut off inside a block, through `onToolError` like any failed call.
+
+**One call per entry per reply.** An entry gathers every block of its tags in a reply into **one** call, and yields none when the reply holds none — a tool acting per block takes a list. Everything after `arguments` is the tool's own: its provider's `inputs:` mapping (so `context` reaches it), its `approval:` (one decision for the whole set), its `result:` rendering and `maxToolResultBytes`. A value of `arguments` that fails to evaluate — a block missing an attribute the mapping reads — fails the call with the evaluation error, and the tool is not dispatched.
+
+**The loop.** After each reply the agent runs its JSON tool calls, all of them settled, then its text calls: one per entry whose tags the reply holds, ordered by each entry's first block, **one at a time**, so each sees the effects of the JSON calls and of the text calls before it (`maxParallelTools` does not apply). Each goes through the dispatch a JSON call takes — approval, the `execute_tool` span, cancellation, `onToolError`, the result bound. Under `onToolError: feedback` a failed call stops the reply's later text calls, which are answered as not run; under `throw` the run raises. A reply with blocks is followed by another model call: the assistant message is replayed as the text the model wrote, then one user message carries the JSON calls' results first and one text part per text call. The run ends, as before, on a reply with no tool calls and no blocks.
+
+Each text call's result is headed by its tool and the blocks it carried, then the tool's own rendering:
+
+```
+apply_changes (telo-edit path=apps/orders/telo.yaml, telo-file path=apps/orders/tests/create.yaml):
+wrote apps/orders/telo.yaml, apps/orders/tests/create.yaml
+```
+
+**A reply that ends inside a listed block** runs none of its blocks, whatever its `finishReason`, since the change set they form is incomplete; its JSON calls still run. The next call is told:
+
+```
+the reply ended inside telo-file path=apps/orders/tests/create.yaml before its closing fence; no block of this reply was run. Send the change again in smaller blocks.
+```
+
+**Approval and resume.** A text call is gated, approved, deferred and interrupted exactly as a JSON call is. No text call runs while a JSON call of its reply is pending, and the first text call that waits ends the run with the later ones not run, so the answered text calls are always a prefix of the reply's. A text call's id is a content address — `block_` plus a name-based UUIDv8 over SHA-256 (RFC 9562 §B.2) of the RFC 8785 canonical JSON `{ text, tool, tags, arguments }`: the assistant message's text, the tool name, the entry's tags sorted, the evaluated arguments (`null` when they failed) — so a resumed run rebuilds it from `messages` alone and `approvals` may name it. An entry whose `arguments` changed between the interrupt and the resume derives another id, so its decision is refused as not pending (`ERR_INVALID_INPUT`, listing the pending ids) and arguments nobody saw do not run.
+
+**The record.** `steps[i].textCalls` lists the reply's text calls, `{ id, tool, blocks: [{ tag, attributes }], ok }`, `ok` true when the call ran and succeeded in this run (a withheld reply is one entry naming the open block, `ok: false`). `toolResults` lists each answered text call with `origin: text` and its `id` as `toolCallId`, `content` the result as told. In `messages` each result is a `kind: text-tool-result` text part — see [The record](#the-record).
+
+**What `telo check` refuses.** A provider declaration holding a top-level `tools` list is read as its complete static tool list (the key [`Ai.ToolProvider` reserves](./ai-tool-provider.md)); against it `telo check` refuses a `tool` no provider declares, by the name the model is told after the entry's `include`, `exclude` and `prefix` (`AI_TEXT_TOOL_UNKNOWN`, only when every provider is static), and a tag listed by two entries (`AI_TEXT_TOOL_TAG_DUPLICATE`); a tag twice in one entry is a schema violation. When the agent first lists its tools it refuses, over every provider's advertised schema, an unknown tool (`ERR_AI_TEXT_TOOL_UNKNOWN`), an argument the schema refuses — absent from `properties`, matched by no `patternProperties`, under `additionalProperties: false` (`ERR_AI_TEXT_TOOL_ARGUMENT_UNKNOWN`) — and a required parameter left unmapped (`ERR_AI_TEXT_TOOL_ARGUMENT_MISSING`); the tag rule is refused again at creation (`ERR_AI_TEXT_TOOL_TAG_DUPLICATE`). The two argument checks have no `telo check` twin yet: a rule iterating `arguments`' keys is skipped wherever a value is CEL.
 
 ## Tools run side by side
 

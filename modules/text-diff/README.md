@@ -2,6 +2,8 @@
 
 Compare two texts line by line and get the result as data: how many lines were added and removed, and the changes grouped into hunks with their surrounding context — what a unified diff shows, without parsing a patch. `TextDiff.LineDiff` is a CEL function kind, so a diff is one expression wherever an expression is allowed.
 
+The other direction is applying a SEARCH/REPLACE patch to a text. `TextDiff.ApplyPatch` takes the text and the patch and returns the patched text, or the refusal with its code and the failing section — a patch that does not apply is a returned result, never an error.
+
 ## Why use this
 
 - **Callable from any CEL expression** — a step's `value:`, an `outputs:` map, a route's response — as `TextDiff.lineDiff(before, after)`, with a typed result `telo check` understands.
@@ -15,6 +17,8 @@ Compare two texts line by line and get the result as data: how many lines were a
 | --- | --- |
 | `TextDiff.LineDiff` | A function kind: configure `contextLines` and `maxInputBytes`, call with `before` and `after`. |
 | `TextDiff.lineDiff` | A ready-made instance: three lines of context, texts of up to 256 KiB each. |
+| `TextDiff.ApplyPatch` | A function kind: configure `maxInputBytes`, call with `text` and `patch`. |
+| `TextDiff.applyPatch` | A ready-made instance: texts and patches of up to 256 KiB each. |
 
 ## Example
 
@@ -73,3 +77,4 @@ hunks:
 ## Reference
 
 - [`TextDiff.LineDiff`](docs/line-diff.md) — configuration, the result shape, line and newline rules, and the bounds.
+- [`TextDiff.ApplyPatch`](docs/apply-patch.md) — the SEARCH/REPLACE format, how sections apply, the refusal codes, and the bounds.

@@ -1,7 +1,7 @@
 # @telorun/fs
 
 `fs` — local filesystem access for a running Telo app. Read, write, edit,
-list, create, and remove files and directories on the host the kernel runs on,
+list, create, move, copy, and remove files and directories on the host the kernel runs on,
 via Node `fs/promises`. Reads are buffered (small files); UTF-8 text by default,
 with a base64 escape hatch for binary, a raw-bytes path for writing what another
 resource produced, and a byte-stream path for saving an upload without holding
@@ -62,6 +62,20 @@ All are `Telo.Invocable` — invoke them from a `Run.Sequence` or wrap them as
   deleted path — but never implicitly deletes a file absent from the set, so one
   call serves both a full seed (all files, empty `delete`) and a partial delta
   (only what changed) without disturbing untouched files.
+
+- **[`Fs.Move`](docs/move-and-copy.md)** — rename a file or directory in one
+  `rename(2)`, creating the destination's missing parents.
+  `{ path, destination }` → `{ moved, destination }`. Refuses an existing
+  destination (`ERR_PATH_EXISTS`), a destination inside the source
+  (`ERR_MOVE_INTO_ITSELF`), an absent source (`ERR_PATH_NOT_FOUND`) and a rename
+  across filesystems (`ERR_MOVE_CROSS_DEVICE`), changing nothing.
+- **[`Fs.Copy`](docs/move-and-copy.md)** — copy a file, or a directory with
+  everything beneath it, all or nothing. `{ path, destination }` →
+  `{ copied, destination, files }`. Built beside the destination and renamed into
+  place, so a failure part-way leaves no destination. Refuses an existing
+  destination (`ERR_PATH_EXISTS`), a destination inside the source
+  (`ERR_COPY_INTO_ITSELF`), an absent source (`ERR_PATH_NOT_FOUND`) and a symbolic
+  link or special file in the source (`ERR_COPY_UNSUPPORTED_ENTRY`).
 
 `TreeSnapshot` + `TreeSync` compose into two-way tree sync: snapshot both sides,
 diff the hashes, and push exactly the differing files as a `TreeSync` write/delete

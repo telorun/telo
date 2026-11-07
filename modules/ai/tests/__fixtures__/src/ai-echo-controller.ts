@@ -6,6 +6,16 @@ import { EchoBase, type EchoResource } from "./echo-base.js";
 class AiEchoModel extends EchoBase implements ResourceInstance, AiModelInstance {
   async invoke(input: ModelInvokeInput): Promise<CompletionResult> {
     this.maybeThrow(input.messages);
+    const reply = this.scriptedReply(input);
+    if (reply) {
+      return {
+        content: reply.text === "" ? [] : [{ type: "text", text: reply.text }],
+        text: reply.text,
+        usage: this.usage,
+        finishReason: reply.finishReason,
+        ...(reply.toolCalls.length > 0 ? { toolCalls: reply.toolCalls } : {}),
+      };
+    }
     if (this.shouldCallTool(input)) {
       // A call told to answer without a tool still gets its text here, beside the
       // tool call the fixture returns regardless.
