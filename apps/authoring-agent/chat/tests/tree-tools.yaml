@@ -1,0 +1,460 @@
+kind: Telo.Application
+metadata:
+  name: ChatTreeTools
+  version: 1.0.0
+  description: |
+    move_file and copy_file as the authoring agent runs them, over the agent's
+    routes and offline against the provider stub, whose `STUB_CALLS:` directive
+    scripts the tool calls. The agent's state directory lies inside the
+    workspace, so the state directory can be named, and its checkpoint byte
+    bound is 200.
+
+    A directory moved is one call: one checkpoint call id holds the removal of
+    every source file and the creation of every destination file, the result
+    says references were not updated, and one revert restores the sources and
+    removes the destinations. A directory copied is one call too, its entries
+    the creation of each copied file, and one revert removes them and leaves
+    the source alone. A move onto an existing path, into itself, of the
+    workspace root, of the state directory, of a link or of a tree holding one,
+    or of a path that is not there, and a copy onto an existing path, into
+    itself, out of the workspace, of the state directory, of a link, of a tree
+    holding one or of a path that is not there, are each refused with their
+    code before anything changes: nothing is recorded and the tree is as it
+    was. A copy over the checkpoint bounds is ERR_CHECKPOINT_TOO_LARGE and
+    copies nothing.
+imports:
+  App: ../../../../modules/app
+  Fs: ../../../../modules/fs
+  HttpClient: ../../../../modules/http-client
+  Stream: ../../../../modules/stream
+  Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
+  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
+  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
+  Run: ../../../../modules/run
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+variables:
+  scratch:
+    env: CHAT_TEST_TREE_TOOLS_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/tree-tools
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+timeout: 60000
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: push }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [write]
+    properties: { write: { type: array, items: { type: object, additionalProperties: true } } }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18573/workspace
+      method: POST
+      body:
+        write: !cel "inputs.write"
+---
+# One turn in a conversation of its own, run to its end. `marker` tells the
+# turn's requests apart at the stub.
+kind: Telo.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [marker, reply]
+    properties:
+      marker: { type: string }
+      reply: { type: string }
+      calls: { type: array, items: { type: object, additionalProperties: true } }
+steps:
+  - name: conversation
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18573/conversations, method: POST }
+  - name: start
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18573/chat
+      method: POST
+      body:
+        conversationId: !cel "steps.conversation.result.body.id"
+        message: !cel >-
+          inputs.marker + ' STUB_REPLY:' + base64Encode(inputs.reply)
+            + (has(inputs.calls) ? ' STUB_CALLS:' + base64Encode(json(inputs.calls)) : '')
+  - name: get
+    timeout: 60000
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:18573/chat/${{ steps.start.result.body.turnId }}/events"
+      responseType: stream
+  - name: all
+    timeout: 60000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.get.result.body"
+outputs:
+  turnId: !cel "string(steps.start.result.body.turnId)"
+---
+# What the turn's last model call was sent after the assistant's reply, one entry per part.
+kind: Telo.Sequence
+metadata: { name: followUp }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [marker]
+    properties: { marker: { type: string } }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18572/requests }
+  - name: agent
+    value: !cel >-
+      steps.sent.result.body.requests.filter(r, json(r).contains(inputs.marker)
+        && !json(r).contains('You name conversations'))
+outputs:
+  calls: !cel "size(steps.agent.result)"
+  parts: !cel >-
+    cel.bind(messages, steps.agent.result[size(steps.agent.result) - 1].messages,
+      cel.bind(replies, enumerate(messages).filter(e, e.value.role == 'assistant').map(e, e.index + 1),
+        flatten(slice(messages, size(replies) == 0 ? 0 : replies[size(replies) - 1], size(messages))
+          .map(m, m.content.map(c, c.type == 'tool_result' ? {'type': 'tool_result', 'text': string(c.content)}
+            : {'type': string(c.type), 'text': string(c.text)})))))
+---
+# A turn's checkpoint entries as `path before>after`, and how many distinct
+# calls recorded them.
+kind: Telo.Function
+metadata: { name: entryLines }
+params:
+  - { name: rows, schema: { type: array } }
+returns: { schema: { type: array, items: { type: string } } }
+body: !cel >-
+  rows.map(r, r.path + ' ' + (int(r.absent) != 0 ? 'absent' : 'file') + '>'
+    + (int(r.deleted) != 0 ? 'absent' : 'file') + (int(r.confirmed) != 0 ? '' : ' unconfirmed'))
+---
+kind: Telo.Function
+metadata: { name: callCount }
+params:
+  - { name: rows, schema: { type: array } }
+returns: { schema: { type: integer } }
+body: !cel "size(distinct(rows.map(r, r.call_id)))"
+---
+kind: Telo.Sequence
+metadata: { name: revert }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties: { turnId: { type: string } }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18573/chat/${{ inputs.turnId }}/revert"
+      method: POST
+outputs:
+  status: !cel "steps.post.result.status"
+---
+# The content at each path, null where there is no file.
+kind: Telo.Sequence
+metadata: { name: disk }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [paths]
+    properties: { paths: { type: array, items: { type: string } } }
+steps:
+  - name: files
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.paths"
+      steps:
+        - name: get
+          invoke: !ref call
+          inputs:
+            url: !cel "'http://127.0.0.1:18573/workspace/file?path=' + item"
+      outputs:
+        content: !cel "steps.get.result.status == 200 ? dyn(steps.get.result.body.content) : null"
+    inputs:
+      paths: !cel "inputs.paths"
+outputs:
+  contents: !cel "steps.files.result.map(f, f.content)"
+---
+kind: Shell.Command
+metadata: { name: inWorkspace }
+host:
+  kind: Shell.LocalHost
+  cwd: !cel "variables.scratch.joinPath('workspace')"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18572 }
+targets: [ !ref stub ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('workspace'))"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Telo.Sequence
+      with:
+        - kind: SQLite.Connection
+          metadata: { name: agentDb }
+          file: !cel "variables.scratch.joinPath('workspace').joinPath('state').joinPath('agent.sqlite')"
+        - kind: Sql.Query
+          metadata: { name: agentQuery }
+          connection: !ref agentDb
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18573 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('workspace').joinPath('state')" }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+            modelEndpoint: http://127.0.0.1:18572/v1
+            teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
+            maxCheckpointBytes: 200
+          secrets: { anthropicApiKey: stub-key }
+      targets: [ !ref agent ]
+      steps:
+        - name: samples
+          value:
+            entriesSql: "SELECT path, before_hash IS NULL AS absent, after_hash IS NULL AS deleted, confirmed, call_id FROM checkpoint_entries WHERE turn_id = ? ORDER BY id"
+            fifty: !cel "join(range(49).map(i, 'x'), '') + '\\n'"
+        - name: seed
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: src/a.txt, content: "alpha\n" }
+              - { path: src/sub/b.txt, content: "beta\n" }
+              - { path: cp/a.txt, content: "alpha\n" }
+              - { path: cp/sub/b.txt, content: "beta\n" }
+              - { path: mv/a.txt, content: "alpha\n" }
+              - { path: taken/x.txt, content: "taken\n" }
+              - { path: keep/k.txt, content: "keep\n" }
+              - { path: withlink/real.txt, content: "real\n" }
+              - { path: big/f1.txt, content: !cel "steps.samples.result.fifty + steps.samples.result.fifty + steps.samples.result.fifty" }
+              - { path: big/f2.txt, content: !cel "steps.samples.result.fifty + steps.samples.result.fifty + steps.samples.result.fifty" }
+        - name: links
+          invoke: !ref inWorkspace
+          inputs: { args: [sh, -c, "ln -s keep/k.txt link && ln -s ../keep/k.txt withlink/l"] }
+        # ── a directory moved ────────────────────────────────────────────────
+        - name: moveTurn
+          invoke: !ref turn
+          inputs:
+            marker: scenario-move
+            reply: ""
+            calls:
+              - { name: move_file, arguments: { path: src, destination: moved/here } }
+        - name: moveFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-move }
+        - name: moveCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.moveTurn.result.turnId" ]
+        - name: moveDisk
+          invoke: !ref disk
+          inputs: { paths: [src/a.txt, src/sub/b.txt, moved/here/a.txt, moved/here/sub/b.txt] }
+        - name: moveRevert
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.moveTurn.result.turnId" }
+        - name: moveReverted
+          invoke: !ref disk
+          inputs: { paths: [src/a.txt, src/sub/b.txt, moved/here/a.txt, moved/here/sub/b.txt] }
+        # ── moves refused ────────────────────────────────────────────────────
+        - name: moveRefusedTurn
+          invoke: !ref turn
+          inputs:
+            marker: scenario-move-refused
+            reply: ""
+            calls:
+              - { name: move_file, arguments: { path: mv, destination: taken } }
+              - { name: move_file, arguments: { path: mv, destination: mv/inner } }
+              - { name: move_file, arguments: { path: "", destination: elsewhere } }
+              - { name: move_file, arguments: { path: state, destination: elsewhere } }
+              - { name: move_file, arguments: { path: link, destination: link2 } }
+              - { name: move_file, arguments: { path: withlink, destination: withlink2 } }
+              - { name: move_file, arguments: { path: nothing, destination: nothing2 } }
+        - name: moveRefusedFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-move-refused }
+        - name: moveRefusedCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.moveRefusedTurn.result.turnId" ]
+        - name: moveRefusedDisk
+          invoke: !ref disk
+          inputs: { paths: [mv/a.txt, mv/inner/a.txt, taken/x.txt, elsewhere, link2, withlink/real.txt, withlink2/real.txt] }
+        # ── a directory copied ───────────────────────────────────────────────
+        - name: copyTurn
+          invoke: !ref turn
+          inputs:
+            marker: scenario-copy
+            reply: ""
+            calls:
+              - { name: copy_file, arguments: { path: cp, destination: made/cp-copy } }
+        - name: copyFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-copy }
+        - name: copyCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.copyTurn.result.turnId" ]
+        - name: copyDisk
+          invoke: !ref disk
+          inputs: { paths: [cp/a.txt, cp/sub/b.txt, made/cp-copy/a.txt, made/cp-copy/sub/b.txt] }
+        - name: copyRevert
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.copyTurn.result.turnId" }
+        - name: copyReverted
+          invoke: !ref disk
+          inputs: { paths: [cp/a.txt, cp/sub/b.txt, made/cp-copy/a.txt, made/cp-copy/sub/b.txt] }
+        # ── copies refused ───────────────────────────────────────────────────
+        - name: copyRefusedTurn
+          invoke: !ref turn
+          inputs:
+            marker: scenario-copy-refused
+            reply: ""
+            calls:
+              - { name: copy_file, arguments: { path: cp, destination: taken } }
+              - { name: copy_file, arguments: { path: cp, destination: cp/inner } }
+              - { name: copy_file, arguments: { path: cp, destination: ../outside } }
+              - { name: copy_file, arguments: { path: ../outside, destination: inside } }
+              - { name: copy_file, arguments: { path: state, destination: elsewhere } }
+              - { name: copy_file, arguments: { path: link, destination: link2 } }
+              - { name: copy_file, arguments: { path: withlink, destination: withlink2 } }
+              - { name: copy_file, arguments: { path: nothing, destination: nothing2 } }
+              - { name: copy_file, arguments: { path: big, destination: big-copy } }
+        - name: copyRefusedFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-copy-refused }
+        - name: copyRefusedCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.copyRefusedTurn.result.turnId" ]
+        - name: copyRefusedDisk
+          invoke: !ref disk
+          inputs: { paths: [cp/inner/a.txt, taken/a.txt, elsewhere, link2, withlink2/real.txt, big-copy/f1.txt, big-copy/f2.txt] }
+        # ── refused by Fs.Move / Fs.Copy after the files were captured ───────
+        - name: fsRefusedTurn
+          invoke: !ref turn
+          inputs:
+            marker: scenario-fs-refused
+            reply: ""
+            calls:
+              - { name: move_file, arguments: { path: mv, destination: keep/k.txt/inner } }
+              - { name: copy_file, arguments: { path: cp, destination: keep/k.txt/inner } }
+        - name: fsRefusedFollowUp
+          invoke: !ref followUp
+          inputs: { marker: scenario-fs-refused }
+        - name: fsRefusedCheckpoint
+          invoke: !ref agentQuery
+          inputs:
+            sql: !cel "steps.samples.result.entriesSql"
+            bindings: [ !cel "steps.fsRefusedTurn.result.turnId" ]
+        - name: fsRefusedCopies
+          invoke: !ref inWorkspace
+          inputs:
+            args: !cel >-
+              ['sh', '-c', 'find state/checkpoints/' + steps.fsRefusedTurn.result.turnId + ' -type f | wc -l']
+        - name: fsRefusedDisk
+          invoke: !ref disk
+          inputs: { paths: [mv/a.txt, cp/a.txt, keep/k.txt] }
+        - name: verify
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              move:
+                result: !cel "steps.moveFollowUp.result.parts.map(p, p.text)"
+                entries: !cel "Self.entryLines(steps.moveCheckpoint.result.rows)"
+                calls: !cel "Self.callCount(steps.moveCheckpoint.result.rows)"
+                moved: !cel "steps.moveDisk.result.contents"
+                revert: !cel "steps.moveRevert.result.status"
+                reverted: !cel "steps.moveReverted.result.contents"
+              moveRefused:
+                codes: !cel >-
+                  steps.moveRefusedFollowUp.result.parts.map(p, replace(p.text.split(' ')[1], ':', ''))
+                entries: !cel "Self.entryLines(steps.moveRefusedCheckpoint.result.rows)"
+                disk: !cel "steps.moveRefusedDisk.result.contents"
+              copy:
+                result: !cel "steps.copyFollowUp.result.parts.map(p, p.text)"
+                entries: !cel "Self.entryLines(steps.copyCheckpoint.result.rows)"
+                calls: !cel "Self.callCount(steps.copyCheckpoint.result.rows)"
+                copied: !cel "steps.copyDisk.result.contents"
+                revert: !cel "steps.copyRevert.result.status"
+                reverted: !cel "steps.copyReverted.result.contents"
+              fsRefused:
+                refusedBy: !cel "steps.fsRefusedFollowUp.result.parts.map(p, p.text.split(' ')[1])"
+                entries: !cel "Self.entryLines(steps.fsRefusedCheckpoint.result.rows)"
+                storedCopies: !cel "steps.fsRefusedCopies.result.stdout.trim()"
+                disk: !cel "steps.fsRefusedDisk.result.contents"
+              copyRefused:
+                codes: !cel >-
+                  steps.copyRefusedFollowUp.result.parts.map(p, replace(p.text.split(' ')[1], ':', ''))
+                entries: !cel "Self.entryLines(steps.copyRefusedCheckpoint.result.rows)"
+                disk: !cel "steps.copyRefusedDisk.result.contents"
+            expected:
+              move:
+                result: [ "moved src to moved/here (2 files); references to it were not updated" ]
+                entries: ["src/a.txt file>absent", "src/sub/b.txt file>absent", "moved/here/a.txt absent>file", "moved/here/sub/b.txt absent>file"]
+                calls: 1
+                moved: [ null, null, "alpha\n", "beta\n" ]
+                revert: 200
+                reverted: [ "alpha\n", "beta\n", null, null ]
+              moveRefused:
+                codes: [ERR_PATH_EXISTS, ERR_MOVE_INTO_ITSELF, ERR_PATH_OUTSIDE_WORKSPACE, ERR_PATH_OUTSIDE_WORKSPACE, ERR_PATH_NOT_A_FILE, ERR_PATH_NOT_A_FILE, ERR_PATH_NOT_FOUND]
+                entries: []
+                disk: [ "alpha\n", null, "taken\n", null, null, "real\n", null ]
+              copy:
+                result: [ "copied cp to made/cp-copy (2 files); references in the copy were not updated" ]
+                entries: ["made/cp-copy/a.txt absent>file", "made/cp-copy/sub/b.txt absent>file"]
+                calls: 1
+                copied: [ "alpha\n", "beta\n", "alpha\n", "beta\n" ]
+                revert: 200
+                reverted: [ "alpha\n", "beta\n", null, null ]
+              fsRefused:
+                refusedBy: [ "Fs.Move:", "Fs.Copy:" ]
+                entries: []
+                storedCopies: "0"
+                disk: [ "alpha\n", "alpha\n", "keep\n" ]
+              copyRefused:
+                codes: [ERR_PATH_EXISTS, ERR_COPY_INTO_ITSELF, ERR_PATH_OUTSIDE_WORKSPACE, ERR_PATH_OUTSIDE_WORKSPACE, ERR_PATH_OUTSIDE_WORKSPACE, ERR_PATH_NOT_A_FILE, ERR_PATH_NOT_A_FILE, ERR_PATH_NOT_FOUND, ERR_CHECKPOINT_TOO_LARGE]
+                entries: []
+                disk: [ null, null, null, null, null, null, null ]

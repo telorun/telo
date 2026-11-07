@@ -74,6 +74,32 @@ describe("ToolCard", () => {
     expect(navigate).toHaveBeenCalledWith("editor:app/telo.yaml", { start: at, end: at });
   });
 
+  it("shows a change set's files, each with its own diff", async () => {
+    renderCard({
+      toolCallId: "block_1",
+      name: "apply_changes",
+      state: "done",
+      output: "wrote a.yaml, b.yaml\ncheck: clean",
+      structured: {},
+      checkExitCode: 0,
+      diagnostics: [],
+      changes: [
+        { path: "a.yaml", status: "modified", before: "b1", after: "a1", added: 1, removed: 0 },
+        { path: "b.yaml", status: "created", before: null, after: "a2", added: 1, removed: 0 },
+      ],
+      files: [
+        { path: "a.yaml", hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, lines: [{ op: "added", text: "# in a" }] }] },
+        { path: "b.yaml", hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: [{ op: "added", text: "# in b" }] }] },
+      ],
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /apply_changes/ }));
+    expect(screen.getByRole("button", { name: "a.yaml" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "b.yaml" })).toBeTruthy();
+    expect(screen.getByText(/# in a/)).toBeTruthy();
+    expect(screen.getByText(/# in b/)).toBeTruthy();
+  });
+
   it("puts a failed check's diagnostics before the diff, on a card that opens by itself", () => {
     renderCard({
       ...edit,

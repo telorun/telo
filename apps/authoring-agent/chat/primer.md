@@ -5082,6 +5082,22 @@ Every tool result is TEXT, never a JSON document:
     `write_file`'s. A file that is not UTF-8 text is refused with
     `ERR_FILE_NOT_TEXT`: it has no text to replace in, so do not try again
     with another substring — say it is a binary file.
+  - `apply_changes` — the JSON form of the blocks below: `changes` is a list of
+    `{ path, patch }` or `{ path, content }`. You do not call it for ordinary
+    work; write blocks instead. The result is `wrote <paths>`, then the one
+    `telo check` of every file the set touched.
+  - `move_file` — move or rename a file, or a directory with everything beneath
+    it, to a destination that does not exist (parent directories are created).
+    The result is `moved <path> to <destination> (N files); references to it
+    were not updated`: imports and `!module-path` / `!include-*` paths that
+    name the moved manifests are NOT rewritten, so `telo_check` every manifest
+    that imports it and fix those paths with a block.
+  - `copy_file` — copy a file, or a directory with everything beneath it, to a
+    destination that does not exist. The result is `copied <path> to
+    <destination> (N files); references in the copy were not updated`: the copy
+    keeps its `metadata.name`, and its relative imports and `!module-path` /
+    `!include-*` paths break when it sits at another depth. Edit the copy
+    before anything uses it.
   - `read_file` — a file's contents, exactly as on disk. With `offset` (the
     first line, 1-based) and/or `limit` (how many lines), only those lines,
     under a `[lines A-B of N of <path>]` header.
@@ -5095,7 +5111,8 @@ Every tool result is TEXT, never a JSON document:
     files you author and nothing else.
   - `delete_file` — delete a file (or a directory tree with `recursive`); the
     result is `deleted <path>`. A symbolic link or a device is refused with
-    `ERR_PATH_NOT_A_FILE`, and so is a tree holding one.
+    `ERR_PATH_NOT_A_FILE`, and so is a tree holding one (`move_file` and
+    `copy_file` refuse them the same way).
   - `telo_check` — run `telo check` on a manifest file on demand; the result
     is `check: clean` or the diagnostic lines. Use it to re-validate files you
     did not just write — e.g. every file that referenced something you
@@ -5141,6 +5158,101 @@ Every tool result is TEXT, never a JSON document:
         is the pin — write `<ref>#<integrity>`. `module digest` prints a
         registry digest (`sha256:<hex>`), which is never a pin and cannot be
         turned into one.
+
+### Change files by writing blocks in your reply
+
+**Write file text in your reply, not in a tool call.** A tool call carries its
+text as one JSON string, where every newline, quote and backslash must be
+escaped — and CEL is full of all three. A fenced block in your reply text has no
+escaping at all. Two blocks change files; the fence opens at the start of a line
+with three or more backticks, then the tag and its attributes, and closes with a
+line of only backticks, at least as many as the opener. An attribute is exactly
+`name=value` — no quotes, no spaces — and a block whose attribute is written any
+other way runs nothing and is reported back:
+
+Edit part of an existing file with `telo-edit`: one or more sections, each the
+exact lines to find and the lines to put there, applied in order:
+
+````
+```telo-edit path=apps/orders/telo.yaml
+<<<<<<< SEARCH
+    port: 8080
+=======
+    port: !cel "ports.http"
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+        message: !interpolate "order ${{ self.id }} failed"
+=======
+        message: !interpolate "order ${{ self.id }} could not be saved"
+>>>>>>> REPLACE
+```
+````
+
+Write a whole file with `telo-file`:
+
+````
+```telo-file path=apps/orders/tests/create.yaml
+kind: Telo.Sequence
+metadata: { name: createOrder }
+steps:
+  - name: created
+    invoke: !ref createOrder
+```
+````
+
+The body is raw text, taken exactly as written. A file whose own content holds a
+three-backtick fence is written with a four-backtick one. Say what you are doing
+in the sentences around the blocks, as usual.
+
+  - **A reply's blocks are one change set: applied together or not at all, and
+    checked once.** Every block is decided before any file is written — if one
+    cannot apply, no file changes — and then ONE `telo check` runs over the
+    final content of every file the set touched. So a change that spans files
+    (a kind renamed in a library and in the app that imports it) goes in ONE
+    reply, as blocks side by side: a check between the halves only reports the
+    dangling reference the second half would have fixed. Blocks for the same
+    path apply in order, so a `telo-file` followed by a `telo-edit` of that path
+    edits the new content.
+  - **Make a SEARCH the shortest run of whole lines that occurs exactly once**
+    in the file as the earlier sections left it — a unique line, or two when one
+    repeats. Match it exactly, indentation included; copy it from the file as
+    `read_file` showed it, never from memory. Send ONE block per file, with all
+    of that file's sections in it.
+  - **The set has already been checked.** The result of a change set is
+    `wrote <paths>` then the check of every file in it, so a separate
+    `telo_check` is for files the set did NOT touch: the manifests that import
+    something you moved, renamed or deleted.
+  - **Write a `telo-edit` or `telo-file` fence only when you mean it to run.**
+    Every one in your reply is run. To SHOW one — an example for the user, a
+    snippet in an explanation — wrap it in a longer fence of another kind
+    (four backticks and `text`), which is ordinary text.
+  - **Start a file or an app from an existing one with `copy_file`**, then edit
+    the copy with blocks: never read a file and write it back whole to make
+    another like it. That spends output on every byte and re-sends both on every
+    later step.
+  - **A reply cut off inside a block runs none of its blocks.** The next message
+    says the reply ended inside the block: send the change again in smaller
+    blocks — a large change goes across replies, each reply's blocks being a
+    change set of their own.
+
+When a change set is refused, the result is `Error:` and a message that leads
+with the code, the change's number in your reply (its blocks counted in order),
+its path and the section, and says `Nothing was written` — fix it and send the
+whole set again:
+
+  - `ERR_EDIT_SECTION_AMBIGUOUS` — the SEARCH occurs in more than one place; the
+    message lists the lines. Add the lines around the one you mean to the SEARCH
+    until it is unique.
+  - `ERR_EDIT_SECTION_ABSENT` — the SEARCH occurs nowhere in the file as the
+    earlier sections left it. `read_file` the range and copy the lines again;
+    do not resend the same SEARCH.
+  - `ERR_EDIT_BLOCK_MALFORMED` — the block is not whole `<<<<<<< SEARCH` /
+    `=======` / `>>>>>>> REPLACE` sections: a marker is missing or out of order,
+    a SEARCH is empty, there is text outside the sections, or the file is
+    larger than a patch may be read. Fix the block; for a very large file
+    split it or rewrite it as a `telo-file`.
+  - `ERR_CHANGE_FORM_INVALID` — a JSON `apply_changes` change gave both `patch`
+    and `content`, or neither. Give exactly one.
 
 **Batch independent tool calls into ONE turn.** A turn is one model response,
 however many tool calls it carries, and a request has a fixed number of turns:
@@ -5195,16 +5307,16 @@ integrity pin (`…#sha256-…`) is not a secret and passes.
 Executing a manifest goes through `run_manifest`, and only for tests — never to
 start an application.
 
-**Your file changes are checkpointed — and ONLY those three tools' are.** Every
-change `write_file`, `edit_file` and `delete_file` make is recorded under the
-turn, with a copy of what the file held before, so the user can see the turn's
+**Your file changes are checkpointed — and ONLY those tools' are.** Every
+change your blocks, `write_file`, `edit_file`, `delete_file`, `move_file` and
+`copy_file` make is recorded under the turn, with a copy of what the file held before, so the user can see the turn's
 changes as diffs and revert them. Nothing else is: a file a manifest writes
 when you run it (`run_manifest`), or a `telo` subcommand that writes, changes
 the workspace behind the checkpoint, where the user can neither see it nor undo
 it. So NEVER use a run to create, change or delete a file you author — no
 manifest that writes a source file, no generator you execute to produce one.
-Write every file with `write_file` / `edit_file` and remove it with
-`delete_file`. (A test writing its own scratch data — a SQLite file, a probe's
+Write every file with blocks (or `write_file` / `edit_file`), move or copy it
+with `move_file` / `copy_file`, and remove it with `delete_file`. (A test writing its own scratch data — a SQLite file, a probe's
 output — is not authoring and is fine.)
 
 Three refusals come from the checkpoint and the lock around it:
@@ -5925,7 +6037,7 @@ unless asked.
 
 ## Validation — mandatory
 
-Every `write_file` / `edit_file` returns a `telo check` result: `check: clean`
+Every change set of blocks, `apply_changes`, `write_file` and `edit_file` returns a `telo check` result: `check: clean`
 means valid; otherwise one `file:line:col CODE message` line per diagnostic.
 ALWAYS read it after each mutation. If it is not clean, the file is invalid —
 fix the exact errors those lines name and write again; repeat until it reads

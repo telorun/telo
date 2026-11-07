@@ -17,8 +17,8 @@ metadata:
     POST /chat/{turnId}/continue resumes an interrupted one inside the same turn;
     GET /conversations/{id}/records pages a conversation's records. A
     conversation is named after its first message, and its older turns are
-    summarized once its context reaches MAX_CONTEXT_TOKENS. Every change the
-    agent's write_file, edit_file and delete_file make is checkpointed under its
+    summarized once its context reaches MAX_CONTEXT_TOKENS. Every file change the
+    agent makes is checkpointed under its
     turn: GET /chat/{turnId}/changes lists a turn's net file changes as diffs,
     POST /chat/{turnId}/revert puts them back, and every ended turn's entry on
     the records route carries a summary. Conversations idle
@@ -71,10 +71,10 @@ imports:
   # `Mcp` and `Run` come from where the chat library takes them, so every
   # module in this graph has one origin. The hub's `retry:` needs the next
   # release; the import sync moves this pin to it.
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.0#sha256-4Kt7hdp8rXPewhAMWQN1w5b05iQB3KnWhzXMF52lQLM
+  Mcp: ../../modules/mcp-client
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
   Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
-  Stream: oci://ghcr.io/telorun/stream@0.15.0#sha256-wC7CFWTRfkSKCSLQ0oXFGSdyPQRdkYmS7vrha87f8WU
+  Stream: ../../modules/stream
   Scheduler: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
   Log: oci://ghcr.io/telorun/log@0.3.1#sha256-FJAHRqUCHHlXRJJxwojW1u6E7z8o-jOuvKJ0rbTlaxs
   Otlp: oci://ghcr.io/telorun/otlp@0.8.0#sha256-IO4SbkcLNoCVKH89dBQuPJ-u6ZESWWOBeYKM5ELY9WI

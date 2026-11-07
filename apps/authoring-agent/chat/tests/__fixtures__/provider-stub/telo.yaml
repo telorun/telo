@@ -40,6 +40,10 @@ metadata:
       - a message containing `STUB_CALLS:<base64 of a JSON list of
         {name, arguments}>` asks for exactly those tool calls, and the request
         that carries their results gets a text reply;
+      - a message containing `STUB_REPLY:<base64 of a UTF-8 text>` makes the
+        FIRST model call of a turn (a request holding no assistant message)
+        write exactly that text — fences included — before any tool calls
+        STUB_CALLS asks for, and every later call answers as usual;
       - a message containing STUB_LOOP asks for one `list_dir` call on every
         request, until one forbids tools (`tool_choice: "none"`), which gets
         the text reply `stub wrap-up`;
@@ -55,10 +59,7 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.0#sha256-2bFuhkRBtPY9mcybUoFc1l4D009TOlYuW5zCJeKbrMU
   Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
   Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
-ports:
-  http:
-    env: PORT
-    default: 18440
+ports: { http: { env: PORT, default: 18440 } }
 targets:
   - !ref schema
   - !ref server
@@ -74,8 +75,7 @@ migrations:
   create_requests:
     statement: "CREATE TABLE requests (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT NOT NULL)"
   # Each POST /release: every request up to `through_id` is let go.
-  create_releases:
-    statement: "CREATE TABLE releases (through_id INTEGER NOT NULL)"
+  create_releases: { statement: "CREATE TABLE releases (through_id INTEGER NOT NULL)" }
 ---
 kind: Run.Sequence
 metadata: { name: respond }
@@ -84,8 +84,7 @@ inputType:
   schema:
     type: object
     required: [body]
-    properties:
-      body: { type: object, additionalProperties: true }
+    properties: { body: { type: object, additionalProperties: true } }
 steps:
   - name: record
     invoke: { kind: Sql.Query, connection: !ref db }
@@ -161,9 +160,7 @@ steps:
         : steps.obeys.result.fail
     then:
       - name: refuse
-        throw:
-          code: ERR_STUB_REFUSED
-          message: The stub refuses this request.
+        throw: { code: ERR_STUB_REFUSED, message: The stub refuses this request. }
   # Held until released. An agent that abandons the request (an aborted turn)
   # disconnects, which cancels this handler and ends the hold with it.
   - name: slow
@@ -179,9 +176,7 @@ steps:
       - name: hold
         while: !cel "steps.released.result.rows[0].n == 0"
         do:
-          - name: poll
-            invoke: { kind: Timer.Delay }
-            inputs: { duration: "50ms" }
+          - { name: poll, invoke: { kind: Timer.Delay }, inputs: { duration: "50ms" } }
           - name: released
             invoke: !ref releasedCount
             inputs:
@@ -200,6 +195,13 @@ steps:
     value: !cel >-
       cel.bind(directive, regexExtract(steps.request.result, 'STUB_DISCOVERY:[A-Za-z0-9+/=]+'),
         directive == '' ? '{"found": [], "notFound": []}' : base64Decode(directive.substring(15)))
+  - name: scriptedReply
+    value: !cel >-
+      cel.bind(directive, regexExtract(steps.request.result, 'STUB_REPLY:[A-Za-z0-9+/=]+'),
+        steps.kind.result != 'agent' || directive == ''
+          || (has(inputs.body.messages) && type(inputs.body.messages) == type([])
+              && inputs.body.messages.exists(m, has(m.role) && m.role == 'assistant'))
+          ? '' : base64Decode(directive.substring(11)))
   - name: toolResults
     value: !cel >-
       has(inputs.body.messages) && type(inputs.body.messages) == type([])
@@ -225,6 +227,9 @@ steps:
     value: !cel >-
       has(inputs.body.thinking) && type(inputs.body.thinking) == type({})
         && inputs.body.thinking.type == 'adaptive' ? 1 : 0
+  # A scripted reply's text block comes first, so the tool calls shift by one.
+  - name: callIndex
+    value: !cel "steps.startIndex.result + (steps.scriptedReply.result == '' ? 0 : 1)"
   - name: events
     value: !cel >-
       [{'type': 'message_start',
@@ -239,15 +244,22 @@ steps:
               'delta': {'type': 'signature_delta', 'signature': 'stub-signature'}},
              {'type': 'content_block_stop', 'index': 0}]
           : [])
+      + (size(steps.calls.result) > 0 && steps.scriptedReply.result != ''
+          ? [{'type': 'content_block_start', 'index': steps.startIndex.result,
+              'content_block': {'type': 'text', 'text': ''}},
+             {'type': 'content_block_delta', 'index': steps.startIndex.result,
+              'delta': {'type': 'text_delta', 'text': steps.scriptedReply.result}},
+             {'type': 'content_block_stop', 'index': steps.startIndex.result}]
+          : [])
       + (size(steps.calls.result) > 0
           ? flatten(enumerate(steps.calls.result).map(e,
               [
-                {'type': 'content_block_start', 'index': steps.startIndex.result + e.index,
+                {'type': 'content_block_start', 'index': steps.callIndex.result + e.index,
                  'content_block': {'type': 'tool_use', 'id': 'toolu_' + uuidv4(),
                                    'name': e.value.name, 'input': {}}},
-                {'type': 'content_block_delta', 'index': steps.startIndex.result + e.index,
+                {'type': 'content_block_delta', 'index': steps.callIndex.result + e.index,
                  'delta': {'type': 'input_json_delta', 'partial_json': json(e.value.arguments)}},
-                {'type': 'content_block_stop', 'index': steps.startIndex.result + e.index}
+                {'type': 'content_block_stop', 'index': steps.callIndex.result + e.index}
               ]))
           : steps.kind.result == 'summary' && steps.obeys.result.empty
             ? []
@@ -256,7 +268,8 @@ steps:
                  'content_block': {'type': 'text', 'text': ''}},
                 {'type': 'content_block_delta', 'index': steps.startIndex.result,
                  'delta': {'type': 'text_delta',
-                   'text': steps.kind.result == 'title'
+                   'text': steps.scriptedReply.result != '' ? steps.scriptedReply.result
+                     : steps.kind.result == 'title'
                      ? steps.obeys.result.cut ? '"Stub ti'
                        : steps.titleReply.result != '' ? steps.titleReply.result
                        : steps.request.result.contains('STUB_TITLE_LONG') ? join(range(79).map(i, 'a'), '') + '😀' + ' and then more'
@@ -292,17 +305,14 @@ routes:
   - request:
       path: /v1/messages
       method: POST
-      schema:
-        body: { type: object, additionalProperties: true }
+      schema: { body: { type: object, additionalProperties: true } }
     handler: !ref respond
     inputs:
       body: !cel "request.body"
     returns:
       - status: 200
         mode: stream
-        content:
-          text/event-stream:
-            encoder: { kind: PlainText.Encoder }
+        content: { text/event-stream: { encoder: { kind: PlainText.Encoder } } }
     catches:
       - when: !cel "error.code == 'ERR_STUB_REFUSED'"
         status: 400
@@ -312,28 +322,19 @@ routes:
               error:
                 message: !cel "error.message"
   # Lets go of every STUB_SLOW request received so far.
-  - request:
-      path: /release
-      method: POST
+  - request: { path: /release, method: POST }
     handler:
       kind: Sql.Command
       connection: !ref db
     inputs:
       sql: "INSERT INTO releases (through_id) SELECT COALESCE(MAX(id), 0) FROM requests"
     returns:
-      - status: 200
-        content:
-          application/json:
-            body:
-              released: true
-  - request:
-      path: /requests
-      method: GET
+      - { status: 200, content: { application/json: { body: { released: true } } } }
+  - request: { path: /requests, method: GET }
     handler:
       kind: Sql.Query
       connection: !ref db
-    inputs:
-      sql: "SELECT body FROM requests ORDER BY id"
+    inputs: { sql: "SELECT body FROM requests ORDER BY id" }
     returns:
       - status: 200
         content:
