@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata: { name: Broken, version: 1.0.0 }
+variables: { icon: { env: ICON, type: string, default: x.png } }
+ports:
+  http: { env: PORT, default: 8080 }
+  metrics: { env: METRICS_PORT, protocol: udp, default: 9090 }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.broken, productName: Broken, icon: !module-path missing.png, port: metrics, callbackPaths: [auth/callback, "/a?b"] }
+  second:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.broken2, productName: Broken, icon: !cel "variables.icon", port: nope }
+  third:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.broken3, productName: Broken, icon: !module-path tray.jpg, port: http }

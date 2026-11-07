@@ -1,0 +1,27 @@
+kind: Telo.Application
+metadata: { name: Supervisor, version: 1.0.0 }
+imports:
+  App: ../../../../../../modules/app
+  Assert: ../../../../../../modules/assert
+  Channel: ../../../../../../modules/channel
+targets:
+  - !ref greeter
+  - !ref heard
+---
+kind: App.Instance
+metadata: { name: greeter }
+source: ../child
+awaitStart: false
+variables: { who: packaged }
+---
+kind: Telo.Sequence
+metadata: { name: heard }
+steps:
+  - name: greeting
+    invoke: { kind: Channel.ReadUntil, channel: !ref greeter, timeout: 30s }
+    inputs: { until: "\n" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.greeting.result.text"
+      expected: "greeting packaged\n"

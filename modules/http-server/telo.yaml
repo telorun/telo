@@ -66,6 +66,8 @@ requires:
 restrictions:
   - requires: { telo: ">=unreleased" }
     reason: "The server reports `status.localUrl` from `run()`, which an older kernel refuses when a templated kind's `run:` starts the server, so that start fails."
+  - requires: { telo: ">=unreleased" }
+    reason: Http.Server serves a socket the host process supplies through ctx.claimListener, which kernels before this release lack.
 lang: en
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
@@ -184,9 +186,11 @@ schema:
     listen:
       title: Listen
       description: >-
-        The socket this server binds: the network interface and the TCP port. An
-        address the server is REACHED at is a different thing — a public address
-        need (`Telo.PublicUrl`) a mount names in `hostnames`.
+        The socket this server binds: the network interface and the TCP port. When
+        the host running the application holds the port's socket, the server serves
+        that one and binds nothing. An address the server is REACHED at is a
+        different thing — a public address need (`Telo.PublicUrl`) a mount names in
+        `hostnames`.
       type: "object"
       additionalProperties: false
       required: [ "port" ]

@@ -1,0 +1,110 @@
+kind: Telo.Application
+metadata:
+  name: WindowTray
+  version: 1.0.0
+  description: |
+    Windows and a tray icon against a desktop_host-1 fixture: what the host receives,
+    an item chosen by the host running its action with inputs, and the invocables.
+lang: en
+imports: { Desktop: ../../.., Fixture: ../host, Assert: ../../../../assert }
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.test, productName: Test, icon: !module-path icon.png, port: http }
+targets:
+  - !ref mainWindow
+  - !ref settingsWindow
+  - !ref tray
+  - !ref verify
+---
+kind: Fixture.Host
+metadata: { name: fixture }
+host: !ref desktopHost
+---
+kind: Fixture.Recorder
+metadata: { name: recorder }
+---
+kind: Desktop.Window
+metadata: { name: mainWindow }
+host: !ref desktopHost
+title: Hello
+size: { width: 480, height: 320 }
+minSize: { width: 320, height: 240 }
+onClose: hide
+---
+kind: Desktop.Window
+metadata: { name: settingsWindow }
+host: !ref desktopHost
+path: /settings
+title: { text: Settings, context: window title }
+resizable: false
+visible: false
+---
+kind: Desktop.TrayIcon
+metadata: { name: tray }
+host: !ref desktopHost
+icon: !module-path icon.png
+monochrome: true
+tooltip: Hello
+menu:
+  - { type: item, label: Settings, action: { invoke: { kind: Desktop.ShowWindow, window: !ref settingsWindow } } }
+  - type: item
+    label: Record
+    action: { invoke: !ref recorder, inputs: { note: picked } }
+  - { type: item, label: Version 1.0, enabled: false }
+  - { type: separator }
+  - { type: item, label: Quit, action: { invoke: { kind: Desktop.Quit, host: !ref desktopHost } } }
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - name: opened
+    invoke: { kind: Fixture.Frames, fixture: !ref fixture }
+  - name: openedIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.opened.result.frames"
+      expected:
+        - type: Host.Hello
+          payload: { generation: desktop_host-1, token: s3cret-token }
+        - type: Window.Open
+          payload: { window: mainWindow, path: /, title: Hello, size: { width: 480, height: 320 }, minSize: { width: 320, height: 240 }, resizable: true, visible: true, onClose: hide }
+        - type: Window.Open
+          payload: { window: settingsWindow, path: /settings, title: Settings, resizable: false, visible: false, onClose: close }
+        - type: Tray.Open
+          payload:
+            tray: tray
+            icon: !module-path icon.png
+            monochrome: true
+            tooltip: Hello
+            menu:
+              - { type: item, item: 0, label: Settings, enabled: true }
+              - { type: item, item: 1, label: Record, enabled: true }
+              - { type: item, item: 2, label: Version 1.0, enabled: false }
+              - { type: separator }
+              - { type: item, item: 4, label: Quit, enabled: true }
+  - name: choose
+    invoke: { kind: Fixture.Send, fixture: !ref fixture }
+    inputs: { type: Tray.ItemChosen, payload: { tray: tray, item: 1 } }
+  - name: recorded
+    invoke: { kind: Fixture.Calls, recorder: !ref recorder }
+    inputs: { count: 1 }
+  - name: recordedIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.recorded.result.calls"
+      expected: [{ note: picked }]
+  - name: show
+    invoke: { kind: Desktop.ShowWindow, window: !ref settingsWindow }
+  - name: quit
+    invoke: { kind: Desktop.Quit, host: !ref desktopHost }
+  - name: after
+    invoke: { kind: Fixture.Frames, fixture: !ref fixture }
+  - name: afterIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "slice(steps.after.result.frames, 4, 6)"
+      expected:
+        - { type: Window.Show, payload: { window: settingsWindow } }
+        - { type: Host.Quit, payload: {} }

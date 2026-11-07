@@ -326,6 +326,7 @@ import {
   alsoAccepts,
   describeHostEntry,
   hostEntryAt,
+  hostMediaTypeAt,
   HOST_PATH_SOURCES,
   holdsHostPath,
   holdsOnlyConstants,
@@ -2820,6 +2821,19 @@ function slotFinding(
           `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' takes the path of ` +
           `${describeHostEntry(wanted)}, but '${expression.trim()}' is declared to name ` +
           `${describeHostEntry(declared)} (entry: ${declared}).`,
+        data,
+      };
+    }
+    const wantedMedia = hostMediaTypeAt(target);
+    const declaredMedia = hostMediaTypeAt(produced);
+    if (wantedMedia !== undefined && declaredMedia !== undefined && wantedMedia !== declaredMedia) {
+      return {
+        severity: DiagnosticSeverity.Error,
+        code: "HOST_PATH_CONTENT_MISMATCH",
+        source: SOURCE,
+        message:
+          `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' takes a file of ${wantedMedia}, ` +
+          `but '${expression.trim()}' is declared to hold ${declaredMedia} (mediaType: ${declaredMedia}).`,
         data,
       };
     }

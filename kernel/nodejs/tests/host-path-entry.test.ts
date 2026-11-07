@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { hostEntryMismatches } from "../src/host-paths.js";
+import { hostPathMismatches } from "../src/host-paths.js";
 import { Kernel } from "../src/kernel.js";
 import { MemorySource } from "../src/manifest-sources/memory-source.js";
 
@@ -67,6 +67,26 @@ variables:
     );
   });
 
+  it("refuses at load an Application variable naming a file of another media type, naming the variable", async () => {
+    const jpeg = path.join(scratch, "tray.jpg");
+    fs.writeFileSync(jpeg, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00]));
+    const error = await failure(
+      `kind: Telo.Application
+metadata: { name: App }
+variables:
+  icon:
+    env: ICON
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png }
+`,
+      { ICON: jpeg },
+    );
+    expect(error.code).toBe("ERR_MANIFEST_VALIDATION_FAILED");
+    expect(error.message).toContain(
+      `icon: environment variable ICON: '${jpeg}' is image/jpeg; this slot takes image/png`,
+    );
+  });
+
   it("accepts an absent path, which whatever uses it may create", async () => {
     const memory = new MemorySource();
     memory.set(
@@ -109,10 +129,10 @@ fields:
         },
       },
     };
-    expect(hostEntryMismatches({ file: scratch }, schema)).toEqual([
+    expect(hostPathMismatches({ file: scratch }, schema)).toEqual([
       { pointer: "/file", text: scratch, wanted: "file", found: "directory" },
     ]);
-    expect(hostEntryMismatches({ file }, schema)).toEqual([]);
-    expect(hostEntryMismatches({ file: ":memory:" }, schema)).toEqual([]);
+    expect(hostPathMismatches({ file }, schema)).toEqual([]);
+    expect(hostPathMismatches({ file: ":memory:" }, schema)).toEqual([]);
   });
 });

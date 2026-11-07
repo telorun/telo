@@ -24,7 +24,8 @@
           "stream",
           "runtime.stdin",
           "runtime.stdout",
-          "runtime.stderr"
+          "runtime.stderr",
+          "connection"
         ]
       },
       "instance": {

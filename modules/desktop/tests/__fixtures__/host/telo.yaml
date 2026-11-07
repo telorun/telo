@@ -1,0 +1,61 @@
+kind: Telo.Library
+metadata:
+  name: Fixture
+  version: 0.0.0
+  description: >-
+    Test fixture: a desktop_host-1 host on the unix socket its need names, recording what it
+    receives and sending notifications on demand.
+exports: { kinds: [Host, Frames, Send, Recorder, Calls] }
+---
+kind: Telo.Definition
+metadata: { name: Host }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./fixture-host.mjs&local_path=./src/index.ts#Host]
+schema:
+  type: object
+  required: [host]
+  additionalProperties: false
+  properties:
+    host: { type: object, x-telo-ref: { kind: Telo.DesktopHost, use: dependency } }
+    generation: { type: string, x-telo-eval: compile, description: The generation the host answers Host.Hello with. }
+    expectedToken: { type: string, x-telo-eval: compile, description: The token the host accepts, when it is not the need's. }
+    trayAvailable: { type: boolean, x-telo-eval: compile, description: What Tray.Open answers, default true. }
+    answerHello: { type: boolean, x-telo-eval: compile, description: Whether Host.Hello is answered at all, default true. }
+    dropAfterOpen: { type: boolean, x-telo-eval: compile, description: Ends the connection right after answering Window.Open, default false. }
+---
+kind: Telo.Definition
+metadata: { name: Frames }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./fixture-host.mjs&local_path=./src/index.ts#Frames]
+schema:
+  type: object
+  required: [fixture]
+  additionalProperties: false
+  properties: { fixture: { type: object, x-telo-ref: { kind: Self.Host, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Send }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./fixture-host.mjs&local_path=./src/index.ts#Send]
+schema:
+  type: object
+  required: [fixture]
+  additionalProperties: false
+  properties: { fixture: { type: object, x-telo-ref: { kind: Self.Host, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Recorder }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./fixture-host.mjs&local_path=./src/index.ts#Recorder]
+schema: { type: object, additionalProperties: false }
+---
+kind: Telo.Definition
+metadata: { name: Calls }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./fixture-host.mjs&local_path=./src/index.ts#Calls]
+schema:
+  type: object
+  required: [recorder]
+  additionalProperties: false
+  properties:
+    recorder: { type: object, x-telo-ref: { kind: Self.Recorder, use: dependency } }

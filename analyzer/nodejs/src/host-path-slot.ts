@@ -1,4 +1,12 @@
-import { hostAnchorOf, hostEntryOf, isAbsoluteHostPath, type HostEntryKind } from "@telorun/sdk";
+import {
+  hostAnchorOf,
+  hostEntryOf,
+  hostMediaTypeMismatch,
+  hostMediaTypeOf,
+  isAbsoluteHostPath,
+  type HostEntryKind,
+  type HostMediaTypeMismatch,
+} from "@telorun/sdk";
 import { unionBranches } from "./schema-compat.js";
 
 /**
@@ -26,6 +34,51 @@ export function hostEntryAt(schema: Record<string, any> | undefined): HostEntryK
     if (hostAnchorOf(branch) !== undefined) return hostEntryOf(branch);
   }
   return undefined;
+}
+
+/** The node declaring a host path — the node itself, or a union's host-path
+ *  branch — or undefined when it holds none. */
+function hostPathNode(schema: Record<string, any> | undefined): Record<string, any> | undefined {
+  if (!schema) return undefined;
+  if (hostAnchorOf(schema) !== undefined) return schema;
+  return (unionBranches(schema) ?? []).find((branch) => hostAnchorOf(branch) !== undefined);
+}
+
+/** The media type a host-path node says its file holds (`mediaType: image/png`) —
+ *  the node's own, or a union's host-path branch's — or undefined when it says
+ *  nothing, which matches any. */
+export function hostMediaTypeAt(schema: Record<string, any> | undefined): string | undefined {
+  const node = hostPathNode(schema);
+  return node ? hostMediaTypeOf(node) : undefined;
+}
+
+/** A file's leading bytes judged against the media type its host-path node
+ *  declares, or undefined when it declares none or the head carries it. */
+export function hostMediaTypeMismatchAt(
+  schema: Record<string, any> | undefined,
+  head: Uint8Array,
+): HostMediaTypeMismatch | undefined {
+  const node = hostPathNode(schema);
+  return node ? hostMediaTypeMismatch(node, head) : undefined;
+}
+
+/**
+ * How a file's content refusal reads after its subject (`'tray.jpg'`): what it
+ * holds — a media type, a directory, or none the slot's vocabulary knows — and
+ * the media type the slot takes.
+ */
+export function hostMediaTypeFinding(
+  subject: string,
+  found: { mediaType: string | undefined } | "directory",
+  declared: string,
+): string {
+  const held =
+    found === "directory"
+      ? "is a directory"
+      : found.mediaType !== undefined
+        ? `is ${found.mediaType}`
+        : "carries no known media type's signature";
+  return `${subject} ${held}; this slot takes ${declared}`;
 }
 
 /** How a host entry reads in a message. */
@@ -135,6 +188,8 @@ export interface HostPathInput {
   constants: string[];
   /** What the path names, when the input says. */
   entry?: HostEntryKind;
+  /** The media type of the file it names, when the input says. */
+  mediaType?: string;
 }
 
 /** A module doc's `variables:` / `secrets:` entries that hold a host path — what
@@ -149,11 +204,13 @@ export function hostPathInputs(moduleDoc: Record<string, unknown>): Record<strin
         continue;
       }
       const kind = hostEntryAt(entry as Record<string, any>);
+      const mediaType = hostMediaTypeAt(entry as Record<string, any>);
       inputs[`${block}.${name}`] = {
         constants: (unionBranches(entry as Record<string, any>) ?? [])
           .filter((branch) => typeof branch.const === "string")
           .map((branch) => branch.const as string),
         ...(kind !== undefined ? { entry: kind } : {}),
+        ...(mediaType !== undefined ? { mediaType } : {}),
       };
     }
   }

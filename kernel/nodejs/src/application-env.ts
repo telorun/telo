@@ -25,7 +25,7 @@ import type {
 import { RuntimeError } from "@telorun/sdk";
 import { parseApplicationArguments } from "./application-arguments.js";
 import { create as createJsonSchemaType } from "./controllers/type/json-schema-controller.js";
-import { decodeHostValue, hostEntryMismatches, hostEntryMismatchText } from "./host-paths.js";
+import { decodeHostValue, hostPathMismatches, hostPathMismatchText } from "./host-paths.js";
 import {
   acceptsBy,
   copyPlainContainers,
@@ -102,6 +102,11 @@ export interface ApplicationInputs {
   needs?: Record<string, Record<string, unknown>>;
   /** Who supplied these values, for a refusal naming where one came from. */
   suppliedBy?: string;
+  /** Set when the application runs as a resource of another: the resource's kind
+   *  and name, the parent application's name and the `source:` as the resource
+   *  writes it. Such an application never asks for an input, and refuses one
+   *  with no value naming the instance. */
+  child?: { kind: string; name: string; parent?: string; source?: string };
 }
 
 /** Where a value supplied by name came from, when the supplier did not say. */
@@ -110,6 +115,35 @@ const UNNAMED_SUPPLIER = "whoever started this application";
 /** Who supplied an application's inputs by name, as a refusal names it. */
 export function inputSupplier(inputs: ApplicationInputs | undefined): string {
   return inputs?.suppliedBy ?? UNNAMED_SUPPLIER;
+}
+
+/** The singular a refusal names an input of `block` by. */
+const INPUT_NOUN: Record<UnresolvedApplicationInput["block"], string> = {
+  variables: "variable",
+  secrets: "secret",
+  ports: "port",
+  needs: "need",
+};
+
+/**
+ * A child application's refusal for inputs that have no value, extended with
+ * the instance that runs it and the two ways to repair it: supply the input
+ * under the instance, or declare it on the root, which asks. Any other failure,
+ * and a refusal that does not lack values, is returned as it is.
+ */
+export function childInputRefusal(
+  error: unknown,
+  child: NonNullable<ApplicationInputs["child"]>,
+): unknown {
+  const unresolved = unresolvedInputsOf(error);
+  if (!unresolved || !(error instanceof RuntimeError)) return error;
+  const parent = child.parent ? `Telo.Application/${child.parent}` : "the root application";
+  const lines = unresolved.map(
+    (input) =>
+      `${child.kind}/${child.name}: ${INPUT_NOUN[input.block]} '${input.name}' of ${child.source ?? "the child application"} has no value: ` +
+      `supply it under ${child.name}'s ${input.block}:, or declare it on ${parent} and pass it through, which asks for it`,
+  );
+  return new RuntimeError(error.code, `${error.message}\n${lines.map((line) => `  - ${line}`).join("\n")}`);
 }
 
 /** The application's own needs a value was supplied for by name. Only a root
@@ -966,7 +1000,7 @@ function resolveBlock(
       const validation =
         membersEnvRefusal(fallback, residual, validator) ??
         validateResidual(fallback, residual, validator) ??
-        hostEntryRefusal(fallback, residual, validator);
+        hostPathRefusal(fallback, residual, validator);
       if (validation) findings.fail(`${name}: ${validation}`);
       else out[name] = fallback;
       continue;
@@ -997,7 +1031,7 @@ function resolveBlock(
       report(`${name}: ${validation}`);
       continue;
     }
-    const misplaced = hostEntryRefusal(coerced, residual, validator);
+    const misplaced = hostPathRefusal(coerced, residual, validator);
     if (misplaced) {
       report(`${name}: ${read.source}: ${misplaced}`);
       continue;
@@ -1009,20 +1043,21 @@ function resolveBlock(
 }
 
 /** Why a value's host path that exists is not the entry its declaration names
- *  (`entry: file | directory`), or cannot be read, or undefined. Never the value of a secret: a
+ *  (`entry: file | directory`), is a file of another media type than it declares
+ *  (`mediaType`), or cannot be read, or undefined. Never the value of a secret: a
  *  host path is a location, which the message names. */
-function hostEntryRefusal(
+function hostPathRefusal(
   value: unknown,
   residual: Record<string, unknown>,
   validator: SchemaValidator,
 ): string | undefined {
-  const [mismatch] = hostEntryMismatches(
+  const [mismatch] = hostPathMismatches(
     value,
     residual,
     (ref) => validator.getSchema(ref) as Record<string, any> | undefined,
   );
   if (!mismatch) return undefined;
-  return `${mismatch.pointer ? `'${mismatch.pointer}' ` : "it "}${hostEntryMismatchText(mismatch)}`;
+  return hostPathMismatchText(mismatch);
 }
 
 /** A `variables:` / `secrets:` / `ports:` entry as a host is asked for it. */

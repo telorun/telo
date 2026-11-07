@@ -1,0 +1,67 @@
+{
+  "name": "Listener.Claim",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Ask whether the host holds a socket for a `tcp` port number. A server asks before it binds, and binds as it otherwise would when the answer is that the host holds none.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "port": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535
+      }
+    },
+    "required": [
+      "instance",
+      "port"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The listener handle and the address the host's socket is bound to, or a null `listener` when the host holds no socket for the port. A handle is released by `Listener.Release`; every connection the host admits for the port while it is held arrives as `Listener.Accept` naming it, none before this response.",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "listener": {
+            "type": "string",
+            "minLength": 1
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "listener",
+          "address"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "listener": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "listener"
+        ],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "errors": [
+    "ERR_LISTENER_CLAIMED"
+  ],
+  "synchronous": false,
+  "reentrant": false
+}

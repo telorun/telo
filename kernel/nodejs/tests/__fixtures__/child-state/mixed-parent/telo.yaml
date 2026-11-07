@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata: { name: MixedSupervisor, version: 1.0.0 }
+imports:
+  App: ../../../../../../modules/app
+targets:
+  - !ref web
+  - !ref plain
+---
+kind: App.Instance
+metadata: { name: web }
+source: ../web
+---
+kind: App.Instance
+metadata: { name: plain }
+source: ../plain

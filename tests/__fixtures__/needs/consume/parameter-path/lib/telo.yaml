@@ -1,0 +1,34 @@
+kind: Telo.Library
+metadata:
+  name: ParameterPath
+  version: 0.0.0
+  description: Test fixture — a need whose parameter names a module file, opened by a kind that publishes the parameter it was handed.
+exports: { resources: [labeler] }
+needs:
+  printer:
+    kind: Self.Printer
+    parameters: { logo: !module-path logo.png }
+---
+kind: Telo.NeedType
+metadata: { name: Printer, description: A label printer, with the logo printed on every label. }
+unique: true
+fields: { device: { type: string } }
+required: [device]
+parameters:
+  type: object
+  additionalProperties: false
+  properties: { logo: { x-telo-type: { name: Telo.HostPath, entry: file } } }
+---
+kind: Telo.Definition
+metadata: { name: Labeler, description: Opens the printer need and publishes the logo parameter it was handed. }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./labeler.mjs#Labeler]
+schema:
+  type: object
+  additionalProperties: false
+  required: [printer]
+  properties: { printer: { x-telo-ref: { kind: Self.Printer, use: dependency } } }
+---
+kind: Self.Labeler
+metadata: { name: labeler }
+printer: !ref printer

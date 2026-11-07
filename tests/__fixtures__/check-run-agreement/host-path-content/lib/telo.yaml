@@ -1,0 +1,27 @@
+# Names a JPEG of its own where its kind's `icon` takes a PNG.
+kind: Telo.Library
+metadata:
+  name: HostPathContentLib
+  version: 1.0.0
+  description: Fixture library serving a site whose icon is a JPEG where its kind takes a PNG.
+imports: { Http: ../../../../../modules/http-server }
+exports: { resources: [site] }
+---
+kind: Telo.Definition
+metadata:
+  name: IconSite
+  description: A static site with an icon, which must be a PNG.
+extends: Http.Static
+schema:
+  type: object
+  properties:
+    root: { type: string, x-telo-type: { name: Telo.HostPath, entry: directory } }
+    icon: { type: string, x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png } }
+  required: [root, icon]
+base:
+  root: !cel "self.root"
+---
+kind: Self.IconSite
+metadata: { name: site }
+root: !module-path ./public
+icon: !module-path ./tray.jpg

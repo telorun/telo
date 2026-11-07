@@ -8,8 +8,7 @@ metadata:
     ctx.verifyNeed, and the kernel compares that with the outermost need of the
     whole-forward chain. The fixture consumer reports the version and features
     it is handed in config, so nothing has to run behind it.
-imports:
-  Assert: ../modules/assert
+imports: { Assert: ../modules/assert }
 targets:
   - !ref forwardedVerified
   - !ref templateBodyVerified
@@ -25,15 +24,14 @@ targets:
   - !ref featureNotListed
   - !ref versionlessForwardedToVersioned
   - !ref observesMisdeclared
+  - !ref modulePathParameter
 ---
 # Forwarded whole through two libraries: the consumer is handed the outermost
 # need's constraints, and a version inside them boots.
 kind: Assert.Manifest
 metadata: { name: forwardedVerified }
 source: ./__fixtures__/needs/consume/run/forwarded.yaml
-expect:
-  errors: []
-  runs: true
+expect: { errors: [], runs: true }
 ---
 # Opened only inside a templated kind's body, at the entry's observing slot: the
 # entry's reference to the module's need verifies it, and the entry is held to
@@ -41,9 +39,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: templateBodyVerified }
 source: ./__fixtures__/needs/consume/run/templated.yaml
-expect:
-  errors: []
-  runs: true
+expect: { errors: [], runs: true }
 ---
 # 15.4.0 is inside the inner library's '>=15.0.0' and outside the '>=16.0.0' it is
 # forwarded from — refused against the outermost, narrower range.
@@ -57,16 +53,12 @@ expect:
 kind: Assert.Manifest
 metadata: { name: versionOutsideRange }
 source: ./__fixtures__/needs/consume/run/outside.yaml
-expect:
-  errors: []
-  runFails: "has version 14.0.0, outside '>=15.0.0'"
+expect: { errors: [], runFails: "has version 14.0.0, outside '>=15.0.0'" }
 ---
 kind: Assert.Manifest
 metadata: { name: featureMissing }
 source: ./__fixtures__/needs/consume/run/feature-missing.yaml
-expect:
-  errors: []
-  runFails: "has no 'pgvector' among its features"
+expect: { errors: [], runFails: "has no 'pgvector' among its features" }
 ---
 # Due by the end of startup whether or not the need states a constraint.
 kind: Assert.Manifest
@@ -79,32 +71,26 @@ expect:
 kind: Assert.Manifest
 metadata: { name: observationNotSemver }
 source: ./__fixtures__/needs/consume/run/not-semver.yaml
-expect:
-  errors: []
-  runFails: "reports version \"15\", which is not semver"
+expect: { errors: [], runFails: "reports version \"15\", which is not semver" }
 ---
 kind: Assert.Manifest
 metadata: { name: pointerNotANeedSlot }
 source: ./__fixtures__/needs/consume/run/probe.yaml
-expect:
-  errors: []
-  runFails: "'/serverVersion' is not a reference slot of its kind"
+expect: { errors: [], runFails: "'/serverVersion' is not a reference slot of its kind" }
 ---
 # A root need forwarded through two libraries to an observing slot checks clean;
 # `needs-env.yaml` boots it with the environment it reads.
 kind: Assert.Manifest
 metadata: { name: observedFromEnvironmentChecks }
 source: ./__fixtures__/needs/env/observed.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # The constraint walk runs once per declaring module, so a hundred imports of
 # one observing library check in linear time.
 kind: Assert.Manifest
 metadata: { name: hundredImports }
 source: ./__fixtures__/needs/consume/many.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: rangeOutsideGrammar }
@@ -146,3 +132,10 @@ expect:
       message: "its kind 'ConsumeKinds.Database' is not a need type"
     - code: X_TELO_REF_INVALID_OBSERVES
       message: "observes 'version', which need type 'ConsumeKinds.Plain' does not declare"
+---
+# A library's need parameter written `!module-path` is resolved at load against
+# the library: the kind opening the need is handed the file's absolute path.
+kind: Assert.Manifest
+metadata: { name: modulePathParameter }
+source: ./__fixtures__/needs/consume/parameter-path/telo.yaml
+expect: { errors: [], runs: true }

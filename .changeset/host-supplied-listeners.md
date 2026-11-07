@@ -1,0 +1,6 @@
+---
+"@telorun/sdk": minor
+"@telorun/kernel": minor
+---
+
+A process embedding the kernel can supply, per `tcp` port number, the connections of a socket it owns itself: `new Kernel({ listeners: new HostListeners({ ports, unavailable }) })`, then `listeners.admit(port, { socket, head, peer })` for each connection it admitted, `head` being the bytes it already read. A server configured with a held number claims the socket with `ctx.claimListener(port, accept)` (`ClaimedListener` / `HandedConnection` in the SDK) and binds nothing; each connection reaches it as an inbound byte stream beginning with `head` and an outbound writer. A connection admitted before any claim is held; one still unclaimed when startup ends, or when it fails, is answered `503` with the host's body, and the kernel warns naming the port's key. A released claim holds connections again until the port is claimed anew, and a second claim of one port is `ERR_LISTENER_CLAIMED`. The set follows the port number into a child application, and `Kernel.PortsResolved` / `getResolvedPorts()` gives a held port `address` and `suppliedBy: "host"`. The controller protocol gains `Listener.Claim`, `Listener.Accept` and `Listener.Release` in generation `telo-10`, and the channel purpose `connection`.

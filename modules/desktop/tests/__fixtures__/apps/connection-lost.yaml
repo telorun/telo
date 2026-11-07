@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: ConnectionLost
+  version: 1.0.0
+  description: |
+    The host ends the connection while a window is open without having been asked to quit:
+    the module logs why once, the window stops holding the application and it exits non-zero.
+lang: en
+logging:
+  sinks:
+    - { kind: Telo.FileSink, destination: /tmp/telo-desktop-connection-lost.jsonl, flush_interval: 20ms }
+imports: { Desktop: ../../.., Fixture: ../host }
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.test, productName: Test, icon: !module-path icon.png, port: http }
+targets:
+  - !ref window
+---
+kind: Fixture.Host
+metadata: { name: fixture }
+host: !ref desktopHost
+dropAfterOpen: true
+---
+kind: Desktop.Window
+metadata: { name: window }
+host: !ref desktopHost

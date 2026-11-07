@@ -1,6 +1,12 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel, plainChainOf, producedTypeOf } from "@telorun/templating";
-import { describeHostEntry, holdsHostPath, hostEntryAt, type HostPathInput } from "./host-path-slot.js";
+import {
+  describeHostEntry,
+  holdsHostPath,
+  hostEntryAt,
+  hostMediaTypeAt,
+  type HostPathInput,
+} from "./host-path-slot.js";
 import type { KernelGlobalsIndex } from "./kernel-globals.js";
 import { navigateSchemaToExprPath } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -74,6 +80,20 @@ export function validateImportHostPaths(
               `Telo.Import/${String(metadata.name ?? "")}: '${input}' is the path of ` +
               `${describeHostEntry(declared.entry)} in the imported library, but '${chain}' is ` +
               `declared to name ${describeHostEntry(named)} (entry: ${named}).`,
+            data: { ...where, path: input },
+          });
+          continue;
+        }
+        const media = hostMediaTypeAt(source);
+        if (declared.mediaType !== undefined && media !== undefined && media !== declared.mediaType) {
+          out.push({
+            severity: DiagnosticSeverity.Error,
+            code: "HOST_PATH_CONTENT_MISMATCH",
+            source: SOURCE,
+            message:
+              `Telo.Import/${String(metadata.name ?? "")}: '${input}' is the path of a file of ` +
+              `${declared.mediaType} in the imported library, but '${chain}' is declared to hold ` +
+              `${media} (mediaType: ${media}).`,
             data: { ...where, path: input },
           });
         }

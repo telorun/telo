@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: DesktopStaticChecksTest
+  version: 1.0.0
+  description: |
+    A host slot names a Telo.DesktopHost need and a window slot a Desktop.Window; a tray
+    icon is a PNG. Each is refused by `telo check` at the declaring manifest.
+imports: { Assert: ../../assert }
+targets:
+  - !ref refused
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/broken/telo.yaml
+expect:
+  errors:
+    - { code: HOST_PATH_CONTENT_MISMATCH, message: "'tray.jpg' is image/jpeg; this slot takes image/png" }
+    - { code: REFERENCE_KIND_MISMATCH, message: "reference at 'host' → 'Desktop.Window'" }
+    - { code: REFERENCE_KIND_MISMATCH, message: "does not match required 'Desktop.Window'" }
+    - { code: REFERENCE_KIND_MISMATCH, message: "menu[1].action.invoke.host" }

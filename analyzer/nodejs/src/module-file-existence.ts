@@ -1,8 +1,9 @@
 import { defaultRegistry, isTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
-import type { HostEntryKind } from "@telorun/sdk";
+import { HOST_MEDIA_HEAD_LENGTH, type HostEntryKind } from "@telorun/sdk";
 import type { ImportEdge, LoadedModule } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
 import { nearestName } from "./nearest-name.js";
+import { readNeeds } from "./need-type.js";
 import { pathsAtOrBeneath, readAssetPatterns, stagedModuleFiles } from "./module-named-files.js";
 import { readNativeEntries } from "./native-entries.js";
 import { readModuleSources } from "./source-entries.js";
@@ -64,6 +65,25 @@ export function foundEntryOf(value: unknown): HostEntryKind | undefined {
   return found === "file" || found === "directory" ? found : undefined;
 }
 
+/**
+ * The key the loader stamps beside {@link FOUND_ENTRY} on a tagged value whose
+ * one file claim names a file, when its source can read it: the file's leading
+ * bytes as lower-case hex, as many as decide every media type
+ * (`HOST_MEDIA_HEAD_LENGTH`) — what analysis holds the value to where its slot
+ * says what media type the file holds (`HOST_PATH_CONTENT_MISMATCH`).
+ */
+export const FOUND_HEAD = "foundHead";
+
+/** The leading bytes the loader read at a tagged value's one file claim, when it stamped them. */
+export function foundHeadOf(value: unknown): Uint8Array | undefined {
+  if (!isTaggedSentinel(value)) return undefined;
+  const hex = (value as unknown as Record<string, unknown>)[FOUND_HEAD];
+  if (typeof hex !== "string") return undefined;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
+}
+
 /** Every tagged value beneath `value`, with its dotted path. */
 function walkSentinels(
   value: unknown,
@@ -102,7 +122,8 @@ function stagedEntry(staged: readonly string[], relative: string): HostEntryKind
  * host that loads from disk answers it, and one that cannot (an in-browser
  * store) reports nothing rather than guessing. Well-formedness is the engine's
  * own diagnostic; a malformed path claims nothing. A value with exactly one
- * claim that names something is stamped with what it names ({@link FOUND_ENTRY}).
+ * claim that names something is stamped with what it names ({@link FOUND_ENTRY})
+ * and, for a file its source can read, with its leading bytes ({@link FOUND_HEAD}).
  *
  * A path a module file the module's own `sources:` block stages is present at
  * — a file when it is one, a directory when it sits above one: the kernel stages
@@ -127,21 +148,39 @@ export async function collectModuleFileDiagnostics(
       code: string;
     }> = [];
     file.manifests.forEach((manifest, index) => {
-      // Never resolved there, so the engine's `*_OUTSIDE_RESOURCE` is the finding.
-      if (!manifest || isNeverInstantiated(manifest.kind)) return;
-      walkSentinels(manifest, "", (sentinel, at) => {
+      if (!manifest) return;
+      const collect = (sentinel: TaggedSentinel, at: string) => {
         const claims = registry.get(sentinel.engine)?.fileClaims?.(sentinel.source) ?? [];
         for (const claim of claims) {
           found.push({ index, at, sentinel, claims: claims.length, relative: claim.path, code: claim.notFoundCode });
         }
-      });
+      };
+      // A module document's needs' `parameters:` are resolved at load; nothing
+      // else in a document never instantiated is resolved, so the engine's
+      // `*_OUTSIDE_RESOURCE` is the finding there.
+      if (isModuleKind(manifest.kind)) {
+        for (const need of readNeeds(manifest)) {
+          walkSentinels(need.parameters, `needs.${need.name}.parameters`, collect);
+        }
+        return;
+      }
+      if (isNeverInstantiated(manifest.kind)) return;
+      walkSentinels(manifest, "", collect);
     });
     for (const { index, at, sentinel, claims, relative, code } of found) {
       staged ??= stagedFilesOf(module.owner.manifests.find((m) => m && isModuleKind(m.kind)));
       // Module-root-relative: resolved against the OWNER, never the partial.
       const entry = stagedEntry(staged, relative) ?? (await source.entryAt(ownerSource, relative));
       if (entry !== undefined) {
-        if (claims === 1) (sentinel as unknown as Record<string, unknown>)[FOUND_ENTRY] = entry;
+        if (claims === 1) {
+          const stamped = sentinel as unknown as Record<string, unknown>;
+          stamped[FOUND_ENTRY] = entry;
+          const head =
+            entry === "file" && HOST_MEDIA_HEAD_LENGTH > 0
+              ? await source.readHead?.(ownerSource, relative, HOST_MEDIA_HEAD_LENGTH)
+              : undefined;
+          if (head) stamped[FOUND_HEAD] = Array.from(head, (b) => b.toString(16).padStart(2, "0")).join("");
+        }
         continue;
       }
       const written = sentinel.source;

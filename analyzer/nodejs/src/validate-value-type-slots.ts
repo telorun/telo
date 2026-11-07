@@ -201,6 +201,22 @@ function checkNode(
       });
       continue;
     }
+    if (parameter?.hostMediaType) {
+      const token = slot.args[argument];
+      const mediaTypes = Object.keys(parameter.signatures ?? {});
+      if (typeof token === "string" && mediaTypes.includes(token)) continue;
+      const suggestion = typeof token === "string" ? suggestToken(token, mediaTypes) : undefined;
+      issues.push({
+        code: "X_TELO_TYPE_ARGUMENT_INVALID",
+        manifest,
+        path,
+        message:
+          `'${slot.entry.name}' parameter '${argument}' takes a media type it knows the signature of ` +
+          `(${mediaTypes.join(", ")}), not ${JSON.stringify(token)}.` +
+          (suggestion ? ` Did you mean '${suggestion}'?` : ""),
+      });
+      continue;
+    }
     if (declared.has(argument)) continue;
     issues.push({
       code: "X_TELO_TYPE_ARGUMENT_UNKNOWN",

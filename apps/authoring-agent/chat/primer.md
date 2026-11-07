@@ -3938,7 +3938,11 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   an entry of a templated kind's `resources:` body), or forwarded whole to a
   library need that reaches one — or it is `NEED_CONSTRAINT_UNVERIFIED`. Reading
   a need by field never verifies anything; a pure provisioning request (a size,
-  a region) belongs in `parameters:`. A need forwarded whole must state at least
+  a region) belongs in `parameters:` — LITERALS only (`!cel` there is
+  `NEED_PARAMETERS_INVALID`), except `!module-path icon.png` at a parameter the
+  type declares a `Telo.HostPath`, which names a file shipped with the module.
+  A need type declaring `unique: true` is asked for at most once per module
+  (`NEED_DUPLICATE`). A need forwarded whole must state at least
   what it supplies — a range within the target's, every feature it asks for
   (`NEED_FORWARD_INCOMPATIBLE`); the outermost (narrowest) need is the one the
   kernel enforces, refusing a mismatch at the consumer with `ERR_NEED_UNMET`.
@@ -4208,6 +4212,12 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   variable feeding one (`dbFile` → `file`, `reportsDir` → `directory`); a variable or a `!module-path` naming the
   other kind is `HOST_PATH_ENTRY_MISMATCH`, and a database file inside a
   directory is `dir.joinPath('app.db')`, never the directory itself.
+  A file slot may also say its media type —
+  `x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png }`
+  (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, `application/pdf`),
+  judged by the file's leading bytes: a file of another type, at a field, a
+  need parameter or through a variable declaring another `mediaType`, is
+  `HOST_PATH_CONTENT_MISMATCH`. Ship the declared format; renaming does not help.
 - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
   `module.<field>` (always); `resources.X` (after that resource snapshots);
   `steps.<name>.result` (inside a Telo.Sequence step); `request` (inside an

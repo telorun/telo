@@ -1,0 +1,31 @@
+kind: Telo.Application
+metadata:
+  name: TrayUnavailable
+  version: 1.0.0
+  description: |
+    A host whose session has no tray answers Tray.Open with `available: false`: the module
+    logs DESKTOP_TRAY_UNAVAILABLE, the icon does not keep the application up, and the
+    menu's actions are never offered.
+lang: en
+logging:
+  sinks:
+    - { kind: Telo.FileSink, destination: /tmp/telo-desktop-tray-unavailable.jsonl, flush_interval: 20ms }
+imports: { Desktop: ../../.., Fixture: ../host }
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.test, productName: Test, icon: !module-path icon.png, port: http }
+targets:
+  - !ref tray
+---
+kind: Fixture.Host
+metadata: { name: fixture }
+host: !ref desktopHost
+trayAvailable: false
+---
+kind: Desktop.TrayIcon
+metadata: { name: tray }
+host: !ref desktopHost
+icon: !module-path icon.png
+menu: [{ type: item, label: Quit, action: { invoke: { kind: Desktop.Quit, host: !ref desktopHost } } }]

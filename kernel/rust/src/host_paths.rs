@@ -1,7 +1,8 @@
 //! **`Telo.HostPath` at creation** — mirrors `../../nodejs/src/host-paths.ts`.
 //!
-//! Every host path a resource holds must be absolute, and must not exist as the
-//! other kind of entry than its slot names (`entry: file | directory`). The slot
+//! Every host path a resource holds must be absolute, must not exist as the
+//! other kind of entry than its slot names (`entry: file | directory`), and must
+//! not be a file of another media type than its slot declares (`mediaType`). The slot
 //! readers are the analyzer's; this file holds only what touches the filesystem.
 //! Node's other half — resolving a host-supplied relative value against its
 //! `fromHost` anchor — has nothing to do here: this kernel reads no host-supplied
@@ -9,12 +10,18 @@
 
 use std::convert::Infallible;
 use std::fs::Metadata;
+use std::io::Read;
 
 use serde_json::Value;
-use telo_analyzer::host_path_slot::{describe_host_entry, host_anchor_for, host_entry_at};
+use telo_analyzer::host_path_slot::{
+    describe_host_entry, host_anchor_for, host_entry_at, host_media_type_at, host_media_type_finding,
+    host_media_type_mismatch_at, HeldContent,
+};
 use telo_analyzer::plain_literal_decoding::walk_text_leaves;
 use telo_analyzer::value_type_keyword::host_path_relative_message;
-use telorun_sdk_core::value_type::{host_anchor_of, is_absolute_host_path, value_types, HOST_ENTRY_KINDS};
+use telorun_sdk_core::value_type::{
+    host_anchor_of, host_media_head_length, is_absolute_host_path, value_types, HOST_ENTRY_KINDS,
+};
 
 use crate::error::KernelError;
 
@@ -59,23 +66,38 @@ fn host_entry_at_path(text: &str) -> std::io::Result<Option<&'static str>> {
         .find(|kind| host_entry_query(kind).is_some_and(|query| query(&meta))))
 }
 
-/// One host path in a value whose slot says what it names, and that is the other
-/// kind of entry — or that the filesystem would not tell about.
+/// The leading bytes of the file at an absolute path that exists, as many as
+/// decide every media type.
+fn head_at_path(text: &str) -> std::io::Result<Vec<u8>> {
+    let mut head = Vec::with_capacity(host_media_head_length());
+    std::fs::File::open(text)?
+        .take(host_media_head_length() as u64)
+        .read_to_end(&mut head)?;
+    Ok(head)
+}
+
+/// One host path in a value that is not what its slot says — the other kind of
+/// entry, a file of another media type — or that the filesystem would not tell
+/// about.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HostEntryMismatch {
+pub struct HostPathMismatch {
     pub pointer: String,
     pub text: String,
-    pub wanted: &'static str,
-    /// What is there, when the path could be read.
+    /// What the slot says the path names, when it says.
+    pub wanted: Option<&'static str>,
+    /// What is there, when it is the other kind of entry.
     pub found: Option<&'static str>,
+    /// The media type the slot says the file holds, and what is there instead.
+    pub content: Option<(&'static str, HeldContent)>,
     /// Why the path could not be read, when it could not.
     pub unreadable: Option<String>,
 }
 
 /// Every absolute host path in `value` whose slot declares what it names and that
-/// exists as the other kind, or cannot be read. An absent path is never one: what
+/// exists as the other kind, whose slot declares a media type its file's leading
+/// bytes do not carry, or that cannot be read. An absent path is never one: what
 /// uses it may create it.
-pub fn host_entry_mismatches(value: &Value, schema: &Value) -> Vec<HostEntryMismatch> {
+pub fn host_path_mismatches(value: &Value, schema: &Value) -> Vec<HostPathMismatch> {
     let mut out = Vec::new();
     let Ok(()) = walk_text_leaves::<Infallible>(
         value,
@@ -84,21 +106,48 @@ pub fn host_entry_mismatches(value: &Value, schema: &Value) -> Vec<HostEntryMism
             if host_anchor_for(slot, text).is_none() || !is_absolute_host_path(text) {
                 return Ok(());
             }
-            let Some(wanted) = host_entry_at(slot) else {
+            let wanted = host_entry_at(slot);
+            let media_type = host_media_type_at(slot);
+            if wanted.is_none() && media_type.is_none() {
                 return Ok(());
-            };
-            let (found, unreadable) = match host_entry_at_path(text) {
-                Ok(Some(found)) if found != wanted => (Some(found), None),
-                Ok(_) => return Ok(()),
-                Err(error) => (None, Some(error.kind().to_string())),
-            };
-            out.push(HostEntryMismatch {
+            }
+            let mismatch = |found, content, unreadable| HostPathMismatch {
                 pointer: pointer.to_string(),
                 text: text.to_string(),
                 wanted,
                 found,
+                content,
                 unreadable,
-            });
+            };
+            let unknown = media_type.map(|declared| (declared, HeldContent::MediaType(None)));
+            let found = match host_entry_at_path(text) {
+                Ok(Some(found)) => found,
+                Ok(None) => return Ok(()),
+                Err(error) => {
+                    let content = if wanted.is_some() { None } else { unknown };
+                    out.push(mismatch(None, content, Some(error.kind().to_string())));
+                    return Ok(());
+                }
+            };
+            if wanted.is_some_and(|wanted| wanted != found) {
+                out.push(mismatch(Some(found), None, None));
+                return Ok(());
+            }
+            let Some(declared) = media_type else {
+                return Ok(());
+            };
+            if found == "directory" {
+                out.push(mismatch(None, Some((declared, HeldContent::Directory)), None));
+                return Ok(());
+            }
+            match head_at_path(text) {
+                Err(error) => out.push(mismatch(None, unknown, Some(error.kind().to_string()))),
+                Ok(head) => {
+                    if let Some(judged) = host_media_type_mismatch_at(slot, &head) {
+                        out.push(mismatch(None, Some((declared, HeldContent::MediaType(judged.found))), None));
+                    }
+                }
+            }
             Ok(())
         },
         None,
@@ -116,17 +165,56 @@ pub fn declares_host_path(schema: &Value) -> bool {
     }
 }
 
-/// How a mismatch reads after its subject.
-pub fn host_entry_mismatch_text(mismatch: &HostEntryMismatch) -> String {
-    let wanted = describe_host_entry(mismatch.wanted);
+/// A JSON Pointer in the dotted / bracketed spelling diagnostics use
+/// (`roots[1]`), as the Node analyzer's `pointerToPath` writes it.
+fn pointer_to_path(pointer: &str) -> String {
+    pointer.split('/').skip(1).fold(String::new(), |path, segment| {
+        let segment = segment.replace("~1", "/").replace("~0", "~");
+        if !segment.is_empty() && segment.bytes().all(|b| b.is_ascii_digit()) {
+            format!("{path}[{segment}]")
+        } else if path.is_empty() {
+            segment
+        } else {
+            format!("{path}.{segment}")
+        }
+    })
+}
+
+/// The code a mismatch is refused under.
+pub fn host_path_mismatch_code(mismatch: &HostPathMismatch) -> &'static str {
+    if mismatch.unreadable.is_some() {
+        "ERR_HOST_PATH_UNREADABLE"
+    } else if mismatch.content.is_some() {
+        "ERR_HOST_PATH_CONTENT_MISMATCH"
+    } else {
+        "ERR_HOST_PATH_ENTRY_MISMATCH"
+    }
+}
+
+/// How a mismatch reads, naming where it is (`'/root'`, or `it` for the whole value).
+pub fn host_path_mismatch_text(mismatch: &HostPathMismatch) -> String {
+    let subject = if mismatch.pointer.is_empty() {
+        "it".to_string()
+    } else {
+        format!("'{}'", mismatch.pointer)
+    };
+    if let (Some((declared, held)), None) = (mismatch.content, &mismatch.unreadable) {
+        let at = if mismatch.pointer.is_empty() {
+            String::new()
+        } else {
+            format!("{}: ", pointer_to_path(&mismatch.pointer))
+        };
+        return host_media_type_finding(&format!("{at}'{}'", mismatch.text), held, declared);
+    }
+    let wanted = match (mismatch.wanted, mismatch.content) {
+        (Some(wanted), _) => format!("takes the path of {}", describe_host_entry(wanted)),
+        (None, Some((declared, _))) => format!("takes a file of {declared}"),
+        (None, None) => "takes a host path".to_string(),
+    };
     match mismatch.found {
-        Some(found) => format!(
-            "takes the path of {wanted}, but '{}' is {}",
-            mismatch.text,
-            describe_host_entry(found)
-        ),
+        Some(found) => format!("{subject} {wanted}, but '{}' is {}", mismatch.text, describe_host_entry(found)),
         None => format!(
-            "takes the path of {wanted}, but what is at '{}' cannot be read ({})",
+            "{subject} {wanted}, but what is at '{}' cannot be read ({})",
             mismatch.text,
             mismatch.unreadable.as_deref().unwrap_or("unknown")
         ),
@@ -134,18 +222,15 @@ pub fn host_entry_mismatch_text(mismatch: &HostEntryMismatch) -> String {
 }
 
 /// Refuse a host path a resource holds that exists and is the other kind of
-/// entry than its slot names (`ERR_HOST_PATH_ENTRY_MISMATCH`), or that the
-/// filesystem would not tell about (`ERR_HOST_PATH_UNREADABLE`).
-pub fn refuse_misplaced_host_entries(resource: &Value, schema: &Value, label: &str) -> Result<(), KernelError> {
-    match host_entry_mismatches(resource, schema).first() {
+/// entry than its slot names (`ERR_HOST_PATH_ENTRY_MISMATCH`), is a file of
+/// another media type than its slot declares (`ERR_HOST_PATH_CONTENT_MISMATCH`),
+/// or that the filesystem would not tell about (`ERR_HOST_PATH_UNREADABLE`).
+pub fn refuse_mismatched_host_paths(resource: &Value, schema: &Value, label: &str) -> Result<(), KernelError> {
+    match host_path_mismatches(resource, schema).first() {
         None => Ok(()),
         Some(mismatch) => Err(KernelError::new(
-            if mismatch.found.is_some() {
-                "ERR_HOST_PATH_ENTRY_MISMATCH"
-            } else {
-                "ERR_HOST_PATH_UNREADABLE"
-            },
-            format!("{label}: '{}' {}.", mismatch.pointer, host_entry_mismatch_text(mismatch)),
+            host_path_mismatch_code(mismatch),
+            format!("{label}: {}.", host_path_mismatch_text(mismatch)),
         )),
     }
 }
@@ -186,12 +271,16 @@ mod tests {
         let place = |name: &str| scratch.path().join(name).to_string_lossy().into_owned();
         std::fs::write(place("file"), "x").unwrap();
         std::fs::create_dir(place("directory")).unwrap();
+        std::fs::write(place("image.png"), [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]).unwrap();
+        std::fs::write(place("image.jpg"), [0xff, 0xd8, 0xff, 0xe0, 0x00]).unwrap();
         let unreadable = place(&"a".repeat(300));
         let placed = |text: &str| {
             text.replace("{file}", &place("file"))
                 .replace("{directory}", &place("directory"))
                 .replace("{absent}", &place("absent"))
                 .replace("{unreadable}", &unreadable)
+                .replace("{png}", &place("image.png"))
+                .replace("{jpeg}", &place("image.jpg"))
         };
         // Inside JSON text a Windows path's backslashes must be escaped.
         let in_json = |path: String| {
@@ -203,6 +292,8 @@ mod tests {
                 .replace("{directory}", &in_json(place("directory")))
                 .replace("{absent}", &in_json(place("absent")))
                 .replace("{unreadable}", &in_json(unreadable.clone()))
+                .replace("{png}", &in_json(place("image.png")))
+                .replace("{jpeg}", &in_json(place("image.jpg")))
         };
         let schema = &vectors["schema"];
         for row in vectors["rows"].as_array().unwrap() {
@@ -213,7 +304,7 @@ mod tests {
             }
             let value: Value = serde_json::from_str(&placed_in_json(&row["value"].to_string())).unwrap();
             // The order a resource is checked in at creation.
-            let outcome = refuse_misplaced_host_entries(&value, schema, "App.Store/store")
+            let outcome = refuse_mismatched_host_paths(&value, schema, "App.Store/store")
                 .and_then(|()| refuse_relative_host_paths(&value, schema, "App.Store/store"));
             match row["code"].as_str() {
                 None => assert!(outcome.is_ok(), "{id}: {:?}", outcome.err()),

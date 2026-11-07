@@ -90,21 +90,11 @@ export async function buildAppPayload(options: PackageBuildOptions): Promise<Pac
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), "telo-package-"));
   try {
     const loader = new Loader([new LocalFileSource(), ...defaultTransportRegistry().sources()]);
-    const graph = await loader.loadGraph(entryPath, { desugarImports: true, migrate: true });
-    if (graph.errors.length > 0) {
-      // Every one of them: `telo check` reports the whole set, and packaging
-      // refusing on the first would send an author round the loop once per
-      // broken import.
-      throw new Error(
-        [
-          `${options.manifestPath} could not be loaded:`,
-          ...graph.errors.map(
-            (entry) => `  ${entry.error instanceof Error ? entry.error.message : String(entry.error)}`,
-          ),
-        ].join("\n"),
-      );
-    }
-    const manifests = flattenForAnalyzer(graph);
+    const entryGraph = await loader.loadGraph(entryPath, { desugarImports: true, migrate: true });
+    const closure = await loadChildApplications(loader, entryGraph, options.manifestPath);
+    const graph = closure.graph;
+    // Only the entry's own application is packaged; a child's is not the root.
+    const manifests = flattenForAnalyzer(entryGraph);
 
     const application = manifests.find((manifest) => manifest.kind === "Telo.Application");
     if (!application) {
@@ -114,7 +104,10 @@ export async function buildAppPayload(options: PackageBuildOptions): Promise<Pac
       );
     }
 
-    const refusals = unportableKinds(manifests);
+    const refusals = unportableKinds([
+      ...manifests,
+      ...closure.children.flatMap((child) => flattenForAnalyzer(child)),
+    ]);
     if (refusals.length > 0) throw new Error(describeRefusals(refusals));
 
     const cacheRoot = path.join(staging, CACHE_PREFIX);
@@ -177,6 +170,80 @@ export async function buildAppPayload(options: PackageBuildOptions): Promise<Pac
   } finally {
     fs.rmSync(staging, { recursive: true, force: true });
   }
+}
+
+interface ApplicationClosure {
+  /** The entry's graph with every child application's modules merged in. */
+  readonly graph: LoadedGraph;
+  /** Each child application's own graph. */
+  readonly children: readonly LoadedGraph[];
+}
+
+function refuseLoadErrors(graph: LoadedGraph, label: string): void {
+  if (graph.errors.length === 0) return;
+  // Every one of them: `telo check` reports the whole set, and packaging
+  // refusing on the first would send an author round the loop once per
+  // broken import.
+  throw new Error(
+    [
+      `${label} could not be loaded:`,
+      ...graph.errors.map(
+        (entry) => `  ${entry.error instanceof Error ? entry.error.message : String(entry.error)}`,
+      ),
+    ].join("\n"),
+  );
+}
+
+/**
+ * Follow every `x-telo-application-source` edge: a child application is part
+ * of the closure — its manifest, files, imports and local modules travel like
+ * the entry's own. The loader hands over each child without following ITS
+ * children, so each is loaded again to see its own edges.
+ */
+async function loadChildApplications(
+  loader: Loader,
+  entryGraph: LoadedGraph,
+  label: string,
+): Promise<ApplicationClosure> {
+  refuseLoadErrors(entryGraph, label);
+  const merged: LoadedGraph = {
+    ...entryGraph,
+    modules: new Map(entryGraph.modules),
+    importEdges: new Map(entryGraph.importEdges),
+    scopedImportEdges: new Map(entryGraph.scopedImportEdges ?? []),
+    overrides: new Map(entryGraph.overrides),
+  };
+  const seen = new Set<string>([entryGraph.rootSource]);
+  const children: LoadedGraph[] = [];
+  const queue: LoadedGraph[] = [entryGraph];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const [file, loads] of current.applicationSources ?? []) {
+      for (const [source, load] of loads) {
+        if ("failure" in load) {
+          throw new Error(
+            `${label}: the child application '${source}' named in ${file} could not be loaded: ${load.failure.error instanceof Error ? load.failure.error.message : String(load.failure.error)}`,
+          );
+        }
+        if (seen.has(load.graph.rootSource)) continue;
+        seen.add(load.graph.rootSource);
+        const child = await loader.loadGraph(localPathOf(load.graph.rootSource) ?? load.graph.rootSource, {
+          desugarImports: true,
+          migrate: true,
+        });
+        refuseLoadErrors(child, `the child application '${source}'`);
+        children.push(child);
+        queue.push(child);
+        for (const [key, module] of child.modules) if (!merged.modules.has(key)) merged.modules.set(key, module);
+        for (const [key, edges] of child.importEdges) if (!merged.importEdges.has(key)) merged.importEdges.set(key, edges);
+        for (const [key, edges] of child.scopedImportEdges ?? []) {
+          if (!merged.scopedImportEdges!.has(key)) merged.scopedImportEdges!.set(key, edges);
+        }
+        for (const [key, target] of child.overrides) if (!merged.overrides.has(key)) merged.overrides.set(key, target);
+      }
+    }
+  }
+  return { graph: merged, children };
 }
 
 /** The analysis walk, warmed into the payload's cache under the payload's own

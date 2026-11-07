@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: Hello, version: 1.0.0 }
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.hello, productName: Hello, icon: !module-path ./icon.png, port: http, showInDock: false }

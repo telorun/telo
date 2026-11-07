@@ -101,7 +101,14 @@ export type {
   PublishOptions,
 } from "./transports/transport.js";
 export { ExecutionContext } from "./execution-context.js";
-export { Kernel, type KernelOptions } from "./kernel.js";
+export { Kernel, type KernelLoadOptions, type KernelOptions, type ResolvedPort } from "./kernel.js";
+export {
+  HostListeners,
+  type HostConnection,
+  type HostListenersOptions,
+  type UnavailableContext,
+  type UnavailableResponse,
+} from "./host-listeners.js";
 export {
   UnresolvedInputsError,
   unresolvedInputsOf,

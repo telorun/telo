@@ -8,7 +8,8 @@ Run another Telo application as a resource of this one. `App.Instance` starts th
 - **Supervise several as one** — three copies of the same application, each with its own identity and port, declared in one file and started together.
 - **Test a server without restructuring it** — declare the child in a `Run.Sequence`'s `with:` block; it is listening before the first step and gone after the last one, so the port is free again and the run exits on its own.
 - **Inputs by name, checked before anything runs** — you supply `variables` / `secrets` / `ports` / `needs` under the names the child declares, never the environment variables it binds them to. `telo check` follows `source` to the child's manifest and refuses a name it does not declare, a value its declaration refuses and a source that is not an application.
-- **Storage of its own** — a child's durable directory and other needs are supplied under `needs:`, as a `!ref` handed over whole or as the need type's fields, ahead of its environment and host values; a test gives each child it starts its own directory.
+- **Storage of its own** — a child's durable directory and other needs are supplied under `needs:`, as a `!ref` handed over whole or as the need type's fields, ahead of its environment and host values; a test gives each child it starts its own directory. Under a parent with `TELO_HOST_STATE_DIR`, a child's directories are answered beneath `<state dir>/apps/<path>` (`apps/web`, `apps/Admin.web`).
+- **A child never asks** — only the root asks for a missing input; a child's is refused when it starts, naming the instance and whether to supply it under the instance or declare it on the root.
 
 ## Kinds
 

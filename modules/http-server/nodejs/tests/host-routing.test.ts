@@ -82,6 +82,7 @@ function testContext(needs: Record<string, Address>, listenPort: number) {
     log: NOOP_LOGGER,
     effect: (_reason: string, body: (input: unknown) => Promise<any>) => chain([body]),
     acquireHold: () => () => {},
+    claimListener: async () => null,
     emitEvent: async () => {},
     setStatus: async () => {},
     readPlainEncoded: (value: unknown) => value,

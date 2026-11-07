@@ -1,0 +1,9 @@
+kind: Telo.Library
+metadata:
+  name: NeedDuplicate
+  version: 0.0.0
+  description: Two needs of a type a module declares at most once.
+imports: { Fx: ../../../types }
+needs:
+  printer: { kind: Fx.LabelPrinter, optional: true }
+  second: { kind: Fx.LabelPrinter, optional: true }

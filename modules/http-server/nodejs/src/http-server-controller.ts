@@ -329,6 +329,7 @@ class HttpServer implements ResourceInstance {
       port: this.port,
       // Read here, so unreadable or mismatched material fails creation.
       ...(resource.tls ? { tls: resolveHttpsOptions(resource.tls) } : {}),
+      claim: (port, accept) => this.ctx.claimListener(port, accept),
       onHandshakeFailure: (failure) =>
         this.ctx.log.info(
           "TLS handshake failed",
@@ -1534,7 +1535,8 @@ class HttpServer implements ResourceInstance {
   }
 
   /**
-   * The hold, the listening socket, then the announcement — no error handling of
+   * The hold, the listening socket — the host's when it holds one for the port
+   * (`ctx.claimListener`), else a bind — then the announcement — no error handling of
    * its own. A `listen()` that throws — a bound port — unwinds the run frame, so
    * the hold is released and the routes are torn down without this method knowing
    * anything about recovery; the same unwind is what stops the server at teardown,
@@ -1550,11 +1552,13 @@ class HttpServer implements ResourceInstance {
       .effect("listening socket", async () => {
         await this.app.ready();
         await this.listener.listen();
-        const localUrl = localUrlOf(this.scheme, this.address, this.port);
+        const supplied = this.listener.suppliedAddress;
+        const localUrl = localUrlOf(this.scheme, supplied ?? this.address, this.port);
         this.ctx.log.info(
           "Listening",
           {
-            "server.address": this.address,
+            "server.address": supplied ?? this.address,
+            ...(supplied === undefined ? {} : { "server.socket.supplied_by": "host" }),
             "server.port": this.port,
             // The SOCKET's scheme, which is `https` only when `tls` is set. A public address is routinely
             // `https://` behind a terminator, so deriving from one would claim TLS
@@ -1580,7 +1584,7 @@ class HttpServer implements ResourceInstance {
             await settleBoth(this.listener.close(), this.closeApp());
             this.ctx.log.info(
               "Stopped listening",
-              { "server.address": this.address, "server.port": this.port },
+              { "server.address": supplied ?? this.address, "server.port": this.port },
               { eventName: "http.server.stopped" },
             );
           },
@@ -1588,7 +1592,7 @@ class HttpServer implements ResourceInstance {
       })
       .effect("listening announced", async () => {
         await this.ctx.emitEvent(`${this.resource.metadata.name}.Listening`, {
-          address: this.address,
+          address: this.listener.suppliedAddress ?? this.address,
           port: this.port,
           mounts: this.resource.mounts,
           openapi: this.resource.openapi,

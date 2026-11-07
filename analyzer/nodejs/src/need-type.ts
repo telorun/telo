@@ -41,6 +41,8 @@ export interface NeedTypeShape {
    *  forwarded whole — never a self-supplied fulfilment, a field-by-field supply
    *  at an import, or a library need reaching the root unforwarded. */
   supply?: "root";
+  /** `true` when a module declares at most one need of the type. */
+  unique?: true;
 }
 
 /** The marker the synthesized definition carries — read through
@@ -81,6 +83,7 @@ export function readNeedTypeShape(doc: unknown): NeedTypeShape {
     ...(record.version === "semver" ? { version: "semver" as const } : {}),
     ...(features ? { features } : {}),
     ...(record.supply === "root" ? { supply: "root" as const } : {}),
+    ...(record.unique === true ? { unique: true as const } : {}),
   };
 }
 
@@ -263,6 +266,20 @@ export function readNeeds(moduleDoc: unknown): NeedDeclaration[] {
     });
   }
   return out;
+}
+
+/** The dotted path of every `parameters:` a module document's needs write —
+ *  the one position of a module document holding a value the kernel resolves,
+ *  whose tags the need table judges. */
+export function needParametersPaths(moduleDoc: unknown): string[] {
+  return readNeeds(moduleDoc)
+    .filter((need) => need.parameters !== undefined)
+    .map((need) => `needs.${need.name}.parameters`);
+}
+
+/** Whether a dotted path lies at or beneath one of `paths`. */
+export function isAtOrBeneathPath(path: string, paths: readonly string[]): boolean {
+  return paths.some((p) => path === p || path.startsWith(`${p}.`) || path.startsWith(`${p}[`));
 }
 
 function readEnvBindings(raw: unknown): Record<string, string> | undefined {

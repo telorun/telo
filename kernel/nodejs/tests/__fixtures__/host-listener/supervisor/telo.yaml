@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata: { name: Supervisor, version: 1.0.0 }
+imports: { App: ../../../../../../modules/app }
+ports:
+  http: { env: SUPERVISOR_PORT, protocol: tcp }
+  plain: { env: SUPERVISOR_PLAIN_PORT, protocol: tcp }
+targets:
+  - !ref web
+---
+kind: App.Instance
+metadata: { name: web }
+source: ../web
+ports:
+  http: !cel "ports.http"
+  plain: !cel "ports.plain"

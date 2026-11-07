@@ -1,0 +1,45 @@
+{
+  "name": "Listener.Accept",
+  "direction": "kernel-to-controller",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Hand one connection the host admitted over to the listener's holder, as two one-way channels of purpose `connection`: `inbound`, which the kernel opens and whose bytes begin with those the host already read while admitting the connection, and `outbound`, which the controller opens. Closing `outbound` ends the connection; closing it with an `error` resets it.",
+    "type": "object",
+    "properties": {
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "listener": {
+        "type": "string",
+        "minLength": 1
+      },
+      "inbound": {
+        "type": "string",
+        "minLength": 1
+      },
+      "outbound": {
+        "type": "string",
+        "minLength": 1
+      },
+      "peer": {
+        "description": "The connection's remote end, `<address>:<port>`.",
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "session",
+      "listener",
+      "inbound",
+      "outbound",
+      "peer"
+    ],
+    "additionalProperties": false
+  },
+  "response": null,
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}
