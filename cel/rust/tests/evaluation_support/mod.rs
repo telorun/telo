@@ -84,12 +84,13 @@ pub fn answer(result: Result<CelValue, CelEvaluateError>) -> String {
         ),
         Err(CelEvaluateError::Engine(error)) => format!("threw CelEngineError: {}", error.message),
         Err(CelEvaluateError::Compile(error)) => format!("threw CelCompileError: {}", error.message),
+        Err(CelEvaluateError::Host(_)) => "failed with the host's own failure".into(),
     }
 }
 
 /// What a program answers, written.
 pub fn program_answer(program: &CelProgram, activation: &dyn CelActivation) -> String {
-    answer(program.evaluate(activation, &EvaluateOptions::default()).map_err(CelEvaluateError::Evaluation))
+    answer(program.evaluate(activation, &EvaluateOptions::default()).map_err(Into::into))
 }
 
 /// What a source answers in an environment, written.

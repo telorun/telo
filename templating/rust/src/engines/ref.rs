@@ -5,8 +5,34 @@
 //! whitespace is allowed, there is no quoting rule, and an alias with an index is
 //! refused. Both loaders read `!ref` text through this one parse and run the
 //! shared vectors in `templating/tag-conformance/ref.json`.
+//!
+//! The `!ref` engine marks a tagged scalar as a resource reference: the sentinel carries this
+//! parse's verdict and every reader reads that, so `compile` leaves the marker and `analyze`
+//! reports nothing — reference resolution is the analyzer's.
 
 use serde_json::{json, Value};
+
+use crate::cel::verdict_codes::TemplatingError;
+use crate::engine::{AnalyzeEnv, AnalyzeResult, CompileEnv, CompileOutcome, TemplatingEngine};
+use crate::sentinel::REF_ENGINE;
+
+pub struct RefEngine;
+
+impl TemplatingEngine for RefEngine {
+    fn name(&self) -> &'static str {
+        REF_ENGINE
+    }
+
+    #[allow(unused_variables)]
+    fn compile(&self, source: &str, env: &CompileEnv<'_>) -> Result<CompileOutcome, TemplatingError> {
+        Ok(CompileOutcome::Unchanged)
+    }
+
+    #[allow(unused_variables)]
+    fn analyze(&self, source: &str, env: &AnalyzeEnv<'_>) -> AnalyzeResult {
+        AnalyzeResult::default()
+    }
+}
 
 /// The code a text outside the grammar is refused under.
 pub const REF_MEMBER_INVALID: &str = "REF_MEMBER_INVALID";

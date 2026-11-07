@@ -486,18 +486,107 @@
       "source": "${{ 'a\rb' }}",
       "expect": {
         "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/triple_quoted_carriage_return",
+      "tag": "interpolate",
+      "source": "${{ '''a\r}}''' }}",
+      "expect": {
+        "check": {
           "diagnostics": [],
           "calls": [],
           "regions": [
             {
               "start": 4,
-              "end": 9
+              "end": 14
             }
           ],
           "refs": [],
           "volatile": false
         },
-        "value": "a\rb"
+        "value": "a\r}}"
+      }
+    },
+    {
+      "id": "holes/grammar/escaped_carriage_return",
+      "tag": "interpolate",
+      "source": "${{ 'a\\\rb' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "\\\r is not an escape sequence"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 10
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "\"'a\\\\\\rb'\" could not be read: \\\r is not an escape sequence"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/raw_carriage_return",
+      "tag": "interpolate",
+      "source": "${{ r'a\\\rb' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/quoted_member_carriage_return",
+      "tag": "interpolate",
+      "source": "${{ m.`a\rb` }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
       }
     },
     {
@@ -1003,6 +1092,165 @@
       }
     },
     {
+      "id": "holes/grammar/raw_backslash_before_quote",
+      "tag": "interpolate",
+      "source": "${{ r'\\'' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "\\'"
+      }
+    },
+    {
+      "id": "holes/grammar/raw_trailing_backslash",
+      "tag": "interpolate",
+      "source": "${{ r'\\' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/raw_two_trailing_backslashes",
+      "tag": "interpolate",
+      "source": "${{ r'a\\\\' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a\\\\"
+      }
+    },
+    {
+      "id": "holes/grammar/prefix_rb",
+      "tag": "interpolate",
+      "source": "${{ rb'\\'' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "\"'\\\\''\" cannot stand here"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 10
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "\"rb'\\\\''\" could not be read: \"'\\\\''\" cannot stand here"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/prefix_br",
+      "tag": "interpolate",
+      "source": "${{ br'\\'' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "\\'"
+      }
+    },
+    {
+      "id": "holes/grammar/quoted_member_name",
+      "tag": "interpolate",
+      "source": "${{ m.`it's}}` }}",
+      "bindings": {
+        "m": {
+          "it's}}": "v"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 14
+            }
+          ],
+          "refs": [
+            "m"
+          ],
+          "volatile": false
+        },
+        "value": "v"
+      }
+    },
+    {
+      "id": "holes/grammar/comment_text",
+      "tag": "interpolate",
+      "source": "${{ x // note }}",
+      "bindings": {
+        "x": "v"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 13
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": "v"
+      }
+    },
+    {
       "id": "holes/language/raw_backslash_before_quote",
       "tag": "cel",
       "source": "r'\\''",
@@ -1499,6 +1747,64 @@
       }
     },
     {
+      "id": "holes/interpolate/optional_static",
+      "tag": "interpolate",
+      "source": "${{ optional.of(1) }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ optional.of(1) }}' is optional<int>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ optional.of(1) }}' at offset 0 of !interpolate \"${{ optional.of(1) }}\" evaluated to a value of type optional_type, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/type_static",
+      "tag": "interpolate",
+      "source": "${{ int }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ int }}' is type, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "int"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ int }}' at offset 0 of !interpolate \"${{ int }}\" evaluated to a value of type type, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
       "id": "holes/interpolate/null_static",
       "tag": "interpolate",
       "source": "${{ null }}",
@@ -1652,6 +1958,71 @@
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
           "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to a map, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/dyn_optional",
+      "tag": "interpolate",
+      "source": "a ${{ x }} b",
+      "bindings": {
+        "x": {
+          "$cel": "optional",
+          "value": {
+            "$telo": "int",
+            "value": "1"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 6,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to a value of type optional_type, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/dyn_type",
+      "tag": "interpolate",
+      "source": "a ${{ x }} b",
+      "bindings": {
+        "x": {
+          "$cel": "type",
+          "value": "int"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 6,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to a value of type type, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
     },
