@@ -18,7 +18,7 @@ Every filesystem tool and every spawned command resolves a relative path
 against it, and every path the agent or a client supplies is judged before it
 is used: one that is absolute, holds a backslash, starts with a drive letter or
 has a `..` segment is refused with `ERR_PATH_OUTSIDE_WORKSPACE` — by
-`write_file`, `edit_file`, `read_file`, `list_dir`, `search_files`,
+`write_file`, `edit_file`, `apply_changes`, `move_file`, `copy_file`, `read_file`, `list_dir`, `search_files`,
 `delete_file`, `telo_check` and `run_manifest`, for every argument of the `telo` tool, and by the
 `/workspace` routes (400, nothing applied). A path naming the agent's state
 directory, or anything inside it, is refused the same way, by the same tools
@@ -97,6 +97,40 @@ directory holding it, or of the workspace root. A workspace from before the
 state had a directory of its own may still hold a `.telo-agent` directory:
 `GET /workspace`, the per-turn `WORKSPACE STATE:` listing and the `list_dir`
 tool leave it out, and Studio never syncs it in either direction.
+
+## Changing files — blocks, moves and copies
+
+The agent writes file text in its reply, not in a tool call: a fenced
+`telo-edit` block (SEARCH/REPLACE sections of an existing file) or `telo-file`
+block (a whole file). `Ai.AgentStream.textTools` gathers a reply's blocks into
+ONE `apply_changes` call (`{ changes: [{ path, patch } | { path, content }] }`,
+also advertised as a JSON tool). Everything is decided before anything is
+written, inside one workspace-lease hold: each path is a regular file or
+absent, the "before" copies of all of them count together against
+`MAX_CHECKPOINT_BYTES` / `MAX_CHECKPOINT_FILES`, each patch applies (every
+SEARCH must occur exactly once, in order, as the earlier sections left it),
+changes naming one path compose in order, and every resulting text passes the
+credential scan. Any refusal leaves the workspace and the checkpoint as they
+were; otherwise one checkpoint entry per distinct path is recorded, the files
+are written in path order, and ONE `telo check` runs over all of them. The
+result is `wrote <paths>` and the check. A patch that does not apply is
+`ERR_EDIT_SECTION_ABSENT`, `ERR_EDIT_SECTION_AMBIGUOUS` or
+`ERR_EDIT_BLOCK_MALFORMED`, leading with the change's position, its path and
+the section (and the lines of an ambiguous one); a change with both or neither
+of `patch` and `content` is `ERR_CHANGE_FORM_INVALID`. A reply that ends inside
+a block runs none of its blocks.
+
+`move_file` and `copy_file` (`{ path, destination }`, over `Fs.Move` and
+`Fs.Copy`) take a file or a directory tree and refuse an existing destination
+(`ERR_PATH_EXISTS`), a destination inside the source (`ERR_MOVE_INTO_ITSELF` /
+`ERR_COPY_INTO_ITSELF`), an absent source (`ERR_PATH_NOT_FOUND`), a path outside
+the workspace or a source holding the state directory
+(`ERR_PATH_OUTSIDE_WORKSPACE`) and a link or a tree holding one
+(`ERR_PATH_NOT_A_FILE`), before anything changes. A move is checkpointed as the
+removal of every source file and the creation of each at the destination, a copy
+as the creation of each destination file, in one call, so one revert undoes it.
+References in a moved or copied manifest are not rewritten, and the result says
+so.
 
 ## Asking before building
 
@@ -625,7 +659,7 @@ its ending — one a crash cut off.
 
 ### Checkpoints
 
-**Every change `write_file`, `edit_file` and `delete_file` make is checkpointed
+**Every change `write_file`, `edit_file`, `apply_changes`, `delete_file`, `move_file` and `copy_file` make is checkpointed
 under its turn, before the workspace is touched.** Per call: the files it
 touches are found (the path; for a recursive delete, every regular file under
 it), the bounds below are checked, each file's current copy is stored under
@@ -784,7 +818,7 @@ stays a turn from before checkpoints: its summary's and its changes' `files`
 are null and a revert of it is refused.
 
 **The workspace write lease.** One lease over the whole workspace is held by
-`write_file`, `edit_file` and `delete_file` (capture and write are one hold),
+`write_file`, `edit_file`, `apply_changes`, `delete_file`, `move_file` and `copy_file` (capture and write are one hold),
 by `POST /workspace` (the whole change set is one hold) and by a revert (one
 hold per batch of up to 25 paths, in path order: within one hold the batch's
 paths get their kind and size from one listing per parent directory, then each
@@ -964,7 +998,7 @@ Variables:
 | `BUDGET_LIMIT` | `4000000` | Total tokens across all turns per window — the operator's spend cap. Exhausted, `POST /chat` answers 429 |
 | `MAX_CONTEXT_TOKENS` | `120000` | The context, in tokens, a conversation may reach before its older turns are summarized (see The model's history) (at least 8, so the summary's cap is at least 1 token) |
 | `MAX_TOOL_RESULT_BYTES` | `32768` | The most UTF-8 bytes of text one tool result feeds the model; a longer one is cut and marked `[truncated: …]` |
-| `MAX_CHECKPOINT_BYTES` | `16777216` | The most bytes of "before" copies one `write_file` / `edit_file` / `delete_file` call may capture into its turn's checkpoint; over it the call is refused with `ERR_CHECKPOINT_TOO_LARGE` before anything changes |
+| `MAX_CHECKPOINT_BYTES` | `16777216` | The most bytes of "before" copies one `write_file` / `edit_file` / `apply_changes` / `delete_file` / `move_file` / `copy_file` call may capture into its turn's checkpoint; over it the call is refused with `ERR_CHECKPOINT_TOO_LARGE` before anything changes |
 | `MAX_CHECKPOINT_FILES` | `1000` | The most files one such call may capture — what bounds a recursive delete (at least 1) |
 | `MAX_ATTACHMENT_BYTES` | `10485760` | The largest file one upload may store; a larger one is refused 413 and stores nothing (at least 1) |
 | `ALLOW_MANIFEST_RUNS` | `false` | Lets the agent execute manifests — its tests, and probes against your live systems. Arbitrary code execution in this container, with its credentials — read the section above before turning it on |
@@ -1006,10 +1040,10 @@ With `OTLP_ENDPOINT` empty the same spans are written as `debug` log records
 
 The tools are the security boundary, and they are declared:
 
-- **File tools** (`write_file`, `edit_file`, `read_file`, `list_dir`,
+- **File tools** (`write_file`, `edit_file`, `apply_changes`, `move_file`, `copy_file`, `read_file`, `list_dir`,
   `search_files`, `delete_file`) are rooted at `WORKSPACE_DIR`, and a path outside it is
   refused (see The workspace).
-- **Every change `write_file`, `edit_file` and `delete_file` make is
+- **Every change `write_file`, `edit_file`, `apply_changes`, `delete_file`, `move_file` and `copy_file` make is
   checkpointed** under its turn before the file is touched, within
   `MAX_CHECKPOINT_BYTES` and `MAX_CHECKPOINT_FILES` per call, so the user can
   see a turn's changes and revert them (see Checkpoints).

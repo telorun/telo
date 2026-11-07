@@ -266,6 +266,48 @@ describe("records → transcript", () => {
     });
   });
 
+  it("shows the result of a text call as a card of its own, with each file's diff", () => {
+    const changes = [
+      { path: "a.yaml", status: "modified", before: "b1", after: "a1", added: 1, removed: 0 },
+      { path: "b.yaml", status: "created", before: null, after: "a2", added: 2, removed: 0 },
+    ];
+    const files = [
+      { path: "a.yaml", hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, lines: [{ op: "added", text: "# new" }] }] },
+      { path: "b.yaml", hunks: null },
+    ];
+    const [, reply] = transcriptFromTurns([
+      {
+        turnId: "t1",
+        status: "finished",
+        error: null,
+        records: [
+          { id: 1, data: { type: "user-message", content: "rename it", model: "m" } },
+          { id: 2, data: { type: "text-delta", delta: "```telo-file path=b.yaml\n```" } },
+          { id: 3, data: { type: "step-finish", finishReason: "stop" } },
+          {
+            id: 4,
+            data: {
+              type: "tool-result",
+              toolResult: {
+                toolCallId: "block_1",
+                name: "apply_changes",
+                origin: "text",
+                content: "apply_changes (telo-edit path=a.yaml, telo-file path=b.yaml):\nwrote a.yaml, b.yaml\ncheck: clean",
+                output: { paths: ["a.yaml", "b.yaml"], checkExitCode: 0, checkReport: null, checkMessages: "", changes, files },
+              },
+            },
+          },
+          { id: 5, data: { type: "finish", finishReason: "stop" } },
+        ],
+      },
+    ]);
+
+    expect((reply as AssistantMessage).parts[1]).toMatchObject({
+      kind: "tool",
+      tool: { toolCallId: "block_1", name: "apply_changes", state: "done", checkExitCode: 0, changes, files },
+    });
+  });
+
   it("takes a turn's summary and recorded revert from the records route, and neither while it runs", () => {
     const summary: TurnSummary = {
       files: [
