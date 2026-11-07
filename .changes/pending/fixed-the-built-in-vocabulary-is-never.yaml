@@ -1,4 +1,0 @@
-modules:
-  apps/hub: Fixed
-body: The built-in vocabulary is never tracked at a release-candidate tag, so the newest
-  telo the hub knows, and the default of get_kinds, is always a final release.
