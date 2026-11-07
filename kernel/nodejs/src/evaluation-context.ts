@@ -503,7 +503,7 @@ function compileWalker(value: unknown): Walker {
         const expr = writtenExpression(compiled) ?? "unknown expression";
         const msg = error instanceof Error ? error.message : String(error);
         // Reading observed state that was never reported is its own failure with
-        // its own remedy, so it does not degrade into a bare "No such key".
+        // its own remedy, so it does not degrade into a bare "no such key".
         const observed = compiled.source
           ? describeObservedStateFailure(compiled.source, ctx, msg)
           : null;
@@ -3324,7 +3324,7 @@ function tokenizeAccessPath(source: string): AccessToken[] | null {
 }
 
 /**
- * Best-effort enrichment for CEL "No such key" failures. Walks the source
+ * Best-effort enrichment for CEL "no such key" failures. Walks the source
  * access path against the activation, finds the deepest reachable value, and
  * returns a single-line hint describing what was actually at that point
  * (object keys, array length, scalar type) so developers can immediately see
@@ -3368,9 +3368,9 @@ function locateFailedAccess(
   ctx: unknown,
   msg: string,
 ): { container: unknown; missingKey: string; walked: string } | null {
-  const m = /^No such key:\s*(\S+)/.exec(msg);
+  const m = /^no such key: ("(?:[^"\\]|\\.)*")/.exec(msg);
   if (!m) return null;
-  const missingKey = m[1];
+  const missingKey: string = JSON.parse(m[1]);
 
   const tokens = tokenizeAccessPath(source);
   if (!tokens || tokens.length < 2) return null;

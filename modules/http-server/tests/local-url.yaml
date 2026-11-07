@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata:
+  name: HttpServerLocalUrlTest
+  version: 1.0.0
+  description: >-
+    Http.Server reports the URL its socket listens on as status.localUrl, a
+    wildcard address written as localhost.
+imports: { Http: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { port: 8974 }
+    mounts: []
+targets:
+  - !ref server
+steps:
+  - name: assertLocalUrl
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "string(resources.server.status.localUrl)"
+      expected: http://localhost:8974

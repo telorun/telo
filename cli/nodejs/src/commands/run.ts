@@ -41,6 +41,8 @@ import { anchorDirectory, nativePath, resolveEnvFiles } from "../env-files.js";
 import { countRootErrors, createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { resolveManifestInput } from "../manifest-input.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
+import { createOpenUrlHook } from "../open-url-hook.js";
+import { personIsAtTerminal } from "../person-at-terminal.js";
 import { outErrLine, output } from "../output.js";
 import { StartupProfiler, writeStartupProfile } from "../startup-profile.js";
 import { teeStdio } from "../stdio-tee.js";
@@ -521,7 +523,12 @@ async function startDebugSession(
   };
 }
 
-async function buildKernel(argv: RunArgv, log: Logger, cacheRoot: string | null): Promise<Kernel> {
+async function buildKernel(
+  argv: RunArgv,
+  log: Logger,
+  cacheRoot: string | null,
+  openUrl?: (url: string) => void,
+): Promise<Kernel> {
   // The manifest cache (populated by `telo install`) wins over the network
   // sources so production images boot without any network I/O. A missing cache
   // file falls through transparently — dev runs and ad-hoc invocations work
@@ -537,7 +544,11 @@ async function buildKernel(argv: RunArgv, log: Logger, cacheRoot: string | null)
       ),
     );
   }
-  const kernel = new Kernel({ argv: [...(argv.applicationArgs ?? [])], sources });
+  const kernel = new Kernel({
+    argv: [...(argv.applicationArgs ?? [])],
+    sources,
+    ...(openUrl ? { openUrl } : {}),
+  });
   // Pretty controller-download progress. With --verbose, always render
   // (so captured logs/CI output get the lines too); otherwise gate on TTY
   // so CI and the docker service stay silent.
@@ -755,6 +766,7 @@ export async function run(given: RunArgv): Promise<void> {
   });
 
   const inputs = inputSessionFor(argv);
+  const openUrl = openUrlHookFor(argv);
   // Held outside the try so the catch can reach the loaded graph a static
   // failure's location resolves against.
   let bootedKernel: Kernel | undefined;
@@ -763,7 +775,7 @@ export async function run(given: RunArgv): Promise<void> {
   let phase = "kernelCreate";
   try {
     profiler?.start("kernelCreate");
-    const kernel = await buildKernel(argv, log, cacheRoot);
+    const kernel = await buildKernel(argv, log, cacheRoot, openUrl);
     profiler?.end("kernelCreate");
     bootedKernel = kernel;
     debug?.attach(kernel);
@@ -870,8 +882,12 @@ export async function run(given: RunArgv): Promise<void> {
  * was not given. Runners and scripts get the refusal instead.
  */
 function inputSessionFor(argv: RunArgv): ApplicationInputSession | undefined {
-  if (argv.input === false || process.stdin.isTTY !== true || process.stderr.isTTY !== true) return undefined;
+  if (!personIsAtTerminal({ input: argv.input, stdin: process.stdin, stderr: process.stderr })) return undefined;
   return new ApplicationInputSession(terminalPrompter(process.stdin, output()));
+}
+
+function openUrlHookFor(argv: RunArgv): ((url: string) => void) | undefined {
+  return createOpenUrlHook({ input: argv.input, stdin: process.stdin, stderr: process.stderr });
 }
 
 /** Once the kernel has accepted the answers, offer to keep them — written beside
@@ -973,6 +989,7 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
   // One session for every reload: a reload asks only for what it has not
   // been told, or for what it refuses.
   const inputs = inputSessionFor(given);
+  const openUrl = openUrlHookFor(given);
   const sessionCacheRoot = first.argv.cacheDir ?? resolveCacheRoot(first.argv.path);
   // One inspect endpoint for the whole watch session — reloads re-attach the
   // rebuilt kernel to it (see startDebugSession), so the UI connection survives.
@@ -1043,7 +1060,7 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
     }
 
     const cacheRoot = cycle.cacheDir ?? resolveCacheRoot(cycle.path);
-    const kernel = await buildKernel(cycle, log, cacheRoot);
+    const kernel = await buildKernel(cycle, log, cacheRoot, openUrl);
     debug?.attach(kernel);
     currentKernel = kernel;
 

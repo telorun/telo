@@ -13,7 +13,7 @@ match on it.
 
 | `event_name` | Severity | When | Attributes |
 | --- | --- | --- | --- |
-| `http.server.started` | `info` | the socket is accepting connections | `server.address`, `server.port`, `url.scheme` |
+| `http.server.started` | `info` | the socket is accepting connections | `server.address`, `server.port`, `url.scheme`, `url.full` (the socket's URL, as `status.localUrl`) |
 | `http.server.address_unavailable` | `warn` | `listen.address` is a hostname and one address it resolves to has no interface on this host (`EADDRNOTAVAIL`, `EAFNOSUPPORT` — `::1` where IPv6 is off); the server listens on the others, and fails to start when none binds | `server.address` (the resolved address), `server.port`, `error.type`, `error.message` |
 | `http.server.request.started` | `debug` | a request has been received | `http.request.method`, `http.route`, `url.path`, `httpserver.request_id` |
 | `http.server.request` | `info`, or `error` for a 5xx | the response has been sent | `http.request.method`, `http.route`, `http.response.status_code`, `http.server.request.duration`, `httpserver.request_id` |

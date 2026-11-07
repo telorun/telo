@@ -1123,7 +1123,7 @@ metadata: { name: serviceStatusAtStartupAtRuntime }
 source: ./__fixtures__/check-run-agreement/provider-status/service-app.yaml
 expect:
   errors: []
-  runFails: 'Expression !cel "resources.listener.status.port" failed'
+  runFails: "[ERR_OBSERVED_STATE_UNAVAILABLE] RuntimeError: !cel \"resources.listener.status.port\": 'listener' reports 'port' only while it is running"
 ---
 # A module file naming a file where its slot names a directory
 # (`entry: directory`) is refused where it is written…

@@ -43,6 +43,8 @@ const SEQUENCE: &str = "Telo.Sequence";
 const TEXT_TRANSLATIONS: &str = "Telo.TextTranslations";
 /// The built-in document a library declares its own texts by key with.
 const KEYED_TRANSLATIONS: &str = "Telo.KeyedTranslations";
+/// The built-in invocable that hands a URL to the host to open.
+const OPEN_URL: &str = "Telo.OpenUrl";
 use crate::controllers::resource_definition::resource_definition_controller::register_definition;
 use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
@@ -674,6 +676,12 @@ fn resolve_resource_kind(
             format!(
                 "resource '{name}' declares `{TEXT_TRANSLATIONS}`; this kernel does not read translations yet"
             ),
+        ));
+    }
+    if kind == OPEN_URL {
+        return Err(KernelError::new(
+            "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+            format!("resource '{name}': {OPEN_URL} is not supported by this kernel"),
         ));
     }
     if kind.starts_with("Telo.") {

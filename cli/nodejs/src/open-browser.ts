@@ -1,29 +1,65 @@
-import { spawn } from "child_process";
+import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from "child_process";
+import { outErrLine } from "./output.js";
+
+export interface OpenerCommand {
+  command: string;
+  args: string[];
+}
+
+export interface OpenBrowserOptions {
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  spawn?: (command: string, args: string[], options: SpawnOptions) => ChildProcess;
+  /** Called with the reason when the opener cannot be launched or exits non-zero. */
+  onFailure?: (reason: string) => void;
+}
 
 /**
- * Best-effort open of a URL in the user's browser. Never throws — a failure to
- * launch is non-fatal (the URL is always logged alongside).
+ * The launcher for a URL, which always travels as ONE argv element and never
+ * through a shell, so a consent URL's `&` and `%` arrive intact.
  *
- * `$BROWSER` wins when set: VSCode remote / devcontainers / Codespaces point it
- * at a helper that forwards the URL to the user's *local* browser through the
- * tunnel, so this works even when the host itself is headless. Otherwise fall
- * back to the OS opener.
+ * `$BROWSER` wins when set and is taken as a single executable (never split on
+ * spaces or `:`). In VS Code remote / devcontainers it is a helper that forwards
+ * the URL to the user's local browser. Windows uses `rundll32
+ * url.dll,FileProtocolHandler`: unlike `cmd /c start` it needs no shell, so the
+ * URL is not re-parsed for `&` and `%`.
  */
-export function openBrowser(url: string): void {
-  const browser = process.env.BROWSER;
-  const [cmd, args]: [string, string[]] = browser
-    ? [browser, [url]]
-    : process.platform === "darwin"
-      ? ["open", [url]]
-      : process.platform === "win32"
-        ? ["cmd", ["/c", "start", "", url]]
-        : ["xdg-open", [url]];
+export function openerFor(
+  url: string,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): OpenerCommand {
+  if (env.BROWSER) return { command: env.BROWSER, args: [url] };
+  if (platform === "darwin") return { command: "open", args: [url] };
+  if (platform === "win32") {
+    return { command: "rundll32", args: ["url.dll,FileProtocolHandler", url] };
+  }
+  return { command: "xdg-open", args: [url] };
+}
+
+/** Tells the person which URL to open themselves, on stderr. */
+export function reportOpenFailure(url: string, reason: string): void {
+  outErrLine(`Could not open a browser (${reason}). Open ${url} yourself.`);
+}
+
+/**
+ * Launches the user's browser on a URL, detached and without touching the
+ * terminal's stdio. A launch failure is reported with the reason and the URL.
+ */
+export function openBrowser(url: string, options: OpenBrowserOptions = {}): void {
+  const { command, args } = openerFor(url, options.platform, options.env);
+  const spawn = options.spawn ?? nodeSpawn;
+  const fail = options.onFailure ?? ((reason: string) => reportOpenFailure(url, reason));
   try {
-    const child = spawn(cmd, args, { stdio: "ignore", detached: true });
-    child.on("error", () => {});
+    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    child.on("error", (error) => fail(error.message));
+    child.on("exit", (code, signal) => {
+      if (code) fail(`${command} exited with code ${code}`);
+      else if (signal) fail(`${command} was stopped by ${signal}`);
+    });
     child.unref();
-  } catch {
-    // ignored — the URL is logged regardless
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
   }
 }
 

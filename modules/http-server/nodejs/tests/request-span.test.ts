@@ -96,6 +96,8 @@ function testContext(behaviours: Record<string, (inputs: any, context: InvokeCon
     effect: (_reason: string, body: (input: unknown) => Promise<any>) => chain([body]),
     acquireHold: () => () => {},
     emitEvent: async () => {},
+    setStatus: async () => {},
+    readPlainEncoded: (value: unknown) => value,
     ensureKindRef: (value: { kind: string; name: string }) => value,
     moduleContext: { expandWith },
     validateSchema: () => {},

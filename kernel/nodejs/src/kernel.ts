@@ -355,6 +355,12 @@ export interface KernelOptions {
    *  from `env`. Set when one application runs another as a resource; see
    *  {@link ApplicationInputs}. */
   inputs?: ApplicationInputs;
+  /** The host's open-url hook: handed the text of every URL a `Telo.OpenUrl`
+   *  call requests, after the kernel has logged it. Fire-and-forget — the kernel
+   *  never awaits it, and a throw or rejection is logged as a warning. A
+   *  constructor option, not a `load()` one, so a host rebuilding its kernel
+   *  (`--watch`) keeps its own once-per-session memory behind the one function. */
+  openUrl?: (url: string) => void | Promise<void>;
 }
 
 /**
@@ -504,6 +510,8 @@ export class Kernel implements IKernel {
   /** The root Application's own command line, read against the `arg:` bindings
    *  it declares (`kernel/specs/application-arguments.md`). */
   readonly argv: string[];
+  /** See {@link KernelOptions.openUrl}. */
+  readonly openUrl?: (url: string) => void | Promise<void>;
   /** The sources this kernel was constructed with, kept so `ctx.runtime` can
    *  give a child manifest — or a static check of one — the same resolution
    *  chain this kernel runs on. The transports come from the registry and are
@@ -553,6 +561,7 @@ export class Kernel implements IKernel {
       return { traceId: ambient.traceId, spanId };
     });
     this.argv = options.argv ?? [];
+    this.openUrl = options.openUrl;
     // Resolution sources come from the transport registry, so a scheme-owning
     // transport (OCI, later S3) joins the loader's dispatch chain by being
     // registered — no source-chain edits here.

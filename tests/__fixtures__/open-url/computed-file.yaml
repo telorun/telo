@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: OpenComputedFile, version: 1.0.0 }
+variables: { reportPath: { env: REPORT_PATH, type: string, default: /tmp/report.html } }
+targets:
+  - invoke: !ref opener
+    inputs: { url: !interpolate "file://${{ variables.reportPath }}" }
+---
+kind: Telo.OpenUrl
+metadata: { name: opener }

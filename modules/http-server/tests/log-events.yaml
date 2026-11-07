@@ -150,5 +150,5 @@ steps:
         matchedRoute: /api/things/:id
         unmatchedHasRoute: false
         durationLooksLikeSeconds: true
-        startedAttributes: [server.address, server.port, url.scheme]
+        startedAttributes: [server.address, server.port, url.full, url.scheme]
         completedAttributes: [http.request.method, http.response.status_code, http.route, http.server.request.duration, httpserver.request_id]

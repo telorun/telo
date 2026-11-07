@@ -3279,6 +3279,26 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   listening socket does, so an app whose only work is scheduled needs no
   server: do not add one to keep the process up. Add a server only for what a
   server gives you — a route, a health probe, an on-demand trigger.
+- **Opening the app's own page — `Telo.OpenUrl`.** A built-in Invocable (no
+  import) with input `url` (a `Telo.Url`, scheme `http` or `https`; a literal of
+  another scheme is `URL_INVALID`, a computed one `ERR_INPUT_INVALID`) and
+  output `null`. Every call logs `telo.url.open_requested` with `url.full`;
+  `telo run` at a terminal also opens it in the browser, at most once per URL
+  per session, and every other host (`--no-input`, runners, CI) only logs. It
+  never fails the app and never blocks the targets after it. Declare it as a
+  NAMED resource and list a step AFTER the server in `targets:` (an inline
+  `invoke: { kind: … }` is not allowed in an Application's `targets:`):
+  `targets: [!ref server, { invoke: !ref openBrowser, inputs: { url: !cel
+  "resources.server.status.localUrl" } }]` with `kind: Telo.OpenUrl, metadata:
+  { name: openBrowser }`. `Http.Server` reports `status.localUrl` once it
+  listens (the socket's URL, `localhost` for a wildcard address, `https` under
+  `tls` — not a public address); read before `!ref server` it fails with
+  `ERR_OBSERVED_STATE_UNAVAILABLE`. To ask first, put the question and the open
+  in a NAMED `Telo.Sequence` (`Console.readLine`, then an `if:` step whose
+  `then:` holds the open step; inside a sequence the step may be inline, with a
+  `name`) and list that sequence in `targets:` after the server — the app owns
+  the terminal's input, so the host never asks. A sign-in calls it in a step
+  with the consent `url` before waiting for the callback.
 - **SQL schema is DECLARED, not migrated to.** `sql` holds the abstracts
   (`Sql.Connection`, `Sql.Table`, `Sql.Schema`); the backend modules own
   everything instantiable — `postgres` (`Postgres.Connection` / `.Table` /

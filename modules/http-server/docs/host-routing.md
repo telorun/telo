@@ -36,6 +36,13 @@ mounts:
   `SCHEMA_VIOLATION`. An absolute link is built from the address need
   (`resources.site.url`), never from a fixed value.
 
+Once the socket listens, `resources.<server>.status.localUrl` holds the socket's
+own URL, a `Telo.Url`: `https` under `tls`, otherwise `http`; a wildcard address
+(`0.0.0.0`, `::`) is written as `localhost`, any other address as bound, an IPv6
+literal in brackets (`http://localhost:8080`, `http://[::1]:8080`). It is read
+after the server ran (a `targets:` entry) and is the socket's URL, never a public
+address — use a public address need for that.
+
 The address a server is *reached* at is not its socket. It is a public address
 need the application declares at its root, naming the port:
 

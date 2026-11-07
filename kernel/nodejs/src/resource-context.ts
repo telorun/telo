@@ -217,6 +217,11 @@ export class ResourceContextImpl implements ResourceContext {
     return this.#runtime;
   }
 
+  /** The host's open-url hook, when it gave one (`KernelOptions.openUrl`). */
+  get openUrlHook(): ((url: string) => void | Promise<void>) | undefined {
+    return this.kernel.openUrl;
+  }
+
   kernelLoggingRootScope(): ScopeConfig {
     return this.kernel.logging.rootScope;
   }

@@ -47,6 +47,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import { resolveHttpsOptions, type ServerTlsSettings } from "./tls-material.js";
 import { ConnectionListener } from "./connection-listener.js";
+import { localUrlOf } from "./local-url.js";
 import type { ForwardedClientCertificate } from "./client-certificate.js";
 import { requestConnection, withConnection, type RequestConnection } from "./request-connection.js";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
@@ -218,6 +219,11 @@ type ResolvedHandler = {
   inputs: Record<string, any>;
   returns?: ReturnEntry[];
   catches?: CatchEntry[];
+};
+
+/** The `status.localUrl` type, as the kind's `status:` declares it. */
+const LOCAL_URL_TYPE = {
+  "x-telo-type": { name: "Telo.Url", scheme: { enum: ["http", "https"] } },
 };
 
 class HttpServer implements ResourceInstance {
@@ -1544,6 +1550,7 @@ class HttpServer implements ResourceInstance {
       .effect("listening socket", async () => {
         await this.app.ready();
         await this.listener.listen();
+        const localUrl = localUrlOf(this.scheme, this.address, this.port);
         this.ctx.log.info(
           "Listening",
           {
@@ -1553,8 +1560,15 @@ class HttpServer implements ResourceInstance {
             // `https://` behind a terminator, so deriving from one would claim TLS
             // for a plaintext socket on the most common production deployment.
             "url.scheme": this.scheme,
+            "url.full": localUrl,
           },
           { eventName: "http.server.started" },
+        );
+        await this.ctx.setStatus(
+          this.ctx.readPlainEncoded(
+            { localUrl },
+            { type: "object", properties: { localUrl: LOCAL_URL_TYPE } },
+          ) as Record<string, unknown>,
         );
         return {
           result: undefined,
