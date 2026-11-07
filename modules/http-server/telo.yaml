@@ -60,7 +60,12 @@ requires:
   # `x-telo-context-from-referrer` on an evaluated binding,
   # `x-telo-context-nullable-when`, `x-telo-ref.outputTo` and the object form of
   # `x-telo-catches-for`, which the mount authentication schema uses.
-  telo: ">=0.131.0"
+  #
+  # unreleased: the `restrictions:` key below, which no published telo reads.
+  telo: ">=unreleased"
+restrictions:
+  - requires: { telo: ">=unreleased" }
+    reason: "The server reports `status.localUrl` from `run()`, which an older kernel refuses when a templated kind's `run:` starts the server, so that start fails."
 lang: en
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
@@ -1143,6 +1148,16 @@ schema:
       oneOf:
         - { required: [pem] }
         - { required: [file] }
+status:
+  type: object
+  additionalProperties: false
+  properties:
+    localUrl:
+      description: >-
+        The URL the socket listens on, set once it listens: `https` under `tls`,
+        otherwise `http`; a wildcard address is written as `localhost`. It is
+        the socket's own URL, not a public address.
+      x-telo-type: { name: Telo.Url, scheme: { enum: [http, https] } }
 ---
 kind: "Telo.Definition"
 metadata:

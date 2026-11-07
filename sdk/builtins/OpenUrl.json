@@ -1,0 +1,34 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "OpenUrl",
+    "description": "Hands a web address to the machine running the application so it can be opened in a browser: a freshly started server's start page, a sign-in consent page. The call returns at once with no result, never waits for or fails on a browser, and the address is always written to the log."
+  },
+  "capability": "Telo.Invocable",
+  "inputType": {
+    "kind": "Telo.JsonSchema",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "x-telo-type": {
+            "name": "Telo.Url",
+            "scheme": { "enum": ["http", "https"] },
+            "user": { "not": {} },
+            "password": { "not": {} }
+          }
+        }
+      }
+    }
+  },
+  "outputType": {
+    "kind": "Telo.JsonSchema",
+    "schema": { "type": "null" }
+  },
+  "schema": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

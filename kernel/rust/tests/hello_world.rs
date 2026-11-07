@@ -95,6 +95,17 @@ fn refuses_a_sequence() {
     assert!(err.message.contains("'greet' declares `Telo.Sequence`"), "{err}");
 }
 
+/// There is no host to open a URL in: a declared `Telo.OpenUrl` is refused by name.
+#[test]
+fn refuses_open_url() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-open-url-resource"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("Telo.OpenUrl is not supported by this kernel"), "{err}");
+}
+
 /// Text records are not built here: a controller of a kind holding a `Text` would
 /// receive a raw message where the Node kernel hands it a record.
 #[test]

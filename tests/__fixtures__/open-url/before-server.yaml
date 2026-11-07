@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata: { name: OpenBeforeServer, version: 1.0.0 }
+imports: { Http: ../../../modules/http-server }
+ports: { http: { env: PORT, protocol: tcp, default: 8951 } }
+targets:
+  - invoke: !ref opener
+    inputs: { url: !cel "resources.server.status.localUrl" }
+  - !ref server
+---
+kind: Telo.OpenUrl
+metadata: { name: opener }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: !cel "ports.http" }
+mounts: []

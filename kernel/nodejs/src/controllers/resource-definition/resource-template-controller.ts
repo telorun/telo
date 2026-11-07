@@ -660,13 +660,16 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
         }),
 
         ...(definition.run != null && {
-          run: async () => {
+          // Through the child context's run path, as `targets:` are, so the entry
+          // is traced, counts as started (it may report `ctx.setStatus`), and
+          // keeps what its `run()` returns on its own effect frame.
+          run: async (invokeCtx?: InvokeContext) => {
             const runTarget = requireTarget(runTargetName(), "run");
             const entry = dispatchEntry(runTarget, "run");
             if (!entry.instance?.run) {
               throw capabilityError(entry, runTarget, "run", "Telo.Runnable");
             }
-            return entry.instance.run();
+            await childContext.run(runTarget, invokeCtx);
           },
         }),
 

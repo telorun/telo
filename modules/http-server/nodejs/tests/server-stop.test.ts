@@ -29,6 +29,8 @@ describe("Http.Server stop", () => {
       effect: (reason: string, body: () => Promise<any>) => chain([body]),
       acquireHold: () => () => {},
       emitEvent: async () => {},
+      setStatus: async () => {},
+      readPlainEncoded: (value: unknown) => value,
       createCancellationSource: () => createCancellationSource(),
       rootContext: (opts?: { cancellation?: CancellationSource }) => opts!.cancellation!.context,
       openSpan: async (base: InvokeContext) => ({ context: base, settle: async () => {} }),

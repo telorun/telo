@@ -134,6 +134,8 @@ Every module file must start with exactly one `Telo.Application` OR `Telo.Librar
 
 **The built-in vocabulary of a release is the `Telo.Builtins` archive** (normative: `kernel/specs/builtin-vocabulary.md`): a YAML stream rendered at build from `sdk/builtins/` (plus `sdk/value-types/`, `sdk/zone-attributes/`, `sdk/formats/`, `sdk/error-codes/`, `sdk/translations/`), shipped in `@telorun/analyzer` as `src/builtin-vocabulary/builtins.yaml` and exported as `BUILTIN_VOCABULARY_ARCHIVE`, embedded by `cli/rust`, printed by `telo builtins [<name>...]` in both CLIs and published per release as `oci://ghcr.io/telorun/telo@<version>`. It is read, never declared, run or imported: as an entry it is one `UNDEFINED_KIND`, as an import target `INVALID_IMPORT_TARGET`, each saying what it is.
 
+**`Telo.OpenUrl`** is the built-in `Telo.Invocable` that hands a URL to the host to open in a browser (input `url`, a `Telo.Url` of scheme `http` or `https`; output `null`). Every call logs `telo.url.open_requested` with `url.full` and forwards the URL, fire-and-forget, to the optional open-url hook the host gave the kernel (`KernelOptions.openUrl`); with no hook only the log record remains. No outcome of opening a page is an error, and the Rust kernel refuses the kind (`ERR_UNSUPPORTED_MANIFEST_FEATURE`).
+
 ### `kind: Telo.Application`
 
 A runnable entry point, loaded via `Kernel.loadFromConfig`. **Never** imported.

@@ -1,0 +1,79 @@
+kind: Telo.Application
+metadata:
+  name: TeloOpenUrlTest
+  version: 1.0.0
+  description: |
+    `Telo.OpenUrl` needs no import. With no host hook the call returns null and
+    still logs `telo.url.open_requested`; a URL of another scheme is refused by
+    `telo check` when written and when the call runs when computed; and a step
+    reading a server's `localUrl` before the server has run fails.
+logging:
+  level: info
+  sinks:
+    - kind: Telo.FileSink
+      destination: /tmp/telo-open-url-test.jsonl
+      flush_interval: 20ms
+imports: { Fs: ../modules/fs, Timer: ../modules/timer, Assert: ../modules/assert }
+targets:
+  - !ref test
+  - !ref literalOtherScheme
+  - !ref computedOtherScheme
+  - !ref literalCredentials
+  - !ref computedCredentials
+  - !ref readBeforeServer
+---
+# The sink appends to a fixed path, so the record is found by a URL unique to this run.
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - { name: id, value: !cel "uuidv4()" }
+  - name: open
+    invoke: { kind: Telo.OpenUrl }
+    inputs: { url: !interpolate "http://localhost:8080/${{ steps.id.result }}" }
+  - name: returnsNull
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "steps.open.result", expected: null }
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "250ms", value: {} }
+  - name: read
+    invoke: { kind: Fs.File }
+    inputs: { path: /tmp/telo-open-url-test.jsonl }
+  - name: logged
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel |
+        steps.read.result.content.split('\n').exists(line,
+          line.contains(steps.id.result) && line.contains('"event_name":"telo.url.open_requested"'))
+      expected: true
+---
+kind: Assert.Manifest
+metadata: { name: literalOtherScheme }
+source: ./__fixtures__/open-url/literal-file.yaml
+expect:
+  errors:
+    - { code: URL_INVALID, message: "scheme must be one of http, https" }
+---
+kind: Assert.Manifest
+metadata: { name: computedOtherScheme }
+source: ./__fixtures__/open-url/computed-file.yaml
+expect: { errors: [], runFails: "ERR_URL_INVALID" }
+---
+kind: Assert.Manifest
+metadata: { name: readBeforeServer }
+source: ./__fixtures__/open-url/before-server.yaml
+expect:
+  errors: []
+  runFails: "!cel \"resources.server.status.localUrl\": 'server' reports 'localUrl' only while it is running, and it has not started yet"
+---
+kind: Assert.Manifest
+metadata: { name: literalCredentials }
+source: ./__fixtures__/open-url/literal-credentials.yaml
+expect:
+  errors:
+    - { code: URL_INVALID }
+---
+kind: Assert.Manifest
+metadata: { name: computedCredentials }
+source: ./__fixtures__/open-url/computed-credentials.yaml
+expect: { errors: [], runFails: "ERR_URL_INVALID" }

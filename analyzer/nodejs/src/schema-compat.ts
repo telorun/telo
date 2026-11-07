@@ -16,7 +16,7 @@ import {
 } from "@telorun/sdk";
 import { canonicalJson } from "./canonical-json.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
-import { memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
+import { memberForbidden, memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
 import { liftFragmentDefs, ManifestRootSchema } from "./manifest-schemas.js";
 import { deepEquals } from "./migrations/match.js";
 import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
@@ -846,6 +846,10 @@ function membersPlaceholder(schema: Record<string, any>): unknown | undefined {
   const members: Record<string, unknown> = { ...(base as Record<string, unknown>) };
   for (const parameter of slot.entry.parameters) {
     if (parameter.member === undefined || slot.args[parameter.name] === undefined) continue;
+    if (memberForbidden(slot, parameter.member)) {
+      delete members[parameter.member];
+      continue;
+    }
     members[parameter.member] = celPlaceholderForSchema(memberSlotSchema(slot, parameter.member)!);
   }
   const built = slot.codec.compose(members);

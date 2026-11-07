@@ -34,6 +34,7 @@ const ENTRY_FILES: &[(&str, &str)] = &[
     ("LogTraceSink.json", include_str!("../../../sdk/builtins/LogTraceSink.json")),
     ("Mount.json", include_str!("../../../sdk/builtins/Mount.json")),
     ("NeedType.json", include_str!("../../../sdk/builtins/NeedType.json")),
+    ("OpenUrl.json", include_str!("../../../sdk/builtins/OpenUrl.json")),
     ("Provider.json", include_str!("../../../sdk/builtins/Provider.json")),
     ("PublicHostPattern.json", include_str!("../../../sdk/builtins/PublicHostPattern.json")),
     ("PublicUrl.json", include_str!("../../../sdk/builtins/PublicUrl.json")),

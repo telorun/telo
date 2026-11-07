@@ -71,6 +71,7 @@ describe("the roster", () => {
         "Function",
         "JsonSchema",
         "LogTraceSink",
+        "OpenUrl",
         "PublicHostPattern",
         "PublicUrl",
         "Sequence",
