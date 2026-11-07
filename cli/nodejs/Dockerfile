@@ -30,6 +30,7 @@ FROM node:24-trixie-slim AS build
 WORKDIR /build
 ENV CI=true
 COPY package.json pnpm-* tsconfig.base.json /build/
+COPY patches /build/patches/
 RUN corepack enable
 RUN --mount=type=cache,target=/pnpm pnpm fetch
 
