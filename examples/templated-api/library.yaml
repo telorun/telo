@@ -9,7 +9,7 @@ metadata:
     with `telo.yaml`, which mounts the same library twice
     under `/v1` and `/v2` to show import + mount reuse.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
   Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
 exports:
   resources:

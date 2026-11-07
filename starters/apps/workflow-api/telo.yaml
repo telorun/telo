@@ -26,9 +26,9 @@ metadata:
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
 imports:
-  WorkflowApp: oci://ghcr.io/telorun/blueprints/workflow-app@0.3.8#sha256-7OcRxdxKfkn4cfY6aySGZ8SULRVDB0rxDcg_BEWZN5E
-  Cache: oci://ghcr.io/telorun/cache@0.13.2#sha256-VeDhniXCmWPAJocIP64qzjMZarWgCf-Rp2htAPO9NmE
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.2#sha256-xYLABUrdDk9MUy19uaZ1fS6ZhiLfMK0BJYL-aTdwHBE
+  WorkflowApp: oci://ghcr.io/telorun/blueprints/workflow-app@0.4.0#sha256-gIAI9D2-_oFoipFmPa-hIir6Rod5pxGzZem5Y9DxtQM
+  Cache: oci://ghcr.io/telorun/cache@0.14.0#sha256-UKUrpep1RYOcIrqJDmwkUBF0bWiJ1ENqhK9Amkws4BY
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.0#sha256-PpWQrYiyH4dm-2tAMaHTpTjMzaKgy8Met-ueLP2J4Pg
 targets:
   - !ref app
 ports: { http: { env: PORT, protocol: tcp, default: 8101 } }

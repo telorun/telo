@@ -32,9 +32,7 @@ targets:
 ---
 kind: HttpClient.Request
 metadata: { name: replicaA }
-client:
-  kind: HttpClient.Client
-  baseUrl: http://127.0.0.1:8105
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8105 }
 ---
 kind: Run.Sequence
 metadata: { name: enqueue }
@@ -44,8 +42,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ payload ]
-    properties:
-      payload: { type: string }
+    properties: { payload: { type: string } }
 steps:
   - name: post
     invoke: !ref replicaA
@@ -74,10 +71,7 @@ with:
 targets:
   - !ref workerA
 steps:
-  - name: settle
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 300ms
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 300ms } }
   - name: withSecondReplica
     invoke: !ref secondReplica
 ---
@@ -106,11 +100,7 @@ steps:
       kind: Run.Iteration
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [ tag ]
-          properties:
-            tag: { type: string }
+        schema: { type: object, required: [tag], properties: { tag: { type: string } } }
       collection: !cel "range(6)"
       steps:
         - name: one
@@ -125,10 +115,7 @@ steps:
       payload: !cel "'fail-' + steps.run.result.tag"
   - name: empty
     invoke: !ref replicaA
-    inputs:
-      url: /api/jobs
-      method: POST
-      body: { payload: "" }
+    inputs: { url: /api/jobs, method: POST, body: { payload: "" } }
 
   - name: jobs
     invoke: !ref replicaA
@@ -136,27 +123,19 @@ steps:
   - name: untilSettled
     while: !cel "steps.jobs.result.body.exists(j, j.payload.endsWith(steps.run.result.tag) && j.status == 'pending')"
     do:
-      - name: pause
-        invoke: { kind: Timer.Delay }
-        inputs: { duration: 200ms }
+      - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 200ms } }
       - name: jobs
         invoke: !ref replicaA
         inputs: { url: /api/jobs, method: GET }
 
   - name: other
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8115/api/status
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8115/api/status, method: GET }
   - name: shell
     invoke: !ref replicaA
     inputs: { url: /, method: GET }
   - name: page
     invoke: !ref replicaA
-    inputs:
-      url: /_telo/ui/page
-      method: GET
-      query: { path: / }
+    inputs: { url: /_telo/ui/page, method: GET, query: { path: / } }
   - name: mine
     value: !cel "steps.jobs.result.body.filter(j, j.payload.endsWith(steps.run.result.tag))"
   - name: verify
@@ -165,7 +144,7 @@ steps:
       actual:
         accepted: !cel "steps.bad.result.status"
         answeredWithQueue: !cel "steps.bad.result.leads"
-        page: !cel "steps.page.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, c.fields.map(f, f.label)])"
+        page: !cel "steps.page.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.request.target.path.value, c.fields.map(f, f.label)])"
         pageTitle: !cel "steps.shell.result.status"
         empty: !cel "steps.empty.result.status"
         otherReplica: !cel "steps.other.result.body.me"

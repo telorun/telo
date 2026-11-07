@@ -32,12 +32,12 @@ imports:
       maxAttachmentBytes: 2000
       maxToolResultBytes: 1200
       maxConversationAttachments: 2
-  App: oci://ghcr.io/telorun/app@0.5.1#sha256-A_gkbdHIqYdg93KYHDkjWl7zGnnYBN8dC7TEzMBMUmk
+  App: oci://ghcr.io/telorun/app@0.6.0#sha256-XJ0GMrNIeE7iLiijDjZJatlOmljhvFqwIQwGYXJvMRA
   Stream: ../../../../modules/stream
   Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
   HttpClient: ../../../../modules/http-client
-  Multipart: oci://ghcr.io/telorun/multipart@0.4.1#sha256-6mTAB_8gk-HHIBdn9d8KrqlpGoxwix75_Nt6R2pjBds
+  Multipart: oci://ghcr.io/telorun/multipart@0.5.0#sha256-HYqZbfzXOf-YAU7TMyZEFFDBDxeMdyRAoNf4_lAj-Zo
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
   Blob: oci://ghcr.io/telorun/blob@0.2.1#sha256-K6p6T1WxnjqZ5dPxEhb4ADSj3rkYTICEon5FuAXq76o
   BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.1#sha256-85hERI-03Q6vJqBIn0WHxv1D0pVR4eTXQdaAAqAnBFo

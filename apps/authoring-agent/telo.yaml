@@ -42,7 +42,9 @@ metadata:
 # the published `./chat#sha256-…` to the separate chat artifact, unpinned.
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 # 0.129.0: the hub's `retry:` durations, which 0.128.0 refuses (verified by execution).
-requires: { telo: ">=0.129.0" }
+# 0.131.0: the modules the chat library now imports; 0.129.0 reads their
+# handlers as `{∅}` and rejects the routes' catches (verified by execution).
+requires: { telo: ">=0.131.0" }
 imports:
   Chat:
     source: ./chat
@@ -65,16 +67,17 @@ imports:
       maxCheckpointBytes: !cel "variables.maxCheckpointBytes"
       maxCheckpointFiles: !cel "variables.maxCheckpointFiles"
       maxAttachmentBytes: !cel "variables.maxAttachmentBytes"
-  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
   # `Mcp` and `Run` come from where the chat library takes them, so every
   # module in this graph has one origin. The hub's `retry:` needs the next
   # release; the import sync moves this pin to it.
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.17.1#sha256-LxWVCjnZGCTVBvOppTCDpikWwPK6E1zzEw6c5bXtmOY
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.0#sha256-4Kt7hdp8rXPewhAMWQN1w5b05iQB3KnWhzXMF52lQLM
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
-  Sse: oci://ghcr.io/telorun/sse-codec@0.14.1#sha256-w44c87Kw1Q94mg9JKdLMlDiAZ_PEwzHyM640DRgLqLo
-  Scheduler: oci://ghcr.io/telorun/scheduler@0.11.1#sha256-vMI7JiNJp8lhcYgRIa1MRc4ilB5GC_UXTLaf_6kbpTw
+  Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
+  Stream: oci://ghcr.io/telorun/stream@0.15.0#sha256-wC7CFWTRfkSKCSLQ0oXFGSdyPQRdkYmS7vrha87f8WU
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
   Log: oci://ghcr.io/telorun/log@0.3.1#sha256-FJAHRqUCHHlXRJJxwojW1u6E7z8o-jOuvKJ0rbTlaxs
-  Otlp: oci://ghcr.io/telorun/otlp@0.7.2#sha256-xpBRKlriOfY9fAi2VqhrLTX0B-8gf0YoAsxRO9zs_yc
+  Otlp: oci://ghcr.io/telorun/otlp@0.8.0#sha256-IO4SbkcLNoCVKH89dBQuPJ-u6ZESWWOBeYKM5ELY9WI
 ports: { http: { env: PORT, default: 8080 } }
 # Where the agent keeps its own state: `agent.sqlite`, the turns' checkpoints
 # and the attachments. Outside the workspace, so nothing syncs it and SQLite
@@ -418,7 +421,22 @@ routes:
         headers:
           type: object
           properties: { last-event-id: { type: string, pattern: "^[0-9]+$" } }
-    handler: !ref Chat.turnEvents
+    handler:
+      kind: Telo.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [turnId, fromId]
+          properties: { turnId: { type: string }, fromId: { type: integer, minimum: 0 } }
+      steps:
+        - { name: events, invoke: !ref Chat.turnEvents, inputs: !cel "inputs" }
+        # A frame's id is the record's position, its data the record's `data` in its envelope.
+        - name: frames
+          invoke: { kind: Stream.Map, elementType: !ref Sse.Frame, value: { id: !cel "item.id", data: { data: !cel "item.data" } } }
+          inputs: { input: !cel "steps.events.result.output" }
+      outputs:
+        output: !cel "steps.frames.result.output"
     inputs:
       turnId: !cel "request.params.turnId"
       fromId: !cel >-

@@ -25,9 +25,7 @@ targets:
 ---
 kind: HttpClient.Request
 metadata: { name: call }
-client:
-  kind: HttpClient.Client
-  baseUrl: http://127.0.0.1:8117
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8117 }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -35,8 +33,7 @@ with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8117
+    ports: { http: 8117 }
     variables:
       title: Quarterly sales
       dbFile: !cel "variables.scratchDir.joinPath('report-generator-test-' + string(nowMillis()) + '.db')"
@@ -74,10 +71,7 @@ steps:
     inputs: { url: /api/reports/recent, method: POST }
   - name: uiPage
     invoke: !ref call
-    inputs:
-      url: /_telo/ui/page
-      method: GET
-      query: { path: / }
+    inputs: { url: /_telo/ui/page, method: GET, query: { path: / } }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
@@ -100,7 +94,7 @@ steps:
         answered: !cel "steps.build.result.body.reports.map(r, r.name == steps.build.result.body.name)"
         recent: !cel "steps.recent.result.body.reports == steps.build.result.body.reports"
         uiTitle: !cel "steps.uiPage.result.body.title"
-        uiActions: !cel "steps.uiPage.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, c.result.columns.map(col, col.header)])"
+        uiActions: !cel "steps.uiPage.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.request.target.path.value, c.result.columns.map(col, col.header)])"
       expected:
         answered: [ true, false ]
         recent: true

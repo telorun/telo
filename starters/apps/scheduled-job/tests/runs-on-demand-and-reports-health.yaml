@@ -34,8 +34,7 @@ with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8046
+    ports: { http: 8046 }
     variables:
       # The schedule is switched off, so every run in the history is one this
       # test triggered.
@@ -51,15 +50,9 @@ steps:
       url: http://127.0.0.1:8046/api/healthz
       method: GET
   - name: run
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8046/api/run
-      method: POST
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8046/api/run, method: POST }
   - name: runs
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8046/api/runs
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8046/api/runs, method: GET }
   - name: page
     invoke:
       kind: HttpClient.Request
@@ -84,7 +77,7 @@ steps:
         # The run answers with the history including itself, which is what the
         # page draws under its button.
         answered: !cel "steps.run.result.body.runs.map(r, r.outcome)"
-        page: !cel "steps.page.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, size(c.fields)])"
+        page: !cel "steps.page.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.request.target.path.value, size(c.fields)])"
         again: !cel "steps.again.result.body.runs.map(r, r.outcome)"
       expected:
         healthStatus: 200
@@ -106,8 +99,7 @@ with:
   - kind: App.Instance
     metadata: { name: broken }
     source: ../telo.yaml
-    ports:
-      http: 8056
+    ports: { http: 8056 }
     variables:
       scheduleEnabled: false
       scanPath: !cel "variables.scratchDir.joinPath('no-such-directory-' + string(nowMillis()))"
@@ -116,15 +108,9 @@ targets:
   - !ref broken
 steps:
   - name: run
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8056/api/run
-      method: POST
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8056/api/run, method: POST }
   - name: runs
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8056/api/runs
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8056/api/runs, method: GET }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:

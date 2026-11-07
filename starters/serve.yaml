@@ -18,7 +18,7 @@ requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   telo: ">=0.121.0"
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
 targets:
   - !ref server
 ports:

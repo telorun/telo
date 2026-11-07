@@ -40,15 +40,15 @@ lang: en
 # `http-server`, `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
-  Ui: oci://ghcr.io/telorun/ui@0.9.0#sha256-R22o2ZJUQCg7hpKkZiJUjvwj6ETOGDIdfyBRiRKYuPA
-  UiReact: oci://ghcr.io/telorun/ui-react@0.10.0#sha256-0Y70n6MqHB-Po1mOFQTlucCE4t1ynkL3BS9aW2lnGEs
-  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
-  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.16.0#sha256-L1a9LIiNvlaT5WFxG_9u_bXYnnO_kDMumyALAG91Pho
-  Lease: oci://ghcr.io/telorun/lease@0.14.1#sha256-o4Zlp_Xri8t5dCoIoJd929VwMyK6OQaJFMkG9l8IthE
-  Schedule: oci://ghcr.io/telorun/scheduler@0.11.1#sha256-vMI7JiNJp8lhcYgRIa1MRc4ilB5GC_UXTLaf_6kbpTw
-  Timer: oci://ghcr.io/telorun/timer@0.9.1#sha256-F6Tp_apDFGTnVzHXb_Jx45vtLkxZWDUCUasqE9ASBKk
+  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
+  Ui: oci://ghcr.io/telorun/ui@0.10.0#sha256-s8kb_jL0N5qNLqp9GDKFfgJ7K1IUQ5bf3Mz6h1sjS_k
+  UiReact: oci://ghcr.io/telorun/ui-react@0.11.0#sha256-Y0BOJSKmVUeEfRBkF6aC1pgBrGpaWQNPdlpf6C6l2FQ
+  Sql: oci://ghcr.io/telorun/sql@0.31.0#sha256-QamrEtwX41Cim9gVjoKuuKQBGGrb19C0r63im-rRcmY
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.0#sha256-2bFuhkRBtPY9mcybUoFc1l4D009TOlYuW5zCJeKbrMU
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.0#sha256-qVIshPesmWEj2JuH0YZ06dkC7kWKQnSWKbxAFBMHuXc
+  Lease: oci://ghcr.io/telorun/lease@0.15.0#sha256-VExKGaoqtHJkzUMPOmgREt1lmyHdscgu3cWxw7UE1b0
+  Schedule: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
   Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
   Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
 targets:
@@ -230,14 +230,14 @@ steps:
 kind: Lease.Critical
 metadata: { name: drainExclusively }
 store: !ref leases
-ttl: !cel "variables.leaseTtl"
+ttl: !cel "duration(variables.leaseTtl)"
 invoke: !ref drainQueue
 ---
 # What every replica fires. Losing the lease is not an error: `acquired: false`
 # is the normal outcome for every replica but one, and that tick does nothing.
 kind: Schedule.Interval
 metadata: { name: worker }
-every: !cel "variables.tickEvery"
+every: !cel "duration(variables.tickEvery)"
 invoke: !ref drainExclusively
 inputs:
   key: drain-queue
@@ -402,7 +402,7 @@ pages:
           kind: Ui.Action
           inputModel: !ref NewJob
           outputModel: !ref Queue
-          source: { path: /api/jobs }
+          request: { target: { path: /api/jobs } }
           label: Enqueue
           result:
             type: list
@@ -423,7 +423,7 @@ pages:
             kind: Telo.JsonSchema
             schema: { type: object, additionalProperties: false, properties: {} }
           outputModel: !ref Queue
-          source: { path: /api/jobs/recent }
+          request: { target: { path: /api/jobs/recent } }
           label: Refresh
           result:
             type: list
