@@ -375,12 +375,14 @@ export class CelJudge {
         }
 
         // Nothing in the call graph starts a body's entries.
-        if (part !== "site" && reported && !sibling && !w.runReachable.has(read.name)) {
+        // A call-graph edge names an imported instance as its `!ref` does.
+        const startName = read.alias ? `${read.alias}.${read.name}` : read.name;
+        if (part !== "site" && reported && !sibling && !w.runReachable.has(startName)) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "OBSERVED_STATE_NEVER_RUN",
             source: SOURCE,
-            message: `${m.kind}/${resource.name}: '${read.name}' reports '${read.field ?? OBSERVED_STATE_KEY}' only while it is running, and nothing starts it. Add '!ref ${read.name}' to a targets: list, or invoke it from a step.`,
+            message: `${m.kind}/${resource.name}: '${startName}' reports '${read.field ?? OBSERVED_STATE_KEY}' only while it is running, and nothing starts it. Add '!ref ${startName}' to a targets: list, or invoke it from a step.`,
             data: { resource, filePath, path },
           });
         }

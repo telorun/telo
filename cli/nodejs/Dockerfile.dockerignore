@@ -38,6 +38,8 @@
 !message-format/cldr
 !packages/editor-protocol
 !pnpm-*
+# `patchedDependencies` in pnpm-workspace.yaml; `pnpm fetch` refuses without them.
+!patches
 !tsconfig.base.json
 
 Dockerfile*

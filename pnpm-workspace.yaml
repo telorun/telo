@@ -61,3 +61,10 @@ catalog:
 # (`transform`) is unchanged across it, and the whole suite is what verifies that.
 overrides:
   esbuild: ^0.25.12
+
+# A semver range admits a prerelease only under `includePrerelease`, which
+# changesets never passes: in prerelease mode a `"*"` peer on `@telorun/sdk` reads
+# as left behind, the peer dependent takes a major, and the fixed line follows it.
+patchedDependencies:
+  '@changesets/apply-release-plan@7.0.14': patches/@changesets__apply-release-plan@7.0.14.patch
+  '@changesets/assemble-release-plan@6.0.9': patches/@changesets__assemble-release-plan@6.0.9.patch
