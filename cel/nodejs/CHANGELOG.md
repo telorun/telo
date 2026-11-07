@@ -1,5 +1,7 @@
 # @telorun/cel
 
+## 0.132.0
+
 ## 0.131.0
 
 ### Minor Changes
