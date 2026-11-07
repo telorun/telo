@@ -15,8 +15,9 @@ metadata:
   name: HubSchema
   description: >-
     The hub's relational schema: registered modules, their tracked versions, the
-    resource kinds and exported instances indexed per version, and the ingest
-    control plane that decides which versions are due.
+    resource kinds and exported instances indexed per version, the ingest
+    control plane that decides which versions are due, and the publishers' API
+    keys.
 lifecycle: shared
 requires:
   # `resources:` inputs and `lifecycle:` on a library.
@@ -25,11 +26,28 @@ requires:
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.31.0#sha256-QamrEtwX41Cim9gVjoKuuKQBGGrb19C0r63im-rRcmY
   Postgres: oci://ghcr.io/telorun/postgres@0.12.0#sha256-Ki7STbcpZFbPAbi_P-0iSfn4QZp0uf9Zf4NEMiujT1A
+  Keys: oci://ghcr.io/telorun/api-key-postgres@0.2.0#sha256-dkuUmWeXbBDEbl5LqDcypbGEax-goy9DfAXHB7ean24
 resources:
   connection:
     kind: Postgres.Connection
     description: The database this schema is applied to and these statements run on.
-exports: { resources: [migrations, claimVersion, completeVersion, failVersion] }
+exports: { resources: [migrations, claimVersion, completeVersion, failVersion, publisherKeys] }
+---
+# The API keys publishers present to `/register` to skip its per-address limit.
+# Issued, listed and revoked by `admin.yaml`; only each key's digest is stored.
+kind: Keys.Table
+metadata: { name: apiKeys }
+table: api_keys
+---
+kind: Keys.Store
+metadata: { name: publisherKeys }
+connection: !ref connection
+schema: !ref migrations
+table: !ref apiKeys
+name: publishers
+prefix: telohub
+scopes: [register:unlimited]
+retention: 720h
 ---
 kind: Sql.Query
 metadata: { name: query }
@@ -42,6 +60,7 @@ connection: !ref connection
 kind: Postgres.Schema
 metadata: { name: migrations }
 connection: !ref connection
+tables: [!ref apiKeys]
 migrations:
   "20260716120000_CreateDiscoverySchema":
     statements:

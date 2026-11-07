@@ -9,6 +9,7 @@ import {
   type ViewModelChangedParams,
 } from "@telorun/editor-protocol";
 import {
+  LSPErrorCodes,
   ResponseError,
   createMessageConnection,
   type CancellationToken,
@@ -713,12 +714,19 @@ export class LanguageRouter {
     void this.reconcile();
   }
 
-  /** Stop an engine nothing uses any more. */
+  /** Stop an engine nothing uses any more. A request still pending on it is
+   *  rejected as `ContentModified`: its document moved to another engine or
+   *  closed, so the editor drops the stale answer and asks again. */
   private stop(slot: EngineSlot): void {
     if (slot.ended) return;
     slot.ended = "stopped";
     if (slot.identity !== undefined) this.engines.delete(slot.identity);
-    slot.end(new EngineFailedError(`the ${slotName(slot)} engine was stopped: no open document uses it.`));
+    slot.end(
+      new ResponseError(
+        LSPErrorCodes.ContentModified,
+        `the ${slotName(slot)} engine was stopped: no open document uses it.`,
+      ),
+    );
     void slot.ready.then(
       (connection) => {
         connection.dispose();

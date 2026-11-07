@@ -14,6 +14,7 @@ import {
   residualEntrySchema,
   withLiveValuesSkipped,
   membersSlotOf,
+  decodePlainLiterals,
 } from "@telorun/analyzer";
 import type {
   ResourceContext,
@@ -25,7 +26,13 @@ import { RuntimeError } from "@telorun/sdk";
 import { parseApplicationArguments } from "./application-arguments.js";
 import { create as createJsonSchemaType } from "./controllers/type/json-schema-controller.js";
 import { decodeHostValue, hostEntryMismatches, hostEntryMismatchText } from "./host-paths.js";
-import { acceptsBy, membersEntryText, membersRefusalEntry, settleMembersValue } from "./members-values.js";
+import {
+  acceptsBy,
+  copyPlainContainers,
+  membersEntryText,
+  membersRefusalEntry,
+  settleMembersValue,
+} from "./members-values.js";
 import { needRefusalError } from "./need-refusals.js";
 import { SchemaValidator } from "./schema-validator.js";
 import { publicUrlsAwaitingPorts, withDerivedPublicUrls } from "./public-urls.js";
@@ -578,7 +585,7 @@ function resolveSuppliedNeed(
     if (supply[name] === undefined || supply[name] === null) continue;
     const schema = shape?.fields[name] ?? {};
     const source = `the value ${supplier} supplied`;
-    const value = supply[name];
+    const value = decodeSupplied(supply[name], schema, validator);
     // None of these quotes the value, so a sensitive field is never printed.
     const problem =
       membersEnvRefusal(value, schema, validator) ?? validateResidual(value, schema, validator);
@@ -938,11 +945,11 @@ function resolveBlock(
         out[name] = null;
         continue;
       }
+      const value = decodeSupplied(supplied[name], residual, validator);
       const validation =
-        membersEnvRefusal(supplied[name], residual, validator) ??
-        validateResidual(supplied[name], residual, validator);
+        membersEnvRefusal(value, residual, validator) ?? validateResidual(value, residual, validator);
       if (validation) findings.fail(`${name}: ${validation}`);
-      else out[name] = supplied[name];
+      else out[name] = value;
       continue;
     }
     const input = (refusal?: string) => entryInput(blockName, name, entry, residual, args, refusal);
@@ -1147,6 +1154,24 @@ function decodeFromOutside(
   return decodeHostValue(
     value,
     residual as Record<string, any>,
+    (ref) => validator.getSchema(ref) as Record<string, any> | undefined,
+  );
+}
+
+/**
+ * A value a parent supplied by name, each value-type leaf it holds as its plain
+ * encoding built (`postgres://…` into a `Telo.Url`) on a copy, so the supplier's
+ * own value is left as it is. Read like environment text, but never coerced and
+ * never anchored: the supplier's value is a value, not text.
+ */
+function decodeSupplied(
+  value: unknown,
+  schema: Record<string, unknown>,
+  validator: SchemaValidator,
+): unknown {
+  return decodePlainLiterals(
+    copyPlainContainers(value),
+    schema as Record<string, any>,
     (ref) => validator.getSchema(ref) as Record<string, any> | undefined,
   );
 }

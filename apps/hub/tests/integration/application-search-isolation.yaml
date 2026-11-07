@@ -67,26 +67,11 @@ imports:
       embedQuery: !ref embedQuery
       vectorMatch: !ref vectorMatch
 variables:
-  dbHost:
-    env: DB_HOST
-    type: string
-    default: localhost
-  dbPort:
-    env: DB_PORT
-    type: integer
-    default: 5432
-  dbUser:
-    env: DB_USER
-    type: string
-    default: postgres
-  dbPassword:
-    env: DB_PASSWORD
-    type: string
-    default: postgres
-  dbName:
-    env: DB_NAME
-    type: string
-    default: postgres
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
 targets:
   - !ref Schema.migrations
   - !ref seedFiller
@@ -94,8 +79,7 @@ targets:
   - !ref labelVote
 ---
 kind: Postgres.Connection
-metadata:
-  name: db
+metadata: { name: db }
 access:
   kind: Postgres.DatabaseAccess
   fields:
@@ -110,13 +94,11 @@ access:
 # The origin reads run in the fixtures directory, so a local ref such as
 # `./isolation-lib` is read from there.
 kind: Shell.LocalHost
-metadata:
-  name: localShell
+metadata: { name: localShell }
 cwd: !module-path __fixtures__
 ---
 kind: S3.Put
-metadata:
-  name: putManifest
+metadata: { name: putManifest }
 bucketRef:
   kind: S3.Bucket
   bucketName: fixture-bucket
@@ -126,46 +108,37 @@ bucketRef:
   secretAccessKey: fixture
 ---
 kind: OpenAI.EmbeddingModel
-metadata:
-  name: standInEmbedder
+metadata: { name: standInEmbedder }
 model: stand-in
 request:
   kind: HttpClient.Request
-  client:
-    kind: HttpClient.Client
-    baseUrl: http://127.0.0.1:8989
+  client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8989 }
 ---
 kind: Embedding.Passage
-metadata:
-  name: embedPassage
+metadata: { name: embedPassage }
 model: !ref standInEmbedder
 ---
 kind: Embedding.Query
-metadata:
-  name: embedQuery
+metadata: { name: embedQuery }
 model: !ref standInEmbedder
 ---
 kind: VectorStorePgvector.Store
-metadata:
-  name: vectorIndex
+metadata: { name: vectorIndex }
 connection: !ref db
 dimensions: 3
 metric: cosine
 table: isolation_vectors
 ---
 kind: VectorStore.Record
-metadata:
-  name: vectorUpsert
+metadata: { name: vectorUpsert }
 store: !ref vectorIndex
 ---
 kind: VectorStore.Removal
-metadata:
-  name: vectorRemove
+metadata: { name: vectorRemove }
 store: !ref vectorIndex
 ---
 kind: VectorStore.Match
-metadata:
-  name: vectorMatch
+metadata: { name: vectorMatch }
 store: !ref vectorIndex
 topK: 50
 ---
@@ -174,8 +147,7 @@ topK: 50
 # further from it, each at a distance of its own, so the application is the
 # nearest neighbour of the query.
 kind: Http.Api
-metadata:
-  name: standInApi
+metadata: { name: standInApi }
 routes:
   - request:
       path: /embeddings
@@ -183,8 +155,7 @@ routes:
       schema:
         body:
           type: object
-          properties:
-            input: { type: array, items: { type: string } }
+          properties: { input: { type: array, items: { type: string } } }
           required: [input]
     handler:
       kind: Run.Value
@@ -192,8 +163,7 @@ routes:
         kind: Telo.JsonSchema
         schema:
           type: object
-          properties:
-            texts: { type: array, items: { type: string } }
+          properties: { texts: { type: array, items: { type: string } } }
           required: [texts]
       value:
         data: !cel >-
@@ -211,37 +181,28 @@ routes:
   - request:
       path: /fixture-bucket/*
       method: PUT
-      schema:
-        body:
-          x-telo-type: { name: Telo.Stream }
-    handler:
-      kind: Run.Value
-      value: {}
+      schema: { body: { x-telo-type: { name: Telo.Stream } } }
+    handler: { kind: Run.Value, value: {} }
     returns:
-      - status: 200
+      - { status: 200 }
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref db
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref db
 ---
 # Ingests one fixture module, seeded as a `./` local ref, and waits until its
 # rows and its vectors are written.
 kind: Run.Sequence
-metadata:
-  name: ingestFixture
+metadata: { name: ingestFixture }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      moduleId: { type: string }
-      ref: { type: string }
+    properties: { moduleId: { type: string }, ref: { type: string } }
     required: [moduleId, ref]
 steps:
   - name: seedModule
@@ -286,10 +247,7 @@ steps:
       maxIterations: 60
       condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
       steps:
-        - name: wait
-          invoke: { kind: Timer.Delay }
-          inputs:
-            duration: 1s
+        - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
         - name: state
           invoke: !ref query
           inputs:
@@ -319,17 +277,14 @@ outputs:
 # the load and rebuilt once, by the store in `defaultSearchUnmoved`'s scope —
 # maintaining it row by row makes the load minutes long.
 kind: Run.Sequence
-metadata:
-  name: seedFiller
+metadata: { name: seedFiller }
 steps:
   - name: dropIndex
     invoke: !ref exec
-    inputs:
-      sql: DROP INDEX IF EXISTS isolation_vectors_embedding_idx
+    inputs: { sql: DROP INDEX IF EXISTS isolation_vectors_embedding_idx }
   - name: empty
     invoke: !ref exec
-    inputs:
-      sql: TRUNCATE isolation_vectors
+    inputs: { sql: TRUNCATE isolation_vectors }
   - name: load
     invoke: !ref exec
     inputs:
@@ -341,8 +296,7 @@ steps:
 ---
 # What a default search returns for the query, restricted to this test's modules.
 kind: Run.Sequence
-metadata:
-  name: defaultSearch
+metadata: { name: defaultSearch }
 steps:
   - name: resources
     invoke: !ref Search.searchResources
@@ -370,17 +324,13 @@ outputs:
                'matched': h.matchedKinds.map(k, [k.name, k.score])})
 ---
 kind: Run.Sequence
-metadata:
-  name: defaultSearchUnmoved
+metadata: { name: defaultSearchUnmoved }
 with:
   - kind: Http.Server
     metadata: { name: StandIns }
-    listen:
-      address: 127.0.0.1
-      port: 8989
+    listen: { address: 127.0.0.1, port: 8989 }
     contentTypeParsers:
-      - contentType: text/yaml
-        stream: true
+      - { contentType: text/yaml, stream: true }
     mounts:
       - path: /
         mount: !ref standInApi
@@ -402,21 +352,15 @@ steps:
   # vector would already be in place before this run's application is ingested.
   - name: resetVectors
     invoke: !ref vectorRemove
-    inputs:
-      metadataFilter:
-        module_id: { $in: ["9321", "9322"] }
+    inputs: { metadataFilter: { module_id: { $in: ["9321", "9322"] } } }
   - name: library
     invoke: !ref ingestFixture
-    inputs:
-      moduleId: "9321"
-      ref: ./isolation-lib
+    inputs: { moduleId: "9321", ref: ./isolation-lib }
   - name: before
     invoke: !ref defaultSearch
   - name: application
     invoke: !ref ingestFixture
-    inputs:
-      moduleId: "9322"
-      ref: ./isolation-app
+    inputs: { moduleId: "9322", ref: ./isolation-app }
   # 70 more applications, each nearer to the query than every kind.
   - name: nearbyModules
     invoke: !ref exec
@@ -445,8 +389,7 @@ steps:
         FROM generate_series(1, 70) AS i
   - name: analyze
     invoke: !ref exec
-    inputs:
-      sql: ANALYZE isolation_vectors
+    inputs: { sql: ANALYZE isolation_vectors }
   # The statement a default search's vector lookup runs, with the query inlined.
   - name: plan
     invoke: !ref query
@@ -494,20 +437,17 @@ steps:
         firstHit: [application, QuillwortApp]
         nearbyReturned: true
         beforeFound: [true, true]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # One library labels the category `Quillwort`, two applications `QUILLWORT`. By
 # default the applications do not vote, so the library's label stands; asked
 # for, the applications outvote it.
 kind: Run.Sequence
-metadata:
-  name: labelVote
+metadata: { name: labelVote }
 steps:
   - name: reset
     invoke: !ref exec
-    inputs:
-      sql: DELETE FROM modules WHERE id IN (9331, 9332, 9333)
+    inputs: { sql: "DELETE FROM modules WHERE id IN (9331, 9332, 9333)" }
   - name: seedModules
     invoke: !ref exec
     inputs:
@@ -539,14 +479,10 @@ steps:
                 ARRAY['quillwort'], ARRAY['Quillwort'])
   - name: byDefault
     invoke: !ref Search.categoryVocabulary
-    inputs:
-      category: ""
-      entry: [kind, instance]
+    inputs: { category: "", entry: [kind, instance] }
   - name: withApplications
     invoke: !ref Search.categoryVocabulary
-    inputs:
-      category: ""
-      entry: [kind, instance, application]
+    inputs: { category: "", entry: [kind, instance, application] }
   - name: assert
     inputs:
       actual:
@@ -557,5 +493,4 @@ steps:
           - { category: quillwort, label: Quillwort, modules: 1, kinds: 1, selected: false }
         withApplications:
           - { category: quillwort, label: QUILLWORT, modules: 3, kinds: 1, selected: false }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

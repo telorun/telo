@@ -23,33 +23,17 @@ imports:
     resources:
       connection: !ref db
 variables:
-  dbHost:
-    env: DB_HOST
-    type: string
-    default: localhost
-  dbPort:
-    env: DB_PORT
-    type: integer
-    default: 5432
-  dbUser:
-    env: DB_USER
-    type: string
-    default: postgres
-  dbPassword:
-    env: DB_PASSWORD
-    type: string
-    default: postgres
-  dbName:
-    env: DB_NAME
-    type: string
-    default: postgres
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
 targets:
   - !ref Schema.migrations
   - !ref test
 ---
 kind: Postgres.Connection
-metadata:
-  name: db
+metadata: { name: db }
 access:
   kind: Postgres.DatabaseAccess
   fields:
@@ -62,13 +46,11 @@ access:
       path: !cel "'/' + variables.dbName"
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref db
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 steps:
   - name: record
     invoke: !ref query
@@ -103,5 +85,4 @@ steps:
           remote: oci://ghcr.io/telorun/tesseract-model
           remoteimporter: ../model
           builtin: ""
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

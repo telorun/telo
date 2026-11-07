@@ -74,11 +74,7 @@ steps:
         type: object
         properties:
           status: { const: 200 }
-          body:
-            type: object
-            properties:
-              status: { const: ok }
-            required: [status]
+          body: { type: object, properties: { status: { const: ok } }, required: [status] }
         required: [status, body]
 ---
 # The seeded timer module defines Timer.Delay; an intent-shaped lexical
@@ -133,8 +129,7 @@ steps:
                     kind: { const: Delay }
                     module:
                       type: object
-                      properties:
-                        ref: { const: "oci://ghcr.io/telorun/timer" }
+                      properties: { ref: { const: "oci://ghcr.io/telorun/timer" } }
                       required: [ref]
                   required: [kind, module]
             required: [query, hits]
@@ -283,8 +278,7 @@ steps:
         status: !cel "steps.hit.result.status"
         registered: !cel "steps.hit.result.body.refs.exists(r, r.ref == 'oci://ghcr.io/telorun/telo')"
       expected: { status: 200, registered: true }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: moduleVersions_ListsSeededVersions }
@@ -360,8 +354,7 @@ steps:
           status: { const: 404 }
           body:
             type: object
-            properties:
-              error: { const: Module not tracked }
+            properties: { error: { const: Module not tracked } }
             required: [error]
         required: [status, body]
 ---
@@ -401,8 +394,7 @@ steps:
                     kind: { const: Delay }
                     module:
                       type: object
-                      properties:
-                        ref: { const: "oci://ghcr.io/telorun/timer" }
+                      properties: { ref: { const: "oci://ghcr.io/telorun/timer" } }
                       required: [ref]
                   required: [kind, module]
             required: [hits]
@@ -494,15 +486,9 @@ steps:
                           type: array
                           items:
                             type: object
-                            properties:
-                              slug: { type: string }
-                              label: { type: string }
+                            properties: { slug: { type: string }, label: { type: string } }
                             required: [slug, label]
-                          contains:
-                            type: object
-                            properties:
-                              slug: { const: scheduling }
-                            required: [slug]
+                          contains: { type: object, properties: { slug: { const: scheduling } }, required: [slug] }
                       required: [ref, version, categories]
                   required: [module]
             required: [query, category, total, hits]
@@ -533,9 +519,7 @@ steps:
             properties:
               extends:
                 type: object
-                properties:
-                  ref: { const: "oci://ghcr.io/telorun/kv-store" }
-                  kind: { const: Store }
+                properties: { ref: { const: "oci://ghcr.io/telorun/kv-store" }, kind: { const: Store } }
                 required: [ref, kind]
               # The seeded redis and memory backends both `extends` this
               # abstract from their own modules, which is the whole point of
@@ -546,21 +530,16 @@ steps:
                 minItems: 2
                 items:
                   type: object
-                  properties:
-                    ref: { type: string }
-                    kind: { const: Store }
-                    capability: { type: string }
+                  properties: { ref: { type: string }, kind: { const: Store }, capability: { type: string } }
                   required: [ref, kind, capability]
                 allOf:
                   - contains:
                       type: object
-                      properties:
-                        ref: { const: "oci://ghcr.io/telorun/kv-store-redis" }
+                      properties: { ref: { const: "oci://ghcr.io/telorun/kv-store-redis" } }
                       required: [ref]
                   - contains:
                       type: object
-                      properties:
-                        ref: { const: "oci://ghcr.io/telorun/kv-store-memory" }
+                      properties: { ref: { const: "oci://ghcr.io/telorun/kv-store-memory" } }
                       required: [ref]
             required: [extends, implementations]
         required: [status, body]
@@ -609,11 +588,7 @@ steps:
                   transport: { const: oci }
                   # Present as a fixed shape even when the module declares none;
                   # a typed client must never have to probe for these.
-                  deprecated:
-                    type: object
-                    properties:
-                      reason: { type: string }
-                    required: [reason]
+                  deprecated: { type: object, properties: { reason: { type: string } }, required: [reason] }
                   runtime:
                     type: object
                     properties:
@@ -634,17 +609,12 @@ steps:
                     description: { type: string }
                     extends:
                       type: object
-                      properties:
-                        kind: { type: string }
-                        ref: { type: string }
+                      properties: { kind: { type: string }, ref: { type: string } }
                       required: [kind, ref]
                     runtime: { type: object }
                     deprecated: { type: object }
                   required: [kind, capability, description, extends, runtime, deprecated]
-              versions:
-                type: array
-                minItems: 1
-                items: { type: string, minLength: 1 }
+              versions: { type: array, minItems: 1, items: { type: string, minLength: 1 } }
               # A library declares no application contract.
               application: { const: null }
             required: [module, kinds, exportedResources, versions, application]
@@ -664,12 +634,8 @@ steps:
   - name: assert
     inputs:
       actual: !cel "{'status': steps.hit.result.status, 'body': steps.hit.result.body}"
-      expected:
-        status: 404
-        body:
-          error: Module not tracked
-    invoke:
-      kind: Assert.Equals
+      expected: { status: 404, body: { error: Module not tracked } }
+    invoke: { kind: Assert.Equals }
 ---
 # A tracked ref at a version that was never published takes the same 404 path,
 # rather than falling back to the latest version and quietly answering a
@@ -687,8 +653,7 @@ steps:
     inputs:
       actual: !cel "steps.hit.result.status"
       expected: 404
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The runtime filter is an enum, so a wrong value is an error rather than a
 # near-empty result set. Without the enum an unrecognized value matches only
@@ -708,8 +673,7 @@ steps:
     inputs:
       actual: !cel "steps.hit.result.status"
       expected: 400
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The accepted value returns the ordinary 200 shape. Deliberately not asserting
 # non-empty hits: the hub container tracks with the `telo` its base image ships,
@@ -737,9 +701,7 @@ steps:
           status: { const: 200 }
           body:
             type: object
-            properties:
-              runtime: { const: nodejs }
-              hits: { type: array }
+            properties: { runtime: { const: nodejs }, hits: { type: array } }
             required: [runtime, hits]
         required: [status, body]
 ---
@@ -765,8 +727,7 @@ steps:
           error: >-
             the hub does not index an application's runtime reach — it depends on
             its whole import closure
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The category facet is open and author-declared, so it cannot be an enum the way
 # `runtime` is — the guard is a lookup against the declared slugs instead. It has
@@ -785,8 +746,7 @@ steps:
     inputs:
       actual: !cel "steps.hit.result.status"
       expected: 400
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # A KNOWN category that selects nothing for this query re-runs the search without
 # it and says so, rather than returning the empty set.
@@ -813,10 +773,7 @@ steps:
         status: !cel "steps.hit.result.status"
         dropped: !cel "steps.hit.result.body.categoryFilterDropped"
         recovered: !cel "size(steps.hit.result.body.hits) > 0"
-      expected:
-        status: 200
-        dropped: true
-        recovered: true
+      expected: { status: 200, dropped: true, recovered: true }
     invoke: { kind: Assert.Equals }
 ---
 # The facet rides on EVERY response, not just /categories: it is what makes an
@@ -876,8 +833,7 @@ steps:
     inputs:
       actual: !cel "steps.hit.result.status"
       expected: 400
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # GET /modules lists exactly the refs GET /module answers 200 for — local refs
 # and tesseract-lang packs included, since both routes read one predicate. Only
@@ -886,36 +842,16 @@ kind: Run.Sequence
 metadata: { name: modules_ListsExactlyTheRefsModuleAnswers }
 steps:
   - name: seeded
-    value:
-      - oci://ghcr.io/telorun/kv-store
-      - oci://ghcr.io/telorun/kv-store-redis
-      - oci://ghcr.io/telorun/kv-store-memory
-      - oci://ghcr.io/telorun/timer
-      - oci://ghcr.io/telorun/scheduler
-      - oci://ghcr.io/telorun/run
-      - ./modules/ocr
-      - ./modules/tesseract-model
-      - ./modules/tesseract
-      - ./modules/tesseract-lang/pol
-      - ./modules/tesseract-lang/deu
-      - ./modules/tesseract-lang/fra
-      - oci://ghcr.io/telorun/console
-      - ./apps/hub/tests/e2e/__fixtures__/quoted-kinds
+    value: [oci://ghcr.io/telorun/kv-store, oci://ghcr.io/telorun/kv-store-redis, oci://ghcr.io/telorun/kv-store-memory, oci://ghcr.io/telorun/timer, oci://ghcr.io/telorun/scheduler, oci://ghcr.io/telorun/run, ./modules/ocr, ./modules/tesseract-model, ./modules/tesseract, ./modules/tesseract-lang/pol, ./modules/tesseract-lang/deu, ./modules/tesseract-lang/fra, oci://ghcr.io/telorun/console, ./apps/hub/tests/e2e/__fixtures__/quoted-kinds]
   - name: list
-    invoke:
-      kind: HttpClient.Request
-      url: http://localhost:8040/modules
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://localhost:8040/modules, method: GET }
   - name: probe
     invoke:
       kind: Run.Projection
       collection: !cel "inputs.refs"
       steps:
         - name: detail
-          invoke:
-            kind: HttpClient.Request
-            url: http://localhost:8040/module
-            method: GET
+          invoke: { kind: HttpClient.Request, url: http://localhost:8040/module, method: GET }
           inputs:
             query:
               ref: !cel "string(item)"
@@ -963,10 +899,7 @@ kind: Run.Sequence
 metadata: { name: modules_PagesChainByNext }
 steps:
   - name: full
-    invoke:
-      kind: HttpClient.Request
-      url: http://localhost:8040/modules
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://localhost:8040/modules, method: GET }
   - name: walk
     invoke:
       kind: Run.Loop
@@ -976,10 +909,7 @@ steps:
         - name: cursor
           value: !cel "previous == null ? 0 : previous.page.result.body.next"
         - name: page
-          invoke:
-            kind: HttpClient.Request
-            url: http://localhost:8040/modules
-            method: GET
+          invoke: { kind: HttpClient.Request, url: http://localhost:8040/modules, method: GET }
           inputs:
             query:
               after: !cel "string(steps.cursor.result)"
@@ -1033,10 +963,7 @@ kind: Run.Sequence
 metadata: { name: publishers_ListsTheSeededPublishers }
 steps:
   - name: hit
-    invoke:
-      kind: HttpClient.Request
-      url: http://localhost:8040/publishers
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://localhost:8040/publishers, method: GET }
   - name: assert
     inputs:
       actual: !cel >-
@@ -1044,8 +971,7 @@ steps:
          'telorun': steps.hit.result.body.publishers.exists(p, p.publisher == 'ghcr.io/telorun' && p.modules > 0),
          'local': steps.hit.result.body.publishers.exists(p, p.publisher == 'local' && p.modules > 0)}
       expected: { status: 200, telorun: true, local: true }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The filter selects exactly the modules reporting that publisher, and the
 # response echoes it — what tells a caller the filter was applied rather than
@@ -1066,8 +992,7 @@ steps:
          'onlyLocal': steps.hit.result.body.hits.all(h, h.module.publisher == 'local'),
          'some': size(steps.hit.result.body.hits) > 0}
       expected: { status: 200, echo: local, onlyLocal: true, some: true }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # `sort=name` orders by the declared module name, case-insensitively, and is
 # echoed. Every adjacent pair is compared, so the assertion holds for whichever
@@ -1091,8 +1016,7 @@ steps:
          'ordered': range(size(steps.names.result) - 1).all(i,
            steps.names.result[i] <= steps.names.result[i + 1])}
       expected: { status: 200, echo: name, several: true, ordered: true }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # `sort=recent` lists the module the hub tracked last first. `trackedAt` is one
 # fixed-width UTC format, so comparing it as text compares the instants.
@@ -1115,8 +1039,7 @@ steps:
          'newestFirst': range(size(steps.tracked.result) - 1).all(i,
            steps.tracked.result[i] >= steps.tracked.result[i + 1])}
       expected: { status: 200, echo: recent, several: true, newestFirst: true }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # `contractOnly=exclude` is applied by the hub, before the page is cut: the
 # contract-only `kv-store` is gone from the hits AND from `total`, `hidden` says
@@ -1158,8 +1081,7 @@ steps:
         someHidden: true
         addsUp: true
         nothingHiddenByDefault: { deprecated: 0, contractOnly: 0 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # A page past the last row has no hits and still reports how many are listed.
 kind: Run.Sequence
@@ -1183,8 +1105,7 @@ steps:
          'some': steps.first.result.body.total > 0,
          'sameTotal': steps.past.result.body.total == steps.first.result.body.total}
       expected: { status: 200, hits: 0, some: true, sameTotal: true }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The publisher filter on the kind-first route: every hit is that publisher's,
 # and the response echoes it.
@@ -1210,8 +1131,7 @@ steps:
          'onlyTheirs': steps.hit.result.body.hits.all(h, h.module.publisher == 'ghcr.io/telorun'),
          'unknownSelectsNothing': size(steps.none.result.body.hits)}
       expected: { status: 200, echo: ghcr.io/telorun, some: true, onlyTheirs: true, unknownSelectsNothing: 0 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # An order outside the enum is a bad argument, not relevance in disguise.
 kind: Run.Sequence
@@ -1227,8 +1147,7 @@ steps:
     inputs:
       actual: !cel "steps.hit.result.status"
       expected: 400
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The reverse of `imports:`: the seeded redis and memory backends both import
 # `kv-store`, and neither is named by `kv-store` itself.
@@ -1254,8 +1173,7 @@ steps:
         redis: true
         memory: true
         self: false
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The list is paged: `limit` cuts it, `total` is the count before the cut, and a
 # page past the end is empty with the same total.
@@ -1292,8 +1210,7 @@ steps:
          'sameTotal': steps.past.result.body.total == steps.one.result.body.total,
          'tooMany': steps.tooMany.result.status}
       expected: { onePerPage: [1, 1], differentRows: true, totalIsAll: true, past: 0, sameTotal: true, tooMany: 400 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # `/module` carries both directions: what the version imports, pin cut off and
 # its version kept, and how many modules import it.
@@ -1317,8 +1234,7 @@ steps:
            i.ref == 'oci://ghcr.io/telorun/kv-store' && i.alias != '' && i.version != ''),
          'dependents': steps.imported.result.body.dependents >= 2}
       expected: { importsKvStore: true, dependents: true }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The cached manifest as text — the HTTP twin of `get_module_manifest`.
 kind: Run.Sequence
@@ -1337,8 +1253,7 @@ steps:
          'library': string(steps.hit.result.body).startsWith('kind: Telo.Library'),
          'definesStore': string(steps.hit.result.body).contains('name: Store')}
       expected: { status: 200, yaml: true, library: true, definesStore: true }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: moduleManifest_UntrackedReturns404 }
@@ -1353,5 +1268,4 @@ steps:
     inputs:
       actual: !cel "steps.hit.result.status"
       expected: 404
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

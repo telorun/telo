@@ -440,4 +440,23 @@ describe("buildDependencyGraph — a reference through an import alias", () => {
     expect(cycle).toBeUndefined();
     expect(order!.map((n) => n.name)).toEqual(["H", "Lib"]);
   });
+
+  it("never reaches a same-named resource of the referring module", () => {
+    // `member: !ref Lib.member` as normalization resolves it, the export itself
+    // absent from the set as it is at run time.
+    const { cycle, order } = buildDependencyGraph(
+      [
+        {
+          kind: "test.Holder",
+          metadata: { name: "member" },
+          dep: { __ref: true, kind: "Lib.Echo", name: "member", alias: "Lib" },
+        },
+        { kind: "Telo.Import", metadata: { name: "Lib" }, source: "./lib" },
+      ] as unknown as ResourceManifest[],
+      registryOf(holderDef, echoDef),
+      aliases(),
+    );
+    expect(cycle).toBeUndefined();
+    expect(order!.map((n) => n.name)).toEqual(["Lib", "member"]);
+  });
 });

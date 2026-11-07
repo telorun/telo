@@ -136,7 +136,7 @@ being linearized into a chain.
 | one version's `telo.yaml` | `GET /module/manifest?ref=…&version=…` (`text/yaml`) |
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
 | the whole catalogue (sitemaps) | `GET /modules?after=…&limit=…` (every ref `/module` answers for, paged by `seq`) |
-| register a module | `POST /register` (`{ ref }` → validate + schedule, `202`; open, no auth) |
+| register a module | `POST /register` (`{ ref }` → validate + schedule, `202`; open, an API key skips the rate limit) |
 | poll a registration | `GET /register/status?ref=` |
 | MCP tools (`search_resources`, `get_kinds`, `list_libraries`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `find_instances`, `find_dependents`, `list_categories`, `suggest_module_refs`, and the guide tools `guide_build_ui`, `guide_write_integration_tests`, `guide_design_library`) | `POST /mcp` |
 | liveness | `GET /health` |
@@ -730,10 +730,11 @@ Modules enter the index two ways:
   An entry must be an `oci://` or `https://` ref, or — with `ALLOW_LOCAL_REFS` —
   a local path; anything else stops the boot with `ERR_INVALID_MODULE_REF`, and a
   local path without the flag with `ERR_LOCAL_REF_DISABLED`.
-- **Self-service `POST /register`** — open and unauthenticated, so it is layered:
+- **Self-service `POST /register`** — open to anyone, so it is layered:
   1. **Per-IP rate limit** (`RateLimit.Guard`, default 5 per 10m) — exceeded
      requests get a `429` with `Retry-After`. Rejected refs still consume budget,
-     so hammering junk is not free.
+     so hammering junk is not free. A publisher sending an [API
+     key](#publisher-api-keys) skips it.
   2. **Shape gate** — the ref must look like a remote module ref: `<ns>/<name>`,
      `oci://<host>/<path>`, or `https://<host>/<path>`. This is a security
      boundary, not a nicety: the CLI resolves a path-like or cwd-resolvable ref
@@ -774,6 +775,48 @@ re-pushed digests, and any module whose first ingest failed.
 The browser-facing registration form is part of [`apps/hub-web`](../hub-web), the
 request-time site at `hub.telo.run`; the reader's browser POSTs to this verb
 cross-origin.
+
+### Publisher API keys
+
+A publisher that registers more than the per-address budget allows — a CI job
+publishing many modules — sends a key:
+
+```sh
+curl -X POST https://<hub>/register \
+  -H "Authorization: Bearer telohub_…" \
+  -H "content-type: application/json" -d '{"ref":"oci://ghcr.io/acme/s3"}'
+```
+
+A key granting `register:unlimited` skips the rate limit and spends none of the
+address's budget; every other step runs as for an anonymous call. A key that is
+presented and refused — malformed, mistyped, unknown, revoked or expired — is
+answered `401` with `WWW-Authenticate: Bearer`, never served anonymously. A key
+that cannot be checked because the database is unreachable is a `503`.
+
+Keys live in the hub's own database (`api_keys`, created by the hub's boot
+beside its other tables); only each key's SHA-256 digest is stored, and a
+revocation holds from the next request. They are managed with `admin.yaml`, a
+one-shot application beside the hub that reads only `DB_CONNECTION`:
+
+```sh
+telo run admin.yaml issue --owner acme --label "acme CI" [--expires 2027-06-01T00:00:00Z]
+telo run admin.yaml list --owner acme
+telo run admin.yaml revoke apk_…
+```
+
+`issue` prints the key once; keep it, since it cannot be read again. `--owner`
+is the publisher's identifier and `--owner-type` (`organization` by default,
+`user` or `service`) what it is; `list` shows an owner's keys with their state
+and last use. In a deployment run it inside the hub's container, whose image
+carries both applications' modules, so it needs no network beyond the
+database:
+
+```sh
+kubectl exec deploy/telo-hub -- telo run admin.yaml issue --owner acme --label "acme CI"
+```
+
+`admin.yaml` runs no migrations: against a database the hub has never booted
+on, it fails on the missing `api_keys` table.
 
 ### `url` transport — weaker guarantees
 

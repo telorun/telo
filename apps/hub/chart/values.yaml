@@ -104,8 +104,9 @@ ingestRev: null
 # tuned for the default embedding model.
 vectorMinScore: null
 
-# Budget of the unauthenticated `POST /register`, per client IP. Empty is the
-# hub's default, 5 per 10m.
+# Budget of anonymous `POST /register` calls, per client IP. Empty is the
+# hub's default, 5 per 10m. A publisher's API key (issued with `admin.yaml`, see
+# the README) skips it.
 registerRateLimit:
   limit: null
   window: ""

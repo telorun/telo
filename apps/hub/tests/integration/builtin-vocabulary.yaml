@@ -91,36 +91,19 @@ imports:
     resources:
       connection: !ref db
       bucketGet: !ref getManifest
-    variables:
-      builtinsRef: oci://example.test/telo
+    variables: { builtinsRef: oci://example.test/telo }
 variables:
-  dbHost:
-    env: DB_HOST
-    type: string
-    default: localhost
-  dbPort:
-    env: DB_PORT
-    type: integer
-    default: 5432
-  dbUser:
-    env: DB_USER
-    type: string
-    default: postgres
-  dbPassword:
-    env: DB_PASSWORD
-    type: string
-    default: postgres
-  dbName:
-    env: DB_NAME
-    type: string
-    default: postgres
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
 targets:
   - !ref Schema.migrations
   - !ref test
 ---
 kind: Postgres.Connection
-metadata:
-  name: db
+metadata: { name: db }
 access:
   kind: Postgres.DatabaseAccess
   fields:
@@ -134,13 +117,11 @@ access:
 ---
 # The origin reads run in the fixtures directory, where the recorded origin is.
 kind: Shell.LocalHost
-metadata:
-  name: localShell
+metadata: { name: localShell }
 cwd: !module-path __fixtures__
 ---
 kind: S3.Bucket
-metadata:
-  name: standInBucket
+metadata: { name: standInBucket }
 bucketName: fixture-bucket
 endpoint: http://127.0.0.1:8979
 forcePathStyle: true
@@ -148,58 +129,47 @@ accessKeyId: fixture
 secretAccessKey: fixture
 ---
 kind: S3.Put
-metadata:
-  name: putManifest
+metadata: { name: putManifest }
 bucketRef: !ref standInBucket
 ---
 kind: S3.Get
-metadata:
-  name: getManifest
+metadata: { name: getManifest }
 bucketRef: !ref standInBucket
 ---
 kind: OpenAI.EmbeddingModel
-metadata:
-  name: standInEmbedder
+metadata: { name: standInEmbedder }
 model: stand-in
 request:
   kind: HttpClient.Request
-  client:
-    kind: HttpClient.Client
-    baseUrl: http://127.0.0.1:8979
+  client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8979 }
 ---
 kind: Embedding.Passage
-metadata:
-  name: embedPassage
+metadata: { name: embedPassage }
 model: !ref standInEmbedder
 ---
 kind: Embedding.Query
-metadata:
-  name: embedQuery
+metadata: { name: embedQuery }
 model: !ref standInEmbedder
 ---
 # A table of this test's own: the vocabulary's vectors, all alike, would
 # otherwise fill every other search test's semantic arm.
 kind: VectorStorePgvector.Store
-metadata:
-  name: vectorIndex
+metadata: { name: vectorIndex }
 connection: !ref db
 dimensions: 3
 metric: cosine
 table: builtin_vocabulary_vectors
 ---
 kind: VectorStore.Record
-metadata:
-  name: vectorUpsert
+metadata: { name: vectorUpsert }
 store: !ref vectorIndex
 ---
 kind: VectorStore.Removal
-metadata:
-  name: vectorRemove
+metadata: { name: vectorRemove }
 store: !ref vectorIndex
 ---
 kind: VectorStore.Match
-metadata:
-  name: vectorMatch
+metadata: { name: vectorMatch }
 store: !ref vectorIndex
 # Every stand-in vector is the same, so the semantic arm ranks arbitrarily; kept
 # small, it cannot crowd the lexical matches this test reads out of the answer.
@@ -207,10 +177,8 @@ topK: 5
 ---
 # Named rather than inline: a library's resource input takes only a `!ref`.
 kind: RateLimit.Guard
-metadata:
-  name: registerRateLimit
-store:
-  kind: CacheMemory.Store
+metadata: { name: registerRateLimit }
+store: { kind: CacheMemory.Store }
 limit: 100
 window: 1m
 ---
@@ -218,8 +186,7 @@ window: 1m
 # embedded, a bucket that accepts every put, and the manifests the recorded
 # origin serves, under the keys it reports for them.
 kind: Http.Api
-metadata:
-  name: standInApi
+metadata: { name: standInApi }
 routes:
   - request:
       path: /embeddings
@@ -227,8 +194,7 @@ routes:
       schema:
         body:
           type: object
-          properties:
-            input: { type: array, items: { type: string } }
+          properties: { input: { type: array, items: { type: string } } }
           required: [input]
     handler:
       kind: Run.Value
@@ -236,8 +202,7 @@ routes:
         kind: Telo.JsonSchema
         schema:
           type: object
-          properties:
-            input: { type: array, items: { type: string } }
+          properties: { input: { type: array, items: { type: string } } }
           required: [input]
       value: !cel "{'data': inputs.input.map(t, {'embedding': [1.0, 0.0, 0.0]})}"
     inputs:
@@ -250,14 +215,10 @@ routes:
   - request:
       path: /fixture-bucket/*
       method: PUT
-      schema:
-        body:
-          x-telo-type: { name: Telo.Stream }
-    handler:
-      kind: Run.Value
-      value: {}
+      schema: { body: { x-telo-type: { name: Telo.Stream } } }
+    handler: { kind: Run.Value, value: {} }
     returns:
-      - status: 200
+      - { status: 200 }
   - request: { path: /fixture-bucket/oci/example.test/telo/0.119.0/telo.yaml, method: GET }
     handler:
       kind: Run.Value
@@ -287,21 +248,18 @@ routes:
             body: !cel "result"
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref db
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref db
 ---
 # One version through the ingest run, to completion: a claim minted from the
 # clock (a durable run id is never reused, so a rerun of the test must not start
 # from an attempt an earlier run burnt), the run, and its recorded outcome.
 kind: Run.Sequence
-metadata:
-  name: ingestOne
+metadata: { name: ingestOne }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -317,9 +275,7 @@ outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      completed: { type: boolean }
-      lastError: { type: string }
+    properties: { completed: { type: boolean }, lastError: { type: string } }
     required: [completed, lastError]
 steps:
   - name: seedIngest
@@ -358,10 +314,7 @@ steps:
       maxIterations: 90
       condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
       steps:
-        - name: wait
-          invoke: { kind: Timer.Delay }
-          inputs:
-            duration: 1s
+        - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
         - name: state
           invoke: !ref query
           inputs:
@@ -379,17 +332,13 @@ outputs:
   lastError: !cel "steps.await.result.lastError"
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: StandIns }
-    listen:
-      address: 127.0.0.1
-      port: 8979
+    listen: { address: 127.0.0.1, port: 8979 }
     contentTypeParsers:
-      - contentType: text/yaml
-        stream: true
+      - { contentType: text/yaml, stream: true }
     mounts:
       - path: /
         mount: !ref standInApi
@@ -407,9 +356,7 @@ steps:
   # Registration at another ref: refused, nothing recorded.
   - name: registerElsewhere
     invoke: !ref Registry.registerAndValidate
-    inputs:
-      ref: oci://example.test/not-telo
-      clientIp: 127.0.0.1
+    inputs: { ref: oci://example.test/not-telo, clientIp: 127.0.0.1 }
   - name: afterRefusal
     invoke: !ref query
     inputs:
@@ -432,9 +379,8 @@ steps:
             built-in vocabulary of a telo release, which is tracked only at
             oci://example.test/telo
         state:
-          - modules: 0
-    invoke:
-      kind: Assert.Equals
+          - { modules: 0 }
+    invoke: { kind: Assert.Equals }
   - name: seedModules
     invoke: !ref exec
     inputs:
@@ -556,14 +502,11 @@ steps:
             extendsRef: ""
             runtimes: [nodejs]
             portable: false
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
   # Registration at the vocabulary's own ref: an already-tracked module.
   - name: registerBuiltins
     invoke: !ref Registry.registerAndValidate
-    inputs:
-      ref: oci://example.test/telo
-      clientIp: 127.0.0.1
+    inputs: { ref: oci://example.test/telo, clientIp: 127.0.0.1 }
   - name: assertRegistrationAccepted
     inputs:
       actual: !cel "steps.registerBuiltins.result"
@@ -573,8 +516,7 @@ steps:
         rateLimited: false
         retryAfter: 0
         error: ""
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
   - name: hits
     invoke: !ref Search.searchResources
     inputs:
@@ -591,8 +533,7 @@ steps:
       limit: 50
   - name: libraries
     invoke: !ref Catalog.libraryIndex
-    inputs:
-      publisher: ""
+    inputs: { publisher: "" }
   - name: assertMarkedBuiltin
     inputs:
       actual:
@@ -623,8 +564,7 @@ steps:
         libraries:
           - [oci://example.test/telo, true]
           - [oci://example.test/vocab-user, false]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
   # A need type's runtime reach is the kernels serving need types, so a runtime
   # filter selects it by that, as it would a definition.
   - name: needOnNode
@@ -652,11 +592,8 @@ steps:
           steps.needOnRust.result.hits
             .filter(h, h.module.ref == 'oci://example.test/vocab-user' && h.name == 'Access')
             .map(h, h.name)
-      expected:
-        nodejs: [Access]
-        rust: []
-    invoke:
-      kind: Assert.Equals
+      expected: { nodejs: [Access], rust: [] }
+    invoke: { kind: Assert.Equals }
   # A built-in kind: no import line, the telo it was read at, and the fragments
   # its schema names.
   - name: definition
@@ -760,47 +697,27 @@ steps:
           telo: 0.119.0
           importLine: true
           vocabularyHead: true
-          pieces:
-            - "$defs: InvokeStep:"
-            - "$defs: RetryPolicy:"
-            - "$defs: Step:"
-            - "zoneAttributes: atomic:"
-            - "zoneAttributes: noSuspend:"
-            - "formats: css-selector:"
+          pieces: ["$defs: InvokeStep:", "$defs: RetryPolicy:", "$defs: Step:", "zoneAttributes: atomic:", "zoneAttributes: noSuspend:", "formats: css-selector:"]
           step: true
         stepsOlder:
           telo: 0.118.0
-          pieces:
-            - "$defs: InvokeStep:"
-            - "$defs: RetryPolicy:"
-            - "$defs: Step:"
+          pieces: ["$defs: InvokeStep:", "$defs: RetryPolicy:", "$defs: Step:"]
           step: true
           vocabularyHead: true
-        shaped:
-          kind: true
-          shapeLeftOut: true
-          trailer: true
-        shapedClosure:
-          shape: true
-          trailer: false
-        shape:
-          shape: true
-          trailer: false
+        shaped: { kind: true, shapeLeftOut: true, trailer: true }
+        shapedClosure: { shape: true, trailer: false }
+        shape: { shape: true, trailer: false }
         sink:
           parent: true
           needType: true
-          pieces:
-            - "$defs: LogDuration:"
-            - "$defs: LogLevel:"
-            - "valueTypes: Telo.Url:"
+          pieces: ["$defs: LogDuration:", "$defs: LogLevel:", "valueTypes: Telo.Url:"]
           logDuration:
             - |
               $defs:
                 LogDuration:
                   type: string
                   pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
   # A telo version the hub does not track is refused, naming the ones it does.
   - name: untracked
     try:
@@ -825,5 +742,4 @@ steps:
             message: >-
               telo 0.117.0 is not a version of the built-in vocabulary
               (oci://example.test/telo) this hub tracks; it tracks 0.119.0, 0.118.0
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }

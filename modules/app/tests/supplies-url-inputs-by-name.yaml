@@ -1,0 +1,31 @@
+kind: Telo.Application
+metadata:
+  name: SuppliesUrlInputsByNameTest
+  version: 1.0.0
+  description: >-
+    A child's `Telo.Url` variable and a `Telo.Url` field of its need, supplied by
+    name as their text, are built into URLs the child reads by their members,
+    exactly as the same text read from the environment would be.
+imports: { App: ../, Channel: ../../channel, Assert: ../../assert }
+targets:
+  - !ref child
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: child }
+source: ./__fixtures__/url-inputs/telo.yaml
+awaitStart: false
+variables: { endpoint: "https://api.example/v1" }
+needs: { access: { url: "postgres://user:secret@db.example:5432/app" } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: printed
+    invoke: { kind: Channel.ReadUntil, channel: !ref child, timeout: 20s }
+    inputs: { until: "\n" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.printed.result.text"
+      expected: "api.example db.example\n"

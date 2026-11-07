@@ -1,0 +1,75 @@
+kind: Telo.Application
+metadata:
+  name: HubE2ERegisterApiKey
+  version: 1.0.0
+  description: |
+    A publisher's API key on POST /register, run against a live hub at
+    http://localhost:8040. `admin.yaml` issues the key into the live hub's own
+    database (`hub` on the stack's server, whose address `pnpm run test:e2e:hub`
+    supplies as DB_HOST / DB_PORT), exactly as an operator would; the hub then
+    accepts a registration carrying it, and answers 401 — never an anonymous
+    call — for a key it refuses.
+
+    The stack lifts the per-address limit (REGISTER_RATE_LIMIT), so the bypass
+    itself is pinned in process by `tests/integration/register-unlimited.yaml`.
+imports:
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.0#sha256-Ki7STbcpZFbPAbi_P-0iSfn4QZp0uf9Zf4NEMiujT1A
+  App: ../../../../modules/app
+  Channel: ../../../../modules/channel
+  Assert: ../../../../modules/assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+targets:
+  - !ref issuer
+  - !ref registerWithKey
+---
+kind: App.Instance
+metadata: { name: issuer }
+source: ../../admin.yaml
+awaitStart: false
+variables: { command: issue, owner: e2e-register, ownerType: service, label: e2e register }
+needs: { databaseAccess: !ref hubDatabase }
+---
+# The live hub's own database on the stack's server.
+kind: Postgres.DatabaseAccess
+metadata: { name: hubDatabase }
+fields:
+  url: !interpolate "postgres://postgres:postgres@${{ variables.dbHost }}:${{ variables.dbPort }}/hub"
+---
+kind: Telo.Sequence
+metadata: { name: registerWithKey }
+steps:
+  - name: keyLine
+    invoke: { kind: Channel.ReadUntil, channel: !ref issuer, timeout: 60s }
+    inputs: { until: "\n" }
+  - name: keyed
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/register
+      method: POST
+      # The ref is validated synchronously: two origin reads, each a `telo` subprocess.
+      timeout: 30000
+    inputs:
+      headers:
+        Authorization: !cel "'Bearer ' + steps.keyLine.result.text.substring(5).trim()"
+      body: { ref: oci://ghcr.io/telorun/console }
+  # A key in the right format whose checksum fails: refused before any lookup.
+  - name: forged
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/register
+      method: POST
+      timeout: 30000
+    inputs:
+      headers: { Authorization: Bearer telohub_0000000000000000000000000000000000000000000000000000000000000000000000 }
+      body: { ref: oci://ghcr.io/telorun/console }
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        issued: !cel "steps.keyLine.result.text.startsWith('key: telohub_')"
+        keyed: !cel "steps.keyed.result.status"
+        forged: !cel "steps.forged.result.status"
+      expected: { issued: true, keyed: 202, forged: 401 }

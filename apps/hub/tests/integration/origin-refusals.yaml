@@ -70,26 +70,11 @@ imports:
       teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts, recorded-origin]
       ingestRev: 6
 variables:
-  dbHost:
-    env: DB_HOST
-    type: string
-    default: localhost
-  dbPort:
-    env: DB_PORT
-    type: integer
-    default: 5432
-  dbUser:
-    env: DB_USER
-    type: string
-    default: postgres
-  dbPassword:
-    env: DB_PASSWORD
-    type: string
-    default: postgres
-  dbName:
-    env: DB_NAME
-    type: string
-    default: postgres
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
 targets:
   - !ref Schema.migrations
   - !ref contractMissing
@@ -97,8 +82,7 @@ targets:
   - !ref registrationRootKindRefused
 ---
 kind: Postgres.Connection
-metadata:
-  name: db
+metadata: { name: db }
 access:
   kind: Postgres.DatabaseAccess
   fields:
@@ -111,13 +95,11 @@ access:
       path: !cel "'/' + variables.dbName"
 ---
 kind: Shell.LocalHost
-metadata:
-  name: localShell
+metadata: { name: localShell }
 cwd: !module-path __fixtures__
 ---
 kind: S3.Put
-metadata:
-  name: putManifest
+metadata: { name: putManifest }
 bucketRef:
   kind: S3.Bucket
   bucketName: unused
@@ -127,53 +109,43 @@ bucketRef:
   secretAccessKey: unused
 ---
 kind: Embedding.Passage
-metadata:
-  name: embedPassage
+metadata: { name: embedPassage }
 model:
   kind: OpenAI.EmbeddingModel
   model: unused
   request:
     kind: HttpClient.Request
-    client:
-      kind: HttpClient.Client
-      baseUrl: http://127.0.0.1:1
+    client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:1 }
 ---
 kind: VectorStorePgvector.Store
-metadata:
-  name: vectorIndex
+metadata: { name: vectorIndex }
 connection: !ref db
 dimensions: 3
 metric: cosine
 table: resource_vectors
 ---
 kind: VectorStore.Record
-metadata:
-  name: vectorUpsert
+metadata: { name: vectorUpsert }
 store: !ref vectorIndex
 ---
 kind: VectorStore.Removal
-metadata:
-  name: vectorRemove
+metadata: { name: vectorRemove }
 store: !ref vectorIndex
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref db
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref db
 ---
 kind: Run.Sequence
-metadata:
-  name: contractMissing
+metadata: { name: contractMissing }
 steps:
   - name: reset
     invoke: !ref exec
-    inputs:
-      sql: DELETE FROM modules WHERE id = 9311
+    inputs: { sql: DELETE FROM modules WHERE id = 9311 }
   - name: seedModule
     invoke: !ref exec
     inputs:
@@ -213,10 +185,7 @@ steps:
       maxIterations: 60
       condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
       steps:
-        - name: wait
-          invoke: { kind: Timer.Delay }
-          inputs:
-            duration: 1s
+        - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
         - name: state
           invoke: !ref query
           inputs:
@@ -250,17 +219,14 @@ steps:
             versions: 0
             inputs: 0
             entries: 0
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
-metadata:
-  name: rootKindUnsupported
+metadata: { name: rootKindUnsupported }
 steps:
   - name: reset
     invoke: !ref exec
-    inputs:
-      sql: DELETE FROM modules WHERE id = 9312
+    inputs: { sql: DELETE FROM modules WHERE id = 9312 }
   - name: seedModule
     invoke: !ref exec
     inputs:
@@ -296,10 +262,7 @@ steps:
       maxIterations: 60
       condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
       steps:
-        - name: wait
-          invoke: { kind: Timer.Delay }
-          inputs:
-            duration: 1s
+        - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
         - name: state
           invoke: !ref query
           inputs:
@@ -332,31 +295,24 @@ steps:
             versions: 0
             kinds: 0
             entries: 0
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # Named rather than inline: a library's resource input takes only a `!ref`.
 kind: RateLimit.Guard
-metadata:
-  name: registerRateLimit
-store:
-  kind: CacheMemory.Store
+metadata: { name: registerRateLimit }
+store: { kind: CacheMemory.Store }
 limit: 100
 window: 1m
 ---
 kind: Run.Sequence
-metadata:
-  name: registrationRootKindRefused
+metadata: { name: registrationRootKindRefused }
 steps:
   - name: reset
     invoke: !ref exec
-    inputs:
-      sql: DELETE FROM modules WHERE ref = 'oci://example.test/definition-first'
+    inputs: { sql: DELETE FROM modules WHERE ref = 'oci://example.test/definition-first' }
   - name: register
     invoke: !ref Registry.registerAndValidate
-    inputs:
-      ref: oci://example.test/definition-first
-      clientIp: 127.0.0.1
+    inputs: { ref: oci://example.test/definition-first, clientIp: 127.0.0.1 }
   # Nothing recorded: no module row, and no durable run naming the ref.
   - name: state
     invoke: !ref query
@@ -382,7 +338,5 @@ steps:
             Telo.Definition; only a Telo.Library or Telo.Application can be
             registered
         state:
-          - modules: 0
-            runs: 0
-    invoke:
-      kind: Assert.Equals
+          - { modules: 0, runs: 0 }
+    invoke: { kind: Assert.Equals }

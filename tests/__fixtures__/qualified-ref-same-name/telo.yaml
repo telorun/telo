@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata: { name: SameNameLibrary }
+imports: { CacheMemory: ../../../modules/cache-memory }
+exports: { resources: [counters] }
+---
+kind: CacheMemory.Store
+metadata: { name: counters }

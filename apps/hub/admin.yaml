@@ -1,0 +1,151 @@
+# Telo Hub — administration CLI
+#
+# A one-shot application beside the hub, sharing its database and the key store
+# declared in hub-schema.yaml. It runs no server and no migrations: the hub's own
+# boot creates the key table, so a command run against a database the hub has
+# never started on fails on the missing table.
+#
+#   telo run admin.yaml issue --owner acme --label "acme CI" [--expires 2027-06-01T00:00:00Z]
+#   telo run admin.yaml list --owner acme
+#   telo run admin.yaml revoke apk_…
+kind: Telo.Application
+metadata:
+  name: TeloHubAdmin
+  license: MIT
+  description: >-
+    Issues, lists and revokes the API keys publishers present to the hub's
+    /register endpoint to skip its per-address rate limit.
+requires:
+  # 0.128.0: `Telo.Sequence`.
+  telo: ">=0.128.0"
+imports:
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.0#sha256-Ki7STbcpZFbPAbi_P-0iSfn4QZp0uf9Zf4NEMiujT1A
+  ApiKey: oci://ghcr.io/telorun/api-key@0.2.0#sha256-743LoVZkoEbwWDRImNVFgjFlREB1vMpo5ozSmOeV2C4
+  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
+  Schema:
+    source: ./hub-schema.yaml
+    resources: { connection: !ref db }
+needs:
+  databaseAccess: { kind: Postgres.DatabaseAccess, env: { url: DB_CONNECTION } }
+variables:
+  command:
+    description: What to do with the publishers' keys.
+    type: string
+    enum: [issue, list, revoke]
+    arg: { position: 0 }
+    env: HUB_ADMIN_COMMAND
+  id:
+    description: The public id (`apk_…`) of the key to revoke.
+    type: string
+    arg: { position: 1 }
+    default: ""
+  owner:
+    description: The owner's identifier, e.g. the publisher's organisation. Required by issue and list.
+    type: string
+    arg: owner
+    default: ""
+  ownerType:
+    description: What kind of owner the key belongs to.
+    type: string
+    enum: [user, service, organization]
+    arg: owner-type
+    default: organization
+  label:
+    description: A name to recognise the key by in a listing. Required by issue.
+    type: string
+    maxLength: 128
+    arg: label
+    default: ""
+  expires:
+    description: When the issued key stops being accepted (RFC 3339). It never expires when omitted.
+    type: string
+    x-telo-type: Telo.Timestamp
+    arg: expires
+    default: null
+targets:
+  - !ref main
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref databaseAccess
+---
+kind: Telo.Sequence
+metadata: { name: main }
+throws:
+  - code: ERR_ADMIN_ARGUMENT_MISSING
+    description: The command needs an argument that was not given.
+steps:
+  - name: command
+    switch: !cel "variables.command"
+    cases:
+      issue:
+        - name: issueArguments
+          if: !cel "variables.owner == '' || variables.label == ''"
+          then:
+            - name: rejectIssue
+              throw: { code: ERR_ADMIN_ARGUMENT_MISSING, message: "issue needs --owner and --label" }
+        - name: expiry
+          if: !cel "variables.expires == null"
+          then:
+            - name: issued
+              invoke: { kind: ApiKey.Issue, store: !ref Schema.publisherKeys }
+              inputs:
+                owner: { type: !cel "variables.ownerType", id: !cel "variables.owner" }
+                scopes: [register:unlimited]
+                label: !cel "variables.label"
+            - name: printIssued
+              invoke: { kind: Console.WriteLine }
+              inputs:
+                output: !interpolate "key: ${{ steps.issued.result.key }}\nid:  ${{ steps.issued.result.id }}\nThe key is shown once. Send it as `Authorization: Bearer <key>` to POST /register."
+          else:
+            - name: issuedExpiring
+              invoke: { kind: ApiKey.Issue, store: !ref Schema.publisherKeys }
+              inputs:
+                owner: { type: !cel "variables.ownerType", id: !cel "variables.owner" }
+                scopes: [register:unlimited]
+                label: !cel "variables.label"
+                expiresAt: !cel "variables.expires"
+            - name: printIssuedExpiring
+              invoke: { kind: Console.WriteLine }
+              inputs:
+                output: !interpolate "key: ${{ steps.issuedExpiring.result.key }}\nid:  ${{ steps.issuedExpiring.result.id }}\nexpires: ${{ steps.issuedExpiring.result.expiresAt != null ? string(steps.issuedExpiring.result.expiresAt) : 'never' }}\nThe key is shown once. Send it as `Authorization: Bearer <key>` to POST /register."
+      list:
+        - name: listArguments
+          if: !cel "variables.owner == ''"
+          then:
+            - name: rejectList
+              throw: { code: ERR_ADMIN_ARGUMENT_MISSING, message: "list needs --owner" }
+        - name: listed
+          invoke: { kind: ApiKey.List, store: !ref Schema.publisherKeys }
+          inputs:
+            owner: { type: !cel "variables.ownerType", id: !cel "variables.owner" }
+            limit: 200
+        - name: printListed
+          invoke: { kind: Console.WriteLine }
+          inputs:
+            output: !cel >-
+              size(steps.listed.result.keys) == 0
+                ? 'no keys for ' + variables.ownerType + ' ' + variables.owner
+                : join(steps.listed.result.keys.map(k,
+                    k.id + '  ' + (k.label == null ? '-' : k.label)
+                      + '  created ' + string(k.createdAt)
+                      + (k.revokedAt != null ? '  revoked ' + string(k.revokedAt)
+                          : (k.expiresAt != null ? '  expires ' + string(k.expiresAt) : ''))
+                      + (k.lastUsedAt != null ? '  last used ' + string(k.lastUsedAt) : '')), '\n')
+      revoke:
+        - name: revokeArguments
+          if: !cel "variables.id == ''"
+          then:
+            - name: rejectRevoke
+              throw:
+                code: ERR_ADMIN_ARGUMENT_MISSING
+                message: "revoke needs the key's id: revoke apk_…"
+        - name: revoked
+          invoke: { kind: ApiKey.Revoke, store: !ref Schema.publisherKeys }
+          inputs:
+            id: !cel "variables.id"
+            by: telo-hub-admin
+        - name: printRevoked
+          invoke: { kind: Console.WriteLine }
+          inputs:
+            output: !interpolate "revoked ${{ steps.revoked.result.id }} at ${{ steps.revoked.result.revokedAt }}"

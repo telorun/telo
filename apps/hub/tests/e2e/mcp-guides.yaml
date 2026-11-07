@@ -61,8 +61,7 @@ metadata: { name: toolsList_OffersTheThreeGuides }
 steps:
   - name: list
     invoke: !ref rpc
-    inputs:
-      body: { jsonrpc: "2.0", id: 2, method: tools/list }
+    inputs: { body: { jsonrpc: "2.0", id: 2, method: tools/list } }
   - name: assert
     invoke: { kind: Assert.Equals }
     inputs:
