@@ -24,8 +24,9 @@ describe("readInterpolationHoles", () => {
     expect(holes("${{ '${{' }}")).toEqual(["'${{'"]);
   });
 
-  it("treats a raw string's backslash as text", () => {
-    expect(holes("${{ r'\\' }} x")).toEqual(["r'\\'"]);
+  it("lets a raw string's backslash take the next character, as the language does", () => {
+    expect(holes("${{ r'\\'' }} x")).toEqual(["r'\\''"]);
+    expect(readInterpolationHoles("${{ r'\\' }} x").ok).toBe(false);
   });
 
   it("offsets each expression within the source", () => {
@@ -76,6 +77,38 @@ describe("interpolate engine", () => {
       expect((error as Error).message).toContain("'${{ x }}'");
       expect((error as Error).message).toContain("null");
     }
+  });
+
+  it("names a hole's value in CEL's terms when it cannot be converted", () => {
+    const message = (ctx: Record<string, unknown>): string => {
+      try {
+        run("${{ x }}", ctx);
+      } catch (error) {
+        return (error as Error).message.replace(/^.*evaluated to (.*?), which.*$/s, "$1");
+      }
+      throw new Error("converted");
+    };
+    expect([
+      message({ x: null }),
+      message({ x: [1n] }),
+      message({ x: { a: 1n } }),
+      message({ x: celEnv.evaluate("optional.of(1)") }),
+      message({ x: celEnv.evaluate("int") }),
+    ]).toEqual([
+      "null",
+      "a list",
+      "a map",
+      "a value of type optional_type",
+      "a value of type type",
+    ]);
+  });
+
+  it("names a value of no CEL type as outside the value domain", () => {
+    const env = celEnv.clone().registerFunction("noType(): dyn", { implementation: () => Symbol("host") as never });
+    const compiled = interpolateEngine.compile("${{ noType() }}", { celEnv: env });
+    expect(() => (compiled as { call: (ctx: object) => string }).call({})).toThrow(
+      "evaluated to a value outside the CEL value domain, which",
+    );
   });
 
   it("carries every hole's roots and declares a string", () => {

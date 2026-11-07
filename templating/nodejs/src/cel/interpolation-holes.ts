@@ -1,3 +1,5 @@
+import { quotedLiteralEnd } from "@telorun/cel";
+
 /** One `${{ expr }}` hole in a scalar. Offsets index the scalar's source. */
 export interface InterpolationHole {
   /** Offset of the opening `${{`. */
@@ -25,12 +27,14 @@ const OPEN = "${{";
  * Every `${{ expr }}` hole in `source` — the one hole grammar every tag with
  * holes (`!interpolate`, `!sql`) and the untagged-interpolation migration read.
  *
- * A hole opens at `${{` and closes at the first `}}` that is outside a CEL
- * string literal and outside any `{` the expression itself opened, so a map
- * literal or a string holding braces is read whole. String literals follow CEL's
- * lexical grammar: `'`, `"`, their triple-quoted forms, and the `r`/`b` prefixes,
- * where a raw string takes no escapes. Outside a hole nothing is special but
- * `${{`; a literal `${{` is written as a hole yielding it (`${{ '${{' }}`).
+ * A hole opens at `${{` and closes at the first `}}` that is outside a quoted
+ * literal and outside any `{` the expression itself opened, so a map literal or a
+ * string holding braces is read whole. A quoted literal ends exactly where the
+ * language ends it: the hole reader has no rule of its own and asks the engine
+ * (`quotedLiteralEnd`), which reads string and bytes literals, their prefixes and
+ * triple-quoted forms, and backtick-quoted member names. A comment is not read, so
+ * `//` is hole text and a quote after it opens a literal. Outside a hole nothing is
+ * special but `${{`; a literal `${{` is written as a hole yielding it (`${{ '${{' }}`).
  *
  * A hole that never closes is a reading failure at its opening offset, never a
  * guess at where it meant to end.
@@ -93,8 +97,8 @@ function closingOffset(source: string, from: number): number | undefined {
   let i = from;
   while (i < source.length) {
     const c = source[i]!;
-    if (c === "'" || c === '"') {
-      const after = skipString(source, i);
+    if (c === "'" || c === '"' || c === "`") {
+      const after = quotedLiteralEnd(source, i);
       if (after === undefined) return undefined;
       i = after;
       continue;
@@ -107,32 +111,4 @@ function closingOffset(source: string, from: number): number | undefined {
     i++;
   }
   return undefined;
-}
-
-/** Offset just past the string literal whose opening quote is at `quoteAt`. */
-function skipString(source: string, quoteAt: number): number | undefined {
-  const quote = source[quoteAt]!;
-  const raw = /[rR]/.test(literalPrefix(source, quoteAt));
-  const triple = source.startsWith(quote.repeat(3), quoteAt);
-  const delimiter = triple ? quote.repeat(3) : quote;
-  let i = quoteAt + delimiter.length;
-  while (i < source.length) {
-    if (!raw && source[i] === "\\") {
-      i += 2;
-      continue;
-    }
-    if (!triple && source[i] === "\n") return undefined;
-    if (source.startsWith(delimiter, i)) return i + delimiter.length;
-    i++;
-  }
-  return undefined;
-}
-
-/** The `r`/`b` prefix letters written immediately before a quote, when they are
- *  a prefix rather than the tail of an identifier. */
-function literalPrefix(source: string, quoteAt: number): string {
-  let i = quoteAt;
-  while (i > 0 && quoteAt - i < 2 && /[rRbB]/.test(source[i - 1]!)) i--;
-  if (i > 0 && /[A-Za-z0-9_]/.test(source[i - 1]!)) return "";
-  return source.slice(i, quoteAt);
 }

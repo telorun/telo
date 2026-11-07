@@ -79,11 +79,43 @@ describe("untagged-interpolation", () => {
   });
 
   it("writes a lone hole's expression so every character reads back as written", () => {
-    const text = ["kind: Telo.Application", "metadata:", "  name: App", 'note: "${{ \'a\\rb\\u0001\' }}"', ""].join("\n");
+    // A triple-quoted literal holds the carriage return a single-line one cannot.
+    const text = ["kind: Telo.Application", "metadata:", "  name: App", 'note: "${{ \'\'\'a\\rb\\u0001\'\'\' }}"', ""].join("\n");
     const migrated = migrate(text)!;
     expect(migrated.unwritable).toEqual([]);
     const reread = parseLoadedFile(FILE, FILE, migrated.text).manifests[0] as any;
-    expect(reread.note).toMatchObject({ engine: "cel", source: "'a\rb\u0001'" });
+    expect(reread.note).toMatchObject({ engine: "cel", source: "'''a\rb\u0001'''" });
+  });
+
+  describe("reads a hole's quoted literals as the language does", () => {
+    /** A document holding one untagged scalar, written as a JSON string (a YAML double-quoted scalar). */
+    const documentOf = (scalar: string) =>
+      ["kind: Telo.Application", "metadata:", "  name: App", `note: ${JSON.stringify(scalar)}`, ""].join("\n");
+    const rewrittenTo = (scalar: string) => {
+      const migrated = migrate(documentOf(scalar))!;
+      expect(migrated.unwritable).toEqual([]);
+      return (parseLoadedFile(FILE, FILE, migrated.text).manifests[0] as any).note;
+    };
+
+    it("rewrites a raw literal ending in an escaped quote", () => {
+      // Before: the reader ended the literal at the backslash, the hole never closed, the scalar was left.
+      expect(rewrittenTo("${{ r'\\'' }}")).toMatchObject({ engine: "cel", source: "r'\\''" });
+    });
+
+    it("rewrites a quoted member name holding braces", () => {
+      // Before: backticks were not read, the `}}` inside the name closed the hole early, the scalar was left.
+      expect(rewrittenTo("${{ m.`it's}}` }}")).toMatchObject({ engine: "cel", source: "m.`it's}}`" });
+    });
+
+    it("leaves a raw literal whose backslash takes its closing quote", () => {
+      // Before: the backslash was content, the hole closed and the scalar was rewritten to an unreadable `!cel`.
+      expect(migrate(documentOf("${{ r'\\' }}"))).toBeNull();
+    });
+
+    it("leaves a hole whose single-line literal holds a carriage return", () => {
+      // Before: a carriage return was content, the hole closed and the scalar was rewritten.
+      expect(migrate(documentOf("${{ 'a\rb' }}"))).toBeNull();
+    });
   });
 
   it("keeps a kind whose description quotes a hole compilable", () => {

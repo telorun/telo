@@ -2,14 +2,21 @@
 //!
 //! Mirrors the half of `templating/nodejs` the kernel depends on to read a
 //! manifest: the tagged-sentinel shape and the YAML tag configuration. The CEL
-//! engine the Node package's tag engines run on is `telorun-cel` (`cel/rust`);
-//! this crate is the tag layer that will depend on it, and does not yet.
+//! engine the Node package's tag engines run on is `telorun-cel` (`cel/rust`); this
+//! crate depends on it for the hole grammar (`cel/interpolation_holes.rs`, which asks the
+//! engine where a quoted literal ends), and the tag engines will run on it. The kernel's
+//! tag reader (`yaml_tags.rs`) still refuses `!cel`, `!interpolate` and `!sql`.
 
+pub mod cel;
 pub mod engines;
 pub mod expansion_tags;
 pub mod sentinel;
 pub mod yaml_tags;
 
+pub use cel::interpolation_holes::{
+    interpolation_shape, literal_fragments, read_interpolation_holes, HoleReading, InterpolationHole,
+    InterpolationShape,
+};
 pub use engines::include::{
     is_include_engine, normalize_include_path, normalize_module_path, IncludePathError,
     INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE,

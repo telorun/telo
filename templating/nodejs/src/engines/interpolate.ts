@@ -1,4 +1,4 @@
-import { CelEnvironment, CelEvaluationError, isCelMap, isCelRecord, type CelNode } from "@telorun/cel";
+import { CelEnvironment, CelEvaluationError, celTypeNameOf, typeValueName, type CelNode } from "@telorun/cel";
 import type { CompiledValue } from "@telorun/sdk";
 import { nullableValueChain } from "../cel/analyze.js";
 import { literalFragments, type InterpolationHole } from "../cel/interpolation-holes.js";
@@ -143,12 +143,12 @@ function stringConversion(env: CelEnvironment): Conversion {
   return conversion;
 }
 
+/** The value in CEL's terms, as `type()` names it; no host class name reaches the message. */
 function runtimeTypeOf(value: unknown): string {
-  if (value === null || value === undefined) return "null";
-  if (Array.isArray(value)) return "a list";
-  // Both of the value domain's map representations, asked of the domain rather than of the
-  // prototype: a branded value is a plain object, so a prototype test named an optional, a
-  // type and every host named type "a map".
-  if (isCelMap(value) || isCelRecord(value)) return "a map";
-  return `a value of type ${(value as object).constructor?.name ?? typeof value}`;
+  const name = celTypeNameOf(value);
+  if (name === undefined) return "a value outside the CEL value domain";
+  if (name === "null_type") return "null";
+  if (name === "list") return "a list";
+  if (name === "map") return "a map";
+  return `a value of type ${typeValueName(name)}`;
 }
