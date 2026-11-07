@@ -47,7 +47,7 @@ is `ui`'s own text for the status. With no answer at all `status` is
 absent and `code` is `ERR_UI_REQUEST_FAILED`.
 
 **A 400** is the validation problem
-[a collection answers with](../../data-model/docs/collection-contract.md#refusals--400), its findings
+[a collection answers with](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/), its findings
 in `data.issues`:
 
 ```json

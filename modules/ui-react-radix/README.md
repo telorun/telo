@@ -1,6 +1,6 @@
 # UI React Radix
 
-A theme for [`ui-react`](../ui-react/README.md): Studio's look over every part
+A theme for [`ui-react`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/): Studio's look over every part
 the renderer draws, with its selects, multi-selects, option lists, checkboxes,
 dialogs, drawers, popovers, confirmations, menus, navigation menus, tabs,
 tooltips and icons drawn by
@@ -20,7 +20,7 @@ reference; its brand stays its own.
   module's controls whole — `controls: [!ref Radix.controls]` — and give them a
   stylesheet of its own.
 - **Held to the renderer's contract.** Its tests run
-  [`ui-react-conformance`](../ui-react-conformance/README.md): every part
+  [`ui-react-conformance`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react-conformance/): every part
   styled, no reserved layout property set, every design token given a value
   and read, every screen drawn with its controls, every control's behaviour
   vectors met.

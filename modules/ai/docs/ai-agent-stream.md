@@ -86,7 +86,7 @@ A route serving a browser can drop `message` parts from what it forwards — the
 
 ## Serving over SSE
 
-Pipe `result.output` through an encoder in an [`Http.Api`](../../http-server/docs/http-api.md) `mode: stream` route. `Ndjson.Encoder` takes the parts as they are; [`Sse.Encoder`](../../sse-codec/README.md) takes frames, so a `Stream.Map` makes each part one — its `type` as the SSE `event:` and the whole part as `data:`. Declaring `elementType: !ref Sse.Frame` checks the frame shape before the app runs. (`Stream` is the `stream` module.)
+Pipe `result.output` through an encoder in an [`Http.Api`](https://hub.telo.run/module/oci/ghcr.io/telorun/http-server/) `mode: stream` route. `Ndjson.Encoder` takes the parts as they are; [`Sse.Encoder`](https://hub.telo.run/module/oci/ghcr.io/telorun/sse-codec/) takes frames, so a `Stream.Map` makes each part one — its `type` as the SSE `event:` and the whole part as `data:`. Declaring `elementType: !ref Sse.Frame` checks the frame shape before the app runs. (`Stream` is the `stream` module.)
 
 ```yaml
 kind: Ai.AgentStream

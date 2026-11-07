@@ -39,8 +39,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "tsc",
-    "prepack": "cp ../../LICENSE . && cp ../README.md . && node ../../scripts/prepack-bake-overrides.mjs .",
-    "postpack": "rm -f LICENSE && rm -f README.md",
+    "prepack": "cp ../../LICENSE . && cp ../README.md . && node ../../scripts/prepack-bake-overrides.mjs . && node ../../scripts/rewrite-pack-links.mjs . --readme-from ../README.md",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE && rm -f README.md",
     "build:standalone": "node scripts/build-standalone.mjs"
   },
   "dependencies": {

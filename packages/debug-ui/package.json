@@ -47,7 +47,9 @@
     "build:lib": "tsc -p tsconfig.lib.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepack": "node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",

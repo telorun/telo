@@ -35,7 +35,7 @@ stylesheets and its sets' stylesheets against what was drawn:
 2. **`unstyled` is current.** An entry naming a part the theme does style, or
    naming no part, is `unstyled-stale`.
 3. **No reserved property is set.** A rule matching a part that declares one
-   of the part's [reserved properties](../../ui-react/docs/styling.md#reserved-properties)
+   of the part's [reserved properties](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/)
    — directly, through a shorthand (`inset`, `overflow`, `grid`, `grid-area`,
    `padding`, `margin`, `margin-block`, `background`, `mask`, `flex`,
    `flex-flow`, `place-items`, `all`), through its logical name
@@ -69,14 +69,14 @@ as `CheckControls` checks it.
 
 The scenes are what catch controls that work alone and fail together. Every
 layer on a page comes from one implementation — a set implementing any of the
-nine [layer controls](../../ui-react/docs/controls-abi.md#layers) implements
+nine [layer controls](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) implements
 all of them, which `ui-react` refuses otherwise (`UI_CONTROLS_LAYERS_PARTIAL`)
 — so what the scenes hold is how that one stack composes: a list opened in a
 dialog, a drawer or a popover, the confirmation over a dialog or a drawer, the
 menu in a filter overlay, a tooltip over a surface or over a menu node's
 navigation panel, Escape closing only the top layer, and a press outside
 reaching the layers beneath the top one as far as the first shielding layer
-([composition within the stack](../../ui-react/docs/controls-abi.md#layers)).
+([composition within the stack](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/)).
 
 ## CheckControls
 

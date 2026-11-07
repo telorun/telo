@@ -39,7 +39,9 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:supervisor": "cargo build --release --locked -p telo-runner-supervisor"
+    "build:supervisor": "cargo build --release --locked -p telo-runner-supervisor",
+    "prepack": "node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",

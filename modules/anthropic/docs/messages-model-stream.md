@@ -139,7 +139,7 @@ Read a stream to its `finish` or stop iterating it; a stream that was pulled onc
 
 ## Errors
 
-The kind restates all thirteen codes [`Ai.ModelStream` declares](../../ai/README.md#catching-a-models-errors) in its `throws:` and raises nothing else. The status rows and the error-type table are the module's: [Errors](../README.md#errors).
+The kind restates all thirteen codes [`Ai.ModelStream` declares](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) in its `throws:` and raises nothing else. The status rows and the error-type table are the module's: [Errors](../README.md#errors).
 
 ## Snapshot
 

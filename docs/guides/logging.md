@@ -399,6 +399,6 @@ audit durability.
 
 ## Reference
 
-The normative contract is [`kernel/specs/logging.md`](https://github.com/telorun/telo/blob/main/kernel/specs/logging.md).
+The normative contract is [`kernel/specs/logging.md`](../../kernel/specs/logging.md).
 It defines the record model, the severity scale, sink behaviour, the encodings,
 and the conformance vectors every Telo runtime must pass.

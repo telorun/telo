@@ -1,6 +1,6 @@
 # Idempotency — PostgreSQL
 
-Record idempotency keys in a PostgreSQL table beside the work they guard, so a retried or redelivered operation's writes happen **once per key**. This is the PostgreSQL engine of [`idempotency-sql`](../idempotency-sql/README.md), which owns the contract, the `Once` operation and the implementation; this module adds the table and ledger kinds.
+Record idempotency keys in a PostgreSQL table beside the work they guard, so a retried or redelivered operation's writes happen **once per key**. This is the PostgreSQL engine of [`idempotency-sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/idempotency-sql/), which owns the contract, the `Once` operation and the implementation; this module adds the table and ledger kinds.
 
 ## Why use this
 
@@ -48,7 +48,7 @@ name: orders
 retention: 168h
 ```
 
-Guard work with `IdempotencySql.Once` inside a `Sql.Transaction` on `db`; see [the ledger guide](../idempotency-sql/docs/ledger.md).
+Guard work with `IdempotencySql.Once` inside a `Sql.Transaction` on `db`; see [the ledger guide](https://hub.telo.run/module/oci/ghcr.io/telorun/idempotency-sql/).
 
 ## Docs
 

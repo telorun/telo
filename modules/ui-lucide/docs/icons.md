@@ -13,7 +13,7 @@ name: settings
 | --- | --- | --- |
 | `name` | required | the glyph's name in the Lucide set, as [lucide.dev/icons](https://lucide.dev/icons) lists it — `house`, `settings`, `chart-line` |
 
-The kind extends [`Ui.Icon`](../../ui/docs/icons.md), so it goes wherever an
+The kind extends [`Ui.Icon`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), so it goes wherever an
 icon does: a navigation entry's `icon` declares one inline or names one by
 reference. It provides the glyph's SVG file, which `ui-react` serves under its
 content digest and draws as a mask in the colour of the entry's text.

@@ -38,7 +38,7 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | --- | --- |
 | [sql](./sql/README.md) | PostgreSQL and SQLite via `Sql.Connection`, `Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transaction`, and migrations. |
 | [sql-repository](./sql-repository/README.md) | Domain-shaped CRUD over a table via `SqlRepository.Read/Create/Delete`. |
-| [s3](./s3/README.md) | S3-compatible object storage. |
+| [s3](https://hub.telo.run/module/oci/ghcr.io/telorun/s3/) | S3-compatible object storage. |
 | [type](./type/README.md) | Named data types via `Type.JsonSchema`. |
 | [yaml](./yaml/README.md) | YAML parsing primitives. |
 
@@ -68,7 +68,7 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 
 | Module | Description |
 | --- | --- |
-| [lambda](./lambda/README.md) | Run your manifest as an AWS Lambda function (`Lambda.Function`, `Lambda.HttpApi`, `Lambda.Sqs`, `Lambda.Direct`). |
+| [lambda](https://hub.telo.run/module/oci/ghcr.io/telorun/lambda/) | Run your manifest as an AWS Lambda function (`Lambda.Function`, `Lambda.HttpApi`, `Lambda.Sqs`, `Lambda.Direct`). |
 
 ### Scripting
 

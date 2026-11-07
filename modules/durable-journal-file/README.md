@@ -21,7 +21,7 @@ host-path variable, as above — and a file there is refused
 (`HOST_PATH_ENTRY_MISMATCH`, or `ERR_HOST_PATH_ENTRY_MISMATCH` when the journal is
 created).
 
-Point a [`DurableLocal.Workflow`](../durable-local/README.md) at it and its runs survive the process.
+Point a [`DurableLocal.Workflow`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-local/) at it and its runs survive the process.
 
 ## Why a file store and not a memory one
 
@@ -33,7 +33,7 @@ One newline-delimited JSON file per run, appended and flushed as each record is 
 
 A run's file is read back with **first writer wins** per step: a record already present is the one that counts, so two writers converge rather than each continuing with its own value.
 
-A recorded value arrives already written down, under the codec version beside it, and this store keeps the two together and looks inside neither. That is the whole of its obligation: what [`durable-local`](../durable-local/docs/what-is-recorded.md) wrote is what it reads back, so a timestamp replays as a timestamp and a 64-bit integer keeps its last digit. A line from a file written before that codec existed carries no version and is read as the plain JSON it is, so a run parked then still resumes. A run line's `inputs` and `result` are kept the same way, beside `inputsCodecVersion` and `resultCodecVersion`.
+A recorded value arrives already written down, under the codec version beside it, and this store keeps the two together and looks inside neither. That is the whole of its obligation: what [`durable-local`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-local/) wrote is what it reads back, so a timestamp replays as a timestamp and a 64-bit integer keeps its last digit. A line from a file written before that codec existed carries no version and is read as the plain JSON it is, so a run parked then still resumes. A run line's `inputs` and `result` are kept the same way, beside `inputsCodecVersion` and `resultCodecVersion`.
 
 ## A record torn mid-write
 
@@ -51,4 +51,4 @@ A bad record anywhere *else* stays a hard failure, for the same reason: replayin
 - **Cross-process claiming.** The claim here is advisory and single-machine. A store whose claiming is real answers that with a database's own primitives rather than with a lock file this module would have to invent.
 - **Sharing a transaction with your writes.** It always reports that its records land outside any transaction's atomicity, so a transactional region is recorded as one entry and re-runs whole on a resume. That is correct for a directory of files, and it is what a run's `collapsedRegions` count makes visible.
 
-[durable-journal-postgres](../durable-journal-postgres/README.md) is that store: use it when several machines record to one place, or when you want a region's records to commit and roll back with the writes they describe.
+[durable-journal-postgres](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-journal-postgres/) is that store: use it when several machines record to one place, or when you want a region's records to commit and roll back with the writes they describe.

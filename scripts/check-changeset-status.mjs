@@ -59,15 +59,37 @@
 // module's), and every ignore entry names a package that still exists (changesets
 // rejects an unknown one).
 //
+// Three rules belong to release branches and candidates:
+//
+//   - Changesets listed in `.changeset/pre.json` are already RELEASED as a
+//     candidate: they never cover a later change.
+//   - Commits contained in a `v*`, `modules-*` or `packages-*` tag are released too, so they do
+//     not count as changed files: the merge-back of a published tag into main
+//     passes the gate with the changesets that tag consumed.
+//   - A `release/*` branch holding no `pre.json` whose first final (`v<x.y>.0`)
+//     is published accepts only patch changesets, for every package, so it never
+//     plans a version main's next cut will plan. A freshly cut branch carries
+//     its changesets and takes any bump until it enters candidates.
+//   - A PR from a `changeset-release/*` or `module-release/*` branch is the release
+//     machinery's own output (it consumes changesets and moves versions), so it is
+//     exempt; the bot opens it so required checks run.
+//
 // Usage: node scripts/check-changeset-status.mjs [base-ref]
+//   base-ref defaults to origin/$GITHUB_BASE_REF (the PR's base branch), else
+//   origin/main.
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join, matchesGlob, normalize, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ROOT, loadWorkspace } from "./module-ownership.mjs";
-import { rustTwinMismatches, workspacePackages } from "./version-line.mjs";
+import {
+  finalPublished,
+  readPreState,
+  readReleasePlan,
+  rustTwinMismatches,
+  workspacePackages,
+} from "./version-line.mjs";
 
 // Set by the CLI entry below; the exported `verifyInlines` needs none of them.
 let baseRef;
@@ -100,22 +122,37 @@ function isPublished(pkg, relative) {
 /** Workspace packages with at least one changed PUBLISHED file, by walking each
  *  changed path up to the nearest package directory. A change the tarball does not
  *  carry (a package's CLAUDE.md, its tests) releases nothing. */
-function changedPackages(packages) {
-  let diff;
+function changedFiles() {
+  const git = (...args) =>
+    execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   try {
-    diff = execSync(`git diff --name-only ${baseRef}...HEAD`, {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+    const range = [`${baseRef}...HEAD`];
+    const unreleased = git(
+      "rev-list", "--no-merges", "HEAD", `^${baseRef}`, "--not", "--tags=v*", "--tags=modules-*", "--tags=packages-*",
+    ).split("\n").filter(Boolean);
+    const all = git("rev-list", "--no-merges", "HEAD", `^${baseRef}`).split("\n").filter(Boolean);
+    // Nothing in the range is released: the plain diff, merge commits' resolutions included.
+    if (unreleased.length === all.length) return git("diff", "--name-only", ...range).split("\n").filter(Boolean);
+    // Otherwise only the unreleased commits' own files.
+    return [
+      ...new Set(
+        unreleased.flatMap((sha) =>
+          git("diff-tree", "--no-commit-id", "--name-only", "-r", sha).split("\n").filter(Boolean),
+        ),
+      ),
+    ];
   } catch {
     // No merge base (a shallow clone, a fresh repo) — the gate cannot decide what
     // changed, and guessing would fail PRs at random.
     return [];
   }
+}
+
+function changedPackages(packages) {
+  const files = changedFiles();
   const byDir = new Map(packages.map((pkg) => [pkg.dir, pkg]));
   const changed = new Map();
-  for (const file of diff.split("\n").filter(Boolean)) {
+  for (const file of files) {
     let dir = resolve(ROOT, dirname(file));
     while (dir.startsWith(ROOT)) {
       const pkg = byDir.get(dir);
@@ -131,23 +168,41 @@ function changedPackages(packages) {
   return [...changed.values()];
 }
 
-/** Package names named by any pending changeset. The front matter is a YAML
- *  mapping of `"name": bump`, one per line. */
-function coveredByChangesets() {
-  const covered = new Set();
+/** Every pending changeset's `{ file, name, bump }` entries, none of those
+ *  `.changeset/pre.json` lists: a candidate already released them. The front
+ *  matter is a YAML mapping of `"name": bump`, one per line. */
+function pendingChangesetEntries() {
+  const entries = [];
   const dir = join(ROOT, ".changeset");
-  if (!existsSync(dir)) return covered;
+  if (!existsSync(dir)) return entries;
+  const released = new Set(readPreState()?.changesets ?? []);
   for (const file of readdirSync(dir)) {
     if (!file.endsWith(".md") || file === "README.md") continue;
-    const text = readFileSync(join(dir, file), "utf8");
-    const frontMatter = text.split(/^---$/m)[1];
+    if (released.has(file.slice(0, -".md".length))) continue;
+    const frontMatter = readFileSync(join(dir, file), "utf8").split(/^---$/m)[1];
     if (!frontMatter) continue;
     for (const line of frontMatter.split("\n")) {
       const match = /^\s*["']?(@?[^"':]+)["']?\s*:\s*(major|minor|patch)\s*$/.exec(line);
-      if (match) covered.add(match[1].trim());
+      if (match) entries.push({ file, name: match[1].trim(), bump: match[2] });
     }
   }
-  return covered;
+  return entries;
+}
+
+/** After its final a `release/*` branch accepts only patch changesets. In
+ *  candidates (`pre.json` present) any bump is fine. */
+function checkPatchOnly(entries) {
+  const branch = baseRef.replace(/^origin\//, "");
+  if (!/^release\/\d+\.\d+$/.test(branch) || readPreState() || !finalPublished({ branch })) return 0;
+  let bad = 0;
+  for (const { file, name, bump } of entries) {
+    if (bump === "patch") continue;
+    console.error(
+      `::error::${branch} accepts only patch changesets; ${name} has a ${bump} (.changeset/${file}).`,
+    );
+    bad = 1;
+  }
+  return bad;
 }
 
 /** A package a MODULE owns — its version is the module's, moved by
@@ -201,37 +256,12 @@ const BAKED_PINS = [
  *
  * Read from changesets rather than recomputed: propagation through the dependency
  * graph is what changesets owns, and a second implementation of it would drift
- * silently. This is the same call `changeset version` makes, so the gate judges
- * exactly what a merge would produce.
- *
- * NOT through the `changeset status` CLI, which was the first attempt and failed in
- * CI: it computes changed-packages against the config's `baseBranch`, and a CI
- * checkout has `origin/main` but no local `main` — "Failed to find where HEAD
- * diverged from main". Passing `--since` fixes the ref but changes the ANSWER: it
- * filters the plan to changesets added since that ref, so a PR touching debug-ui
- * would be told to add a CLI changeset that main already carries. The library call
- * needs no ref at all.
- *
- * Resolved THROUGH `@changesets/cli` rather than added as a dependency of this repo,
- * so it is the same version the CLI itself uses — the two are released together and
- * read the config the same way.
+ * silently. This is the same call `changeset version` makes (`readReleasePlan`),
+ * so the gate judges exactly what a merge would produce. It needs no git ref, which
+ * is why it is not the `changeset status` CLI: a CI checkout has no local `main`.
  */
 async function plannedReleases() {
-  const here = createRequire(import.meta.url);
-  const fromCli = createRequire(here.resolve("@changesets/cli/package.json"));
-  const [planModule, { read: readConfig }, { getPackages }] = await Promise.all([
-    import(fromCli.resolve("@changesets/get-release-plan")),
-    import(fromCli.resolve("@changesets/config")),
-    import(fromCli.resolve("@manypkg/get-packages")),
-  ]);
-  // These ship as CJS with an interop default, so importing one yields either the
-  // function or a namespace wrapping it depending on the bundle.
-  const getReleasePlan = planModule.default?.default ?? planModule.default;
-  if (typeof getReleasePlan !== "function") {
-    throw new Error("@changesets/get-release-plan did not export a callable default");
-  }
-  const found = await getPackages(ROOT);
-  const plan = await getReleasePlan(ROOT, undefined, await readConfig(ROOT, found));
+  const plan = await readReleasePlan();
   return new Map(
     plan.releases.filter((r) => r.type && r.type !== "none").map((r) => [r.name, r.type]),
   );
@@ -404,18 +434,32 @@ function checkRustTwins() {
   return mismatches.length > 0 ? 1 : 0;
 }
 
+/** The head branch of a PR the release workflows open, or undefined. */
+export function releaseMachineryHead(head = process.env.GITHUB_HEAD_REF) {
+  return /^(changeset-release|module-release)\//.test(head ?? "") ? head : undefined;
+}
+
 async function main() {
-  baseRef = process.argv[2] ?? "origin/main";
+  const exempt = releaseMachineryHead();
+  if (exempt) {
+    console.log(`check-changeset-status: ${exempt} is the release workflow's own pull request — it consumes the changesets and moves versions, so no changeset covers it. Exempt.`);
+    process.exit(0);
+  }
+  baseRef =
+    process.argv[2] ?? (process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : "origin/main");
   workspace = loadWorkspace();
   packages = workspace.packages;
-  covered = coveredByChangesets();
+  const entries = pendingChangesetEntries();
+  covered = new Set(entries.map((entry) => entry.name));
 
   const changed = changedPackages(packages);
   const ignoreListFailed = checkIgnoreList();
   const bakedPinsFailed = await checkBakedPins(packages);
   const inlinedFailed = await checkInlined(changed);
   const twinsFailed = checkRustTwins();
-  let failed = ignoreListFailed || bakedPinsFailed || inlinedFailed || twinsFailed ? 1 : 0;
+  const patchOnlyFailed = checkPatchOnly(entries);
+  let failed =
+    ignoreListFailed || bakedPinsFailed || inlinedFailed || twinsFailed || patchOnlyFailed ? 1 : 0;
 
   for (const pkg of changed) {
     if (moduleOwned(pkg)) continue;

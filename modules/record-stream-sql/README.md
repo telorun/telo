@@ -39,7 +39,7 @@ store:
 retention: 24h
 ```
 
-The journal itself — sinks, sources, removal, expiry, reader states and writer liveness — is documented in [record-stream](../record-stream/README.md).
+The journal itself — sinks, sources, removal, expiry, reader states and writer liveness — is documented in [record-stream](https://hub.telo.run/module/oci/ghcr.io/telorun/record-stream/).
 
 ## Tables, clocks and polling
 

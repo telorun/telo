@@ -24,7 +24,7 @@ relations:
 ## Relations
 
 Which properties point at another collection's records is the collection's own
-[`relations`](../../data-model/docs/collection.md); a presentation says only
+[`relations`](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/); a presentation says only
 how those records are shown. A relation's value is never written here: it is
 always the target's `key`, which the collection guarantees can be looked up
 with `in`.

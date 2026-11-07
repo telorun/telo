@@ -45,9 +45,11 @@ The host sends a standard `initialize`. The engine answers:
   was published as. A build made while that release is still pending — a
   development checkout, a main-branch deployment — reports `X+unreleased`: it
   implements `X` but is not the `X` that will be published, so it never shares
-  an identity with a published engine. A host orders identities and tests them
-  against `requires: telo:` intervals by semver precedence (build metadata
-  ignored), and tells engines apart by the whole string.
+  an identity with a published engine. An engine built as a release candidate
+  reports `X.Y.Z-rc.N`; hosts read its precedence as `X.Y.Z`. A host orders
+  identities and tests them against `requires: telo:` intervals by semver
+  precedence (build metadata ignored), and tells engines apart by the whole
+  string.
 - `capabilities.experimental.telo.protocol: 1` — the generation it speaks.
 - `capabilities.experimental.telo.viewModel: true` — the engine serves the
   [engine-served requests](#engine-served-requests-host--engine) and sends

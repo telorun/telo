@@ -1,7 +1,7 @@
 # Blob FS
 
 `blob-fs` — a blob store on a directory. `BlobFs.Store` implements
-[`Blob.Store`](../blob/README.md), so `Blob.Put`, `Blob.Get`, `Blob.Head` and
+[`Blob.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/blob/), so `Blob.Put`, `Blob.Get`, `Blob.Head` and
 `Blob.Delete` keep their content as plain files under one root — on local disk,
 or on a volume several processes mount.
 
@@ -53,7 +53,7 @@ store: !ref attachments
 ```
 
 `saveAttachment` and `readAttachment` are then invoked like any other operation —
-see [the blob operations](../blob/docs/operations.md).
+see [the blob operations](https://hub.telo.run/module/oci/ghcr.io/telorun/blob/).
 
 ## Reference
 

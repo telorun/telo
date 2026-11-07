@@ -41,6 +41,15 @@ describe("selecting the telo version for a module", () => {
     });
   });
 
+  it("keeps a bundled release candidate by its release's precedence, and never offers one from the registry", () => {
+    const candidate: VersionCatalog = { ...catalog, bundled: "0.102.0-rc.1" };
+    const requirements = requirementsFor(OWNER, [OWNER], [{ module: LIB, text: ">=0.101.0", min: "0.101.0" }]);
+    expect(selectVersion({ catalog: candidate, requirements })).toEqual({
+      version: "0.102.0-rc.1",
+      reason: { kind: "bundled" },
+    });
+  });
+
   it("rule 3 — falls back to the bundled version when nothing satisfies the closure", () => {
     const requirements = requirementsFor(OWNER, [OWNER], [
       { module: OWNER, text: ">=0.200.0", min: "0.200.0" },

@@ -1,0 +1,69 @@
+name: Finish release
+
+# Dispatched at a release branch in candidates. Opens a PR into the branch that runs
+# `changeset pre exit`; the Version PR that follows publishes the final.
+#
+# Run at the branch ref (`gh workflow run finish-release.yml --ref release/0.85`):
+# the branch's own copy of this file and its scripts do the work.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: finish-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  finish:
+    name: Finish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check
+        id: check
+        run: node scripts/release-branch.mjs finish-check --ref "$GITHUB_REF_NAME"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Exit prerelease mode
+        run: pnpm exec changeset pre exit
+
+      # TELO_BOT_TOKEN so the branch's required checks run on the PR.
+      - name: Open the PR
+        id: pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.TELO_BOT_TOKEN }}
+          branch: finish-release/${{ steps.check.outputs.release }}
+          base: ${{ github.ref_name }}
+          title: "chore(release): finish ${{ steps.check.outputs.release }}"
+          commit-message: "chore(release): finish ${{ steps.check.outputs.release }}"
+          body: |
+            Runs `changeset pre exit` on `${{ github.ref_name }}`. Merging it makes the next Version PR publish `${{ steps.check.outputs.release }}.0`.
+
+      - name: Finish
+        env:
+          RELEASE: ${{ steps.check.outputs.release }}
+          NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+        run: |
+          if [ -z "$NUMBER" ]; then
+            echo "::error::Error: the finish PR was not opened; nothing differs from $GITHUB_REF_NAME."
+            exit 1
+          fi
+          echo "Opened #$NUMBER \"chore(release): finish $RELEASE\" into $GITHUB_REF_NAME: changeset pre exit; the next Version PR publishes $RELEASE.0."

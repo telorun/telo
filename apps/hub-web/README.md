@@ -461,12 +461,9 @@ http://telo.localhost:8060 (`HUB_BROWSER_API_ORIGIN`).
 ### Published image
 
 The `hub-web` job of `.github/workflows/publish-docker.yml` builds the
-`production` target and pushes `telorun/hub-web` on every push to `main` that
-touches `apps/hub-web/**` (among the workflow's other paths), tagged `latest`
-and `sha-<short>`, plus `<version>` when this package's `version` moved in that
-commit. Like the `docker-runner` job, it skips the "chore(release): version
-packages" commit on the push path and builds it on the post-publish release
-path.
+`production` target on the release branch's Publish run, outside candidates, and
+pushes `telorun/hub-web` tagged `sha-<short>`, `latest` when it moves forward,
+plus `<version>` when this package's `version` moved in that commit.
 
 ## End-to-end tests
 

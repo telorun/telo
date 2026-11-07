@@ -31,7 +31,7 @@ Both are `capability: Telo.Type`: they are never instantiated.
   `SCHEMA_VIOLATION` where a browser would reject or weaken them. What each
   renders, and the rules, are in [cookie declarations](docs/cookie-declarations.md);
   how a server sets and reads them is in
-  [`modules/http-server/docs/cookies.md`](../http-server/docs/cookies.md).
+  [`modules/http-server/docs/cookies.md`](https://hub.telo.run/module/oci/ghcr.io/telorun/http-server/).
 
 ## Cookies
 
@@ -86,7 +86,7 @@ so two transports cannot route one host differently:
 
 What a transport does with a match — mounts, precedence classes,
 `unknownHosts` — is in
-[`modules/http-server/docs/host-routing.md`](../http-server/docs/host-routing.md).
+[`modules/http-server/docs/host-routing.md`](https://hub.telo.run/module/oci/ghcr.io/telorun/http-server/).
 
 ## The request scope
 
@@ -149,7 +149,7 @@ for `Accept`: an entry none of whose keys the header admits renders its first ke
 406 problem, code `ERR_NOT_ACCEPTABLE` (exported), `data: { available }`.
 
 The normative shape — every member, and when a transport answers with a problem — is in
-[`modules/http-server/docs/returns-and-catches.md`](../http-server/docs/returns-and-catches.md#problem-details).
+[`modules/http-server/docs/returns-and-catches.md`](https://hub.telo.run/module/oci/ghcr.io/telorun/http-server/).
 
 **Plain errors never reach either function.** A non-`InvokeError` has no
 `error.code` for a `when:` to key on, so a transport hands those to its own
@@ -163,5 +163,5 @@ committed pre-stream, so there is no upstream iterable to feed an encoder;
 
 The authoring-level documentation — the `content` map, Accept negotiation,
 stream-mode encoders, the catch ladder and its coverage rules — is in
-[`modules/http-server/docs/returns-and-catches.md`](../http-server/docs/returns-and-catches.md),
+[`modules/http-server/docs/returns-and-catches.md`](https://hub.telo.run/module/oci/ghcr.io/telorun/http-server/),
 beside the kinds that expose these shapes to a manifest author.

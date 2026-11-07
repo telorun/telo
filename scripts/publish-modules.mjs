@@ -50,6 +50,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { promisify } from "node:util";
+import { setOutput } from "./release-actions-output.mjs";
 
 import {
   destinationsByManifest,
@@ -187,6 +188,10 @@ for (const f of importable.map((abs) => abs.replace(ROOT + "/", "")).filter((rel
   }
   queued.add(join(ROOT, f));
 }
+
+// How many modules this commit's own version bumps queued: the Publish workflow
+// tags a module release only when it is non-zero.
+setOutput("moved", queued.size);
 
 // Presence checks that could not ANSWER — a broken credential, an unreachable
 // registry. Distinct from "no versions published", which is a real answer.

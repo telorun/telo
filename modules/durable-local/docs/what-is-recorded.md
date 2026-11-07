@@ -115,6 +115,6 @@ run simply continues with a value produced for a different step.
 
 ## What this costs
 
-One record per decision, on top of one per step. For an ordinary body that is a handful of small writes. For a hot loop it is not, which is what [`Durable.Idempotent`](../../durable/README.md) is for: wrap a region whose re-execution is genuinely a no-op and the whole region becomes one record — *and* its decisions stop being recorded, because the region re-runs wholesale by its own claim.
+One record per decision, on top of one per step. For an ordinary body that is a handful of small writes. For a hot loop it is not, which is what [`Durable.Idempotent`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable/) is for: wrap a region whose re-execution is genuinely a no-op and the whole region becomes one record — *and* its decisions stop being recorded, because the region re-runs wholesale by its own claim.
 
 That is also why an impure expression inside such a region is a `telo check` error: the region promised re-running was a no-op, and `uuidv4()` makes that false.

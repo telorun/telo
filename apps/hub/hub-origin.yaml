@@ -69,7 +69,8 @@ value: !cel "inputs.ref.startsWith('oci://') ? inputs.ref + '@' + inputs.version
 # The versions a ref actually resolves to, newest-first, each with its digest
 # (or, when that one tag's digest cannot be read, the reason, with `digest`
 # empty), and with the `latest` tag dropped — it is an alias, not a version, and
-# ingesting it would store the same content twice under two names.
+# ingesting it would store the same content twice under two names. With
+# `finalOnly`, release candidates (`X.Y.Z-rc.N`) are dropped too.
 #
 # One CLI process reads every digest: the reconcile pass reads every version of
 # every tracked module, and a process per version was most of its cost.
@@ -80,7 +81,7 @@ inputType:
   schema:
     type: object
     additionalProperties: false
-    properties: { ref: { type: string } }
+    properties: { ref: { type: string }, finalOnly: { type: boolean } }
     required: [ref]
 outputType:
   kind: Telo.JsonSchema
@@ -122,7 +123,8 @@ steps:
       - name: concrete
         value: !cel >-
           steps.docs.result.docs[0]
-            .filter(e, string(e.version) != 'latest')
+            .filter(e, string(e.version) != 'latest'
+                       && !(inputs.?finalOnly.orValue(false) && string(e.version).contains('-')))
             .map(e, {
             'version': string(e.version),
             'digest': 'digest' in e ? string(e.digest) : '',

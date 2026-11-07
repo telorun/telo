@@ -2,7 +2,7 @@
 
 `GET <prefix>` returns one page of the table, or one page of a property's
 present values (a [facet](#facets)). It implements the
-[collection contract](../../data-model/docs/collection-contract.md), so a screen
+[collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/), so a screen
 reading the same collection works over it with no adapter. It accepts the
 filters, sorts and facets the collection's
 [`query`](collection.md#the-declared-query) declares, and no others.

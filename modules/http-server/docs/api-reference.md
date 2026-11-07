@@ -63,7 +63,7 @@ REFERRER_RULE_VIOLATED
 ```
 
 `Http.Reference` declares that as a [referrer
-rule](../../../docs/extend/referrer-rules.md): the requirement is the mount's, so
+rule](https://telo.run/extend/referrer-rules): the requirement is the mount's, so
 the server needs no knowledge of which mounts need what. The controller keeps its
 own guard, so the same mistake reached through a path `telo check` never saw
 still fails at startup, before the port is bound, rather than serving an empty

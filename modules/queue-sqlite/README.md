@@ -1,6 +1,6 @@
 # Queue — SQLite
 
-Durable background-job queues in a SQLite table beside the application's own data, so a job can be enqueued in the same transaction as the rows it is about. This is the SQLite engine of [`queue-sql`](../queue-sql/README.md), which owns the contract, the transactional enqueue and the implementation; this module adds the table and queue kinds. Messages are processed by the [`queue`](../queue/README.md) module's `Queue.Worker`.
+Durable background-job queues in a SQLite table beside the application's own data, so a job can be enqueued in the same transaction as the rows it is about. This is the SQLite engine of [`queue-sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/queue-sql/), which owns the contract, the transactional enqueue and the implementation; this module adds the table and queue kinds. Messages are processed by the [`queue`](https://hub.telo.run/module/oci/ghcr.io/telorun/queue/) module's `Queue.Worker`.
 
 ## Why use this
 
@@ -63,4 +63,4 @@ retry: { attempts: 3 }
 ## Docs
 
 - [SQLite specifics](./docs/sqlite.md) — the table, polling, instants and concurrency on this engine.
-- [How the SQL queue works](../queue-sql/docs/sql-queue.md) — the transactional enqueue, claiming, groups, retention, the refusals.
+- [How the SQL queue works](https://hub.telo.run/module/oci/ghcr.io/telorun/queue-sql/) — the transactional enqueue, claiming, groups, retention, the refusals.

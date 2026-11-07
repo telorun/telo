@@ -4,7 +4,7 @@ A theme is how every screen of an application looks: stylesheets written
 against [the styling contract](styling.md), default values for the brand
 tokens, and — optionally — its own implementation of some of the renderer's
 interactive controls. An application picks one with one reference, and its
-brand stays a separate [`Ui.DesignTokens`](../../ui/docs/design-tokens.md) set
+brand stays a separate [`Ui.DesignTokens`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) set
 under `tokens:`, so changing the theme keeps the brand and any brand works
 under any theme.
 
@@ -138,7 +138,7 @@ the other needs.
 
 A module publishing a theme or a control set holds it to the renderer's
 contract from its own tests, with
-[`ui-react-conformance`](../../ui-react-conformance/README.md):
+[`ui-react-conformance`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react-conformance/):
 `UiReactConformance.CheckTheme` reports every part the theme leaves unstyled,
 every reserved property it sets, every design token it gives no value or never
 reads, every scene that breaks under its controls and every vector a set fails; `UiReactConformance.CheckControls` runs the vectors of

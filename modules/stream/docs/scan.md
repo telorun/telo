@@ -12,7 +12,7 @@ emits as it goes, rather than one value at the finish.
 
 Reassembling text from deltas is the case it exists for: each delta is meaningless
 alone, the accumulated text is what a reader wants, and it has to arrive per delta
-rather than at the end. [`Collection.Fold`](../../collection/docs/fold.md) answers the
+rather than at the end. [`Collection.Fold`](https://hub.telo.run/module/oci/ghcr.io/telorun/collection/) answers the
 same question with a single value when the collection is exhausted — which, for a
 stream, means never.
 

@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/*"]
   pull_request:
-    branches: [main]
+    branches: [main, "release/*"]
 
 jobs:
   checks:
@@ -112,6 +112,19 @@ jobs:
       - name: Check the license boundary
         run: pnpm run check:licenses
 
+      # A link into the repository is relative, so GitHub resolves it against the
+      # ref being viewed and the site build and npm / .vsix packing rewrite it to
+      # the tag they publish. An absolute URL is pinned to one ref and goes stale;
+      # a module's files may not reach into the tree at all, since its bytes must
+      # not depend on which release publishes it.
+      - name: Check links
+        run: pnpm run check:links
+
+      # The release scripts (cut, finish, publish, the gate, pointers) are exercised
+      # against scratch git repositories.
+      - name: Test the release scripts
+        run: node --test scripts/tests/*.test.mjs
+
       # `@telorun/cel`'s own suite deliberately runs with no vectors directory
       # reachable, so the conformance replay lives under its own config and is
       # driven only from here. This is the one artifact naming
@@ -167,8 +180,8 @@ jobs:
 
       # Packaging is picky in ways a build is not — `@types/vscode` outranking
       # `engines.vscode` fails here while `tsc` and esbuild both pass. Running it
-      # per-PR keeps that failure off `vscode-release.yml`, which packages the
-      # same way on a version bump and has no PR to fail instead.
+      # per-PR keeps that failure off `vscode-release.yml`, which Publish calls
+      # to package the same way at a release and has no PR to fail instead.
       - name: Check the VS Code extension packages
         run: pnpm --filter "./ide/vscode" vsix
 
@@ -211,6 +224,15 @@ jobs:
       package_integration: ${{ steps.packages.outputs.package_integration }}
       suites: ${{ steps.packages.outputs.suites }}
       rust: ${{ steps.packages.outputs.rust }}
+      # The full macOS / Windows / Bun / Docker-image jobs gate only on a
+      # `release/*` branch; on main they read these as "nothing to run" and are
+      # skipped. The same values as above otherwise.
+      platform_mode: ${{ steps.branch.outputs.release == 'true' && steps.select.outputs.mode || 'none' }}
+      platform_unit_mode: ${{ steps.branch.outputs.release == 'true' && steps.packages.outputs.unit_mode || 'none' }}
+      platform_suites: ${{ steps.branch.outputs.release == 'true' && steps.packages.outputs.suites || 'false' }}
+      core_mode: ${{ steps.packages.outputs.core_mode }}
+      core_build_args: ${{ steps.packages.outputs.core_build_args }}
+      core_test_args: ${{ steps.packages.outputs.core_test_args }}
       integration_mode: ${{ steps.integration.outputs.integration_mode }}
       integration_args: ${{ steps.integration.outputs.integration_args }}
 
@@ -246,6 +268,20 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # The branch the change lands on: the PR's base, else the pushed branch.
+      - name: Detect a release branch
+        id: branch
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          target="${BASE_REF:-$REF_NAME}"
+          case "$target" in
+            release/*) echo "release=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "release=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       # FAIL OPEN at every step: a diff that cannot be taken, or a `telo
       # changed` that fails, runs everything. Only an explicit empty `affected`
@@ -314,6 +350,9 @@ jobs:
               echo "package_integration=$(jq -r '.packageIntegration' <<<"$1")"
               echo "suites=$(jq -r '.suites' <<<"$1")"
               echo "rust=$(jq -r '.rust' <<<"$1")"
+              echo "core_mode=$(jq -r '.core.mode' <<<"$1")"
+              echo "core_build_args=$(jq -c '.core.buildArgs' <<<"$1")"
+              echo "core_test_args=$(jq -c '.core.testArgs' <<<"$1")"
             } >> "$GITHUB_OUTPUT"
             {
               echo
@@ -324,7 +363,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           }
           full() {
-            emit "$(jq -cn --arg reason "$1" '{mode:"full",reason:$reason,packages:[],testArgs:[],buildArgs:[],packageIntegration:true,suites:true,rust:true}')"
+            emit "$(jq -cn --arg reason "$1" '{mode:"full",reason:$reason,packages:[],testArgs:[],buildArgs:[],packageIntegration:true,suites:true,rust:true,core:{mode:"full",buildArgs:["--filter","@telorun/analyzer...","--filter","@telorun/kernel...","--filter","@telorun/cli..."],testArgs:["--filter","@telorun/analyzer","--filter","@telorun/kernel","--filter","@telorun/cli"]}}')"
             exit 0
           }
           [ "$EVENT_NAME" = "pull_request" ] || full "Not a pull request"
@@ -372,6 +411,7 @@ jobs:
     name: "Linux: manifest tests (Bun)"
     runs-on: ubuntu-latest
     needs: select
+    if: needs.select.outputs.platform_mode != 'none' || needs.select.outputs.platform_suites == 'true'
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -411,7 +451,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run tests (bun)
-        if: needs.select.outputs.mode != 'none'
+        if: needs.select.outputs.platform_mode != 'none'
         shell: bash
         env:
           SUITE_ARGS: ${{ needs.select.outputs.args }}
@@ -430,31 +470,32 @@ jobs:
       # release sequence is behind rather than that the code is wrong, and that
       # signal must not make a red module suite ambiguous.
       - name: Run the example test suites (bun)
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo ./examples/test-suite.yaml
 
       - name: Run the starter test suites (bun)
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo ./starters/test-suite.yaml
 
       - name: Run the blueprint test suites (bun)
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo ./blueprints/test-suite.yaml
 
       # The plan-approval apps import the workspace by relative path and run
       # offline, but the root suite excludes `apps/**`, so they run here.
       - name: Run the plan-approval server test suite (bun)
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo ./apps/plan-approval/test-suite.yaml
 
       - name: Run the plan-approval runner test suite (bun)
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo ./apps/plan-approval-runner/test-suite.yaml
 
   integration:
     name: "Linux: integration tests (Postgres)"
     runs-on: ubuntu-latest
     needs: select
+    if: needs.select.outputs.integration_mode != 'none'
 
     # The tests the root suite deliberately cannot hold: each starts the
     # database it needs as a container of its own, through the runner's Docker
@@ -502,18 +543,16 @@ jobs:
       # project's account first and the tests find it present. A fork's pull
       # request holds no secrets and pulls anonymously, as before.
       - name: Log in to Docker Hub
-        if: env.DOCKERHUB_USERNAME != '' && needs.select.outputs.integration_mode != 'none'
+        if: env.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Pull the test database image
-        if: needs.select.outputs.integration_mode != 'none'
         run: docker pull pgvector/pgvector:pg18
 
       - name: Run integration tests
-        if: needs.select.outputs.integration_mode != 'none'
         shell: bash
         env:
           SUITE_ARGS: ${{ needs.select.outputs.integration_args }}
@@ -524,7 +563,6 @@ jobs:
       # Every test removes its container when it ends; one left behind is a
       # cleanup defect, not noise.
       - name: Check no test container is left
-        if: needs.select.outputs.integration_mode != 'none'
         run: |
           left=$(docker ps -aq --filter label=run.telo.container.expires)
           if [ -n "$left" ]; then docker ps -a --filter label=run.telo.container.expires; exit 1; fi
@@ -533,6 +571,7 @@ jobs:
     name: "Linux: package unit tests"
     runs-on: ubuntu-latest
     needs: select
+    if: needs.select.outputs.unit_mode != 'none'
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -574,7 +613,6 @@ jobs:
       # `cargo build` of fixture crates. Persist the Rust target/ across runs
       # so cold builds don't dominate (and don't flake the 5s-ish tests).
       - name: Setup Rust cache
-        if: needs.select.outputs.unit_mode != 'none'
         uses: Swatinem/rust-cache@v2
         with:
           # Controller crates are built into the workspace-anchored `.telo` cache,
@@ -599,7 +637,6 @@ jobs:
       # On a pull request that reaches only some packages, those and what they
       # depend on are built, and their tests alone run.
       - name: Build for Node.js
-        if: needs.select.outputs.unit_mode != 'none'
         shell: bash
         env:
           BUILD_ARGS: ${{ needs.select.outputs.unit_build_args }}
@@ -620,6 +657,7 @@ jobs:
     name: "Linux: manifest tests (Node)"
     runs-on: ubuntu-latest
     needs: select
+    if: needs.select.outputs.mode != 'none'
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -659,11 +697,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build for Node.js
-        if: needs.select.outputs.mode != 'none'
         run: pnpm -r run build
 
       - name: Run tests (node)
-        if: needs.select.outputs.mode != 'none'
         shell: bash
         env:
           SUITE_ARGS: ${{ needs.select.outputs.args }}
@@ -678,7 +714,6 @@ jobs:
       # imports the console module from ghcr.io, so this also verifies the OCI
       # round-trip on top of HTTP-rooted controller installs.
       - name: Run remote manifest over raw.githubusercontent.com
-        if: needs.select.outputs.mode != 'none'
         run: |
           set -euo pipefail
           URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/examples/hello-world/telo.yaml"
@@ -706,6 +741,7 @@ jobs:
     name: "Linux: manifest tests (Docker)"
     runs-on: ubuntu-latest
     needs: select
+    if: needs.select.outputs.platform_mode != 'none'
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -749,25 +785,22 @@ jobs:
       # and their compile deps so the mounted suite's local_path controllers
       # resolve to built dist/. The image stays a pure runtime.
       - name: Build module controllers
-        if: needs.select.outputs.mode != 'none'
         run: pnpm --filter "{./modules/**}..." run build
 
       # Anonymous pulls are limited per IP, and a hosted runner shares its IP
       # with everyone else's jobs. A fork's pull request holds no secrets and
       # pulls anonymously, as before.
       - name: Log in to Docker Hub
-        if: env.DOCKERHUB_USERNAME != '' && needs.select.outputs.mode != 'none'
+        if: env.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build docker image
-        if: needs.select.outputs.mode != 'none'
         run: docker build -f cli/nodejs/Dockerfile -t telo:ci .
 
       - name: Run tests (docker image)
-        if: needs.select.outputs.mode != 'none'
         shell: bash
         env:
           SUITE_ARGS: ${{ needs.select.outputs.args }}
@@ -790,6 +823,7 @@ jobs:
     name: "Linux: package integration tests (Docker)"
     runs-on: ubuntu-latest
     needs: select
+    if: needs.select.outputs.package_integration == 'true'
 
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -831,21 +865,19 @@ jobs:
       # imports `dist/` — the container runners build their own copy inside the
       # image, but this one needs the workspace built first.
       - name: Build for Node.js
-        if: needs.select.outputs.package_integration == 'true'
         run: pnpm -r run build
 
       # Anonymous pulls are limited per IP, and a hosted runner shares its IP
       # with everyone else's jobs. A fork's pull request holds no secrets and
       # pulls anonymously, as before.
       - name: Log in to Docker Hub
-        if: env.DOCKERHUB_USERNAME != '' && needs.select.outputs.package_integration == 'true'
+        if: env.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Run package integration tests
-        if: needs.select.outputs.package_integration == 'true'
         run: pnpm -r test:integration
 
   # No step is marked `continue-on-error`: a red step fails the job, and a
@@ -863,6 +895,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     needs: select
+    if: needs.select.outputs.platform_unit_mode != 'none'
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -899,7 +932,6 @@ jobs:
       # real `cargo build` of fixture crates, so the Rust toolchain is on the
       # unit-test path here exactly as it is on ubuntu.
       - name: Setup Rust cache
-        if: needs.select.outputs.unit_mode != 'none'
         uses: Swatinem/rust-cache@v2
         with:
           # Controller crates are built into the workspace-anchored `.telo` cache,
@@ -916,7 +948,6 @@ jobs:
       # docs site: nothing here reads their output, they have no
       # Windows-specific path, and the Linux unit job builds them.
       - name: Build for Node.js
-        if: needs.select.outputs.unit_mode != 'none'
         shell: bash
         env:
           BUILD_ARGS: ${{ needs.select.outputs.unit_build_args }}
@@ -925,7 +956,7 @@ jobs:
           pnpm -r "${args[@]}" --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
 
       - name: Run package unit tests
-        if: needs.select.outputs.unit_mode == 'full' || (needs.select.outputs.unit_mode == 'selected' && needs.select.outputs.unit_test_args != '[]')
+        if: needs.select.outputs.platform_unit_mode == 'full' || (needs.select.outputs.platform_unit_mode == 'selected' && needs.select.outputs.unit_test_args != '[]')
         shell: bash
         env:
           TEST_ARGS: ${{ needs.select.outputs.unit_test_args }}
@@ -938,6 +969,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     needs: select
+    if: needs.select.outputs.platform_mode != 'none' || needs.select.outputs.platform_suites == 'true'
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -974,7 +1006,6 @@ jobs:
       # The `runtime-rust` and napi manifest tests run a real `cargo build` of
       # controller and fixture crates.
       - name: Setup Rust cache
-        if: needs.select.outputs.mode != 'none' || needs.select.outputs.suites == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           # Controller crates are built into the workspace-anchored `.telo` cache,
@@ -995,7 +1026,6 @@ jobs:
       # here reads their output, they have no Windows-specific path, and the
       # Linux unit job builds them.
       - name: Build for Node.js
-        if: needs.select.outputs.mode != 'none' || needs.select.outputs.suites == 'true'
         shell: bash
         run: pnpm -r --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
 
@@ -1004,19 +1034,19 @@ jobs:
       # is expanded before the CLI sees it: neither cmd.exe nor pwsh expands one
       # for a native command, and `telo check` takes literal positionals.
       - name: Check module manifests
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         shell: bash
         run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 
       - name: Check example manifests
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         shell: bash
         run: >-
           pnpm run check examples/*/telo.yaml examples/*/*/telo.yaml
           examples/schema-evolution/v1.yaml examples/templated-api/library.yaml
 
       - name: Check starter and blueprint manifests
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         shell: bash
         run: pnpm run check starters/apps/*/telo.yaml starters/libs/*/telo.yaml blueprints/*/telo.yaml
 
@@ -1038,13 +1068,13 @@ jobs:
       # Windows runner; before this job was split from the unit tests, a unit
       # test that ran first did.
       - name: Create the temp directory manifest tests write to
-        if: needs.select.outputs.mode != 'none'
+        if: needs.select.outputs.platform_mode != 'none'
         shell: bash
         run: |
           node -e "require('node:fs').mkdirSync('/tmp', { recursive: true })"
 
       - name: Run telo manifest tests (Node)
-        if: needs.select.outputs.mode != 'none'
+        if: needs.select.outputs.platform_mode != 'none'
         shell: bash
         env:
           SUITE_ARGS: ${{ needs.select.outputs.args }}
@@ -1065,6 +1095,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     needs: select
+    if: needs.select.outputs.platform_unit_mode != 'none'
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -1101,7 +1132,6 @@ jobs:
       # real `cargo build` of fixture crates, so the Rust toolchain is on the
       # unit-test path here exactly as it is on ubuntu.
       - name: Setup Rust cache
-        if: needs.select.outputs.unit_mode != 'none'
         uses: Swatinem/rust-cache@v2
         with:
           # Controller crates are built into the workspace-anchored `.telo` cache,
@@ -1118,7 +1148,6 @@ jobs:
       # docs site: nothing here reads their output, they have no
       # macOS-specific path, and the Linux unit job builds them.
       - name: Build for Node.js
-        if: needs.select.outputs.unit_mode != 'none'
         shell: bash
         env:
           BUILD_ARGS: ${{ needs.select.outputs.unit_build_args }}
@@ -1127,7 +1156,7 @@ jobs:
           pnpm -r "${args[@]}" --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
 
       - name: Run package unit tests
-        if: needs.select.outputs.unit_mode == 'full' || (needs.select.outputs.unit_mode == 'selected' && needs.select.outputs.unit_test_args != '[]')
+        if: needs.select.outputs.platform_unit_mode == 'full' || (needs.select.outputs.platform_unit_mode == 'selected' && needs.select.outputs.unit_test_args != '[]')
         shell: bash
         env:
           TEST_ARGS: ${{ needs.select.outputs.unit_test_args }}
@@ -1140,6 +1169,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     needs: select
+    if: needs.select.outputs.platform_mode != 'none' || needs.select.outputs.platform_suites == 'true'
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -1176,7 +1206,6 @@ jobs:
       # The `runtime-rust` and napi manifest tests run a real `cargo build` of
       # controller and fixture crates.
       - name: Setup Rust cache
-        if: needs.select.outputs.mode != 'none' || needs.select.outputs.suites == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           # Controller crates are built into the workspace-anchored `.telo` cache,
@@ -1197,26 +1226,25 @@ jobs:
       # here reads their output, they have no macOS-specific path, and the
       # Linux unit job builds them.
       - name: Build for Node.js
-        if: needs.select.outputs.mode != 'none' || needs.select.outputs.suites == 'true'
         shell: bash
         run: pnpm -r --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
 
       - name: Check module manifests
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 
       - name: Check example manifests
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: >-
           pnpm run check examples/*/telo.yaml examples/*/*/telo.yaml
           examples/schema-evolution/v1.yaml examples/templated-api/library.yaml
 
       - name: Check starter and blueprint manifests
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run check starters/apps/*/telo.yaml starters/libs/*/telo.yaml blueprints/*/telo.yaml
 
       - name: Run telo manifest tests (Node)
-        if: needs.select.outputs.mode != 'none'
+        if: needs.select.outputs.platform_mode != 'none'
         shell: bash
         env:
           SUITE_ARGS: ${{ needs.select.outputs.args }}
@@ -1225,28 +1253,150 @@ jobs:
           pnpm run test:node "${args[@]}"
 
       - name: Run the example test suites (Node)
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo:node ./examples/test-suite.yaml
 
       - name: Run the starter test suites (Node)
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo:node ./starters/test-suite.yaml
 
       - name: Run the blueprint test suites (Node)
-        if: needs.select.outputs.suites == 'true'
+        if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo:node ./blueprints/test-suite.yaml
+
+  macos-core:
+    name: "macOS: core unit tests"
+    runs-on: macos-latest
+    timeout-minutes: 60
+    needs: select
+    if: needs.select.outputs.core_mode != 'none'
+
+    # The analyzer, kernel and CLI only, on every pull request and push; the
+    # full macOS jobs run on release branches.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: .telo/cargo
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the core packages
+        shell: bash
+        env:
+          BUILD_ARGS: ${{ needs.select.outputs.core_build_args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$BUILD_ARGS")
+          pnpm -r "${args[@]}" run build
+
+      - name: Run the core unit tests
+        shell: bash
+        env:
+          TEST_ARGS: ${{ needs.select.outputs.core_test_args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS")
+          pnpm -r "${args[@]}" --no-bail test
+
+  windows-core:
+    name: "Windows: core unit tests"
+    runs-on: windows-latest
+    timeout-minutes: 60
+    needs: select
+    if: needs.select.outputs.core_mode != 'none'
+
+    # The analyzer, kernel and CLI only, on every pull request and push; the
+    # full Windows jobs run on release branches.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: .telo/cargo
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the core packages
+        shell: bash
+        env:
+          BUILD_ARGS: ${{ needs.select.outputs.core_build_args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$BUILD_ARGS" | tr -d '\r')
+          pnpm -r "${args[@]}" run build
+
+      - name: Run the core unit tests
+        shell: bash
+        env:
+          TEST_ARGS: ${{ needs.select.outputs.core_test_args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS" | tr -d '\r')
+          pnpm -r "${args[@]}" --no-bail test
 
   rust:
     name: "Linux: Rust tests"
     runs-on: ubuntu-latest
     needs: select
+    if: needs.select.outputs.rust == 'true'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Rust cache
-        if: needs.select.outputs.rust == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           # Controller crates are built into the workspace-anchored `.telo` cache,
@@ -1256,10 +1406,21 @@ jobs:
           cache-directories: .telo/cargo
 
       # The Rust CLI embeds the built-in vocabulary archive, which is rendered,
-      # never tracked, and its build refuses to run without it. Both generators are
-      # dependency-free, so the runner's own node renders it with nothing installed.
+      # never tracked, and its build refuses to run without it. The version
+      # generator reads changesets' release plan, so the workspace is installed first.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Render the built-in vocabulary
-        if: needs.select.outputs.rust == 'true'
         run: node scripts/generate-telo-version.mjs && node scripts/render-builtin-vocabulary.mjs
 
       # Both SDK backends are compiled explicitly. `telorun-sdk` declares no
@@ -1272,15 +1433,12 @@ jobs:
       # with `--locked` and fails on whichever platform reaches it first. This
       # is the cheapest job to read that failure on, and it reads as what it is.
       - name: Check the napi backend
-        if: needs.select.outputs.rust == 'true'
         run: cargo check --workspace --locked --features telorun-sdk/napi
 
       - name: Check the native backend
-        if: needs.select.outputs.rust == 'true'
         run: cargo check --workspace --locked --features telorun-sdk/native
 
       # The kernel's integration tests build the console controller crate as a
       # subprocess, so this covers the native backend end to end.
       - name: Run tests
-        if: needs.select.outputs.rust == 'true'
         run: cargo test --workspace --locked

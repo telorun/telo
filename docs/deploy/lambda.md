@@ -130,10 +130,10 @@ listener.
 
 Runnable manifests, one per source:
 
-- [`direct.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/direct.yaml) — `Lambda.Direct`, the minimal setup.
-- [`http-api.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/http-api.yaml) — two routes, CORS, and a `catches:` block rendering a structured 400.
-- [`sqs.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/sqs.yaml) — per-message retry reporting via `partialBatchResponse`.
-- [`multi-kind.yaml`](https://github.com/telorun/telo/blob/main/examples/aws/lambda/multi-kind.yaml) — all three sources on one artifact.
+- [`direct.yaml`](../../examples/aws/lambda/direct.yaml) — `Lambda.Direct`, the minimal setup.
+- [`http-api.yaml`](../../examples/aws/lambda/http-api.yaml) — two routes, CORS, and a `catches:` block rendering a structured 400.
+- [`sqs.yaml`](../../examples/aws/lambda/sqs.yaml) — per-message retry reporting via `partialBatchResponse`.
+- [`multi-kind.yaml`](../../examples/aws/lambda/multi-kind.yaml) — all three sources on one artifact.
 
 ## See also
 

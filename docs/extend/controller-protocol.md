@@ -12,7 +12,7 @@ languages you did not write it for. What holds that together is a single contrac
 a kernel and a controller, in which direction, and what each carries.
 
 The normative document is
-[`kernel/specs/controller-protocol.md`](https://github.com/telorun/telo/blob/main/kernel/specs/controller-protocol.md); the
+[`kernel/specs/controller-protocol.md`](../../kernel/specs/controller-protocol.md); the
 operations themselves are data, one JSON file per message under
 `sdk/controller-protocol/messages/`. This page is the orientation: what the
 protocol is for, what it deliberately leaves out, and the handful of rules that
@@ -110,7 +110,7 @@ those.
 
 Everything else about effects — frames, LIFO recovery, disposal, what a failed
 `init()` does — is
-[`kernel/specs/revertible-effects.md`](https://github.com/telorun/telo/blob/main/kernel/specs/revertible-effects.md) and is
+[`kernel/specs/revertible-effects.md`](../../kernel/specs/revertible-effects.md) and is
 unchanged by which carrier you are on.
 
 ## Reentrancy, and the one deadlock to know about

@@ -85,13 +85,13 @@ On the **streaming** path, OpenAI splits each tool call across many `delta.tool_
 
 Each argument fragment is also reported as it arrives, as `{ type: "tool-call-delta", toolCallId, toolName, delta }` — `toolCallId` being the `id` the call's `tool-call` part then carries, and a call's `delta`s joining to its argument JSON. Nothing is reported for a call until the endpoint has sent both its `id` and its name: an OpenAI-compatible endpoint that sends the id after the first fragment has those fragments held and released as one delta when the id arrives. An endpoint that never sends an id gets one generated for the call, `call_<uuid>`, carried by its deltas (released immediately before the call) and by the call alike. A generated id is unique: the positional `call_<index>` this kind used to fall back to repeated on every model call of one agent run.
 
-This is what lets [`Ai.AgentStream`](../../ai/docs/ai-agent-stream.md) drive a tool-use loop with live token streaming; `Ai.TextStream` never passes `tools`, so it never observes these parts.
+This is what lets [`Ai.AgentStream`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) drive a tool-use loop with live token streaming; `Ai.TextStream` never passes `tools`, so it never observes these parts.
 
 ## Multimodal content
 
-Message `content` may be a string or [content parts](../../ai/docs/ai-model.md#modality-lives-in-the-parts).
+Message `content` may be a string or [content parts](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/).
 
-Declare what the model takes with [`accepts`](../../ai/docs/ai-model.md#accepts--what-a-model-takes-beside-text); with none it takes text only, and a part outside it is refused before anything is sent. This kind narrows it to what chat completions can carry at all: images of any `image/…` type and files of any media type (audio and video have no input shape here), so an entry outside that is a `SCHEMA_VIOLATION` under `telo check`.
+Declare what the model takes with [`accepts`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/); with none it takes text only, and a part outside it is refused before anything is sent. This kind narrows it to what chat completions can carry at all: images of any `image/…` type and files of any media type (audio and video have no input shape here), so an entry outside that is a `SCHEMA_VIOLATION` under `telo check`.
 
 ```yaml
 kind: OpenAI.ChatModel
@@ -112,7 +112,7 @@ The endpoint decides which media types it really reads: `accepts` states what *y
 
 The model publishes its list as `resources.<name>.accepts`.
 
-`ERR_MODEL_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, `error.data.mediaType` its media type when it has one, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
+`ERR_MODEL_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, `error.data.mediaType` its media type when it has one, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/), refused by the contract (`ERR_INPUT_INVALID`).
 
 A file with no `name` is refused with `error.data.partType: file` and no `scheme`. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; a type the endpoint does not read is its to refuse, under the code its status and error name (usually `ERR_MODEL_REQUEST_REJECTED`).
 
@@ -153,7 +153,7 @@ Nothing needs redacting here: the key belongs to the client's credential, whose 
 
 ## Errors
 
-This kind raises only the failures [`Ai.Model` declares](../../ai/README.md#catching-a-models-errors) — the thirteen codes every provider raises — and restates the whole list in its `throws:`. How a status, the endpoint's own error object, a transport failure or an unreadable answer becomes one of them is the same for all four language kinds: [Errors](../README.md#errors).
+This kind raises only the failures [`Ai.Model` declares](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) — the thirteen codes every provider raises — and restates the whole list in its `throws:`. How a status, the endpoint's own error object, a transport failure or an unreadable answer becomes one of them is the same for all four language kinds: [Errors](../README.md#errors).
 
 | Code | On this API |
 | ---- | ---- |

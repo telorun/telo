@@ -7,7 +7,7 @@ sidebar_label: Exa.WebSearchEngine
 
 > Examples assume this module is imported under the alias `Exa`, `http-client` under `Http`. Substitute your own aliases.
 
-`Exa.WebSearchEngine` implements [`WebSearch.Engine`](../../web-search/docs/engine.md) over the Exa Search API's `POST /search`. Declare it where the application chooses its search engine; everything that consumes it types against the contract.
+`Exa.WebSearchEngine` implements [`WebSearch.Engine`](https://hub.telo.run/module/oci/ghcr.io/telorun/web-search/) over the Exa Search API's `POST /search`. Declare it where the application chooses its search engine; everything that consumes it types against the contract.
 
 It is a templated kind with no controller: the request, slicing, date handling and error mapping are all in its `telo.yaml`.
 

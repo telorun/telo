@@ -65,7 +65,7 @@ There is **no `signal` member**. Cancellation rides the `InvokeContext` passed a
 
 **Report dimensions only when you know them.** `width` / `height` are optional precisely so a provider never guesses. Echoing back a requested size is honest; decoding the bytes to find out is not this layer's job, and inventing a number is worse than omitting one.
 
-**Forward cancellation through a poll loop.** A backend that runs generation as an async job (create, then poll) sits behind the same blocking `invoke`. Forward `ctx.cancellation.signal` through the **polling**, not merely the first request — an abandoned invoke must stop polling, not keep billing. See [Invoke Cancellation](../../../kernel/docs/invoke-cancellation.md).
+**Forward cancellation through a poll loop.** A backend that runs generation as an async job (create, then poll) sits behind the same blocking `invoke`. Forward `ctx.cancellation.signal` through the **polling**, not merely the first request — an abandoned invoke must stop polling, not keep billing. See [Invoke Cancellation](https://telo.run/reference/kernel/invoke-cancellation).
 
 **Declare the intents you serve.** See below.
 

@@ -15,7 +15,7 @@ A graph holds **node types** and **relationship types**, declared by a backend a
 - **`Graph.Relationship`** — `source:` and `target:` name the node types it joins; they may be the same type, and a self-loop is allowed. At most one relationship of a type joins an ordered pair — parallel edges are modelled as an intermediate node type. A relationship's value is `{ source, target, properties }`: the endpoint keys, and the relationship's own properties.
 - **`Graph.Store`** — `nodes:` and `relationships:` list the types it holds. Every operation names a store and a type the store lists.
 
-A node or relationship value may also carry **`origin`** (a string): the layer it was resolved from. Only a layered store sets it — see [`graph-layers`](../../graph-layers/README.md); a plain backend such as `graph-sql` never does, and the member is then absent.
+A node or relationship value may also carry **`origin`** (a string): the layer it was resolved from. Only a layered store sets it — see [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/); a plain backend such as `graph-sql` never does, and the member is then absent.
 
 The key's type is read from the node type's declaration, and an endpoint's type from the endpoint node type's key, so the same operation is typed differently for every node type it is pointed at.
 
@@ -39,7 +39,7 @@ Every operation is invocable, takes `store:` plus the type it works on, and decl
 | `Traverse` | `from`, `to`, `hops` | `key`, `where?`, `limit?`, `cursor?` | `{ nodes, next? }` | `GRAPH_NODE_NOT_FOUND`, `GRAPH_CURSOR_INVALID` |
 
 - **Merge** sets the properties it is given and leaves the others as they are — on a new node or relationship, a property not given takes its default.
-- **DeleteNode** removes every relationship that starts or ends at the node. The backend does it in the same operation (for `graph-sql`, the database's cascading foreign keys do). A layered store cascades nothing: a relationship is out of its view while either endpoint does not resolve there, and is back when it does — see [`graph-layers`](../../graph-layers/docs/graph-layers.md).
+- **DeleteNode** removes every relationship that starts or ends at the node. The backend does it in the same operation (for `graph-sql`, the database's cascading foreign keys do). A layered store cascades nothing: a relationship is out of its view while either endpoint does not resolve there, and is back when it does — see [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/).
 - **CreateRelationship** refused for a missing endpoint carries `data.endpoint` — `source` or `target` — naming which one. **MergeRelationship** reports the same code without saying which.
 - Nodes are returned ordered by key, relationships by source then target, traversal end nodes by key — one page at a time (see [Paging](#paging)).
 
@@ -80,7 +80,7 @@ A listing is not a snapshot: each page reads the graph as it is when that page i
 
 ### What a page costs
 
-These are the backend's promises, stated here because they are part of what paging means; [`graph-sql`](../../graph-sql/docs/sql-graph.md) says which indexes they rest on.
+These are the backend's promises, stated here because they are part of what paging means; [`graph-sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-sql/) says which indexes they rest on.
 
 - **`FindNodes`** seeks to the cursor and reads forward: the cost is proportional to `limit`, never to the size of the type or to the pages already read.
 - **`FindRelationships`** — the same, along (source, target).
@@ -133,6 +133,6 @@ Each rule is reported by `telo check` (`RESOURCE_RULE_VIOLATED` / `REFERRER_RULE
 | `GRAPH_HOP_REPEAT_MIXED_TYPES` | `Graph.Traverse` | `both`, or `maxHops` > 1, on a relationship between two different node types |
 | `GRAPH_HOP_RANGE_INVALID` | `Graph.Traverse` | `maxHops` below `minHops` |
 
-A backend declares its own storage rules on its own kinds — `graph-sql`'s are in its docs, a layered SQL graph's in [`graph-layers-sql`](../../graph-layers-sql/README.md).
+A backend declares its own storage rules on its own kinds — `graph-sql`'s are in its docs, a layered SQL graph's in [`graph-layers-sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-sql/).
 
 A rule reads a declaration another module exported as that module wrote it: its references resolve in the declaring module's scope, so the rule runs at check exactly as it does over a local declaration.

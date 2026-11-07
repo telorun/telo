@@ -176,7 +176,7 @@ The first tab is chosen until another is. With `address: { name }` the chosen
 tab is part of the page's address, as an [addressed surface](surfaces.md) is —
 the query key `_telo.open.<name>` holds the tab's key, the slug of the text it
 was written with (`Audit` → `audit`, a later tab of the same text `audit~2`;
-see [entry keys](../../ui-react/docs/urls.md#entry-keys)), so a tab gated off
+see [entry keys](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/)), so a tab gated off
 by `when` moves no other's — so a reload or a shared link opens that tab
 again, and the browser's back button returns to the tab before; without one
 the choice lasts as long as the page is shown. A key naming no delivered tab
@@ -294,7 +294,7 @@ links.
   `pathParams` and every entry names a `{name}` (`PATH_PARAMETER_UNBOUND`,
   `PATH_PARAMETER_UNUSED`, with a `!ref` checked against the page's own `path`);
   a path read from data is never expanded, so it takes no `pathParams`.
-  [Path templates](../../../docs/extend/path-templates.md) has the rules.
+  [Path templates](https://telo.run/extend/path-templates) has the rules.
 
   An address is **not evaluated per request**: `href: !cel "request…"` is
   `CEL_UNKNOWN_IDENTIFIER`. A link that differs by request is two `link` nodes

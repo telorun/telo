@@ -90,7 +90,7 @@ node: !ref person
 
 ## Paging
 
-`FindNodes`, `FindRelationships` and `Traverse` page by cursor exactly as in [`graph`](../../graph/docs/graph.md#paging), over the resolved view: following `next` to the end returns every visible key once, in order, whichever layers state, restate or hide it.
+`FindNodes`, `FindRelationships` and `Traverse` page by cursor exactly as in [`graph`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph/), over the resolved view: following `next` to the end returns every visible key once, in order, whichever layers state, restate or hide it.
 
 A current store has no revision to pin, so a listing is not a single-moment view. What holds: no key is returned twice, and every key that was visible for the whole listing is returned exactly once. A key stated, restated, hidden or retracted — in this layer or any beneath — while the listing is in progress is returned if it is visible and sorts after the cursor when its page is read.
 
@@ -110,4 +110,4 @@ Precedence is decided by probing the layers above a row, never by resolving the 
 | --- | --- | --- |
 | `GRAPH_TYPE_NOT_IN_STORE` | `RetractNode`, `RetractRelationship` | a node or relationship type the store does not list |
 
-Reported by `telo check` (`RESOURCE_RULE_VIOLATED`, the code in `data.rule`) and refused again, under the same code, when the resource is created. The rules `graph` declares hold over a layered store too — a store listing a relationship type whose endpoint node type it does not list is `GRAPH_ENDPOINT_NOT_IN_STORE`. A strategy's storage rules are in its own docs ([`graph-layers-sql`](../../graph-layers-sql/docs/layered-sql.md) for the SQL family).
+Reported by `telo check` (`RESOURCE_RULE_VIOLATED`, the code in `data.rule`) and refused again, under the same code, when the resource is created. The rules `graph` declares hold over a layered store too — a store listing a relationship type whose endpoint node type it does not list is `GRAPH_ENDPOINT_NOT_IN_STORE`. A strategy's storage rules are in its own docs ([`graph-layers-sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-sql/) for the SQL family).

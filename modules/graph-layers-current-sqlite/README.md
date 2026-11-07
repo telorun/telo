@@ -1,6 +1,6 @@
 # Graph Layers — current, SQLite
 
-Layered knowledge graphs in SQLite with **no versioning**: several graphs kept as named layers over one set of tables, each layer holding only its current statements. This is the *current* strategy of [`graph-layers`](../graph-layers/README.md) for SQLite — declare your storage with these kinds, then use the `Graph` operations and `GraphLayers.RetractNode` / `RetractRelationship` over a store.
+Layered knowledge graphs in SQLite with **no versioning**: several graphs kept as named layers over one set of tables, each layer holding only its current statements. This is the *current* strategy of [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/) for SQLite — declare your storage with these kinds, then use the `Graph` operations and `GraphLayers.RetractNode` / `RetractRelationship` over a store.
 
 ## Why use this
 
@@ -9,7 +9,7 @@ Layered knowledge graphs in SQLite with **no versioning**: several graphs kept a
 - **Typed from your columns** — an operation's `key` and `properties` are typed from the columns you declare; the layer bookkeeping columns are in no contract.
 - **Checked before boot** — a table that cannot hold layers (a unique column, a nullable key, a `graph_…` name), or that the engine itself would refuse (an index over an undeclared column, a rename from a column still declared), is reported by `telo check`.
 
-What it cannot do — history, drafts, a pinned view of a base — is listed in [`graph-layers`](../graph-layers/README.md#what-the-current-strategy-cannot-do).
+What it cannot do — history, drafts, a pinned view of a base — is listed in [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/).
 
 ## Kinds
 
@@ -97,5 +97,5 @@ node: !ref person
 ## Docs
 
 - [Declaring layered storage in SQLite, and what exists in the database](docs/current-sqlite.md)
-- [Layers, precedence, writes, hiding and retraction](../graph-layers/docs/graph-layers.md)
-- [The rules a layered table must satisfy, and what a page costs](../graph-layers-sql/docs/layered-sql.md)
+- [Layers, precedence, writes, hiding and retraction](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/)
+- [The rules a layered table must satisfy, and what a page costs](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-sql/)

@@ -6,13 +6,13 @@ confirmed delete on every record.
 
 | Field | | |
 | --- | --- | --- |
-| `source` | required | a `CrudUi.CollectionSource`: the [`Crud.Collection`](../../crud/docs/collection.md) and the `basePath` its [`Crud.Api`](../../crud/docs/api.md) is served at |
-| `relations` | optional | how each related record is read, labelled and searched, keyed by a property the collection relates: `{ source, label, hint?, href?, search?, pageSize? }`, as on a [collection presentation](../../ui/docs/collection-presentation.md) |
-| `filters` | optional | how the filter bar behaves — a [filter policy](../../ui/docs/filters.md): `show`, `placement`, `controls`, `apply`, `summary`, `state` |
-| `create` | optional | how the create form opens: `surface` (a [surface](../../ui/docs/surfaces.md) kind), `afterSubmit` (`close` \| `again` \| `keep`), `unsaved` (`confirm` \| `discard`) |
+| `source` | required | a `CrudUi.CollectionSource`: the [`Crud.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) and the `basePath` its [`Crud.Api`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) is served at |
+| `relations` | optional | how each related record is read, labelled and searched, keyed by a property the collection relates: `{ source, label, hint?, href?, search?, pageSize? }`, as on a [collection presentation](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) |
+| `filters` | optional | how the filter bar behaves — a [filter policy](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): `show`, `placement`, `controls`, `apply`, `summary`, `state` |
+| `create` | optional | how the create form opens: `surface` (a [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) kind), `afterSubmit` (`close` \| `again` \| `keep`), `unsaved` (`confirm` \| `discard`) |
 | `edit` | optional | how the edit form opens: the same three, with `afterSubmit` `close` \| `keep` |
-| `paging` | optional | how further pages are reached: `pages`, `more` or `scroll` ([the listing](../../ui/docs/listing.md)) |
-| `layout` | optional | how the records are drawn — a [listing layout](../../ui/docs/listing-layouts.md): a table, a list, cards, a board, a calendar, a timeline, a tree or a component |
+| `paging` | optional | how further pages are reached: `pages`, `more` or `scroll` ([the listing](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)) |
+| `layout` | optional | how the records are drawn — a [listing layout](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): a table, a list, cards, a board, a calendar, a timeline, a tree or a component |
 | `compact` | optional | the layout drawn below the application's breakpoint |
 
 ## The source
@@ -162,7 +162,7 @@ module depends on no renderer.
 - Delete asks first, sends `DELETE <basePath>/<id>`, and reloads.
 
 The list route's query and answers are in
-[the list route](../../crud/docs/list-route.md).
+[the list route](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/).
 
 ## What it expands into
 

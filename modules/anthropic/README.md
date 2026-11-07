@@ -158,7 +158,7 @@ The API caches a prompt prefix only where it is told to. A content part's `cache
 
 ## Errors
 
-Both kinds raise **only the failures `Ai.Model` and `Ai.ModelStream` declare** — the same thirteen codes every provider raises — and each restates the whole list, so a `catches:` written against them holds when the model behind it is swapped for another provider's. The codes, their `error.data` and which are worth another try: [`ai` → Catching a model's errors](../ai/README.md#catching-a-models-errors).
+Both kinds raise **only the failures `Ai.Model` and `Ai.ModelStream` declare** — the same thirteen codes every provider raises — and each restates the whole list, so a `catches:` written against them holds when the model behind it is swapped for another provider's. The codes, their `error.data` and which are worth another try: [`ai` → Catching a model's errors](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/).
 
 How this module arrives at a code:
 

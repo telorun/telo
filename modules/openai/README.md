@@ -126,7 +126,7 @@ Both stream kinds report a tool call's arguments as they are written — `tool-c
 
 ## Errors
 
-The four language kinds raise **only the failures `Ai.Model` declares** — the same thirteen codes every provider raises, so a `catches:` written against them holds when the model behind it is swapped. Each kind restates the whole list. An `Ai` operation holding one passes the codes on, so a route's `catches:` names them whether its handler is the model or an operation over it. The codes, their `error.data` and which are worth another try: [`ai` → Catching a model's errors](../ai/README.md#catching-a-models-errors).
+The four language kinds raise **only the failures `Ai.Model` declares** — the same thirteen codes every provider raises, so a `catches:` written against them holds when the model behind it is swapped. Each kind restates the whole list. An `Ai` operation holding one passes the codes on, so a route's `catches:` names them whether its handler is the model or an operation over it. The codes, their `error.data` and which are worth another try: [`ai` → Catching a model's errors](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/).
 
 How this module arrives at a code:
 

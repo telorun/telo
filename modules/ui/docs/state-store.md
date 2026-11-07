@@ -83,4 +83,4 @@ The `filters` node's `state` is `{ address, store, key? }`: `store` a
 `Ui.StateStoreSpec` — `{ type: local | session | memory }`, `memory` for a bar
 that names no store — and `key` present exactly when `state` was written. How
 a renderer spells the address and the stored entry is its own:
-[`ui-react`'s](../../ui-react/docs/urls.md#filter-state).
+[`ui-react`'s](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/).

@@ -7,7 +7,7 @@ sidebar_label: API keys — SQL store
 
 > Examples assume this module is imported under alias `ApiKeySql`, `api-key` under `ApiKey` and an engine module (`api-key-postgres` or `api-key-sqlite`) under `Keys`.
 
-A store implements the interface in [`api-key`'s store contract](../../api-key/docs/store-contract.md) over one table. It stores and answers outcomes; the operations and the verifier own every error code, the key format and the digest.
+A store implements the interface in [`api-key`'s store contract](https://hub.telo.run/module/oci/ghcr.io/telorun/api-key/) over one table. It stores and answers outcomes; the operations and the verifier own every error code, the key format and the digest.
 
 ## `ApiKeySql.Store`
 

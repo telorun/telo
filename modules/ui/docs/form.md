@@ -73,7 +73,7 @@ field's `auto` control fits exactly what a property name can enter.
   the list may hold less than the record does. What it sends is every property
   of the form's model the record held a value for — whether or not the form
   shows it — with each field's entered value over it, because `PUT` replaces
-  ([the collection contract](../../data-model/docs/collection-contract.md#items)). A field left
+  ([the collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/)). A field left
   empty is left out, which clears that property. A property the record held as
   `null` is left out, and so is anything in the record the model does not
   declare — so a form over a narrower model than the record sends only what

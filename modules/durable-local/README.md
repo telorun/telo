@@ -105,11 +105,11 @@ Putting the choice here rather than on the start is what keeps both usable: the 
 
 Each region also emits one `durable.zone.mode` record at the moment it resolves — the run, the providing kind, the attribute, and `mode: collapsed` or `mode: perStep`. Both outcomes, at the same level: `perStep` is the exactly-once regime and is reached by a runtime attestation, so the affirmative answer is worth as much as the negative, and collapse is the correct resolution under a journal on separate storage, so raising its level would warn on every development run. One field to filter a dashboard on.
 
-The way to get `perStep` for a transactional region is a journal that writes into the same transaction — [`durable-journal-postgres`](../durable-journal-postgres/README.md) on the connection your writes use.
+The way to get `perStep` for a transactional region is a journal that writes into the same transaction — [`durable-journal-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-journal-postgres/) on the connection your writes use.
 
 ## Waking work that is waiting
 
-A body waits with [`Durable.Sleep` or `Durable.Await`](../durable/README.md); this module supplies the other half.
+A body waits with [`Durable.Sleep` or `Durable.Await`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable/); this module supplies the other half.
 
 ```yaml
 kind: Local.Deliver
@@ -145,7 +145,7 @@ A token that matches nothing answers `{ "delivered": false }` rather than failin
 ## Further reading
 
 - [What is recorded, and why it is more than the results](./docs/what-is-recorded.md) — the closure property, and the silent failure it closes.
-- [Durable execution](../../kernel/specs/durable-execution.md) — the normative contract, including what a backend must guarantee.
-- [durable](../durable/README.md) — `Durable.Idempotent` and the marker every backend extends.
-- [durable-journal-file](../durable-journal-file/README.md) — a store on disk, for one machine.
-- [durable-journal-postgres](../durable-journal-postgres/README.md) — a store in PostgreSQL, for several: real claiming, prompt waking, and records that can commit with the writes they describe.
+- [Durable execution](https://telo.run/learn/durable-execution) — the normative contract, including what a backend must guarantee.
+- [durable](https://hub.telo.run/module/oci/ghcr.io/telorun/durable/) — `Durable.Idempotent` and the marker every backend extends.
+- [durable-journal-file](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-journal-file/) — a store on disk, for one machine.
+- [durable-journal-postgres](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-journal-postgres/) — a store in PostgreSQL, for several: real claiming, prompt waking, and records that can commit with the writes they describe.

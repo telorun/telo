@@ -1,6 +1,6 @@
 # Lease
 
-`Lease.Critical` — a **declarative critical section** over a [`KvStore.Store`](../kv-store/README.md). It wraps a body and owns the whole `acquire → run → release` lifecycle around it, so a manifest never issues imperative acquire/release calls — the same decorator shape as `Cache.View` (wraps caching) and `Sql.Transaction` (wraps begin/commit/rollback).
+`Lease.Critical` — a **declarative critical section** over a [`KvStore.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/kv-store/). It wraps a body and owns the whole `acquire → run → release` lifecycle around it, so a manifest never issues imperative acquire/release calls — the same decorator shape as `Cache.View` (wraps caching) and `Sql.Transaction` (wraps begin/commit/rollback).
 
 ## Why use this
 

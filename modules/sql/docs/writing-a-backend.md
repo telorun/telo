@@ -173,7 +173,7 @@ non-transactional writes.
 - **A connection failing must never terminate the process.** It surfaces as a
   failed operation to the caller that was using it, and nowhere else. Some
   runtimes give this for free; some do not — see
-  [connection lifetime](../../postgres/docs/connection-lifetime.md) for the
+  [connection lifetime](https://hub.telo.run/module/oci/ghcr.io/telorun/postgres/) for the
   full invariant a pooled backend holds and why proactive liveness is part of it.
 
 ## Driver-specific types

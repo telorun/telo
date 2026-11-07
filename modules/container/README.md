@@ -7,7 +7,7 @@ reports the address a published port is reached at, so a connection string can
 be built from it at startup.
 
 The module names no engine. A backend module implements `Container.Engine` —
-[`docker`](../docker/README.md) speaks the Docker Engine API to a local daemon
+[`docker`](https://hub.telo.run/module/oci/ghcr.io/telorun/docker/) speaks the Docker Engine API to a local daemon
 or to an engine a runner serves its session.
 
 ## Why use this

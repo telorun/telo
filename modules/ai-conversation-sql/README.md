@@ -1,6 +1,6 @@
 # AI Conversation — SQL
 
-`AiConversationSql.Store` keeps [`ai-conversation`](../ai-conversation/README.md) conversations in tables on a database you already run (PostgreSQL or SQLite), written against `Sql.Connection` without branching on the engine.
+`AiConversationSql.Store` keeps [`ai-conversation`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai-conversation/) conversations in tables on a database you already run (PostgreSQL or SQLite), written against `Sql.Connection` without branching on the engine.
 
 ## Why use this
 

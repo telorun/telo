@@ -64,4 +64,4 @@ inputs:
 
 ## When to Use It
 
-`SqlRepository.*` is designed for straightforward CRUD. When you need joins, aggregates, `OR` groups, `LIKE` predicates, paging, or anything beyond strict equality, drop down to [`Sql.Selection`](../sql/selection.md) or `Sql.Query` directly. A `SqlRepository.Delete` without filters would generate invalid SQL (`DELETE FROM users WHERE`) — make sure every invocation supplies at least one filter.
+`SqlRepository.*` is designed for straightforward CRUD. When you need joins, aggregates, `OR` groups, `LIKE` predicates, paging, or anything beyond strict equality, drop down to [`Sql.Selection`](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/) or `Sql.Query` directly. A `SqlRepository.Delete` without filters would generate invalid SQL (`DELETE FROM users WHERE`) — make sure every invocation supplies at least one filter.

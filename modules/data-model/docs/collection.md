@@ -94,8 +94,8 @@ library, `@telorun/data-model`: `readCollection` reads a collection's model,
 query and relation targets, and `collectionProblems` returns what the table
 above refuses, each as `{ code, message }`, to be raised as `ERR_<code>`.
 
-[`Crud.Collection`](../../crud/docs/collection.md) is the SQL-backed one and
-[`Crud.Api`](../../crud/docs/api.md) serves it.
+[`Crud.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) is the SQL-backed one and
+[`Crud.Api`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) serves it.
 
 ## Reading it
 

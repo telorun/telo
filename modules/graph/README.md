@@ -1,6 +1,6 @@
 # Graph
 
-A knowledge graph for Telo: typed entities (nodes) and typed, directed links between them (relationships), written, read, filtered and traversed through operations whose inputs and outputs are typed from the declared model. `graph` is backend-neutral — it owns the abstracts, the twelve operations and the store contract. A backend supplies the storage: `graph-sql` keeps the graph in ordinary SQL tables on SQLite or PostgreSQL, and [`graph-layers`](../graph-layers/README.md) keeps several graphs as layers built on one another.
+A knowledge graph for Telo: typed entities (nodes) and typed, directed links between them (relationships), written, read, filtered and traversed through operations whose inputs and outputs are typed from the declared model. `graph` is backend-neutral — it owns the abstracts, the twelve operations and the store contract. A backend supplies the storage: `graph-sql` keeps the graph in ordinary SQL tables on SQLite or PostgreSQL, and [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/) keeps several graphs as layers built on one another.
 
 ## Why use this
 
@@ -31,7 +31,7 @@ A knowledge graph for Telo: typed entities (nodes) and typed, directed links bet
 
 ## Example
 
-With a store `kb` holding a `person` node type and a `knows` relationship type (declared by a backend — see [`graph-sql`](../graph-sql/README.md)):
+With a store `kb` holding a `person` node type and a `knows` relationship type (declared by a backend — see [`graph-sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-sql/)):
 
 ```yaml
 kind: Graph.CreateNode

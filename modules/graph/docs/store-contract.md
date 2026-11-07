@@ -102,4 +102,4 @@ The subject is what the cursor is bound to: the operation, the store's declared 
 
 The envelope itself — its encoding, its version, its digest, the canonical form of `where` — and the wording of `GRAPH_CURSOR_INVALID` are not exported: nothing outside `graph` builds an envelope or raises that code. A backend needs none of this; it implements the store interface and owns only its tail.
 
-A store that is one layer of several implements this interface over its layered view and extends it with the layered contract — see [`graph-layers`](../../graph-layers/docs/store-contract.md).
+A store that is one layer of several implements this interface over its layered view and extends it with the layered contract — see [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/).

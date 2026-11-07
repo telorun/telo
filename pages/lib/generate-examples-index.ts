@@ -7,8 +7,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseAllDocuments } from "yaml";
 
-const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/telorun/telo/refs/heads/main/examples";
-const GITHUB_BLOB_BASE = "https://github.com/telorun/telo/blob/main/examples";
+// Links point at the tag being built (TELO_SITE_TAG, see docusaurus.config.ts).
+const SITE_TAG = process.env.TELO_SITE_TAG || "main";
+const GITHUB_RAW_BASE = `https://raw.githubusercontent.com/telorun/telo/${
+  process.env.TELO_SITE_TAG ? `refs/tags/${SITE_TAG}` : "refs/heads/main"
+}/examples`;
+const GITHUB_BLOB_BASE = `https://github.com/telorun/telo/blob/${SITE_TAG}/examples`;
 const STUDIO_BASE = "https://studio.telo.run";
 
 interface EnvBinding {
@@ -421,7 +425,7 @@ export function generateExamplesIndex(examplesRoot: string, outFile: string): vo
   if (awsLambdaEntries.length) {
     sections.push("## AWS Lambda", "");
     sections.push(
-      "Lambda-specific recipes. See the [AWS Lambda example README](https://github.com/telorun/telo/blob/main/examples/aws/lambda/README.md) for the deployment walkthrough.",
+      `Lambda-specific recipes. See the [AWS Lambda example README](${GITHUB_BLOB_BASE}/aws/lambda/README.md) for the deployment walkthrough.`,
       "",
     );
     for (const entry of awsLambdaEntries) {

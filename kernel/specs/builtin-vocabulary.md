@@ -144,7 +144,7 @@ Every telo release `X` at or above the first that ships the archive is published
    of the root document, nothing else changed: removing that block gives back the archive in
    `@telorun/analyzer@X` byte for byte. The pin gate applies, so a second push of `X` with
    different bytes is refused.
-4. The publish workflow reconciles on every push to main: for each released `X` whose tag is
+4. The publish workflow of the live release branch reconciles on every run: for each released `X` (a candidate `X-rc.N` included) whose tag is
    missing, it publishes the directory taken out of `@telorun/analyzer@X`'s tarball with the
    checkout's CLI. There is no backfill below the first release that ships the archive.
 

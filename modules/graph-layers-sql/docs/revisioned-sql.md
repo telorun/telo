@@ -5,7 +5,7 @@ sidebar_label: Revisioned layers — SQL
 
 # Revisioned layers in SQL
 
-`GraphLayersSql.RevisionedStore` is the SQL family's store for the [revisioned level](../../graph-layers/docs/revisions.md) of the layered contract. A strategy module — `graph-layers-revisions-sqlite`, `graph-layers-revisions-postgres` — declares the concrete kinds; this page is what they share. The node and relationship abstracts and their rules apply unchanged, as does the view rule of [Layered tables](layered-sql.md).
+`GraphLayersSql.RevisionedStore` is the SQL family's store for the [revisioned level](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/) of the layered contract. A strategy module — `graph-layers-revisions-sqlite`, `graph-layers-revisions-postgres` — declares the concrete kinds; this page is what they share. The node and relationship abstracts and their rules apply unchanged, as does the view rule of [Layered tables](layered-sql.md).
 
 A revisioned layer's stack is data: the store has no `bases` (writing one is a `SCHEMA_VIOLATION`), and what it is built on is a base list stored in the `changesetBases` table and set by `PinBase`.
 

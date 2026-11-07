@@ -23,7 +23,7 @@ Today you extend Telo in TypeScript (Rust for some native modules); the runtime 
 
 **Where Telo is today:** the core runtime, module system, standard library and checker work, but Telo is pre-1.0 and not yet recommended for production use. See [Status](#status).
 
-Deciding whether Telo fits your team? Start with [Compared to low-code platforms](https://telo.run/learn/vs-low-code), [Licensing](https://telo.run/learn/licensing) and the [examples](./examples/INDEX.md).
+Deciding whether Telo fits your team? Start with [Compared to low-code platforms](https://telo.run/learn/vs-low-code), [Licensing](https://telo.run/learn/licensing) and the [examples](https://telo.run/examples).
 
 ```bash
 # Reconcile your manifest into a running application
@@ -103,7 +103,7 @@ The architecture is inspired by Kubernetes-style manifests: declarative resource
 
 In plain terms: Telo is free to use, including commercially. You can build, host and sell your own products on it. You cannot offer Telo itself to others as a managed service without a commercial licence from CodeNet Sp. z o.o. (contact@codenet.pl). The modules, SDK, examples and docs you build with are MIT. Details: [Licensing](https://telo.run/learn/licensing).
 
-Two licenses, split by directory. Each MIT directory carries its own `LICENSE`; everything else falls under the root [LICENSE](https://github.com/telorun/telo/blob/main/LICENSE), the Sustainable Use License.
+Two licenses, split by directory. Each MIT directory carries its own `LICENSE`; everything else falls under the root [LICENSE](LICENSE), the Sustainable Use License.
 
 | MIT | Sustainable Use |
 | --- | --- |

@@ -44,7 +44,7 @@ A provider that knows which of its calls are sensitive implements `toolRequiresA
 
 A value is a content part **exactly when it satisfies [`Ai.ContentPart`](./ai-model.md#modality-lives-in-the-parts)** — for a media part: a `mediaType`, exactly one of `data` or `uri`, a `uri` that is absolute and not `data:`, and no key the shape does not declare. Anything else — a media-looking object with a relative `uri`, with both `data` and `uri`, or with an extra key — is data, and reaches the model as JSON text. So a value recognised as a part is never refused by the next model call's contract. Whether the model can *carry* the part is still its provider's answer.
 
-Implementing one: declare `capability: Telo.Mount, extends: Ai.ToolProvider` (use `Self.ToolProvider` from inside `@telorun/ai` itself) and return an instance exposing `listTools`/`callTool`. Two ship today — `Ai.Tools` (below) and [`AiMcp.ToolProvider`](../../ai-mcp/docs/ai-mcp-tool-provider.md).
+Implementing one: declare `capability: Telo.Mount, extends: Ai.ToolProvider` (use `Self.ToolProvider` from inside `@telorun/ai` itself) and return an instance exposing `listTools`/`callTool`. Two ship today — `Ai.Tools` (below) and [`AiMcp.ToolProvider`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai-mcp/).
 
 ## `Ai.Tools`
 
@@ -167,4 +167,4 @@ A gated call does not run until it is decided — by the agent's `approver`, or 
 ## See also
 
 - [`Ai.Agent`](./ai-agent.md) — the loop that consumes providers.
-- [`AiMcp.ToolProvider`](../../ai-mcp/docs/ai-mcp-tool-provider.md) — discover an MCP server's tools.
+- [`AiMcp.ToolProvider`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai-mcp/) — discover an MCP server's tools.

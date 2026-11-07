@@ -23,7 +23,7 @@ Two latent defects today:
    lives on the serving resource, divorced from the port declaration, so nothing
    can flag the contradiction.
 2. **`tcp` conflated with HTTP.** The k8s-runner HTTP-fronts *every* tcp port
-   ([ingress.ts](../../../apps/k8s-runner/src/k8s/ingress.ts)), so a raw-tcp
+   ([ingress.ts](../apps/k8s-runner/src/k8s/routing/ingress-router.ts)), so a raw-tcp
    service (e.g. mqtt) gets a bogus HTTP ingress + `https://` URL that cannot
    work. The transport (`tcp`) doesn't tell the runner how to route.
 
@@ -111,10 +111,10 @@ per environment; the *default* must stay reachable.
 - **analyzer** — owns the change's core:
   - protocol enum + `{transport, routing}` table (new module, the shared source
     of truth);
-  - `listeners` schema in [builtins.ts](../src/builtins.ts) (replaces `ports`);
+  - `listeners` schema in [builtins.ts](../analyzer/nodejs/src/builtins.ts) (replaces `ports`);
   - brand `listeners.<name>.port` by the protocol's transport via the table,
-    extending [cel-environment.ts](../src/cel-environment.ts) `PROTOCOL_BRAND`
-    and [schema-compat.ts](../src/schema-compat.ts) (brands unchanged:
+    extending [cel-environment.ts](../analyzer/nodejs/src/cel-environment.ts) `PROTOCOL_BRAND`
+    and [schema-compat.ts](../analyzer/nodejs/src/schema-compat.ts) (brands unchanged:
     `TcpPort`/`UdpPort`);
   - `LISTENER_LOOPBACK_BIND` diagnostic.
 - **kernel** — `resolveApplicationEnv` resolves `listeners` (port int + host
@@ -123,13 +123,13 @@ per environment; the *default* must stay reachable.
 - **http-server module** — wire `host`/`port` from `listeners.*` in schema docs +
   examples; the `host` default stays `0.0.0.0`.
 - **runner-core** — `PortMapping` carries the application `protocol`; the `/v1`
-  session contract enum ([contract.ts](../../../packages/runner-core/src/contract.ts),
-  [routes/sessions.ts](../../../packages/runner-core/src/routes/sessions.ts))
+  session contract enum ([contract.ts](../packages/runner-core/src/contract.ts),
+  [routes/sessions.ts](../packages/runner-core/src/routes/sessions.ts))
   widens from `tcp|udp` to the protocol enum; import the analyzer table to map
   protocol → routing.
 - **k8s-runner** — exposure switches on `routing`: `http`/`grpc` get an Ingress +
   URL (`grpc` with the gRPC backend annotation), everything else gets neither
-  ([ingress.ts](../../../apps/k8s-runner/src/k8s/ingress.ts) `endpointsFor` +
+  ([ingress.ts](../apps/k8s-runner/src/k8s/routing/ingress-router.ts) `endpointsFor` +
   `buildSessionIngress`). Pod still declares all ports as containerPorts.
 
 ## Migration & versioning

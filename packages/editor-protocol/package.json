@@ -40,7 +40,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepack": "node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

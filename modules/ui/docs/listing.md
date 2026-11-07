@@ -28,7 +28,7 @@ layout. How records are drawn is [the layout's](listing-layouts.md).
 The collection is the presentation's source's: its `key` identifies a record
 in item URLs and across reloads, its `query.sort` is what the viewer may sort
 by, and whatever serves it speaks
-[the collection contract](../../data-model/docs/collection-contract.md).
+[the collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/).
 
 ```yaml
 kind: Ui.Listing

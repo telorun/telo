@@ -104,7 +104,7 @@ A shorthand or a longhand that sets a reserved property counts as setting it:
 
 ## Tokens
 
-A [`Ui.DesignTokens`](../../ui/docs/design-tokens.md) token is a custom
+A [`Ui.DesignTokens`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) token is a custom
 property: `color.accent-text` is `--telo-color-accent-text` (the projection the
 code entry `@telorun/ui-react-contract` exports as `tokenProperty`). A theme gives
 every token a value — from its own `tokens`, or from its stylesheets — and
@@ -380,7 +380,7 @@ A message's `data-role` is `user` or `assistant`.
 
 ### Split view
 
-A [`Ui.SplitView`](../../ui/docs/split-view.md): an aside beside its content.
+A [`Ui.SplitView`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): an aside beside its content.
 The aside is drawn once and moves between the page and the compact surface, so
 it is the same element in each.
 
@@ -447,7 +447,7 @@ carries the states the controls contract lists for it: `data-layout` on
 ### Tabs
 
 Drawn by the [`Tabs`](controls-abi.md#tabs) control for a [`tabs`
-node](../../ui/docs/nodes.md#tabs), which also carries the states the
+node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), which also carries the states the
 controls contract lists for it: `data-state` on `tab` and `tab-panel`.
 
 | Part | Is |
@@ -810,7 +810,7 @@ The full-screen viewer a picture opens, drawn in a `dialog` surface (`data-surfa
 | Part | Is |
 | --- | --- |
 | `icon` | every icon: in a button, a choice control, a list entry, an error or loading node |
-| `glyph` | the glyph of an [icon resource](../../ui/docs/icons.md) — a navigation entry's, drawn before its text and alone in a rail: the icon's file as a mask over `currentColor`, so it takes the colour of the text around it; hidden from assistive technology |
+| `glyph` | the glyph of an [icon resource](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) — a navigation entry's, drawn before its text and alone in a rail: the icon's file as a mask over `currentColor`, so it takes the colour of the text around it; hidden from assistive technology |
 | `select-content` | the open list of a `select` or a `filter-select` |
 | `select-item` | one entry of that list |
 | `menu` | an open list of things to do: the filters `filters-add` offers |

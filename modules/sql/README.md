@@ -1,6 +1,6 @@
 # SQL
 
-Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw queries, a declarative SELECT builder, transactions, and the `Sql.Table` / `Sql.Schema` contracts behind declarative schema. Concrete drivers ship as their own modules — [`postgres`](../postgres/README.md) (`Postgres.Connection`) and [`sqlite`](../sqlite/README.md) (`SQLite.Connection`) — and `extend` `Sql.Connection`, mirroring the `cache` / `cache-*` family. The `sql` core depends on no database driver.
+Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw queries, a declarative SELECT builder, transactions, and the `Sql.Table` / `Sql.Schema` contracts behind declarative schema. Concrete drivers ship as their own modules — [`postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/postgres/) (`Postgres.Connection`) and [`sqlite`](https://hub.telo.run/module/oci/ghcr.io/telorun/sqlite/) (`SQLite.Connection`) — and `extend` `Sql.Connection`, mirroring the `cache` / `cache-*` family. The `sql` core depends on no database driver.
 
 ## Why use this
 
@@ -9,7 +9,7 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 - **Raw and structured** — `Sql.Query` / `Sql.Command` for hand-written SQL; `Sql.Selection` for declarative SELECTs as data.
 - **Implicit transactions, checked statically** — `Sql.Transaction` opens an execution zone around its body; every statement reached through it joins automatically, per connection. A statement that names a `transaction:` declares a *requirement*, and `telo check` reports a path that reaches it outside one — see [Transactions](docs/transactions.md).
 - **Declarative schema with deferred reclamation** — declare the table, not the DDL. A removal is recorded rather than executed, and reclaimed only once a stated number of released versions and a stated time have passed — see [Declarative schema](docs/declarative-schema.md).
-- **Tunable pooling** — each backend exposes its own connection and pool settings; see [`postgres`](../postgres/README.md).
+- **Tunable pooling** — each backend exposes its own connection and pool settings; see [`postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/postgres/).
 
 ## Docs
 

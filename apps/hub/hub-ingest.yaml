@@ -913,6 +913,7 @@ steps:
     invoke: !ref Origin.moduleVersions
     inputs:
       ref: !cel "inputs.ref"
+      finalOnly: !cel "inputs.ref == variables.builtinsRef"
   - name: gate
     if: !cel "!steps.versions.result.ok"
     then:

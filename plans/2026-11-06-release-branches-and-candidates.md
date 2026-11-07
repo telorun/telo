@@ -1,8 +1,9 @@
 ---
-status: approved
+status: done
 priority: high
 depends-on: []
 packages: [.github/workflows, scripts, cli/nodejs, analyzer/nodejs, packages/language-host, apps/hub, apps/authoring-agent, ide/vscode, pages, docs, modules]
+tracking: feat/release-branches-and-candidates
 ---
 
 # Release branches and release candidates

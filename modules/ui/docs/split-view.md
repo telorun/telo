@@ -107,7 +107,7 @@ instead of unfolding the aside; no toggle sits in the content.
 
 Two split views naming one `key` and store share the choice. The entry is
 `{ "v": 1, "collapsed": <bool> }` under `telo.ui:<mount>:s:<key>`, written on
-each change ([how a renderer spells it](../../ui-react/docs/urls.md#split-view-state)).
+each change ([how a renderer spells it](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/)).
 
 ## The aside never unmounts
 

@@ -1,6 +1,6 @@
 # Vector Store Memory
 
-`VectorStoreMemory.Store` — an in-process implementation of the [`VectorStore.Store`](../vector-store/README.md) abstract. Cosine / dot / euclidean similarity over a `Map`; zero external dependencies. Ideal for development, tests, and small single-instance indexes.
+`VectorStoreMemory.Store` — an in-process implementation of the [`VectorStore.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/vector-store/) abstract. Cosine / dot / euclidean similarity over a `Map`; zero external dependencies. Ideal for development, tests, and small single-instance indexes.
 
 ## Why use this
 
@@ -25,7 +25,7 @@
 
 ## Metadata filter mapping
 
-`VectorStoreMemory.Store` evaluates the shared [`metadataFilter`](../vector-store/README.md#metadata-filter) grammar in-process — each operator maps to a direct JavaScript comparison:
+`VectorStoreMemory.Store` evaluates the shared [`metadataFilter`](https://hub.telo.run/module/oci/ghcr.io/telorun/vector-store/) grammar in-process — each operator maps to a direct JavaScript comparison:
 
 | Operator | Evaluation |
 | --- | --- |

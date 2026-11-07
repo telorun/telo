@@ -14,7 +14,7 @@ sidebar_label: Graph layers — current (PostgreSQL)
 - **`Layers.NodeTable`** — a `Postgres.Table` for one node type. You write `table` (the physical name), `key` (the identifying column) and `columns`, in PostgreSQL's own column vocabulary — the same entries `Postgres.Table` takes, a `!ref` to a `Postgres.Enum` included. Optional: `indexes`, `checks`, `renamedFrom`.
 - **`Layers.RelationshipTable`** — the same, with `sourceColumn` and `targetColumn` in place of `key`.
 
-The table kinds offer no `seeds`, `foreignKeys` or `internalColumns`: writing one is a `SCHEMA_VIOLATION`. So is a column or an index whose name begins `graph_` — that prefix is the table's own, for what it adds (below); an index may still *name* the columns `graph_layer` and `graph_effect`. Declare the key and the endpoint columns `nullable: false`, and nothing `primaryKey`, `unique` or `identity` — the [rules](../../graph-layers-sql/docs/layered-sql.md#rules) say why.
+The table kinds offer no `seeds`, `foreignKeys` or `internalColumns`: writing one is a `SCHEMA_VIOLATION`. So is a column or an index whose name begins `graph_` — that prefix is the table's own, for what it adds (below); an index may still *name* the columns `graph_layer` and `graph_effect`. Declare the key and the endpoint columns `nullable: false`, and nothing `primaryKey`, `unique` or `identity` — the [rules](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-sql/) say why.
 
 **A table kind is held to `Postgres.Table`'s own rules**, restated on its fields under the engine's codes — an index over an undeclared column, a `key` or endpoint column that names none (`SQL_INDEX_UNKNOWN_COLUMN`), the rename rules, a second `primaryKey`, an enum the schema does not list — so `telo check` reports them on the table itself, whether or not a node type references it. One of them is stricter than boot: a relationship table naming one column for both endpoints is reported at check on the table, while at creation it is refused only once a relationship type references the table, as `GRAPH_ENDPOINT_UNKNOWN_COLUMN` on that type. The column, index and check entries are `Postgres.Table`'s, restated here because a table kind carries its own row projection; this module's unit test (`nodejs/tests/engine-vocabulary.test.ts`) fails when an entry, the projection or the rule list falls out of step with the engine's.
 
@@ -24,7 +24,7 @@ The table kinds offer no `seeds`, `foreignKeys` or `internalColumns`: writing on
 
 A plain `Postgres.Table` at a node's `table` is a `REFERENCE_KIND_MISMATCH`: the slot takes this module's table kind, which is what guarantees the layer bookkeeping exists.
 
-**A key or endpoint column must be a type PostgreSQL's driver returns as the table declares it.** `date`, `timestamp`, `timestamptz`, `interval`, `bigint` and `numeric` columns are not, today — the driver returns host dates for the first four and text for the last two — so they cannot be node keys or relationship endpoints: an operation returning such a key is refused by its own contract (`ERR_OUTPUT_INVALID`). Use `text`, `uuid`, `integer`, `boolean`, `bytea` or `doublePrecision`; see [the shared rules](../../graph-layers-sql/docs/layered-sql.md#how-layers-are-stored).
+**A key or endpoint column must be a type PostgreSQL's driver returns as the table declares it.** `date`, `timestamp`, `timestamptz`, `interval`, `bigint` and `numeric` columns are not, today — the driver returns host dates for the first four and text for the last two — so they cannot be node keys or relationship endpoints: an operation returning such a key is refused by its own contract (`ERR_OUTPUT_INVALID`). Use `text`, `uuid`, `integer`, `boolean`, `bytea` or `doublePrecision`; see [the shared rules](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-sql/).
 
 ## What exists in the database
 
@@ -46,4 +46,4 @@ Rows written by hand must fill both columns; a row with any other `graph_effect`
 
 ## Behaviour
 
-How a layer reads and writes is [`graph-layers`](../../graph-layers/docs/graph-layers.md); the statements, the indexes they rest on and what a page costs are [`graph-layers-sql`](../../graph-layers-sql/docs/layered-sql.md). This strategy keeps no history and pins nothing: each layer holds only its current statements, and a write is visible as soon as it commits.
+How a layer reads and writes is [`graph-layers`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers/); the statements, the indexes they rest on and what a page costs are [`graph-layers-sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-sql/). This strategy keeps no history and pins nothing: each layer holds only its current statements, and a write is visible as soon as it commits.

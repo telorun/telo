@@ -4,18 +4,16 @@ name: Release standalone CLI
 # Node runtime, wraps each one in a native installer, and publishes the set as a
 # GitHub Release.
 #
-# The trigger is the same signal the kernel image uses — `@telorun/cli`'s version
-# moving on main, which happens when a Version PR merges — rather than the
-# changesets action's `publishedPackages`, so a later failure in that run cannot
-# strand the binaries a release behind. `workflow_dispatch` forces a (re)build of
-# the current version.
+# Called by the branch's Publish workflow on every channel that released a CLI
+# (a candidate included), with the release's `version` and `tag`; it builds the
+# commit Publish ran on, so the binaries are the ones the npm CLI was published from.
 #
 # THE BINARIES ARE ASSETS OF THE PRODUCT'S RELEASE, NOT A RELEASE OF THEIR OWN.
-# `scripts/github-releases.mjs` creates `v<cli version>` on the same signal and
-# owns its name and body; this workflow attaches files to that tag and sets
-# neither. A second release for the same version of the same product would split
-# one changelog across two pages, and make "which one is the release?" a
-# question with two answers.
+# `scripts/github-releases.mjs` creates `v<cli version>` in the Publish run's
+# `release` job and owns its name and body; this workflow attaches files to that
+# tag and sets neither. A second release for the same version of the same product
+# would split one changelog across two pages, and make "which one is the release?"
+# a question with two answers.
 #
 # **NO PUBLISHED RELEASE WITHOUT INSTALLERS.** That release is created as a
 # DRAFT, and the last job here promotes it — after every target has built and
@@ -24,7 +22,9 @@ name: Release standalone CLI
 # and it is what this repo shipped twice before the promotion gate existed.
 # `releases/latest`, which the install scripts read, skips drafts, so a failed
 # build leaves the previous release standing instead of pointing users at an
-# empty one.
+# empty one. Promotion publishes a candidate as a pre-release that is not latest,
+# and a final or patch as latest unless a higher release already is
+# (`scripts/release-promote.mjs`).
 #
 # A build runs on the runner its target needs: macOS signing needs macOS, and a
 # Windows installer needs Windows. Everything else cross-builds, because nothing
@@ -33,74 +33,27 @@ name: Release standalone CLI
 # platform-independent.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'cli/nodejs/package.json'
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      channel:
+        description: 'candidate, final or patch (never none: Publish does not call this then).'
+        type: string
+        required: true
+      version:
+        description: 'The CLI version released (0.85.0-rc.1, 0.85.0, 0.85.1).'
+        type: string
+        required: true
+      tag:
+        description: 'The release tag (v<version>); it exists, with a draft release, before this runs.'
+        type: string
+        required: true
 
 permissions:
   contents: read
 
-concurrency:
-  group: cli-standalone-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  gate:
-    name: Detect version bump
-    runs-on: ubuntu-latest
-    outputs:
-      release: ${{ steps.check.outputs.release }}
-      version: ${{ steps.check.outputs.version }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Check CLI version
-        id: check
-        run: |
-          set -euo pipefail
-          NEW=$(jq -r .version cli/nodejs/package.json)
-          echo "version=$NEW" >> "$GITHUB_OUTPUT"
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Manual dispatch -> releasing v$NEW"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          BEFORE="${{ github.event.before }}"
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            echo "No baseline commit -> releasing v$NEW"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # A path absent at the baseline is a move or a new package, never a
-          # version bump; treating one as a bump republishes whatever version
-          # happens to be in the file.
-          if ! git cat-file -e "$BEFORE:cli/nodejs/package.json" 2>/dev/null; then
-            echo "cli/nodejs/package.json did not exist at $BEFORE -> skipping."
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          OLD=$(git show "$BEFORE:cli/nodejs/package.json" | jq -r .version)
-          if [ "$NEW" != "$OLD" ]; then
-            echo "CLI version changed: $OLD -> $NEW"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "CLI version unchanged ($NEW); skipping."
-            echo "release=false" >> "$GITHUB_OUTPUT"
-          fi
-
   build:
     name: Build (${{ matrix.target }})
-    needs: gate
-    if: needs.gate.outputs.release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -172,11 +125,11 @@ jobs:
 
       - name: Build Linux packages
         if: startsWith(matrix.target, 'linux')
-        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ needs.gate.outputs.version }} --dir dist-standalone
+        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ inputs.version }} --dir dist-standalone
 
       - name: Build macOS package
         if: startsWith(matrix.target, 'darwin')
-        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ needs.gate.outputs.version }} --dir dist-standalone
+        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ inputs.version }} --dir dist-standalone
 
       # WiX builds the `.msi`; without it the packaging step fails rather than
       # publishing a Windows release with only a `.zip`.
@@ -192,7 +145,7 @@ jobs:
 
       - name: Build Windows package
         if: startsWith(matrix.target, 'windows')
-        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ needs.gate.outputs.version }} --dir dist-standalone
+        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ inputs.version }} --dir dist-standalone
 
       # Proof the artifact runs at all, from a shell that cannot see the runner's
       # Node. It is not the full verification — that is the container check below
@@ -246,7 +199,7 @@ jobs:
   # equivalent is the PATH-stripped smoke test in the build job.
   verify:
     name: Verify install (${{ matrix.image }})
-    needs: [gate, build]
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -289,7 +242,7 @@ jobs:
   # this passes with a binary that packages an app nobody can start.
   package-app:
     name: Package an application and run it with no Node.js
-    needs: [gate, build]
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -304,7 +257,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p bin dist
-          tar xzf artifacts/telo-${{ needs.gate.outputs.version }}-linux-amd64-gnu.tar.gz \
+          tar xzf artifacts/telo-${{ inputs.version }}-linux-amd64-gnu.tar.gz \
             -C bin --strip-components=1
           # The binary IS the carrier here, so nothing is downloaded and the
           # packaged app carries exactly the telo this run built.
@@ -326,7 +279,7 @@ jobs:
 
   release:
     name: Attach binaries and publish the release
-    needs: [gate, build, verify, package-app]
+    needs: [build, verify, package-app]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -360,52 +313,60 @@ jobs:
 
       # Attach only. `name` and `body` are deliberately unset: the npm release job
       # writes them, and passing either here would overwrite the changelog with a
-      # sentence about binaries. `draft: true` covers the race in which this job
-      # arrives first — the release it creates is then the draft the npm job
-      # fills and this job promotes, never a published one with no changelog.
+      # sentence about binaries. `draft: true` keeps the release unpublished until
+      # the step below promotes it.
       - name: Attach binaries to the draft release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.gate.outputs.version }}
+          tag_name: ${{ inputs.tag }}
           files: release/*
           fail_on_unmatched_files: true
           draft: true
+
+      # The scripts come from the branch, after the downloads: a checkout cleans
+      # the workspace, and nothing downloaded is needed past the attach above.
+      - name: Checkout
+        uses: actions/checkout@v4
 
       # The gate this whole workflow exists to hold: the release becomes visible
       # only now, with every archive and installer attached and verified. Until
       # this step runs it is a draft, which `releases/latest` does not serve.
       - name: Publish the release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: v${{ needs.gate.outputs.version }}
-        run: |
-          set -euo pipefail
-          id=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases" |
-            jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .id' | head -1)
-          [ -n "$id" ] || { echo "no release found for $TAG"; exit 1; }
-          curl -fsSL -X PATCH -H "Authorization: Bearer $GH_TOKEN" \
-            -d '{"draft":false}' \
-            "https://api.github.com/repos/${{ github.repository }}/releases/$id" > /dev/null
-          echo "published $TAG"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/release-promote.mjs "${{ inputs.tag }}"
 
   # `telo.sh/install.sh` and `/install.ps1` are Cloudflare redirect rules to the
   # scripts at a release tag; this moves them to the tag just published. Rules
   # are found by their current target, not a stored id, so recreating one in
   # the dashboard does not break the release. Running after `release` means the
   # redirect never names a draft, and a failure here leaves the previous tag's
-  # installers in place.
+  # installers in place. Only a final or patch moves it, and only forward: a
+  # candidate's installers are for whoever installs the pre-release by hand.
   redirect:
     name: Point telo.sh at this release's installers
-    needs: [gate, release]
+    needs: release
+    if: inputs.channel != 'candidate'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Does the redirect move forward
+        id: pointers
+        run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"
+
       - name: Update the redirect rules
+        if: steps.pointers.outputs.latest == 'true'
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ZONE: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           REPO: ${{ github.repository }}
-          TAG: v${{ needs.gate.outputs.version }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           [ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE" ] ||

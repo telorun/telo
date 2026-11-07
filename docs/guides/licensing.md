@@ -52,5 +52,5 @@ Commercial licensing, managed-hosting exemptions and enterprise inquiries:
 [contact@codenet.pl](mailto:contact@codenet.pl). The copyright holder is
 CodeNet Sp. z o.o.
 
-The full text is the [Sustainable Use License](https://github.com/telorun/telo/blob/main/LICENSE)
+The full text is the [Sustainable Use License](../../LICENSE)
 at the repository root.

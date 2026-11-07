@@ -58,8 +58,8 @@ needs:
 
 Both are declared by the kernel; their rules — supply through the root only,
 the parameters, collisions, deriving an address from a host's template — are in
-[Declaring a need](../../../docs/guides/declaring-a-need.md) and
-[Providing needs](../../../docs/guides/providing-needs.md). A library declares
+[Declaring a need](https://telo.run/learn/declaring-a-need) and
+[Providing needs](https://telo.run/learn/providing-needs). A library declares
 them with no parameters and its importer forwards a root need of its own.
 
 ## `hostnames`

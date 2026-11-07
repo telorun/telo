@@ -69,7 +69,7 @@ it; the step's sibling `inputs:` is what carries a value across that boundary.
 
 ## Iterating a stream
 
-`collection` accepts a byte or record **stream** as well as an array. A stream is pulled lazily — one element at a time per worker, never read ahead — so a source too large to hold in memory can still be iterated. Pairs with [`Stream.Chunk`](../../stream/docs/chunk.md) for a chunked upload.
+`collection` accepts a byte or record **stream** as well as an array. A stream is pulled lazily — one element at a time per worker, never read ahead — so a source too large to hold in memory can still be iterated. Pairs with [`Stream.Chunk`](https://hub.telo.run/module/oci/ghcr.io/telorun/stream/) for a chunked upload.
 
 ```yaml
 collection: !cel "steps.Chunks.result.output"

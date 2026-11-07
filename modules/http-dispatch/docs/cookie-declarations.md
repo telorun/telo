@@ -5,7 +5,7 @@ three kinds extending the abstract `HttpDispatch.Cookie` — and a response entr
 `cookies:` names it. Everything the declaration says is fixed when it is created, so
 every response that sets or clears the cookie sends the same attributes. How a
 server sets, clears and reads cookies is in
-[`modules/http-server/docs/cookies.md`](../../http-server/docs/cookies.md).
+[`modules/http-server/docs/cookies.md`](https://hub.telo.run/module/oci/ghcr.io/telorun/http-server/).
 
 ## The kinds
 

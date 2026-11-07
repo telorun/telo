@@ -188,7 +188,7 @@ To stop one member part-way through a test, declare it in a **nested** sequence'
 
 ## Talking to it
 
-`App.Instance` is a `Channel.Text`, so a running child can be read from and written to as text: `Channel.ReadUntil` waits for a prompt, `Channel.SendLine` answers it, `Channel.End` closes its input so it can finish on its own. The child's stdout is the conversational side; its stderr keeps flowing to this application as the diagnostic stream. See the `channel` module's [Holding a conversation](../../channel/docs/conversations.md).
+`App.Instance` is a `Channel.Text`, so a running child can be read from and written to as text: `Channel.ReadUntil` waits for a prompt, `Channel.SendLine` answers it, `Channel.End` closes its input so it can finish on its own. The child's stdout is the conversational side; its stderr keeps flowing to this application as the diagnostic stream. See the `channel` module's [Holding a conversation](https://hub.telo.run/module/oci/ghcr.io/telorun/channel/).
 
 There is no `stdin:` field. A fixed script handed over at start-up cannot answer a question that only appears once the previous one is answered, and a boot-time script is the first steps of a sequence anyway.
 

@@ -5,7 +5,7 @@ major is a new ABI.
 
 A component library declares `abi: ui_react-1` on its browser entry, and
 publishes each component with a
-[`Ui.ComponentExport`](../../ui/docs/component-export.md).
+[`Ui.ComponentExport`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/).
 
 ## A component
 
@@ -176,8 +176,8 @@ Anything else is a new ABI.
 
 ## Recipe: a streaming chat
 
-Do not build one. A streaming chat is [`Ui.Chat`](../../ui/docs/chat.md): a
-composite over a [`Ui.ConversationSource`](../../ui/docs/conversation-source.md)
+Do not build one. A streaming chat is [`Ui.Chat`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): a
+composite over a [`Ui.ConversationSource`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
 that draws a conversation — streamed text, reasoning, tool calls, approvals,
 attachments and branches — as a client of the
 conversation contract, and the [`chat` node](chat.md) the renderer draws it

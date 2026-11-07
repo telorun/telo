@@ -16,7 +16,7 @@ reserved to the renderer.
 
 ## The open key
 
-A [surface](../../ui/docs/surfaces.md#address) declared with
+A [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) declared with
 `address: { name }` is addressed on its page by the query key
 `_telo.open.<name>`:
 
@@ -46,19 +46,19 @@ A [surface](../../ui/docs/surfaces.md#address) declared with
   be undone while the user is asked.
 
 A filter bar drawn in an addressed overlay
-([`Ui.OverlayPlacement`](../../ui/docs/filter-placement.md#folding) over a
+([`Ui.OverlayPlacement`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) over a
 surface with `address: { name }`) uses the same key with an **empty** value:
 `/todos?_telo.open.filters=` is the open overlay. Opening adds the entry, back
 closes it, a cold load opens it. Done closes the overlay and nothing else.
 
-A [`tabs` node](../../ui/docs/nodes.md#tabs) declared with
+A [`tabs` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) declared with
 `address: { name }` uses the same key for its chosen tab, the value the tab's
 [key](#entry-keys): `/reports?_telo.open.section=details` is the tab written
 with the text `Details`. The first choice adds a history entry and later ones
 take it, so back returns to the page as it was before a tab was chosen. A
 value naming no delivered tab chooses the first.
 
-A [tab bar](../../ui/docs/navigation.md#the-tab-bar) whose `surface` declares
+A [tab bar](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) whose `surface` declares
 `address: { name }` holds there the key of the tab whose sheet is open — a
 group's, or `~more` for More.
 
@@ -83,7 +83,7 @@ overlay a name of its own unless that is meant.
 
 ## Filter state
 
-A [filter bar](../../ui/docs/state-store.md) declaring `policy.state` keeps
+A [filter bar](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) declaring `policy.state` keeps
 what is applied in it under its `key`.
 
 ### In the address
@@ -148,7 +148,7 @@ continues in memory. A bar with no `state` writes nothing anywhere.
 
 ## Navigation state
 
-A [sidebar](../../ui/docs/navigation.md#the-sidebar) naming a `store` keeps
+A [sidebar](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) naming a `store` keeps
 one entry in local storage (`Ui.LocalStore`) or session storage
 (`Ui.SessionStore`); it writes nothing to the address.
 
@@ -168,7 +168,7 @@ the sidebar continues in memory.
 
 ## Split view state
 
-A [split view](../../ui/docs/split-view.md#collapsing) naming `collapse.state`
+A [split view](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) naming `collapse.state`
 keeps one entry in the store it names; it writes nothing to the address.
 
 | | |
@@ -236,7 +236,7 @@ within it may reach. `navigation` is the [navigation](app.md#navigation) for
 this request, every default filled: its entries delivered by their `when`,
 each carrying its [key](#entry-keys), a `page` entry its page's path, an entry with an icon the
 address its glyph's file is served at, and its placement as
-[`Ui.NavigationPlacementSpec`](../../ui/docs/navigation.md#as-a-renderer-receives-it).
+[`Ui.NavigationPlacementSpec`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/).
 `header` is always present: its `start` and `end` nodes as `Ui.SpecNode`s
 produced for this request, as a page's `children` are, each list empty when
 that side declares nothing or every node in it is switched off, and `width`,

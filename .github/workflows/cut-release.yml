@@ -1,0 +1,138 @@
+name: Cut release
+
+# Opens the cut PR: one commit on main's tip that deletes the pending changesets
+# and module fragments the new `release/<major>.<minor>` branch will carry. When it
+# merges, the branch is created at the commit BEFORE the cut (the PR's base), and
+# its Publish workflow is dispatched to open the first Version PR.
+#
+# This file lives on main only: GitHub dispatches a workflow present on the default
+# branch, and the branch it creates carries its own Publish.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    name: Cut
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check
+        id: check
+        run: node scripts/release-branch.mjs cut-check --ref "$GITHUB_REF_NAME"
+
+      - name: Remove what the branch carries
+        id: carried
+        run: node scripts/release-branch.mjs cut-prepare
+
+      # TELO_BOT_TOKEN, not the default token: a PR opened with the default token
+      # starts no checks, and main requires them.
+      - name: Open the cut PR
+        id: pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.TELO_BOT_TOKEN }}
+          branch: release-cut/${{ steps.check.outputs.release }}
+          base: main
+          title: "chore(release): cut ${{ steps.check.outputs.release }}"
+          commit-message: "chore(release): cut ${{ steps.check.outputs.release }}"
+          body: |
+            Cuts `release/${{ steps.check.outputs.release }}` at `${{ steps.carried.outputs.parent }}`, the commit this PR is based on.
+
+            Removes the ${{ steps.carried.outputs.changesets }} pending changeset(s) and ${{ steps.carried.outputs.fragments }} module fragment(s) the branch carries, so main does not count them again. A changeset that lands on main after `${{ steps.carried.outputs.parent }}` stays on main.
+
+            When this merges, `release/${{ steps.check.outputs.release }}` is created at `${{ steps.carried.outputs.parent }}` and its first Version PR opens. A cut is not undone.
+
+      - name: Cut
+        env:
+          RELEASE: ${{ steps.check.outputs.release }}
+          NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+          HEAD_SHA: ${{ steps.pr.outputs.pull-request-head-sha }}
+          PARENT: ${{ steps.carried.outputs.parent }}
+          CHANGESETS: ${{ steps.carried.outputs.changesets }}
+          FRAGMENTS: ${{ steps.carried.outputs.fragments }}
+        run: |
+          if [ -z "$NUMBER" ]; then
+            echo "::error::Error: the cut PR was not opened; nothing differs from main."
+            exit 1
+          fi
+          echo "Opened #$NUMBER \"chore(release): cut $RELEASE\" at ${HEAD_SHA:0:7} (parent ${PARENT:0:7}): $CHANGESETS changesets and $FRAGMENTS module fragments removed."
+          echo "release/$RELEASE is created at ${PARENT:0:7} when #$NUMBER merges."
+
+  # The branch is created at the cut commit's PARENT, so it carries the changesets
+  # the cut deleted from main. `pull_request: closed` reads this file from main.
+  # TELO_BOT_TOKEN creates the ref and dispatches: both made with the default token
+  # would trigger nothing, and the rulesets let only the release workflows create
+  # `release/*` refs.
+  branch:
+    name: Create the release branch
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release-cut/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.TELO_BOT_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Locate the branch point
+        id: point
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/$GH_REPO/pulls/$NUMBER/commits" \
+            | node scripts/release-branch.mjs branch-point --head "$HEAD_REF"
+
+      - name: Create the branch
+        env:
+          BRANCH: ${{ steps.point.outputs.branch }}
+          SHA: ${{ steps.point.outputs.sha }}
+        run: |
+          if have=$(gh api "repos/$GH_REPO/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null); then
+            if [ "$have" != "$SHA" ]; then
+              echo "::error::Error: $BRANCH already exists at $have, not at $SHA."
+              exit 1
+            fi
+            echo "$BRANCH already exists at $SHA."
+          else
+            gh api -X POST "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$BRANCH" -f "sha=$SHA"
+            echo "Created $BRANCH at $SHA."
+          fi
+
+      # The new branch's own Publish opens its first Version PR.
+      - name: Dispatch Publish on the branch
+        env:
+          BRANCH: ${{ steps.point.outputs.branch }}
+        run: gh workflow run publish.yml --ref "$BRANCH"

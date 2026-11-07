@@ -6,7 +6,7 @@
 // another version — `X+unreleased`, rendered while a line changeset is pending —
 // would publish the wrong bytes under the release's tag.
 //
-// It renders the archive from the tree (both generators, dependency-free) and
+// It renders the archive from the tree (both generators, in the installed workspace) and
 // refuses the tarball unless three things hold: `builtins.yaml` carries exactly
 // the package version, the `BUILTIN_VOCABULARY_ARCHIVE` constant this package
 // exports — the source module and the built one — is that file's bytes, and the

@@ -7,7 +7,7 @@ sidebar_label: SearXNG.WebSearchEngine
 
 > Examples assume this module is imported under the alias `SearXNG`, `http-client` under `Http`. Substitute your own aliases.
 
-`SearXNG.WebSearchEngine` implements [`WebSearch.Engine`](../../web-search/docs/engine.md) over a [SearXNG](https://docs.searxng.org/) instance's `GET /search` API. Declare it where the application chooses its search engine; everything that consumes it types against the contract.
+`SearXNG.WebSearchEngine` implements [`WebSearch.Engine`](https://hub.telo.run/module/oci/ghcr.io/telorun/web-search/) over a [SearXNG](https://docs.searxng.org/) instance's `GET /search` API. Declare it where the application chooses its search engine; everything that consumes it types against the contract.
 
 It is a templated kind with no controller: the request, paging, date handling and error mapping are all in its `telo.yaml`.
 

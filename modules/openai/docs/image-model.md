@@ -7,7 +7,7 @@ sidebar_label: OpenAI.ImageModel
 
 > Examples below assume this module is imported with an `imports:` entry under alias `OpenAI` (and `ai` as `Ai`). Kind references follow those aliases — substitute if you import under different names.
 
-OpenAI-compatible provider for the [`Ai.ImageModel`](../../ai/docs/ai-image-model.md) abstract. A **`Telo.Provider`** — a configured image client referenced by [`Ai.Image`](../../ai/docs/ai-image.md), never invoked directly as a target or step. Calls the OpenAI images HTTP API through the referenced `Http.Request` — no vendor SDK — so the same controller serves OpenAI and every OpenAI-compatible endpoint via the client's `baseUrl`.
+OpenAI-compatible provider for the [`Ai.ImageModel`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/) abstract. A **`Telo.Provider`** — a configured image client referenced by [`Ai.Image`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai/), never invoked directly as a target or step. Calls the OpenAI images HTTP API through the referenced `Http.Request` — no vendor SDK — so the same controller serves OpenAI and every OpenAI-compatible endpoint via the client's `baseUrl`.
 
 ```yaml
 kind: Telo.Application

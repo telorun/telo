@@ -1,6 +1,6 @@
 # Broadcast — PostgreSQL
 
-`broadcast-postgres` carries [`broadcast`](../broadcast/README.md) channels over
+`broadcast-postgres` carries [`broadcast`](https://hub.telo.run/module/oci/ghcr.io/telorun/broadcast/) channels over
 PostgreSQL notifications, so a message published on one application instance
 reaches the live subscriptions of every instance on the same database. It is the
 PostgreSQL backend of the `Broadcast.Channel` abstract; the operations

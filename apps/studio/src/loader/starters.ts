@@ -20,8 +20,8 @@ const STARTERS_URL_FROM_ENV = (import.meta.env as Record<string, string | undefi
   .VITE_TELO_STARTERS_URL;
 
 /** Base URL the gallery loads from when `settings.startersBaseUrl` is unset:
- *  the published starters, overridable via env for local development against
- *  a checkout's own. */
+ *  `VITE_TELO_STARTERS_URL` at build — a release build sets its own release
+ *  tag's starters, local development a checkout's own — else main's. */
 export const DEFAULT_STARTERS_BASE_URL =
   STARTERS_URL_FROM_ENV && STARTERS_URL_FROM_ENV.trim() !== ""
     ? STARTERS_URL_FROM_ENV.trim()

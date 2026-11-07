@@ -1,6 +1,6 @@
 # Vector Store pgvector
 
-`VectorStorePgvector.Store` — a Postgres/[pgvector](https://github.com/pgvector/pgvector) implementation of the [`VectorStore.Store`](../vector-store/README.md) abstract. Cosine / dot / euclidean similarity via pgvector distance operators over a dedicated table inside an existing [`Sql.Connection`](../sql/README.md), so vectors live in the same database as your relational data.
+`VectorStorePgvector.Store` — a Postgres/[pgvector](https://github.com/pgvector/pgvector) implementation of the [`VectorStore.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/vector-store/) abstract. Cosine / dot / euclidean similarity via pgvector distance operators over a dedicated table inside an existing [`Sql.Connection`](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/), so vectors live in the same database as your relational data.
 
 ## Why use this
 
@@ -30,7 +30,7 @@ The referenced connection must point at a PostgreSQL server with **pgvector ≥ 
 
 ## Metadata filter mapping
 
-`VectorStorePgvector.Store` translates the shared [`metadataFilter`](../vector-store/README.md#metadata-filter) grammar into a parameterized JSONB predicate over the `metadata` column (never string-spliced):
+`VectorStorePgvector.Store` translates the shared [`metadataFilter`](https://hub.telo.run/module/oci/ghcr.io/telorun/vector-store/) grammar into a parameterized JSONB predicate over the `metadata` column (never string-spliced):
 
 | Operator | Translation |
 | --- | --- |

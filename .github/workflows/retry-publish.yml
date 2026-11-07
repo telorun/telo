@@ -12,22 +12,23 @@ name: Retry failed publish
 #
 # Safe because every workflow listed is already written to be re-run: each gates
 # on what is published rather than on a previous step's exit code, and a re-run
-# keeps the original event, so a version-bump gate answers as it did the first
-# time.
+# keeps the original commit, so a version-bump gate answers as it did the first
+# time. A pointer (`latest`, the Marketplace, the pages) moves only forward, so a
+# re-run of an old publish moves none.
 #
 # `workflow_run` reads this file from the default branch only, and fires again
 # when the re-run it started completes — which is what makes the attempts chain.
 
 on:
   workflow_run:
+    # The image, CLI, Studio, VS Code and site workflows are called by Publish, so
+    # their jobs belong to its run; `Publish Docker Images` is listed for its
+    # by-hand dispatch.
     workflows:
       - Publish
       - Publish Docker Images
-      - Release standalone CLI
-      - Release Studio
-      - Release VS Code Extension
     types: [completed]
-    branches: [main]
+    branches: [main, "release/*"]
 
 permissions:
   actions: write
@@ -50,7 +51,6 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           WORKFLOW: ${{ github.event.workflow_run.name }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
 
@@ -62,18 +62,6 @@ jobs:
           # Longer before each later attempt: an outage that cancelled every job
           # is not over a few seconds later.
           sleep $((ATTEMPT * 120))
-
-          # This workflow moves `:latest` on every push, so re-running a commit
-          # main has moved past could put an older image behind the tag. The
-          # newer push builds the images itself. The release workflows publish
-          # under their own version and are retried wherever main is.
-          if [ "$WORKFLOW" = "Publish Docker Images" ]; then
-            tip=$(gh api "repos/$REPO/commits/main" --jq .sha)
-            if [ "$tip" != "$HEAD_SHA" ]; then
-              echo "main is at $tip, past $HEAD_SHA; leaving the images to that push."
-              exit 0
-            fi
-          fi
 
           echo "Re-running the failed jobs of $WORKFLOW run $RUN_ID (attempt $((ATTEMPT + 1)) of $MAX_ATTEMPTS)."
           gh run rerun "$RUN_ID" --repo "$REPO" --failed

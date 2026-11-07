@@ -10,9 +10,9 @@ The layered contract has three levels, each a strategy module family:
 
 | Level | What a layer holds | Status |
 | --- | --- | --- |
-| **Current** — `GraphLayers.Store` | Only its current statements. Every write takes effect at once. | This module, with [`graph-layers-current-sqlite`](../graph-layers-current-sqlite/README.md) and [`graph-layers-current-postgres`](../graph-layers-current-postgres/README.md). |
-| **Drafted** — `GraphLayers.DraftedStore` | Its published statements plus a draft, published atomically as a numbered revision. | This module, with [`graph-layers-drafts-sqlite`](../graph-layers-drafts-sqlite/README.md) and [`graph-layers-drafts-postgres`](../graph-layers-drafts-postgres/README.md). |
-| **Revisioned** — `GraphLayers.RevisionedStore` | Every revision it ever published; drafts are parallel and each reads the layer as it stood when the draft began; the layers beneath are pinned at a revision or a label. | This module, with [`graph-layers-revisions-sqlite`](../graph-layers-revisions-sqlite/README.md) and [`graph-layers-revisions-postgres`](../graph-layers-revisions-postgres/README.md). |
+| **Current** — `GraphLayers.Store` | Only its current statements. Every write takes effect at once. | This module, with [`graph-layers-current-sqlite`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-current-sqlite/) and [`graph-layers-current-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-current-postgres/). |
+| **Drafted** — `GraphLayers.DraftedStore` | Its published statements plus a draft, published atomically as a numbered revision. | This module, with [`graph-layers-drafts-sqlite`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-drafts-sqlite/) and [`graph-layers-drafts-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-drafts-postgres/). |
+| **Revisioned** — `GraphLayers.RevisionedStore` | Every revision it ever published; drafts are parallel and each reads the layer as it stood when the draft began; the layers beneath are pinned at a revision or a label. | This module, with [`graph-layers-revisions-sqlite`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-revisions-sqlite/) and [`graph-layers-revisions-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-revisions-postgres/). |
 
 Each level extends the one beneath, so what is written against `GraphLayers.Store` keeps working over a drafted or revisioned store. Every lifecycle kind is declared once, here, and its `store` slot names the lowest level at which it works: a drafting kind over a current store, or a pinning, labelling or history kind over a store that keeps no history, is refused by `telo check`.
 
@@ -73,7 +73,7 @@ This module requires telo **0.108.0 or newer** (`requires: telo: ">=0.108.0"`). 
 
 ## Example
 
-Two layers over the same SQLite tables — `team` built on `shared` (kinds from [`graph-layers-current-sqlite`](../graph-layers-current-sqlite/README.md), imported as `Layers`):
+Two layers over the same SQLite tables — `team` built on `shared` (kinds from [`graph-layers-current-sqlite`](https://hub.telo.run/module/oci/ghcr.io/telorun/graph-layers-current-sqlite/), imported as `Layers`):
 
 ```yaml
 kind: Layers.Store

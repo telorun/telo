@@ -68,7 +68,7 @@ model: !ref Gpt4o
 system: "Summarize concisely."
 ```
 
-The model and its client are the only provider-specific documents. Providers in the standard library: [`openai`](../openai/README.md) (OpenAI and every OpenAI-compatible endpoint) and [`anthropic`](../anthropic/README.md) (Claude, over the Messages API). Swap one for the other and the `Ai.Text` above is unchanged, as is any `catches:` written against [the model failure codes](#catching-a-models-errors).
+The model and its client are the only provider-specific documents. Providers in the standard library: [`openai`](https://hub.telo.run/module/oci/ghcr.io/telorun/openai/) (OpenAI and every OpenAI-compatible endpoint) and [`anthropic`](https://hub.telo.run/module/oci/ghcr.io/telorun/anthropic/) (Claude, over the Messages API). Swap one for the other and the `Ai.Text` above is unchanged, as is any `catches:` written against [the model failure codes](#catching-a-models-errors).
 
 ## Reference
 
@@ -196,7 +196,7 @@ For a streaming operation, a request the model refuses outright fails the call �
 
 ## Tool use
 
-Tool use / function calling is provided by [`Ai.Agent`](docs/ai-agent.md): it advertises tools to the model, executes the ones the model requests, and loops. Tools come from any [`Ai.ToolProvider`](docs/ai-tool-provider.md) — a static [`Ai.Tools`](docs/ai-tool-provider.md#aitools) list, or runtime discovery from an MCP server via [`AiMcp.ToolProvider`](../ai-mcp/README.md). The model contract carries tools additively (`tools` in, `toolCalls` out, the `tool` message role); `Ai.Text`/`Ai.TextStream` never pass tools and are unaffected.
+Tool use / function calling is provided by [`Ai.Agent`](docs/ai-agent.md): it advertises tools to the model, executes the ones the model requests, and loops. Tools come from any [`Ai.ToolProvider`](docs/ai-tool-provider.md) — a static [`Ai.Tools`](docs/ai-tool-provider.md#aitools) list, or runtime discovery from an MCP server via [`AiMcp.ToolProvider`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai-mcp/). The model contract carries tools additively (`tools` in, `toolCalls` out, the `tool` message role); `Ai.Text`/`Ai.TextStream` never pass tools and are unaffected.
 
 **Caller context.** Either agent takes a `context` input — data its caller knows and the model must not choose, such as the id of the turn being served. A provider's tools read it in their `inputs:` mapping (`turnId: !cel "context.turnId"`), and the provider declares its shape as `contextType`; the agent's `context` must then satisfy every mounted provider's declaration, checked by `telo check` at the call and at invoke before any model call. See [Caller context](docs/ai-agent.md#caller-context). The module declares `requires: telo: ">=0.107.0"`, the first runtime that derives this contract and that accepts a model call whose `messages` is computed; an older one reports `MODULE_REQUIRES_NEWER_RUNTIME`.
 

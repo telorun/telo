@@ -1,6 +1,6 @@
 # SQL Postgres
 
-`Postgres.Connection` — a PostgreSQL backend for the [`sql`](../sql/README.md) module's `Sql.Connection` abstract. Backed by a `pg` connection pool and Kysely; the `sql` core itself depends on no driver.
+`Postgres.Connection` — a PostgreSQL backend for the [`sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/) module's `Sql.Connection` abstract. Backed by a `pg` connection pool and Kysely; the `sql` core itself depends on no driver.
 
 Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transaction`) and this module's own `Schema` kind references the connection driver-agnostically via `x-telo-ref: Sql.Connection`; this module satisfies that ref.
 
@@ -36,8 +36,8 @@ inputs:
 `DATABASE_URL=postgres://app:secret@db.internal:5432/shop telo run .` supplies it;
 without `env:` the variable is derived from the need's path
 (`TELO_NEED_DATABASE_ACCESS__URL`), and `telo needs report` lists it. See
-[Declaring a need](../../docs/guides/declaring-a-need.md) and
-[Providing needs](../../docs/guides/providing-needs.md).
+[Declaring a need](https://telo.run/learn/declaring-a-need) and
+[Providing needs](https://telo.run/learn/providing-needs).
 
 ## Database access
 
@@ -166,7 +166,7 @@ A name may appear in only one of the two maps (`SQL_COLUMN_DECLARED_TWICE`), and
 internal column's `renamedFrom` may name neither itself
 (`SQL_INTERNAL_COLUMN_RENAME_FROM_SELF`) nor a column either map still declares
 (`SQL_INTERNAL_COLUMN_RENAME_SOURCE_STILL_DECLARED`). See
-[Internal columns](../sql/docs/declarative-schema.md#internal-columns--outside-the-row-contract).
+[Internal columns](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/).
 
 ### Domains, predicates and reference data
 
@@ -255,7 +255,7 @@ projected type.
 
 A table or a type renames with `renamedFrom:`, natively and immediately; a column
 still renames expand-contract. See
-[Declarative schema](../sql/docs/declarative-schema.md) for the full rules —
+[Declarative schema](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/) for the full rules —
 what a removal records, what a rename refuses, and why a domain crosses into the
 row projection while a bound does not.
 
@@ -279,7 +279,7 @@ If a second schema resource — an imported library's, or another application's 
 manages tables in the same namespace, give each its own `ledger:` so their
 histories stay apart; two on one connection naming the same one are refused.
 
-See [Declarative schema](../sql/docs/declarative-schema.md) for tombstoning,
+See [Declarative schema](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/) for tombstoning,
 reclamation, renames and the ledger rule.
 
 ## Notifications (`LISTEN` / `NOTIFY`)
@@ -308,7 +308,7 @@ listener that reconnected without replaying would be attached and deaf. The
 reconnect is reported rather than raised: a lost notification is a lost
 optimisation, and taking an application down over one would be the wrong trade.
 Design around that — a notification makes a poller prompt, it does not make it
-correct. [`durable-journal-postgres`](../durable-journal-postgres/README.md) is
+correct. [`durable-journal-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-journal-postgres/) is
 the worked example.
 
 A subscriber that cannot afford to miss a notification asks to be told when the
@@ -323,7 +323,7 @@ await connection.listen("jobs_ready", wake, { onReconnect: () => reread() });
 The option is additive: `listen(channel, onNotify)` is unchanged, and a
 subscriber that gives no `onReconnect` is not told. A notice that throws is
 logged and does not stop the other subscribers'.
-[`broadcast-postgres`](../broadcast-postgres/README.md) turns it into a gap.
+[`broadcast-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/broadcast-postgres/) turns it into a gap.
 
 Failing to subscribe in the first place is *not* swallowed: `listen()` rejects,
 because a subscription nobody established is one the caller thinks it has.

@@ -58,4 +58,4 @@ navigation:
 ## Documentation
 
 - [Glyphs and how they are served](docs/icons.md)
-- [Icons in `ui`](../ui/docs/icons.md)
+- [Icons in `ui`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)

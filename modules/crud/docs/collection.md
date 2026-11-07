@@ -3,7 +3,7 @@
 The records of one database table, as one list endpoint describes them: the
 shape of a record, what a list may be filtered, sorted and faceted by, and the
 properties that point at another collection's records — everything a
-[`DataModel.Collection`](../../data-model/docs/collection.md) declares — plus the
+[`DataModel.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/) declares — plus the
 shape of each write and of a list row, and the table the records are stored
 in. A [`Crud.Api`](api.md) serves it, and a screen reading the same collection
 offers exactly what the API accepts.
@@ -24,7 +24,7 @@ offers exactly what the API accepts.
 Each shape is a `Telo.JsonSchema`, by `!ref` or written in place. A collection
 is a `DataModel.Collection`, so it is accepted wherever one is, and the data
 model's rules — filters, sorts, facets and relations measured against `model` —
-hold of it too ([what is refused](../../data-model/docs/collection.md#what-is-refused)).
+hold of it too ([what is refused](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/)).
 
 ```yaml
 kind: SQLite.Table

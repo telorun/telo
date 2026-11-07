@@ -46,7 +46,7 @@ The Node.js kernel then probes `rustc`, runs `cargo build --release --features t
 
 Each kind names its own controller inside the one crate through the PURL's `#fragment` (`#writeline_controller`, `#write_controller`, `#readline_controller`). On the Rust kernel that selects an exported C symbol; on the Node.js kernel the napi bridge namespaces its exports by the same name, so `module.writeline_controller.create` is what the loader projects.
 
-`runtime:` accepts the same forms it does everywhere — see [the starlark module's Rust runtime doc](https://github.com/telorun/telo/blob/main/modules/starlark/docs/runtime-rust.md) for the full table.
+`runtime:` accepts the same forms it does everywhere — see [the starlark module's Rust runtime doc](https://hub.telo.run/module/oci/ghcr.io/telorun/starlark/) for the full table.
 
 ## Behaviour differences
 

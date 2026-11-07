@@ -1,6 +1,6 @@
 # Idempotency — SQL
 
-Make the database effects of a retried or redelivered operation happen **once per key**, by recording the key in the same transaction as the writes it guards. This is the SQL family's shared half: the `Ledger` contract, the `Once` operation and the engine-neutral implementation. Declare a ledger with an engine module — [`idempotency-postgres`](../idempotency-postgres/README.md) or [`idempotency-sqlite`](../idempotency-sqlite/README.md).
+Make the database effects of a retried or redelivered operation happen **once per key**, by recording the key in the same transaction as the writes it guards. This is the SQL family's shared half: the `Ledger` contract, the `Once` operation and the engine-neutral implementation. Declare a ledger with an engine module — [`idempotency-postgres`](https://hub.telo.run/module/oci/ghcr.io/telorun/idempotency-postgres/) or [`idempotency-sqlite`](https://hub.telo.run/module/oci/ghcr.io/telorun/idempotency-sqlite/).
 
 ## Why use this
 

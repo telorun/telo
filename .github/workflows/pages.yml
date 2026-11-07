@@ -1,69 +1,171 @@
 name: Deploy GitHub Pages
 
+# The docs site, built from a release tag and served by the branch's Publish run.
+#
+#   candidate   builds `site-next.tar.gz` (base URL `/next/`, with a banner naming
+#               the release it previews) and attaches it to the pre-release.
+#   final/patch builds `site-root.tar.gz` (base URL `/`) and attaches it to the
+#               release.
+#
+# The base URL is fixed at build, so a tarball is the site as it is served. The
+# deploy then composes the newest published final's `site-root.tar.gz` at `/` and,
+# while a candidate of a later release is open, that candidate's build at
+# `/next/` (`scripts/release-site.mjs`); a final or patch deploys `/` alone, which
+# is how `/next/` goes away. Nothing deploys on a push to main: a docs fix reaches
+# `/next/` with the next candidate and `/` with the next final or patch.
+#
+# BOOTSTRAP. `workflow_dispatch` with a `tag` builds that release's site from the
+# tag's checkout with THIS file's steps (run it from main) and attaches the
+# tarball, deploying nothing. It exists for the first cut: v0.84.2 predates these
+# workflows and carries no `site-root.tar.gz`, so one dispatch at `v0.84.2` gives
+# the first candidate's deploy a `/` to compose. The tag's tree may predate the
+# `TELO_SITE_*` variables, so `BASE_URL` is set as well.
+
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'pages/**'
-      - 'assets/**'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'The release tag to build the site from (v0.85.0-rc.1, v0.85.0).'
+        type: string
+        required: true
+      deploy:
+        description: 'Deploy the composed site after attaching the build.'
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and attach the site of (bootstrap: v0.84.2). Deploys nothing.'
+        type: string
+        required: true
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   build:
+    name: Build the site
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      channel: ${{ steps.plan.outputs.channel }}
+      version: ${{ steps.plan.outputs.version }}
+      asset: ${{ steps.plan.outputs.asset }}
     steps:
-      - name: Checkout
+      # The tooling comes from the workflow's own commit; the source from the tag.
+      # They are one commit when Publish calls this.
+      - name: Checkout the tooling
         uses: actions/checkout@v4
         with:
+          path: tooling
+
+      - name: Plan the build
+        id: plan
+        working-directory: tooling
+        run: node scripts/release-site.mjs build --tag "${{ inputs.tag }}"
+
+      - name: Checkout ${{ inputs.tag }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          path: source
           # Full history: the sitemap derives each page's <lastmod> from the
           # file's git log, which a shallow clone does not carry.
           fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: source/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-
-      - name: Setup Pages
-        id: pages
-        uses: actions/configure-pages@v4
+          cache-dependency-path: source/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install
+        working-directory: source
+        run: pnpm install --frozen-lockfile
 
       - name: Build
+        working-directory: source
         run: pnpm --filter "@telorun/pages..." build
         env:
-          BASE_URL: ${{ steps.pages.outputs.base_path }}
+          TELO_SITE_TAG: ${{ inputs.tag }}
+          TELO_SITE_BASE_URL: ${{ steps.plan.outputs.base-url }}
+          TELO_SITE_PREVIEW: ${{ steps.plan.outputs.preview }}
+          # Read by a tree older than the variables above (the bootstrap build).
+          BASE_URL: ${{ steps.plan.outputs.base-url }}
           # Set only here: this is the build that becomes telo.run, so no local
           # or preview build can report into the production Plausible site.
           PLAUSIBLE_DOMAIN: telo.run
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Pack the site
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/site"
+          tar -czf "$RUNNER_TEMP/site/${{ steps.plan.outputs.asset }}" -C source/pages/build .
+
+      - name: Attach the site to the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node tooling/scripts/release-assets.mjs "${{ inputs.tag }}" "$RUNNER_TEMP/site/${{ steps.plan.outputs.asset }}"
+
+      - name: Keep the build for the deploy
+        uses: actions/upload-artifact@v4
         with:
-          path: pages/build
+          name: site
+          path: ${{ runner.temp }}/site/${{ steps.plan.outputs.asset }}
+          if-no-files-found: error
 
   deploy:
+    name: Deploy the site
+    needs: build
+    if: inputs.deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download this run's build
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: own
+
+      - name: Compose / and /next/
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CHANNEL: ${{ needs.build.outputs.channel }}
+          VERSION: ${{ needs.build.outputs.version }}
+          ASSET: ${{ needs.build.outputs.asset }}
+        run: |
+          set -euo pipefail
+          own_flag=--own-root
+          [ "$CHANNEL" = "candidate" ] && own_flag=--own-next
+          node scripts/release-site.mjs compose --channel "$CHANNEL" --version "$VERSION" --out site "$own_flag" "own/$ASSET"
+          rm -rf site/.download
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

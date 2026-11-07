@@ -1,6 +1,6 @@
 # AI Conversation
 
-Persists branching chat transcripts for any AI agent consumer. A conversation is a header (title, archived flag, latest turn, version) and a forest of `Ai.Message` entries, each naming its parent. Editing or regenerating a message appends a sibling and keeps the old branch. This module is the backend-neutral half: the `AiConversation.Store` abstract, thirteen operations over it and the store contract a backend implements. Keep the data with [`ai-conversation-sql`](../ai-conversation-sql/README.md).
+Persists branching chat transcripts for any AI agent consumer. A conversation is a header (title, archived flag, latest turn, version) and a forest of `Ai.Message` entries, each naming its parent. Editing or regenerating a message appends a sibling and keeps the old branch. This module is the backend-neutral half: the `AiConversation.Store` abstract, thirteen operations over it and the store contract a backend implements. Keep the data with [`ai-conversation-sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/ai-conversation-sql/).
 
 ## Why use this
 

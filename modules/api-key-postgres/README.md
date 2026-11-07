@@ -1,6 +1,6 @@
 # API keys — PostgreSQL
 
-Keep API keys in a PostgreSQL table beside the application's own data, so every replica sees an issued, revoked or rotated key at its next request. This is the PostgreSQL engine of [`api-key-sql`](../api-key-sql/README.md), which owns the contract and the implementation; this module adds the table and store kinds.
+Keep API keys in a PostgreSQL table beside the application's own data, so every replica sees an issued, revoked or rotated key at its next request. This is the PostgreSQL engine of [`api-key-sql`](https://hub.telo.run/module/oci/ghcr.io/telorun/api-key-sql/), which owns the contract and the implementation; this module adds the table and store kinds.
 
 ## Why use this
 
@@ -56,4 +56,4 @@ Import this module under an alias other than `ApiKey`, which is the `api-key` mo
 ## Docs
 
 - [PostgreSQL specifics](./docs/postgres.md) — the table, instants and concurrency on this engine.
-- [The SQL store](../api-key-sql/docs/sql-store.md) — retention, the sweep and atomicity.
+- [The SQL store](https://hub.telo.run/module/oci/ghcr.io/telorun/api-key-sql/) — retention, the sweep and atomicity.

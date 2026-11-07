@@ -234,7 +234,7 @@ than the chosen one is reported as `onChange` with its key. With `fill` true
 the root and the shown `tab-panel` carry `data-fill="true"`, and the panel
 passes the room it is given on to what it holds (a flex column); with `fill`
 false neither carries it. The renderer
-draws a [`tabs` node](../../ui/docs/nodes.md#tabs) with it, keying each tab by
+draws a [`tabs` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) with it, keying each tab by
 the key the page document gives it and holding which one is chosen; its parts are in the
 [styling contract](styling.md#tabs)'s list.
 
@@ -831,7 +831,7 @@ layer root keeps `data-telo-layer` while a later modal layer makes it
 The built-ins meet every vector and every scene in a
 [happy-dom](https://github.com/capricorn86/happy-dom) window, at the one
 version the workspace pins, and
-[`ui-react-conformance`](../../ui-react-conformance/README.md) holds every
+[`ui-react-conformance`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react-conformance/) holds every
 other control set to the same vectors and scenes in the same DOM: the DOM
 implementation and its version are part of the contract's oracle.
 

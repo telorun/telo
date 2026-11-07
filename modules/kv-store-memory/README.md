@@ -1,6 +1,6 @@
 # Durable Store — Memory
 
-`KvStoreMemory.Store` — an in-process [`KvStore.Store`](../kv-store/README.md) backend.
+`KvStoreMemory.Store` — an in-process [`KvStore.Store`](https://hub.telo.run/module/oci/ghcr.io/telorun/kv-store/) backend.
 
 ## Why use this
 

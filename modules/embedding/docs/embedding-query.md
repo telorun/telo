@@ -7,7 +7,7 @@ sidebar_label: Embedding.Query
 
 > Examples assume this module is imported under alias `Embedding`. Substitute if you import under different names.
 
-`Embedding.Query` embeds **search queries** into vectors against any [`Embedding.Model`](./embedding-model). It is the retrieval-side half of the asymmetric pair; [`Embedding.Passage`](./embedding-passage) is the index-side half. The controller passes the retrieval intent `query` to the backend (mapped to the vendor's `search_query` / `RETRIEVAL_QUERY` parameter); symmetric backends ignore it.
+`Embedding.Query` embeds **search queries** into vectors against any [`Embedding.Model`](./embedding-model.md). It is the retrieval-side half of the asymmetric pair; [`Embedding.Passage`](./embedding-passage.md) is the index-side half. The controller passes the retrieval intent `query` to the backend (mapped to the vendor's `search_query` / `RETRIEVAL_QUERY` parameter); symmetric backends ignore it.
 
 ## Schema
 

@@ -2,6 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const matter = require("gray-matter");
 const { substituteVersions } = require("../../lib/version-map");
+const { rewriteMarkdownLinks } = require("../../../scripts/repo-links.cjs");
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
 /**
  * Docusaurus plugin that generates llms.txt, llms-full.txt, and per-page
@@ -196,7 +199,13 @@ function resolveDoc(
   const { data: frontmatter, content: rawContent } = matter(raw);
   // Mirror the remark-versions substitution applied to the rendered site, so
   // the generated markdown companions and llms.txt carry real versions too.
-  const content = substituteVersions(rawContent, undefined, srcFile);
+  // The companion lives at a site path, so a relative link would resolve against
+  // nothing: it points into the repository at the tag being built instead.
+  const content = rewriteMarkdownLinks(substituteVersions(rawContent, undefined, srcFile), {
+    repoRoot: REPO_ROOT,
+    fromDir: path.relative(REPO_ROOT, path.dirname(path.resolve(srcFile))).split(path.sep).join("/"),
+    tag: process.env.TELO_SITE_TAG || "main",
+  });
 
   const rawTitle =
     label ||

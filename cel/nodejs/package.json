@@ -44,8 +44,8 @@
     "check:browser-safe": "node scripts/check-browser-safe.mjs",
     "check:signatures": "pnpm run build && node scripts/check-signatures.mjs",
     "prepare": "node -e \"const f='../../scripts/generate-telo-version.mjs';if(require('fs').existsSync(f))require('child_process').execFileSync(process.execPath,[f],{stdio:'inherit'})\"",
-    "prepack": "cp ../LICENSE .",
-    "postpack": "rm -f LICENSE"
+    "prepack": "cp ../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE"
   },
   "dependencies": {
     "d3-format": "catalog:",

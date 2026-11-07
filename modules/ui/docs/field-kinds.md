@@ -119,7 +119,7 @@ shape of one option's record) and accessors over `row`, a record of `model` —
 [address](nodes.md#addresses) over `row`, so a chosen option links to
 `{ path: "/people/{id}", pathParams: { id: !cel "row.id" } }`.
 `Ui.CollectionOptions` reads them from a
-[collection](../../data-model/docs/collection-contract.md):
+[collection](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/):
 
 | Key | | |
 | --- | --- | --- |

@@ -7,7 +7,7 @@ sidebar_label: Idempotency — PostgreSQL
 
 > Examples assume this module is imported under alias `Idempotency`, `idempotency-sql` under `IdempotencySql` and `postgres` under `Postgres`.
 
-What a ledger guarantees, `Once`, fingerprints, retention and the sweep are [`idempotency-sql`'s](../../idempotency-sql/docs/ledger.md); this page is what is particular to PostgreSQL.
+What a ledger guarantees, `Once`, fingerprints, retention and the sweep are [`idempotency-sql`'s](https://hub.telo.run/module/oci/ghcr.io/telorun/idempotency-sql/); this page is what is particular to PostgreSQL.
 
 ## Kinds
 
@@ -37,7 +37,7 @@ A second transaction recording the same key waits on the ledger's unique index u
 
 ## Two ledgers, one name
 
-The table kind declares `IDEMPOTENCY_LEDGER_NAME_DUPLICATE`: two ledgers naming one `Idempotency.Table` with one `name` are both reported by `telo check` (`REFERRER_RULE_VIOLATED`), and the second to start is refused with `ERR_IDEMPOTENCY_LEDGER_NAME_DUPLICATE`. The rule is declared on this kind rather than once in `idempotency-sql` because a `base:`-form table kind inherits no rule and has one parent, `Postgres.Table` — see [the ledger guide](../../idempotency-sql/docs/ledger.md#refusals).
+The table kind declares `IDEMPOTENCY_LEDGER_NAME_DUPLICATE`: two ledgers naming one `Idempotency.Table` with one `name` are both reported by `telo check` (`REFERRER_RULE_VIOLATED`), and the second to start is refused with `ERR_IDEMPOTENCY_LEDGER_NAME_DUPLICATE`. The rule is declared on this kind rather than once in `idempotency-sql` because a `base:`-form table kind inherits no rule and has one parent, `Postgres.Table` — see [the ledger guide](https://hub.telo.run/module/oci/ghcr.io/telorun/idempotency-sql/).
 
 ## Runtime requirement
 
