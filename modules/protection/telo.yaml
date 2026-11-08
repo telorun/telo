@@ -11,7 +11,7 @@ metadata:
     is spent the identifier is refused as throttled without the password being
     checked at all. Successful sign-ins cost nothing, so a legitimate user is
     never locked out by their own logins.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 imports: { Auth: ../auth, RateLimit: ../rate-limit }
 exports: { kinds: [PasswordThrottle] }
 ---

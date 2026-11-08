@@ -12,7 +12,7 @@ metadata:
     durable replay journal so a reader that disconnects, or outlives a restart, resumes
     from where it left off and tails live, or reads its state in one snapshot, with
     removal, retention, writer liveness and continuing a failed or abandoned recording.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.108.0" }
     reason: "The controllers read and build durations through the value domain (`isCelDuration`, `durationNanos`, `celDurationFromNanos`), which SDKs before 0.108.0 do not export; the resource dies at creation with a TypeError."

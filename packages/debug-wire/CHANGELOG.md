@@ -1,5 +1,11 @@
 # @telorun/debug-wire
 
+## 0.4.8-rc.0
+
+### Patch Changes
+
+- 0d833e3: Documents the `address` and `suppliedBy: "host"` members of a `Kernel.PortsResolved` port entry, present when the process embedding the kernel holds the port's socket.
+
 ## 0.4.7
 
 ### Patch Changes

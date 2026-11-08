@@ -15,7 +15,7 @@ metadata:
 requires:
   # 0.122.0 refuses the reader's `throws:` `displayMessage` as SCHEMA_VIOLATION
   # (verified by execution); 0.125.1 reads and runs this file.
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 lang: en
 imports: { Http: ../http-server, Sql: ../sql, DataModel: ../data-model }
 exports: { kinds: [Collection, Api] }

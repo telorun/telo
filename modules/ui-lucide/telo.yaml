@@ -16,7 +16,7 @@ metadata:
     and tab bars.
 requires:
   # Imports ui, which needs 0.121.0.
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 imports: { Ui: ../ui }
 exports: { kinds: [Icon] }
 # Every glyph ships in the assets layer; a resource reads only the one it names.

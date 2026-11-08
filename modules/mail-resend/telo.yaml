@@ -13,7 +13,7 @@ metadata:
     unreachable or failing service.
 requires:
   # 0.128.0: the body is a built-in `Telo.Sequence`, which 0.127.0 does not know.
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 imports: { Mail: ../mail, Http: ../http-client }
 exports: { kinds: [Transport] }
 ---

@@ -14,7 +14,7 @@ metadata:
 requires:
   # 0.121.0: `Store.root` declares `entry: directory`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 imports: { Blob: ../blob }
 exports: { kinds: [Store] }
 ---

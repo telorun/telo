@@ -10,7 +10,7 @@ metadata:
     existing resources as callable tools, readable resources and fetchable prompts,
     then serve them either over standard input and output for a locally spawned
     server, or over HTTP with optional per-session state.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.130.0" }
     reason: "The endpoint imports `errorValueOf` from the SDK for its error event, so a 0.129.0 runtime fails to load the controller; also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."

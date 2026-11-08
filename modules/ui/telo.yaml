@@ -15,7 +15,7 @@ metadata:
 requires:
   # 0.128.0 refuses this file: it knows neither `Telo.KeyedTranslations`, which
   # declares `ui`'s own texts, nor `x-telo-text-keys`. Verified by execution.
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
 # which control fits which property, what a listing's read plan requests, and how

@@ -10,7 +10,7 @@ metadata:
     dot-product or euclidean distance. It lives in its own table inside a database the
     application already uses and provisions the extension, table and approximate
     nearest-neighbour index on start-up.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 imports: { VectorStore: ../vector-store, Sql: ../sql }
 exports: { kinds: [Store] }
 ---

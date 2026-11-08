@@ -10,7 +10,7 @@ metadata:
     windows on the app's local origin, hide or close them, show a menu bar or
     notification-area icon whose menu items run actions, and ask the desktop shell
     to quit. Works against any desktop shell that supplies the desktop host need.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 exports: { kinds: [Window, TrayIcon, ShowWindow, Quit] }
 ---
 kind: Telo.Definition
