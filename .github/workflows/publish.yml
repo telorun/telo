@@ -50,9 +50,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.TELO_BOT_TOKEN }}
 
-      - name: Check
-        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -65,6 +62,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
 
       - name: Build workspace
         run: pnpm -r --if-present build
@@ -192,9 +192,6 @@ jobs:
         with:
           fetch-depth: 0 # HEAD^ for the version-moved gate, tags for the numbering
 
-      - name: Check
-        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -206,6 +203,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
 
       - name: Build workspace
         run: pnpm -r --if-present build
@@ -269,9 +269,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check
-        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -283,6 +280,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
 
       - name: Build workspace
         run: pnpm -r --if-present build
@@ -327,9 +327,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check
-        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -341,6 +338,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
 
       - name: Is the branch ready for module releases
         id: ready
@@ -360,9 +360,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check
-        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -374,6 +371,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
 
       - name: Build workspace
         run: pnpm -r --if-present build
@@ -540,6 +540,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Check
         run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
 
@@ -574,9 +586,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check
-        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -588,6 +597,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
 
       # The release plan `--pin-local` reads is built by the workspace CLI.
       - name: Build workspace
