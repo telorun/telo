@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - 2026-11-08
+### Fixed
+* The README links to Tesseract's page on the hub instead of a file in the repository, so the module's bytes do not depend on which release publishes it.
+
 ## 0.4.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

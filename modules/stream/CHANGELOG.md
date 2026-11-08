@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.15.0 - 2026-11-06
 ### Added
 * Stream.Recover passes every value through and, when the source fails part-way, logs the failure and ends the stream with a value computed from error (code, INTERNAL_ERROR for an uncoded failure, message, data, displayMessage), optionally only when a condition holds and held to an elementType. A cancellation and a suspension are always rethrown.

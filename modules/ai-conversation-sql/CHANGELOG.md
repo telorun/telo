@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.2.0 - 2026-11-06
 ### Added
 * A create naming an id that already exists answers that conversation's header unchanged instead of failing.

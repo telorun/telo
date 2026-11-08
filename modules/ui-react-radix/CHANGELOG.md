@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.7.0 - 2026-11-06
 ### Added
 * Draws the controls of ui_react_controls-3, its Icon control gaining the attach, copy, export, regenerate, send and stop glyphs, and styles the chat composer's frame when the buttons sit inside the message box.

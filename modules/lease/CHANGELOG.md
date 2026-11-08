@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.15.0 - 2026-11-06
 ### Added
 * `Lease.Critical.ttl` is a `Telo.Duration`: `30s`, `10m`, `1h30m`, `2d` and `1w` are read, a malformed literal is refused by `telo check`, an integer is milliseconds, and a computed value must be a duration (`!cel "duration('10m')"`). Breaking for a `ttl` computed as a string. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.130.0.

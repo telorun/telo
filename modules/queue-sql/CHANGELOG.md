@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.2.0 - 2026-11-04
 ### Added
 * New module: durable work queues kept in a table of the application's own database. QueueSql.Queue (abstract, extends Queue.AddressableQueue: connection, schema, table, name, optional groupBy) and QueueSql.Enqueue / QueueSql.EnqueueMany, which store messages inside the caller's open transaction on the queue's connection — the transactional outbox — and are refused by telo check outside one. Claims pass over rows another claimer holds and read only rows claimable now, retries and delays are visibility times on the database's clock, groups are delivered one message at a time in enqueue order (a message without a string group is refused with ERR_QUEUE_GROUP_INVALID), settled messages past retention are purged by the workers' claims, and a connection that can LISTEN/NOTIFY wakes idle workers. A broken store invariant is ERR_QUEUE_STORE_INCONSISTENT. Two queues with one name in one table are refused (QUEUE_NAME_DUPLICATE / ERR_QUEUE_NAME_DUPLICATE).
