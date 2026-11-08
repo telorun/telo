@@ -11,7 +11,7 @@ metadata:
     with its pixel bounding box and outline polygon. Coordinates are measured on the
     whole image, so recognized words can be drawn back onto the page. One image per
     call, optionally limited to a rectangle.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.99.0" }
     reason: "0.98.0's `telo check` accepts `throws:` on a `Telo.Abstract`, but its kernel refuses the abstract at boot."

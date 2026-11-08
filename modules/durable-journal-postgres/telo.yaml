@@ -13,7 +13,7 @@ metadata:
 requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 imports:
   DurableLocal: ../durable-local
   Postgres: ../postgres

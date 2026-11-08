@@ -12,7 +12,7 @@ metadata:
     changes in a draft, publish them atomically as a numbered revision, resolve
     conflicts when a draft falls behind, follow a layer's revision history, and
     pin a layer to labelled revisions of others so an upgrade is a reviewed merge.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.108.0" }
     reason: "The drafting kinds build instants through the SDK's `celTimestampFromMillis`, which a runtime before 0.108.0 does not export, so every kind here fails at creation; before 0.105.0 the retract and drafting contracts' `x-telo-schema-projection-from` object form is not read."

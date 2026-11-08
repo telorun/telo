@@ -11,7 +11,7 @@ metadata:
     them by property, and traverse several hops to find connected entities. The
     node and relationship types are declared once, so every call is checked
     against the model before anything runs.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.108.0" }
     reason: "The backend key tail imports the typed-frame generation exports of `@telorun/sdk` (`TYPED_FRAME_GENERATION`, `readsTypedFrameGeneration`), first published in 0.108.0: on 0.107.0 every graph resource fails at controller load. Before 0.105.0 the operation contracts' `x-telo-schema-projection-from` pointers crossing references are left untyped."

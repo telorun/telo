@@ -12,7 +12,7 @@ metadata:
     labelled releases of other layers and upgraded by moving a pin, merging
     three ways per property. Parallel drafts read consistent snapshots and
     publish atomically; history is a change feed by revision number.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.105.0" }
     reason: "Before 0.105.0, its kinds write `x-telo-schema-projection-from`, which 0.104.0 does not read as projecting, so a graph operation typed from them is refused at dispatch (ERR_SCHEMA_PROJECTION_UNRESOLVED). The drafting and history operations are `GraphLayers`' kinds and carry that module's own, higher floor."

@@ -11,7 +11,7 @@ metadata:
     fields for scraping, sanitize untrusted markup against an allowlist, convert to
     Markdown or plain text, read page metadata, and isolate an article's main
     content from navigation and ads.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.101.0" }
     reason: "0.101.0 reads the extraction projection through its `$defs` entry schema and `nested:`, evaluates the `x-telo-eval` inside it and checks `format: css-selector`; 0.100.0 was verified to differ."

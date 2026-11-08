@@ -11,7 +11,7 @@ metadata:
     until it is ready, and read the address its ports are reached at. The
     container is removed with its volumes when the application stops, and one
     left behind by a killed process expires.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.116.0" }
     reason: "The controllers report a port's address from `init()` and consumers read it in startup fields, which a Provider's observed state carries only from 0.116.0: an older analyzer refuses the read (OBSERVED_STATE_NEVER_RUN) and an older kernel refuses the report (ERR_OBSERVED_STATE_BEFORE_START)."

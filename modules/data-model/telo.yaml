@@ -12,7 +12,7 @@ metadata:
     collections. Contradictions between those declarations are refused before
     the app runs, and the declaration is the contract APIs enforce and screens
     offer.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.126.0" }
     reason: "A collection relating to itself, or two relating to each other, fail to boot on 0.125.1 with ERR_LOCAL_REF_PENDING because a `use: schema` reference was awaited there."

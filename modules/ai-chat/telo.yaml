@@ -12,7 +12,7 @@ metadata:
     conversation that sends it, and read conversations and their branching
     transcripts back. Retried sends start one turn, and a turn whose writer dies
     is reported as failed.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.129.0" }
     reason: "0.122.0 refuses this module: its templated bodies read `inputs` and `steps`, and its `http-server` import declares display messages. Checked against 0.129.0; nothing older was verified to run it."

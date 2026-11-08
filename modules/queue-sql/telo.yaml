@@ -11,7 +11,7 @@ metadata:
     a transactional outbox: a rollback discards both, a commit keeps both.
     Workers claim messages concurrently without blocking each other, with
     leases, retries, delays, deduplication by id and per-group ordering.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.129.0" }
     reason: "The controllers ask for the enqueue kinds' schema-root zone with the field-less `ctx.requireZone` and need the engine Schema's `currentInstantPlus`, `instantParameter` and `skipLockedClause` members, all first in 0.129.0."

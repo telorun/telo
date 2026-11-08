@@ -10,7 +10,7 @@ metadata:
     usual fresh and stale windows, bounded by a maximum entry count. Needs no
     external service, so it suits single-instance deployments, local development
     and tests.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 imports: { Cache: ../cache }
 exports: { kinds: [Store] }
 ---

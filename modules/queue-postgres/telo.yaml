@@ -11,7 +11,7 @@ metadata:
     the rows it is about. Workers on many machines claim messages concurrently,
     skipping each other's locked rows, and wake promptly on new work; with
     leases, retries with backoff, delays, deduplication and per-group ordering.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.129.0" }
     reason: "Before 0.129.0, the table kind's duplicate-name rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module."

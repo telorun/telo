@@ -18,7 +18,7 @@ requires:
   # as a field named by an object and refuses every call with
   # ERR_ZONE_ANNOTATION_MISSING. Forward-declared: 0.129.0 is the release that
   # carries them.
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 imports: { Sql: ../sql }
 exports:
   kinds: [Ledger, Once]

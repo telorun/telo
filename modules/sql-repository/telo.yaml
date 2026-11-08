@@ -10,7 +10,7 @@ metadata:
     the shape of the call: filters become a WHERE clause, a data object becomes the
     column list. Values always bind as parameters, so a domain operation maps to a
     table without hand-written statements.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 exports: { kinds: [Read, Create, Update, Delete] }
 imports: { Sql: ../sql }
 ---
