@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.12.0 - 2026-11-06
 ### Added
 * Postgres.Connection's listen(channel, onNotify) takes an optional third argument { onReconnect }, called once a dropped listening connection has been re-established and every subscription replayed, so a listener learns that notifications sent in between were not delivered. Existing calls are unchanged.

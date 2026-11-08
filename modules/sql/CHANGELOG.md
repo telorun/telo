@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.31.0 - 2026-11-06
 ### Added
 * `reclaim.afterDuration` on a schema is a `Telo.Duration`: `30d`, `12h`, `1w` and `1h30m` are read, a malformed literal is refused by `telo check`, an integer is milliseconds, and a zero value still reports the disabled-backstop warning. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.130.0.

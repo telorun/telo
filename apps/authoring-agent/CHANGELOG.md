@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.0 - 2026-11-08
+### Added
+* The primer teaches that a module's docs link only to telo.run pages or another module's hub page, never into the repository tree or to telo.run/next.
+
 ## 0.32.0 - 2026-11-06
 ### Added
 * The primer teaches inbound authentication: authentication and authorization on the mount, request.principal and its nullability, credential sources versus verifiers, scopes through a policy, protectedResource for MCP and the issuer a verifier declares, sessions, API keys and Basic over declared users with the throttle, plus the new kind-design annotations (referrer-typed and nullable-when bindings, outputTo, catches-for raises, resource-rule coReferrers).

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.20.0 - 2026-11-06
 ### Added
 * The chat completions and responses model kinds declare `accepts`, narrowed to the images and files those APIs can carry, and refuse a part outside it (wrong type, media type not listed, bytes over `maxBytes`, tool-result media included) with `ERR_MODEL_CONTENT_UNSUPPORTED` before anything is sent; each publishes it as `resources.<name>.accepts`. Breaking for an application that sends images or files without declaring `accepts`: a model with none takes text only.

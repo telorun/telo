@@ -3,7 +3,7 @@ metadata:
   # Named `Queues` so the kinds can be `Queue`, `Worker`, …; imported as `Queue`
   # by convention, which is how every doc spells them (`Queue.Queue`).
   name: Queues
-  version: 0.3.0
+  version: 0.3.1
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Reliability, Coordination]

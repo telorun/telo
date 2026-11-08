@@ -1455,7 +1455,7 @@ version = "0.132.0"
 
 [[package]]
 name = "telorun-console"
-version = "0.19.1"
+version = "0.19.2"
 dependencies = [
  "serde_json",
  "telorun-sdk",
@@ -1501,7 +1501,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-starlark"
-version = "0.13.2"
+version = "0.13.3"
 dependencies = [
  "serde_json",
  "telorun-sdk",

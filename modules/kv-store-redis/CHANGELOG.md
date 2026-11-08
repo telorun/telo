@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.9.0 - 2026-11-06
 ### Added
 * `connectTimeout` is a duration (`2s` when omitted): `30d`, `1h30m` and `250ms` are read, an integer is milliseconds, a malformed or negative literal is refused by `telo check`. A computed value must now be a duration (`!cel "duration('2s')"`), not a string, so a manifest passing a computed string must change. Text with a space before the unit (`5 m`) or around the value is now refused. Requires telo >=0.130.0.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.34.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.34.0 - 2026-11-06
 ### Added
 * Models declare what content they accept: `Ai.Model` and `Ai.ModelStream` gain `accepts`, a list of `{ type, mediaTypes, maxBytes? }` (shape `Ai.AcceptedContent`), absent meaning text only. `Ai.Agent`, `Ai.AgentStream` and `Ai.Buffered` publish their model's as `resources.<name>.accepts`; `Ai.Buffered` is now a controller of its own and rejects a value written on it. The shared `requireAccepted` check is exported for providers. Breaking for an application that sends media to a model without declaring `accepts`: a provider now refuses that part with `ERR_MODEL_CONTENT_UNSUPPORTED`.

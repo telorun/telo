@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.9.0 - 2026-11-06
 ### Added
 * The Messages model kinds declare `accepts`, narrowed to JPEG, PNG, GIF and WebP images and PDF and plain-text files, and refuse a part outside it (wrong type, media type not listed, bytes over `maxBytes`, tool-result media included) with `ERR_MODEL_CONTENT_UNSUPPORTED` before anything is sent; each publishes it as `resources.<name>.accepts`. Breaking for an application that sends images or files without declaring `accepts`: a model with none takes text only.

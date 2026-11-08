@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.19.0 - 2026-11-06
 ### Added
 * A cookies: entry whose expires is null writes a browser-session cookie, with no Expires or Max-Age, so a login route can pass an optional expiry straight through.
