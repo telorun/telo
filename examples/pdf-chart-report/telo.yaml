@@ -39,8 +39,8 @@ imports:
   PdfMake: oci://ghcr.io/telorun/pdfmake@0.4.2#sha256-i7SruJ9WbayxIOrBD2uJ3OfcN2ukY6y_7pGNq1qIEhg
   Collection: oci://ghcr.io/telorun/collection@0.9.1#sha256-8X1VGM8gx2p61sf1G53hguQL4fzGckKmmd14hYxo-xg
   Fs: oci://ghcr.io/telorun/fs@0.15.1#sha256-DB68pWLeWJ3An4QhSocN4KhUEB-14j0jzLheGTATKkM
-  Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
-  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
 variables:
   quarter:
     env: QUARTER

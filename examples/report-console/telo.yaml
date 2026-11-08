@@ -18,12 +18,12 @@ lang: en
 # repository while their changes are unreleased; `telo upgrade --pin-local` pins
 # them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
-  HttpDispatch: oci://ghcr.io/telorun/http-dispatch@0.19.0#sha256-IU2yrVD6Ue258Qa2RhUjLhb3tyPvezYq-HdK6f872ro
-  Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
-  DataModel: oci://ghcr.io/telorun/data-model@0.2.1#sha256-gLaIW4Dof6e-IOvGrjBOfWiOoUQUEcQ8jBMjukTzb7U
-  Ui: oci://ghcr.io/telorun/ui@0.10.0#sha256-s8kb_jL0N5qNLqp9GDKFfgJ7K1IUQ5bf3Mz6h1sjS_k
-  UiReact: oci://ghcr.io/telorun/ui-react@0.11.0#sha256-Y0BOJSKmVUeEfRBkF6aC1pgBrGpaWQNPdlpf6C6l2FQ
+  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
+  HttpDispatch: oci://ghcr.io/telorun/http-dispatch@0.19.1#sha256-DZJONfmmMMo8081d6gPAmr-Jdb3nVz2AAL9jkBf4Fc4
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  DataModel: oci://ghcr.io/telorun/data-model@0.2.2#sha256-92o2_aqh19mlkIaiMAlvJbi5tnyGweewLe7M_z60mCM
+  Ui: oci://ghcr.io/telorun/ui@0.10.1#sha256-TC91fXfmdXiZXHRIzACaH6gKgHzqipYgHpAJD0ZqsbY
+  UiReact: oci://ghcr.io/telorun/ui-react@0.11.1#sha256-UZSRk4r1Y3y1LVaaK3CeIm3w5W9KFnWQLv2bPa3XImo
 # The backend the screen calls — stub routes answering fixture data — and the
 # Polish translation, each in a file of its own.
 include: [./stub-api.yaml, ./polish.yaml]

@@ -34,18 +34,18 @@ lang: en
 # `http-server`, `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
-  Ui: oci://ghcr.io/telorun/ui@0.10.0#sha256-s8kb_jL0N5qNLqp9GDKFfgJ7K1IUQ5bf3Mz6h1sjS_k
-  UiReact: oci://ghcr.io/telorun/ui-react@0.11.0#sha256-Y0BOJSKmVUeEfRBkF6aC1pgBrGpaWQNPdlpf6C6l2FQ
-  Sql: oci://ghcr.io/telorun/sql@0.31.0#sha256-QamrEtwX41Cim9gVjoKuuKQBGGrb19C0r63im-rRcmY
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.0#sha256-2bFuhkRBtPY9mcybUoFc1l4D009TOlYuW5zCJeKbrMU
+  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
+  Ui: oci://ghcr.io/telorun/ui@0.10.1#sha256-TC91fXfmdXiZXHRIzACaH6gKgHzqipYgHpAJD0ZqsbY
+  UiReact: oci://ghcr.io/telorun/ui-react@0.11.1#sha256-UZSRk4r1Y3y1LVaaK3CeIm3w5W9KFnWQLv2bPa3XImo
+  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
   Collection: oci://ghcr.io/telorun/collection@0.9.1#sha256-8X1VGM8gx2p61sf1G53hguQL4fzGckKmmd14hYxo-xg
   SvgChart: oci://ghcr.io/telorun/svg-chart@0.3.1#sha256-UrqjYTtGnP6FXcpS6-LancA3QPEC9MYlJ7j4UUVLq5Q
   Blob: oci://ghcr.io/telorun/blob@0.2.1#sha256-K6p6T1WxnjqZ5dPxEhb4ADSj3rkYTICEon5FuAXq76o
-  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.1#sha256-85hERI-03Q6vJqBIn0WHxv1D0pVR4eTXQdaAAqAnBFo
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.2#sha256-j_7SCdfh-B-FrmdvBz2rHLF3EGJjeTQWUjkdyJowt1s
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
   Schedule: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
-  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
+  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
 targets:
   - !ref migrate
   - name: firstReport

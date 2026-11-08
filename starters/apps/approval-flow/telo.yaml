@@ -43,16 +43,16 @@ lang: en
 # changes are unreleased, with `http-server`, which `ui-react` reaches through
 # this repository's `codec`; `telo upgrade --pin-local` pins them once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
-  DataModel: oci://ghcr.io/telorun/data-model@0.2.1#sha256-gLaIW4Dof6e-IOvGrjBOfWiOoUQUEcQ8jBMjukTzb7U
-  Ui: oci://ghcr.io/telorun/ui@0.10.0#sha256-s8kb_jL0N5qNLqp9GDKFfgJ7K1IUQ5bf3Mz6h1sjS_k
-  UiReact: oci://ghcr.io/telorun/ui-react@0.11.0#sha256-Y0BOJSKmVUeEfRBkF6aC1pgBrGpaWQNPdlpf6C6l2FQ
-  Durable: oci://ghcr.io/telorun/durable@0.4.0#sha256-ufhUzR3-6fqceQEzrl0f846dUfeVa20CQI1y6EkQvqE
-  DurableLocal: oci://ghcr.io/telorun/durable-local@0.6.0#sha256-HcsaMPNMPbTRgGfLxT_4JnVnduiY7_pUl8x8ANa-MZ0
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.8.0#sha256-N52v9ynhRXTDjX6NGeTE38zI9vbtoJrfgNKl5QdOo6Q
-  Sql: oci://ghcr.io/telorun/sql@0.31.0#sha256-QamrEtwX41Cim9gVjoKuuKQBGGrb19C0r63im-rRcmY
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.0#sha256-2bFuhkRBtPY9mcybUoFc1l4D009TOlYuW5zCJeKbrMU
-  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
+  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
+  DataModel: oci://ghcr.io/telorun/data-model@0.2.2#sha256-92o2_aqh19mlkIaiMAlvJbi5tnyGweewLe7M_z60mCM
+  Ui: oci://ghcr.io/telorun/ui@0.10.1#sha256-TC91fXfmdXiZXHRIzACaH6gKgHzqipYgHpAJD0ZqsbY
+  UiReact: oci://ghcr.io/telorun/ui-react@0.11.1#sha256-UZSRk4r1Y3y1LVaaK3CeIm3w5W9KFnWQLv2bPa3XImo
+  Durable: oci://ghcr.io/telorun/durable@0.4.1#sha256-U6o5cEZ10pfN6JXQ6ia0vAg6GK7knlVeo7i8ObRGLbg
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.6.1#sha256-dtKR-c8y_WdDUJqnYRRbYs5cCMq6zXbY8ZMDpPfe7tM
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.8.1#sha256-2MbA4-Wc3BBNA0UKgPyHIAfrh3xATbTt8ne53S8Z8Ps
+  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
+  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
 targets:
   - !ref migrate
   - !ref resumer
