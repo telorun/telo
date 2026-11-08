@@ -1,0 +1,13 @@
+kind: Telo.Application
+metadata:
+  name: LeadIntakeContractRun
+  version: 1.0.0
+  description: Runs the lead-intake contract tests against the implementation at BASE_URL.
+imports:
+  Contract:
+    source: ./telo.yaml
+    variables:
+      baseUrl: !cel "variables.baseUrl"
+variables: { baseUrl: { env: BASE_URL, type: string, default: "http://127.0.0.1:8845" } }
+targets:
+  - !ref Contract.cases

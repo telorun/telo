@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: HistoryAlertTest
+  version: 1.0.0
+  description: Runs the regression-alert tests, which use an in-memory issue client and never call GitHub.
+imports: { Shell: ../../../modules/shell, Assert: ../../../modules/assert }
+variables:
+  testDirectory:
+    env: HISTORY_ALERT_TEST_DIRECTORY
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: ./benchmarks/history/tests
+targets:
+  - !ref test
+---
+kind: Shell.LocalHost
+metadata: { name: local }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: unit
+    invoke: { kind: Shell.Command, host: !ref local }
+    inputs:
+      args: [node, --test, alert.test.mjs]
+      cwd: !cel "variables.testDirectory"
+      timeoutMs: !cel "120000"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        exitCode: !cel "steps.unit.result.exitCode"
+        output: !cel "steps.unit.result.exitCode == 0 ? '' : steps.unit.result.stdout + steps.unit.result.stderr"
+      expected: { exitCode: 0, output: "" }

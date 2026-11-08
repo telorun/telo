@@ -1,0 +1,145 @@
+# Generates every feature at N = 2 and holds each result to `telo check` and to a run that exits 0,
+# so a feature the generator can no longer express fails here and not in the nightly sweep. The
+# feature list is pinned: a new feature must be added below.
+kind: Telo.Application
+metadata: { name: FeatureCostGenerator }
+imports: { Shell: ../../../modules/shell, Assert: ../../../modules/assert }
+targets:
+  - !ref featureList
+  - !ref generate
+  - !ref resourceCount
+  - !ref choiceCount
+  - !ref choiceDimensions
+  - !ref forEachIterations
+  - !ref forEachNesting
+  - !ref templateConsumers
+  - !ref extendsDepth
+  - !ref importDepth
+  - !ref importWidth
+  - !ref importWidthShared
+  - !ref celCount
+  - !ref celSize
+  - !ref stepCount
+  - !ref tryNesting
+  - !ref scopeMembers
+  - !ref contractSchemaSize
+  - !ref moduleFunctionCalls
+  - !ref textCatalogSize
+---
+kind: Shell.LocalHost
+metadata: { name: local }
+cwd: !module-path __fixtures__
+---
+kind: Telo.Sequence
+metadata: { name: featureList }
+steps:
+  - name: list
+    invoke: { kind: Shell.Command, host: !ref local }
+    inputs: { args: [node, ../../run.mjs, --list] }
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.list.result.stdout.trim().split('\\n')"
+      expected: [resourceCount, choiceCount, choiceDimensions, forEachIterations, forEachNesting, templateConsumers, extendsDepth, importDepth, importWidth, importWidthShared, celCount, celSize, stepCount, tryNesting, scopeMembers, contractSchemaSize, moduleFunctionCalls, textCatalogSize]
+---
+kind: Telo.Sequence
+metadata: { name: generate }
+steps:
+  - name: write
+    invoke: { kind: Shell.Command, host: !ref local }
+    inputs: { args: [node, ../../run.mjs, --generate-only, --sizes, "2"] }
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.write.result.exitCode"
+      expected: 0
+---
+kind: Assert.Manifest
+metadata: { name: resourceCount }
+source: ../generated/resource-count-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: choiceCount }
+source: ../generated/choice-count-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: choiceDimensions }
+source: ../generated/choice-dimensions-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: forEachIterations }
+source: ../generated/for-each-iterations-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: forEachNesting }
+source: ../generated/for-each-nesting-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: templateConsumers }
+source: ../generated/template-consumers-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: extendsDepth }
+source: ../generated/extends-depth-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: importDepth }
+source: ../generated/import-depth-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: importWidth }
+source: ../generated/import-width-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: importWidthShared }
+source: ../generated/import-width-shared-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: celCount }
+source: ../generated/cel-count-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: celSize }
+source: ../generated/cel-size-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: stepCount }
+source: ../generated/step-count-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: tryNesting }
+source: ../generated/try-nesting-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: scopeMembers }
+source: ../generated/scope-members-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: contractSchemaSize }
+source: ../generated/contract-schema-size-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: moduleFunctionCalls }
+source: ../generated/module-function-calls-2/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: textCatalogSize }
+source: ../generated/text-catalog-size-2/telo.yaml
+expect: { errors: [], runs: true }

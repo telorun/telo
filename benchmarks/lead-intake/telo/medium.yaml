@@ -1,0 +1,48 @@
+kind: Telo.Sequence
+metadata: { name: createMedium }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [lead]
+    properties:
+      lead: { type: object, additionalProperties: false, required: [email, company, plan], properties: { email: { type: string, format: email }, company: { type: object, additionalProperties: false, required: [name, employees, country, industry], properties: { name: { type: string, minLength: 1 }, employees: { type: integer, minimum: 0 }, country: { type: string, minLength: 2, maxLength: 2 }, industry: { type: string, minLength: 1 } } }, plan: { type: string, enum: [free, trial, starter, growth, enterprise] } } }
+steps:
+  - name: build
+    value:
+      id: !cel "uuidv4()"
+      level: medium
+      lead: !cel "inputs.lead"
+      derived:
+        domain: !cel "split(inputs.lead.email, '@')[1]"
+        personal: !cel "split(inputs.lead.email, '@')[1] in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com']"
+        sizeBand: !cel "inputs.lead.company.employees > 1000 ? 'enterprise' : inputs.lead.company.employees > 100 ? 'mid' : inputs.lead.company.employees > 10 ? 'smb' : 'startup'"
+        planTier: !cel "inputs.lead.plan == 'enterprise' ? 4 : inputs.lead.plan == 'growth' ? 3 : inputs.lead.plan == 'starter' ? 2 : inputs.lead.plan == 'trial' ? 1 : 0"
+        score: !cel "(inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0)"
+        corporateDomain: !cel "split(inputs.lead.email, '@')[1].endsWith('.com') || split(inputs.lead.email, '@')[1].endsWith('.io') || split(inputs.lead.email, '@')[1].endsWith('.co')"
+        region: !cel "inputs.lead.company.country == 'US' || inputs.lead.company.country in ['CA', 'MX'] ? 'NA' : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'IE', 'ES', 'IT'] ? 'EU' : inputs.lead.company.country in ['JP', 'SG', 'AU', 'IN'] ? 'APAC' : 'OTHER'"
+        priorityCountry: !cel "inputs.lead.company.country in ['US', 'DE', 'UK', 'JP', 'CA']"
+        isB2B: !cel "inputs.lead.company.industry in ['saas', 'fintech', 'enterprise', 'manufacturing']"
+        paid: !cel "inputs.lead.plan != 'free' && inputs.lead.plan != 'trial'"
+        isPremium: !cel "inputs.lead.plan == 'enterprise' || inputs.lead.plan == 'growth'"
+        validEmail: !cel "inputs.lead.email.contains('@') && size(inputs.lead.email) > 5"
+        nameLength: !cel "size(inputs.lead.company.name)"
+        emailLocal: !cel "split(inputs.lead.email, '@')[0]"
+        geoScore: !cel "inputs.lead.company.country == 'US' ? 20 : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15 : 5"
+        industryScore: !cel "inputs.lead.company.industry in ['saas', 'fintech', 'enterprise'] ? 15 : 5"
+        employeesHundreds: !cel "inputs.lead.company.employees / 100"
+        isEnterprise: !cel "inputs.lead.company.employees > 1000"
+        isStartup: !cel "inputs.lead.company.employees <= 10"
+        slug: !cel "replace(lower(inputs.lead.company.name), ' ', '-')"
+        dotCount: !cel "size(split(inputs.lead.email, '.')) - 1"
+        tier: !cel "(inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) > 80 ? 'A' : (inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) > 50 ? 'B' : 'C'"
+        summary: !cel "inputs.lead.company.name + ' (' + (inputs.lead.company.employees > 1000 ? 'enterprise' : inputs.lead.company.employees > 100 ? 'mid' : inputs.lead.company.employees > 10 ? 'smb' : 'startup') + ', ' + inputs.lead.company.country + ') on ' + inputs.lead.plan + ' plan'"
+        emailLength: !cel "size(inputs.lead.email)"
+        hasPlus: !cel "inputs.lead.email.contains('+')"
+  - name: store
+    invoke: !ref insertLead
+    inputs:
+      sql: INSERT INTO leads (id, body) VALUES (?, ?)
+      bindings: [!cel "steps.build.result.id", !cel "json(steps.build.result)"]
+outputs:
+  body: !cel "steps.build.result"

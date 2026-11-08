@@ -104,7 +104,7 @@ describe("trace export", () => {
     await kernel.invoke("Run.Sequence.turn", { turnId: "turn-9", note: "n" });
     await kernel.teardown();
 
-    expect(spans().map((span) => span.msg).sort()).toEqual(["invoke measure", "invoke refuse", "invoke turn"]);
+    expect(spans().map((span) => span.msg).sort()).toEqual(["invoke measure", "invoke refuse", "invoke turn", expect.stringMatching(/^startup /)]);
   });
 });
 

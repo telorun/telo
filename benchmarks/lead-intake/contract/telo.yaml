@@ -1,0 +1,369 @@
+kind: Telo.Library
+metadata:
+  name: LeadIntakeContract
+  version: 1.0.0
+  description: >-
+    The lead-intake contract as manifest tests: every case of CONTRACT.md, run over HTTP against
+    the implementation at baseUrl. Import it and list cases as a target, beside any cases of your own.
+variables:
+  baseUrl: { type: string, description: "Origin of the implementation under test, without a trailing slash." }
+imports: { HttpClient: ../../../modules/http-client, Assert: ../../../modules/assert }
+exports: { resources: [cases] }
+---
+kind: Telo.Sequence
+metadata: { name: cases }
+steps:
+  - name: ping
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/ping"
+  - name: verifyPing
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: { status: !cel "steps.ping.result.status", body: !cel "steps.ping.result.body" }
+      expected: { status: 200, body: { status: ok } }
+  - name: light
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/light"
+      body: { email: "alice.johnson@acme-corp.com", company: { name: "Acme Corp", employees: 850, country: "US", industry: "saas" }, plan: growth }
+  - name: verifyLight
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.light.result.status"
+        idIsUuid: !cel "steps.light.result.body.id.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')"
+        level: !cel "steps.light.result.body.level"
+        lead: !cel "steps.light.result.body.lead"
+        derived: !cel "steps.light.result.body.derived"
+      expected:
+        status: 201
+        idIsUuid: true
+        level: light
+        lead: { email: "alice.johnson@acme-corp.com", company: { name: "Acme Corp", employees: 850, country: "US", industry: "saas" }, plan: growth }
+        derived:
+            domain: "acme-corp.com"
+            personal: false
+            sizeBand: "mid"
+            planTier: 3
+            score: 55
+  - name: medium
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/medium"
+      body: { email: "alice.johnson@acme-corp.com", company: { name: "Acme Corp", employees: 850, country: "US", industry: "saas" }, plan: growth }
+  - name: verifyMedium
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.medium.result.status"
+        idIsUuid: !cel "steps.medium.result.body.id.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')"
+        level: !cel "steps.medium.result.body.level"
+        lead: !cel "steps.medium.result.body.lead"
+        derived: !cel "steps.medium.result.body.derived"
+      expected:
+        status: 201
+        idIsUuid: true
+        level: medium
+        lead: { email: "alice.johnson@acme-corp.com", company: { name: "Acme Corp", employees: 850, country: "US", industry: "saas" }, plan: growth }
+        derived:
+            domain: "acme-corp.com"
+            personal: false
+            sizeBand: "mid"
+            planTier: 3
+            score: 55
+            corporateDomain: true
+            region: "NA"
+            priorityCountry: true
+            isB2B: true
+            paid: true
+            isPremium: true
+            validEmail: true
+            nameLength: 9
+            emailLocal: "alice.johnson"
+            geoScore: 20
+            industryScore: 15
+            employeesHundreds: 8
+            isEnterprise: false
+            isStartup: false
+            slug: "acme-corp"
+            dotCount: 2
+            tier: "B"
+            summary: "Acme Corp (mid, US) on growth plan"
+            emailLength: 27
+            hasPlus: false
+  - name: heavy
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/heavy"
+      body: { email: "alice.johnson@acme-corp.com", company: { name: "Acme Corp", employees: 850, country: "US", industry: "saas" }, plan: growth }
+  - name: verifyHeavy
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.heavy.result.status"
+        idIsUuid: !cel "steps.heavy.result.body.id.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')"
+        level: !cel "steps.heavy.result.body.level"
+        lead: !cel "steps.heavy.result.body.lead"
+        derived: !cel "steps.heavy.result.body.derived"
+      expected:
+        status: 201
+        idIsUuid: true
+        level: heavy
+        lead: { email: "alice.johnson@acme-corp.com", company: { name: "Acme Corp", employees: 850, country: "US", industry: "saas" }, plan: growth }
+        derived:
+            domain: "acme-corp.com"
+            personal: false
+            sizeBand: "mid"
+            planTier: 3
+            score: 55
+            corporateDomain: true
+            region: "NA"
+            priorityCountry: true
+            isB2B: true
+            paid: true
+            isPremium: true
+            validEmail: true
+            nameLength: 9
+            emailLocal: "alice.johnson"
+            geoScore: 20
+            industryScore: 15
+            employeesHundreds: 8
+            isEnterprise: false
+            isStartup: false
+            slug: "acme-corp"
+            dotCount: 2
+            tier: "B"
+            summary: "Acme Corp (mid, US) on growth plan"
+            emailLength: 27
+            hasPlus: false
+            isUS: true
+            isUK: false
+            isDE: false
+            isNorthAmerica: true
+            isEurope: false
+            isApac: false
+            isSaas: true
+            isFintech: false
+            isEnterpriseIndustry: false
+            isManufacturing: false
+            isRetail: false
+            isHealthcare: false
+            isFree: false
+            isTrial: false
+            isStarter: false
+            isGrowth: true
+            isEnterprisePlan: false
+            employeesOver10: true
+            employeesOver50: true
+            employeesOver100: true
+            employeesOver500: true
+            employeesOver1000: false
+            employeesOver5000: false
+            domainLength: 13
+            localLength: 13
+            domainHasHyphen: true
+            domainEndsWithOrg: false
+            domainEndsWithIo: false
+            domainEndsWithCom: true
+            emailLower: "alice.johnson@acme-corp.com"
+            emailIsLowercase: true
+            nameHasInc: false
+            nameHasCorp: true
+            nameWordCount: 2
+            nameFirstWord: "Acme"
+            nameUpper: "ACME CORP"
+            nameIsLong: false
+            nameIsShort: false
+            companyPoints: 30
+            planPoints: 25
+            geoPoints: 20
+            industryPoints: 15
+            emailPoints: 5
+            totalPoints: 95
+            scoreBand: "warm"
+            needsReview: false
+            employeesHalf: 425
+            employeesDoubled: 1700
+            employeesMod7: 3
+            employeesTens: 85
+            employeesIsEven: true
+            contactable: true
+            qualified: true
+            fastTrack: false
+            sizeLabel: "MID"
+  - name: heavyOther
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/heavy"
+      body: { email: "bob+sales@gmail.com", company: { name: "Tiny Retail Inc", employees: 3, country: "DE", industry: "retail" }, plan: free }
+  - name: verifyHeavyOther
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.heavyOther.result.status"
+        idIsUuid: !cel "steps.heavyOther.result.body.id.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')"
+        level: !cel "steps.heavyOther.result.body.level"
+        lead: !cel "steps.heavyOther.result.body.lead"
+        derived: !cel "steps.heavyOther.result.body.derived"
+      expected:
+        status: 201
+        idIsUuid: true
+        level: heavy
+        lead: { email: "bob+sales@gmail.com", company: { name: "Tiny Retail Inc", employees: 3, country: "DE", industry: "retail" }, plan: free }
+        derived:
+            domain: "gmail.com"
+            personal: true
+            sizeBand: "startup"
+            planTier: 0
+            score: 5
+            corporateDomain: true
+            region: "EU"
+            priorityCountry: true
+            isB2B: false
+            paid: false
+            isPremium: false
+            validEmail: true
+            nameLength: 15
+            emailLocal: "bob+sales"
+            geoScore: 15
+            industryScore: 5
+            employeesHundreds: 0
+            isEnterprise: false
+            isStartup: true
+            slug: "tiny-retail-inc"
+            dotCount: 1
+            tier: "C"
+            summary: "Tiny Retail Inc (startup, DE) on free plan"
+            emailLength: 19
+            hasPlus: true
+            isUS: false
+            isUK: false
+            isDE: true
+            isNorthAmerica: false
+            isEurope: true
+            isApac: false
+            isSaas: false
+            isFintech: false
+            isEnterpriseIndustry: false
+            isManufacturing: false
+            isRetail: true
+            isHealthcare: false
+            isFree: true
+            isTrial: false
+            isStarter: false
+            isGrowth: false
+            isEnterprisePlan: false
+            employeesOver10: false
+            employeesOver50: false
+            employeesOver100: false
+            employeesOver500: false
+            employeesOver1000: false
+            employeesOver5000: false
+            domainLength: 9
+            localLength: 9
+            domainHasHyphen: false
+            domainEndsWithOrg: false
+            domainEndsWithIo: false
+            domainEndsWithCom: true
+            emailLower: "bob+sales@gmail.com"
+            emailIsLowercase: true
+            nameHasInc: true
+            nameHasCorp: false
+            nameWordCount: 3
+            nameFirstWord: "Tiny"
+            nameUpper: "TINY RETAIL INC"
+            nameIsLong: false
+            nameIsShort: false
+            companyPoints: 5
+            planPoints: 0
+            geoPoints: 15
+            industryPoints: 5
+            emailPoints: 5
+            totalPoints: 30
+            scoreBand: "cold"
+            needsReview: true
+            employeesHalf: 1
+            employeesDoubled: 6
+            employeesMod7: 3
+            employeesTens: 0
+            employeesIsEven: false
+            contactable: false
+            qualified: false
+            fastTrack: false
+            sizeLabel: "STARTUP"
+  - name: readBack
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/${{ steps.heavy.result.body.id }}"
+  - name: verifyReadBack
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.readBack.result.status"
+        body: !cel "steps.readBack.result.body"
+      expected:
+        status: 200
+        body: !cel "steps.heavy.result.body"
+  - name: notAnEmail
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/light"
+      body: { email: not-an-email }
+  - name: missingCompany
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/medium"
+      body: { email: a@b.co, plan: free }
+  - name: employeesNotInteger
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/heavy"
+      body: { email: a@b.co, company: { name: X, employees: "5", country: US, industry: saas }, plan: free }
+  - name: unknownPlan
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/light"
+      body: { email: a@b.co, company: { name: X, employees: 5, country: US, industry: saas }, plan: gold }
+  - name: extraMember
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/light"
+      body: { email: a@b.co, company: { name: X, employees: 5, country: US, industry: saas }, plan: free, vip: true }
+  - name: verifyInvalid
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        notAnEmail: !cel "[steps.notAnEmail.result.status, steps.notAnEmail.result.body.code]"
+        missingCompany: !cel "[steps.missingCompany.result.status, steps.missingCompany.result.body.code]"
+        employeesNotInteger: !cel "[steps.employeesNotInteger.result.status, steps.employeesNotInteger.result.body.code]"
+        unknownPlan: !cel "[steps.unknownPlan.result.status, steps.unknownPlan.result.body.code]"
+        extraMember: !cel "[steps.extraMember.result.status, steps.extraMember.result.body.code]"
+      expected:
+        notAnEmail: [400, ERR_INPUT_INVALID]
+        missingCompany: [400, ERR_INPUT_INVALID]
+        employeesNotInteger: [400, ERR_INPUT_INVALID]
+        unknownPlan: [400, ERR_INPUT_INVALID]
+        extraMember: [400, ERR_INPUT_INVALID]
+  - name: seed
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/seed"
+  - name: unknown
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/no-such-lead"
+  - name: verifySeedAndUnknown
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        seed: !cel "[steps.seed.result.status, steps.seed.result.body]"
+        unknown: !cel "[steps.unknown.result.status, steps.unknown.result.body]"
+      expected:
+        seed:
+          - 200
+          - id: seed
+            level: light
+            lead: { email: seed@example.com, company: { name: Seed Co, employees: 12, country: US, industry: saas }, plan: starter }
+            derived: { domain: example.com, personal: false, sizeBand: smb, planTier: 2, score: 25 }
+        unknown: [404, { code: NOT_FOUND }]

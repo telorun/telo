@@ -1,0 +1,71 @@
+kind: Telo.Application
+metadata:
+  name: LeadIntakeAddEndpointContract
+  version: 1.0.0
+  description: The base lead-intake contract plus the cases of the add-endpoint task, run against the implementation at BASE_URL.
+imports:
+  Contract:
+    source: ../../../lead-intake/contract
+    variables:
+      baseUrl: !cel "variables.baseUrl"
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+variables: { baseUrl: { env: BASE_URL, type: string, default: "http://127.0.0.1:8845" } }
+targets:
+  - !ref Contract.cases
+  - !ref addedCases
+---
+kind: Telo.Sequence
+metadata: { name: addedCases }
+steps:
+  - name: before
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/stats"
+  - name: growthLead
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/light"
+      body: { email: gil@orbit.io, company: { name: Orbit, employees: 300, country: NL, industry: saas }, plan: growth }
+  - name: firstFreeLead
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/medium"
+      body: { email: gil@orbit.io, company: { name: Orbit, employees: 300, country: NL, industry: saas }, plan: free }
+  - name: secondFreeLead
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/heavy"
+      body: { email: gil@orbit.io, company: { name: Orbit, employees: 300, country: NL, industry: saas }, plan: free }
+  - name: rejectedLead
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/light"
+      body: { email: gil@orbit.io, company: { name: Orbit, employees: 300, country: NL, industry: saas }, plan: gold }
+  - name: after
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/stats"
+  - name: verifyStats
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.after.result.status"
+        rejectedStatus: !cel "steps.rejectedLead.result.status"
+        byPlanKeys: !cel "sort(keys(steps.after.result.body.byPlan))"
+        sumsToTotal: !cel "int(sum(values(steps.after.result.body.byPlan))) == steps.after.result.body.total"
+        totalGrew: !cel "steps.after.result.body.total - steps.before.result.body.total"
+        freeGrew: !cel "steps.after.result.body.byPlan.free - steps.before.result.body.byPlan.free"
+        growthGrew: !cel "steps.after.result.body.byPlan.growth - steps.before.result.body.byPlan.growth"
+        starterGrew: !cel "steps.after.result.body.byPlan.starter - steps.before.result.body.byPlan.starter"
+        seedCounted: !cel "steps.before.result.body.byPlan.starter >= 1"
+      expected:
+        status: 200
+        rejectedStatus: 400
+        byPlanKeys: [enterprise, free, growth, starter, trial]
+        sumsToTotal: true
+        totalGrew: 3
+        freeGrew: 2
+        growthGrew: 1
+        starterGrew: 0
+        seedCounted: true

@@ -1,0 +1,69 @@
+kind: Telo.Application
+metadata:
+  name: LeadIntakeAddValidationRuleContract
+  version: 1.0.0
+  description: The base lead-intake contract plus the cases of the add-validation-rule task, run against the implementation at BASE_URL.
+imports:
+  Contract:
+    source: ../../../lead-intake/contract
+    variables:
+      baseUrl: !cel "variables.baseUrl"
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+variables: { baseUrl: { env: BASE_URL, type: string, default: "http://127.0.0.1:8845" } }
+targets:
+  - !ref Contract.cases
+  - !ref addedCases
+---
+kind: Telo.Sequence
+metadata: { name: addedCases }
+steps:
+  - name: smallEnterpriseLight
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/light"
+      body: { email: erin@tinyco.io, company: { name: TinyCo, employees: 49, country: US, industry: saas }, plan: enterprise }
+  - name: smallEnterpriseMedium
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/medium"
+      body: { email: erin@tinyco.io, company: { name: TinyCo, employees: 0, country: US, industry: saas }, plan: enterprise }
+  - name: smallEnterpriseHeavy
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/heavy"
+      body: { email: erin@tinyco.io, company: { name: TinyCo, employees: 10, country: US, industry: saas }, plan: enterprise }
+  - name: verifyRefused
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        light: { status: !cel "steps.smallEnterpriseLight.result.status", code: !cel "steps.smallEnterpriseLight.result.body.code" }
+        medium: { status: !cel "steps.smallEnterpriseMedium.result.status", code: !cel "steps.smallEnterpriseMedium.result.body.code" }
+        heavy: { status: !cel "steps.smallEnterpriseHeavy.result.status", code: !cel "steps.smallEnterpriseHeavy.result.body.code" }
+      expected:
+        light: { status: 400, code: ERR_INPUT_INVALID }
+        medium: { status: 400, code: ERR_INPUT_INVALID }
+        heavy: { status: 400, code: ERR_INPUT_INVALID }
+  - name: boundaryEnterprise
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/light"
+      body: { email: erin@tinyco.io, company: { name: TinyCo, employees: 50, country: US, industry: saas }, plan: enterprise }
+  - name: smallGrowth
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/heavy"
+      body: { email: erin@tinyco.io, company: { name: TinyCo, employees: 3, country: US, industry: saas }, plan: growth }
+  - name: smallFree
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/medium"
+      body: { email: erin@tinyco.io, company: { name: TinyCo, employees: 0, country: US, industry: saas }, plan: free }
+  - name: verifyAccepted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        boundary: !cel "steps.boundaryEnterprise.result.status"
+        growth: !cel "steps.smallGrowth.result.status"
+        free: !cel "steps.smallFree.result.status"
+      expected: { boundary: 201, growth: 201, free: 201 }

@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata: { name: StartupSpanSlow, version: 1.0.0 }
+imports: { Fx: ./slow-init }
+logging:
+  sinks:
+    - { kind: Telo.ConsoleSink, encoding: json }
+tracing:
+  sinks:
+    - { kind: Telo.LogTraceSink }
+---
+kind: Fx.SlowInit
+metadata: { name: slow }

@@ -66,7 +66,7 @@ team does not have to build or remember, each described in detail below:
 
 ### Observability and security
 
-- **Tracing.** Every call is a span and an incoming W3C `traceparent` is continued. Tracing turns on by listing one sink.
+- **Tracing.** Every call is a span, application startup is one (`startup <application>`), and an incoming W3C `traceparent` is continued. Tracing turns on by listing one sink.
 - **Structured logging.** Every record carries its resource and `scope`, and inside a call its `trace_id` / `span_id`. Levels are set per import and cascade. A log call never throws, sinks are bounded with dropped records counted, `fatal` flushes, and only sinks the application lists receive anything.
 - **Secret redaction.** `secrets:` values, URL passwords, sensitive dependency settings and contract fields marked `x-telo-sensitive` are redacted in logs, errors and traces. Spans carry no payloads unless a contract field opts in (`x-telo-span-attribute`).
 - **Secrets stay where they belong.** Never packaged or indexed; a published contract shows only a secret's type. A secret read from an env file not marked sensitive is warned about at `telo run` and in Studio's Variables tab, and sensitive env files are never synced to Telo Cloud or into an agent's session.
@@ -205,7 +205,7 @@ team does not have to build or remember, each described in detail below:
 - **Containers on demand.** Tests start their own containers — readiness-waited, loopback-only, always removed — unchanged locally, in CI or in a runner session.
 - **Assert on what happened.** `Assert.Events` matches kernel events as a subsequence or counts them (`times: 0` for "never").
 - **No store mocks.** In-memory stores and `:memory:` SQLite run the production code path.
-- **Benchmarks in CI.** `Benchmark.Suite` fails the build on `p99` thresholds.
+- **Benchmarks in CI.** `Benchmark.Suite` fails the build on `p99` thresholds; `Benchmark.Comparison` starts the programs you name, pins load generator and programs to separate cores, and compares boot time, throughput, latency at a fixed rate, CPU per request and memory with the spread of every figure.
 - **Interactive apps.** `Channel.SendLine` / `Channel.ReadUntil` drive one step by step, with bounded reads.
 
 ### Security

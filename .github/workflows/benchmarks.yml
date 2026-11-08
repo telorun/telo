@@ -1,0 +1,173 @@
+name: Benchmarks
+
+# The Telo-vs-Node comparison and the feature-cost sweep, nightly on main, with the CLI built from
+# the checkout. Records are appended to `comparison.jsonl` / `feature-cost.jsonl` on the orphan
+# branch `benchmark-results` from one job, then the regression alerts read that history. The docs
+# page reads the same files in the reader's browser, so nothing here redeploys the site.
+#
+# Both measurements pin cores and need an otherwise idle machine, so they run one after the other
+# in one job; the sweep's own test runs on a runner of its own. The `benchmarks` concurrency group
+# is shared with the authoring workflow, so two runs never append at once.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: benchmarks
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Comparison and feature cost
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the telo CLI and the Node implementation
+        run: |
+          pnpm --filter "@telorun/cli..." build
+          pnpm --filter @telorun/bench-lead-intake build
+          mkdir -p "$RUNNER_TEMP/bin"
+          printf '#!/bin/sh\nexec node "%s/cli/nodejs/bin/telo.mjs" "$@"\n' "$GITHUB_WORKSPACE" > "$RUNNER_TEMP/bin/telo"
+          chmod +x "$RUNNER_TEMP/bin/telo"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Run the lead-intake comparison
+        env:
+          REPORT_FILE: ${{ github.workspace }}/out/comparison.json
+        run: |
+          mkdir -p out
+          telo --version
+          telo run benchmarks/lead-intake/comparison.yaml
+
+      - name: Run the feature-cost sweep
+        if: ${{ !cancelled() }}
+        env:
+          TELO_COMMAND: ${{ runner.temp }}/bin/telo
+          COMMIT: ${{ github.sha }}
+        run: node benchmarks/feature-cost/run.mjs --out out/feature-cost.jsonl
+
+      # A comparison record carries no commit; the history rows do.
+      - name: Add the commit to the comparison record
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -s out/comparison.json ]; then
+            jq -c --arg commit "$GITHUB_SHA" '. + {commit: $commit}' out/comparison.json > out/comparison.jsonl
+          fi
+
+      - name: Upload the records
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-records
+          path: |
+            out/comparison.jsonl
+            out/feature-cost.jsonl
+          if-no-files-found: ignore
+          retention-days: 30
+
+  sweep-test:
+    name: Feature-cost sweep test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the telo CLI
+        run: |
+          pnpm --filter "@telorun/cli..." build
+          mkdir -p "$RUNNER_TEMP/bin"
+          printf '#!/bin/sh\nexec node "%s/cli/nodejs/bin/telo.mjs" "$@"\n' "$GITHUB_WORKSPACE" > "$RUNNER_TEMP/bin/telo"
+          chmod +x "$RUNNER_TEMP/bin/telo"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Run the sweep test
+        env:
+          TELO_COMMAND: ${{ runner.temp }}/bin/telo
+        run: telo run benchmarks/feature-cost/tests/sweep/sweep.yaml
+
+  publish:
+    name: Append to the history and check for regressions
+    needs: measure
+    # History comes from main only: a manual run on a branch measures but appends nothing.
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download the records
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-records
+          path: out
+
+      - name: Append to the history
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          appended=0
+          for name in comparison feature-cost; do
+            if [ -s "out/$name.jsonl" ]; then
+              node benchmarks/history/append.mjs --records "out/$name.jsonl" --target "$name.jsonl"
+              appended=1
+            fi
+          done
+          if [ "$appended" = 0 ]; then echo "::error::no benchmark records were produced"; exit 1; fi
+
+      - name: Read the history back
+        run: |
+          git fetch --depth 1 origin benchmark-results:refs/remotes/origin/benchmark-results
+          mkdir -p history
+          for name in comparison feature-cost; do
+            if git cat-file -e "origin/benchmark-results:$name.jsonl" 2>/dev/null; then
+              git show "origin/benchmark-results:$name.jsonl" > "history/$name.jsonl"
+            fi
+          done
+
+      - name: Alert on regressions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node benchmarks/history/alert.mjs --history history

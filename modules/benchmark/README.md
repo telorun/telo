@@ -1,6 +1,6 @@
 # Benchmark
 
-Load benchmarking for any invocable Telo resource. `Benchmark.Suite` drives one or more scenarios against a fixed duration or request budget, collects latency and error metrics, and optionally fails the run when thresholds are breached.
+Load and performance benchmarking. `Benchmark.Suite` drives weighted scenarios against invocable resources inside the running app, for a fixed duration or request budget, collects latency and error metrics, and optionally fails the run when thresholds are breached. `Benchmark.Comparison` starts programs itself — two implementations of one API, or one command at several sizes — and measures their boot time, HTTP throughput, latency at a fixed rate, CPU per request and memory, on Linux.
 
 ## Why use this
 
@@ -9,12 +9,14 @@ Load benchmarking for any invocable Telo resource. `Benchmark.Suite` drives one 
 - **Threshold gating** — `report.thresholds` exits non-zero when `p99` / `p95` / `p50` / `errorRate` are breached; drop straight into CI.
 - **Result validation** — per-scenario CEL `validate` expression flags failed responses without halting the suite.
 - **Warm-up window** — `warmup` discards pre-roll samples to keep metrics honest.
+- **Out-of-process comparisons** — `Benchmark.Comparison` alternates subjects over rounds, pins the load generator and the subjects to separate cores, measures latency open-loop from each request's scheduled time, flags a generator-bound throughput, and writes a JSON record with the spread of every figure.
 
 ## Kinds
 
 | Kind | Purpose |
 | --- | --- |
 | `Benchmark.Suite` | Runnable that executes weighted scenarios against an invocable and reports latency / error metrics. |
+| `Benchmark.Comparison` | Runnable that starts programs and compares their boot time, throughput, latency, CPU and memory. See [docs/comparison.md](docs/comparison.md). |
 
 ## Example
 
@@ -109,3 +111,38 @@ report:
 ```
 
 If any threshold is breached after the run completes, `Benchmark.Suite` exits non-zero — useful as a gate in a `Run.Sequence` or CI pipeline.
+
+### Report shape
+
+`format: json` prints, per scenario, `{ total, rps, p50, p95, p99, errors: { count, rate, groups: [{ code, message, count, sample }] } }`. Percentiles come from a fixed-memory histogram (within 0.4% of exact). A request that throws, or whose `validate` is not `true`, is grouped by code and message with a sample of the failure; the table format prints the groups after the table. See [docs/suite.md](docs/suite.md) and [docs/measurement.md](docs/measurement.md).
+
+## Comparing programs
+
+```yaml
+kind: Benchmark.Comparison
+metadata: { name: pingCompare }
+rounds: 3
+boots: 5
+subjects:
+  - name: app
+    command: node
+    args: [server.js]
+    cwd: !module-path app
+    env: { PORT: "8845" }
+    readiness: { url: http://127.0.0.1:8845/ping }
+    stateDirectory: { env: STATE_DIR }
+workloads:
+  - name: ping
+    duration: 10s
+    warmup: 2s
+    concurrency: 16
+    rate: 500
+    requests:
+      - { url: http://127.0.0.1:8845/ping, expect: { status: 200 } }
+report:
+  file: !cel "variables.reportFile"
+  thresholds:
+    - { workload: ping, errorRate: 0, p99: 20 }
+```
+
+Each round boots every subject cold and warm, then runs each workload's throughput pass and latency pass on boots of their own. The table goes to stdout and the record to `report.file`; a subject without `readiness` runs to exit, which makes a boot-only comparison. Linux only: the comparison samples `/proc` and pins cores with `taskset`. See [docs/comparison.md](docs/comparison.md).

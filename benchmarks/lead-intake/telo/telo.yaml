@@ -1,0 +1,115 @@
+kind: Telo.Application
+metadata:
+  name: LeadIntake
+  version: 1.0.0
+  description: The lead-intake API of the Telo-vs-native comparison, as a Telo application.
+imports:
+  Http: ../../../modules/http-server
+  Sql: ../../../modules/sql
+  SQLite: ../../../modules/sqlite
+  Run: ../../../modules/run
+include: [./light.yaml, ./medium.yaml, ./heavy.yaml]
+variables: { trace: { env: TRACE, type: boolean, default: false } }
+ports: { http: { env: PORT, default: 8845 } }
+needs: { state: { kind: Telo.DurableDirectory, env: { path: STATE_DIR } } }
+logging:
+  sinks:
+    - sink: { kind: Telo.FileSink, destination: spans.jsonl, encoding: json }
+      when: !cel "variables.trace"
+tracing:
+  sinks:
+    - sink: { kind: Telo.LogTraceSink }
+      when: !cel "variables.trace"
+targets:
+  - !ref setup
+  - !ref server
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "resources.state.path.joinPath('leads.db')"
+---
+kind: Sql.Command
+metadata: { name: insertLead }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: setup }
+steps:
+  - name: createTable
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: CREATE TABLE IF NOT EXISTS leads (id TEXT PRIMARY KEY, body TEXT NOT NULL)
+  - name: seed
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: INSERT OR IGNORE INTO leads (id, body) VALUES ('seed', ?)
+      bindings: ['{"id":"seed","level":"light","lead":{"email":"seed@example.com","company":{"name":"Seed Co","employees":12,"country":"US","industry":"saas"},"plan":"starter"},"derived":{"domain":"example.com","personal":false,"sizeBand":"smb","planTier":2,"score":25}}']
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - { status: 200, content: { application/json: { body: { status: ok } } } }
+  - request:
+      path: /leads/light
+      method: POST
+      schema:
+        body: { type: object, additionalProperties: false, required: [email, company, plan], properties: { email: { type: string, format: email }, company: { type: object, additionalProperties: false, required: [name, employees, country, industry], properties: { name: { type: string, minLength: 1 }, employees: { type: integer, minimum: 0 }, country: { type: string, minLength: 2, maxLength: 2 }, industry: { type: string, minLength: 1 } } }, plan: { type: string, enum: [free, trial, starter, growth, enterprise] } } }
+    handler: !ref createLight
+    inputs:
+      lead: !cel "request.body"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result.body"
+  - request:
+      path: /leads/medium
+      method: POST
+      schema:
+        body: { type: object, additionalProperties: false, required: [email, company, plan], properties: { email: { type: string, format: email }, company: { type: object, additionalProperties: false, required: [name, employees, country, industry], properties: { name: { type: string, minLength: 1 }, employees: { type: integer, minimum: 0 }, country: { type: string, minLength: 2, maxLength: 2 }, industry: { type: string, minLength: 1 } } }, plan: { type: string, enum: [free, trial, starter, growth, enterprise] } } }
+    handler: !ref createMedium
+    inputs:
+      lead: !cel "request.body"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result.body"
+  - request:
+      path: /leads/heavy
+      method: POST
+      schema:
+        body: { type: object, additionalProperties: false, required: [email, company, plan], properties: { email: { type: string, format: email }, company: { type: object, additionalProperties: false, required: [name, employees, country, industry], properties: { name: { type: string, minLength: 1 }, employees: { type: integer, minimum: 0 }, country: { type: string, minLength: 2, maxLength: 2 }, industry: { type: string, minLength: 1 } } }, plan: { type: string, enum: [free, trial, starter, growth, enterprise] } } }
+    handler: !ref createHeavy
+    inputs:
+      lead: !cel "request.body"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result.body"
+  - request:
+      path: /leads/{id}
+      method: GET
+      schema:
+        params: { type: object, required: [id], properties: { id: { type: string } } }
+    handler: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT body FROM leads WHERE id = ?
+      bindings: [!cel "request.params.id"]
+    returns:
+      - status: 200
+        when: !cel "size(result.rows) > 0"
+        content:
+          application/json:
+            body: !cel "parseJson(result.rows[0].body)"
+      - { status: 404, content: { application/json: { body: { code: NOT_FOUND } } } }

@@ -528,6 +528,8 @@ async function buildKernel(
   log: Logger,
   cacheRoot: string | null,
   openUrl?: (url: string) => void,
+  /** The first kernel of the process starts its `startup` span at process start. */
+  fromProcessStart = false,
 ): Promise<Kernel> {
   // The manifest cache (populated by `telo install`) wins over the network
   // sources so production images boot without any network I/O. A missing cache
@@ -548,6 +550,7 @@ async function buildKernel(
     argv: [...(argv.applicationArgs ?? [])],
     sources,
     ...(openUrl ? { openUrl } : {}),
+    ...(fromProcessStart ? { processStartedAt: performance.timeOrigin } : {}),
   });
   // Pretty controller-download progress. With --verbose, always render
   // (so captured logs/CI output get the lines too); otherwise gate on TTY
@@ -775,7 +778,7 @@ export async function run(given: RunArgv): Promise<void> {
   let phase = "kernelCreate";
   try {
     profiler?.start("kernelCreate");
-    const kernel = await buildKernel(argv, log, cacheRoot, openUrl);
+    const kernel = await buildKernel(argv, log, cacheRoot, openUrl, true);
     profiler?.end("kernelCreate");
     bootedKernel = kernel;
     debug?.attach(kernel);

@@ -6,20 +6,25 @@ metadata:
   license: MIT
   categories: [Testing, Performance]
   description: >-
-    Load and performance benchmarking for any callable resource: drives weighted
-    scenarios at a chosen concurrency for a duration or a request count, discards a
-    warm-up window, and reports latency percentiles and error rate — optionally
-    failing the run when a threshold is exceeded.
-exports: { kinds: [Suite] }
+    Load testing and performance benchmarking: measures boot time, throughput,
+    latency percentiles at a fixed request rate, CPU per request and memory of
+    programs it starts, or drives weighted load against resources inside the
+    running app. Results carry their spread across rounds, errors are grouped
+    with samples, and thresholds fail the run in CI.
+requires: { telo: ">=0.133.0" }
+restrictions:
+  - requires: { telo: ">=unreleased" }
+    reason: Comparison reads a Telo program's boot time from its startup span, which kernels before this release do not write.
+exports: { kinds: [Suite, Comparison] }
 ---
 kind: Telo.Definition
 metadata:
   name: Suite
   description: >-
-    Runs weighted load scenarios against callable resources at a set concurrency,
-    bounded by a duration or a total request count, and reports latency percentiles
-    and error rate. A CEL check marks a bad result as an error; thresholds turn the
-    report into a pass/fail gate.
+    Runs weighted load scenarios against resources inside the running app at a
+    set concurrency, for a duration or a request count, and reports latency
+    percentiles and errors grouped by code and message with a sample. A CEL check
+    marks a bad result as an error; a breached threshold exits non-zero.
 capability: Telo.Runnable
 controllers: [pkg:telo/local/js?path=./nodejs/benchmark.mjs&local_path=./nodejs/src/index.ts#Suite]
 schema:
@@ -108,3 +113,225 @@ schema:
             description: "CEL boolean expression evaluated against `result`; false counts as error"
         required: [name, invoke]
   required: [metadata, scenarios]
+---
+kind: Telo.Definition
+metadata:
+  name: Comparison
+  description: >-
+    Compares programs it starts itself, such as two implementations of one API:
+    measures cold and warm boot time, throughput at a concurrency, p50/p99 latency
+    at a fixed rate, CPU per request and resident memory, with load generator and
+    programs pinned to separate cores. Prints a table, writes a JSON record with
+    medians and spread, and fails on breached thresholds.
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./nodejs/benchmark.mjs&local_path=./nodejs/src/index.ts#Comparison]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    metadata: { type: object, properties: { name: { type: string } }, required: [name] }
+    rounds:
+      title: Rounds
+      description: How many times the subjects are measured in turn. Every figure is the median over all rounds.
+      type: integer
+      minimum: 1
+      default: 5
+      x-telo-eval: compile
+    boots:
+      title: Boots
+      description: Cold boots and warm boots measured per subject in each round.
+      type: integer
+      minimum: 1
+      default: 20
+      x-telo-eval: compile
+    subjects:
+      title: Subjects
+      description: The programs compared, each started by the comparison for every boot and load pass.
+      type: array
+      minItems: 1
+      x-telo-eval: compile
+      items:
+        type: object
+        additionalProperties: false
+        required: [name, command, cwd]
+        properties:
+          name: { title: Name, description: The subject's name in the table and the record., type: string }
+          command: { title: Command, description: The executable to start, found on PATH when not a path., type: string }
+          args:
+            title: Arguments
+            description: Arguments passed to the command.
+            type: array
+            items: { type: string }
+          env:
+            title: Environment
+            description: Variables set for the subject, over the environment of the running app.
+            type: object
+            additionalProperties: { type: string }
+          cwd:
+            title: Working directory
+            description: The directory the subject starts in; caches and the trace file are relative to it.
+            type: string
+            x-telo-type: { name: Telo.HostPath, entry: directory }
+          readiness:
+            title: Readiness
+            description: >-
+              The subject is ready at its first 2xx answer at this url, and its boot ends there.
+              Omitted: the subject runs to exit, and a non-zero exit fails the run.
+            type: object
+            additionalProperties: false
+            required: [url]
+            properties:
+              url: { title: URL, description: An http or https url the subject serves., type: string, pattern: "^https?://" }
+          bootTimeout:
+            title: Boot timeout
+            description: >-
+              How long a boot may take to become ready or to exit, and how long a subject may take
+              to exit after SIGTERM. Omitted: 60s.
+            x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+          caches:
+            title: Caches
+            description: Paths inside the working directory removed before every cold boot.
+            type: array
+            items: { $ref: "#/$defs/RelativePath" }
+          stateDirectory:
+            title: State directory
+            description: Gives every boot and load pass a fresh empty directory, named in this variable and removed when it ends.
+            type: object
+            additionalProperties: false
+            required: [env]
+            properties:
+              env: { title: Variable, description: The environment variable holding the directory's path., type: string }
+          traceFile:
+            title: Trace file
+            description: >-
+              The JSON-lines file, inside the working directory, the subject's own file sink writes
+              spans to. Emptied before every boot; after each measured boot its startup span is read.
+            $ref: "#/$defs/RelativePath"
+    workloads:
+      title: Workloads
+      description: HTTP load run against every subject, each in a throughput pass and, with a rate, a latency pass.
+      type: array
+      x-telo-eval: compile
+      items:
+        type: object
+        additionalProperties: false
+        required: [name, duration, concurrency, requests]
+        properties:
+          name: { title: Name, description: The workload's name in the table and the record., type: string }
+          duration: { title: Duration, description: How long each pass is measured., x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s } }
+          warmup:
+            title: Warm-up
+            description: "Load sent before each pass is measured. Omitted: none."
+            x-telo-type: { name: Telo.Duration, minimum: 0s }
+          concurrency:
+            title: Concurrency
+            description: Connections the throughput pass keeps busy, and the connections the latency pass sends over.
+            type: integer
+            minimum: 1
+          rate:
+            title: Rate
+            description: >-
+              Requests per second of the latency pass, the same for every subject. Omitted: no latency
+              pass, so no latency, CPU or memory figures.
+            type: integer
+            minimum: 1
+          requests:
+            title: Requests
+            description: The requests sent, in proportion to their weights.
+            type: array
+            minItems: 1
+            items:
+              type: object
+              additionalProperties: false
+              required: [url]
+              properties:
+                method:
+                  title: Method
+                  description: The HTTP method.
+                  type: string
+                  enum: [GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS]
+                  default: GET
+                url: { title: URL, description: The absolute url requested., type: string, pattern: "^https?://" }
+                weight:
+                  title: Weight
+                  description: How often this request is sent relative to the others.
+                  type: integer
+                  minimum: 1
+                  default: 1
+                headers:
+                  title: Headers
+                  description: Request headers.
+                  type: object
+                  additionalProperties: { type: string }
+                body: { title: Body, description: "The request body: a string as is, any other value as JSON." }
+                expect:
+                  title: Expect
+                  description: "The status that counts as success. Omitted: any 2xx."
+                  type: object
+                  additionalProperties: false
+                  required: [status]
+                  properties:
+                    status: { title: Status, description: The expected HTTP status., type: integer, minimum: 100, maximum: 599 }
+    report:
+      title: Report
+      description: Where the run's record is written, and the limits that fail it.
+      type: object
+      additionalProperties: false
+      x-telo-eval: compile
+      properties:
+        file:
+          title: File
+          description: "The JSON record of the run, written after the last round. Omitted: only the table is printed."
+          type: string
+          x-telo-type: Telo.HostPath
+        thresholds:
+          title: Thresholds
+          description: Limits on each workload result; a breach prints the error groups and exits non-zero.
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              workload: { title: Workload, description: "The workload judged. Omitted: every workload.", type: string }
+              subject: { title: Subject, description: "The subject judged. Omitted: every subject.", type: string }
+              errorRate:
+                title: Error rate
+                description: Largest share of failed requests, over both passes and every round.
+                type: number
+                minimum: 0
+              p50: { title: P50, description: Largest median p50 at the workload's rate, in milliseconds., type: number }
+              p99: { title: P99, description: Largest median p99 at the workload's rate, in milliseconds., type: number }
+  required: [metadata, subjects]
+  $defs:
+    RelativePath:
+      type: string
+      description: A path relative to the subject's working directory that stays inside it.
+      pattern: "^(?!/)(?!\\.?/?$)(?!(.*/)?\\.\\.(/|$)).+$"
+  x-telo-resource-rules:
+    - in: /subjects
+      condition: !cel "self.subjects.filter(s, s.name == this.name).size() == 1"
+      code: BENCHMARK_SUBJECT_NAME_DUPLICATE
+      message: shares its name with another subject.
+    - in: /workloads
+      condition: !cel "self.workloads.filter(w, w.name == this.name).size() == 1"
+      code: BENCHMARK_WORKLOAD_NAME_DUPLICATE
+      message: shares its name with another workload.
+    - in: /subjects
+      condition: !cel "!has(self.workloads) || !self.workloads.exists(w, true) || has(this.readiness)"
+      code: BENCHMARK_SUBJECT_RUNS_TO_EXIT
+      message: names no readiness url, so it runs to exit and cannot serve the workloads.
+    - in: /report/thresholds
+      condition: !cel "has(self.workloads) && self.workloads.exists(w, !has(this.workload) || w.name == this.workload)"
+      code: BENCHMARK_THRESHOLD_NO_WORKLOAD
+      message: judges no workload this comparison declares.
+    - in: /report/thresholds
+      condition: !cel "!has(this.subject) || self.subjects.exists(s, s.name == this.subject)"
+      code: BENCHMARK_THRESHOLD_UNKNOWN_SUBJECT
+      message: names a subject this comparison does not declare.
+    - in: /report/thresholds
+      condition: !cel >-
+        (!has(this.p50) && !has(this.p99))
+        || !has(self.workloads)
+        || self.workloads.all(w, (has(this.workload) && w.name != this.workload) || has(w.rate))
+      code: BENCHMARK_THRESHOLD_LATENCY_WITHOUT_RATE
+      message: sets a latency limit, but a workload it judges states no rate.

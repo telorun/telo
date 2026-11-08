@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: StartupSpanApp, version: 1.0.0 }
+variables: { trace: { env: TRACE, type: boolean, default: false } }
+logging:
+  sinks:
+    - sink: { kind: Telo.ConsoleSink, encoding: json }
+      when: !cel "variables.trace"
+tracing:
+  sinks:
+    - sink: { kind: Telo.LogTraceSink }
+      when: !cel "variables.trace"

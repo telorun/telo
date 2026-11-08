@@ -1,0 +1,38 @@
+# Boots only: two subjects that run to exit, the first writing a startup span unless told to
+# fail, hang or write none.
+kind: Telo.Application
+metadata: { name: RunsToExitComparison }
+imports: { Benchmark: ../../.. }
+variables:
+  subjectDir: { env: SUBJECT_DIR, type: string, x-telo-type: Telo.HostPath }
+  reportFile: { env: REPORT_FILE, type: string, x-telo-type: Telo.HostPath }
+  spanMs: { env: SPAN_MS, type: string, default: "" }
+  hang: { env: HANG, type: string, default: "" }
+  exitCode: { env: EXIT_CODE, type: string, default: "" }
+targets:
+  - !ref boots
+---
+kind: Benchmark.Comparison
+metadata: { name: boots }
+rounds: 1
+boots: 2
+subjects:
+  - name: run
+    command: node
+    args: [runner.mjs]
+    cwd: !cel "variables.subjectDir"
+    env:
+      SPAN_MS: !cel "variables.spanMs"
+      HANG: !cel "variables.hang"
+      EXIT_CODE: !cel "variables.exitCode"
+      TRACE_FILE: spans.jsonl
+    bootTimeout: 1s
+    traceFile: spans.jsonl
+  - name: check
+    command: node
+    args: [runner.mjs]
+    cwd: !cel "variables.subjectDir"
+    env: { SPAN_MS: "" }
+    bootTimeout: 1s
+report:
+  file: !cel "variables.reportFile"

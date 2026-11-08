@@ -1,0 +1,31 @@
+kind: Telo.Application
+metadata:
+  name: LeadIntakeTeloContractTest
+  version: 1.0.0
+  description: Runs the lead-intake contract tests against the Telo implementation, started as a child application.
+imports:
+  App: ../../../modules/app
+  Contract: { source: ../contract, variables: { baseUrl: "http://127.0.0.1:8871" } }
+variables:
+  stateDirectory:
+    env: LEAD_INTAKE_TELO_TEST_STATE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo/lead-intake-telo-test
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: implementation }
+    source: ../telo/telo.yaml
+    ports: { http: 8871 }
+    needs:
+      state: { path: !cel "variables.stateDirectory" }
+targets:
+  - !ref implementation
+steps:
+  - name: contract
+    invoke: !ref Contract.cases

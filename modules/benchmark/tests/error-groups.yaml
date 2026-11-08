@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: BenchmarkErrorGroupsTest }
+imports: { Assert: ../../assert }
+targets:
+  - !ref failingEndpoint
+---
+kind: Assert.Manifest
+metadata: { name: failingEndpoint }
+source: ./__fixtures__/failing-endpoint/telo.yaml
+expect: { errors: [], runFails: "THRESHOLD FAIL [broken] errorRate 100.00% > 0.00%" }
