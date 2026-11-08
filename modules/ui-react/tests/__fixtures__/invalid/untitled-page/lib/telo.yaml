@@ -1,0 +1,38 @@
+# A navigation naming, in a group, a page with no title and giving no text of its own.
+kind: Telo.Library
+metadata:
+  name: UiReactUntitledPage
+  version: 1.0.0
+  description: >-
+    Test fixture exporting an application whose navigation names, in a group, a
+    page with no title and gives that entry no text.
+imports: { UiReact: ../../../../../, Ui: ../../../../../../ui }
+exports: { resources: [bare] }
+---
+kind: Ui.Page
+metadata: { name: home }
+path: /
+title: Home
+children: []
+---
+kind: Ui.Page
+metadata: { name: chat }
+path: /chat
+children: []
+---
+kind: UiReact.App
+metadata: { name: bare }
+title: Bare
+theme: !ref UiReact.defaultTheme
+pages:
+  - !ref home
+  - !ref chat
+navigation:
+  items:
+    - type: page
+      page: !ref home
+    - type: group
+      text: One
+      items:
+        - type: page
+          page: !ref chat

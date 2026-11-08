@@ -125,6 +125,7 @@ messages:
   chatThinking: "Düşünüyor…"
   chatShowDetails: "Ayrıntıları göster"
   chatHideDetails: "Ayrıntıları gizle"
+  chatToolPreview: "Önizleme"
   chatToolCall: "Araç: {$name}"
   chatToolRunning: "Çalışıyor…"
   chatToolFailed: "Başarısız"

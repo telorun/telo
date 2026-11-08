@@ -15,10 +15,39 @@ publishes the endpoint's `Conversation.Spec` — as `provide()` and as its readi
 | `blobs` | The `Blob.Store` uploaded files, and media a model or tool produces, are kept in. |
 | `detector` | The `MediaType.Detector` an upload's type is read with. |
 | `attachments` | `{ maxBytes, maxPerMessage, pendingRetention }` — defaults `10485760`, `4` and `24h`. |
+| `titles` | Optional `{ model }`: an `Ai.Model` that [names untitled conversations](#titles). |
 
 The conversation itself dispatches nothing: every operation kind reaches its store,
-journal, file store, detector and agent through it, each through the kernel's
-dispatch (contracts, spans, cancellation).
+journal, file store, detector, agent and title model through it, each through the
+kernel's dispatch (contracts, spans, cancellation).
+
+## Titles
+
+With `titles`, a turn that ends on a conversation with no title asks `titles.model`
+for one, from the turn's user message and the reply's text (each cut at 2000
+characters), and writes it before the turn's final `turn-end` event. A client that
+reads the conversation again when the turn ends — `Ui.Chat` does, and so does a
+listing it refreshes — sees the title at once.
+
+- The title is the answer's first line with a `Title:` label, surrounding quotes or
+  markup and a trailing stop removed, cut at a word to 80 characters; an empty
+  answer writes nothing.
+- A title already set is kept: the header is read before the model is asked and
+  again before each write, so a rename that lands meanwhile wins. A conversation
+  whose first turn wrote no title is named by its next turn.
+- A failed title call ends nothing: the turn ends as it would have, and the failure
+  is logged as a warning (`A conversation could not be titled`) with its code.
+- It costs one model call per conversation, plus one header read per turn while
+  the conversation is untitled; a small, fast model is enough.
+
+```yaml
+titles:
+  model:
+    kind: Anthropic.MessagesModel
+    model: claude-haiku-4-5
+    maxTokens: 32
+    request: !ref anthropicRequest
+```
 
 ## What it offers
 

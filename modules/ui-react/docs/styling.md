@@ -332,11 +332,16 @@ them, so a theme styles parts that a given chat never draws.
 | `chat-tool-toggle` | the button showing and hiding its arguments and result |
 | `chat-tool-detail` | the arguments and the result |
 | `chat-tool-label` | names one of them |
-| `chat-tool-data` | a block of JSON, focusable so it scrolls from the keyboard |
+| `chat-tool-data` | a block of text, focusable so it scrolls from the keyboard: a call's argument (a text as written, anything else as JSON, each after a `chat-tool-label` naming it) or its result |
+| `chat-tool-block` | a block of text and, when it is cut off, its preview button in the block's top-right corner |
+| `chat-tool-preview` | the icon button, a `maximize` glyph, opening a block too long for its box in a dialog; drawn only for such a block |
 | `chat-approval` | a call waiting for a decision; `data-status` is `pending`, `approved` or `rejected` |
+| `chat-approval-header` | the approval's line: its toggle (or its title alone, where the page hides tool detail), then at the end what was decided and the state glyph |
+| `chat-approval-toggle` | the button folding and unfolding the arguments, `aria-expanded`; a call waiting for a decision starts unfolded, a decided one folded |
 | `chat-approval-title` | what is asked to run |
+| `chat-approval-state` | a glyph at the end of the line: `alert` while waiting, `done` once approved, `close` once rejected, named by `aria-label` |
 | `chat-approval-actions` | the reason box and the two buttons, drawn until a decision is made |
-| `chat-approval-decision` | what was decided, and why |
+| `chat-approval-decision` | what was decided, and why, in the line before the state glyph |
 | `chat-approve` | the button approving the call |
 | `chat-reject` | the button rejecting it with the reason typed beside it |
 | `chat-image` | a picture of a message, drawn only from an app-relative address as a fixed-size square crop of the original; pressing it opens the `media-viewer` at it |

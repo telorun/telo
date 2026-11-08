@@ -1,0 +1,9 @@
+modules:
+  modules/ui-react: Fixed
+body: "The chat draws a tool call's arguments, in its details and on an approval card,
+  each under its own name: a text argument is shown as written, with its line breaks,
+  instead of one JSON string full of escaped newlines, and a nested value stays JSON. A
+  block longer than its box (8rem in the default theme, which has the new
+  chat-tool-block and chat-tool-preview parts) gets an icon button in its top-right
+  corner opening it whole in a dialog. The controls contract's closed glyph set gains
+  maximize, which a control set draws as an enlarge glyph."

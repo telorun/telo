@@ -19,6 +19,7 @@ import {
   turnRunning,
 } from "./chat-refusals.js";
 import { isChatEndpoint, type ChatEndpoint } from "./conversation-controller.js";
+import { titleIfUntitled } from "./conversation-titles.js";
 import { operationsOf } from "./operation-call.js";
 import {
   ERR_CONVERSATION_ATTACHMENT_NOT_FOUND,
@@ -325,8 +326,25 @@ class TurnRunner implements ResourceInstance {
             parentInvocationId: admittedBy.parentInvocationId,
           }),
     };
+    const titler = this.endpoint().titler?.();
+    // A title is the turn's courtesy, not its work: a failure is logged and the turn ends as it would have.
+    const beforeEnd = titler
+      ? async (reply: string) => {
+          try {
+            await titleIfUntitled(this.ops, titler, identity.conversation, text, reply, runCtx);
+          } catch (err) {
+            if (runCtx.cancellation.isCancelled) throw err;
+            this.ctx.log.warn("A conversation could not be titled", {
+              conversation: identity.conversation,
+              turn: identity.turn,
+              code: codeOf(err) ?? null,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      : undefined;
     const input = new TurnInput(
-      (agentOutput) => turnRecords(this.ops, identity, plan, text, runCtx, agentOutput),
+      (agentOutput) => turnRecords(this.ops, identity, plan, text, runCtx, agentOutput, beforeEnd),
       stop,
       this.ctx.log,
       identity.turn,

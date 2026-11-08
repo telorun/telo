@@ -378,6 +378,7 @@ export type IconName =
   | "filter"
   | "go"
   | "loading"
+  | "maximize"
   | "menu"
   | "more"
   | "next"

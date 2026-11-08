@@ -10,7 +10,7 @@ import { RendererContext, RootsContext } from "../renderer-context.js";
 import { useSay, type WireText } from "../texts.js";
 import { errorSpec, type ErrorSpec } from "../ui-error.js";
 import { ButtonsContext, ChatButton, type ChatButtons } from "./chat-buttons.js";
-import { entryAttachments, entryBlocks, messageText, transcriptMarkdown, type Block, type SentFile } from "./chat-blocks.js";
+import { entryAttachments, entryBlocks, messageText, messageUsage, toolResultsById, transcriptMarkdown, transcriptMessages, type Block, type SentFile } from "./chat-blocks.js";
 import { AnnounceContext, BlockList, CopyButton, ShowContext, UsageLine, type ChatShow } from "./chat-blocks-view.js";
 import { Composer, type Starter } from "./chat-composer.js";
 import { EditForm } from "./chat-edit-form.js";
@@ -61,11 +61,12 @@ interface Placement {
   total: number;
 }
 
-/** One stored entry: who wrote it, what it holds, and what can be done with it. */
-function EntryView({
+/** One message — a user entry, or a reply's consecutive assistant entries: who wrote it, what it holds, and what can be done with it. */
+function MessageView({
   api,
   offer,
-  entry,
+  message,
+  results,
   previous,
   branching,
   busy,
@@ -78,7 +79,10 @@ function EntryView({
 }: {
   api: ChatApi;
   offer: ChatSpec["attachments"];
-  entry: Entry;
+  message: Entry[];
+  /** The tool results of every loaded entry, since a reply stores each result in an entry of its own. */
+  results: ReadonlyMap<string, NonNullable<Entry["toolResults"]>[number]>;
+  /** The entry before the message. */
   previous: Entry | undefined;
   branching: boolean;
   busy: boolean;
@@ -93,7 +97,9 @@ function EntryView({
   const say = useSay();
   const Icon = useControl("Icon");
   const { copy } = useContext(ShowContext);
-  const blocks = useMemo(() => entryBlocks(entry), [entry]);
+  const entry = message[0];
+  const blocks = useMemo(() => message.flatMap((each) => entryBlocks(each, results)), [message, results]);
+  const usage = useMemo(() => messageUsage(message), [message]);
   const text = messageText(blocks);
   const { siblings } = entry;
   const source = entry.role === "user" ? entry : previous?.role === "user" ? previous : undefined;
@@ -129,7 +135,7 @@ function EntryView({
           }}
         />
       )}
-      {entry.role === "assistant" && entry.usage && <UsageLine usage={entry.usage} />}
+      {entry.role === "assistant" && usage && <UsageLine usage={usage} />}
       <div data-telo-part="chat-message-actions">
         {copy && text !== "" && <CopyButton text={text} />}
         {branchable && entry.role === "user" && !editing && (
@@ -248,7 +254,9 @@ export function ChatNode({ node, embedded = false }: { node: ChatNodeSpec; embed
   const [focused, setFocused] = useState<string>();
   const entryState = useMemo(() => new Map<string, unknown>(), [session.conversation]);
   const loadingEarlier = session.loadingEarlier;
-  const rows = useMemo<RowKey[]>(() => [...(loadingEarlier ? [EARLIER] : []), ...entries.map((each) => each.id)], [entries, loadingEarlier]);
+  const messages = useMemo(() => transcriptMessages(entries), [entries]);
+  const results = useMemo(() => toolResultsById(entries), [entries]);
+  const rows = useMemo<RowKey[]>(() => [...(loadingEarlier ? [EARLIER] : []), ...messages.map((each) => each[0].id)], [messages, loadingEarlier]);
   const keep = useMemo(() => new Set<RowKey>([...editing, ...(focused === undefined ? [] : [focused])]), [editing, focused]);
   const transcriptWindow = useTranscriptWindow({
     keys: rows,
@@ -261,7 +269,7 @@ export function ChatNode({ node, embedded = false }: { node: ChatNodeSpec; embed
   });
   const firstEntry = loadingEarlier ? 1 : 0;
   const liveCount = live === undefined ? 0 : (live.user ? 1 : 0) + (live.blocks.length > 0 || phase !== "idle" ? 1 : 0);
-  const total = session.earlier ? -1 : entries.length + liveCount;
+  const total = session.earlier ? -1 : messages.length + liveCount;
 
   const send = (message: string, attachments: string[], files: SentFile[]) => {
     transcriptWindow.follow();
@@ -404,14 +412,16 @@ export function ChatNode({ node, embedded = false }: { node: ChatNodeSpec; embed
               const placed = { index, measure: transcriptWindow.measure, style };
               if (index < firstEntry) return <Loading key="earlier" role="presentation" ref={placed.measure} index={index} style={style} />;
               const at = index - firstEntry;
-              const entry = entries[at];
+              const message = messages[at];
+              const entry = message[0];
               return (
-                <EntryView
+                <MessageView
                   key={entry.id}
                   api={api}
                   offer={node.spec.attachments}
-                  entry={entry}
-                  previous={entries[at - 1]}
+                  message={message}
+                  results={results}
+                  previous={messages[at - 1]?.at(-1)}
                   branching={branching}
                   busy={running}
                   placement={{ ...placed, position: at + 1, total }}
@@ -426,7 +436,7 @@ export function ChatNode({ node, embedded = false }: { node: ChatNodeSpec; embed
             {live && (
               <>
                 {live.user && (
-                  <article data-telo-part="chat-message" data-role="user" tabIndex={-1} aria-posinset={entries.length + 1} aria-setsize={total}>
+                  <article data-telo-part="chat-message" data-role="user" tabIndex={-1} aria-posinset={messages.length + 1} aria-setsize={total}>
                     <span data-telo-part="chat-message-label">{say("chatYou")}</span>
                     <div data-telo-part="chat-message-body">
                       <BlockList blocks={[{ kind: "text", text: live.user.text } satisfies Block]} streaming={false} onDecide={session.decide} />
@@ -449,7 +459,7 @@ export function ChatNode({ node, embedded = false }: { node: ChatNodeSpec; embed
                     data-role="assistant"
                     tabIndex={-1}
                     aria-busy={phase !== "idle" && !waiting}
-                    aria-posinset={entries.length + liveCount}
+                    aria-posinset={messages.length + liveCount}
                     aria-setsize={total}
                   >
                     <span data-telo-part="chat-message-label">{say("chatAssistant")}</span>

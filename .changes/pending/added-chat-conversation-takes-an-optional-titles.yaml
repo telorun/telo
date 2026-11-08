@@ -1,0 +1,8 @@
+modules:
+  modules/ai-chat: Added
+body: "Chat.Conversation takes an optional titles: { model }, an Ai.Model that names
+  untitled conversations: as a turn ends on a conversation with no title, the model
+  writes a three-to-six-word title from the user's message and the reply, before the
+  turn's final event, so a client reading the conversation at the turn's end sees it. A
+  title already set, a rename included, is kept, and a failed title call is logged
+  without failing the turn."

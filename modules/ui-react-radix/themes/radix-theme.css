@@ -521,6 +521,18 @@ button:is([data-telo-part="chat-copy"], [data-telo-part="chat-edit"], [data-telo
 [data-telo-part="chat-tool-data"]:focus-visible { box-shadow: var(--ui-react-radix-focus); }
 [data-telo-part="chat-approval-title"] { font-weight: 600; }
 [data-telo-part="chat-approval-decision"] { color: var(--telo-color-muted); }
+/* A tool call or an approval is one row of small text until it is opened. */
+:is([data-telo-part="chat-tool"], [data-telo-part="chat-approval"]) { font-size: var(--telo-font-size-sm); }
+[data-telo-part="chat-approval-header"] { min-height: 1.5rem; gap: var(--telo-space-sm); }
+button[data-telo-part="chat-approval-toggle"] { justify-content: flex-start; height: 1.5rem; gap: var(--telo-space-xs); padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+button[data-telo-part="chat-approval-toggle"] > [data-telo-part="icon"] { flex: none; width: 0.875rem; height: 0.875rem; color: var(--telo-color-muted); }
+[data-telo-part="chat-approval-state"] > [data-telo-part="icon"] { width: 1rem; height: 1rem; }
+[data-telo-part="chat-approval"][data-status="pending"] [data-telo-part="chat-approval-state"] { color: var(--telo-color-accent); }
+[data-telo-part="chat-approval"][data-status="approved"] [data-telo-part="chat-approval-state"] { color: var(--telo-color-success); }
+[data-telo-part="chat-approval"][data-status="rejected"] [data-telo-part="chat-approval-state"] { color: var(--telo-color-danger); }
+[data-telo-part="chat-tool-block"] { position: relative; }
+button[data-telo-part="chat-tool-preview"] { position: absolute; top: var(--telo-space-xs); right: var(--telo-space-md); width: 1.75rem; height: 1.75rem; padding: 0; border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-sm); background: var(--telo-color-surface); color: var(--telo-color-muted); cursor: pointer; }
+button[data-telo-part="chat-tool-preview"]:hover { background: var(--ui-react-radix-fill); color: var(--telo-color-text); }
 button[data-telo-part="chat-approve"], button[data-telo-part="chat-send"], button[data-telo-part="chat-continue"] { background: var(--telo-color-accent); color: var(--telo-color-accent-text); }
 button[data-telo-part="chat-approve"]:hover, button[data-telo-part="chat-send"]:hover, button[data-telo-part="chat-continue"]:hover { background: color-mix(in oklab, var(--telo-color-accent) 80%, transparent); }
 button:is([data-telo-part="chat-reject"], [data-telo-part="chat-stop"], [data-telo-part="chat-attach"], [data-telo-part="chat-retry"], [data-telo-part="chat-starter"]) { border-color: var(--telo-color-border); background: var(--telo-color-surface); }

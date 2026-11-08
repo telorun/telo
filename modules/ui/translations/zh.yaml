@@ -125,6 +125,7 @@ messages:
   chatThinking: "思考中…"
   chatShowDetails: "显示详情"
   chatHideDetails: "隐藏详情"
+  chatToolPreview: "预览"
   chatToolCall: "工具:{$name}"
   chatToolRunning: "运行中…"
   chatToolFailed: "失败"

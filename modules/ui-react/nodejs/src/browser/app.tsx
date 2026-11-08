@@ -20,7 +20,7 @@ interface AppDocument {
   /** The language the documents are in: a catalog's, else the application's own. */
   lang?: string;
   /** Every page the application serves: what a move within it may reach. */
-  pages: { path: string; title: TranslatedText }[];
+  pages: { path: string; title?: TranslatedText }[];
   /** The navigation tree and how it is drawn. */
   navigation: NavigationSpec;
   /** The application's own header nodes, before its title and after its
@@ -39,7 +39,8 @@ interface PageDocument {
   bundle: string;
   digest: string;
   path: string;
-  title: TranslatedText;
+  /** Absent for a page with no title: no heading is drawn. */
+  title?: TranslatedText;
   lang?: string;
   /** The query parameters the page's nodes read, by name. */
   query?: Record<string, JsonSchema>;
@@ -232,7 +233,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     let current = true;
     void applyStylesheets([...app.stylesheets, ...Object.values(app.controls.stylesheets)]).then(() => current && setStyled(true));
     const title = formatText(app.texts, app.title, {});
-    document.title = declared ? `${formatText(app.texts, declared.title, {})} · ${title}` : title;
+    document.title = declared?.title ? `${formatText(app.texts, declared.title, {})} · ${title}` : title;
     if (app.lang === undefined) document.documentElement.removeAttribute("lang");
     else document.documentElement.lang = app.lang;
     return () => {
@@ -305,7 +306,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
                 </>
               ) : (
                 <>
-                  <h1 data-telo-part="page-title">{formatText(texts, declared.title, {})}</h1>
+                  {declared.title && <h1 data-telo-part="page-title">{formatText(texts, declared.title, {})}</h1>}
                   <PageSlotContext.Provider value={slot}>
                     <div ref={setSlotElement} style={{ display: "contents" }} />
                     <div style={{ display: claims > 0 ? "none" : "contents" }}>{shown ? (

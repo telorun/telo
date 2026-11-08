@@ -147,6 +147,7 @@ messages:
   chatThinking: "Sto pensando…"
   chatShowDetails: "Mostra dettagli"
   chatHideDetails: "Nascondi dettagli"
+  chatToolPreview: "Anteprima"
   chatToolCall: "Strumento: {$name}"
   chatToolRunning: "In esecuzione…"
   chatToolFailed: "Non riuscito"

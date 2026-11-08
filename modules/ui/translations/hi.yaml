@@ -159,6 +159,7 @@ messages:
   chatThinking: "सोच रहा है…"
   chatShowDetails: "विवरण दिखाएँ"
   chatHideDetails: "विवरण छिपाएँ"
+  chatToolPreview: "पूर्वावलोकन"
   chatToolCall: "टूल: {$name}"
   chatToolRunning: "चल रहा है…"
   chatToolFailed: "विफल"

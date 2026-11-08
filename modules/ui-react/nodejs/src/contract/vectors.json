@@ -1573,6 +1573,7 @@
           { "props": { "name": "filter" } },
           { "props": { "name": "go" } },
           { "props": { "name": "loading" } },
+          { "props": { "name": "maximize" } },
           { "props": { "name": "menu" } },
           { "props": { "name": "more" } },
           { "props": { "name": "next" } },

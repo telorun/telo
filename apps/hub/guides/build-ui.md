@@ -72,8 +72,8 @@ mounts:
 inline (`ref: { kind: Ui.Listing, … }`); `taskTable` is used twice.
 
 - `title` and `theme` (the look: `!ref UiReact.defaultTheme`, or another) are
-  required. `pages` (at least one) are `Ui.Page`s — `{ path, title, query?,
-  width?, children }`, each path unique — inline or `!ref`.
+  required. `pages` (at least one) are `Ui.Page`s — `{ path, title?, query?,
+  width?, children }`, each path unique — inline or `!ref`. Omit `title` for no heading.
 - `navigation: { items, placement? }` is the menu, naming pages by `!ref`, not
   path: `{ type: page, page, text? }`, `{ type: link, text, href }`,
   `{ type: group, text, items }`, each with `when?` and `icon?` (a

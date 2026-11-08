@@ -149,6 +149,7 @@ messages:
   chatThinking: "Denkt na…"
   chatShowDetails: "Details tonen"
   chatHideDetails: "Details verbergen"
+  chatToolPreview: "Voorbeeld"
   chatToolCall: "Hulpmiddel: {$name}"
   chatToolRunning: "Bezig…"
   chatToolFailed: "Mislukt"
