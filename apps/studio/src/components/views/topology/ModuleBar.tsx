@@ -291,13 +291,15 @@ export function ModuleBar({
             ? "current"
             : version.compatibility === "too-new"
               ? "needs newer telo"
-              : version.compatibility === "unreadable"
-                ? "unreadable"
-                : undefined,
+              : version.compatibility === "too-old"
+                ? "needs older telo"
+                : version.compatibility === "unreadable"
+                  ? "unreadable"
+                  : undefined,
           noteTone: current ? "muted" : "warn",
           title:
-            version.compatibility === "too-new"
-              ? `${version.version} requires a newer telo than this one`
+            version.compatibility === "too-new" || version.compatibility === "too-old"
+              ? `${version.version} ${version.detail ?? "cannot run on this telo"}`
               : version.compatibility === "unreadable"
                 ? `${version.version} declares a requirement that cannot be read`
                 : undefined,

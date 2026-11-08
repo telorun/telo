@@ -11,6 +11,10 @@ metadata:
     a stream to standard output chunk by chunk, and show a spinner while a slow
     stream produces its first item. Styling renders as ANSI on a terminal and strips
     to plain text when piped.
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.82.0" }
+    reason: "Its line reader performs a revertible effect (`ctx.effect(...).perform()`), which kernels before 0.82.0 do not provide."
 exports:
   kinds: [WriteLine, Write, ReadLine, WriteStream, StreamWait]
   resources: [writeLine, write, readLine]

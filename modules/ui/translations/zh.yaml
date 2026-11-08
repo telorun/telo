@@ -52,6 +52,9 @@ messages:
   filterControl: "{$label} {$operator}"
   filterChip: "{$label} {$operator} {$value}"
   filterGroupSummary: "{$label}：{$summary}"
+  searchFilter: 搜索
+  searchChip: "搜索: {$text}"
+  searchAndFilter: 搜索和筛选
   rangeFrom: 开始
   rangeTo: 结束
   rangeStartsAfterEnd: 开始时间不能晚于结束时间
@@ -122,6 +125,7 @@ messages:
   chatThinking: "思考中…"
   chatShowDetails: "显示详情"
   chatHideDetails: "隐藏详情"
+  chatToolPreview: "预览"
   chatToolCall: "工具:{$name}"
   chatToolRunning: "运行中…"
   chatToolFailed: "失败"

@@ -16,7 +16,7 @@ import {
 } from "@telorun/sdk";
 import { canonicalJson } from "./canonical-json.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
-import { memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
+import { memberForbidden, memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
 import { liftFragmentDefs, ManifestRootSchema } from "./manifest-schemas.js";
 import { deepEquals } from "./migrations/match.js";
 import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
@@ -235,8 +235,8 @@ function compare(
       // A bound constrains the value, as JSON Schema's `minimum` does a number's, and
       // is judged on the value; two types differing in their bounds may still share it.
       if (targetType.entry?.parameters.some((p) => p.bound && p.name === argument)) continue;
-      // A host-entry argument is a token, compared by equality.
-      if (targetType.entry?.parameters.some((p) => p.hostEntry && p.name === argument)) {
+      // A host-entry or media-type argument is a token, compared by equality.
+      if (targetType.entry?.parameters.some((p) => (p.hostEntry || p.hostMediaType) && p.name === argument)) {
         if (sourceArg !== targetArg) {
           conflicts.push({
             message:
@@ -846,6 +846,10 @@ function membersPlaceholder(schema: Record<string, any>): unknown | undefined {
   const members: Record<string, unknown> = { ...(base as Record<string, unknown>) };
   for (const parameter of slot.entry.parameters) {
     if (parameter.member === undefined || slot.args[parameter.name] === undefined) continue;
+    if (memberForbidden(slot, parameter.member)) {
+      delete members[parameter.member];
+      continue;
+    }
     members[parameter.member] = celPlaceholderForSchema(memberSlotSchema(slot, parameter.member)!);
   }
   const built = slot.codec.compose(members);

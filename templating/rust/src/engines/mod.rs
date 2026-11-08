@@ -1,10 +1,13 @@
 //! Per-tag engines, mirroring `../../../nodejs/src/engines/`.
 //!
-//! The Node package defines a `TemplatingEngine` trait-like interface each
-//! engine implements. There is no such abstraction here yet, because this kernel
-//! recognises only the tags whose meaning it can honour — so each module carries
-//! the part of its engine that both halves must agree on, and nothing more.
+//! Each engine implements [`TemplatingEngine`](crate::engine::TemplatingEngine), the
+//! contract of `engine.rs`; `builtins.rs` lists them.
 
+pub mod cel;
+pub mod hole_analysis;
 pub mod include;
+pub mod interpolate;
+pub mod literal;
 pub mod module_path;
 pub mod r#ref;
+pub mod sql;

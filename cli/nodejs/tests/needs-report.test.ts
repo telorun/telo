@@ -188,6 +188,39 @@ describe("telo needs report", () => {
     ]);
   });
 
+  it("lists a need parameter written !module-path as its module-root-relative path", () => {
+    const fixture = path.join(ROOT, "cli/nodejs/tests/__fixtures__/needs-report-module-path");
+    const { stdout, status } = runCli(["needs", "report", "-o", "json", fixture]);
+    expect(status).toBe(0);
+    expect(JSON.parse(stdout).needs.map((n: { parameters: unknown }) => n.parameters)).toEqual([
+      { logo: "./assets/logo.png" },
+    ]);
+  });
+
+  it("lists a desktop host with its parameters and both variables, the token sensitive", () => {
+    const fixture = path.join(ROOT, "cli/nodejs/tests/__fixtures__/needs-report-desktop-host");
+    const { stdout, status } = runCli(["needs", "report", "-o", "json", fixture]);
+    expect(status).toBe(0);
+    expect(JSON.parse(stdout).needs).toMatchObject([
+      {
+        path: "desktopHost",
+        type: { module: "Telo", name: "DesktopHost" },
+        parameters: {
+          identifier: "run.telo.hello",
+          productName: "Hello",
+          icon: "./icon.png",
+          port: "http",
+          showInDock: false,
+          callbackPaths: [],
+        },
+        fields: {
+          endpoint: field("TELO_NEED_DESKTOP_HOST__ENDPOINT", "derived", true, false),
+          token: field("TELO_NEED_DESKTOP_HOST__TOKEN", "derived", true, true),
+        },
+      },
+    ]);
+  });
+
   it("gives no report for an application the kernel would refuse, naming the refusal", () => {
     // The collision is two imports deep, where only the whole-graph table sees it.
     const fixture = path.join(ROOT, "tests/__fixtures__/needs/agreement/env-collision/consumer.yaml");

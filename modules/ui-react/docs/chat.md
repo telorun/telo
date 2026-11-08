@@ -70,7 +70,12 @@ error beside the button instead.
 
 ## The transcript
 
-Messages are drawn in order, each block through the part that fits it:
+Messages are drawn in order. A user entry is one message, and each run of
+consecutive assistant entries is one reply: a tool-using reply is stored as an
+entry holding the calls, an entry per result and an entry holding the answer, so
+it is drawn under one label, its usage summed, and each tool call answered by the
+result whichever loaded entry carries it. Each block is drawn through the part
+that fits it:
 
 - **Text** through the [`markdown` renderer](markdown.md). Raw HTML is text, a
   link follows the address rule, and an image is drawn only from an
@@ -78,8 +83,16 @@ Messages are drawn in order, each block through the part that fits it:
   other origin is drawn as its alt text, because the text is a model's.
 - **Reasoning** in a collapsible panel, open while it streams.
 - **Tool calls** as cards with the tool's name and, when `toolDetail` holds, a
-  details button showing the arguments and the result.
-- **Approvals** as cards with a reason box, Approve and Reject. A turn that
+  details button showing the arguments and the result. Arguments that form an
+  object are drawn each under its name — a text as written, line breaks included,
+  anything nested as JSON — and any other arguments as one block of JSON; an
+  approval card draws its arguments the same way. A block of text sits in a box
+  of bounded height (8rem in the default theme); one the box cuts off has a
+  Preview button opening it whole in a dialog, titled with the argument's name.
+- **Approvals** as one-line cards: a toggle folding the call's arguments (open while
+  the call waits for a decision, folded once decided), and at the end what was decided
+  and a glyph for the state — an alert while waiting, a check once approved, a cross once
+  rejected. A waiting card also has a reason box, Approve and Reject. A turn that
   ended with `approval` is resumed when every pending request has a decision:
   one `POST /turns` carrying `approvals` with an empty `message` and no
   attachments, its events continuing the same reply.

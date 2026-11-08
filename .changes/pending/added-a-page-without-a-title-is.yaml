@@ -1,0 +1,7 @@
+modules:
+  modules/ui-react: Added
+body: "A page without a title is drawn with no heading, titles the document by the
+  application alone, and is left out of an omitted navigation; the page and application
+  documents omit its title. A navigation entry naming such a page without text of its
+  own is refused: UI_NAVIGATION_PAGE_UNTITLED at telo check, for the first two levels of
+  the tree, and ERR_UI_NAVIGATION_PAGE_UNTITLED when the application is created."

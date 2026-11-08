@@ -37,6 +37,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isMap, isScalar, isSeq, parse, parseAllDocuments } from "yaml";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LINE_ANCHOR = "@telorun/analyzer";
@@ -438,6 +439,103 @@ export function stampRustTwins() {
   return crates.map(({ note }) => note);
 }
 
+/** Whether a workspace-relative directory matches a `release.modules` pattern:
+ *  literal segments and `*` for exactly one. */
+function patternMatches(pattern, directory) {
+  const parts = pattern.split("/");
+  const segments = directory.split("/");
+  return parts.length === segments.length && parts.every((part, i) => part === "*" || part === segments[i]);
+}
+
+/** The module directories of the release workspace (`telo-workspace.yaml`'s
+ *  `release.modules`, last match wins as the CLI reads it), workspace-relative,
+ *  each holding a `telo.yaml`. Empty when the repository declares no workspace. */
+export function workspaceModuleDirs() {
+  const marker = join(ROOT, "telo-workspace.yaml");
+  if (!existsSync(marker)) return [];
+  const entries = (parse(readFileSync(marker, "utf8"))?.release?.modules ?? []).map((entry) => {
+    const text = typeof entry === "string" ? entry : entry.path;
+    return text.startsWith("!") ? { negated: true, pattern: text.slice(1) } : { negated: false, pattern: text };
+  });
+  const candidates = new Set();
+  const expand = (dir, segments, prefix) => {
+    if (segments.length === 0) {
+      if (existsSync(join(dir, "telo.yaml"))) candidates.add(prefix);
+      return;
+    }
+    const [head, ...rest] = segments;
+    if (head !== "*") {
+      const next = join(dir, head);
+      if (existsSync(next)) expand(next, rest, prefix ? `${prefix}/${head}` : head);
+      return;
+    }
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+      expand(join(dir, entry.name), rest, prefix ? `${prefix}/${entry.name}` : entry.name);
+    }
+  };
+  for (const { negated, pattern } of entries) if (!negated) expand(ROOT, pattern.split("/"), "");
+  return [...candidates].sort().filter((directory) => {
+    let included = false;
+    for (const { negated, pattern } of entries) if (patternMatches(pattern, directory)) included = !negated;
+    return included;
+  });
+}
+
+/**
+ * `text` with every `>=unreleased` in `requires.telo` and in a `restrictions:`
+ * entry's `requires.telo` replaced by `>=<version>`, spliced into the source so
+ * layout, comments and quote style are kept. `changes` names each place.
+ */
+export function rewriteUnreleasedFloors(text, version) {
+  const owner = parseAllDocuments(text).find((doc) => {
+    const kind = doc.get("kind");
+    return kind === "Telo.Application" || kind === "Telo.Library";
+  });
+  const edits = [];
+  const consider = (requires, where) => {
+    if (!isMap(requires)) return;
+    const node = requires.get("telo", true);
+    if (!isScalar(node) || node.value !== ">=unreleased" || !node.range) return;
+    const [start, end] = node.range;
+    const quote = /^['"]/.exec(text.slice(start, end))?.[0] ?? "";
+    edits.push({ start, end, text: `${quote}>=${version}${quote}`, where });
+  };
+  if (owner && isMap(owner.contents)) {
+    consider(owner.contents.get("requires", true), "requires.telo");
+    const restrictions = owner.contents.get("restrictions", true);
+    if (isSeq(restrictions)) {
+      restrictions.items.forEach((entry, index) => {
+        if (isMap(entry)) consider(entry.get("requires", true), `restrictions[${index}].requires.telo`);
+      });
+    }
+  }
+  let out = text;
+  for (const edit of [...edits].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, edit.start) + edit.text + out.slice(edit.end);
+  }
+  return { text: out, changes: edits.sort((a, b) => a.start - b.start).map((edit) => edit.where) };
+}
+
+/** Rewrite `>=unreleased` in every workspace module manifest to the surface
+ *  version the telo line was just given. Returns one note per rewritten place. */
+export async function rewriteWorkspaceFloors() {
+  const directories = workspaceModuleDirs();
+  if (directories.length === 0) return [];
+  const version = releaseTriple((await teloGeneration()).highest);
+  const notes = [];
+  for (const directory of directories) {
+    const file = join(ROOT, directory, "telo.yaml");
+    const before = readFileSync(file, "utf8");
+    if (!before.includes(">=unreleased")) continue;
+    const { text, changes } = rewriteUnreleasedFloors(before, version);
+    if (changes.length === 0) continue;
+    writeFileSync(file, text);
+    for (const where of changes) notes.push(`${directory}/telo.yaml: ${where} >=unreleased → >=${version}`);
+  }
+  return notes;
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
     const written = stampRustTwins();
@@ -446,6 +544,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         ? `version-line: ${written.join(", ")}`
         : "version-line: every Rust twin already carries its Node twin's version.",
     );
+    for (const note of await rewriteWorkspaceFloors()) console.log(note);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     for (const line of message.split("\n")) console.error(`version-line: ${line}`);

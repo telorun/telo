@@ -62,17 +62,17 @@ describe("createVersionCompatibility", () => {
     });
     const isCompatible = createVersionCompatibility(read, "0.79.0");
 
-    expect(await isCompatible(TIMER, "2.2.0")).toBe("too-new");
-    expect(await isCompatible(TIMER, "2.1.0")).toBe("yes");
+    expect(await isCompatible(TIMER, "2.2.0")).toMatchObject({ compatibility: "too-new" });
+    expect(await isCompatible(TIMER, "2.1.0")).toMatchObject({ compatibility: "yes" });
     // Declaring nothing is compatible — the bootstrap rule.
-    expect(await isCompatible(TIMER, "2.0.0")).toBe("yes");
+    expect(await isCompatible(TIMER, "2.0.0")).toMatchObject({ compatibility: "yes" });
   });
 
   it("answers unknown for a manifest it cannot read, and never blocks", async () => {
     const isCompatible = createVersionCompatibility(async () => {
       throw new Error("offline");
     }, "0.79.0");
-    expect(await isCompatible(TIMER, "2.2.0")).toBe("unknown");
+    expect(await isCompatible(TIMER, "2.2.0")).toMatchObject({ compatibility: "unknown" });
 
     const selection = await selectCompatibleVersion(TIMER, versions, "2.0.0", isCompatible);
     expect(selection.best?.version).toBe("2.2.0");
@@ -89,10 +89,10 @@ describe("createVersionCompatibility", () => {
 
     // The verdict is what is immutable, not the network. Caching `unknown`
     // would leave the UI reading as though every version had been cleared.
-    expect(await isCompatible(TIMER, "2.2.0")).toBe("unknown");
-    expect(await isCompatible(TIMER, "2.2.0")).toBe("too-new");
+    expect(await isCompatible(TIMER, "2.2.0")).toMatchObject({ compatibility: "unknown" });
+    expect(await isCompatible(TIMER, "2.2.0")).toMatchObject({ compatibility: "too-new" });
     // ...and the decided verdict IS cached from then on.
-    expect(await isCompatible(TIMER, "2.2.0")).toBe("too-new");
+    expect(await isCompatible(TIMER, "2.2.0")).toMatchObject({ compatibility: "too-new" });
     expect(attempt).toBe(2);
   });
 
@@ -125,7 +125,7 @@ describe("selectCompatibleVersion", () => {
     );
 
     expect(selection.best?.version).toBe("2.1.0");
-    expect(selection.heldBack).toEqual({ version: "2.2.0", reason: "too-new" });
+    expect(selection.heldBack).toMatchObject({ version: "2.2.0", reason: "too-new" });
     // Newest-first with a short-circuit: 2.0.0 is never asked about.
     expect(asked).toEqual(["2.2.0", "2.1.0"]);
   });
@@ -156,7 +156,7 @@ describe("selectCompatibleVersion", () => {
     );
 
     expect(selection.best).toBeNull();
-    expect(selection.heldBack).toEqual({ version: "2.2.0", reason: "too-new" });
+    expect(selection.heldBack).toMatchObject({ version: "2.2.0", reason: "too-new" });
   });
 
   it("keeps 'cannot read the requirement' apart from 'requires a newer telo'", async () => {
@@ -170,7 +170,7 @@ describe("selectCompatibleVersion", () => {
     );
 
     expect(selection.best?.version).toBe("2.1.0");
-    expect(selection.heldBack).toEqual({ version: "2.2.0", reason: "unreadable" });
+    expect(selection.heldBack).toMatchObject({ version: "2.2.0", reason: "unreadable" });
   });
 
   it("never walks backwards from the current version", async () => {
@@ -183,7 +183,7 @@ describe("selectCompatibleVersion", () => {
     );
 
     expect(selection.best).toBeNull();
-    expect(selection.heldBack).toEqual({ version: "2.2.0", reason: "too-new" });
+    expect(selection.heldBack).toMatchObject({ version: "2.2.0", reason: "too-new" });
   });
 });
 
@@ -293,5 +293,105 @@ describe("buildImportUpgrades — compatibility", () => {
 
     expect(set?.upgrades[0]).toMatchObject({ latestVersion: "2.2.0" });
     expect(set?.upgrades[0].heldBack).toBeUndefined();
+  });
+});
+
+/** Geocode's published history: 1.2.1 restricts 1.2.0 and itself, 1.3.1 lifts. */
+const GEOCODE = "oci://ghcr.io/acme/geocode";
+const geocodeVersions: ModuleVersion[] = ["1.3.1", "1.3.0", "1.2.1", "1.2.0", "1.1.0"].map((version) => ({ version }));
+
+function geocode(version: string, telo: string, restrictions: string[] = []): string {
+  return [
+    "kind: Telo.Library",
+    "metadata:",
+    "  name: Geocode",
+    `  version: ${version}`,
+    "requires:",
+    `  telo: "${telo}"`,
+    ...(restrictions.length > 0 ? ["restrictions:", ...restrictions] : []),
+    "",
+  ].join("\n");
+}
+
+const geocodeHistory: Record<string, string> = {
+  "1.1.0": geocode("1.1.0", ">=0.121.0"),
+  "1.2.0": geocode("1.2.0", ">=0.121.0"),
+  "1.2.1": geocode("1.2.1", ">=0.121.0", [
+    '  - versions: ">=1.2.0"',
+    '    requires: { telo: "<0.122.0" }',
+    "    reason: Lookup never returns on telo 0.122.0 and later.",
+  ]),
+  "1.3.0": geocode("1.3.0", ">=0.123.0"),
+  "1.3.1": geocode("1.3.1", ">=0.123.0", [
+    '  - versions: ">=1.2.0 <=1.2.1"',
+    '    requires: { telo: ">=0.121.0" }',
+    "    reason: Lookup works on every telo again since telo 0.122.1.",
+  ]),
+};
+const published = geocodeVersions.map((v) => v.version);
+/** Before 1.3.1 lifts anything. */
+const beforeLift = geocodeVersions.filter((v) => v.version !== "1.3.1");
+const publishedBeforeLift = beforeLift.map((v) => v.version);
+
+describe("restrictions held by a newer version", () => {
+  it("holds 1.2.0 and 1.2.1 back on telo 0.122.0 and says which entry did", async () => {
+    const { read } = reader(geocodeHistory);
+    const isCompatible = createVersionCompatibility(read, "0.122.0");
+
+    expect(await isCompatible(GEOCODE, "1.2.0", publishedBeforeLift)).toMatchObject({
+      compatibility: "too-old",
+      bound: "<0.122.0",
+      source: { from: "restriction", version: "1.2.1" },
+    });
+    expect(await isCompatible(GEOCODE, "1.2.1", publishedBeforeLift)).toMatchObject({
+      compatibility: "too-old",
+      source: { from: "restriction", version: "1.2.1" },
+    });
+    // The pin's own bytes carry no restriction: without the newer versions it is fine.
+    expect(await isCompatible(GEOCODE, "1.2.0")).toMatchObject({ compatibility: "yes" });
+  });
+
+  it("offers no upgrade lens past 1.1.0 on telo 0.122.0", async () => {
+    const { read } = reader(geocodeHistory);
+    const selection = await selectCompatibleVersion(
+      GEOCODE,
+      beforeLift,
+      "1.1.0",
+      createVersionCompatibility(read, "0.122.0"),
+    );
+    expect(selection.best).toBeNull();
+    expect(selection.heldBack).toMatchObject({ version: "1.3.0", reason: "too-new" });
+  });
+
+  it("marks 1.2.0 selectable once 1.3.1 lifts the telo key on 0.122.1, and 1.2.1 still held by its own entry", async () => {
+    const { read } = reader(geocodeHistory);
+    const marked = await markVersionCompatibility(
+      GEOCODE,
+      geocodeVersions,
+      createVersionCompatibility(read, "0.122.1"),
+    );
+    expect(marked.map((m) => [m.version, m.compatibility])).toEqual([
+      ["1.3.1", "too-new"],
+      ["1.3.0", "too-new"],
+      ["1.2.1", "too-old"],
+      ["1.2.0", "yes"],
+      ["1.1.0", "yes"],
+    ]);
+    expect(marked.find((m) => m.version === "1.2.1")?.detail).toContain(
+      "Lookup never returns on telo 0.122.0 and later.",
+    );
+  });
+
+  it("marks 1.2.0 held back by 1.2.1's entry on 0.122.0 and reads each version once", async () => {
+    const { asked, read } = reader(geocodeHistory);
+    const isCompatible = createVersionCompatibility(read, "0.122.0");
+    const marked = await markVersionCompatibility(GEOCODE, beforeLift, isCompatible);
+
+    expect(marked.find((m) => m.version === "1.2.0")).toMatchObject({
+      compatibility: "too-old",
+      detail: expect.stringContaining("1.2.1"),
+    });
+    await markVersionCompatibility(GEOCODE, beforeLift, isCompatible);
+    expect([...asked].sort()).toEqual([...publishedBeforeLift].sort());
   });
 });

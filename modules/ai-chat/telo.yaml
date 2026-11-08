@@ -12,11 +12,10 @@ metadata:
     conversation that sends it, and read conversations and their branching
     transcripts back. Retried sends start one turn, and a turn whose writer dies
     is reported as failed.
-requires:
-  # 0.122.0 refuses this file: its templated bodies read `inputs` and `steps`,
-  # and its `http-server` import declares display messages. Verified by
-  # `telo release check`.
-  telo: ">=0.129.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.129.0" }
+    reason: "0.122.0 refuses this module: its templated bodies read `inputs` and `steps`, and its `http-server` import declares display messages. Checked against 0.129.0; nothing older was verified to run it."
 imports:
   Conversations: ../conversation
   Ai: ../ai
@@ -99,6 +98,21 @@ schema:
             How long an upload no message has sent stays usable; past it, a message
             naming it is refused and an expiry pass removes it. 24h when omitted.
           x-telo-type: Telo.Duration
+    titles:
+      title: Titles
+      description: >-
+        Names untitled conversations: as a turn ends on a conversation with no
+        title, this model writes one from the user's message and the reply. A
+        title already set is kept; omitted, conversations stay untitled until
+        renamed.
+      type: object
+      additionalProperties: false
+      required: [model]
+      properties:
+        model:
+          title: Model
+          description: The model asked for a three-to-six-word title; a small, fast one is enough.
+          x-telo-ref: { kind: Ai.Model, use: call }
   x-telo-resource-rules:
     - condition: !cel "!has(self.attachments) || !has(self.attachments.pendingRetention) || duration(self.attachments.pendingRetention) > duration('0s')"
       code: AI_CHAT_PENDING_RETENTION_NOT_POSITIVE
@@ -186,6 +200,7 @@ resources:
   - { kind: AiConversation.Create, metadata: { name: create }, store: !cel "self.conversation.store" }
   - { kind: AiConversation.Read, metadata: { name: read }, store: !cel "self.conversation.store" }
   - { kind: AiConversation.Admit, metadata: { name: admit }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.Update, metadata: { name: update }, store: !cel "self.conversation.store" }
   - { kind: AiConversation.Append, metadata: { name: append }, store: !cel "self.conversation.store" }
   - { kind: AiConversation.Entries, metadata: { name: entries }, store: !cel "self.conversation.store" }
   - { kind: AiConversation.RecordApproval, metadata: { name: recordApproval }, store: !cel "self.conversation.store" }
@@ -206,6 +221,7 @@ resources:
     create: !ref create
     read: !ref read
     admit: !ref admit
+    update: !ref update
     append: !ref append
     entries: !ref entries
     recordApproval: !ref recordApproval
@@ -235,13 +251,14 @@ controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/sr
 schema:
   type: object
   additionalProperties: false
-  required: [conversation, agent, create, read, admit, append, entries, recordApproval, journalRead, journalClaim, journalSink, journalSource, journalRemoval, registerAttachment, readAttachment, blobGet, blobHead, blobPut]
+  required: [conversation, agent, create, read, admit, update, append, entries, recordApproval, journalRead, journalClaim, journalSink, journalSource, journalRemoval, registerAttachment, readAttachment, blobGet, blobHead, blobPut]
   properties:
     conversation: { description: "The endpoint, read for what it offers.", x-telo-ref: { kind: Self.Conversation, use: dependency } }
     agent: { description: The agent each turn runs., x-telo-ref: { kind: Ai.AgentStream, use: [call, trigger.consumer] } }
     create: { x-telo-ref: { kind: AiConversation.Create, use: call } }
     read: { x-telo-ref: { kind: AiConversation.Read, use: call } }
     admit: { x-telo-ref: { kind: AiConversation.Admit, use: call } }
+    update: { x-telo-ref: { kind: AiConversation.Update, use: call } }
     append: { x-telo-ref: { kind: AiConversation.Append, use: call } }
     entries: { x-telo-ref: { kind: AiConversation.Entries, use: call } }
     recordApproval: { x-telo-ref: { kind: AiConversation.RecordApproval, use: call } }

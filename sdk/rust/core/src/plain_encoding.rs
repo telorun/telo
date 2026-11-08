@@ -208,11 +208,24 @@ pub mod cel_duration {
     }
 }
 
+/// The text a host value written in `encoding` is — Node's `PLAIN_ENCODINGS[encoding].encode`
+/// over a value whose type declares members — or `None` when its payload is not that
+/// encoding's value or the encoding builds no value from members.
+pub fn host_text(encoding: &str, host: &telorun_cel_value::CelHostValue) -> Option<String> {
+    match encoding {
+        "url-text" => host.payload().downcast_ref::<url_text::Url>().map(url_text::write),
+        _ => None,
+    }
+}
+
 /// `url-text` — the plain encoding of `Telo.Url`, and how a URL is built from its
 /// members. The Rust half of `sdk/nodejs/src/url-text.ts`: both read, write and build
 /// every row of `sdk/value-types/encodings/url-text.json` alike, refusals word for word.
 pub mod url_text {
     use serde_json::{Map, Value};
+
+    /// The type key a URL value carries — Node's `URL_TYPE_KEY`.
+    pub const URL_TYPE_KEY: &str = "Telo.Url";
 
     /// The members a URL holds, unescaped. The query is ordered by key, compared as
     /// UTF-16 code units, which is the order its text writes it in.

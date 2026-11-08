@@ -59,6 +59,10 @@ variables:
     - "modules/shell/tests/host-behavior.yaml"
     - "modules/shell/tests/argv-and-env-unset.yaml"
     - "modules/shell/tests/per-call-cwd.yaml"
+
+    # The fixture desktop host listens on a unix socket path; Windows would need a named
+    # pipe, and a manifest cannot choose its endpoint by operating system.
+    - "modules/desktop/tests/host-session.yaml"
   filter:
     type: string
     arg: { position: 0 }

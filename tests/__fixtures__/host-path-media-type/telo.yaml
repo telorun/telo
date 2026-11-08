@@ -1,0 +1,15 @@
+# Hands the library a variable declared to hold a JPEG where the library's
+# input takes a PNG.
+kind: Telo.Application
+metadata: { name: HostPathMediaTypeApp, version: 1.0.0 }
+imports:
+  Lib:
+    source: ./lib
+    variables:
+      logo: !cel "variables.logo"
+variables:
+  logo:
+    env: LOGO
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/jpeg }
+    default: logo.jpg

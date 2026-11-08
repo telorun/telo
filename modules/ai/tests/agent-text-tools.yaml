@@ -1,0 +1,553 @@
+kind: Telo.Application
+metadata:
+  name: AgentTextToolsTest
+  version: 1.0.0
+  description: |
+    An agent's `textTools` gather a reply's fenced blocks into one call per entry,
+    run after the reply's JSON calls and answered in the follow-up, through the
+    dispatch a JSON call takes; the run records each call and its result.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref oneCallPerEntry
+  - !ref entriesAfterJsonCalls
+  - !ref failureStopsLaterCalls
+  - !ref unevaluatedArguments
+  - !ref malformedAttribute
+  - !ref contextReachesInputs
+  - !ref oneApprovalPerCall
+  - !ref cutOffReply
+  - !ref fencesInsideFences
+  - !ref storedRunReplays
+  - !ref streamMatchesBuffered
+---
+# Renders what it was given, one change per block, so a result shows every block.
+kind: Ai.Tools
+metadata: { name: fileTools }
+tools:
+  - name: apply_changes
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            changes:
+              type: array
+              items:
+                type: object
+                properties: { path: { type: string }, form: { type: string }, body: { type: string } }
+      value: !cel "'wrote ' + inputs.changes.map(c, c.path + ' (' + c.form + ') ' + c.body).join(', ')"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [changes]
+      properties: { changes: { type: array } }
+  - name: take_note
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, properties: { text: { type: string } } }
+      value: !cel "'noted ' + inputs.text"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties: { text: { type: string } }
+  - name: break_build
+    tool:
+      kind: Telo.Sequence
+      steps:
+        - { name: fail, throw: { code: ERR_BUILD_BROKEN, message: the build is broken } }
+    parameters: { type: object, properties: { text: { type: string } } }
+  - name: multiply
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, properties: { a: { type: integer }, b: { type: integer } } }
+      value: !cel "string(inputs.a * inputs.b)"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [a, b]
+      properties: { a: { type: integer }, b: { type: integer } }
+---
+# The reply of `oneCallPerEntry`, `storedRunReplays` and `streamMatchesBuffered`.
+kind: Ai.Agent
+metadata: { name: editor }
+model:
+  kind: AiEcho.EchoModel
+  replies:
+    - text: |
+        Two files:
+        ```telo-edit path=a.yaml
+        x
+        ```
+        ```telo-file path=b.yaml
+        kind: X
+        ```
+    - { text: done }
+textTools:
+  - tags: [telo-edit, telo-file]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})"
+toolProviders:
+  - provider: !ref fileTools
+---
+# One entry listing two tags is one call, its blocks in reply order; the result
+# is headed by the tool and the blocks it carried.
+kind: Telo.Sequence
+metadata: { name: oneCallPerEntry }
+steps:
+  - name: run
+    invoke: !ref editor
+    inputs: { prompt: "edit" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        steps: !cel "steps.run.result.steps"
+        toolResults: !cel "steps.run.result.toolResults"
+        messages: !cel "steps.run.result.messages"
+      expected:
+        steps:
+          - text: "Two files:\n```telo-edit path=a.yaml\nx\n```\n```telo-file path=b.yaml\nkind: X\n```\n"
+            toolCalls: []
+            textCalls:
+              - id: block_a87a22d3-38ee-8259-a084-9bee7f5240b1
+                tool: apply_changes
+                blocks:
+                  - { tag: telo-edit, attributes: { path: a.yaml } }
+                  - { tag: telo-file, attributes: { path: b.yaml } }
+                ok: true
+          - { text: done, toolCalls: [], textCalls: [] }
+        toolResults:
+          - toolCallId: block_a87a22d3-38ee-8259-a084-9bee7f5240b1
+            name: apply_changes
+            content: "apply_changes (telo-edit path=a.yaml, telo-file path=b.yaml):\nwrote a.yaml (telo-edit) x\n, b.yaml (telo-file) kind: X\n"
+            origin: text
+        messages:
+          - role: assistant
+            content: "Two files:\n```telo-edit path=a.yaml\nx\n```\n```telo-file path=b.yaml\nkind: X\n```\n"
+          - role: user
+            content:
+              - type: text
+                text: "apply_changes (telo-edit path=a.yaml, telo-file path=b.yaml):\nwrote a.yaml (telo-edit) x\n, b.yaml (telo-file) kind: X\n"
+                kind: text-tool-result
+                toolCallId: block_a87a22d3-38ee-8259-a084-9bee7f5240b1
+          - { role: assistant, content: done }
+---
+# Two entries are two calls, ordered by each entry's first block, run one at a
+# time after the reply's JSON calls; the next model call is given the JSON
+# results first, then the text results.
+kind: Telo.Sequence
+metadata: { name: entriesAfterJsonCalls }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        replies:
+          - text: |
+              ```note
+              first
+              ```
+              ```telo-edit path=a.yaml
+              x
+              ```
+              ```note
+              second
+              ```
+            toolCalls:
+              - { id: j1, name: multiply, arguments: { a: 2, b: 3 } }
+              - { id: j2, name: multiply, arguments: { a: 4, b: 5 } }
+          - { text: done }
+      maxParallelTools: 2
+      textTools:
+        - tags: [telo-edit, telo-file]
+          tool: apply_changes
+          arguments:
+            changes: !cel "blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})"
+        - tags: [note]
+          tool: take_note
+          arguments:
+            text: !cel "blocks.map(b, b.body).join('+')"
+      toolProviders:
+        - provider: !ref fileTools
+    inputs: { prompt: "go" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        results: !cel "steps.run.result.toolResults.map(r, r.name + ': ' + r.content)"
+        replyMessages: !cel "steps.run.result.messages.map(m, m.role == 'tool' ? 'tool ' + m.toolCallId : m.role)"
+        textParts: !cel "steps.run.result.messages[3].content.map(p, p.toolCallId == steps.run.result.steps[0].textCalls[0].id)"
+      expected:
+        results:
+          - "multiply: 6"
+          - "multiply: 20"
+          - "take_note: take_note (note, note):\nnoted first\n+second\n"
+          - "apply_changes: apply_changes (telo-edit path=a.yaml):\nwrote a.yaml (telo-edit) x\n"
+        # The JSON results, then one user message of the text results in call order.
+        replyMessages: [assistant, tool j1, tool j2, user, assistant]
+        textParts: [true, false]
+---
+# With `onToolError: feedback`, a text call that fails stops the reply's later
+# text calls, which are answered as not run.
+kind: Telo.Sequence
+metadata: { name: failureStopsLaterCalls }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        replies:
+          - text: |
+              ```oops
+              now
+              ```
+              ```telo-edit path=a.yaml
+              x
+              ```
+          - { text: done }
+      textTools:
+        - tags: [oops]
+          tool: break_build
+          arguments:
+            text: !cel "blocks[0].body"
+        - tags: [telo-edit]
+          tool: apply_changes
+          arguments:
+            changes: !cel "blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})"
+      toolProviders:
+        - provider: !ref fileTools
+    inputs: { prompt: "go" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        results: !cel "steps.run.result.toolResults.map(r, [r.name, r.content, r.error])"
+        ok: !cel "steps.run.result.steps[0].textCalls.map(c, c.ok)"
+      expected:
+        results:
+          - [break_build, "break_build (oops):\nError: the build is broken", true]
+          - [apply_changes, "apply_changes (telo-edit path=a.yaml):\nnot run: an earlier text call of this reply failed.", true]
+        ok: [false, false]
+---
+# A block missing an attribute the mapping reads fails the call with the
+# evaluation error; the tool, which would have succeeded, is not dispatched.
+kind: Telo.Sequence
+metadata: { name: unevaluatedArguments }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        replies:
+          - text: |
+              ```telo-edit
+              x
+              ```
+          - { text: done }
+      textTools:
+        - tags: [telo-edit]
+          tool: apply_changes
+          arguments:
+            changes: !cel "blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})"
+      toolProviders:
+        - provider: !ref fileTools
+    inputs: { prompt: "go" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.run.result.toolResults.map(r, [r.content, r.error])"
+      expected:
+        - - "apply_changes (telo-edit):\nError: Expression !cel \"blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})\" failed: no such key: \"path\""
+          - true
+---
+# A listed fence whose attribute is not name=value fails its entry's call with
+# the rule, and no block of the reply runs: the valid block beside it is not run.
+kind: Telo.Sequence
+metadata: { name: malformedAttribute }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        replies:
+          - text: |
+              ```telo-edit path=a.yaml
+              x
+              ```
+              ```telo-file path="b.yaml"
+              y
+              ```
+          - { text: done }
+      textTools:
+        - tags: [telo-edit, telo-file]
+          tool: apply_changes
+          arguments:
+            changes: !cel "blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})"
+      toolProviders:
+        - provider: !ref fileTools
+    inputs: { prompt: "go" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.run.result.toolResults.map(r, [r.content, r.error])"
+      expected:
+        - - "apply_changes (telo-file):\nError: attribute `path=\"b.yaml\"` of the telo-file block must be name=value, separated by single spaces, with no quotes or spaces in either part; no block of this reply was run."
+          - true
+---
+# The tool's own `inputs:` mapping runs, reading the caller's `context`.
+kind: Ai.Tools
+metadata: { name: turnTools }
+contextType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [turnId], properties: { turnId: { type: string } } }
+tools:
+  - name: stamp
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, properties: { turn: { type: string }, count: { type: integer } } }
+      value: !cel "'turn ' + inputs.turn + ', ' + string(inputs.count) + ' blocks'"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [changes]
+      properties: { changes: { type: array } }
+    inputs:
+      turn: !cel "context.turnId"
+      count: !cel "size(arguments.changes)"
+---
+kind: Telo.Sequence
+metadata: { name: contextReachesInputs }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        replies:
+          - text: "```telo-edit path=a\nx\n```\n```telo-edit path=b\ny\n```\n"
+          - { text: done }
+      textTools:
+        - tags: [telo-edit]
+          tool: stamp
+          arguments:
+            changes: !cel "blocks.map(b, b.body)"
+      toolProviders:
+        - provider: !ref turnTools
+    inputs: { prompt: "go", context: { turnId: t-7 } }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.run.result.toolResults.map(r, r.content)"
+      expected: ["stamp (telo-edit path=a, telo-edit path=b):\nturn t-7, 2 blocks"]
+---
+# A gated text call is put to the approver once for all its blocks.
+kind: Telo.Sequence
+metadata: { name: oneApprovalPerCall }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        replies:
+          - text: "```telo-edit path=a\nx\n```\n```telo-file path=b\ny\n```\n"
+          - { text: done }
+      textTools:
+        - tags: [telo-edit, telo-file]
+          tool: apply_changes
+          arguments:
+            changes: !cel "blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})"
+      toolProviders:
+        - provider: !ref fileTools
+          approval: { include: [apply_changes] }
+      approver:
+        invoke:
+          kind: Run.Value
+          inputType:
+            kind: Telo.JsonSchema
+            schema: { type: object, properties: { count: { type: integer } } }
+          value: { verdict: approve }
+        inputs:
+          count: !cel "size(toolCall.arguments.changes)"
+        result:
+          decision: !cel "result.verdict"
+    inputs: { prompt: "go" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        decisions: !cel "steps.run.result.approvalDecisions.map(d, [d.name, d.decision])"
+        results: !cel "steps.run.result.toolResults.map(r, r.content)"
+      expected:
+        decisions: [[apply_changes, approve]]
+        results: ["apply_changes (telo-edit path=a, telo-file path=b):\nwrote a (telo-edit) x\n, b (telo-file) y\n"]
+---
+# A reply that ends inside a listed block runs none of its blocks, whatever its
+# finish reason, and the next call is told why.
+kind: Telo.Sequence
+metadata: { name: cutOffReply }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        replies:
+          - text: "```telo-edit path=a\nx\n```\n```telo-file path=b\nhalf of it"
+            finishReason: length
+          - { text: done }
+      textTools:
+        - tags: [telo-edit, telo-file]
+          tool: apply_changes
+          arguments:
+            changes: !cel "blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})"
+      toolProviders:
+        - provider: !ref fileTools
+    inputs: { prompt: "go" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        results: !cel "steps.run.result.toolResults.map(r, [r.content, r.error])"
+        textCalls: !cel "steps.run.result.steps[0].textCalls.map(c, [c.blocks, c.ok])"
+      expected:
+        results:
+          - ["the reply ended inside telo-file path=b before its closing fence; no block of this reply was run. Send the change again in smaller blocks.", true]
+        textCalls: [[[{ tag: telo-file, attributes: { path: b } }], false]]
+---
+# A listed fence shown inside a longer fence of another info string is text, and
+# a four-backtick block's three-backtick fence is part of its body.
+kind: Telo.Sequence
+metadata: { name: fencesInsideFences }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        replies:
+          - text: |
+              For example:
+              ````text
+              ```telo-edit path=example.yaml
+              x
+              ```
+              ````
+              ````telo-file path=README.md
+              ```yaml
+              kind: X
+              ```
+              ````
+          - { text: done }
+      textTools:
+        - tags: [telo-edit, telo-file]
+          tool: apply_changes
+          arguments:
+            changes: !cel "blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})"
+      toolProviders:
+        - provider: !ref fileTools
+    inputs: { prompt: "go" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.run.result.toolResults.map(r, r.content)"
+      expected: ["apply_changes (telo-file path=README.md):\nwrote README.md (telo-file) ```yaml\nkind: X\n```\n"]
+---
+# A stored run replays exactly: given the conversation up to the text results,
+# another run finds every text call answered, runs none again, and the model is
+# given what the first run's follow-up was given.
+kind: Telo.Sequence
+metadata: { name: storedRunReplays }
+steps:
+  - name: first
+    invoke: !ref editor
+    inputs: { prompt: "edit" }
+  - name: again
+    invoke: !ref editor
+    inputs:
+      messages: !cel "[{'role': 'user', 'content': 'edit'}] + steps.first.result.messages.filter(m, m.content != 'done')"
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        toolResults: !cel "steps.again.result.toolResults"
+        messages: !cel "steps.again.result.messages"
+      expected:
+        toolResults: []
+        messages: [{ role: assistant, content: done }]
+---
+# The streaming agent runs the same calls and records the same messages and
+# results, streaming the blocks' text as it is written.
+kind: Telo.Sequence
+metadata: { name: streamMatchesBuffered }
+steps:
+  - name: buffered
+    invoke: !ref editor
+    inputs: { prompt: "edit" }
+  - name: streamed
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        replies:
+          - text: |
+              Two files:
+              ```telo-edit path=a.yaml
+              x
+              ```
+              ```telo-file path=b.yaml
+              kind: X
+              ```
+          - { text: done }
+      textTools:
+        - tags: [telo-edit, telo-file]
+          tool: apply_changes
+          arguments:
+            changes: !cel "blocks.map(b, {'path': b.attributes.path, 'form': b.tag, 'body': b.body})"
+      toolProviders:
+        - provider: !ref fileTools
+    inputs: { prompt: "edit" }
+  - name: parts
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.streamed.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        messages: !cel "steps.parts.result.items.filter(p, p.type == 'message').map(p, p.message)"
+        toolResults: !cel >-
+          steps.parts.result.items.filter(p, p.type == 'tool-result').map(p, {'toolCallId':
+          p.toolResult.toolCallId, 'name': p.toolResult.name, 'content': p.toolResult.content,
+          'origin': p.toolResult.origin})
+        deltas: !cel "steps.parts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta)"
+      expected:
+        messages: !cel "steps.buffered.result.messages"
+        toolResults: !cel "steps.buffered.result.toolResults"
+        deltas:
+          - "Two files:\n"
+          - "```telo-edit path=a.yaml\n"
+          - "x\n"
+          - "```\n"
+          - "```telo-file path=b.yaml\n"
+          - "kind: X\n"
+          - "```\n"
+          - done

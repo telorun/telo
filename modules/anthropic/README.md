@@ -210,7 +210,7 @@ A cancelled call is `ERR_INVOKE_CANCELLED`, never one of the model codes; a dura
 
 ## Requirements
 
-The module declares `requires: telo: ">=0.114.0"`; an older runtime reports `MODULE_REQUIRES_NEWER_RUNTIME`.
+The module restricts itself to telo 0.114.0 or newer (a `restrictions:` entry); an older runtime reports `MODULE_REQUIRES_NEWER_RUNTIME` with its reason.
 
 ## Live tests
 

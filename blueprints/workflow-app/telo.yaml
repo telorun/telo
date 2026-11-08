@@ -16,10 +16,10 @@ metadata:
     exposing every workflow as its own endpoint with a generated OpenAPI
     document.
   categories: [Transport]
-# Forwarding each workflow's handler reference through `self.workflows` fails at
-# boot on an older kernel, which cannot name an already-injected instance.
-# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-requires: { telo: ">=0.128.0" }
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.128.0" }
+    reason: "Forwarding each workflow's handler reference through `self.workflows` fails at boot on a kernel before 0.128.0, which cannot name an already-injected instance."
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.

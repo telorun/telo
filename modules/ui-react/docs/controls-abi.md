@@ -1,4 +1,4 @@
-# The controls contract — `ui_react_controls-3`
+# The controls contract — `ui_react_controls-4`
 
 What a theme's controls are written against. The renderer draws every
 interactive leaf of a page — every text box, choice, list, overlay, menu,
@@ -37,6 +37,7 @@ control's **sub-parts** are the only other parts it may draw.
 | `OptionGroup` | Choice | `options`, `filter-options`, `filters-presets` | `option`, `filter-option`, `filters-preset` |
 | `Select` | Choice | `select`, `filter-select` | `select-content`, `select-item`, `icon` |
 | `MultiSelect` | Choice | `select`, `filter-select` | `select-content`, `select-item`, `icon` |
+| `Combobox` | Choice | `search-input` | `combobox-content`, `combobox-group`, `combobox-item`, `icon` |
 | `Listbox` | Choice | `picker-list` | `picker-option`, `option-hint` |
 | `Dialog` | Overlay | `surface` | `surface-overlay` |
 | `Drawer` | Overlay | `surface` | `surface-overlay` |
@@ -50,7 +51,7 @@ control's **sub-parts** are the only other parts it may draw.
 
 The glyph names an `Icon` is drawn with are closed too: `add`, `alert`,
 `attach`, `close`, `collapse`, `copy`, `delete`, `done`, `edit`, `expand`, `export`,
-`filter`, `go`, `loading`, `menu`, `more`, `next`, `panel-close`, `panel-open`,
+`filter`, `go`, `loading`, `maximize`, `menu`, `more`, `next`, `panel-close`, `panel-open`,
 `previous`, `regenerate`, `remove`, `reset`, `send`, `sort-ascending`,
 `sort-descending`, `sortable`, `stop`. A glyph inside a
 control — a select's chevron, a checkbox's mark, a tag's × — is that control's
@@ -58,7 +59,8 @@ control — a select's chevron, a checkbox's mark, a tag's × — is that contro
 
 `collapse` and `expand` are disclosure chevrons (open and closed);
 `panel-close` and `panel-open` draw a side panel shown and folded away; `go` is
-an arrow toward a destination; `done` is a check mark, drawn in place of a
+an arrow toward a destination; `maximize` is a button's glyph for
+opening what it belongs to larger, in a dialog; `done` is a check mark, drawn in place of a
 button's own glyph while it shows that a press succeeded. A look mirrors the two panel glyphs for a panel
 at the end edge and `go` in a right-to-left page.
 
@@ -122,6 +124,7 @@ decides what changes.
 | `OptionGroup` | `onChange` → `value` |
 | `Select` | `onChange` → `value`, `onOpenChange` → `open`, `onEndReached` |
 | `MultiSelect` | `onChange` → `value`, `onOpenChange` → `open`, `onEndReached` |
+| `Combobox` | `onChange` → `value`, `onOpenChange` → `open`, `onHighlight` → `highlighted`, `onPick`, `onBackspace` |
 | `Listbox` | `onChange` → `value`, `onEndReached` |
 | `Dialog` | `onOpenChange` → `open` |
 | `Drawer` | `onOpenChange` → `open` |
@@ -150,6 +153,44 @@ confirmation is answered only by Escape or by one of the renderer's buttons.
 carrying no state of theirs on it. `Menu` is a list of things to do
 (`role="menu"`), never a list of places to go: links are `Navigation`'s.
 `Popover` is placed against `anchor`, an element the renderer drew.
+
+## Combobox
+
+`Combobox` is a text box with a list of suggestions that opens under it, in
+the WAI-ARIA combobox pattern with a list popup: the box (`role="combobox"`,
+the `search-input` part, carrying `id` and the semantics) **keeps the focus**
+the whole time, and names the highlighted entry as its
+`aria-activedescendant`, so the list is never tabbed into or focused. The
+renderer draws what surrounds the box — the chips of a search box sit before
+it, inside the element `anchor` names, which the list is placed against; the
+box itself is the anchor when it is not given.
+
+The list is a `combobox-content` (`role="listbox"`, a layer at the end of
+`<body>`) of `combobox-group` sections (`role="group"`), each named by its
+`label` where it has one, each holding `combobox-item` entries
+(`role="option"`). An entry given `checked` is checkable: it carries
+`aria-checked` and `data-state="checked"` or `"unchecked"`, with its `icon`
+while checked, and the list is `aria-multiselectable`; one without it is only
+picked. The highlighted entry carries `data-highlighted` and `aria-selected`.
+No list is drawn while `open` is false or no group holds an entry.
+
+The control reports, and the renderer decides:
+
+- typing: `onChange(text)`, and `onOpenChange(true)` after it where the list
+  is closed; a press on the box and ArrowDown or ArrowUp while it is closed ask
+  to open too;
+- `onHighlight(key)` for ArrowDown and ArrowUp — through the entries of every
+  section in order, round from the last to the first — and for a pointer moving
+  over an entry other than the highlighted one;
+- `onPick(key)` for Enter while an entry is highlighted and for a press on an
+  entry; the list stays as the renderer leaves it, so a checkable entry can be
+  picked again;
+- `onBackspace()` for Backspace while the box holds no text;
+- `onOpenChange(false, reason)` for Escape (`escape`) and a press or the focus
+  outside the list, the box and the anchor (`outside`).
+
+A press on the list does not take the focus from the box. Entries' keys are
+issued by the renderer and unique in the whole list.
 
 ## Navigation
 
@@ -240,11 +281,11 @@ the key the page document gives it and holding which one is chosen; its parts ar
 
 ## Layers
 
-`Select`, `MultiSelect`, `Dialog`, `Drawer`, `Popover`, `Confirmation`, `Menu`,
-`Tooltip` and `Navigation` are the **layer controls**: each draws a layer at
-the end of `<body>` — an overlay's `surface` and a modal one's
-`surface-overlay`, a choice list's `select-content`, a `menu`, a `tooltip`, a
-row's or a rail's `nav-panel`. The contract data marks each of them
+`Select`, `MultiSelect`, `Combobox`, `Dialog`, `Drawer`, `Popover`,
+`Confirmation`, `Menu`, `Tooltip` and `Navigation` are the **layer controls**:
+each draws a layer at the end of `<body>` — an overlay's `surface` and a modal
+one's `surface-overlay`, a choice list's `select-content`, a combobox's
+`combobox-content`, a `menu`, a `tooltip`, a row's or a rail's `nav-panel`. The contract data marks each of them
 `layer: true`.
 
 - **The marker.** The root of every layer a control draws at the end of
@@ -253,7 +294,7 @@ row's or a rail's `nav-panel`. The contract data marks each of them
   application's element nor a supplied one: nothing in it is an element of
   the page. A live layer root keeps `data-telo-layer` while a later modal
   layer makes it `inert`, and stays an element of the page.
-- **One unit.** A set implementing any layer control implements all nine
+- **One unit.** A set implementing any layer control implements all ten
   (`UI_CONTROLS_LAYERS_PARTIAL`), so every layer on a page comes from one
   implementation. A primitive library keeps one stack of the layers it draws,
   and two stacks cannot be made to cooperate — one cancels the Escape or traps
@@ -270,8 +311,9 @@ row's or a rail's `nav-panel`. The contract data marks each of them
   says (a confirmation never closes this way). The press stops at the first
   layer it lies inside of; otherwise it stops after the first **shielding**
   layer, which is still offered it. A modal dialog or drawer, a confirmation,
-  and an open `Select`, `MultiSelect` or `Menu` list shield; a popover, a
-  non-modal dialog or drawer, a navigation panel and a tooltip do not. So a press on the page
+  and an open `Select`, `MultiSelect`, `Combobox` or `Menu` list shield; a
+  popover, a non-modal dialog or drawer, a navigation panel and a tooltip do
+  not. So a press on the page
   closes a chip's popover and the non-modal popover holding the chip
   together, while one made with a list open in that popover closes only the
   list.
@@ -296,7 +338,7 @@ the built-ins:
 This is the built-ins' tested behaviour, not a term every implementation
 meets. A layer built on Radix's overlays cannot meet it — they cancel Escape in
 the capture phase, and a modal one traps the focus and sets `pointer-events:
-none` on `<body>` — which is why the nine are one unit.
+none` on `<body>` — which is why the ten are one unit.
 
 ## States
 
@@ -332,6 +374,10 @@ no terms of the contract.
 | `MultiSelect` | `data-invalid` | `true` | its root |
 | `MultiSelect` | `data-state` | `checked`, `unchecked` | `select-item` |
 | `MultiSelect` | `data-highlighted` | present | `select-item` |
+| `Combobox` | `data-state` | `open`, `closed` | its root, `combobox-content` |
+| `Combobox` | `data-invalid` | `true` | its root |
+| `Combobox` | `data-state` | `checked`, `unchecked` | `combobox-item` |
+| `Combobox` | `data-highlighted` | present | `combobox-item` |
 | `Listbox` | `data-state` | `idle`, `loading` | its root |
 | `Listbox` | `data-state` | `on`, `off` | `picker-option` |
 | `Dialog` | `data-state` | `open`, `closed` | its root, `surface-overlay` |
@@ -549,6 +595,45 @@ export interface MultiSelectProps extends Semantics {
   onEndReached?(): void;
 }
 
+/** One entry of a combobox's list. */
+export interface ComboboxEntry extends Option {
+  /** Finished text drawn beside the label. */
+  hint?: string;
+  /** Given, the entry is checkable and says whether it is checked; without it, it is picked and nothing more. */
+  checked?: boolean;
+}
+
+/** A labelled section of a combobox's list. */
+export interface ComboboxGroup {
+  /** Issued by the renderer, unique in the list. */
+  key: string;
+  /** The section's heading; without it, the section is unlabelled. */
+  label?: string;
+  entries: ComboboxEntry[];
+}
+
+export interface ComboboxProps extends Semantics {
+  /** What is typed. */
+  value: string;
+  placeholder: string;
+  /** The list is shown; it is drawn only while it has an entry. */
+  open: boolean;
+  /** What the list is placed against, where it is not the box itself. */
+  anchor?: HTMLElement | null;
+  /** The sections, in order; an entry's key is unique in the whole list. */
+  groups: ComboboxGroup[];
+  /** The key of the entry the box announces as highlighted, or `""`. */
+  highlighted: string;
+  onChange(value: string): void;
+  onOpenChange(open: boolean, reason?: CloseReason): void;
+  /** The arrow keys, or the pointer over an entry, move the highlight to this key. */
+  onHighlight(key: string): void;
+  /** Enter on the highlighted entry, or a press on an entry. */
+  onPick(key: string): void;
+  /** Backspace in a box with nothing typed. */
+  onBackspace(): void;
+}
+
 export interface ListboxProps {
   /** The list's accessible name. */
   label: string;
@@ -695,6 +780,7 @@ export type IconName =
   | "filter"
   | "go"
   | "loading"
+  | "maximize"
   | "menu"
   | "more"
   | "next"
@@ -714,7 +800,7 @@ export interface IconProps {
   name: IconName;
 }
 
-/** The control set of `ui_react_controls-3`: a module implementing any of them
+/** The control set of `ui_react_controls-4`: a module implementing any of them
  *  exports each under its name. */
 export interface Controls {
   TextInput: ComponentType<TextInputProps>;
@@ -731,6 +817,7 @@ export interface Controls {
   OptionGroup: ComponentType<OptionGroupProps>;
   Select: ComponentType<SelectProps>;
   MultiSelect: ComponentType<MultiSelectProps>;
+  Combobox: ComponentType<ComboboxProps>;
   Listbox: ComponentType<ListboxProps>;
   Dialog: ComponentType<DialogProps>;
   Drawer: ComponentType<DrawerProps>;
@@ -816,8 +903,9 @@ scene's answer is a JSON `body`, a `stream` of server-sent events as text, or
 `pending`, which never answers; an upload is answered from the same list. An element is named by its `part`,
 `text`, `role`, `tag`, `id`, `attributes`, `within` and `index`.
 An expectation names the exact intents reported since the last one, where the
-focus is, what is drawn and what is not, attributes, text, and what is drawn
-outside the application. The interpreter applies each intent to the prop it
+focus is, which element the focused one names as its `aria-activedescendant`
+(or that it names none), what is drawn and what is not, attributes, text, and
+what is drawn outside the application. The interpreter applies each intent to the prop it
 sets, as the renderer would, unless the vector holds that prop; after every
 step it also holds the control to its documented parts and states, to the
 semantics on the element carrying `id`, and to drawing its overlay parts
@@ -837,7 +925,7 @@ implementation and its version are part of the contract's oracle.
 
 ## How the generation grows
 
-For the life of `ui_react_controls-3`:
+For the life of `ui_react_controls-4`:
 
 - the control set only grows;
 - a prop is added only where an implementation ignoring it still meets the
@@ -845,8 +933,8 @@ For the life of `ui_react_controls-3`:
 - the supplied specifiers only grow.
 
 Anything else — a new value form, a state, a required part, an intent — is
-`ui_react_controls-4`. A renderer may host several generations at once; this
-one hosts `ui_react_controls-3` alone.
+`ui_react_controls-5`. A renderer may host several generations at once; this
+one hosts `ui_react_controls-4` alone.
 
 `ui_react_controls-2` differs from `ui_react_controls-1` in:
 
@@ -872,3 +960,11 @@ one hosts `ui_react_controls-3` alone.
   `aria-description`.
 - `Tabs`'s required `fill`, marking its root and the shown `tab-panel` with
   `data-fill="true"` while the `tabs` node fills the room it is in.
+
+`ui_react_controls-4` differs from `ui_react_controls-3` in:
+
+- one control, `Combobox` — a tenth layer control, so a set implementing the
+  nine of generation 3 is refused;
+- the parts `search-input` (its root), `combobox-content`, `combobox-group` and
+  `combobox-item`;
+- one interpreter term, the `activeDescendant` of an expectation.

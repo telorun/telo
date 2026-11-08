@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: Wrapper, version: 1.0.0 }
+imports:
+  App: ../../../../../../modules/app
+targets:
+  - !ref web
+---
+kind: App.Instance
+metadata: { name: web }
+source: ../needy

@@ -10,12 +10,10 @@ metadata:
     and counters that outlive one process, under an optional key prefix so several
     apps can share a server. When Redis is unreachable it degrades to an optional
     fallback cache, reports the degradation, and recovers on its own.
-requires:
-  # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime that
-  # does not execute a returned chain allocates nothing and undoes nothing.
-  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
-  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
-  telo: ">=0.130.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.130.0" }
+    reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0); also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
 imports: { Cache: ../cache }
 exports: { kinds: [Store] }
 ---

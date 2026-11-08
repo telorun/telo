@@ -1,248 +1,153 @@
 /**
- * Verification of a module's declared `requires.telo` range — by RUNNING the CLI
- * at each edge of it.
+ * The publish preflight for a module's declared `requires.telo` floor — by
+ * RUNNING the published CLI at the floor over the measurement copy
+ * (`floor-measurement.ts`).
  *
- * This is the half of declared runtime requirements that cannot live in the
- * analyzer: it spawns a process and reaches the network, while the analyzer is
- * browser-safe. It is also a *publishing* concern — an author editing a manifest
- * needs to know whether their runtime can read a module, not whether someone
- * else's declaration is honest.
+ * This is the only verification an author outside a release workspace gets; a
+ * workspace measures its floors instead (`telo release floor` / `check`). Authors
+ * outside one keep writing floors by hand, against released versions.
  *
- * **Why execution rather than a `since:` table.** The obvious design annotates
- * every vocabulary entry with the version that introduced it and takes the
- * maximum over what a manifest uses. That re-creates the discipline problem one
- * level down — every future additive change must remember its `since`, and
- * forgetting is silent, which is the failure mode this whole mechanism exists to
- * remove — and it cannot see a *shape* change (an object where a zone annotation
- * used to take a pointer, a new key on a closed kernel-owned schema) without a
- * second annotation mechanism. Running the old CLI is not a prediction of the
- * property; it IS the property, executed.
+ * **Why execution rather than a `since:` table.** A table annotating every
+ * vocabulary entry with the version that introduced it re-creates the discipline
+ * problem one level down — forgetting is silent — and cannot see a SHAPE change.
+ * Running the old CLI is not a prediction of the property; it IS the property,
+ * executed. A floor is the only edge to run: support only grows in newer
+ * releases, so nothing above it can fail while it passes, and a range has no
+ * ceiling to verify.
  *
- * **Two edges bound the whole range**, rather than sampling it, because syntax
- * support is monotonic: a construct added in 0.43 works in 0.44 and later, one
- * removed in 0.60 works in 0.59 and earlier. Nothing in the middle can fail
- * while both edges pass. For a range open above the high edge is HEAD, which
- * normal CI already checks, so an open declaration costs one run.
+ * **Infrastructure failure warns; evidence of breakage fails.** A CLI that cannot
+ * be installed (offline, a registry outage) or that exits without reporting on
+ * the manifest leaves the claim unverified; blocking a publish on network
+ * reachability trades one failure for a worse one. A CLI that runs and rejects
+ * the measured manifest is evidence.
  *
- * **Infrastructure failure warns; evidence of breakage fails.** A CLI that
- * cannot be installed (offline, a registry outage) leaves the claim unverified,
- * and blocking a publish on network reachability trades one failure for a worse
- * one. A CLI that runs and rejects the manifest is evidence, and evidence is
- * what this gate is for.
- *
- * **A FORWARD-DECLARED lower bound is a third state, not an infrastructure
- * failure.** The normal way new syntax lands is: a module adopts it and declares
- * the range of the release that will carry it — a version that, until that
- * release publishes, does not exist. Spawning `npx @telorun/cli@<unpublished>`
- * can only ETARGET, and reporting *"could not run"* buries a routine, expected,
- * self-resolving state under npm's install noise, in the same bucket as being
- * offline. So the registry is asked FIRST and such an edge is reported
- * `pending`, skipping a run that has no possible outcome. The latest published
- * version rides along in the report, because that is what makes a TYPO visible:
- * `pending against 0.790.0 (latest published: 0.78.0)` reads wrong at a glance,
- * where a bare "could not run" reads the same for a typo and for tomorrow's
- * release.
- *
- * The states are asymmetric between the two callers, and deliberately. At
- * `telo release check` a pending edge is informational — the release that
- * publishes the version has not happened yet, which is the entire point of
- * declaring the bound before it. At **publish** it is fatal, for the reason an
- * unpublished UPPER bound is: publication runs npm before modules, so by the
- * time a module is pushed its declared minimum exists — and if it does not, the
- * release is out of order and every consumer's `telo upgrade` would refuse the
- * version it is about to receive.
+ * **A floor naming a release npm does not have is `pending`, and fatal at
+ * publish** (informational nowhere now: `telo release check` measures instead).
+ * Publication runs npm before modules, so by the time a module is pushed its
+ * floor exists; if it does not, the release is out of order and every consumer's
+ * `telo upgrade` would refuse the version it is about to receive.
  */
 
-import {
-  isNewerModuleVersion,
-  lowerBound,
-  newestModuleVersion,
-  readRequires,
-  upperBound,
-  type VersionRange,
-} from "@telorun/analyzer";
+import { isNewerModuleVersion, newestModuleVersion, type Restriction } from "@telorun/analyzer";
 import { execFile } from "node:child_process";
-import * as os from "node:os";
-import * as path from "node:path";
 import { promisify } from "node:util";
+import {
+  FloorMeasurementError,
+  FloorProbe,
+  declaredFloor,
+  describeReading,
+  npxRunner,
+  type CliRunner,
+} from "./floor-measurement.js";
 
 const run = promisify(execFile);
 
-/** How long a single edge check may take. An old CLI has to be fetched on first
- *  use, so this is generous; it exists to bound a hang, not to pace the work. */
-const EDGE_TIMEOUT_MS = 300_000;
-
-export type EdgeOutcome =
-  /** The edge CLI ran and accepted the manifest. */
-  | { edge: string; status: "passed" }
-  /** The edge CLI ran and rejected it — the declared range is false. */
-  | { edge: string; status: "failed"; output: string }
-  /** The edge names a version NEWER than anything published: there is nothing to
-   *  install, and the claim becomes verifiable the moment that version ships. */
-  | { edge: string; status: "pending"; latestPublished: string }
-  /** The edge CLI could not be run. The claim is unverified, not disproven. */
-  | { edge: string; status: "unavailable"; reason: string };
-
-export interface VerifyRequiresResult {
-  /** Absent when the module declares no `requires.telo` — nothing to verify. */
-  declared?: VersionRange;
-  outcomes: EdgeOutcome[];
-  /** True when at least one edge produced evidence the declaration is false. */
-  refuted: boolean;
-}
-
-/** True when the range names an edge no released CLI can satisfy yet. Read by
- *  `publish`, where it is fatal, and by `release check`, where it is not. */
-export function hasPendingEdge(result: VerifyRequiresResult): boolean {
-  return result.outcomes.some((o) => o.status === "pending");
-}
+export type FloorOutcome =
+  /** The module declares no floor. */
+  | { status: "none" }
+  /** The floor holds: the CLI at it accepted the measurement copy. */
+  | { status: "passed"; floor: string; checkedWith: string }
+  /** The CLI at the floor rejected it — the declared floor is false. */
+  | { status: "failed"; floor: string; reading: string }
+  /** The floor names a release newer than anything published. */
+  | { status: "pending"; floor: string; latestPublished: string }
+  /** The CLI could not be run, or said nothing about the manifest. */
+  | { status: "unavailable"; floor: string; reason: string };
 
 /**
- * Verify a module manifest against the edges of its own declared range.
- *
- * `manifestPath` is checked, not the module directory, so the caller controls
- * which document is the subject. A module declaring nothing returns immediately:
- * absent means no requirement, permanently, for everything published before this
- * mechanism existed.
+ * Verify a module manifest's declared floor. `currentVersion` is the running
+ * CLI: the caller has ALREADY checked this manifest with it (`publishOne` runs
+ * static analysis first), and `telo` is not on PATH in a development checkout, so
+ * spawning it would only ENOENT.
  */
-export async function verifyRequires(
+export async function verifyFloor(
   manifestPath: string,
-  moduleDoc: Record<string, unknown>,
+  text: string,
   options: {
     currentVersion: string;
-    /** Published `@telorun/cli` versions, for telling a forward-declared edge
-     *  from an unreachable one. `null` / omitted when the registry could not be
-     *  asked, in which case no edge is classified `pending` — a guess about what
-     *  exists is worse than the run's own verdict. */
+    /** Published `@telorun/cli` versions; `null` when the registry could not be
+     *  asked, in which case no floor is classified `pending`. */
     publishedVersions?: string[] | null;
+    runner?: CliRunner;
   },
-): Promise<VerifyRequiresResult> {
-  const { block } = readRequires(moduleDoc);
-  const declared = block.telo;
-  if (!declared) return { outcomes: [], refuted: false };
-
-  const edges: string[] = [];
-  const low = lowerBound(declared);
-  if (low) edges.push(low.raw);
-  const high = upperBound(declared);
-  // The high edge of an open range is HEAD, which the ordinary check already
-  // covers; only a closed bound names a version worth installing. A bound equal
-  // to the low edge is one edge, not two.
-  if (high && high.raw !== low?.raw) edges.push(high.raw);
-
-  const outcomes: EdgeOutcome[] = [];
-  for (const edge of edges) {
-    // The running CLI is the edge, and the caller has ALREADY checked this
-    // manifest with it — `publishOne` runs static analysis before reaching here
-    // and returns on any error. Spawning `telo check` would re-run that same
-    // analysis to learn what we know; worse, `telo` is not on PATH in a
-    // development checkout (it is `pnpm run telo`), so the spawn would ENOENT and
-    // report a spurious "could not run" against every module.
-    if (edge === options.currentVersion) {
-      outcomes.push({ edge, status: "passed" });
-      continue;
-    }
-    const latestPublished = unreleasedEdge(edge, options.publishedVersions ?? null);
-    if (latestPublished !== undefined) {
-      outcomes.push({ edge, status: "pending", latestPublished });
-      continue;
-    }
-    outcomes.push(await runEdge(manifestPath, edge));
+): Promise<FloorOutcome> {
+  const { floor } = declaredFloor(text);
+  if (floor.kind === "none") return { status: "none" };
+  if (floor.kind === "unreleased") {
+    const latest = newestModuleVersion(options.publishedVersions ?? []) ?? "unknown";
+    return { status: "pending", floor: ">=unreleased", latestPublished: latest };
   }
+  const declared = `>=${floor.version}`;
+  if (floor.version === options.currentVersion) {
+    return { status: "passed", floor: declared, checkedWith: floor.version };
+  }
+  const latestPublished = unreleasedEdge(floor.version, options.publishedVersions ?? null);
+  if (latestPublished !== undefined) return { status: "pending", floor: declared, latestPublished };
 
-  return { declared, outcomes, refuted: outcomes.some((o) => o.status === "failed") };
-}
-
-async function runEdge(manifestPath: string, edge: string): Promise<EdgeOutcome> {
   try {
-    // Away from the module's own directory: `npx` reads the `.npmrc` of the
-    // directory it starts in, and one there naming another registry would decide
-    // which program is installed and run as `@telorun/cli`. Verifying a module
-    // must execute nothing the module supplies.
-    await run("npx", ["-y", `@telorun/cli@${edge}`, "check", path.resolve(manifestPath)], {
-      cwd: os.tmpdir(),
-      timeout: EDGE_TIMEOUT_MS,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    return { edge, status: "passed" };
+    const verdict = (
+      await new FloorProbe(options.runner ?? npxRunner).probe(floor.version, floor.version, [
+        { key: manifestPath, manifestPath, text },
+      ])
+    ).get(manifestPath)!;
+    return verdict.accepted
+      ? { status: "passed", floor: declared, checkedWith: floor.version }
+      : { status: "failed", floor: declared, reading: describeReading(verdict.reading) };
   } catch (err) {
-    const e = err as { code?: unknown; stdout?: string; stderr?: string; message?: string };
-    if (typeof e.code !== "number") {
-      // Never ran: the binary is missing, a fetch failed, the timeout fired. The
-      // claim is unverified, not disproven, and the two must not be conflated.
-      return { edge, status: "unavailable", reason: e.message ?? String(err) };
-    }
-    const output = `${e.stdout ?? ""}${e.stderr ?? ""}`.trim();
-    if (!mentionsManifest(output, manifestPath)) {
-      // It ran and exited non-zero WITHOUT saying anything about the manifest
-      // under test. `telo check` also exits non-zero for an argument shape an
-      // older parser does not accept, an unreachable remote import, or a bad
-      // registry URL — and reporting any of those as "the declared range is
-      // false" is precisely the misattribution this mechanism exists to remove.
-      // Refuting a range needs evidence about THIS manifest.
-      return {
-        edge,
-        status: "unavailable",
-        reason:
-          `telo ${edge} exited non-zero without reporting on ${manifestPath} — ` +
-          `treating the range as unverified rather than refuted. Output: ` +
-          `${output.slice(0, 400) || "(none)"}`,
-      };
-    }
-    return { edge, status: "failed", output: output || (e.message ?? "check failed") };
+    if (!(err instanceof FloorMeasurementError)) throw err;
+    return { status: "unavailable", floor: declared, reason: err.message };
   }
 }
 
 /**
- * The latest published version when `edge` names something NEWER than it — a
- * forward-declared bound, whose verification is pending that release rather than
- * failed or unavailable. `undefined` when the edge exists, when it is older than
- * the latest (a yanked version is deliberately left to the run, whose "could not
- * run" is honest about it), or when the registry could not be asked.
- *
- * Deciding this from the registry rather than from the spawn's failure is the
- * whole point: `npx @telorun/cli@<unpublished>` has one possible outcome, and
- * npm's ETARGET arrives wrapped in install noise that reads exactly like being
- * offline.
+ * The latest published version when `floor` names something NEWER than it — a
+ * forward-declared floor, whose verification waits for that release. `undefined`
+ * when the floor exists, when it is older than the latest (a yanked version is
+ * left to the run, whose failure is honest about it), or when the registry could
+ * not be asked.
  */
 export function unreleasedEdge(edge: string, published: string[] | null): string | undefined {
   if (published === null) return undefined;
   const normalized = published.map((v) => (v.startsWith("v") ? v.slice(1) : v));
   if (normalized.includes(edge)) return undefined;
   // Candidates are skipped: a floor is a final release, so an `-rc` build of
-  // the release that will carry it must not make the edge look published.
+  // the release that will carry it must not make the floor look published.
   const latest = newestModuleVersion(normalized);
   if (latest === undefined) return undefined;
   return isNewerModuleVersion(edge, latest) ? latest : undefined;
 }
 
-/** Whether the edge CLI's output actually concerns the manifest under test.
- *  Compared on the basename as well as the full path, since a CLI renders a
- *  path relative to its own cwd. */
-function mentionsManifest(output: string, manifestPath: string): boolean {
-  if (!output) return false;
-  const base = manifestPath.split(/[\\/]/).filter(Boolean).slice(-2).join("/");
-  return output.includes(manifestPath) || (base.length > 0 && output.includes(base));
+/**
+ * The first `telo` bound in a `restrictions:` entry naming a version that is not a
+ * published final: a bound nothing can run is a bound nothing can verify.
+ * `undefined` when every bound exists, or when the registry could not be asked.
+ */
+export function unpublishedRestrictionBound(
+  entries: readonly Restriction[],
+  published: string[] | null,
+): { index: number; bound: string } | undefined {
+  if (published === null) return undefined;
+  const finals = new Set(
+    published.map((v) => (v.startsWith("v") ? v.slice(1) : v)).filter((v) => !v.includes("-")),
+  );
+  for (const entry of entries) {
+    for (const comparator of entry.requires.telo?.comparators ?? []) {
+      if (!finals.has(comparator.raw)) return { index: entry.index, bound: comparator.raw };
+    }
+  }
+  return undefined;
 }
 
 /**
- * The published `@telorun/cli` versions, for the "an upper bound must already
- * exist" check. `null` when the registry could not be reached — the caller warns
- * rather than blocking, since the rule gates a bound absent from almost every
- * module and an unreachable npm should not stop a publish.
+ * The published `@telorun/cli` versions, for telling a forward-declared floor
+ * from an unreachable registry. `null` when the registry could not be reached —
+ * the caller warns rather than blocking.
  *
  * **Memoized for the process**, because `telo publish` runs per module and
  * `scripts/publish-modules.mjs` publishes the whole standard library in one
- * pass: without this, one release is ~60 `npm view` round trips (each with a
- * 60-second timeout) for a single answer that cannot change mid-run. The failed
- * lookup is cached too — a registry unreachable for the first module is
- * unreachable for the rest, and retrying it sixty times turns a warning into a
- * minutes-long stall.
- *
- * `@telorun/cli` is deliberately the package queried: it is the one the
- * verification path installs (`npx @telorun/cli@<edge>`) and the one
- * `TELO_SURFACE_VERSION` is generated from, so the constant, the existence check
- * and the thing that actually runs all name one package.
+ * pass: one release would otherwise be ~60 `npm view` round trips for a single
+ * answer that cannot change mid-run. The failed lookup is cached too — a registry
+ * unreachable for the first module is unreachable for the rest.
  */
 let publishedVersionsCache: Promise<string[] | null> | undefined;
 
@@ -267,18 +172,4 @@ async function fetchPublishedTeloVersions(): Promise<string[] | null> {
   } catch {
     return null;
   }
-}
-
-/** The declared upper bound when it names a version the registry does not have —
- *  an unverifiable bound, which the grammar exists to forbid. `undefined` when
- *  the range is open above, the bound exists, or the registry was unreachable. */
-export function unpublishedUpperBound(
-  declared: VersionRange | undefined,
-  published: string[] | null,
-): string | undefined {
-  if (!declared || published === null) return undefined;
-  const high = upperBound(declared);
-  if (!high) return undefined;
-  const normalized = new Set(published.map((v) => (v.startsWith("v") ? v.slice(1) : v)));
-  return normalized.has(high.raw) ? undefined : high.raw;
 }

@@ -1,0 +1,15 @@
+modules:
+  modules/ui: Added
+body: "Breaking: a filter bar can search. `Ui.Filters` takes `search: { pinned?,
+  default? }` — present when written, or when `fields` and `search` are both left out
+  over a collection declaring `query.search` — kept under `search` in the bar's state
+  and address, set by a preset's `search`, and refused as `UI_FILTER_SEARCH_UNDECLARED`
+  where the collection declares none. `Ui.SearchBoxPlacement` draws the bar as one
+  search box with a `placeholder`, its suggestions and typed tokens
+  (`status:draft,review`, `publishedOn>=2026-11-01`); the texts `searchFilter`,
+  `searchChip` and `searchAndFilter` join `Ui.Translations` in every shipped language.
+  `show`, `controls` and `summary` leave `Ui.FilterPolicy` and are written on
+  `Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement` and
+  `Ui.OverlayPlacement` (a `compact` placement omitting them takes its holder's); the
+  `filters` node carries them on its placement branches and a `search` member when the
+  bar has one."

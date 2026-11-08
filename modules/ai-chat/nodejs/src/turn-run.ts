@@ -82,12 +82,17 @@ function userMessage(text: string, media: Array<Record<string, unknown>>): Recor
   };
 }
 
+/** How much of a reply is kept for naming its conversation. */
+const REPLY_KEPT = 4000;
+
 /**
  * The records of one turn, as its journal sink pulls them: the human decisions
  * and the user message are stored first, then each agent part becomes its
  * `Conversation.Event` and each `message` part is appended to the store. A
  * record is yielded before the store write it leads to, so whatever reaches the
  * store was journaled first — and nothing is stored once the journal refuses.
+ * `beforeEnd` runs with the reply's text before the terminal event, so what it
+ * writes — a title — is read by a client the turn's end prompts to read again.
  */
 export async function* turnRecords(
   ops: TurnOperations,
@@ -96,6 +101,7 @@ export async function* turnRecords(
   text: string,
   ctx: InvokeContext,
   agentOutput: (iterator: AsyncIterator<Record<string, any>>) => void,
+  beforeEnd?: (reply: string) => Promise<void>,
 ): AsyncGenerator<Record<string, unknown>> {
   const { conversation, turn } = identity;
   const produced = new ProducedMedia(ops, identity, ctx);
@@ -152,12 +158,15 @@ export async function* turnRecords(
       },
       ctx,
     );
+  let reply = "";
   while (true) {
     const step = await iterator.next();
     if (step.done) return;
     const part = step.value;
     const plain = plainEvent(part);
     if (plain) {
+      if (plain.type === "text-delta" && reply.length < REPLY_KEPT) reply += String(plain.text ?? "");
+      if (part.type === "finish" && beforeEnd) await beforeEnd(reply);
       yield plain;
       // The terminal event: nothing the turn stores comes after it, so the
       // turn ends here and a client may send as soon as it has read it.

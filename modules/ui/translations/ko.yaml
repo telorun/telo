@@ -52,6 +52,9 @@ messages:
   filterControl: "{$label} {$operator}"
   filterChip: "{$label}: {$value} {$operator}"
   filterGroupSummary: "{$label}: {$summary}"
+  searchFilter: 검색
+  searchChip: "검색: {$text}"
+  searchAndFilter: 검색 및 필터
   rangeFrom: 시작
   rangeTo: 끝
   rangeStartsAfterEnd: 끝난 후에 시작할 수 없습니다
@@ -122,6 +125,7 @@ messages:
   chatThinking: "생각하는 중…"
   chatShowDetails: "세부 정보 보기"
   chatHideDetails: "세부 정보 숨기기"
+  chatToolPreview: "미리보기"
   chatToolCall: "도구: {$name}"
   chatToolRunning: "실행 중…"
   chatToolFailed: "실패"

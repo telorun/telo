@@ -7,6 +7,7 @@ page when that changes.
 | Field | | |
 | --- | --- | --- |
 | `presentation` | required | the [`Ui.CollectionPresentation`](collection-presentation.md) filtered, `!ref` or inline: its collection declares what the list accepts and the shape of a record |
+| `search` | see [below](#search) | a text search over the properties the collection declares — `{ pinned?, default? }` |
 | `fields` | every filter the collection accepts | the filters, in order — [below](#fields) |
 | `presets` | none | named sets of values — [below](#presets) |
 | `policy` | every default | how the bar behaves — [below](#policy) |
@@ -20,6 +21,39 @@ content: { type: composite, ref: !ref todos }
 ```
 
 A filter bar whose `content` is switched off provides no node.
+
+## Search
+
+A collection that declares `query.search` can be searched by one text, matched
+against the properties it lists. The bar sends it as `search=<text>`, with the
+other filters, and holds it as one string.
+
+| Key | | |
+| --- | --- | --- |
+| `pinned` | `false` | kept outside whatever the bar folds into, and always on show |
+| `default` | none | the text the search holds until the viewer changes it |
+
+The search is not a `fields` entry: `{ operator: search }` there is a
+`SCHEMA_VIOLATION`. **A bar has a search** when `search` is written, or when
+both `fields` and `search` are left out and the collection declares
+`query.search`. A bar that lists `fields` has chosen its filters and gets a
+search only by writing `search` (`search: {}` is enough). `CrudUi.Admin` writes
+neither, so an admin over a collection declaring `query.search` has a search.
+
+```yaml
+kind: Ui.Filters
+presentation: !ref postsPresentation
+search: { default: release }
+fields: [{ property: status, operator: in }]
+content: { type: composite, ref: !ref posts }
+```
+
+The search is drawn first. Where the placement draws controls it is a typed box
+labelled by `ui`'s text `searchFilter`; under
+[`Ui.SearchBoxPlacement`](filter-placement.md#the-search-box) it is the box
+itself. The bar keeps it under `search`: in the address as
+`_telo.f.<key>.search`, and `state.fields` may list `search`. Reset returns it
+to its `default`.
 
 ## Fields
 
@@ -132,8 +166,13 @@ presets name **between them** — here `isDone` and `status` — to what it says
 clearing those it does not name, and leaves every other filter as it was. So
 `Finished` clears `status`, and neither touches a typed `text`.
 
+A preset may carry `search: <text>` beside its `values`; the bar then needs a
+search ([`UI_FILTER_SEARCH_UNDECLARED`](#refused) otherwise), and choosing the
+preset sets it. A preset with `values: []` and a `search` is a search alone.
+
 Which preset is active is read off the bar's values, never stored: it is the
-first whose values the bar holds exactly, however they came to be — chosen,
+first whose values the bar holds exactly — and, if it carries a `search`, whose
+search the bar holds — however they came to be — chosen,
 typed, restored from the address. A value is written as a field's `default`
 is: one value, or a list under `in`.
 
@@ -144,21 +183,34 @@ and none decides which others may be written: every combination is valid.
 
 | Key | Values (default) | |
 | --- | --- | --- |
-| `show` | `all` \| `chosen` (`all`) | under `chosen` a filter is on show when it is pinned, was added from the bar's list, or holds a value; removing one clears it |
-| `placement` | a [`Ui.FilterPlacement`](filter-placement.md) (`{ kind: Ui.AbovePlacement }`) | where the controls sit relative to the content |
-| `controls` | `direct` \| `chips` (`direct`) | under `chips` each filter is a chip naming it and its value, which opens its control |
+| `placement` | a [`Ui.FilterPlacement`](filter-placement.md) (`{ kind: Ui.AbovePlacement }`) | where the controls sit relative to the content, and how they are drawn — [below](#display) |
 | `apply` | `commit` \| `typing` \| `button` (`commit`) | when a change reaches the list |
-| `summary` | `none` \| `chips` (`none`) | under `chips`, a row of removable chips, one per filter holding a value |
 | `state` | `{ key, address, store, fields? }` (in memory) | [where the bar's state is kept](state-store.md) — a `Ui.StateRecord`, shared with forms and actions; `fields` limits which properties' filters are kept (`UI_STATE_FIELD_UNKNOWN` for one no filter shows) |
 
 ```yaml
 policy:
-  show: chosen
-  placement: { kind: Ui.AsidePlacement, compact: { kind: Ui.CollapsiblePlacement } }
+  placement: { kind: Ui.AsidePlacement, show: chosen, summary: chips, compact: { kind: Ui.CollapsiblePlacement } }
   apply: typing
-  summary: chips
   state: { key: todos, address: true, store: { kind: Ui.LocalStore } }
 ```
+
+### Display
+
+The placements that draw controls — `Ui.AbovePlacement`, `Ui.AsidePlacement`,
+`Ui.CollapsiblePlacement` and `Ui.OverlayPlacement` — each take three members
+of `Ui.FilterDisplay`, the same on all four; `Ui.SearchBoxPlacement` takes none
+of them.
+
+| Key | Values (default) | |
+| --- | --- | --- |
+| `show` | `all` \| `chosen` (`all`) | under `chosen` a filter is on show when it is pinned, was added from the bar's list, or holds a value; removing one clears it |
+| `controls` | `direct` \| `chips` (`direct`) | under `chips` each filter is a chip naming it and its value, which opens its control |
+| `summary` | `none` \| `chips` (`none`) | under `chips`, a row of removable chips, one per filter holding a value |
+
+A placement's `compact` placement omitting one of them takes the value of the
+placement holding it, so the display is written once. A `policy.show`,
+`policy.controls` or `policy.summary` is a `SCHEMA_VIOLATION`: write it on the
+placement.
 
 `apply`:
 
@@ -172,7 +224,7 @@ policy:
 
 Fixed, whatever the policy: Reset returns every filter to its declared
 `default`; the toggle of a folded bar shows how many filters hold a value; a
-pinned filter stays outside whatever folds, and under `show: chosen` is always
+pinned filter or search stays outside whatever folds, and under `show: chosen` is always
 on show; Apply and Reset stay outside whatever folds.
 
 Under `show: chosen`, removing a filter that declares a `default` clears the
@@ -192,6 +244,7 @@ back.
 | `UI_FILTER_PRESET_UNKNOWN_FILTER` | a preset value names a property and operator the bar does not show |
 | `UI_FILTER_PRESET_VALUE_INVALID` | a preset value fails what a `default` is held to, or is `false` for a filter entered with a `toggle`, which holds true or nothing |
 | `UI_FILTER_PRESET_LABEL_DUPLICATE` | two presets share a label |
+| `UI_FILTER_SEARCH_UNDECLARED` | the bar writes `search` and the collection declares no `query.search`; or a preset carries `search` and the bar has no search |
 
 Each is refused by `telo check` and, under the same name prefixed `ERR_`, by
 the filter bar itself when it is first read. That a filter names a property
@@ -202,16 +255,17 @@ default and preset rules judge a property where it declares one plain
 reads a property's types with `null` set aside, so a nullable boolean takes a
 `toggle` and a nullable number a `slider`.
 
-A `policy` key outside the table, a value outside a key's list, and a `state`
+A `policy` key outside the table (`show`, `controls` and `summary` among them), a value outside a key's list, and a `state`
 that keeps nothing — neither `address: true` nor a `store` — are each a
 `SCHEMA_VIOLATION`. A resource of the wrong kind at `placement` or `store` is
 `REFERENCE_KIND_MISMATCH`.
 
 ### Warned
 
-`UI_FILTER_PINNED_UNUSED` — a field is `pinned` on a bar that never folds,
-so every filter is on show whatever is pinned. It is reported for an omitted
-placement (`RESOURCE_RULE_VIOLATED`), and for a `Ui.AbovePlacement` with no
-`compact` (`REFERRER_RULE_VIOLATED`), while `show` is `all`. A
-`Ui.AsidePlacement` folds on a narrow viewport whether or not it names a
-`compact`, so it is not warned. It is a warning: the manifest runs.
+`UI_FILTER_PINNED_UNUSED` — a field or the `search` is `pinned` on a bar that
+never folds, so every filter is on show whatever is pinned. It is reported for
+an omitted placement (`RESOURCE_RULE_VIOLATED`), for a `Ui.AbovePlacement` with
+no `compact` while its `show` is `all`, and for a `Ui.SearchBoxPlacement`
+(`REFERRER_RULE_VIOLATED`). A `Ui.AsidePlacement` folds on a narrow viewport
+whether or not it names a `compact`, so it is not warned. It is a warning: the
+manifest runs.

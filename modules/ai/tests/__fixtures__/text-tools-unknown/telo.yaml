@@ -1,0 +1,38 @@
+# Text tools naming a tool no static provider declares, by the name the model is
+# told. Refused by `telo check` at the declaration, and by the agent when it
+# first lists its tools.
+kind: Telo.Library
+metadata: { name: TextToolsUnknown }
+imports: { Ai: ../../.., AiEcho: ../ai-echo.yaml, Run: ../../../../run }
+exports: { resources: [agent] }
+---
+kind: Ai.Tools
+metadata: { name: fileTools }
+tools:
+  - name: apply_changes
+    tool: { kind: Run.Value, value: { wrote: true } }
+    parameters: { type: object, properties: { changes: { type: array } } }
+---
+# The tool is advertised as `files_apply_changes`.
+kind: Ai.Agent
+metadata: { name: agent }
+model: { kind: AiEcho.EchoModel }
+textTools:
+  - tags: [telo-edit]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, b.body)"
+toolProviders:
+  - provider: !ref fileTools
+    prefix: files_
+---
+kind: Ai.AgentStream
+metadata: { name: stream }
+model: { kind: AiEcho.EchoModelStream }
+textTools:
+  - tags: [telo-edit]
+    tool: write_file
+    arguments:
+      changes: !cel "blocks.map(b, b.body)"
+toolProviders:
+  - provider: !ref fileTools

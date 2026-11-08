@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedOpenUrlResource
+  version: 1.0.0
+  description: |
+    Declares a Telo.OpenUrl resource. This kernel has no host to open a URL in,
+    so the load must fail naming the kind.
+---
+kind: Telo.OpenUrl
+metadata: { name: opener }

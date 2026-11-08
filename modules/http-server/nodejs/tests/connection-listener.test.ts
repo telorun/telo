@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import net, { type AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
+import type { HandedConnection } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { ConnectionListener, type HandshakeFailure, type UnavailableAddress } from "../src/connection-listener.js";
 import { resolveHttpsOptions } from "../src/tls-material.js";
@@ -126,5 +127,80 @@ describe("ConnectionListener", () => {
     await listener.close();
     await stalled.closed;
     expect(failures).toEqual([]);
+  });
+});
+
+/** A connection a host handed over, in memory: what the peer sends and reads. */
+function handed() {
+  const queue: Uint8Array[] = [];
+  let wake: (() => void) | undefined;
+  let ended = false;
+  const state = { sent: "", closes: [] as unknown[] };
+  const connection: HandedConnection = {
+    peer: "127.0.0.1:53901",
+    inbound: {
+      async *[Symbol.asyncIterator]() {
+        for (;;) {
+          if (queue.length > 0) yield queue.shift()!;
+          else if (ended) return;
+          else await new Promise<void>((resolve) => (wake = resolve));
+        }
+      },
+    },
+    write: async (chunk) => void (state.sent += Buffer.from(chunk).toString()),
+    close: async (error) => {
+      state.closes.push(error ?? null);
+      ended = true;
+      wake?.();
+    },
+  };
+  const send = (text: string) => {
+    queue.push(Buffer.from(text));
+    wake?.();
+  };
+  return { connection, send, state };
+}
+
+describe("ConnectionListener on a host-supplied socket", () => {
+  it("serves a WebSocket upgrade over a handed connection, the bytes after its head included, and releases at close", async () => {
+    let accept: ((connection: HandedConnection) => void) | undefined;
+    const claim = { address: "127.0.0.1", released: 0, release: async () => void claim.released++ };
+    const listener = new ConnectionListener({
+      address: "0.0.0.0",
+      port: 53817,
+      claim: async (port, accepting) => {
+        expect(port).toBe(53817);
+        accept = accepting;
+        return claim;
+      },
+      onHandshakeFailure: (failure) => {
+        throw new Error(`unexpected handshake failure ${failure.type}`);
+      },
+      onAddressUnavailable: (unavailable) => {
+        throw new Error(`unexpected unavailable address ${unavailable.address}`);
+      },
+    });
+    const http = listener.serverFactory((() => {}) as never, httpOptions) as unknown as Server;
+    http.on("upgrade", (request, socket, head) => {
+      socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+      socket.write(`echo:${head.toString()}`);
+      socket.on("data", (chunk: Buffer) => socket.write(`echo:${chunk.toString()}`));
+    });
+    await listener.listen();
+    expect(listener.suppliedAddress).toBe("127.0.0.1");
+
+    const peer = handed();
+    accept!(peer.connection);
+    peer.send("GET /socket HTTP/1.1\r\nHost: 127.0.0.1:53817\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\nping");
+    await until(() => peer.state.sent.includes("echo:ping"));
+    peer.send("pong");
+    await until(() => peer.state.sent.endsWith("echo:pong"));
+    expect(peer.state.sent).toBe(
+      "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\necho:pingecho:pong",
+    );
+
+    await listener.close();
+    expect(claim.released).toBe(1);
+    expect(peer.state.closes).toEqual([null]);
   });
 });

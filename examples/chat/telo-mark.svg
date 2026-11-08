@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Telo</title>
+  <path d="M9 10h14M16 10v13" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="9" cy="10" r="3"/>
+  <circle cx="23" cy="10" r="3"/>
+  <circle cx="16" cy="23" r="3.4"/>
+</svg>

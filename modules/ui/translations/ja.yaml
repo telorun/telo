@@ -52,6 +52,9 @@ messages:
   filterControl: "{$label}（{$operator}）"
   filterChip: "{$label}: {$value} {$operator}"
   filterGroupSummary: "{$label}: {$summary}"
+  searchFilter: 検索
+  searchChip: "検索: {$text}"
+  searchAndFilter: 検索とフィルター
   rangeFrom: 開始
   rangeTo: 終了
   rangeStartsAfterEnd: 終了より後に開始することはできません
@@ -122,6 +125,7 @@ messages:
   chatThinking: "考え中…"
   chatShowDetails: "詳細を表示"
   chatHideDetails: "詳細を隠す"
+  chatToolPreview: "プレビュー"
   chatToolCall: "ツール: {$name}"
   chatToolRunning: "実行中…"
   chatToolFailed: "失敗"

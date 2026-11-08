@@ -5,6 +5,7 @@ import {
   type NeedTableEntry,
 } from "@telorun/analyzer";
 import { RuntimeError } from "@telorun/sdk";
+import { withoutHostValues } from "./host-values.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -18,6 +19,9 @@ import * as path from "node:path";
 
 /** Where every answered directory and every orphan lives, under the state dir. */
 const NEEDS_DIRECTORY = "needs";
+
+/** Where every child application's own state directory lives, under the state dir. */
+const APPLICATIONS_DIRECTORY = "apps";
 
 /** A need path as the name of its directory: one segment, its parts joined by
  *  `.` — a need or alias name never holds one, so no two paths share a name. */
@@ -63,56 +67,132 @@ export function withStateDirectories(
 
 /** What a host is told of a stranded entry: refused, or warned about. */
 export interface OrphanReport {
-  /** Entries under `needs/` no declared path names, relative to the state dir. */
+  /** Entries under `needs/` or `apps/` no declared path names, relative to the
+   *  state dir. */
   orphans: string[];
 }
 
+/** The directory a child application of the application gets, relative to the
+ *  state directory: `apps/<path>`, the path as a need path is — the module
+ *  path and the resource's name, `.`-joined. */
+export function applicationDirectory(path: readonly string[]): string {
+  return `${APPLICATIONS_DIRECTORY}/${path.join(".")}`;
+}
+
+/** The environment a child application inherits: the parent's without its host
+ *  values — which answer the parent's needs, never the child's — except a state
+ *  directory the parent has, which is replaced by the child's own
+ *  (`<state dir>/apps/<path>`), so the child's durable directories and its own
+ *  children nest beneath it. The parent's is never handed on. */
+export function childEnvironment(
+  parentEnv: Record<string, string | undefined>,
+  childPath: readonly string[] | undefined,
+): Record<string, string | undefined> {
+  const inherited = withoutHostValues(parentEnv);
+  const root = stateDirectoryOf(parentEnv);
+  if (root === undefined || childPath === undefined) return inherited;
+  return { ...inherited, [STATE_DIR_HOST_VALUE]: path.join(root, applicationDirectory(childPath)) };
+}
+
+/** The entries of `<state dir>/<subtree>` no declared name matches. A name
+ *  starting with '.' is no path, and is never one of ours. */
+function strandedEntries(root: string, subtree: string, named: ReadonlySet<string>): string[] {
+  let present: string[];
+  try {
+    present = fs.readdirSync(path.join(root, subtree));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw new RuntimeError(
+      "ERR_NEED_DIRECTORY_UNUSABLE",
+      `Host value ${STATE_DIR_HOST_VALUE}: its '${subtree}' directory cannot be read ` +
+        `(${(err as NodeJS.ErrnoException).code ?? (err as Error).message}).`,
+    );
+  }
+  return present
+    .filter((name) => !name.startsWith(".") && !named.has(name))
+    .sort()
+    .map((name) => `${subtree}/${name}`);
+}
+
 /**
- * Scan the state directory's `needs/` for entries no durable directory need of
- * the application names — left behind by a renamed need or import alias. When
- * this load would create a fresh directory while such an entry exists, the load
- * is refused before any resource initializes; otherwise the entries are
- * returned for a warning. Nothing is moved or deleted.
+ * Scan the state directory's `needs/` and `apps/` for entries no durable
+ * directory need and no child application of the application names — left
+ * behind by a renamed need, import alias or instance. When this load would
+ * create a fresh directory under the same subtree while such an entry exists,
+ * the load is refused before any resource initializes; otherwise the entries
+ * are returned for a warning. Nothing is moved or deleted.
  */
 export function scanStateDirectory(
   env: Record<string, string | undefined>,
   answers: ReadonlyMap<NeedEnvironmentEntry, string>,
   declared: readonly NeedTableEntry[],
+  applications: readonly (readonly string[])[] = [],
 ): OrphanReport {
   const root = stateDirectoryOf(env);
   if (root === undefined) return { orphans: [] };
   const named = new Set(
     declared.filter((entry) => entry.need.type === DURABLE_DIRECTORY_TYPE).map(directoryName),
   );
-  let present: string[];
-  try {
-    present = fs.readdirSync(path.join(root, NEEDS_DIRECTORY));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { orphans: [] };
-    throw new RuntimeError(
-      "ERR_NEED_DIRECTORY_UNUSABLE",
-      `Host value ${STATE_DIR_HOST_VALUE}: its '${NEEDS_DIRECTORY}' directory cannot be read ` +
-        `(${(err as NodeJS.ErrnoException).code ?? (err as Error).message}).`,
-    );
+  const needOrphans = strandedEntries(root, NEEDS_DIRECTORY, named);
+  const appNames = new Set(applications.map((appPath) => appPath.join(".")));
+  const appOrphans = strandedEntries(root, APPLICATIONS_DIRECTORY, appNames);
+  const refusals: string[] = [];
+  if (needOrphans.length > 0) {
+    const fresh = [...answers].filter(([, directory]) => !fs.existsSync(directory));
+    if (fresh.length > 0) {
+      const created = fresh
+        .map(([entry]) => `'${NEEDS_DIRECTORY}/${directoryName(entry)}' for need '${entry.path.join(".")}'`)
+        .join(", ");
+      refusals.push(
+        `${STATE_DIR_HOST_VALUE} holds ${needOrphans.map((o) => `'${o}'`).join(", ")}, which no ` +
+          `${DURABLE_DIRECTORY_TYPE} need of this application names, and this load would create ` +
+          `${created}. A renamed need or import alias gets a new path and so a new, empty directory: ` +
+          `move the old directory to the new path to keep its files, or delete it. The state ` +
+          `directory may also be shared with another application, which no host should do.`,
+      );
+    }
   }
-  // A name starting with '.' is no need path, and is never one of ours.
-  const orphans = present
-    .filter((name) => !name.startsWith(".") && !named.has(name))
-    .sort()
-    .map((name) => `${NEEDS_DIRECTORY}/${name}`);
-  if (orphans.length === 0) return { orphans };
-  const fresh = [...answers].filter(([, directory]) => !fs.existsSync(directory));
-  if (fresh.length === 0) return { orphans };
-  const created = fresh
-    .map(([entry]) => `'${NEEDS_DIRECTORY}/${directoryName(entry)}' for need '${entry.path.join(".")}'`)
-    .join(", ");
+  if (appOrphans.length > 0) {
+    const fresh = applications.filter((appPath) => !fs.existsSync(path.join(root, applicationDirectory(appPath))));
+    if (fresh.length > 0) {
+      const created = fresh
+        .map((appPath) => `'${applicationDirectory(appPath)}' for '${appPath.join(".")}'`)
+        .join(", ");
+      refusals.push(
+        `${STATE_DIR_HOST_VALUE} holds ${appOrphans.map((o) => `'${o}'`).join(", ")}, which no ` +
+          `application of this one names, and this load would create ${created}. A renamed instance ` +
+          `gets a new path and so a new, empty directory: move the old directory to the new path to ` +
+          `keep its files, or delete it.`,
+      );
+    }
+  }
+  if (refusals.length > 0) throw new RuntimeError("ERR_NEED_ORPHANED", refusals.join("\n"));
+  return { orphans: [...needOrphans, ...appOrphans] };
+}
+
+/**
+ * Create `<state dir>/apps/<path>` for every child application of the
+ * application, as `needs/` directories are created at load — so one exists
+ * after the first load and is never "fresh" again. Refused with
+ * `ERR_NEED_DIRECTORY_UNUSABLE` when one cannot be created or written to.
+ */
+export function createApplicationDirectories(
+  env: Record<string, string | undefined>,
+  applications: readonly (readonly string[])[],
+): void {
+  const root = stateDirectoryOf(env);
+  if (root === undefined) return;
+  const lines: string[] = [];
+  for (const appPath of applications) {
+    const directory = path.join(root, applicationDirectory(appPath));
+    const why = unusableDirectoryReason(directory);
+    if (why) lines.push(`application '${appPath.join(".")}': '${directory}' is not usable — ${why}`);
+  }
+  if (lines.length === 0) return;
   throw new RuntimeError(
-    "ERR_NEED_ORPHANED",
-    `${STATE_DIR_HOST_VALUE} holds ${orphans.map((o) => `'${o}'`).join(", ")}, which no ` +
-      `${DURABLE_DIRECTORY_TYPE} need of this application names, and this load would create ` +
-      `${created}. A renamed need or import alias gets a new path and so a new, empty directory: ` +
-      `move the old directory to the new path to keep its files, or delete it. The state ` +
-      `directory may also be shared with another application, which no host should do.`,
+    "ERR_NEED_DIRECTORY_UNUSABLE",
+    `Host value ${STATE_DIR_HOST_VALUE}: child application directories are not usable:\n` +
+      lines.map((line) => `  - ${line}`).join("\n"),
   );
 }
 

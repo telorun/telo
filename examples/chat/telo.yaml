@@ -4,11 +4,14 @@ metadata:
   version: 1.0.0
   categories: [AI, UI]
   description: |
-    A chat over Claude with image and PDF uploads, in a browser. The page draws
-    its upload button from what the model accepts, conversations and the turn
-    journal and uploaded files live in one state directory, and a turn keeps
-    running when the page is closed: reopening the conversation reads it back and
-    follows the turn that is still going.
+    A chat over Claude with image and PDF uploads and tools, in a browser. The
+    assistant can look up the weather, Wikipedia, exchange rates and the time
+    anywhere, and save notes after you approve each one; a small model names each
+    new conversation. The page draws its
+    upload button from what the model accepts, conversations and the turn journal
+    and uploaded files live in one state directory, and a turn keeps running when
+    the page is closed: reopening the conversation reads it back and follows the
+    turn that is still going.
 
     Run with the Anthropic key in the environment (or in a sibling `.env.local`
     file, which the CLI loads from the manifest's directory):
@@ -26,17 +29,18 @@ imports:
   AiConversationSql: oci://ghcr.io/telorun/ai-conversation-sql@0.2.1#sha256-4UusV5VvC-R5pz5qhRx9Bmv9U1XMx_Qj63JpLs9f_yo
   # Not `AiChat`: an alias equal to the module's own name makes its private kinds
   # unreachable until that analyzer defect is fixed.
-  Chat: oci://ghcr.io/telorun/ai-chat@0.2.1#sha256-mkXa1CKTXAyd2v27r8cAoJX9Iz97Fh5G6-BCM-Fmgs0
-  Conversation: oci://ghcr.io/telorun/conversation@0.2.1#sha256-zPMJ7iZIWeDL18WMTRRsrVgelJ8GTJWVO4dg5bZgtB8
+  Chat: ../../modules/ai-chat
+  Conversation: ../../modules/conversation
   RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
   Scheduler: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
   BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.2#sha256-j_7SCdfh-B-FrmdvBz2rHLF3EGJjeTQWUjkdyJowt1s
   MediaType: oci://ghcr.io/telorun/media-type@0.3.0#sha256-BccdaTyPvW5_0t9kQuT4JOd1jTRdjdw_6vD8Xr-SbYM
+  Fs: oci://ghcr.io/telorun/fs@0.15.1#sha256-DB68pWLeWJ3An4QhSocN4KhUEB-14j0jzLheGTATKkM
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Ui: oci://ghcr.io/telorun/ui@0.10.1#sha256-TC91fXfmdXiZXHRIzACaH6gKgHzqipYgHpAJD0ZqsbY
-  UiLucide: oci://ghcr.io/telorun/ui-lucide@0.7.1#sha256-i9903H3QNHbPi5fh97J2m4f8EVckMCFJ0fNMERMOPy4
-  UiReact: oci://ghcr.io/telorun/ui-react@0.11.1#sha256-UZSRk4r1Y3y1LVaaK3CeIm3w5W9KFnWQLv2bPa3XImo
+  Ui: ../../modules/ui
+  UiLucide: ../../modules/ui-lucide
+  UiReact: ../../modules/ui-react
 targets: [!ref server, !ref journalExpiry, !ref attachmentExpiry]
 ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
 variables:
@@ -46,9 +50,18 @@ variables:
     x-telo-type: { name: Telo.HostPath, entry: directory }
     default: .data/chat
   model: { env: MODEL, type: string, default: claude-sonnet-5-5 }
+  titleModel: { env: TITLE_MODEL, type: string, default: claude-haiku-5-5 }
   # Anthropic's API, or a gateway in front of it.
   anthropicUrl: { env: ANTHROPIC_BASE_URL, type: string, default: "https://api.anthropic.com/v1" }
 secrets: { anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string } }
+---
+# Anthropic's API with the key, shared by the chat model and the title model.
+kind: HttpClient.Request
+metadata: { name: anthropicRequest }
+client:
+  kind: Anthropic.Client
+  baseUrl: !cel "variables.anthropicUrl"
+  credential: { kind: HttpClient.ApiKeyHeader, header: x-api-key, key: !cel "secrets.anthropicApiKey" }
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -78,25 +91,156 @@ kind: Chat.Conversation
 metadata: { name: conversation }
 agent:
   kind: Ai.AgentStream
-  system: You are a concise assistant. Answer from the files the user attaches when there are any.
+  system: |
+    You are Telo Assistant, a friendly and concise helper.
+    - Use your tools whenever a question needs live facts: weather, an encyclopedia
+      lookup, currency conversion or the current time. Never guess them.
+    - Answer from the files the user attaches when there are any.
+    - Format answers in Markdown: short paragraphs, bullet lists, and a table when
+      comparing values. Cite the Wikipedia link when you used it.
+    - Save a note only when the user asks for one.
   maxSteps: 8
+  toolProviders:
+    - provider:
+        kind: Ai.Tools
+        tools:
+          - name: get_weather
+            description: Current weather and a 7-day forecast for a city, in metric units and the city's local time.
+            parameters:
+              type: object
+              additionalProperties: false
+              required: [city]
+              properties: { city: { type: string, description: "City name, e.g. Tokyo or Kraków." } }
+            tool:
+              kind: Telo.Sequence
+              inputType:
+                kind: Telo.JsonSchema
+                schema: { type: object, required: [city], properties: { city: { type: string } } }
+              steps:
+                - name: place
+                  invoke: { kind: HttpClient.Request, throwOnHttpError: true }
+                  inputs:
+                    url: https://geocoding-api.open-meteo.com/v1/search
+                    query: { name: !cel "inputs.city", count: "1", language: en, format: json }
+                - name: requirePlace
+                  if: !cel "!has(steps.place.result.body.results)"
+                  then:
+                    - name: notFound
+                      throw:
+                        code: ERR_PLACE_NOT_FOUND
+                        message: !interpolate "No place named '${{ inputs.city }}' was found."
+                - name: forecast
+                  invoke: { kind: HttpClient.Request, throwOnHttpError: true }
+                  inputs:
+                    url: https://api.open-meteo.com/v1/forecast
+                    query:
+                      latitude: !cel "string(steps.place.result.body.results[0].latitude)"
+                      longitude: !cel "string(steps.place.result.body.results[0].longitude)"
+                      current: temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m
+                      daily: weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max
+                      timezone: auto
+                      forecast_days: "7"
+              outputs:
+                place: !cel "steps.place.result.body.results[0].name + ', ' + steps.place.result.body.results[0].country"
+                current: !cel "steps.forecast.result.body.current"
+                daily: !cel "steps.forecast.result.body.daily"
+                units: !cel "steps.forecast.result.body.current_units"
+                weatherCodes: WMO codes — 0 clear, 1-3 partly cloudy, 45/48 fog, 51-57 drizzle, 61-67 rain, 71-77 snow, 80-82 showers, 95-99 thunderstorm
+          - name: wikipedia_lookup
+            description: Look a topic up on English Wikipedia and return the best matching article's introduction and link.
+            parameters:
+              type: object
+              additionalProperties: false
+              required: [topic]
+              properties: { topic: { type: string, description: "What to look up, in a few words." } }
+            tool:
+              kind: HttpClient.Request
+              throwOnHttpError: true
+              inputs:
+                url: https://en.wikipedia.org/w/api.php
+                headers: { user-agent: "TeloChatExample/1.0 (https://telo.run)" }
+            inputs:
+              query:
+                action: query
+                generator: search
+                gsrsearch: !cel "arguments.topic"
+                gsrlimit: "1"
+                prop: extracts|info
+                exintro: "1"
+                explaintext: "1"
+                exsentences: "6"
+                inprop: url
+                format: json
+                formatversion: "2"
+            result: !cel >-
+              has(result.body.query)
+              ? {'title': result.body.query.pages[0].title, 'url': result.body.query.pages[0].fullurl, 'introduction': result.body.query.pages[0].extract}
+              : {'found': false}
+          - name: convert_currency
+            description: Convert an amount between currencies at the latest European Central Bank reference rate.
+            parameters:
+              type: object
+              additionalProperties: false
+              required: [amount, from, to]
+              properties:
+                amount: { type: number, description: The amount to convert. }
+                from: { type: string, pattern: "^[A-Z]{3}$", description: "ISO 4217 code, e.g. EUR." }
+                to: { type: string, pattern: "^[A-Z]{3}$", description: "ISO 4217 code, e.g. PLN." }
+            tool:
+              kind: HttpClient.Request
+              throwOnHttpError: true
+              inputs: { url: https://api.frankfurter.dev/v1/latest }
+            inputs:
+              query:
+                amount: !cel "string(arguments.amount)"
+                base: !cel "arguments.from"
+                symbols: !cel "arguments.to"
+            result: !cel "result.body"
+          - name: current_time
+            description: The current date and time in an IANA time zone.
+            parameters:
+              type: object
+              additionalProperties: false
+              required: [timezone]
+              properties: { timezone: { type: string, description: "IANA time zone, e.g. Europe/Warsaw." } }
+            tool:
+              kind: Telo.Sequence
+              inputType:
+                kind: Telo.JsonSchema
+                schema: { type: object, required: [timezone], properties: { timezone: { type: string } } }
+              steps: []
+              outputs:
+                timezone: !cel "inputs.timezone"
+                now: !cel "nowIso(inputs.timezone)"
+          - name: save_note
+            description: Save a Markdown note to the notes folder. The user approves every save before it runs.
+            approval: true
+            parameters:
+              type: object
+              additionalProperties: false
+              required: [filename, content]
+              properties:
+                filename: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$", description: "Lowercase file name without extension, e.g. weekend-plan." }
+                content: { type: string, description: The note, in Markdown. }
+            tool: { kind: Fs.FileWrite, cwd: !cel "variables.stateDir.joinPath('notes')" }
+            inputs:
+              path: !interpolate "${{ arguments.filename }}.md"
+              content: !cel "arguments.content"
+              createParents: true
+              maxBytes: 65536
+            result: !cel "'Saved ' + string(result.bytesWritten) + ' bytes.'"
   model:
     kind: Anthropic.MessagesModelStream
     model: !cel "variables.model"
     maxTokens: 4096
-    request:
-      kind: HttpClient.Request
-      client:
-        kind: Anthropic.Client
-        baseUrl: !cel "variables.anthropicUrl"
-        credential:
-          kind: HttpClient.ApiKeyHeader
-          header: x-api-key
-          key: !cel "secrets.anthropicApiKey"
+    request: !ref anthropicRequest
     # The upload button and the provider's refusal both come from this list.
     accepts:
       - { type: image, mediaTypes: [image/png, image/jpeg, image/gif, image/webp], maxBytes: 5242880 }
       - { type: file, mediaTypes: [application/pdf], maxBytes: 33554432 }
+# A small model names each new conversation as its first turn ends.
+titles:
+  model: { kind: Anthropic.MessagesModel, model: !cel "variables.titleModel", maxTokens: 32, request: !ref anthropicRequest }
 store: { kind: AiConversationSql.Store, connection: !ref db }
 journal: !ref journal
 blobs:
@@ -107,8 +251,21 @@ attachments: { maxBytes: 10485760, maxPerMessage: 4, pendingRetention: 24h }
 ---
 kind: UiReact.App
 metadata: { name: ui }
-title: Assistant
+title: Telo Assistant
 theme: !ref UiReact.defaultTheme
+# Telo's blue, the colour of the mark in the header.
+tokens: { kind: Ui.DesignTokens, color.accent: "#2062ce", color.accent-text: "#ffffff" }
+header:
+  width: full
+  start:
+    - type: link
+      text: Telo Assistant
+      href: { path: !ref assistant }
+      style: accent
+      button: { kind: Ui.IconButton, icon: { kind: Ui.FileIcon, file: !module-path ./telo-mark.svg } }
+  end:
+    - { type: link, text: Built with Telo, href: "https://telo.run" }
+navigation: { items: [] }
 pages: [!ref assistant]
 ---
 # The conversations beside the chat: a link per conversation and a link to start
@@ -116,7 +273,6 @@ pages: [!ref assistant]
 kind: Ui.Page
 metadata: { name: assistant }
 path: /
-title: Assistant
 width: full
 children:
   - type: composite
@@ -189,11 +345,13 @@ children:
           source: { kind: Ui.ConversationSource, conversation: !ref conversation, basePath: /api/chat }
           conversation: { parameter: conversation }
           refreshes: [/api/chat/conversations]
-          placeholder: Ask anything, or drop an image or a PDF
+          placeholder: Ask about the weather, a topic, money or time — or drop an image or a PDF
           starters:
-            - What can you do with an image or a PDF?
+            - What's the weather in Tokyo this weekend?
+            - Convert 250 EUR to PLN and USD
+            - Who invented the World Wide Web?
+            - Plan my Saturday in Kraków around the weather and save it as a note
             - { prompt: Summarise the attached PDF, onChoose: fill }
-            - { prompt: What is in this picture?, onChoose: fill }
           show: { usage: false }
           header:
             - type: bar

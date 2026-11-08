@@ -11,6 +11,7 @@ metadata:
     entry is selected by, the rules that render a handler's result or error into a
     status, headers, cookies and body, and cookie declarations whose prefix, scope
     and Secure, HttpOnly and SameSite attributes are checked before the app runs.
+requires: { telo: ">=0.92.0" }
 imports:
   # The response-encoder contract the Outcomes carrier's `content[mime].encoder`
   # slot pins. Naming it by alias is what makes the coupling a declared edge.

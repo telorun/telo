@@ -18,6 +18,7 @@ import { ModuleContext } from "./module-context.js";
 import type { KindRef } from "./ref.js";
 import type { NeedObservation, NeedResolution } from "./need-resolution.js";
 import type { CoReferrer } from "./co-referrer.js";
+import type { ClaimedListener, HandedConnection } from "./host-listener.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
@@ -375,6 +376,17 @@ export interface ResourceContext extends ControllerContext {
    * `ERR_INVOKE_CANCELLED`.
    */
   resolveCoReferrers(slot: string): CoReferrer[];
+  /**
+   * Claim the socket the host holds for a `tcp` port number (`Listener.Claim`),
+   * so a server serves the connections the host admitted rather than binding
+   * the port itself. Resolves to `null` when the host holds no socket for the
+   * port — bind as usual then — and refuses with `ERR_LISTENER_CLAIMED` when
+   * another holder has it. Every connection the host admits for the port while
+   * the claim is held reaches `accept`, those it held before the claim
+   * included, none before this resolves. Claim in `run()`, and place the
+   * release in its chain.
+   */
+  claimListener(port: number, accept: (connection: HandedConnection) => void): Promise<ClaimedListener | null>;
   /**
    * The manifest a name was DECLARED with, resolved in the context that OWNS
    * this resource — the same order {@link resolveRef} uses, so a declaration

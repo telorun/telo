@@ -21,7 +21,14 @@
  *  caller sends (text and media), never on the ones a model produces. */
 export type CacheMarker = { cacheBreakpoint?: boolean };
 
-export type TextPart = { type: "text"; text: string } & CacheMarker;
+/** A text part. `kind: text-tool-result` with `toolCallId` marks the result of
+ *  a text call an agent ran, so a replay knows which calls were answered. */
+export type TextPart = {
+  type: "text";
+  text: string;
+  kind?: "text-tool-result";
+  toolCallId?: string;
+} & CacheMarker;
 
 /** A system prompt: plain text, or text parts when one of them carries a cache
  *  breakpoint. The module's `SystemPrompt` shape. */
@@ -98,6 +105,8 @@ export const DECLARED_KEYS: Record<string, (v: unknown) => boolean> = {
     isRecord(v.arguments),
   citation: isRecord,
   cacheBreakpoint: (v) => typeof v === "boolean",
+  kind: (v) => v === "text-tool-result",
+  toolCallId: (v) => typeof v === "string" && v.length > 0,
 };
 
 /** No key outside the declared set, and every key present holding what it may. */
@@ -112,7 +121,7 @@ function holdsDeclaredKeys(part: Record<string, unknown>): boolean {
 export function isMediaPart(v: unknown): v is MediaPart {
   if (!isRecord(v) || !holdsDeclaredKeys(v)) return false;
   if (typeof v.type !== "string" || !MEDIA_TYPES.has(v.type)) return false;
-  if (v.mediaType === undefined) return false;
+  if (v.mediaType === undefined || v.kind !== undefined || v.toolCallId !== undefined) return false;
   return (v.data === undefined) !== (v.uri === undefined);
 }
 
@@ -128,6 +137,9 @@ export function isImagePart(v: unknown): v is ImagePart {
  */
 export function isContentPart(v: unknown): v is ContentPart {
   if (!isRecord(v) || !holdsDeclaredKeys(v)) return false;
+  // Only a text part marks a text call's result, and a mark names its call.
+  if (v.type !== "text" && (v.kind !== undefined || v.toolCallId !== undefined)) return false;
+  if (v.kind !== undefined && v.toolCallId === undefined) return false;
   switch (v.type) {
     case "text":
       return v.text !== undefined;

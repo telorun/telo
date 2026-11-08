@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: Labels, version: 1.0.0 }
+imports: { Printing: ./printing }
+needs:
+  printer:
+    kind: Printing.LabelPrinter
+    parameters: { logo: !module-path ./assets/logo.png }

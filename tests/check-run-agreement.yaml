@@ -65,6 +65,8 @@ targets:
   - !ref ownNamePrefix
   - !ref argBindingInvalid
   - !ref argBindingOnSecret
+  - !ref requiresTeloCeiling
+  - !ref restrictionsInvalid
   - !ref bodyOutwardRef
   - !ref inheritedRequiredHint
   - !ref inlineStepNestedInline
@@ -144,6 +146,8 @@ targets:
   - !ref serviceStatusAtStartupAtRuntime
   - !ref hostPathEntryMismatch
   - !ref hostPathEntryMismatchAtRuntime
+  - !ref hostPathContentMismatch
+  - !ref hostPathContentMismatchAtRuntime
   - !ref scopedProviderStatusAtStartup
   - !ref scopedProviderStatusAtStartupAtRuntime
   - !ref moduleCallNotCallable
@@ -433,6 +437,16 @@ targets:
   - !ref needKindMismatchAtRuntime
   - !ref needDuplicateName
   - !ref needDuplicateNameAtRuntime
+  - !ref needDuplicate
+  - !ref needDuplicateAtRuntime
+  - !ref needParameterTagged
+  - !ref needParameterTaggedAtRuntime
+  - !ref needParameterPathMissing
+  - !ref needParameterPathMissingAtRuntime
+  - !ref needParameterPathEntry
+  - !ref needParameterPathEntryAtRuntime
+  - !ref needParameterPathContent
+  - !ref needParameterPathContentAtRuntime
   - !ref needSharedConflict
   - !ref needSharedConflictAtRuntime
   - !ref needLibraryEnvKeyRejected
@@ -1121,7 +1135,7 @@ metadata: { name: serviceStatusAtStartupAtRuntime }
 source: ./__fixtures__/check-run-agreement/provider-status/service-app.yaml
 expect:
   errors: []
-  runFails: 'Expression !cel "resources.listener.status.port" failed'
+  runFails: "[ERR_OBSERVED_STATE_UNAVAILABLE] RuntimeError: !cel \"resources.listener.status.port\": 'listener' reports 'port' only while it is running"
 ---
 # A module file naming a file where its slot names a directory
 # (`entry: directory`) is refused where it is written…
@@ -1139,6 +1153,23 @@ kind: Assert.Manifest
 metadata: { name: hostPathEntryMismatchAtRuntime }
 source: ./__fixtures__/check-run-agreement/host-path-entry/app.yaml
 expect: { errors: [], runFails: "[ERR_HOST_PATH_ENTRY_MISMATCH]" }
+---
+# A module file whose leading bytes are not the media type its slot declares
+# (`mediaType: image/png`) is refused where it is written…
+kind: Assert.Manifest
+metadata: { name: hostPathContentMismatch }
+source: ./__fixtures__/check-run-agreement/host-path-content/lib/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_CONTENT_MISMATCH
+      message: "icon: './tray.jpg' is image/jpeg; this slot takes image/png"
+---
+# …and by the kernel when it creates the resource, from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata: { name: hostPathContentMismatchAtRuntime }
+source: ./__fixtures__/check-run-agreement/host-path-content/app.yaml
+expect: { errors: [], runFails: "[ERR_HOST_PATH_CONTENT_MISMATCH]" }
 ---
 # A `with:` member's own fields never see a sibling in `resources` — a
 # provider's status included — so the read is refused where it is written…
@@ -2194,6 +2225,24 @@ expect:
     - code: ARG_BINDING_ON_SECRET
       message: "a secret cannot be bound to the command line"
   runFails: "[ARG_BINDING_ON_SECRET] Telo.Application secrets.token: a secret cannot be bound to the command line — a command line is readable in the process table and in shell history. Bind it with 'env:'."
+---
+# An upper bound on a module's own requires.telo, which is a floor only.
+kind: Assert.Manifest
+metadata: { name: requiresTeloCeiling }
+source: ./__fixtures__/check-run-agreement/requires-telo-ceiling.yaml
+expect:
+  errors:
+    - { code: REQUIRES_INVALID, message: "requires.telo is a floor only" }
+  runFails: "[REQUIRES_INVALID] requires.telo '>=0.1.0 <0.2.0' declares an upper bound; requires.telo is a floor only. Write the ceiling as a restrictions: entry without versions, which covers this version."
+---
+# A restrictions: entry with no reason for whoever it holds back.
+kind: Assert.Manifest
+metadata: { name: restrictionsInvalid }
+source: ./__fixtures__/check-run-agreement/restrictions-invalid.yaml
+expect:
+  errors:
+    - { code: RESTRICTIONS_INVALID, message: "restrictions[0] has no reason" }
+  runFails: "[RESTRICTIONS_INVALID] restrictions[0] has no reason; say what breaks, so whoever is held back knows why."
 ---
 # A plain string holding `${{` that no hole can be read out of: the untagged-
 # interpolation migration leaves it, and neither half reads it as text.
@@ -4090,6 +4139,98 @@ expect:
     - code: DUPLICATE_RESOURCE_NAME
       message: "Imported library 'DuplicateName', reached through import 'Lib'"
   runFails: "ERR_DUPLICATE_RESOURCE"
+---
+# A need type declaring `unique: true` is asked for at most once per module.
+kind: Assert.Manifest
+metadata: { name: needDuplicate }
+source: ./__fixtures__/needs/agreement/duplicate/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_DUPLICATE
+      message: "Needs 'printer' and 'second' are both Fx.LabelPrinter, which a module declares at most once"
+---
+kind: Assert.Manifest
+metadata: { name: needDuplicateAtRuntime }
+source: ./__fixtures__/needs/agreement/duplicate/telo.yaml
+expect:
+  errors:
+    - code: NEED_DUPLICATE
+      message: "Imported library 'NeedDuplicate', reached through import 'Lib'"
+  runFails: "ERR_NEED_DUPLICATE"
+---
+# A need parameter is a literal, or a `!module-path` where the parameter is a
+# `Telo.HostPath`: any other tag is refused…
+kind: Assert.Manifest
+metadata: { name: needParameterTagged }
+source: ./__fixtures__/needs/agreement/parameter-tagged/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "needs.printer.parameters.caption: a need parameter takes a literal or !module-path, not !cel"
+---
+kind: Assert.Manifest
+metadata: { name: needParameterTaggedAtRuntime }
+source: ./__fixtures__/needs/agreement/parameter-tagged/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Imported library 'ParameterTagged', reached through import 'Lib'"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+# …a `!module-path` naming nothing is refused as at a resource — the consumer's
+# check reports it at the library's line, and the kernel refuses the load…
+kind: Assert.Manifest
+metadata: { name: needParameterPathMissing }
+source: ./__fixtures__/needs/agreement/parameter-path-missing/lib/telo.yaml
+expect:
+  errors:
+    - code: MODULE_PATH_NOT_FOUND
+      message: "`!module-path missing.png` names 'missing.png', and there is nothing there"
+---
+kind: Assert.Manifest
+metadata: { name: needParameterPathMissingAtRuntime }
+source: ./__fixtures__/needs/agreement/parameter-path-missing/telo.yaml
+expect:
+  errors:
+    - code: MODULE_PATH_NOT_FOUND
+      message: "`!module-path missing.png` names 'missing.png', and there is nothing there"
+  runFails: "names 'missing.png', and there is nothing there"
+---
+# …and one naming a directory where the parameter's host path takes a file.
+kind: Assert.Manifest
+metadata: { name: needParameterPathEntry }
+source: ./__fixtures__/needs/agreement/parameter-path-entry/lib/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_ENTRY_MISMATCH
+      message: "needs.printer.parameters.logo: 'assets' is a directory; this slot takes a file"
+---
+kind: Assert.Manifest
+metadata: { name: needParameterPathEntryAtRuntime }
+source: ./__fixtures__/needs/agreement/parameter-path-entry/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_ENTRY_MISMATCH
+      message: "Imported library 'ParameterPathEntry', reached through import 'Lib'"
+  runFails: "ERR_HOST_PATH_ENTRY_MISMATCH"
+---
+# …and one naming a JPEG where the parameter's host path takes a PNG.
+kind: Assert.Manifest
+metadata: { name: needParameterPathContent }
+source: ./__fixtures__/needs/agreement/parameter-path-content/lib/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_CONTENT_MISMATCH
+      message: "needs.printer.parameters.logo: 'logo.jpg' is image/jpeg; this slot takes image/png"
+---
+kind: Assert.Manifest
+metadata: { name: needParameterPathContentAtRuntime }
+source: ./__fixtures__/needs/agreement/parameter-path-content/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_CONTENT_MISMATCH
+      message: "Imported library 'ParameterPathContent', reached through import 'Lib'"
+  runFails: "ERR_HOST_PATH_CONTENT_MISMATCH"
 ---
 # Two imports of one shared library disagreeing on `needs:` — refused at check
 # where the values are literals…

@@ -1,0 +1,15 @@
+kind: Telo.Library
+metadata:
+  name: Printing
+  version: 0.0.0
+  description: Test fixture — a label printer need type whose logo parameter is a file on the host.
+exports: { kinds: [LabelPrinter] }
+---
+kind: Telo.NeedType
+metadata: { name: LabelPrinter, description: The label printer an application prints through, with its logo. }
+fields: { device: { type: string } }
+required: [device]
+parameters:
+  type: object
+  additionalProperties: false
+  properties: { logo: { x-telo-type: { name: Telo.HostPath, entry: file } } }

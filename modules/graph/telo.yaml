@@ -11,19 +11,10 @@ metadata:
     them by property, and traverse several hops to find connected entities. The
     node and relationship types are declared once, so every call is checked
     against the model before anything runs.
-requires:
-  # The backend key tail (`encodeKeyTail` / `decodeKeyTail` in this module's
-  # code library) imports the typed-frame generation exports of `@telorun/sdk`
-  # (`TYPED_FRAME_GENERATION`, `readsTypedFrameGeneration`), first published in
-  # 0.108.0. On 0.107.0 every graph resource fails at controller load with
-  # "does not provide an export named 'TYPED_FRAME_GENERATION'". Verified by
-  # execution (`run`) against 0.107.0.
-  #
-  # An older reason, which this floor covers: the operation contracts use the
-  # object form of `x-telo-schema-projection-from` (`{ from, pick, omit }`) with
-  # pointers that cross references, which 0.104.0 leaves untyped and fails at
-  # dispatch with ERR_SCHEMA_PROJECTION_UNRESOLVED.
-  telo: ">=0.108.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.108.0" }
+    reason: "The backend key tail imports the typed-frame generation exports of `@telorun/sdk` (`TYPED_FRAME_GENERATION`, `readsTypedFrameGeneration`), first published in 0.108.0: on 0.107.0 every graph resource fails at controller load. Before 0.105.0 the operation contracts' `x-telo-schema-projection-from` pointers crossing references are left untyped."
 exports:
   kinds: [Store, Node, Relationship, CreateNode, MergeNode, UpdateNode, DeleteNode, GetNode, FindNodes, CreateRelationship, MergeRelationship, UpdateRelationship, DeleteRelationship, FindRelationships, Traverse]
   # The entry point a backend's controller bundle resolves `@telorun/graph` to:

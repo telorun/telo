@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: OpenLiteralFile, version: 1.0.0 }
+targets:
+  - invoke: !ref opener
+    inputs: { url: "file:///tmp/report.html" }
+---
+kind: Telo.OpenUrl
+metadata: { name: opener }

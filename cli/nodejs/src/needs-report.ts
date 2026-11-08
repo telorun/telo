@@ -12,6 +12,7 @@ import {
   type NeedEnvironmentEntry,
   type NeedTypeShape,
 } from "@telorun/analyzer";
+import { isModulePathSentinel, normalizeModulePath } from "@telorun/templating";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -38,7 +39,8 @@ export interface NeedsReportEntry {
   version: string | null;
   /** The features the need asks for. */
   features: string[];
-  /** As the need states them, with its type's schema defaults filled in. */
+  /** As the need states them, with its type's schema defaults filled in; a
+   *  `!module-path` as its module-root-relative path, `./icon.png`. */
   parameters: unknown;
   optional: boolean;
   /** True when some configuration of the application requires the need. */
@@ -95,15 +97,28 @@ function reportEntry(
     },
     version: needVersionRange(entry.need)?.raw ?? null,
     features: needFeatures(entry.need),
-    parameters: needParametersWithDefaults(
-      entry.need.type ? needType(entry.need.type) : undefined,
-      entry.need.parameters,
+    parameters: withModulePaths(
+      needParametersWithDefaults(entry.need.type ? needType(entry.need.type) : undefined, entry.need.parameters),
     ),
     optional: entry.need.optional,
     required: requirement?.required ?? true,
     ...(requirement?.requiredWhen ? { requiredWhen: [...requirement.requiredWhen] } : {}),
     fields,
   };
+}
+
+/** Each `!module-path` in `value` as the module-root-relative path it names,
+ *  prefixed `./`; a path the grammar refuses was refused before the report. */
+function withModulePaths(value: unknown): unknown {
+  if (isModulePathSentinel(value)) {
+    const { path: relative } = normalizeModulePath(value.source);
+    return `./${relative ?? value.source.trim()}`;
+  }
+  if (Array.isArray(value)) return value.map(withModulePaths);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withModulePaths(item)]));
+  }
+  return value;
 }
 
 /**

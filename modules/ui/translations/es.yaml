@@ -52,6 +52,9 @@ messages:
   filterControl: "{$label} {$operator}"
   filterChip: "{$label} {$operator} {$value}"
   filterGroupSummary: "{$label}: {$summary}"
+  searchFilter: Búsqueda
+  searchChip: "Búsqueda: {$text}"
+  searchAndFilter: Buscar y filtrar
   rangeFrom: Desde
   rangeTo: Hasta
   rangeStartsAfterEnd: No puede empezar después de terminar
@@ -156,6 +159,7 @@ messages:
   chatThinking: "Pensando…"
   chatShowDetails: "Mostrar detalles"
   chatHideDetails: "Ocultar detalles"
+  chatToolPreview: "Vista previa"
   chatToolCall: "Herramienta: {$name}"
   chatToolRunning: "En ejecución…"
   chatToolFailed: "Falló"

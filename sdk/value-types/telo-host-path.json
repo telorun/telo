@@ -1,5 +1,5 @@
 {
-  "$comment": "A nominal brand over `string`: CEL types a host path as `Telo.HostPath`, so `+` does not quietly turn one into a plain string and a plain string is not accepted where one is required. It is extended with `.joinPath(relative)` and read as text with `string(path)`. `fromHost` names the anchor a host-supplied value (an env var, or the `default:` standing in for one) is resolved against; every other value of this type must already be absolute. The `entry` parameter is found by its `hostEntry` flag, never by its name: its argument is a token (`file` | `directory`) saying what the path names when something is there, each runtime mapping it to its own filesystem query.",
+  "$comment": "A nominal brand over `string`: CEL types a host path as `Telo.HostPath`, so `+` does not quietly turn one into a plain string and a plain string is not accepted where one is required. It is extended with `.joinPath(relative)` and read as text with `string(path)`. `fromHost` names the anchor a host-supplied value (an env var, or the `default:` standing in for one) is resolved against; every other value of this type must already be absolute. The `entry` parameter is found by its `hostEntry` flag, never by its name: its argument is a token (`file` | `directory`) saying what the path names when something is there, each runtime mapping it to its own filesystem query. The `mediaType` parameter is found by its `hostMediaType` flag: its argument is a key of its `signatures`, each a list of alternative hex patterns read from the file's first byte (`??` any byte).",
   "name": "Telo.HostPath",
   "representation": "json",
   "base": "string",
@@ -9,6 +9,18 @@
       "name": "entry",
       "hostEntry": true,
       "description": "What the path names when something is there: `directory`, or `file` (anything that is not a directory; links are followed). Omitted means either. An absent path is never refused by it — a database file or a journal directory is created by whatever uses it."
+    },
+    {
+      "name": "mediaType",
+      "hostMediaType": true,
+      "signatures": {
+        "application/pdf": ["255044462d"],
+        "image/gif": ["474946383761", "474946383961"],
+        "image/jpeg": ["ffd8ff"],
+        "image/png": ["89504e470d0a1a0a"],
+        "image/webp": ["52494646????????57454250"]
+      },
+      "description": "The media type of the file the path names, judged by its leading bytes: `image/png`, `image/jpeg`, `image/gif`, `image/webp` or `application/pdf`. A directory there does not hold one. Omitted means any. An absent path is never refused by it."
     }
   ],
   "description": "An absolute path on the machine running the application — a data directory, a database file, an output location. A variable of this type set from the environment may be relative and is resolved against the working directory; anywhere else a relative path is refused. Extend one with `.joinPath('sub/dir')`, which uses the host's separator. A file that ships with the module is written with `!module-path` instead."

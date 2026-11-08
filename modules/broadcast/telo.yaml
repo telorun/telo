@@ -11,9 +11,10 @@ metadata:
     subscription whose topic patterns match runs its handler. Delivery is live and
     at most once, with nothing stored; a subscription is told when messages may
     have been missed, so it can re-read its source of truth.
-requires:
-  # The memory channel is keyed by `ctx.kernelInstanceId`, first provided by 0.130.0.
-  telo: ">=0.130.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.130.0" }
+    reason: "The memory channel is keyed by `ctx.kernelInstanceId`, first provided by 0.130.0; also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
 exports:
   kinds: [Channel, MemoryChannel, Publish, Subscription]
   # The channel interface a backend implements and the helpers it may reuse.

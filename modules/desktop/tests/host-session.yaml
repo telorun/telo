@@ -1,0 +1,143 @@
+kind: Telo.Application
+metadata:
+  name: DesktopHostSessionTest
+  version: 1.0.0
+  description: |
+    Desktop.Window, Desktop.TrayIcon, Desktop.ShowWindow and Desktop.Quit against a
+    fixture speaking desktop_host-1 on a unix socket. Each fixture application runs in
+    its own kernel and learns the socket from the environment, like a real host's.
+imports: { Test: ../../test, Fs: ../../fs, Timer: ../../timer, Assert: ../../assert, App: ../../app, Run: ../../run }
+targets:
+  - !ref windowTray
+  - !ref trayUnavailable
+  - !ref otherGeneration
+  - !ref wrongToken
+  - !ref silentHost
+  - !ref scopedUnwind
+  - !ref closedByUserInstance
+  - !ref connectionLostInstance
+  - !ref closedByUser
+  - !ref connectionLost
+---
+kind: Test.Suite
+metadata: { name: windowTray }
+include: ["__fixtures__/apps/window-tray.yaml"]
+exclude: []
+env:
+  TELO_NEED_DESKTOP_HOST__ENDPOINT: unix:///tmp/telo-desktop-test-window-tray/control.sock
+  TELO_NEED_DESKTOP_HOST__TOKEN: s3cret-token
+---
+# The warning is read from the log file the fixture application writes; the file is
+# emptied first so an earlier run's line cannot satisfy the assertion.
+kind: Telo.Sequence
+metadata: { name: trayUnavailable }
+steps:
+  - name: reset
+    invoke: { kind: Fs.FileWrite }
+    inputs: { path: /tmp/telo-desktop-tray-unavailable.jsonl, content: "" }
+  - name: run
+    invoke:
+      kind: Test.Suite
+      include: ["__fixtures__/apps/tray-unavailable.yaml"]
+      exclude: []
+      env:
+        TELO_NEED_DESKTOP_HOST__ENDPOINT: unix:///tmp/telo-desktop-test-tray-unavailable/control.sock
+        TELO_NEED_DESKTOP_HOST__TOKEN: s3cret-token
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 200ms } }
+  - name: read
+    invoke: { kind: Fs.File }
+    inputs: { path: /tmp/telo-desktop-tray-unavailable.jsonl }
+  - name: warned
+    invoke: { kind: Assert.Contains }
+    inputs: { actual: !cel "steps.read.result.content", value: DESKTOP_TRAY_UNAVAILABLE }
+---
+kind: Test.Suite
+metadata: { name: otherGeneration }
+include: ["__fixtures__/apps/refusal.yaml"]
+exclude: []
+env:
+  TELO_NEED_DESKTOP_HOST__ENDPOINT: unix:///tmp/telo-desktop-test-other-generation/control.sock
+  TELO_NEED_DESKTOP_HOST__TOKEN: s3cret-token
+  FIXTURE_GENERATION: desktop_host-2
+  EXPECT_CODE: ERR_DESKTOP_HOST_INCOMPATIBLE
+  EXPECT_MESSAGE: "speaks desktop_host-2; this module speaks desktop_host-1"
+---
+kind: Test.Suite
+metadata: { name: wrongToken }
+include: ["__fixtures__/apps/refusal.yaml"]
+exclude: []
+env:
+  TELO_NEED_DESKTOP_HOST__ENDPOINT: unix:///tmp/telo-desktop-test-wrong-token/control.sock
+  TELO_NEED_DESKTOP_HOST__TOKEN: s3cret-token
+  FIXTURE_EXPECTED_TOKEN: another-token
+  EXPECT_CODE: ERR_DESKTOP_HOST_TOKEN_INVALID
+  EXPECT_MESSAGE: the token does not match
+---
+kind: Test.Suite
+metadata: { name: silentHost }
+include: ["__fixtures__/apps/silent-host.yaml"]
+exclude: []
+env:
+  TELO_NEED_DESKTOP_HOST__ENDPOINT: unix:///tmp/telo-desktop-test-silent-host/control.sock
+  TELO_NEED_DESKTOP_HOST__TOKEN: s3cret-token
+---
+kind: Test.Suite
+metadata: { name: scopedUnwind }
+include: ["__fixtures__/apps/scoped.yaml"]
+exclude: []
+env:
+  TELO_NEED_DESKTOP_HOST__ENDPOINT: unix:///tmp/telo-desktop-test-scoped/control.sock
+  TELO_NEED_DESKTOP_HOST__TOKEN: s3cret-token
+---
+# The two applications below are children: their exit code is what is asserted.
+kind: App.Instance
+metadata: { name: closedByUserInstance }
+source: ./__fixtures__/apps/closed-by-user.yaml
+needs:
+  desktopHost:
+    endpoint: unix:///tmp/telo-desktop-test-closed-by-user/control.sock
+    token: s3cret-token
+---
+kind: App.Instance
+metadata: { name: connectionLostInstance }
+source: ./__fixtures__/apps/connection-lost.yaml
+needs:
+  desktopHost:
+    endpoint: unix:///tmp/telo-desktop-test-connection-lost/control.sock
+    token: s3cret-token
+---
+kind: Run.Loop
+metadata: { name: awaitClosedByUser }
+condition: !cel "resources.closedByUserInstance.status.exitCode == null"
+maxIterations: 250
+steps:
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
+---
+kind: Run.Loop
+metadata: { name: awaitConnectionLost }
+condition: !cel "resources.connectionLostInstance.status.exitCode == null"
+maxIterations: 250
+steps:
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
+---
+kind: Telo.Sequence
+metadata: { name: closedByUser }
+steps:
+  - { name: awaitExit, invoke: !ref awaitClosedByUser }
+  - name: exitedCleanly
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "resources.closedByUserInstance.status.exitCode", expected: 0 }
+---
+kind: Telo.Sequence
+metadata: { name: connectionLost }
+steps:
+  - { name: awaitExit, invoke: !ref awaitConnectionLost }
+  - name: failed
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "resources.connectionLostInstance.status.exitCode", expected: 1 }
+  - name: read
+    invoke: { kind: Fs.File }
+    inputs: { path: /tmp/telo-desktop-connection-lost.jsonl }
+  - name: logged
+    invoke: { kind: Assert.Contains }
+    inputs: { actual: !cel "steps.read.result.content", value: ERR_DESKTOP_HOST_UNREACHABLE }

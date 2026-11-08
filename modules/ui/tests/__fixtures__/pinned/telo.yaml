@@ -1,22 +1,15 @@
-# A pinned filter on bars of every placement. Pinning says something only
-# where something folds — an aside bar folds on a narrow viewport.
+# A pinned filter or search on bars of every placement. Pinning says something
+# only where something folds — an aside bar folds on a narrow viewport.
 kind: Telo.Application
-metadata:
-  name: UiPinnedApp
-  version: 1.0.0
-imports:
-  Ui: ../../../
-  DataModel: ../../../../data-model
+metadata: { name: UiPinnedApp, version: 1.0.0 }
+imports: { Ui: ../../../, DataModel: ../../../../data-model }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
-  properties:
-    id: { type: integer }
-    text: { type: string }
+  properties: { id: { type: integer }, text: { type: string } }
 ---
 kind: Ui.CollectionPresentation
 metadata: { name: todos }
@@ -27,61 +20,52 @@ source:
     kind: DataModel.Collection
     model: !ref Todo
     query:
+      search: { properties: [text] }
       filters:
         - { property: text, operator: contains }
       sort: []
 ---
 kind: Ui.Filters
-metadata:
-  name: omitted
+metadata: { name: omitted }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: above
+metadata: { name: above }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
-policy:
-  placement: { kind: Ui.AbovePlacement }
+policy: { placement: { kind: Ui.AbovePlacement } }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: aside
+metadata: { name: aside }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
-policy:
-  placement: { kind: Ui.AsidePlacement, side: end }
+policy: { placement: { kind: Ui.AsidePlacement, side: end } }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: collapsible
+metadata: { name: collapsible }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
-policy:
-  placement: { kind: Ui.CollapsiblePlacement }
+policy: { placement: { kind: Ui.CollapsiblePlacement } }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: overlay
+metadata: { name: overlay }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
-policy:
-  placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Drawer } }
+policy: { placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Drawer } } }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: aboveCompact
+metadata: { name: aboveCompact }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
@@ -90,8 +74,7 @@ policy:
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: asideCompact
+metadata: { name: asideCompact }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
@@ -102,32 +85,48 @@ policy:
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: omittedChosen
+metadata: { name: aboveChosen }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
-policy:
-  show: chosen
+policy: { placement: { kind: Ui.AbovePlacement, show: chosen } }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: aboveChosen
-presentation: !ref todos
-fields:
-  - { property: text, operator: contains, pinned: true }
-policy:
-  show: chosen
-  placement: { kind: Ui.AbovePlacement }
-content: { type: text, text: Todos }
----
-kind: Ui.Filters
-metadata:
-  name: aboveUnpinned
+metadata: { name: aboveUnpinned }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains }
-policy:
-  placement: { kind: Ui.AbovePlacement }
+policy: { placement: { kind: Ui.AbovePlacement } }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata: { name: searchOmitted }
+presentation: !ref todos
+search: { pinned: true }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata: { name: searchAside }
+presentation: !ref todos
+search: { pinned: true }
+policy: { placement: { kind: Ui.AsidePlacement } }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata: { name: searchBox }
+presentation: !ref todos
+search: { pinned: true }
+fields:
+  - { property: text, operator: contains, pinned: true }
+policy: { placement: { kind: Ui.SearchBoxPlacement } }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata: { name: searchBoxUnpinned }
+presentation: !ref todos
+search: {}
+fields:
+  - { property: text, operator: contains }
+policy: { placement: { kind: Ui.SearchBoxPlacement } }
 content: { type: text, text: Todos }

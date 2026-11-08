@@ -66,11 +66,13 @@ describe("the roster", () => {
     expect(marked.sort()).toEqual(
       [
         "ConsoleSink",
+        "DesktopHost",
         "DurableDirectory",
         "FileSink",
         "Function",
         "JsonSchema",
         "LogTraceSink",
+        "OpenUrl",
         "PublicHostPattern",
         "PublicUrl",
         "Sequence",

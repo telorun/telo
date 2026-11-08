@@ -1,0 +1,104 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiAdminSearchTest
+  version: 1.0.0
+  description: |
+    An admin over a collection that declares `query.search`, with its filter bar
+    drawn as one search box, carries a search on the bar it generates and the
+    box as its placement; over a collection declaring none, the bar carries no
+    search at all.
+imports:
+  CrudUi: ../
+  Crud: ../../crud
+  SQLite: ../../sqlite
+  Ui: ../../ui
+  Probe: ../../ui/tests/__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: SQLite.Table
+metadata: { name: postsTable }
+table: posts
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  body: { type: text }
+  status: { type: text, nullable: false }
+---
+kind: Telo.JsonSchema
+metadata: { name: PostDraft }
+schema:
+  type: object
+  required: [title, status]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+    body: { type: string }
+    status: { enum: [draft, review, published] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+extends: PostDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Crud.Collection
+metadata: { name: searchablePosts }
+model: !ref Post
+table: !ref postsTable
+schemas: { list: !ref Post, create: !ref PostDraft, update: !ref PostDraft }
+query:
+  filters: [{ property: status, operator: eq }]
+  sort: [{ property: title }]
+  search: { properties: [title, body] }
+---
+kind: Crud.Collection
+metadata: { name: plainPosts }
+model: !ref Post
+table: !ref postsTable
+schemas: { list: !ref Post, create: !ref PostDraft, update: !ref PostDraft }
+query:
+  filters: [{ property: status, operator: eq }]
+  sort: [{ property: title }]
+---
+kind: CrudUi.CollectionSource
+metadata: { name: searchableSource }
+collection: !ref searchablePosts
+basePath: /api/posts
+---
+kind: CrudUi.CollectionSource
+metadata: { name: plainSource }
+collection: !ref plainPosts
+basePath: /api/plain-posts
+---
+kind: CrudUi.Admin
+metadata: { name: searchableAdmin }
+source: !ref searchableSource
+filters: { placement: { kind: Ui.SearchBoxPlacement } }
+---
+kind: CrudUi.Admin
+metadata: { name: plainAdmin }
+source: !ref plainSource
+filters: { placement: { kind: Ui.SearchBoxPlacement } }
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: searchable
+    invoke: { kind: Probe.Read, source: !ref searchableAdmin }
+  - name: plain
+    invoke: { kind: Probe.Read, source: !ref plainAdmin }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        searchable:
+          search: !cel "steps.searchable.result.node.search"
+          placement: !cel "steps.searchable.result.node.placement.type"
+        plain:
+          hasSearch: !cel "has(steps.plain.result.node.search)"
+          placement: !cel "steps.plain.result.node.placement.type"
+      expected:
+        searchable: { search: { pinned: false, default: null }, placement: searchBox }
+        plain: { hasSearch: false, placement: searchBox }

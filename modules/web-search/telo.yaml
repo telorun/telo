@@ -11,6 +11,7 @@ metadata:
     date, plus an opaque cursor for the next page. Shared failure codes cover bad
     input, denied access, rate limits, exhausted quota and engine failures, so
     callers never depend on one provider.
+requires: { telo: ">=0.92.0" }
 exports:
   kinds: [Engine]
   resources: [Query, Results, sealCursor, openCursor, resolveHint, freshnessStart, windowRequest, windowSlice, readPublishedAt]

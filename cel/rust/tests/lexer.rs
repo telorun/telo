@@ -84,6 +84,12 @@ fn refuses_an_unreadable_literal_where_it_goes_wrong() {
         reading("`a`", defaults(), unparsed(0, 3), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"`a`\" cannot stand here, expected \"a member read, as in a.`b`\"", 0, 3))),
         reading("rb'x'", defaults(), ident("rb", false, 0, 2), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"'x'\" cannot stand here", 2, 5))),
         reading("`a", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::UnterminatedString, "a quoted member name ends at its closing backtick", 0, 2))),
+        reading("'a\rb'", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 0, 2))),
+        reading("b'a\rb'", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 1, 3))),
+        reading("`a\rb`", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::UnterminatedString, "a quoted member name ends at its closing backtick", 0, 4))),
+        reading("a.`b\rc`", defaults(), select(ident("a", false, 0, 1), "", (2, 2), false, false, 0, 2), Some(diagnostic(CelSyntaxCode::UnterminatedString, "a quoted member name ends at its closing backtick", 2, 6))),
+        reading("1 + 'a\rb'", defaults(), binary("+", literal_int(1, 0, 1), unparsed(4, 4), 0, 4), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 4, 6))),
+        reading("'a\r\nb'", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 0, 2))),
     ]);
 }
 
@@ -123,6 +129,20 @@ fn names_and_ranges_the_whole_character_an_escape_stands_before() {
         reading("\"\\\u{1f600}\"", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::InvalidEscapeSequence, "\\\u{1f600} is not an escape sequence", 1, 4))),
         reading("'a\\\u{1f600}b'", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::InvalidEscapeSequence, "\\\u{1f600} is not an escape sequence", 2, 5))),
         reading("b'\\\u{1f600}'", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::InvalidEscapeSequence, "\\\u{1f600} is not an escape sequence", 2, 5))),
+    ]);
+}
+
+#[test]
+fn ends_a_single_line_raw_literal_at_a_carriage_return_a_backslash_before_it_or_not() {
+    assert_reads_as_node(vec![
+        reading("r'a\\\rb'", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 1, 4))),
+        reading("br'a\\\rb'", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 2, 5))),
+        reading("\"a\\\rb\"", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::InvalidEscapeSequence, "\\\r is not an escape sequence", 2, 4))),
+    ]);
+    // A triple-quoted literal holds a carriage return as written, and a raw backslash takes it.
+    assert_reads_as_node(vec![
+        reading("'''a\rb'''", defaults(), literal_string("a\rb", 0, 9), None),
+        reading("r'''a\\\rb'''", defaults(), literal_string("a\\\rb", 0, 11), None),
     ]);
 }
 

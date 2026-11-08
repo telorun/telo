@@ -1,5 +1,5 @@
 // A hand-written collection that speaks the collection contract a listing
-// reads — facets and the `absent` operator included. The logic is a plain function of a request, so a test can call it
+// reads — facets, the `absent` operator and `search` included. The logic is a plain function of a request, so a test can call it
 // with no server; the mount below puts it on one.
 
 const OPERATORS = ["contains", "gt", "gte", "lt", "lte", "in", "absent"];
@@ -37,6 +37,12 @@ export function createCollection(seed, required = []) {
     for (const name of names) {
       // Keys beginning `_telo` are the renderer's own.
       if (["limit", "cursor", "sort", "facet"].includes(name) || name.startsWith("_telo")) continue;
+      // The search matches a record when any of its text properties contains the text.
+      if (name === "search") {
+        const text = query.get("search").toLowerCase();
+        selected = selected.filter((row) => Object.values(row).some((value) => typeof value === "string" && value.toLowerCase().includes(text)));
+        continue;
+      }
       const dot = name.lastIndexOf(".");
       const operator = dot > 0 && OPERATORS.includes(name.slice(dot + 1)) ? name.slice(dot + 1) : "eq";
       const property = operator === "eq" ? name : name.slice(0, dot);

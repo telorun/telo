@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   HOST_ENTRY_KINDS,
+  HOST_MEDIA_HEAD_LENGTH,
   isAbsoluteHostPath,
   RuntimeError,
   VALUE_TYPES,
@@ -26,8 +27,12 @@ import {
   type ExternalSchemaResolver,
   hostAnchorFor,
   hostEntryAt,
+  hostMediaTypeAt,
+  hostMediaTypeFinding,
+  hostMediaTypeMismatchAt,
   hostPathRelativeMessage,
   mapTextLeaves,
+  pointerToPath,
 } from "@telorun/analyzer";
 
 /** The one host-path value type, named in the refusal. */
@@ -77,39 +82,86 @@ function hostEntryAtPath(text: string): HostEntryKind | { unreadable: string } |
   return HOST_ENTRY_KINDS.find((kind) => HOST_ENTRY_QUERIES[kind]!(stat));
 }
 
-/** One host path in a value whose slot says what it names, and that is the
- *  other kind of entry — or that the filesystem would not tell about. */
-export interface HostEntryMismatch {
+/** The leading bytes of the file at an absolute path that exists, as many as
+ *  decide every media type, or why they could not be read. */
+function headAtPath(text: string): Uint8Array | { unreadable: string } {
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(text, "r");
+    const head = new Uint8Array(HOST_MEDIA_HEAD_LENGTH);
+    return head.subarray(0, fs.readSync(descriptor, head, 0, head.length, 0));
+  } catch (error) {
+    return { unreadable: (error as NodeJS.ErrnoException).code ?? (error as Error).message };
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
+/** One host path in a value that is not what its slot says — the other kind of
+ *  entry, a file of another media type — or that the filesystem would not tell
+ *  about. */
+export interface HostPathMismatch {
   pointer: string;
   text: string;
-  wanted: HostEntryKind;
-  /** What is there, when the path could be read. */
+  /** What the slot says the path names, when it says. */
+  wanted?: HostEntryKind;
+  /** What is there, when it is the other kind of entry. */
   found?: HostEntryKind;
+  /** The media type the slot says the file holds, when what is there does not
+   *  hold it: the media type found, or a directory. */
+  content?: { declared: string; found: { mediaType: string | undefined } | "directory" };
   /** Why the path could not be read (`EACCES`), when it could not. */
   unreadable?: string;
 }
 
 /**
  * Every absolute host path in `value` whose slot declares what it names
- * (`entry: file | directory`) and that exists as the other kind, or cannot be
- * read. An absent path is never one: what uses it may create it.
+ * (`entry: file | directory`) and that exists as the other kind, whose slot
+ * declares a media type (`mediaType: image/png`) its file's leading bytes do not
+ * carry, or that cannot be read. An absent path is never one: what uses it may
+ * create it.
  */
-export function hostEntryMismatches(
+export function hostPathMismatches(
   value: unknown,
   schema: Record<string, any>,
   external?: ExternalSchemaResolver,
-): HostEntryMismatch[] {
-  const out: HostEntryMismatch[] = [];
+): HostPathMismatch[] {
+  const out: HostPathMismatch[] = [];
   mapTextLeaves(
     value,
     schema,
     (slot, text, pointer) => {
       if (hostAnchorFor(slot, text) === undefined || !isAbsoluteHostPath(text)) return text;
       const wanted = hostEntryAt(slot);
-      if (wanted === undefined) return text;
+      const mediaType = hostMediaTypeAt(slot);
+      if (wanted === undefined && mediaType === undefined) return text;
       const found = hostEntryAtPath(text);
-      if (typeof found === "object") out.push({ pointer, text, wanted, unreadable: found.unreadable });
-      else if (found !== undefined && found !== wanted) out.push({ pointer, text, wanted, found });
+      if (found === undefined) return text;
+      if (typeof found === "object") {
+        out.push({
+          pointer,
+          text,
+          ...(wanted ? { wanted } : { content: { declared: mediaType!, found: { mediaType: undefined } } }),
+          unreadable: found.unreadable,
+        });
+        return text;
+      }
+      if (wanted !== undefined && found !== wanted) {
+        out.push({ pointer, text, wanted, found });
+        return text;
+      }
+      if (mediaType === undefined) return text;
+      if (found === "directory") {
+        out.push({ pointer, text, content: { declared: mediaType, found: "directory" } });
+        return text;
+      }
+      const head = headAtPath(text);
+      if (!(head instanceof Uint8Array)) {
+        out.push({ pointer, text, content: { declared: mediaType, found: { mediaType: undefined } }, ...head });
+        return text;
+      }
+      const mismatch = hostMediaTypeMismatchAt(slot, head);
+      if (mismatch) out.push({ pointer, text, content: { declared: mediaType, found: { mediaType: mismatch.found } } });
       return text;
     },
     external,
@@ -120,8 +172,9 @@ export function hostEntryMismatches(
 const declaringSchemas = new WeakMap<object, boolean>();
 
 /** Whether a schema — through every reference it makes — declares a host path's
- *  entry anywhere, so a kind declaring none walks nothing at creation. */
-function declaresHostEntry(schema: Record<string, any>, external?: ExternalSchemaResolver): boolean {
+ *  entry or media type anywhere, so a kind declaring neither walks nothing at
+ *  creation. */
+function declaresHostPathCheck(schema: Record<string, any>, external?: ExternalSchemaResolver): boolean {
   const known = declaringSchemas.get(schema);
   if (known !== undefined) return known;
   const seen = new Set<object>();
@@ -130,7 +183,7 @@ function declaresHostEntry(schema: Record<string, any>, external?: ExternalSchem
     seen.add(node);
     if (!Array.isArray(node)) {
       const record = node as Record<string, unknown>;
-      if (hostEntryAt(record) !== undefined) return true;
+      if (hostEntryAt(record) !== undefined || hostMediaTypeAt(record) !== undefined) return true;
       if (typeof record.$ref === "string" && !record.$ref.startsWith("#") && visit(external?.(record.$ref))) {
         return true;
       }
@@ -142,33 +195,48 @@ function declaresHostEntry(schema: Record<string, any>, external?: ExternalSchem
   return declares;
 }
 
-/** How a mismatch reads after its subject. */
-export function hostEntryMismatchText(mismatch: HostEntryMismatch): string {
-  const wanted = `takes the path of ${describeHostEntry(mismatch.wanted)}`;
+/** The code a mismatch is refused under. */
+export function hostPathMismatchCode(mismatch: HostPathMismatch): string {
+  return mismatch.unreadable !== undefined
+    ? "ERR_HOST_PATH_UNREADABLE"
+    : mismatch.content
+      ? "ERR_HOST_PATH_CONTENT_MISMATCH"
+      : "ERR_HOST_PATH_ENTRY_MISMATCH";
+}
+
+/** How a mismatch reads, naming where it is (`'/root'`, or `it` for the whole value). */
+export function hostPathMismatchText(mismatch: HostPathMismatch): string {
+  const subject = mismatch.pointer ? `'${mismatch.pointer}'` : "it";
+  if (mismatch.content && mismatch.unreadable === undefined) {
+    const at = mismatch.pointer ? `${pointerToPath(mismatch.pointer)}: ` : "";
+    return hostMediaTypeFinding(`${at}'${mismatch.text}'`, mismatch.content.found, mismatch.content.declared);
+  }
+  const wanted = mismatch.wanted
+    ? `takes the path of ${describeHostEntry(mismatch.wanted)}`
+    : `takes a file of ${mismatch.content!.declared}`;
   return mismatch.found === undefined
-    ? `${wanted}, but what is at '${mismatch.text}' cannot be read (${mismatch.unreadable})`
-    : `${wanted}, but '${mismatch.text}' is ${describeHostEntry(mismatch.found)}`;
+    ? `${subject} ${wanted}, but what is at '${mismatch.text}' cannot be read (${mismatch.unreadable})`
+    : `${subject} ${wanted}, but '${mismatch.text}' is ${describeHostEntry(mismatch.found)}`;
 }
 
 /**
  * Refuse a host path a resource holds — written as a module file, computed by a
  * compile-eval expression, or read from a variable — that exists and is the
- * other kind of entry than its slot names (`ERR_HOST_PATH_ENTRY_MISMATCH`), or
- * that the filesystem would not tell about (`ERR_HOST_PATH_UNREADABLE`).
+ * other kind of entry than its slot names (`ERR_HOST_PATH_ENTRY_MISMATCH`), is a
+ * file of another media type than its slot declares
+ * (`ERR_HOST_PATH_CONTENT_MISMATCH`), or that the filesystem would not tell about
+ * (`ERR_HOST_PATH_UNREADABLE`).
  */
-export function refuseMisplacedHostEntries(
+export function refuseMismatchedHostPaths(
   resource: Record<string, unknown>,
   schema: Record<string, any>,
   label: string,
   external?: ExternalSchemaResolver,
 ): void {
-  if (!declaresHostEntry(schema, external)) return;
-  const [mismatch] = hostEntryMismatches(resource, schema, external);
+  if (!declaresHostPathCheck(schema, external)) return;
+  const [mismatch] = hostPathMismatches(resource, schema, external);
   if (!mismatch) return;
-  throw new RuntimeError(
-    mismatch.found === undefined ? "ERR_HOST_PATH_UNREADABLE" : "ERR_HOST_PATH_ENTRY_MISMATCH",
-    `${label}: '${mismatch.pointer}' ${hostEntryMismatchText(mismatch)}.`,
-  );
+  throw new RuntimeError(hostPathMismatchCode(mismatch), `${label}: ${hostPathMismatchText(mismatch)}.`);
 }
 
 /**

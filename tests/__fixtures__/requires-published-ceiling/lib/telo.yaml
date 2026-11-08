@@ -1,0 +1,10 @@
+# A published manifest's upper bound on requires.telo, read as a dependency: not
+# the consumer's to fix, and honoured as a restriction of this version.
+kind: Telo.Library
+metadata: { name: CeilingLib, version: 1.0.0 }
+requires: { telo: ">=0.1.0 <0.2.0" }
+---
+kind: Telo.Definition
+metadata: { name: Point, description: A point on a plane. }
+capability: Telo.Type
+schema: { type: object }

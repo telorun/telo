@@ -1,0 +1,4 @@
+# Consumes the library beside it; the agent refuses its tags when it is created.
+kind: Telo.Application
+metadata: { name: TextToolsTagDuplicateApp, version: 1.0.0 }
+imports: { Lib: ./text-tools-tag-duplicate }

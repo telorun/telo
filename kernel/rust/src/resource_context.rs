@@ -19,7 +19,7 @@ use crate::controller_loaders::native_abi::host_vtable;
 use crate::controller_registry::Definition;
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
-use crate::host_paths::{refuse_misplaced_host_entries, refuse_relative_host_paths};
+use crate::host_paths::{refuse_mismatched_host_paths, refuse_relative_host_paths};
 use crate::invocation_contract_binding::InvocationContract;
 
 /// Build one resource instance from its document.
@@ -109,7 +109,7 @@ fn refuse_misplaced_host_paths(definition: &Definition, manifest: &Value, name: 
         return Ok(());
     }
     let label = format!("{}/{name}", definition.kind);
-    refuse_misplaced_host_entries(manifest, schema, &label)?;
+    refuse_mismatched_host_paths(manifest, schema, &label)?;
     refuse_relative_host_paths(manifest, schema, &label)
 }
 

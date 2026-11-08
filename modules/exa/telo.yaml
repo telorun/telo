@@ -11,6 +11,7 @@ metadata:
     publication date for a query, with location, recency and content-moderation
     settings. Up to 100 results per query, sliced with an opaque cursor.
     Authenticated with an API key on a configurable HTTP client.
+requires: { telo: ">=0.128.0" }
 imports: { WebSearch: ../web-search, Http: ../http-client, Run: ../run }
 exports: { kinds: [WebSearchEngine] }
 ---

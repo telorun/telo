@@ -234,6 +234,7 @@ fn writes_more_sources_back_to_an_equal_tree() {
             ("a.b(1)", "a.b(1)"),
             ("'\\x7f\\x1f\\\\\\\"\\'\\r\\t'", "\"\\x7f\\x1f\\\\\\\"'\\r\\t\""),
             ("'\u{e9}\u{1f600}'", "\"\u{e9}\u{1f600}\""),
+            ("b'a\\rb'", "b\"a\\x0db\""),
             ("b'\\\\\\\"~ \\x7f\\x80'", "b\"\\\\\\\"~ \\x7f\\x80\""),
             ("b'\u{e9}'", "b\"\\xc3\\xa9\""),
             ("a ? b : c ? d : e", "a ? b : c ? d : e"),
@@ -333,7 +334,7 @@ fn writes_or_refuses_every_name_member_and_field_as_node_does() {
         (select(ident("a", false, 0, 0), "a`b", (0, 0), false, false, 0, 0), Err("\"a`b\" cannot be written as a member name")),
         (select(ident("a", false, 0, 0), "a`b", (0, 0), false, true, 0, 0), Err("\"a`b\" cannot be written as a member name")),
         (select(ident("a", false, 0, 0), "a\nb", (0, 0), false, false, 0, 0), Err("\"a\\nb\" cannot be written as a member name")),
-        (select(ident("a", false, 0, 0), "a\rb", (0, 0), false, false, 0, 0), Ok("a.`a\rb`")),
+        (select(ident("a", false, 0, 0), "a\rb", (0, 0), false, false, 0, 0), Err("\"a\\rb\" cannot be written as a member name")),
         (select(ident("a", false, 0, 0), "", (0, 0), false, true, 0, 0), Err("\"\" cannot be written as a member name")),
         (select(ident("a", false, 0, 0), "", (0, 0), false, false, 0, 0), Err("\"\" cannot be written as a member name")),
     ]);

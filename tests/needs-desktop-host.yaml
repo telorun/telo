@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: NeedsDesktopHostTest
+  version: 1.0.0
+  description: |
+    A `Telo.DesktopHost` is a root need read from the environment: both fields
+    boot it, none is refused as unmet.
+imports: { Test: ../modules/test, Assert: ../modules/assert }
+targets:
+  - !ref supplied
+  - !ref unmet
+  - !ref parametersRefused
+  - !ref libraryStatesParameters
+---
+kind: Test.Suite
+metadata: { name: supplied }
+include: ["__fixtures__/needs/desktop-host/boot.yaml"]
+exclude: []
+env:
+  TELO_NEED_DESKTOP_HOST__ENDPOINT: unix:///run/telo-desktop.sock
+  TELO_NEED_DESKTOP_HOST__TOKEN: s3cret-token
+---
+kind: Assert.Manifest
+metadata: { name: unmet }
+source: ./__fixtures__/needs/desktop-host/boot.yaml
+expect:
+  errors: []
+  runFails: "Need 'desktopHost' (type 'Telo.DesktopHost', declared by module 'DesktopHostBoot') is required and nothing supplies it. Set TELO_NEED_DESKTOP_HOST__ENDPOINT, TELO_NEED_DESKTOP_HOST__TOKEN"
+---
+# Each parameter rule is refused by `telo check` and by the kernel at load.
+kind: Assert.Manifest
+metadata: { name: parametersRefused }
+source: ./__fixtures__/needs/desktop-host/broken/telo.yaml
+expect:
+  errors:
+    - { code: MODULE_PATH_NOT_FOUND, message: "missing.png" }
+    - code: NEED_DUPLICATE
+      message: "Needs 'desktopHost' and 'second' are both Telo.DesktopHost, which a module declares at most once"
+    - code: NEED_PARAMETERS_INVALID
+      message: "needs.second.parameters.icon: a need parameter takes a literal or !module-path, not !cel"
+    - code: HOST_PATH_CONTENT_MISMATCH
+      message: "'tray.jpg' is image/jpeg; this slot takes image/png"
+    - code: NEED_PARAMETERS_INVALID
+      message: "Need 'desktopHost' names port 'metrics', which is a 'udp' port; a Telo.DesktopHost names a tcp key of ports:"
+    - code: NEED_PARAMETERS_INVALID
+      message: "callbackPaths[0]: 'auth/callback' must start with '/'"
+    - code: NEED_PARAMETERS_INVALID
+      message: "callbackPaths[1]: '/a?b' must hold no query or fragment"
+    - code: NEED_PARAMETERS_INVALID
+      message: "Need 'second' names port 'nope', which this application's 'ports:' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: libraryStatesParameters }
+source: ./__fixtures__/needs/desktop-host/library/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Imported library 'Shell', reached through import 'Shell'"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"

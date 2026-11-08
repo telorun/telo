@@ -14,7 +14,7 @@ metadata:
 # An agent's `context` input is typed by `x-telo-value-schema-from` naming a LIST
 # of locations — its tool providers' `contextType`s and its resolver's — which no
 # runtime before 0.122.0 reads: an older one refuses the annotation's list form.
-requires: { telo: ">=0.122.0" }
+requires: { telo: ">=0.128.0" }
 imports: { Run: ../run, Stream: ../stream }
 exports:
   kinds: [Model, ModelStream, Buffered, Text, TextStream, ToolProvider, Tools, Agent, AgentStream, ImageModel, Image]
@@ -191,10 +191,25 @@ schema:
         honours the last ones in request order, and the answer is the same either
         way. `false` is the same as absent. Only on a part a caller sends — text,
         image, audio, video or file.
+    kind:
+      description: >-
+        On a text part, `text-tool-result` marks the result of a text call an agent
+        ran, so a replay knows which calls were answered and history is not read
+        as a person's words. Requires `toolCallId`.
+      type: string
+      enum: [text-tool-result]
+    toolCallId:
+      type: string
+      minLength: 1
+      description: On a text part marked `kind`, the id of the text call it answers.
   # What each `type` must carry, as one branch per group of types. A branch names
   # its types and requires `type`, so a part is judged by the branch it plainly is.
   # A part a model produces forbids `cacheBreakpoint` with a `false` property, so
   # the finding names the key.
+  # `kind` and `toolCallId` mark a text part only, and a mark names its call.
+  dependencies:
+    kind: { required: [toolCallId], properties: { type: { const: text } } }
+    toolCallId: { properties: { type: { const: text } } }
   anyOf:
     - { required: [type, text], properties: { type: { const: text } } }
     - required: [type, text]
@@ -588,6 +603,12 @@ schema:
             True when the call was decided against — by the caller or by the agent's
             approver — and never ran; `content` is what the model was told. A denial
             is not an error.
+        origin:
+          type: string
+          enum: [text]
+          description: >-
+            `text` for a text call, gathered from the reply's fenced blocks; its
+            `toolCallId` is the call's `block_` id. Absent for a call the model asked for.
 ---
 # Why generation ended. Declared once: it was restated in five places with four
 # different value sets, so a value one kind produced was rejected by the next —
@@ -1456,20 +1477,9 @@ schema:
         You are a concise assistant. Answer in one sentence.
       options: { temperature: 0.7 }
 ---
-# Ai.ToolProvider — abstract source of callable tools, mounted into an Ai.Agent the
-# same way an Http.Api mounts into an Http.Server. Implementations expose a runtime
-# instance with two methods (documented convention, like Ai.Model's invoke/stream):
-#   listTools(): ToolDescriptor[]        — what to advertise to the model
-#   callTool(name, arguments, ctx): any  — dispatch a model-requested call; `ctx` is
-#                                          the agent invocation's context, handed on
-#                                          to the tool so a cancelled turn stops it
-# and one optional method:
-#   toolRequiresApproval(name, arguments, context): boolean
-#                                        — whether this call needs a decision
-#                                          before it runs; absent means it does not.
-#                                          Any answer but a boolean fails the call
-# `Ai.Tools` (static list, here) and `AiMcp.ToolProvider` (MCP discovery, in
-# @telorun/ai-mcp) both implement it; the agent never learns which.
+# Ai.ToolProvider — its instance methods are in docs/ai-tool-provider.md. A
+# declaration's top-level `tools` key is reserved for a complete static tool list
+# in Ai.Tools' entry shape: an agent's `textTools` rules read it.
 kind: Telo.Abstract
 metadata:
   name: ToolProvider
@@ -1682,6 +1692,22 @@ throws:
         rather than returned so it reaches a `catch:` and a route's `catches:`.
     ERR_AGENT_UNKNOWN_TOOL: { description: The model asked for a tool no mounted provider advertises. }
     ERR_AGENT_TOOL_COLLISION: { description: Two mounted providers advertise the same tool name. }
+    ERR_AI_TEXT_TOOL_UNKNOWN:
+      description: >-
+        A `textTools` entry names a tool no mounted provider advertises. Raised when
+        the tools are first listed, before any model call.
+    ERR_AI_TEXT_TOOL_ARGUMENT_UNKNOWN:
+      description: >-
+        A `textTools` entry maps an argument the tool's advertised parameters refuse.
+        Raised when the tools are first listed, before any model call.
+    ERR_AI_TEXT_TOOL_ARGUMENT_MISSING:
+      description: >-
+        A `textTools` entry leaves a parameter the tool requires unmapped. Raised when
+        the tools are first listed, before any model call.
+    ERR_AI_TEXT_TOOL_TAG_DUPLICATE:
+      description: >-
+        Two `textTools` entries list the same tag, so a block would have two owners.
+        Raised when the agent is created, before any model call.
     ERR_AGENT_APPROVAL_UNKNOWN_TOOL:
       description: >-
         A tool provider entry's `approval.include` names a tool the entry does not
@@ -1827,6 +1853,29 @@ outputType:
               description: The tools the model asked for on that call, in the order it asked.
               type: array
               items: !ref ToolCall
+            textCalls:
+              description: >-
+                The text calls the reply yielded, in the order they run; present when the
+                agent declares `textTools`. `ok` is true when the call ran and succeeded
+                in this run.
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, tool, blocks, ok]
+                properties:
+                  id: { type: string, description: "The call's `block_` id, its result's `toolCallId`." }
+                  tool: { type: string }
+                  blocks:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [tag, attributes]
+                      properties:
+                        tag: { type: string }
+                        attributes: { type: object, additionalProperties: { type: string } }
+                  ok: { type: boolean }
       toolResults:
         description: >-
           One entry per tool call the run settled — ran, failed or was denied —
@@ -1855,6 +1904,12 @@ outputType:
                 True when the call was decided against — by the caller or by the
                 agent's approver — and never ran; `content` is what the model was
                 told. A denial is not an error.
+            origin:
+              type: string
+              enum: [text]
+              description: >-
+                `text` for a text call, gathered from the reply's fenced blocks.
+                Absent for a call the model asked for.
     required: [text, usage, finishReason, steps, toolResults, messages]
     additionalProperties: false
 schema:
@@ -2080,6 +2135,57 @@ schema:
         Fetches referenced content for the model on demand: the `uri` schemes it
         answers for, the resource asked, and the mappings into and out of it.
       $ref: "telo://Self/ContentResolver"
+    textTools:
+      title: Text tools
+      description: >-
+        Tools fed from fenced blocks in the model's reply: each entry gathers every
+        block whose tag it lists into one call of a tool a provider advertises, run
+        after the reply's JSON tool calls, and its result is sent back in the
+        follow-up.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [tags, tool, arguments]
+        properties:
+          tags:
+            title: Tags
+            description: >-
+              The fence tags this entry collects, each listed by one entry only. A
+              fence whose tag no entry lists is ordinary text.
+            type: array
+            minItems: 1
+            uniqueItems: true
+            items: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
+          tool:
+            title: Tool
+            description: >-
+              The tool called, by the name the model is told — a provider entry's
+              `prefix` included.
+            type: string
+            minLength: 1
+          arguments:
+            title: Arguments
+            description: >-
+              The call's arguments, one CEL value per argument over `blocks`, the
+              reply's blocks with this entry's tags in reply order. A value that
+              fails to evaluate fails the call, which does not run.
+            type: object
+            additionalProperties:
+              x-telo-context:
+                type: object
+                additionalProperties: false
+                properties:
+                  blocks:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [tag, attributes, body]
+                      properties:
+                        tag: { type: string }
+                        attributes: { type: object, additionalProperties: { type: string } }
+                        body: { type: string }
   required: [model]
   additionalProperties: false
   x-telo-resource-rules:
@@ -2097,6 +2203,21 @@ schema:
       message: >-
         lists a tool in `approval.include` that its own `include` / `exclude` removes;
         the entry never exposes that tool, so the name gates nothing.
+    - resolve: [/toolProviders/*/provider, /toolProviders/*/provider/tools/*/tool]
+      in: /textTools
+      condition: !cel >-
+        !(has(self.toolProviders) ? self.toolProviders : []).all(p, (has(p.provider.tools) && p.provider.tools.all(t, has(t.name) || (has(t.tool.metadata) && has(t.tool.metadata.name))))) ||
+        (has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool)))
+      code: AI_TEXT_TOOL_UNKNOWN
+      message: >-
+        names a tool no tool provider declares, by the name the model is told after
+        each provider entry's `include`, `exclude` and `prefix`.
+    - in: /textTools
+      condition: !cel "this.tags.all(g, size(self.textTools.filter(o, g in o.tags)) == 1)"
+      code: AI_TEXT_TOOL_TAG_DUPLICATE
+      message: >-
+        lists a tag another textTools entry lists too; each block is gathered by
+        exactly one entry.
   examples:
     - model: !ref Gpt4oMini
       system: |
@@ -2160,6 +2281,22 @@ throws:
         rather than returned so it reaches a `catch:` and a route's `catches:`.
     ERR_AGENT_UNKNOWN_TOOL: { description: The model asked for a tool no mounted provider advertises. }
     ERR_AGENT_TOOL_COLLISION: { description: Two mounted providers advertise the same tool name. }
+    ERR_AI_TEXT_TOOL_UNKNOWN:
+      description: >-
+        A `textTools` entry names a tool no mounted provider advertises. Raised when
+        the tools are first listed, before any model call.
+    ERR_AI_TEXT_TOOL_ARGUMENT_UNKNOWN:
+      description: >-
+        A `textTools` entry maps an argument the tool's advertised parameters refuse.
+        Raised when the tools are first listed, before any model call.
+    ERR_AI_TEXT_TOOL_ARGUMENT_MISSING:
+      description: >-
+        A `textTools` entry leaves a parameter the tool requires unmapped. Raised when
+        the tools are first listed, before any model call.
+    ERR_AI_TEXT_TOOL_TAG_DUPLICATE:
+      description: >-
+        Two `textTools` entries list the same tag, so a block would have two owners.
+        Raised when the agent is created, before any model call.
     ERR_AGENT_APPROVAL_UNKNOWN_TOOL:
       description: >-
         A tool provider entry's `approval.include` names a tool the entry does not
@@ -2491,6 +2628,57 @@ schema:
         Fetches referenced content for the model on demand: the `uri` schemes it
         answers for, the resource asked, and the mappings into and out of it.
       $ref: "telo://Self/ContentResolver"
+    textTools:
+      title: Text tools
+      description: >-
+        Tools fed from fenced blocks in the model's reply: each entry gathers every
+        block whose tag it lists into one call of a tool a provider advertises, run
+        after the reply's JSON tool calls, and its result is sent back in the
+        follow-up.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [tags, tool, arguments]
+        properties:
+          tags:
+            title: Tags
+            description: >-
+              The fence tags this entry collects, each listed by one entry only. A
+              fence whose tag no entry lists is ordinary text.
+            type: array
+            minItems: 1
+            uniqueItems: true
+            items: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
+          tool:
+            title: Tool
+            description: >-
+              The tool called, by the name the model is told — a provider entry's
+              `prefix` included.
+            type: string
+            minLength: 1
+          arguments:
+            title: Arguments
+            description: >-
+              The call's arguments, one CEL value per argument over `blocks`, the
+              reply's blocks with this entry's tags in reply order. A value that
+              fails to evaluate fails the call, which does not run.
+            type: object
+            additionalProperties:
+              x-telo-context:
+                type: object
+                additionalProperties: false
+                properties:
+                  blocks:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [tag, attributes, body]
+                      properties:
+                        tag: { type: string }
+                        attributes: { type: object, additionalProperties: { type: string } }
+                        body: { type: string }
   required: [model]
   additionalProperties: false
   x-telo-resource-rules:
@@ -2508,6 +2696,21 @@ schema:
       message: >-
         lists a tool in `approval.include` that its own `include` / `exclude` removes;
         the entry never exposes that tool, so the name gates nothing.
+    - resolve: [/toolProviders/*/provider, /toolProviders/*/provider/tools/*/tool]
+      in: /textTools
+      condition: !cel >-
+        !(has(self.toolProviders) ? self.toolProviders : []).all(p, (has(p.provider.tools) && p.provider.tools.all(t, has(t.name) || (has(t.tool.metadata) && has(t.tool.metadata.name))))) ||
+        (has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool)))
+      code: AI_TEXT_TOOL_UNKNOWN
+      message: >-
+        names a tool no tool provider declares, by the name the model is told after
+        each provider entry's `include`, `exclude` and `prefix`.
+    - in: /textTools
+      condition: !cel "this.tags.all(g, size(self.textTools.filter(o, g in o.tags)) == 1)"
+      code: AI_TEXT_TOOL_TAG_DUPLICATE
+      message: >-
+        lists a tag another textTools entry lists too; each block is gathered by
+        exactly one entry.
   examples:
     - model: !ref Gpt4oMini
       system: |

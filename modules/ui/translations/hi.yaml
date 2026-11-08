@@ -52,6 +52,9 @@ messages:
   filterControl: "{$label} {$operator}"
   filterChip: "{$label} {$value} {$operator}"
   filterGroupSummary: "{$label}: {$summary}"
+  searchFilter: खोज
+  searchChip: "खोज: {$text}"
+  searchAndFilter: खोजें और फ़िल्टर करें
   rangeFrom: से
   rangeTo: तक
   rangeStartsAfterEnd: समाप्ति के बाद शुरू नहीं हो सकता
@@ -156,6 +159,7 @@ messages:
   chatThinking: "सोच रहा है…"
   chatShowDetails: "विवरण दिखाएँ"
   chatHideDetails: "विवरण छिपाएँ"
+  chatToolPreview: "पूर्वावलोकन"
   chatToolCall: "टूल: {$name}"
   chatToolRunning: "चल रहा है…"
   chatToolFailed: "विफल"

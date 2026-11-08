@@ -15,17 +15,18 @@ metadata:
 requires:
   # 0.128.0 refuses this file: it knows neither `Telo.KeyedTranslations`, which
   # declares `ui`'s own texts, nor `x-telo-text-keys`. Verified by execution.
-  telo: ">=0.129.0"
+  telo: ">=unreleased"
 lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
-# which control fits which property, and what a listing's read plan requests.
-files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/refreshes.json]
+# which control fits which property, what a listing's read plan requests, and how
+# text typed into a search box becomes filter values.
+files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/refreshes.json, conformance/filter-tokens.json]
 # ui's own texts translated, one `Self.Translations` per language.
 include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml]
 imports: { Font: ../font, DataModel: ../data-model, Conversation: ../conversation }
 exports:
-  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, SidebarNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, RowAction, Command, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay]
+  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, SidebarNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, RowAction, Command, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -1203,7 +1204,7 @@ schema:
         fill: { type: boolean }
     - { $ref: "#/$defs/Action" }
     - additionalProperties: false
-      required: [type, basePath, fields, content, show, placement, controls, apply, summary, state, presets, fill]
+      required: [type, basePath, fields, content, placement, apply, state, presets, fill]
       properties:
         type: { const: filters }
         # The presentation's source `basePath` as written: where a `values:
@@ -1233,11 +1234,15 @@ schema:
               # What the filter holds until the user changes it: always a list.
               default: { type: array, items: { type: [string, number, boolean] } }
         content: { $ref: "#" }
-        show: { enum: [all, chosen] }
+        # Present when the bar has a search: whether it stays outside whatever
+        # the bar folds into, and the text it holds until the viewer changes it.
+        search:
+          type: object
+          additionalProperties: false
+          required: [pinned, default]
+          properties: { pinned: { type: boolean }, default: { type: [string, "null"] } }
         placement: { $ref: "telo:Ui/FilterPlacementSpec" }
-        controls: { enum: [direct, chips] }
         apply: { enum: [commit, typing, button] }
-        summary: { enum: [none, chips] }
         state: { $ref: "#/$defs/State" }
         presets:
           type: array
@@ -1247,6 +1252,8 @@ schema:
             required: [label, values]
             properties:
               label: { $ref: "#/$defs/Text" }
+              # The search the preset sets, when it sets one.
+              search: { type: string }
               values:
                 type: array
                 items:
@@ -1879,12 +1886,42 @@ kind: Telo.JsonSchema
 metadata: { name: UnsavedInput }
 schema: { enum: [confirm, discard], default: confirm }
 ---
-# What a filter bar is told about itself beyond its fields: which filters are
-# on show, where its controls sit, how each is entered, when a change applies,
-# what summarises it and where its state is kept. A record: no member of it
-# decides which other members may be written.
+# What a filter bar is told about itself beyond its fields: where its controls
+# sit, when a change applies and where its state is kept. A record: no member of
+# it decides which other members may be written.
 kind: Telo.JsonSchema
 metadata: { name: FilterPolicy }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    placement:
+      title: Placement
+      description: >-
+        Where the controls sit relative to the content, and how they are drawn.
+        Omitted, above it.
+      x-telo-ref: { kind: Self.FilterPlacement, use: dependency }
+    apply:
+      title: Apply
+      description: >-
+        When a change takes effect: when it is `commit`ted — a choice at once,
+        typed text on Enter or on leaving the field — while `typing`, after a
+        pause, or only from an Apply `button`.
+      enum: [commit, typing, button]
+      default: commit
+    state:
+      title: State
+      description: >-
+        Where the bar's values are kept between visits. Omitted, in memory
+        only. At least one of `address: true` and `store` is written.
+      $ref: "telo:Ui/StateRecord"
+---
+# How the controls of a bar are drawn, written on each placement that draws
+# controls: which filters are on show, how each is drawn and what summarises the
+# bar. A placement omitting a member means the first value listed; a `compact`
+# placement omitting one takes the holding placement's.
+kind: Telo.JsonSchema
+metadata: { name: FilterDisplay }
 schema:
   type: object
   additionalProperties: false
@@ -1895,73 +1932,89 @@ schema:
         Which filters are on show: `all` of them, or only the `chosen` — the
         pinned ones, those added from the bar's list, and those holding a value.
       enum: [all, chosen]
-      default: all
-    placement:
-      title: Placement
-      description: Where the controls sit relative to the content. Omitted, above it.
-      x-telo-ref: { kind: Self.FilterPlacement, use: dependency }
     controls:
       title: Controls
       description: >-
         How a filter is drawn: its control `direct`ly, or as `chips` — a chip
         naming the filter and its value that opens the control.
       enum: [direct, chips]
-      default: direct
-    apply:
-      title: Apply
-      description: >-
-        When a change takes effect: when it is `commit`ted — a choice at once,
-        typed text on Enter or on leaving the field — while `typing`, after a
-        pause, or only from an Apply `button`.
-      enum: [commit, typing, button]
-      default: commit
     summary:
       title: Summary
       description: >-
         What summarises the bar: `none`, or a row of removable `chips`, one per
         filter holding a value.
       enum: [none, chips]
-      default: none
-    state:
-      title: State
-      description: >-
-        Where the bar's values are kept between visits. Omitted, in memory
-        only. At least one of `address: true` and `store` is written.
-      $ref: "telo:Ui/StateRecord"
 ---
 # Where a filter bar's controls sit, as a renderer receives it. Tagged on
-# `type`, one branch per kind.
+# `type`, one branch per kind. Every branch but `searchBox` carries the three
+# members of `Ui.FilterDisplay`, filled.
 kind: Telo.JsonSchema
 metadata: { name: FilterPlacementSpec }
 schema:
   type: object
   oneOf:
     - additionalProperties: false
-      required: [type]
-      properties: { type: { const: above }, compact: { $ref: "#/$defs/Compact" } }
+      required: [type, show, controls, summary]
+      properties:
+        type: { const: above }
+        show: { $ref: "#/$defs/Show" }
+        controls: { $ref: "#/$defs/Controls" }
+        summary: { $ref: "#/$defs/Summary" }
+        compact: { $ref: "#/$defs/Compact" }
     - additionalProperties: false
-      required: [type, side, compact]
+      required: [type, side, show, controls, summary, compact]
       properties:
         type: { const: aside }
         side: { enum: [start, end] }
+        show: { $ref: "#/$defs/Show" }
+        controls: { $ref: "#/$defs/Controls" }
+        summary: { $ref: "#/$defs/Summary" }
         compact: { $ref: "#/$defs/Compact" }
     - additionalProperties: false
-      required: [type, open]
-      properties: { type: { const: collapsible }, open: { type: boolean } }
+      required: [type, open, show, controls, summary]
+      properties:
+        type: { const: collapsible }
+        open: { type: boolean }
+        show: { $ref: "#/$defs/Show" }
+        controls: { $ref: "#/$defs/Controls" }
+        summary: { $ref: "#/$defs/Summary" }
     - additionalProperties: false
-      required: [type, surface]
-      properties: { type: { const: overlay }, surface: { $ref: "telo:Ui/OverlaySpec" } }
+      required: [type, surface, show, controls, summary]
+      properties:
+        type: { const: overlay }
+        surface: { $ref: "telo:Ui/OverlaySpec" }
+        show: { $ref: "#/$defs/Show" }
+        controls: { $ref: "#/$defs/Controls" }
+        summary: { $ref: "#/$defs/Summary" }
+    - additionalProperties: false
+      required: [type, placeholder]
+      properties:
+        type: { const: searchBox }
+        placeholder: { $ref: "telo:Ui/SpecNode#/$defs/Text" }
   $defs:
+    Show: { enum: [all, chosen] }
+    Controls: { enum: [direct, chips] }
+    Summary: { enum: [none, chips] }
     # The placement used instead below the breakpoint: one that folds.
     Compact:
       type: object
       oneOf:
         - additionalProperties: false
-          required: [type, open]
-          properties: { type: { const: collapsible }, open: { type: boolean } }
+          required: [type, open, show, controls, summary]
+          properties:
+            type: { const: collapsible }
+            open: { type: boolean }
+            show: { $ref: "#/$defs/Show" }
+            controls: { $ref: "#/$defs/Controls" }
+            summary: { $ref: "#/$defs/Summary" }
         - additionalProperties: false
-          required: [type, surface]
-          properties: { type: { const: overlay }, surface: { $ref: "telo:Ui/OverlaySpec" } }
+          required: [type, surface, show, controls, summary]
+          properties:
+            type: { const: overlay }
+            surface: { $ref: "telo:Ui/OverlaySpec" }
+            show: { $ref: "#/$defs/Show" }
+            controls: { $ref: "#/$defs/Controls" }
+            summary: { $ref: "#/$defs/Summary" }
 ---
 # Where a piece of interface keeps its state, as a renderer receives it.
 # `memory` is what a bar with no store carries; no kind provides it.
@@ -2585,24 +2638,28 @@ schema:
   type: object
   additionalProperties: false
   properties:
+    show: { $ref: "telo:Ui/FilterDisplay#/properties/show" }
+    controls: { $ref: "telo:Ui/FilterDisplay#/properties/controls" }
+    summary: { $ref: "telo:Ui/FilterDisplay#/properties/summary" }
     compact:
       title: Compact
       description: >-
         The placement used instead on a narrow viewport: a
-        `Ui.FoldingFilterPlacement`, one that folds the controls away.
+        `Ui.FoldingFilterPlacement`, one that folds the controls away. Its
+        omitted `show`, `controls` and `summary` are this placement's.
       x-telo-ref: { kind: Self.FoldingFilterPlacement, use: dependency }
   x-telo-referrer-rules:
     - referrer: Self.Filters
       severity: warning
       condition: !cel >-
         has(self.compact)
-        || (has(referrer.policy) && has(referrer.policy.show) && referrer.policy.show == 'chosen')
-        || !has(referrer.fields)
-        || !referrer.fields.exists(f, 'pinned' in f && f.pinned)
+        || (has(self.show) && self.show == 'chosen')
+        || ((!has(referrer.fields) || !referrer.fields.exists(f, 'pinned' in f && f.pinned))
+            && (!has(referrer.search) || !('pinned' in referrer.search) || !referrer.search.pinned))
       code: UI_FILTER_PINNED_UNUSED
       message: >-
-        pins a field, but nothing folds: every filter is on show whatever is
-        pinned. Give the placement a `compact`, use a placement that folds, show
+        pins a field or the search, but nothing folds: every filter is on show
+        whatever is pinned. Give the placement a `compact`, use a placement that folds, show
         only the `chosen` filters, or remove `pinned`.
 ---
 kind: Telo.Definition
@@ -2626,12 +2683,16 @@ schema:
       description: The edge of the content the controls sit at.
       enum: [start, end]
       default: start
+    show: { $ref: "telo:Ui/FilterDisplay#/properties/show" }
+    controls: { $ref: "telo:Ui/FilterDisplay#/properties/controls" }
+    summary: { $ref: "telo:Ui/FilterDisplay#/properties/summary" }
     compact:
       title: Compact
       description: >-
         The placement used instead on a narrow viewport: a
-        `Ui.FoldingFilterPlacement`, one that folds the controls away.
-        Omitted, a `Ui.CollapsiblePlacement` with its defaults.
+        `Ui.FoldingFilterPlacement`, one that folds the controls away. Omitted,
+        a `Ui.CollapsiblePlacement`. Its omitted `show`, `controls` and
+        `summary` are this placement's.
       x-telo-ref: { kind: Self.FoldingFilterPlacement, use: dependency }
 ---
 kind: Telo.Definition
@@ -2654,6 +2715,9 @@ schema:
       description: Whether the controls are unfolded to begin with. A stored fold state overrides it.
       type: boolean
       default: false
+    show: { $ref: "telo:Ui/FilterDisplay#/properties/show" }
+    controls: { $ref: "telo:Ui/FilterDisplay#/properties/controls" }
+    summary: { $ref: "telo:Ui/FilterDisplay#/properties/summary" }
 ---
 kind: Telo.Definition
 metadata:
@@ -2675,6 +2739,41 @@ schema:
       title: Surface
       description: The overlay the controls open in.
       x-telo-ref: { kind: Self.Overlay, use: dependency }
+    show: { $ref: "telo:Ui/FilterDisplay#/properties/show" }
+    controls: { $ref: "telo:Ui/FilterDisplay#/properties/controls" }
+    summary: { $ref: "telo:Ui/FilterDisplay#/properties/summary" }
+---
+kind: Telo.Definition
+metadata:
+  name: SearchBoxPlacement
+  description: >-
+    Filter controls gathered into one search box above the content: the viewer
+    types, picks what the text could mean (search everywhere, or one filter
+    per field) and each choice becomes a removable chip, or types a field's
+    name to filter on it directly. Fields are offered by title, values by
+    label, related records by name.
+capability: Telo.Provider
+extends: Self.FilterPlacement
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SearchBoxPlacementController]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    placeholder:
+      title: Placeholder
+      description: The hint shown in the empty box. Omitted, the text `searchAndFilter` ("Search and filter").
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: {}
+  x-telo-referrer-rules:
+    - referrer: Self.Filters
+      severity: warning
+      condition: !cel >-
+        (!has(referrer.fields) || !referrer.fields.exists(f, 'pinned' in f && f.pinned))
+        && (!has(referrer.search) || !('pinned' in referrer.search) || !referrer.search.pinned)
+      code: UI_FILTER_PINNED_UNUSED
+      message: >-
+        pins a field or the search, but `pinned` has no effect: this placement
+        never folds. Remove `pinned`, or use a placement that folds.
 ---
 # Where a piece of interface keeps its state between visits. A store is a
 # kind, so another place to keep it is another kind and nothing that names one
@@ -3049,7 +3148,7 @@ kind: Telo.Definition
 metadata:
   name: Page
   description: >-
-    One screen of a web application at its own address: a title and a tree of
+    One screen of a web application at its own address: an optional heading and a tree of
     layout, text, data grids, forms and custom components, whose parts can be
     shown per request by a header such as a role or a tenant. Listed by an
     application to route to it and named in its navigation menu.
@@ -3077,7 +3176,7 @@ outputType:
   schema:
     type: object
     additionalProperties: false
-    required: [path, title, query, width, children]
+    required: [path, query, width, children]
     properties:
       path: { type: string }
       title: { $ref: "telo://manifest#/$defs/TextRecord" }
@@ -3090,7 +3189,7 @@ outputType:
 schema:
   type: object
   additionalProperties: false
-  required: [path, title, children]
+  required: [path, children]
   properties:
     path:
       title: Path
@@ -3102,7 +3201,10 @@ schema:
       not: { pattern: "^/_telo(/|$)" }
     title:
       title: Title
-      description: Shown above the page, and in the navigation unless an entry says otherwise.
+      description: >-
+        Shown above the page and in the navigation unless an entry says otherwise.
+        Omitted, no heading is drawn, an omitted navigation leaves the page out,
+        and a navigation entry naming it must give its own text.
       $ref: "telo://manifest#/$defs/Text"
       x-telo-text-values: {}
     query:
@@ -5265,10 +5367,12 @@ metadata:
   name: Filters
   description: >-
     A filter bar over the record listings it contains: one control per filter
-    the collection accepts, related records offered by name, optionally only
-    the values present with their counts, named presets, summary chips and a
-    reset. The controls can fold behind a button or open in an overlay.
-    Chosen values are kept between visits and shareable in the page address.
+    the collection accepts, a text search over the properties the collection
+    declares, related records offered by name, optionally only the values
+    present with their counts, named presets, summary chips and a reset. The
+    controls can fold behind a button, open in an overlay or gather into one
+    search box. Chosen values are kept between visits and shareable in the
+    page address.
 capability: Telo.Provider
 extends: Self.Composite
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FiltersController]
@@ -5284,6 +5388,24 @@ schema:
         bar offers only filters its collection lists under `query.filters`,
         over its `model`.
       x-telo-ref: { kind: Self.CollectionPresentation, use: dependency }
+    search:
+      title: Search
+      description: >-
+        A text search over the properties the collection declares under
+        `query.search`, drawn before the filters. Omitted, the bar has one only
+        when `fields` is omitted too and the collection declares a search.
+      type: object
+      additionalProperties: false
+      properties:
+        pinned:
+          title: Pinned
+          description: Kept outside whatever the bar folds into, and always on show.
+          type: boolean
+          default: false
+        default:
+          title: Default
+          description: The text the search holds until the viewer changes it.
+          type: string
     fields:
       title: Fields
       description: >-
@@ -5342,7 +5464,9 @@ schema:
       title: Presets
       description: >-
         Named sets of filter values, drawn as one exclusive choice. Choosing one
-        sets the filters the presets name between them and leaves the rest.
+        sets the filters the presets name between them and leaves the rest. It
+        is active exactly when the bar holds its search, if it names one, and
+        its values.
       type: array
       items:
         type: object
@@ -5350,6 +5474,10 @@ schema:
         required: [label, values]
         properties:
           label: { title: Label, $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+          search:
+            title: Search
+            description: The search text the preset sets. The bar needs a search.
+            type: string
           values:
             title: Values
             type: array
@@ -5368,9 +5496,8 @@ schema:
     policy:
       title: Policy
       description: >-
-        Which filters are on show, where the controls sit, how they are drawn,
-        when a change applies, what summarises the bar and where its state is
-        kept.
+        Where the controls sit and how they are drawn (`placement`), when a
+        change applies and where the bar's state is kept.
       $ref: "telo://Self/FilterPolicy"
     content:
       title: Content
@@ -5501,6 +5628,21 @@ schema:
         type or not one of its `enum`, a list without the `in` operator, a
         single value with it, anything but `true` under `absent`, or `false`
         for a filter entered with a `toggle`, which holds true or nothing.
+    # One rule for both cases, since a code names one rule.
+    - resolve: [/presentation/source/collection]
+      condition: !cel >-
+        (!has(self.search)
+         || (has(self.presentation.source.collection.query) && has(self.presentation.source.collection.query.search)))
+        && (!has(self.presets) || self.presets.all(p, !has(p.search)) || has(self.search)
+            || (!has(self.fields) && has(self.presentation.source.collection.query)
+                && has(self.presentation.source.collection.query.search)))
+      code: UI_FILTER_SEARCH_UNDECLARED
+      message: >-
+        holds a search with nothing to read it: the bar writes `search` over a
+        collection declaring no `query.search`, or a preset sets a search on a
+        bar that has none. Declare the properties a search reads under the
+        collection's `query.search`, write `search` on the bar, or remove the
+        `search` that has nothing to read.
     - in: /presets
       condition: !cel "self.presets.exists_one(p, p.label == this.label)"
       code: UI_FILTER_PRESET_LABEL_DUPLICATE
@@ -5510,27 +5652,29 @@ schema:
     - resolve: [/presentation/source/collection]
       condition: !cel >-
         !has(self.policy) || !has(self.policy.state) || !has(self.policy.state.fields)
-        || self.policy.state.fields.all(k, has(self.fields)
+        || self.policy.state.fields.all(k,
+          (k == 'search' && (has(self.search)
+            || (!has(self.fields) && has(self.presentation.source.collection.query)
+                && has(self.presentation.source.collection.query.search))))
+          || (has(self.fields)
           ? self.fields.exists(f, f.property == k)
           : !has(self.presentation.source.collection.query) || !has(self.presentation.source.collection.query.filters)
-            || self.presentation.source.collection.query.filters.exists(f, f.property == k))
+            || self.presentation.source.collection.query.filters.exists(f, f.property == k)))
       code: UI_STATE_FIELD_UNKNOWN
       message: >-
         keeps a property under `policy.state.fields` no filter of the bar
-        shows. Name only properties its filters enter, or leave
-        `state.fields` out to keep every one.
+        shows. Name only properties its filters enter, `search` when the bar
+        has one, or leave `state.fields` out to keep every one.
     # With a placement written, the placement's own rule answers this.
     - severity: warning
       condition: !cel >-
-        (has(self.policy) && (has(self.policy.placement)
-          || (has(self.policy.show) && self.policy.show == 'chosen')))
-        || !has(self.fields)
-        || !self.fields.exists(f, 'pinned' in f && f.pinned)
+        (has(self.policy) && has(self.policy.placement))
+        || ((!has(self.fields) || !self.fields.exists(f, 'pinned' in f && f.pinned))
+            && (!has(self.search) || !('pinned' in self.search) || !self.search.pinned))
       code: UI_FILTER_PINNED_UNUSED
       message: >-
-        pins a field, but nothing folds: every filter is on show whatever is
-        pinned. Use a placement that folds, show only the `chosen` filters, or
-        remove `pinned`.
+        pins a field or the search, but nothing folds: every filter is on show
+        whatever is pinned. Use a placement that folds, or remove `pinned`.
 ---
 # One entry of a form or an action. Its kind judges whether it can enter its
 # property in the model of whoever places it: a rule on the referrer for
@@ -6293,6 +6437,12 @@ keys:
     message: "{$label}: {$summary}"
     values: { label: { type: string }, summary: { type: string } }
     description: "A group of filters folded into one line: the field and what is chosen."
+  searchFilter: { message: Search, description: "The label of a filter bar's search box." }
+  searchChip:
+    message: "Search: {$text}"
+    values: { text: { type: string } }
+    description: "A chosen search: the text searched for."
+  searchAndFilter: { message: Search and filter, description: "The placeholder of a filter bar drawn as one search box." }
   rangeFrom: { message: From, description: The start of a date range. }
   rangeTo: { message: To, description: The end of a date range. }
   rangeStartsAfterEnd:
@@ -6530,6 +6680,7 @@ keys:
   chatThinking: { message: "Thinking…", description: "Shown while the model is reasoning." }
   chatShowDetails: { message: "Show details", description: "Expands a panel." }
   chatHideDetails: { message: "Hide details", description: "Collapses a panel." }
+  chatToolPreview: { message: Preview, description: "Opens a tool call's long argument or result in a dialog." }
   chatToolCall:
     message: "Tool: {$name}"
     values: { name: { type: string } }

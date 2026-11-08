@@ -27,8 +27,30 @@ export interface FilterField {
 
 export interface FilterPreset {
   label: WireText;
+  /** The search the preset sets, where it sets one. */
+  search?: string;
   values: { property: string; operator: Operator; value: Scalar[] }[];
 }
+
+/** The reserved query name the bar's search is held and sent under. */
+const SEARCH = "search";
+
+/** The bar's search as a filter of its own: a string held under `search`, sent as `search=<text>`. */
+export function searchFilter(search: { pinned: boolean; default: string | null }, set: string): FilterField {
+  return {
+    property: SEARCH,
+    operator: "eq",
+    label: { set, key: "searchFilter" },
+    schema: { type: "string" },
+    pinned: search.pinned,
+    control: "auto",
+    values: "all",
+    ...(search.default === null ? {} : { default: [search.default] }),
+  };
+}
+
+/** Whether a filter is the bar's search; no property of a collection can be, since `search` is reserved. */
+export const isSearch = (field: FilterField): boolean => field.property === SEARCH && field.operator === "eq";
 
 /**
  * What a bar's filters hold, by filter. A filter that is not in it holds its
@@ -105,14 +127,17 @@ export const sameValues = (one: Values, other: Values): boolean => {
 export const activeCount = (fields: FilterField[], values: Values): number =>
   fields.filter((field) => field.control !== "none" && (values[filterKey(field)] ?? []).length > 0).length;
 
-/** The filters the presets name between them. */
-const presetKeys = (presets: FilterPreset[]): string[] => [...new Set(presets.flatMap((preset) => preset.values.map(filterKey)))];
+/** The filters the presets name between them; the search is named by any preset that sets one. */
+const presetKeys = (presets: FilterPreset[]): string[] => [
+  ...new Set([...presets.flatMap((preset) => preset.values.map(filterKey)), ...(presets.some((preset) => preset.search !== undefined) ? [SEARCH] : [])]),
+];
 
 /** A bar's values with a preset chosen: the filters the presets name between
  *  them set to what this one says — or cleared — and the rest as they were. */
 export function withPreset(presets: FilterPreset[], chosen: FilterPreset, values: Values): Values {
   const next = { ...values };
   for (const key of presetKeys(presets)) next[key] = [];
+  if (chosen.search) next[SEARCH] = [chosen.search];
   for (const entry of chosen.values) next[filterKey(entry)] = entry.value.map(String);
   return next;
 }

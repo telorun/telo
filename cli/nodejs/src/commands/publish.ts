@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
-import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, TELO_SURFACE_VERSION, collectApplicationSources, collectModuleDocuments, flattenForAnalyzer, isBuiltinVocabularyRoot, splitIntegrity, type LoadedGraph } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, TELO_SURFACE_VERSION, collectApplicationSources, collectModuleDocuments, flattenForAnalyzer, isBuiltinVocabularyRoot, readRequires, readRestrictions, splitIntegrity, type LoadedGraph } from "@telorun/analyzer";
 import { LocalFileSource, defaultTransportRegistry, resolveCacheRoot } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
@@ -31,11 +31,8 @@ import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.
 import { outEmit, outErrLine, outLine } from "../output.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
-import {
-  publishedTeloVersions,
-  unpublishedUpperBound,
-  verifyRequires,
-} from "../release/verify-requires.js";
+import type { CliRunner } from "../release/floor-measurement.js";
+import { publishedTeloVersions, unpublishedRestrictionBound, verifyFloor } from "../release/verify-requires.js";
 
 // The manifest-text transforms moved to `bundle/manifest-text.ts` so `telo
 // release` computes the published bytes the same way this command does. Kept
@@ -202,110 +199,106 @@ function stepDry(log: Logger, label: string, detail: string) {
 }
 
 /**
- * Verify the entry module's declared `requires.telo` before publishing it.
+ * Verify the entry module's declared `requires.telo` floor before publishing it.
  *
- * Two rules, failing in opposite directions on purpose:
+ * Refusals first, before anything runs: a manifest holding `>=unreleased` (in
+ * `requires.telo` or a `restrictions:` entry) names a release that has not
+ * happened, and a `requires.telo` with an upper bound is a ceiling the grammar
+ * moved to `restrictions:`. Then the published CLI is run at the floor over the
+ * measurement copy, failing in opposite directions on purpose:
  *
- *  - **A refuted range is fatal.** The edge CLI ran and rejected the manifest,
- *    so the declaration is false and publishing it would put a claim in the
- *    registry that `upgrade` and every consumer's load gate then act on.
+ *  - **A refuted floor is fatal.** The CLI ran and rejected the manifest, so the
+ *    declaration is false and publishing it would put a claim in the registry
+ *    that `upgrade` and every consumer's load gate then act on.
  *  - **An unverifiable one warns.** A CLI that could not be installed leaves the
  *    claim unproven, not disproven, and blocking a publish on registry
  *    reachability trades one failure for a worse one.
- *
- * The upper-bound existence check follows the same split: a bound naming a
- * version npm does not have is fatal (an unverifiable bound is what the grammar
- * forbids), while an unreachable registry warns, since the rule gates a bound
- * absent from almost every module.
+ *  - **A floor above everything published is fatal**: npm publishes before
+ *    modules, so a missing floor means the release is out of order.
  */
-async function verifyDeclaredRequirements(
+export async function verifyDeclaredRequirements(
   filePath: string,
   graph: LoadedGraph,
   log: Logger,
+  listPublished: () => Promise<string[] | null> = publishedTeloVersions,
+  runner?: CliRunner,
 ): Promise<boolean> {
   const ownerDoc = graph.entry.owner.manifests.find(
     (m) => m?.kind === "Telo.Application" || m?.kind === "Telo.Library",
-  );
+  ) as unknown as Record<string, unknown> | undefined;
   if (!ownerDoc) return true;
+  const shown = path.relative(process.cwd(), filePath) || filePath;
 
-  // The published list is fetched BEFORE the edges run, so an edge naming a
+  const requires = readRequires(ownerDoc);
+  const ceiling = requires.issues.find((issue) => issue.ceiling);
+  if (ceiling) {
+    outErrLine(`${log.err.error("error")}  ${shown}: ${ceiling.message}`);
+    return false;
+  }
+  const waiting = (at: string) =>
+    outErrLine(
+      `${log.err.error("error")}  ${shown} holds '>=unreleased' at ${at}; publish after the telo ` +
+        `release that carries it, once the Version PR has written the number.`,
+    );
+  if (requires.block.telo?.unreleased) {
+    waiting("requires.telo");
+    return false;
+  }
+  const restrictions = readRestrictions(ownerDoc).entries;
+  const entry = restrictions.find((e) => e.requires.telo?.unreleased);
+  if (entry) {
+    waiting(`restrictions[${entry.index}].requires.telo`);
+    return false;
+  }
+
+  // The published list is fetched BEFORE the floor runs, so a floor naming a
   // version that does not exist yet is reported as pending rather than spawning
   // an `npx` that can only ETARGET. Memoized process-wide, so publishing the
   // whole standard library asks once.
-  const published = await publishedTeloVersions();
-  const result = await verifyRequires(filePath, ownerDoc as unknown as Record<string, unknown>, {
-    currentVersion: TELO_SURFACE_VERSION,
-    publishedVersions: published,
-  });
-  if (!result.declared) {
-    // Absent means no requirement — permanent for everything published before
-    // this mechanism existed, and correct, since none of it uses syntax that did
-    // not yet exist.
-    return true;
-  }
-
-  const refuted = result.outcomes.filter((o) => o.status === "failed");
-  for (const outcome of refuted) {
-    outErrLine(
-      `${log.err.error("error")}  requires.telo '${result.declared.raw}' is not true: ` +
-        `telo ${outcome.edge} rejects this manifest.`,
-    );
-    outErrLine(indent(outcome.output));
-  }
-  if (refuted.length > 0) {
-    outErrLine(
-      `${log.err.dim("")}  Raise the bound to a version that accepts it, or stop using the ` +
-        `syntax that version cannot read.`,
-    );
-    return false;
-  }
-
-  // A lower bound above everything published is fatal HERE and informational at
-  // `telo release check`, and the asymmetry is the release order: npm publishes
-  // before modules do, so by the time a module is pushed its declared minimum
-  // exists. If it does not, the release is out of order — and the module would
-  // land at the registry declaring a floor no runtime can satisfy, which every
-  // consumer's `telo upgrade` would then refuse.
-  const pending = result.outcomes.find((o) => o.status === "pending");
-  if (pending?.status === "pending") {
-    outErrLine(
-      `${log.err.error("error")}  requires.telo '${result.declared.raw}' needs telo ` +
-        `${pending.edge}, which is not published — the latest is ${pending.latestPublished}. ` +
-        `Publish the CLI release that carries it first, or lower the bound to a version that ` +
-        `exists.`,
-    );
-    return false;
-  }
-
-  const missing = unpublishedUpperBound(result.declared, published);
+  const published = await listPublished();
+  const missing = unpublishedRestrictionBound(restrictions, published);
   if (missing) {
     outErrLine(
-      `${log.err.error("error")}  requires.telo '${result.declared.raw}' bounds above ` +
-        `${missing}, which is not a published telo version. An upper bound must name a version ` +
-        `that already exists — a bound nothing can run is a bound nothing can verify.`,
+      `${log.err.error("error")}  ${shown}: restrictions[${missing.index}].requires.telo names ` +
+        `${missing.bound}, which is not a published telo version. A bound must name a release ` +
+        `that exists — a bound nothing can run is a bound nothing can verify.`,
     );
     return false;
   }
-
-  const unavailable = result.outcomes.filter((o) => o.status === "unavailable");
-  for (const outcome of unavailable) {
-    stepWarn(log, "requires", `could not run telo ${outcome.edge} (${outcome.reason})`);
+  if (published === null && restrictions.some((e) => e.requires.telo)) {
+    stepWarn(log, "requires", "could not reach npm to check the telo bounds of restrictions:");
   }
-  if (published === null) {
-    stepWarn(log, "requires", "could not reach npm to check the upper bound");
+  const outcome = await verifyFloor(filePath, fs.readFileSync(filePath, "utf8"), {
+    currentVersion: TELO_SURFACE_VERSION,
+    publishedVersions: published,
+    runner,
+  });
+  switch (outcome.status) {
+    case "none":
+      // Absent means no requirement — correct when every telo that reads
+      // `requires:` accepts the module.
+      return true;
+    case "failed":
+      outErrLine(
+        `${log.err.error("error")}  requires.telo '${outcome.floor}' is not true: telo ` +
+          `${outcome.reading}. Raise the floor to a version that accepts the manifest, or stop ` +
+          `using the syntax that version cannot read.`,
+      );
+      return false;
+    case "pending":
+      outErrLine(
+        `${log.err.error("error")}  requires.telo '${outcome.floor}' needs a telo release that is ` +
+          `not published — the latest is ${outcome.latestPublished}. Publish the CLI release that ` +
+          `carries it first, or lower the floor to a version that exists.`,
+      );
+      return false;
+    case "unavailable":
+      stepWarn(log, "requires", `could not verify telo ${outcome.floor} (${outcome.reason})`);
+      return true;
+    case "passed":
+      stepOk(log, "requires", `telo ${outcome.floor} verified at ${outcome.checkedWith}`);
+      return true;
   }
-  if (unavailable.length === 0 && result.outcomes.length > 0) {
-    stepOk(
-      log,
-      "requires",
-      `telo ${result.declared.raw} verified at ${result.outcomes.map((o) => o.edge).join(", ")}`,
-    );
-  } else if (result.outcomes.length === 0) {
-    // Open above and the low edge is this CLI: HEAD is the only edge, and the
-    // static analysis that just passed IS that check.
-    stepOk(log, "requires", `telo ${result.declared.raw}`);
-  }
-  return true;
 }
 
 function indent(text: string): string {

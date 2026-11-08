@@ -72,8 +72,8 @@ mounts:
 inline (`ref: { kind: Ui.Listing, … }`); `taskTable` is used twice.
 
 - `title` and `theme` (the look: `!ref UiReact.defaultTheme`, or another) are
-  required. `pages` (at least one) are `Ui.Page`s — `{ path, title, query?,
-  width?, children }`, each path unique — inline or `!ref`.
+  required. `pages` (at least one) are `Ui.Page`s — `{ path, title?, query?,
+  width?, children }`, each path unique — inline or `!ref`. Omit `title` for no heading.
 - `navigation: { items, placement? }` is the menu, naming pages by `!ref`, not
   path: `{ type: page, page, text? }`, `{ type: link, text, href }`,
   `{ type: group, text, items }`, each with `when?` and `icon?` (a
@@ -83,12 +83,13 @@ inline (`ref: { kind: Ui.Listing, … }`); `taskTable` is used twice.
   (`side`, `rail`, `store`), or a compact one (`Ui.OverlayNavigation`,
   `Ui.TabBarNavigation`) that a header's or sidebar's `compact` names.
 - Optional: `translations: { catalogs }` of `Telo.TextTranslations` serve texts
-  in the negotiated `request.lang` (`Http.Server.preferredLanguages`). The renderer's own texts are English; list
-  `ui`'s `Ui.polishTranslations`, … (fourteen languages) to translate them, then
-  a `Ui.Translations` (`lang`, `messages: { save: Submit }`) to reword. Also
-  `tokens` (the brand), `stylesheets` (`!module-path ./ui.css`), `compactBelow`
-  (narrow breakpoint), `pageWidth` (`contained` or `full`; a page's `width` wins), `header: { start?,
-  end?, width? }` (nodes on every page).
+  in the negotiated `request.lang` (`Http.Server.preferredLanguages`). The
+  renderer's own texts are English; list `ui`'s `Ui.polishTranslations`, …
+  (fourteen languages) to translate them, then a `Ui.Translations` (`lang`,
+  `messages: { save: Submit }`) to reword. Also `tokens` (the brand),
+  `stylesheets` (`!module-path ./ui.css`), `compactBelow`, `pageWidth`
+  (`contained` or `full`; a page's `width` wins), `header: { start?, end?,
+  width? }`.
 
 ### Nodes
 
@@ -126,20 +127,18 @@ app-relative: `/` followed by anything but `/` or `\` (`//host` and `/\host`
 are refused). A `link` may also start `https://`, `http://` or `mailto:`; an `image`, `https://` or `http://`. It resolves under the mount: at `/admin`,
 `/api/reports` is requested at `/admin/api/reports`, so serve the API there.
 
-Links, `value` / column `href`s, menu items, `navigate` and request targets
-(`Ui.Data.source`, `request.target`, `refreshes`) take one form: a string, or
-`{ path, pathParams, queryParams }`. `path` is a template whose `{name}`
+Links, `href`s, menu items, `navigate` and request targets take a string, or
+`{ path, pathParams, queryParams }`: `path` a template whose `{name}`
 placeholders are whole segments (`/tasks/{id}`), filled from `pathParams`
-(accessors or literals, percent-encoded); `queryParams` become the query
-(null and empty left out). A link's `path` may be a `!ref` to a `Ui.Page`. An
-unbound placeholder or unused `pathParams` entry is refused by `telo check`; an
-address with an empty value is not followed.
+(accessors or literals, percent-encoded); `queryParams` the query (null and
+empty left out). A link's `path` may be a `!ref` to a `Ui.Page`. An unbound
+placeholder or unused `pathParams` entry is refused by `telo check`.
 
-**Per request.** In a page's `children` and `header`, `when` and leaf values (`text`, `src`,
-`alt`, `markup`, `style`; not a link's `href`) may be `!cel`, evaluated per
-request against `request.headers` (lower-case names; test with `in` first) and
-`request.ip`. Structure and every `ref` stay literal (a computed `children` or `ref` is
-`REF_SLOT_COMPUTED`). A value that is no valid node becomes an `error` node.
+**Per request.** In a page's `children` and `header`, `when` and leaf values
+(`text`, `src`, `alt`, `markup`, `style`; not a link's `href`) may be `!cel`
+over `request.headers` (lower-case names; test with `in` first) and
+`request.ip`. Structure and every `ref` stay literal. A value that is no valid
+node becomes an `error` node.
 
 ## Shapes first
 
@@ -167,11 +166,12 @@ schema: { type: object, required: [id], properties: { id: { type: integer } } }
 
 What a list accepts is declared, never inferred. A `DataModel.Collection`
 (module `data-model`) holds the record `model`, its `key` (default `id`),
-`query: { filters, sort, facets? }` (`filters` and `sort` required, `[]` for
-none) and `relations`. A filter is `{ property, operator }`, operator one of
+`query: { filters, sort, facets?, search? }` (`filters` and `sort` required,
+`[]` for none) and `relations`. A filter is `{ property, operator }`, operator one of
 `eq`, `contains`, `gt`, `gte`, `lt`, `lte`, `in`, `absent` (null or missing;
 only on an optional property). A facet is a property whose present values, with
-counts, the endpoint answers. A relation says a property holds
+counts, the endpoint answers. `search: { properties }` (string properties, at
+least one) lets `search=<text>` match any of them, ignoring case. A relation says a property holds
 another collection's key (`authorId: { collection: !ref authors }`); the target
 must accept `in` on its key. Relations may be cyclic.
 
@@ -252,7 +252,8 @@ layout: { kind: Ui.BoardLayout, groups: { property: status }, move: { action: !r
   is a 400 naming it. A row read is valid against the model.
 - Errors are `application/problem+json`; a 400's `data.issues` are `{ pointer,
   keyword, params }`, one at `/body/<property>` marks that field.
-- Query keys `limit`, `cursor`, `sort`, `facet` and `_telo…` are reserved.
+- `search=<text>` matches the declared search properties, AND-ed with the filters.
+- Query keys `limit`, `cursor`, `sort`, `facet`, `search` and `_telo…` are reserved.
 
 Over one SQL table, `Crud.Api` speaks it (*An admin screen over one table*).
 
@@ -270,7 +271,7 @@ fields:
   - { property: ownerId, operator: eq, values: present }
   - { property: dueOn, operator: gte }
 presets: [{ label: Blocked, values: [{ property: status, operator: in, value: [blocked] }] }]
-policy: { show: chosen, summary: chips, placement: { kind: Ui.CollapsiblePlacement }, state: { key: tasks, address: true, store: { kind: Ui.LocalStore } } }
+policy: { placement: { kind: Ui.CollapsiblePlacement, show: chosen, summary: chips }, state: { key: tasks, address: true, store: { kind: Ui.LocalStore } } }
 content: { type: composite, ref: !ref taskList }
 ```
 
@@ -283,14 +284,26 @@ content: { type: composite, ref: !ref taskList }
   presentation's relation. `values: all` (default) offers every one; `present`
   only those occurring under the bar's other filters, with counts, and needs
   the property under the collection's `facets`. `options` overrides the source.
-- `policy`'s choices combine freely: `show` (`all` |
-  `chosen`), `controls` (`direct` | `chips`), `apply` (`commit` | `typing` |
-  `button`), `summary` (`none` | `chips`), `placement`, `state`.
+- `policy`'s choices combine freely: `apply` (`commit` | `typing` | `button`),
+  `placement`, `state`. The display options sit on the placement that draws
+  controls: `show` (`all` | `chosen`), `controls` (`direct` | `chips`),
+  `summary` (`none` | `chips`); a `compact` placement inherits omitted ones.
 - **Placements and stores are kinds**: `Ui.AbovePlacement` (default),
-  `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`, `Ui.OverlayPlacement`;
-  `Ui.LocalStore`, `Ui.SessionStore`. A `state` keeps the bar's values in the
+  `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`, `Ui.OverlayPlacement`,
+  `Ui.SearchBoxPlacement`; `Ui.LocalStore`, `Ui.SessionStore`. A `state` keeps the bar's values in the
   page address (`address: true`), a store, or both; left out, in memory.
 - `pinned` matters only where the bar folds.
+- `search: { pinned?, default? }` adds a text search (sent as `search`, kept
+  under `search` in the address, first among the controls). Left out, a bar
+  without `fields` has it when the collection declares `query.search`; a bar
+  with `fields` gets it only by writing it. A preset may carry `search: <text>`.
+  `telo check` refuses a search the collection does not declare.
+- `Ui.SearchBoxPlacement` (`placeholder?`) draws the bar as one box: filters
+  are chips, suggestions offer the search and a filter per field. It takes no
+  `show`, `controls`, `summary` or `compact`, and `pinned` has no effect.
+  Tokens are typed as `<property><op><value>`: `:` is contains, else in, else
+  eq; `=` in or eq; `>`, `>=`, `<`, `<=`. Under `in`, commas split values
+  (`status:draft,review`); a relation is picked by name, never typed.
 
 ## Forms and where they open — `Ui.Form` and surfaces
 
@@ -351,9 +364,6 @@ delete: true
   is `confirm` or `discard`.
 - **`ui` owns every default.** Leave a key out; never restate a default.
 
-An edit form reads the record by key and sends back what it held with the
-entered values over it, as `PUT` replaces.
-
 ## Actions — a button that runs an operation
 
 `Ui.Action` is a form with one button, sending a request to a route, and node
@@ -399,19 +409,16 @@ write the shape out and keep it equal to `inputModel`.
   absent with no answer; `code`; `message`), `input` and `values`; left out, it
   shows the error's code and message. Use a `list` node in `result`, not `lists`.
 - `target` is an address over `input`: `/api/tasks/{id}` with `pathParams:
-  { id: !cel "input.id" }`. An input property read as exactly `input.<property>`
-  is consumed: it travels in the target, not the body (`POST` / `PUT` / `PATCH`
-  send the other properties that hold a value). `DELETE` sends no body and
-  must consume every input property, else `telo check` refuses it. A 2xx with
-  no body (204) is a success unless `result`, `navigate` or `refreshes` reads
-  `result`.
+  { id: !cel "input.id" }`. An input read as exactly `input.<property>` is
+  consumed: it travels in the target, not the body. `DELETE` sends no body and
+  must consume every input property. A 2xx with no body (204) is a success
+  unless `result`, `navigate` or `refreshes` reads `result`.
 - `onSuccess.navigate` is an address over `result` and `input`: a declared
   page moves within the app, an `https://` address replaces the page.
   `onSuccess.refreshes` lists request targets; after a 2xx those, the target
   and a listing's `basePath` are announced and every reader of exactly that
-  path (`Ui.Data`, `Ui.Listing`, `Ui.Chat`) reads again. A whole literal
-  segment may be `*` (one) or `**` (any, none included): `/api/projects/{id}/**`
-  covers `/api/projects/7` and below, not `/70` (refused in other addresses).
+  path (`Ui.Data`, `Ui.Listing`, `Ui.Chat`) reads again. A literal segment may
+  be `*` (one) or `**` (any, none included): `/api/projects/{id}/**`.
 - `concurrency: serial` runs presses in turn (default `parallel`);
   `clearAnswerOn: [<property>]` clears the answer on that input's change.
 
@@ -426,9 +433,9 @@ rowActions:
 ```
 
 - `inputs` is the record sent, checked against that action's `inputModel`: it
-  must bind every required input, with matching types (`CONTRACT_INPUTS_MISMATCH`, `CEL_TYPE_ERROR`). It reads `row` and the roots in scope: a listing's
-  `query:`, or those of the tree a list sits in (`data`, `result`, `values`…).
-  The action's `request` reads these as `input`.
+  must bind every required input, with matching types. It reads `row` and the
+  roots in scope (a listing's `query:`, or the tree a list sits in). The
+  action's `request` reads these as `input`.
 - `confirm` asks a question first; `prompt: true` opens a dialog (titled with
   `confirm`, else the label) for the action's fields the row does not bind.
   `enabled` (a condition over `row`, with `disabledText`) governs the row's
@@ -460,8 +467,7 @@ drawn over `data`. It is a composite; place it on a page. A sign-in gate is a re
 
 - `loading` / `failure` are node trees; left out, `ui` fills them.
 - `reloadOn: [focus]` reads again on window focus, `[unauthorized]` when a
-  request inside `content` answers 401. A form or listing hidden by a
-  condition keeps what it holds.
+  request inside `content` answers 401.
 - A condition is `{ at, matches }`: `at` a plain chain over the roots in
   scope, `matches` a schema in a closed profile (`type`, `const`, `enum`,
   `not`, `allOf`, `anyOf`, `required`, `properties`, `items`, `minItems`,
@@ -471,7 +477,7 @@ drawn over `data`. It is a composite; place it on a page. A sign-in gate is a re
 - Roots: `data` (a reader's `content`), `error` (its `failure`), `query`,
   `values` (a form's or action's fields), `row` (a `list` column). Only a
   condition, a `value` / `list` / `command` node or an address's params read
-  one — never `!cel` text or `when`.
+  one.
 - A field's `shown` reads `values`: a hidden field is not sent, but a required
   property still blocks submitting. An action's `enabled: { at, matches,
   disabledText }` disables its button until it holds.
@@ -480,9 +486,9 @@ drawn over `data`. It is a composite; place it on a page. A sign-in gate is a re
 ## A chat — `Ui.Chat`, beside a list of conversations
 
 One composite, no conversation list. A `Ui.ConversationSource` pairs a
-`Conversation.Conversation` (`ai-chat`'s) with the `basePath` it is served
-under; `Ui.Chat` names it plus `placeholder`, `starters` (a text, or `{ prompt, onChoose: send | fill }`; `fill` puts it in the box), `show:
-{ reasoning, toolDetail, usage, copy }`, `composer: { actions: inside | outside }`,
+`Conversation.Conversation` (`ai-chat`'s) with its `basePath`; `Ui.Chat` names
+it plus `placeholder`, `starters` (a text, or `{ prompt, onChoose: send | fill }`),
+`show: { reasoning, toolDetail, usage, copy }`, `composer: { actions: inside | outside }`,
 `buttons` (`copy`, `edit`, `regenerate`, `attach`, `send`, `stop`:
 `Ui.TextButton`/`Ui.IconButton { icon?, label }`; first three icons) and
 `header` (nodes over `conversation`, the open summary or null, and `chat`'s
@@ -499,19 +505,22 @@ default a `bar` holding export, `[]` none).
   `ai-chat` as `Chat`, never `AiChat`. `Conversation.Spec.operations` is
   `branch` and `cancel` at most.
 - Compose the list: a `Ui.SplitView`, `aside.actions` a button `link` to the
-  page (New conversation), `aside.content` a `Ui.Listing`, the chat as `content`
-  with `fill: true`. The listing is over a `Ui.CollectionSource` for
-  `Conversation.conversations` (`basePath: /api/chat/conversations`, `model:
-  !ref Conversation.ConversationSummary`), `delete: true`, rows linking with
-  `queryParams: { conversation: !cel "row.id" }`, a `badge` over `row.running`,
-  rename / archive as `PATCH` row actions.
+  page (New conversation), `aside.content` a `Ui.Listing` over a
+  `Ui.CollectionSource` for `Conversation.conversations` (`basePath:
+  /api/chat/conversations`, `model: !ref Conversation.ConversationSummary`),
+  `delete: true`, rows linking with `queryParams: { conversation: !cel
+  "row.id" }`, rename / archive as `PATCH` row actions; the chat is `content`
+  with `fill: true`.
 
 ### Ui.SplitView
 
-A composite placing `aside` (`{ actions?, content }`; `actions` button `link`s drawn under the toggle's bar) by `content`: `side` (`start` | `end`),
-`size` (`small` | `medium` | `large`), `label` (required), `collapse: { collapsed?, state: { key, store } }`, `compact`
-(default a `Ui.Drawer` below `compactBelow`), `frame` (`flush` | `framed`) and `toggle` (`Ui.IconButton` default | `Ui.TextButton`). The aside stays mounted, no
-request while hidden. Trees hold no root: put `value` / `list` in a composite that declares one.
+A composite placing `aside` (`{ actions?, content }`) by `content`: `side`
+(`start` | `end`), `size` (`small` | `medium` | `large`), `label` (required),
+`collapse: { collapsed?, state: { key, store } }`, `compact` (default a
+`Ui.Drawer` below `compactBelow`), `frame` (`flush` | `framed`) and `toggle`
+(`Ui.IconButton` | `Ui.TextButton`). The aside stays mounted, with no request
+while hidden. Trees hold no root: put `value` / `list` in a composite that
+declares one.
 
 ## An admin screen over one table — `crud` and `crud-ui`
 
@@ -561,7 +570,7 @@ Placed as a page child (`type: composite`):
 ref:
   kind: CrudUi.Admin
   source: !ref tasksSource
-  filters: { show: chosen, summary: chips, state: { key: tasks, address: true } }
+  filters: { placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }, state: { key: tasks, address: true } }
   create: { surface: { kind: Ui.Drawer, side: end }, afterSubmit: again }
   layout: { kind: Ui.BoardLayout, groups: { property: status } }
 ```
@@ -569,13 +578,12 @@ ref:
 A board's `move` names an action over a route of your own; crud serves none.
 Import `ui` too to name a layout or surface.
 
-**When to hand-build instead.** `CrudUi.Admin` has no key for chosen columns
-beyond a layout's, a row style, a page size, fewer filters, a filter's
-`pinned` / `control` / `default` / `values`, presets, chosen form fields or row
-actions. Replace it with what it expands into: a `Ui.CollectionPresentation`
-(with the `relations`), two `Ui.Form`s over the `create` and `update` shapes, a
-`Ui.Listing` over the `list` shape with `create` / `edit` and `delete: true`,
-and a `Ui.Filters` holding the listing.
+**When to hand-build instead.** `CrudUi.Admin` has no key for chosen columns,
+a row style, a page size, fewer filters, a filter's `pinned` / `control` /
+`default` / `values`, presets, chosen form fields or row actions. Replace it
+with what it expands into: a `Ui.CollectionPresentation`, two `Ui.Form`s over
+the `create` and `update` shapes, a `Ui.Listing` over the `list` shape and a
+`Ui.Filters` holding it.
 
 ## Themes, styling and custom components
 
@@ -588,10 +596,9 @@ and a `Ui.Filters` holding the listing.
   `space.page`), each a CSS value string, or a list of `{ tokens, when? }`.
 - **Control sets.** A theme's `controls` lists `UiReact.Controls` sets, each
   declared by the library shipping its browser entry; no two implement one
-  control. The fifteen inline controls may be replaced in any subset, the nine
-  layer controls (`Select`, `MultiSelect`, `Dialog`, `Drawer`, `Popover`,
-  `Confirmation`, `Menu`, `Tooltip`, `Navigation`) only as one unit, else the app
-  is refused before running. `ui-react-radix` exports `theme`.
+  control. The fifteen inline controls may be replaced in any subset, the ten
+  layer controls (`Select`, `MultiSelect`, `Combobox`, `Dialog`, `Drawer`,
+  `Popover`, `Confirmation`, `Menu`, `Tooltip`, `Navigation`) only as one unit. `ui-react-radix` exports `theme`.
 - **Stylesheets.** Everything drawn carries `data-telo-part`; your unlayered
   `stylesheets` win. Width and inset are tokens.
 - **Custom components.** A library ships a browser entry (`abi: ui_react-1`: a
@@ -608,13 +615,13 @@ and a `Ui.Filters` holding the listing.
 - **Your own layout.** A component for the layout ABI (`ui_react_layouts-1`)
   is drawn by `Ui.ComponentLayout` (`component`, `props`, the `groups` / `span`
   / `parent` plan): the renderer fetches, the component draws — a map, a seat plan.
-- **Reusable sections.** `Ui.View` holds one node tree (`content`), placed
-  anywhere; a library exports one.
+- **Reusable sections.** `Ui.View` holds one node tree (`content`); a library
+  exports one.
 
 ## Manifests wire no events
 
 There is no `onClick`: listing buttons, form submit and filter change are
-built in; an operation is a `Ui.Action`, a chat's own behaviour a `command`. Requests carry the page's same-origin
+built in; an operation is a `Ui.Action`. Requests carry the page's same-origin
 credentials; guard the routes.
 
 ## Testing a screen
@@ -628,11 +635,8 @@ and request its documents:
   `filters`, `component`, or `error` with a `code` where a node could not be
   produced.
 - Assert node types, a listing's layout and `rowActions`, an action's
-  `request`/`fields`.
-- Call the routes with the records the page would send, a refused 400 too.
-
-Request the page document with `HttpClient.Request` and `Assert.Equals` on
-`steps.page.result.body.children.map(c, c.type)`; give each test its own port.
+  `request`/`fields`; call the routes with the records the page would send, a
+  refused 400 too. Give each test its own port.
 
 ## Before you finish
 
@@ -642,5 +646,4 @@ Request the page document with `HttpClient.Request` and `Assert.Equals` on
   take (`SCHEMA_VIOLATION`), a malformed address and a path template
   (`PATH_PARAMETER_UNBOUND`, `PATH_PARAMETER_UNUSED`).
 - Every listing, filter bar and action names a route answering its contract;
-  the screen and the API read the same shapes (only an `Http.Api` route's
-  inline request body is restated).
+  the screen and the API read the same shapes.

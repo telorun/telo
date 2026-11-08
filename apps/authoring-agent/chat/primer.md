@@ -1326,8 +1326,8 @@ one renames no other. In a list of STEPS a `!for-each` emits steps; named
 (`name: runs`) its results are `steps.runs[each.key].result`; an emitted step carries no
 `name:` of its own. An indexed `!ref` outside a body is `REF_MEMBER_INVALID`. A body
 `targets:` item may be a `!ref`, an inline Service/Runnable declaration or a tag emitting
-them. The module declaring your template must declare `requires: telo:` at the release
-that carries this syntax.
+them. The module declaring your template needs a `requires: telo:` floor at the release
+that carries this syntax (`telo release floor` measures it in a Telo workspace).
 
 ## Execution zones — "this must run inside that"
 
@@ -2440,7 +2440,10 @@ A `DataModel.Collection` holds `model` (the record shape, a `Telo.JsonSchema`),
 [{ property, operator }], sort: [{ property }] }` (both required, `[]` for
 none; operators `eq`, `contains`, `gt`, `gte`, `lt`, `lte`, `in`, `absent`),
 optional `query.facets: [{ property }]` (properties whose present values, with
-counts, the endpoint answers) and optional `relations: { <property>: {
+counts, the endpoint answers), optional `query.search: { properties: [..] }`
+(at least one string property; one `search=<text>` matches any of them,
+ignoring case, AND-ed with the filters; a filter on a property named `search`
+is refused) and optional `relations: { <property>: {
 collection: !ref <other collection> } }` — the property holds the target's key,
 and the target must accept `in` on its key. A collection may relate to itself
 or to another that relates back. `telo check` refuses a filter, sort, facet or
@@ -2500,8 +2503,10 @@ optional — in step CEL over a fetched row test `has(row.dueOn)`, never
   `query.sort` — `id` included, which is never implied. ONE sort property; with
   none the order is `id`; `id` breaks ties; rows with no value sort last.
 - `?facet=<property>` plus filters answers `{ values: [{ value, count }], next
-  }` for a property under `query.facets`. `facet` is reserved beside `limit`,
-  `cursor`, `sort` and `_telo…`.
+  }` for a property under `query.facets`. `search=<text>` (only where the
+  collection declares `query.search`) matches its properties, and a facet
+  request answers under it. `facet` is reserved beside `limit`, `cursor`,
+  `sort`, `search` and `_telo…`.
 - It answers `{ rows, total, next }` — read rows as `result.body.rows`, never
   `result.body[0]`. `total` counts the filtered set; `next` is `null` on the
   last page, otherwise sent back as `cursor`.
@@ -3168,6 +3173,19 @@ PascalCase (`OAuthClient`, `HttpServer`, `SQL`), which the whole standard
 library uses. It must contain no dot.
 `metadata.version` is a semver string, required on the root doc.
 
+RUNTIME REQUIREMENTS: a module doc may carry `requires: { telo: ">=<version>",
+host: { node: ">=20.0.0" } }`. `requires.telo` is a FLOOR ONLY (`">=<version>"`
+or `">=unreleased"`; an upper bound there is `REQUIRES_INVALID`), the lowest
+telo that reads the module's syntax. In a Telo release workspace never write it
+by hand: `telo release floor` measures it (and removes it when every telo that
+reads `requires:` accepts the module). What measurement cannot see — a runtime
+feature a controller needs, a Node bound, a ceiling found after publishing — is
+a top-level `restrictions:` list, each entry `{ versions?, requires, reason }`
+(`reason` is required, `RESTRICTIONS_INVALID` otherwise): it narrows the
+declaring version and, with `versions`, earlier ones. A runtime below a floor
+reports `MODULE_REQUIRES_NEWER_RUNTIME`, above a ceiling
+`MODULE_REQUIRES_OLDER_RUNTIME`.
+
 ONE NAMESPACE PER MODULE, and it holds more than the resources: every import
 alias, every kind you declare (`Telo.Definition` / `Telo.Abstract`) and the
 module's own `metadata.name` share it. So do not name an application after
@@ -3261,6 +3279,26 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   listening socket does, so an app whose only work is scheduled needs no
   server: do not add one to keep the process up. Add a server only for what a
   server gives you — a route, a health probe, an on-demand trigger.
+- **Opening the app's own page — `Telo.OpenUrl`.** A built-in Invocable (no
+  import) with input `url` (a `Telo.Url`, scheme `http` or `https`; a literal of
+  another scheme is `URL_INVALID`, a computed one `ERR_INPUT_INVALID`) and
+  output `null`. Every call logs `telo.url.open_requested` with `url.full`;
+  `telo run` at a terminal also opens it in the browser, at most once per URL
+  per session, and every other host (`--no-input`, runners, CI) only logs. It
+  never fails the app and never blocks the targets after it. Declare it as a
+  NAMED resource and list a step AFTER the server in `targets:` (an inline
+  `invoke: { kind: … }` is not allowed in an Application's `targets:`):
+  `targets: [!ref server, { invoke: !ref openBrowser, inputs: { url: !cel
+  "resources.server.status.localUrl" } }]` with `kind: Telo.OpenUrl, metadata:
+  { name: openBrowser }`. `Http.Server` reports `status.localUrl` once it
+  listens (the socket's URL, `localhost` for a wildcard address, `https` under
+  `tls` — not a public address); read before `!ref server` it fails with
+  `ERR_OBSERVED_STATE_UNAVAILABLE`. To ask first, put the question and the open
+  in a NAMED `Telo.Sequence` (`Console.readLine`, then an `if:` step whose
+  `then:` holds the open step; inside a sequence the step may be inline, with a
+  `name`) and list that sequence in `targets:` after the server — the app owns
+  the terminal's input, so the host never asks. A sign-in calls it in a step
+  with the consent `url` before waiting for the callback.
 - **SQL schema is DECLARED, not migrated to.** `sql` holds the abstracts
   (`Sql.Connection`, `Sql.Table`, `Sql.Schema`); the backend modules own
   everything instantiable — `postgres` (`Postgres.Connection` / `.Table` /
@@ -3900,7 +3938,11 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   an entry of a templated kind's `resources:` body), or forwarded whole to a
   library need that reaches one — or it is `NEED_CONSTRAINT_UNVERIFIED`. Reading
   a need by field never verifies anything; a pure provisioning request (a size,
-  a region) belongs in `parameters:`. A need forwarded whole must state at least
+  a region) belongs in `parameters:` — LITERALS only (`!cel` there is
+  `NEED_PARAMETERS_INVALID`), except `!module-path icon.png` at a parameter the
+  type declares a `Telo.HostPath`, which names a file shipped with the module.
+  A need type declaring `unique: true` is asked for at most once per module
+  (`NEED_DUPLICATE`). A need forwarded whole must state at least
   what it supplies — a range within the target's, every feature it asks for
   (`NEED_FORWARD_INCOMPATIBLE`); the outermost (narrowest) need is the one the
   kernel enforces, refusing a mismatch at the consumer with `ERR_NEED_UNMET`.
@@ -4170,6 +4212,12 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   variable feeding one (`dbFile` → `file`, `reportsDir` → `directory`); a variable or a `!module-path` naming the
   other kind is `HOST_PATH_ENTRY_MISMATCH`, and a database file inside a
   directory is `dir.joinPath('app.db')`, never the directory itself.
+  A file slot may also say its media type —
+  `x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png }`
+  (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, `application/pdf`),
+  judged by the file's leading bytes: a file of another type, at a field, a
+  need parameter or through a variable declaring another `mediaType`, is
+  `HOST_PATH_CONTENT_MISMATCH`. Ship the declared format; renaming does not help.
 - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
   `module.<field>` (always); `resources.X` (after that resource snapshots);
   `steps.<name>.result` (inside a Telo.Sequence step); `request` (inside an
@@ -4460,7 +4508,7 @@ any list of steps. It runs ordered steps with `if` / `while` / `switch` / `try`
 and takes `steps`, `with`, `targets`, `inputType`, `outputType` and `outputs`.
 `Run.Sequence` is DEPRECATED (`DEPRECATED_KIND`, replaced by `Telo.Sequence`):
 never write it. A manifest declaring `Telo.Sequence` needs
-`requires: { telo: ">=0.128.0" }`. Import the `run` module only for what a
+telo `>=0.128.0` (`requires: { telo: ">=0.128.0" }`). Import the `run` module only for what a
 sequence is not, and OMIT the import when the app uses none of it. The rest of
 `run` is COMPOSITION too — do not go looking for a kind that "loops" as if it
 were a third-party capability: `Run.Loop` repeats a body while a CEL condition holds, seeing
@@ -4633,6 +4681,27 @@ Where to start:
     event or tree item is dragged. `telo check` refuses a layout whose filter
     the collection does not accept. `Ui.Collection`, `Ui.Table` and `Crud.Ui`
     no longer exist.
+    A `Ui.Filters` bar's `policy` is `{ placement, apply, state }`; the display
+    options `show` (`all` | `chosen`), `controls` (`direct` | `chips`) and
+    `summary` (`none` | `chips`) sit on the placement that draws controls
+    (`Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`,
+    `Ui.OverlayPlacement`; a `compact` placement inherits the omitted ones),
+    never on the policy. The bar's `search: { pinned?, default? }` adds a text
+    search sent as `search` and kept in the address as `_telo.f.<key>.search`;
+    a bar with no `fields` has it when the collection declares `query.search`,
+    a bar listing `fields` only by writing `search`, and a preset may carry
+    `search: <text>` (`telo check` refuses a search the collection does not
+    declare). `Ui.SearchBoxPlacement { placeholder? }` is the fifth placement:
+    the bar as one search box whose filters are chips, suggesting the search
+    and a filter per field, and taking `<property><op><value>` tokens
+    (`status:draft,review`, `publishedOn>=2026-11-01`: `:` contains, else in,
+    else eq; `=` in, else eq; `>` `>=` `<` `<=`; a relation is picked by name,
+    never typed). It takes no `show`, `controls`, `summary` or `compact`, and
+    `pinned` has no effect under it. The renderer draws it with the `Combobox`
+    layer control: a controls set implementing any layer control (`Select`,
+    `MultiSelect`, `Combobox`, `Dialog`, `Drawer`, `Popover`, `Confirmation`,
+    `Menu`, `Tooltip`, `Navigation`) implements all ten, built for the
+    `ui_react_controls-4` generation.
   - `ui-react` renders it: `UiReact.App` is a mount holding the pages — each
     a `Ui.Page`, inline or `!ref` — and their `navigation` tree, which names
     pages by `!ref`, never by path, and is drawn by a placement kind: a

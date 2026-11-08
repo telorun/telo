@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: SilentHost
+  version: 1.0.0
+  description: |
+    A host that accepts the connection and never answers Host.Hello: the first call is
+    refused as unreachable instead of waiting for ever.
+lang: en
+imports: { Desktop: ../../.., Fixture: ../host, Assert: ../../../../assert }
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.test, productName: Test, icon: !module-path icon.png, port: http }
+targets:
+  - !ref verify
+---
+kind: Fixture.Host
+metadata: { name: fixture }
+host: !ref desktopHost
+answerHello: false
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - name: refused
+    try:
+      - name: quit
+        invoke: { kind: Desktop.Quit, host: !ref desktopHost }
+    catch:
+      - name: code
+        invoke: { kind: Assert.Equals }
+        inputs: { actual: !cel "error.code", expected: ERR_DESKTOP_HOST_UNREACHABLE }
+      - name: message
+        invoke: { kind: Assert.Contains }
+        inputs: { actual: !cel "error.message", value: never answered Host.Hello }

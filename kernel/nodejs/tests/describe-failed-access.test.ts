@@ -11,7 +11,7 @@ describe("describeFailedAccess", () => {
     const hint = describeFailedAccess(
       "steps.call.result.result.content[0].type",
       ctx,
-      "No such key: content",
+      "no such key: \"content\"",
     );
     expect(hint).toBe(
       "at steps.call.result.result: cannot read 'content' — value is an empty object {}",
@@ -27,7 +27,7 @@ describe("describeFailedAccess", () => {
     const hint = describeFailedAccess(
       "steps.call.result.content",
       ctx,
-      "No such key: content",
+      "no such key: \"content\"",
     );
     expect(hint).toBe(
       "at steps.call.result: cannot read 'content' — available keys: error",
@@ -39,7 +39,7 @@ describe("describeFailedAccess", () => {
     const hint = describeFailedAccess(
       "steps.call.result.content",
       ctx,
-      "No such key: content",
+      "no such key: \"content\"",
     );
     expect(hint).toBe("at steps.call.result: cannot read 'content' — value is null");
   });
@@ -49,14 +49,14 @@ describe("describeFailedAccess", () => {
     const hint = describeFailedAccess(
       "steps.call.result.content",
       ctx,
-      "No such key: content",
+      "no such key: \"content\"",
     );
     expect(hint).toBe(
       "at steps.call.result: cannot read 'content' — value is an array of length 3",
     );
   });
 
-  it("returns null when the error is not a 'No such key' failure", () => {
+  it("returns null when the error is not a 'no such key' failure", () => {
     const ctx = { x: { y: 1 } };
     expect(describeFailedAccess("x.y", ctx, "Unknown variable: q")).toBeNull();
   });
@@ -67,22 +67,22 @@ describe("describeFailedAccess", () => {
       describeFailedAccess(
         "steps.x.result.docs.orValue('')",
         ctx,
-        "No such key: docs",
+        "no such key: \"docs\"",
       ),
     ).toBeNull();
     expect(
-      describeFailedAccess("a + b.c", ctx, "No such key: c"),
+      describeFailedAccess("a + b.c", ctx, "no such key: \"c\""),
     ).toBeNull();
   });
 
   it("returns null when the failure key doesn't match the path tail", () => {
     const ctx = { a: { b: {} } };
-    expect(describeFailedAccess("a.b.c", ctx, "No such key: z")).toBeNull();
+    expect(describeFailedAccess("a.b.c", ctx, "no such key: \"z\"")).toBeNull();
   });
 
   it("handles bracket string-key access", () => {
     const ctx = { obj: { foo: {} } };
-    const hint = describeFailedAccess('obj.foo["bar"]', ctx, "No such key: bar");
+    const hint = describeFailedAccess('obj.foo["bar"]', ctx, "no such key: \"bar\"");
     expect(hint).toBe("at obj.foo: cannot read 'bar' — value is an empty object {}");
   });
 
@@ -91,7 +91,7 @@ describe("describeFailedAccess", () => {
     const hint = describeFailedAccess(
       "request.body.payload",
       ctx,
-      "No such key: body",
+      "no such key: \"body\"",
     );
     expect(hint).toBe(
       "at request: cannot read 'body' — available keys: params",

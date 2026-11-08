@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: ParameterPathMissing
+  version: 0.0.0
+  description: A need parameter naming a module file that is not there.
+imports: { Fx: ../../../types }
+needs:
+  printer:
+    kind: Fx.LabelPrinter
+    optional: true
+    parameters: { logo: !module-path missing.png }

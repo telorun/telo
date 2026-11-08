@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata: { name: Greeter, version: 1.0.0 }
+imports: { Console: ../../../../../../modules/console }
+variables: { who: { env: GREET_WHO, type: string, default: nobody } }
+targets:
+  - !ref greet
+---
+kind: Telo.Sequence
+metadata: { name: greet }
+steps:
+  - name: say
+    invoke: { kind: Console.WriteLine }
+    inputs:
+      output: !cel "'greeting ' + variables.who"

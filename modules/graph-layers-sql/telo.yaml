@@ -13,6 +13,7 @@ metadata:
     atomically with conflict detection, retained revision history with three-way
     merge, layers pinned to revisions of others, keyset paging and cross-layer
     traversal.
+requires: { telo: ">=unreleased" }
 imports: { Graph: ../graph, GraphLayers: ../graph-layers, Sql: ../sql }
 exports:
   kinds: [Node, Relationship, CurrentStore, DraftedStore, RevisionedStore]

@@ -52,6 +52,9 @@ messages:
   filterControl: "{$label} {$operator}"
   filterChip: "{$label} {$operator} {$value}"
   filterGroupSummary: "{$label}: {$summary}"
+  searchFilter: Ara
+  searchChip: "Ara: {$text}"
+  searchAndFilter: Ara ve filtrele
   rangeFrom: Başlangıç
   rangeTo: Bitiş
   rangeStartsAfterEnd: Bitişinden sonra başlayamaz
@@ -122,6 +125,7 @@ messages:
   chatThinking: "Düşünüyor…"
   chatShowDetails: "Ayrıntıları göster"
   chatHideDetails: "Ayrıntıları gizle"
+  chatToolPreview: "Önizleme"
   chatToolCall: "Araç: {$name}"
   chatToolRunning: "Çalışıyor…"
   chatToolFailed: "Başarısız"

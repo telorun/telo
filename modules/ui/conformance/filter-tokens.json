@@ -1,0 +1,137 @@
+{
+  "description": "How text typed into a filter bar drawn as one search box becomes the bar's values, with no request: the token <property><operator><value> read over the filters the bar's node carries.",
+  "fields": [
+    { "property": "title", "operator": "contains", "schema": { "type": "string", "title": "Title" } },
+    { "property": "authorId", "operator": "eq", "schema": { "type": "integer", "title": "Author" }, "relation": true },
+    {
+      "property": "status",
+      "operator": "in",
+      "schema": { "type": "string", "title": "Status", "enum": ["draft", "review", "published"] },
+      "labels": [
+        { "value": "draft", "label": "Draft" },
+        { "value": "review", "label": "In review" },
+        { "value": "published", "label": "Published" }
+      ]
+    },
+    { "property": "featured", "operator": "eq", "schema": { "type": "boolean", "title": "Featured" }, "labels": [{ "value": true, "label": "Yes" }, { "value": false, "label": "No" }] },
+    { "property": "publishedOn", "operator": "gte", "schema": { "type": "string", "format": "date", "title": "Published on" } },
+    { "property": "publishedOn", "operator": "lte", "schema": { "type": "string", "format": "date", "title": "Published on" } }
+  ],
+  "rows": [
+    { "name": "text with no property is only text", "typed": "back", "result": { "kind": "text" } },
+    { "name": "words before a colon that are not a property name are only text", "typed": "release notes: draft", "result": { "kind": "text" } },
+    { "name": "an empty box is only text", "typed": "", "result": { "kind": "text" } },
+
+    { "name": "':' on a contains filter keeps the whole text as one value", "typed": "title:back", "result": { "kind": "token", "field": "title.contains", "values": ["back"] } },
+    { "name": "a comma and a space are kept under contains", "typed": "title:a, b", "result": { "kind": "token", "field": "title.contains", "values": ["a, b"] } },
+    { "name": "the property is matched ignoring its case", "typed": "TITLE:back", "result": { "kind": "token", "field": "title.contains", "values": ["back"] } },
+    { "name": "a property typed in lower case", "typed": "publishedon>=2026-11-01", "result": { "kind": "token", "field": "publishedOn.gte", "values": ["2026-11-01"] } },
+    { "name": "space after the operator is not part of the value", "typed": "title: back ", "result": { "kind": "token", "field": "title.contains", "values": ["back"] } },
+
+    { "name": "':' on an in filter splits the text at commas", "typed": "status:draft,In review", "result": { "kind": "token", "field": "status.in", "values": ["draft", "review"] } },
+    { "name": "'=' on an in filter splits at commas too", "typed": "status=draft, published", "result": { "kind": "token", "field": "status.in", "values": ["draft", "published"] } },
+    { "name": "an enumeration value is matched by its label", "typed": "status:In review", "result": { "kind": "token", "field": "status.in", "values": ["review"] } },
+    { "name": "an enumeration value is matched by its value", "typed": "status:review", "result": { "kind": "token", "field": "status.in", "values": ["review"] } },
+    { "name": "a value listed twice is held once", "typed": "status:draft,Draft", "result": { "kind": "token", "field": "status.in", "values": ["draft"] } },
+    { "name": "yes and no are the labels of a boolean", "typed": "featured:yes", "result": { "kind": "token", "field": "featured", "values": ["true"] } },
+    { "name": "a boolean is also true or false", "typed": "featured=false", "result": { "kind": "token", "field": "featured", "values": ["false"] } },
+
+    { "name": "'>=' picks the gte filter", "typed": "publishedOn>=2026-11-01", "result": { "kind": "token", "field": "publishedOn.gte", "values": ["2026-11-01"] } },
+    { "name": "'<=' picks the lte filter", "typed": "publishedOn<=2026-12-31", "result": { "kind": "token", "field": "publishedOn.lte", "values": ["2026-12-31"] } },
+    {
+      "name": "'>' picks the gt filter",
+      "fields": [{ "property": "size", "operator": "gt", "schema": { "type": "integer" } }, { "property": "size", "operator": "lt", "schema": { "type": "integer" } }],
+      "typed": "size>3",
+      "result": { "kind": "token", "field": "size.gt", "values": ["3"] }
+    },
+    {
+      "name": "'<' picks the lt filter",
+      "fields": [{ "property": "size", "operator": "gt", "schema": { "type": "integer" } }, { "property": "size", "operator": "lt", "schema": { "type": "integer" } }],
+      "typed": "size<3",
+      "result": { "kind": "token", "field": "size.lt", "values": ["3"] }
+    },
+
+    {
+      "name": "a bare ':' picks contains when a property has contains, in and eq",
+      "fields": [
+        { "property": "name", "operator": "eq", "schema": { "type": "string" } },
+        { "property": "name", "operator": "in", "schema": { "type": "string" } },
+        { "property": "name", "operator": "contains", "schema": { "type": "string" } }
+      ],
+      "typed": "name:ada",
+      "result": { "kind": "token", "field": "name.contains", "values": ["ada"] }
+    },
+    {
+      "name": "a bare ':' picks in when a property has in and eq",
+      "fields": [{ "property": "name", "operator": "eq", "schema": { "type": "string" } }, { "property": "name", "operator": "in", "schema": { "type": "string" } }],
+      "typed": "name:ada,grace",
+      "result": { "kind": "token", "field": "name.in", "values": ["ada", "grace"] }
+    },
+    {
+      "name": "'=' picks in over contains",
+      "fields": [{ "property": "name", "operator": "contains", "schema": { "type": "string" } }, { "property": "name", "operator": "in", "schema": { "type": "string" } }],
+      "typed": "name=ada",
+      "result": { "kind": "token", "field": "name.in", "values": ["ada"] }
+    },
+    {
+      "name": "'=' picks eq when a property has contains and eq",
+      "fields": [{ "property": "name", "operator": "contains", "schema": { "type": "string" } }, { "property": "name", "operator": "eq", "schema": { "type": "string" } }],
+      "typed": "name=ada",
+      "result": { "kind": "token", "field": "name", "values": ["ada"] }
+    },
+    {
+      "name": "a comma is kept under eq",
+      "fields": [{ "property": "code", "operator": "eq", "schema": { "type": "string" } }],
+      "typed": "code:a,b",
+      "result": { "kind": "token", "field": "code", "values": ["a,b"] }
+    },
+
+    { "name": "a property and its operator with no value open the field's values", "typed": "status:", "result": { "kind": "open", "field": "status.in" } },
+    { "name": "a relation's text is the query for its records, never a value", "typed": "authorId:sof", "result": { "kind": "query", "field": "authorId", "query": "sof" } },
+    { "name": "a relation prefix with no text queries for every record", "typed": "authorId:", "result": { "kind": "query", "field": "authorId", "query": "" } },
+    { "name": "a relation's '=' is a query too", "typed": "AUTHORID=1", "result": { "kind": "query", "field": "authorId", "query": "1" } },
+
+    {
+      "name": "a committed date replaces the value its filter held",
+      "holding": { "publishedOn.gte": ["2026-11-01"] },
+      "typed": "publishedOn>=2026-11-02",
+      "result": { "kind": "token", "field": "publishedOn.gte", "values": ["2026-11-02"] },
+      "after": { "publishedOn.gte": ["2026-11-02"] }
+    },
+    {
+      "name": "a committed token replaces the values an in filter held, and leaves the other filters",
+      "holding": { "status.in": ["draft"], "title.contains": ["back"] },
+      "typed": "status:review",
+      "result": { "kind": "token", "field": "status.in", "values": ["review"] },
+      "after": { "status.in": ["review"], "title.contains": ["back"] }
+    },
+    {
+      "name": "a committed token leaves the other filter on its property",
+      "holding": { "publishedOn.lte": ["2026-12-31"] },
+      "typed": "publishedOn>=2026-11-01",
+      "result": { "kind": "token", "field": "publishedOn.gte", "values": ["2026-11-01"] },
+      "after": { "publishedOn.lte": ["2026-12-31"], "publishedOn.gte": ["2026-11-01"] }
+    },
+
+    { "name": "the bar has no filter on the property", "typed": "colour:red", "result": { "kind": "invalid", "reason": "unknown-property" } },
+    { "name": "the property has no filter of the operator: no gt", "typed": "title>b", "result": { "kind": "invalid", "reason": "operator-unsupported" } },
+    { "name": "the property has no contains, in or eq filter", "typed": "publishedOn:2026-11-01", "result": { "kind": "invalid", "reason": "operator-unsupported" } },
+    { "name": "the property has no in or eq filter", "typed": "publishedOn=2026-11-01", "result": { "kind": "invalid", "reason": "operator-unsupported" } },
+    { "name": "the value is not one the property lists", "typed": "status:archived", "result": { "kind": "invalid", "reason": "value-not-listed", "field": "status.in" } },
+    { "name": "one value of several is not listed", "typed": "status:draft,archived", "result": { "kind": "invalid", "reason": "value-not-listed", "field": "status.in" } },
+    { "name": "the value is not a date", "typed": "publishedOn>=yesterday", "result": { "kind": "invalid", "reason": "value-invalid", "field": "publishedOn.gte" } },
+    { "name": "the value is a date that does not exist", "typed": "publishedOn>=2026-02-31", "result": { "kind": "invalid", "reason": "value-invalid", "field": "publishedOn.gte" } },
+    {
+      "name": "the value is not a number",
+      "fields": [{ "property": "size", "operator": "gte", "schema": { "type": "integer" } }],
+      "typed": "size>=big",
+      "result": { "kind": "invalid", "reason": "value-invalid", "field": "size.gte" }
+    },
+    {
+      "name": "the value is not a whole number",
+      "fields": [{ "property": "size", "operator": "gte", "schema": { "type": "integer" } }],
+      "typed": "size>=1.5",
+      "result": { "kind": "invalid", "reason": "value-invalid", "field": "size.gte" }
+    }
+  ]
+}

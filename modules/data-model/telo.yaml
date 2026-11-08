@@ -12,12 +12,10 @@ metadata:
     collections. Contradictions between those declarations are refused before
     the app runs, and the declaration is the contract APIs enforce and screens
     offer.
-requires:
-  # A collection relating to itself, or two relating to each other, fail to boot
-  # on 0.125.1 with ERR_LOCAL_REF_PENDING: a `use: schema` reference was awaited
-  # there. Verified by running 0.125.1; forward-declared at the release carrying
-  # the declaration read.
-  telo: ">=0.126.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.126.0" }
+    reason: "A collection relating to itself, or two relating to each other, fail to boot on 0.125.1 with ERR_LOCAL_REF_PENDING because a `use: schema` reference was awaited there."
 exports:
   kinds: [Collection]
   # The entry point a kind extending `Collection` resolves `@telorun/data-model`
@@ -37,9 +35,10 @@ metadata:
   description: >-
     One list endpoint of records: the shape of a record, the property
     identifying it, the filters (property and operator), sort orders and facets
-    the endpoint accepts, and relations from a property to another collection's
-    records. Publishes what it declares; refuses a filter, sort, facet or
-    relation that contradicts the record shape.
+    the endpoint accepts, an optional text search over string properties, and
+    relations from a property to another collection's records. Publishes what
+    it declares; refuses a filter, sort, facet, search or relation that
+    contradicts the record shape.
 capability: Telo.Provider
 controllers: [pkg:telo/local/js?path=./nodejs/data-model.mjs&local_path=./nodejs/src/index.ts#CollectionController]
 schema:
@@ -54,6 +53,7 @@ schema:
           - { property: publishedOn, operator: absent }
         sort: [{ property: title }]
         facets: [{ property: authorId }]
+        search: { properties: [title, body] }
       relations:
         authorId: { collection: !ref authors }
   properties:
@@ -96,6 +96,16 @@ schema:
             additionalProperties: false
             required: [property]
             properties: { property: { type: string } }
+        search:
+          title: Search
+          description: >-
+            The string properties one `search` text is looked for in: a record
+            matches when any of them contains the text, ignoring case. A request
+            carries no `search` when omitted.
+          type: object
+          additionalProperties: false
+          required: [properties]
+          properties: { properties: { type: array, minItems: 1, items: { type: string } } }
         facets:
           title: Facets
           description: >-
@@ -178,12 +188,38 @@ schema:
     # A filter parameter is spelled as its property, so one named as a parameter
     # the endpoint owns would be read as that parameter.
     - in: /query/filters
-      condition: !cel "!(this.property in ['limit', 'cursor', 'sort', 'facet']) && !this.property.startsWith('_telo')"
+      condition: !cel "!(this.property in ['limit', 'cursor', 'sort', 'facet', 'search']) && !this.property.startsWith('_telo')"
       code: DATA_MODEL_FILTER_RESERVED_NAME
       message: >-
         filters by a property named as a query parameter the list endpoint owns:
-        `limit`, `cursor`, `sort`, `facet`, and every name beginning `_telo`.
-        Rename the property, or leave it out of `query.filters`.
+        `limit`, `cursor`, `sort`, `facet`, `search`, and every name beginning
+        `_telo`. Rename the property, or leave it out of `query.filters`.
+    - resolve: [/model]
+      in: /query/search/properties
+      condition: !cel >-
+        has(self.model.schema.properties) && this in self.model.schema.properties
+      code: DATA_MODEL_SEARCH_UNKNOWN_PROPERTY
+      message: >-
+        searches a property `model` does not declare. Use a property of
+        `model`, or add this one to it.
+    - resolve: [/model]
+      in: /query/search/properties
+      condition: !cel >-
+        !has(self.model.schema.properties) || !(this in self.model.schema.properties)
+        || cel.bind(p, self.model.schema.properties[this],
+           cel.bind(types,
+             ('type' in p
+               ? (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null')
+               : ('enum' in p
+                    ? p.enum
+                        .filter(v, type(v) == string || type(v) == bool || type(v) == int || type(v) == double)
+                        .map(v, type(v) == string ? 'string' : (type(v) == bool ? 'boolean' : 'number'))
+                    : [])),
+             size(types) == 0 || 'string' in types))
+      code: DATA_MODEL_SEARCH_UNSUPPORTED
+      message: >-
+        searches a property that is not a string. A search reads string
+        properties only.
     - resolve: [/model]
       in: /query/sort
       condition: !cel >-

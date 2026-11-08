@@ -43,7 +43,7 @@ carrier it meets.
 - `6. Invocation` — dispatch in both directions, and the per-call concerns that ride with it: cancellation, zones, spans, synchronous calls.
 - `7. Resolution & schema` — turning what a manifest says into what a controller can use: references, schemas, and compiled values.
 - `8. Channels` — flow-controlled byte streams, which is how anything too large or too long-lived to be one payload crosses.
-- `9. Host facilities` — what a controller reads from the runtime hosting it: logging, child manifests, module files, the environment.
+- `9. Host facilities` — what a controller reads from the runtime hosting it: logging, child manifests, module files, the environment, the sockets a host supplies.
 
 **Out of scope, deliberately:**
 
@@ -94,7 +94,9 @@ written into a native controller's PURL as `abi=telo-<n>`.
   `Span.Carrier` (§6.5). No carrier implemented any of them and no artifact could
   declare one, so each is superseded rather than kept readable.
 - **Generation `10` is the generation this specification defines.** It is `9`'s
-  message set plus `Ref.CoReferrers` (§7.1), with the same value encoding:
+  message set plus `Ref.CoReferrers` (§7.1) and the three listener messages
+  (§9.4) — additive within `10`, which no carrier speaks yet — with the same
+  value encoding:
   `durable-execution.md` §6's typed frame, whose timestamp payload is RFC 3339
   with a trimmed nanosecond fraction. It is the value in
   `sdk/controller-protocol/generation.json`, and every `Session.Hello` a
@@ -221,6 +223,7 @@ other side sends, or by the lifetime of something already handled:
 | detached task | kernel | `Dispatch.DetachSettle` |
 | channel | the opener | `Channel.Close` |
 | child run | kernel | `Runtime.Exited` |
+| listener | kernel | `Listener.Release` |
 
 A handle a peer does not recognise is a protocol violation, terminal for the
 carrier instance (§3.5). A runtime MUST NOT silently ignore one: a stale instance
@@ -269,6 +272,9 @@ One row per message, in the lexical order of the file names in
 | `Event.Emit` | `controller-to-kernel` | `5. Lifecycle` | no | no |
 | `Hold.Acquire` | `controller-to-kernel` | `5. Lifecycle` | no | no |
 | `Hold.Release` | `controller-to-kernel` | `5. Lifecycle` | no | no |
+| `Listener.Accept` | `kernel-to-controller` | `9. Host facilities` | no | no |
+| `Listener.Claim` | `controller-to-kernel` | `9. Host facilities` | no | no |
+| `Listener.Release` | `controller-to-kernel` | `9. Host facilities` | no | no |
 | `Log.Drop` | `controller-to-kernel` | `9. Host facilities` | no | no |
 | `Log.LevelFor` | `controller-to-kernel` | `9. Host facilities` | yes | no |
 | `Log.Threshold` | `kernel-to-controller` | `9. Host facilities` | no | no |
@@ -1128,6 +1134,7 @@ stream from a finished one. A channel whose session closes is closed with it.
 | `stdin` / `stdout` / `stderr` | a controller's own standard streams (§3.6) |
 | `stream` | one `Telo.Stream` value crossing as part of a payload |
 | `runtime.stdin` / `runtime.stdout` / `runtime.stderr` | a child manifest's streams (§9.2) |
+| `connection` | one direction of a connection a host admitted and handed over (§9.4) |
 
 A `Telo.Stream` value is `live`: it is consumed by reading, so it exists exactly
 once and MUST NOT be written into a typed frame. It crosses as a channel, named
@@ -1246,6 +1253,44 @@ asks for across a process boundary, and a key the application binds to a declare
 variable or secret MUST read as absent here — that is the same guardrail a
 kernel applies in process.
 
+### 9.4 Host-supplied listeners
+
+A process embedding a kernel may itself own the socket of a `tcp` port — to
+admit each connection before any server sees it — and supply that port's
+connections to whichever server is configured with its number. The server then
+serves them and binds nothing.
+
+`Listener.Claim` asks, by port number, whether the host holds such a socket. It
+answers with a listener handle and the address the host's socket is bound to,
+or with a null `listener`, after which the server binds as it otherwise would. A
+port already claimed by another holder is refused with `ERR_LISTENER_CLAIMED`,
+as a bind to a port in use is refused. A claim belongs in the entry point that
+makes the server reachable (`Controller.Run` for a service), never in
+`Controller.Init`.
+
+`Listener.Accept` hands one admitted connection over. **No message carries an OS
+handle**: a handle has no form on the ABI carrier and none portable across
+processes on every host, so the connection crosses as two one-way channels of
+purpose `connection` (§8), whose ids the message names. The kernel opens
+`inbound`, and its first bytes are the ones the host already read while
+admitting the connection — a request line and headers, typically — so the server
+reads the connection exactly as the peer wrote it. The controller opens
+`outbound` and writes to the peer through it. Closing `outbound` ends the
+connection once what it carries is delivered; closing it with an `error` resets
+the connection. The end of `inbound` is the peer's end of the connection. Every
+byte is relayed through the kernel. The kernel MUST NOT send a `Listener.Accept`
+naming a listener before the `Listener.Claim` response that minted it.
+
+`Listener.Release` is the claim's inverse. Once it is answered no further
+connection is handed over under the handle, and the host holds what it admits
+until the port is claimed again; connections already handed over are untouched.
+A release of a handle already released is answered and changes nothing.
+
+What happens to a connection no holder claims is the host's: a kernel tells its
+host when startup ends and when it stops, and a host answers connections
+unclaimed at those points itself. A child manifest (§9.2) started with a port
+number the host holds a socket for claims that socket as its parent would.
+
 ## 10. Error codes
 
 A failed request answers with an `error` payload (§3.2) carrying a `code`, a
@@ -1284,6 +1329,7 @@ codes cross unchanged and are not listed here.
 | `ERR_NEED_UNMET` | an observation does not satisfy the outermost need; `data` holds `need`, `type`, `source`, `required` and `actual` | `Need.Verify`, and the entry point whose controller reported it: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
 | `ERR_NEED_OBSERVATION_INVALID` | an observation at a slot that does not observe, one missing or extra member, or a version that is not semver; or an observing slot left unreported when the entry point its deadline names returns | `Need.Verify`, and that entry point: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
 | `ERR_LOCAL_REF_PENDING` / `ERR_CROSS_MODULE_REF_PENDING` | a listed translations catalog has not been created yet, or co-referrers are asked for before the application has initialized — a deferral the kernel's initialization retries, raised out of the entry point that asked | `Translations.Lookup`, `Ref.CoReferrers`, and that entry point: `Controller.Init` |
+| `ERR_LISTENER_CLAIMED` | the host's socket for the port is already claimed by another holder | `Listener.Claim` |
 | `ERR_NATIVE_FILE_UNAVAILABLE` | no `native:` entry of that name matches the host, or its staged file could not be brought to its pin | `Native.File` |
 
 `ERR_DURABLE_SUSPENDED` and `ERR_INVOKE_CANCELLED` are **signals, not errors**.
@@ -1347,4 +1393,8 @@ A conforming runtime:
     order, and distinguishes an abnormal close from end-of-input (§8);
 15. starts a child manifest as its own session and runs no kernel inside a
     controller host (§9.2);
-16. executes all four vector files, in every language that implements a carrier.
+16. executes all four vector files, in every language that implements a carrier;
+17. hands a host-admitted connection over as two `connection` channels, the
+    inbound one beginning with the bytes the host read while admitting it, and
+    sends no `Listener.Accept` before the claim that minted its listener is
+    answered (§9.4).

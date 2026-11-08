@@ -34,7 +34,7 @@ An entry declares **how the value is represented** and nothing about any runtime
 | `members`        | Non-live `instance` only: the members a value holds, each a JSON Schema. They are the CEL fields of its type, its object authoring form beside its text, and — through `x-telo-sensitive: true` — what of it is redacted. Its encoding must build a value from them. |
 | `acceptsText`    | Non-live `instance` with an `encoding` only: `{ code }`. A CEL `string` stands at a slot of the type and is read through the encoding when the resource holding it is created, or — at a contract — when the call is dispatched. Every refusal of the type is `code` statically, at every site a literal is written (a resource field, a call's `inputs:`, a schema-derived slot, a need supply, an import's `variables:` / `secrets:`, a `default:`), and `ERR_<code>` at runtime: raised as itself at creation and at an import, carried as an entry inside `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` at a contract boundary and inside `ERR_MANIFEST_VALIDATION_FAILED` at load. |
 | `integerForm`    | Non-live `instance` with an `encoding` only: `{ unit }`. A JSON integer written where text is decoded is read as the text `<integer><unit>` through the encoding (`Telo.Duration`: `250` is `250ms`). The encoding must read `0<unit>`, or the entry is a startup error. |
-| `parameters`     | Named type parameters. Each is optional and defaults to *any*. A parameter's own keys: `name`, `description`, `element` (its argument is what iterating a value yields), `member` (its argument is a schema the member of that name must satisfy), `hostEntry` (its argument is a token, `file` or `directory`, saying what a host path names — only on a `fromHost` type, at most one) and `bound` (`minimum`, `maximum`, `exclusiveMinimum` or `exclusiveMaximum`: its argument is a value of the type, below). |
+| `parameters`     | Named type parameters. Each is optional and defaults to *any*. A parameter's own keys: `name`, `description`, `element` (its argument is what iterating a value yields), `member` (its argument is a schema the member of that name must satisfy), `hostEntry` (its argument is a token, `file` or `directory`, saying what a host path names — only on a `fromHost` type, at most one), `hostMediaType` with `signatures` (its argument is a media type, a key of `signatures`, saying what the file a host path names starts with — only on a `fromHost` type, at most one) and `bound` (`minimum`, `maximum`, `exclusiveMinimum` or `exclusiveMaximum`: its argument is a value of the type, below). |
 | `description`    | What `telo cel types` and the generated docs section print.                    |
 
 `binding` is deliberately **not** a constructor name — that is a fact about one
@@ -103,6 +103,37 @@ It is checked wherever the kind of entry is known:
   naming the variable and its environment variable) — and a path the filesystem
   will not answer for the same way (`ERR_HOST_PATH_UNREADABLE`);
 - a token outside the vocabulary is `X_TELO_TYPE_ARGUMENT_INVALID`.
+
+### What a host path's file holds
+
+A host-path slot may also say what media type its file holds:
+`x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png }`. The
+parameter is found by its `hostMediaType` flag, never by its name, and its
+argument is one of the keys of the parameter's own `signatures` — today
+`image/png`, `image/jpeg`, `image/gif`, `image/webp` and `application/pdf`.
+Each key lists alternative signatures, each a pattern of lower-case hex byte
+pairs read from the file's first byte, `??` standing for any byte
+(`52494646????????57454250` is a WebP's `RIFF`, its size, then `WEBP`); a file
+holds the type when its leading bytes match one of them. Only the leading bytes
+are read — as many as the longest signature — and nothing else about the file
+(its size, its dimensions) is judged. A directory holds no media type. Omitted
+means any, in both directions, two arguments compare by equality, and an absent
+path is never refused.
+
+It is checked where the entry is (above), with `HOST_PATH_CONTENT_MISMATCH`:
+
+- a `!module-path` the module ships, whose leading bytes the loader reads through
+  its manifest source (`ManifestSource.readHead`; a source that cannot read leaves
+  the file to the runtime), at a slot declaring another type — the message names
+  the type found, or says the head carries none known;
+- a plain chain from a variable declaring another `mediaType`, at a resource
+  field and at an import's `variables:`, and at a call's `inputs:`
+  (`CEL_TYPE_ARGUMENT_MISMATCH`);
+- an existing path that is a directory, or a file whose head does not carry the
+  type, when the resource holding it is created
+  (`ERR_HOST_PATH_CONTENT_MISMATCH`, after `ERR_HOST_PATH_ENTRY_MISMATCH`), and
+  when an Application variable or secret declaring `mediaType` is read at load;
+- a media type with no signature is `X_TELO_TYPE_ARGUMENT_INVALID`.
 
 ## Types with members
 

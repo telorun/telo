@@ -1,8 +1,9 @@
 ---
-status: approved
+status: in-progress
 priority: medium
 depends-on: []
 packages: [modules/ai, modules/text-diff, modules/fs, apps/authoring-agent]
+tracking: feat/agent-text-edits
 ---
 
 # Raw-text edits and moves for the authoring agent
@@ -113,13 +114,14 @@ textTools:
 - `blocks` is the list of the reply's blocks whose tag the entry lists, in reply order, each `{ tag, attributes, body }`: `attributes` a map of strings, `body` a string. An entry yields at most one call per reply, and none when the reply holds none of its tags. A tool that acts per block takes a list and iterates it.
 - An `arguments` expression that fails to evaluate (a block missing an attribute the mapping reads) fails the call with the evaluation error. The tool is not dispatched.
 - Everything after `arguments` is the tool's own: the provider's `inputs:` mapping, so `context` (the authoring agent's `turnId`) reaches the call, its `approval:` (one approval for the whole set), its `result:` rendering, and `maxToolResultBytes`.
-- `telo check` refuses the following when the named tool is in an `Ai.Tools` provider, whose `parameters` are static:
-  - a tool no provider declares;
-  - an argument key the tool's `parameters` lack;
-  - a required parameter left unmapped;
-  - a tag listed in two entries, or twice in one.
+- `tool` is the advertised, model-facing name, the provider entry's `prefix` included. `arguments` is required; its keys are literal and only its values are CEL.
+- A provider is **static** when its declaration holds a top-level `tools` list: `Ai.ToolProvider` reserves that key for a provider's complete, static tool list in `Ai.Tools`' entry shape. The check reads the advertised names by applying the entry's `include`, `exclude` and `prefix`; a provider whose names cannot be read is not static. `telo check` refuses, as resource rules on `Ai.Agent` and `Ai.AgentStream`:
+  - a tool no provider declares (`AI_TEXT_TOOL_UNKNOWN`), only when every provider is static;
+  - an argument key the tool's schema would refuse — absent from `properties`, unmatched by `patternProperties`, under `additionalProperties: false` (`AI_TEXT_TOOL_ARGUMENT_UNKNOWN`);
+  - a required parameter left unmapped (`AI_TEXT_TOOL_ARGUMENT_MISSING`);
+  - a tag listed in two entries (`AI_TEXT_TOOL_TAG_DUPLICATE`); a tag twice in one entry is a schema violation.
 
-  For a tool a provider only discovers at run time (an MCP server), the name is checked when the agent first lists its tools, with `ERR_TEXT_TOOL_UNKNOWN`. The arguments are then validated against the advertised schema at dispatch, as a JSON call's are.
+  Each runtime twin is `ERR_` plus the same code: the tag check at creation, the other three when the agent first lists its tools, over every provider's advertised schemas, so a tool a provider only discovers at run time (an MCP server) is checked then. The arguments are then validated against the advertised schema at dispatch, as a JSON call's are.
 - A tag must match `^[a-z][a-z0-9-]*$`. A fence whose tag is not listed is ordinary text.
 
 ### The loop
@@ -129,8 +131,10 @@ After each model reply:
 1. **Extract** the complete blocks of listed tags, in order. Only a fence at column 0 that is not inside another fence opens a block, so a model can show a listed tag as an example by wrapping it in a longer fence of another info string (for example ```` ````text ````). A fence that opens and never closes is incomplete.
 2. **Run the JSON tool calls** as today, all of them settled.
 3. **Then run the text calls**: one per entry whose tags the reply holds, ordered by each entry's first block, one at a time, so a call sees the effects of the JSON calls and of the text calls before it. `maxParallelTools` does not apply to them. Each goes through the same dispatch as a JSON call: approval, the `execute_tool` span, cancellation, `onToolError`, the result bound. With `onToolError: feedback`, a call that fails stops the reply's later text calls, which are reported as not run. With `throw`, the run raises as for a JSON call.
-4. **Follow up** if there were blocks. The next model call replays the assistant message as the text the model wrote, blocks included. It then sends one user message: the JSON calls' `tool_result` parts first (as the Messages API requires), then one text part with the text calls' results.
+4. **Follow up** if there were blocks. The next model call replays the assistant message as the text the model wrote, blocks included. It then sends one user message: the JSON calls' `tool_result` parts first (as the Messages API requires), then one text part per text call, in call order.
 5. **End** the run, as today, on a reply with no tool calls and no blocks. Each model call still counts against `maxSteps`.
+
+**Approval and resume.** A text call is gated, approved, deferred and interrupted exactly as a JSON call is, and one entry is one call per reply, so a change set takes one approval. No text call runs while a JSON call of its reply is pending; the first text call that waits ends the run and the later ones are not run, so the answered text calls are always a prefix of the reply's. A text call's id is a content address, so a resumed run rebuilds it from `messages` alone: `block_` + a name-based UUIDv8 over SHA-256 (RFC 9562 B.2) of the RFC 8785 canonical JSON `{ text, tool, tags, arguments }` — the assistant message's recorded text, the advertised tool name, the entry's tags sorted, and the evaluated `arguments` (`null` when evaluation failed). On resume, the last assistant message followed only by `role: tool` messages and user messages made only of `text-tool-result` parts is the pending reply: its unanswered `toolCalls` settle first, then its re-extracted text calls minus those already answered run in order. `approvals` may name either kind of call. An entry whose `arguments` changed between the interrupt and the resume derives another id, so its decision is refused as not pending (`ERR_INVALID_INPUT`, listing the pending ids) and arguments the approver never saw do not run.
 
 Each text call's result is headed by its tool and the blocks it carried, then the tool's own `result:` rendering:
 
@@ -149,18 +153,18 @@ ERR_EDIT_SECTION_AMBIGUOUS change 1 (apps/orders/telo.yaml) section 2 matches 3 
 
 ### Truncation
 
-When a reply ends with `finishReason: length` while a listed block is still open, **none of the reply's blocks run**, since the change set they form is incomplete. The next call carries, as the result:
+When a reply ends while a listed block is still open, **none of the reply's blocks run**, since the change set they form is incomplete. This is decided from the reply text alone, whatever its `finishReason`, so a resumed run reaches the same decision. The reply's JSON calls still run, since the provider returned them complete. The next call carries, as one text call's result (the open block's entry tool and tags, `arguments: null`, recorded with `ok: false`):
 
 ```
-cut off by the output limit inside telo-file path=apps/orders/tests/create.yaml; no block of this reply was run. Send the change again in smaller blocks.
+the reply ended inside telo-file path=apps/orders/tests/create.yaml before its closing fence; no block of this reply was run. Send the change again in smaller blocks.
 ```
 
 The call counts as a step. A change too large for one reply is split by the model across replies, and each reply's blocks form a change set of their own.
 
 ### The record
 
-- **Steps.** `steps[i]` gains `textCalls: [{ tool, blocks: [{ tag, attributes }], ok }]` beside `toolCalls`. `toolResults` gains the settled results of text calls with `origin: text` and a generated id `block_<uuid>`, so a consumer treating results uniformly sees them.
-- **Messages.** `messages` records the assistant message as text. The text calls' results are a text part of the following user message, marked `kind: text-tool-results`, so a replay is exact and a projection that folds history does not mistake them for a person's words.
+- **Steps.** `steps[i]` gains `textCalls: [{ id, tool, blocks: [{ tag, attributes }], ok }]` beside `toolCalls`. `toolResults` gains the settled results of text calls with `origin: text` and `toolCallId` the text call's `id`, so a consumer treating results uniformly sees them.
+- **Messages.** `messages` records the assistant message as text. Each text call's result, a call reported as not run or denied included, is its own text part of the following user message, `{ type: text, text, kind: text-tool-result, toolCallId }`, so a replay is exact, a resume knows which calls were answered, and a projection that folds history does not mistake them for a person's words. `kind` and `toolCallId` are legal only on a text part, and `toolCallId` is required wherever `kind` is.
 - **Streaming.** The streaming agent shares the extractor and the dispatch with the plain one. Block text streams out as the model writes it. Execution starts once the reply has finished (as step 3 requires) and each text call's result is emitted as its own `tool-result` record with `origin: text`.
 
 ### The authoring agent
@@ -196,7 +200,7 @@ The call counts as a step. A change too large for one reply is split by the mode
   - says to start a file or an app from an existing one with `copy_file`, then edit the copy, rather than reading it and writing it whole;
   - says a change set already ran `telo check` on every file it touched, so a separate `telo_check` is for files it did not touch;
   - names `ERR_EDIT_SECTION_ABSENT`, `ERR_EDIT_SECTION_AMBIGUOUS`, `ERR_EDIT_BLOCK_MALFORMED` and `ERR_CHANGE_FORM_INVALID` and what to do for each.
-- **Studio** shows a text call's result like a tool result, and each of its blocks as the file change it is.
+- **Studio** reads `text-tool-result` parts, shows a text call's result like a tool result, and each of its blocks as the file change it is.
 
 ## Examples
 
@@ -273,7 +277,11 @@ In the next reply the agent renames the copy's `metadata.name` and changes what 
   - a copy failing part-way (an unreadable file deep in the source) raises and leaves no destination and no temporary copy.
 - **`ai` module tests** (`modules/ai/tests/`):
   - `textTools` naming an unknown tool, an argument the tool lacks, or a tag listed in two entries is refused by `telo check`;
-  - a discovered tool name no provider lists is `ERR_TEXT_TOOL_UNKNOWN`;
+  - a discovered tool name no provider lists is `ERR_AI_TEXT_TOOL_UNKNOWN`;
+  - an interrupt on a gated text call resumes with `approvals` naming its `block_` id and runs it; the id rebuilt by another process from the same manifest and messages is identical;
+  - an entry's `arguments` changed between interrupt and resume refuses the decision as not pending (`ERR_INVALID_INPUT`);
+  - a waiting JSON call, resumed, has its result first, then the text calls' parts in order;
+  - text call 2 of 3 waits: on resume call 1 does not run again, and calls 2 and 3 run;
   - an entry listing two tags receives ONE call per reply, with both tags' blocks in reply order;
   - two entries yield two calls, ordered by each entry's first block, after the JSON calls under `maxParallelTools > 1`;
   - with `onToolError: feedback`, a failing first text call reports the second as not run;

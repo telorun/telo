@@ -1,4 +1,4 @@
-import type { ResourceContext, ResourceInstance, RuntimeResource, TextRecord } from "@telorun/sdk";
+import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource, type TextRecord } from "@telorun/sdk";
 import { isIcon, type IconFile } from "./icon.js";
 import { isPage, type PageInstance } from "./page-controller.js";
 import { sourceKeys } from "./source-keys.js";
@@ -149,10 +149,11 @@ export interface PreparedNavigation {
 
 /**
  * The navigation a renderer draws, every default filled: with no `navigation`,
- * one page entry per page in order; with no placement, the header, behind a
- * menu button on a narrow viewport. A page entry carries its page's path, and
- * its title unless it says otherwise; an entry naming an icon carries the
- * address `iconAddress` serves its file at.
+ * one page entry per titled page in order; with no placement, the header, behind
+ * a menu button on a narrow viewport. A page entry carries its page's path, and
+ * its title unless it says otherwise — a page with no title needs the entry's
+ * own text; an entry naming an icon carries the address `iconAddress` serves
+ * its file at.
  */
 export async function preparedNavigation(
   declared: NavigationConfig | null | undefined,
@@ -161,9 +162,16 @@ export async function preparedNavigation(
   owner: string,
   iconAddress: IconAddress,
 ): Promise<PreparedNavigation> {
-  const pageEntry = (page: PageInstance, text?: TextRecord | null): Unkeyed => {
+  const pageEntry = (page: PageInstance, where: string, text?: TextRecord | null): Unkeyed => {
     const reading = page.snapshot();
-    return { type: "page", path: reading.path, text: text ?? reading.title };
+    const label = text ?? reading.title;
+    if (label === undefined) {
+      throw new RuntimeError(
+        "ERR_UI_NAVIGATION_PAGE_UNTITLED",
+        `${owner}: '${where}' names a page with no title ('${reading.path}') and gives no text of its own, so it has no label. Write the entry's text, or give the page a title.`,
+      );
+    }
+    return { type: "page", path: reading.path, text: label };
   };
   const prepare = async (entry: NavigationEntryConfig, where: string): Promise<Unkeyed> => {
     const extra = {
@@ -179,7 +187,7 @@ export async function preparedNavigation(
     };
     if (entry.type === "page") {
       const page = ctx.resolveRef(entry.page, isPage, () => `'${where}.page' of ${owner}`, "Ui.Page");
-      return { ...pageEntry(page, entry.text), ...extra };
+      return { ...pageEntry(page, where, entry.text), ...extra };
     }
     if (entry.type === "link") return { type: "link", href: entry.href, text: entry.text, ...extra };
     const items: Unkeyed[] = [];
@@ -187,7 +195,7 @@ export async function preparedNavigation(
     return { type: "group", text: entry.text, items, ...extra };
   };
   const items: Unkeyed[] = [];
-  if (declared?.items == null) items.push(...pages.map((page) => pageEntry(page)));
+  if (declared?.items == null) items.push(...pages.filter((page) => page.snapshot().title !== undefined).map((page, index) => pageEntry(page, `pages[${index}]`)));
   else for (const [index, entry] of declared.items.entries()) items.push(await prepare(entry, `navigation.items[${index}]`));
   const placement =
     declared?.placement == null

@@ -39,4 +39,17 @@ describe("a navigation delivered for a request", () => {
       entries.map((entry) => (entry.items === undefined ? entry.key : [entry.key, keys(entry.items as never)]));
     expect(keys(deliveredNavigation(prepared.items))).toEqual([["admin", ["admin/users", "admin/users~2"]], "admin~2"]);
   });
+
+  it("leaves a page with no title out of an omitted navigation, and refuses an entry naming one without text of its own", async () => {
+    const page = (path: string, title?: string) => ({ snapshot: () => ({ path, ...(title === undefined ? {} : { title: text(title) }), query: {} }) }) as never;
+    const ctx = { resolveRef: (reference: unknown) => reference } as unknown as ResourceContext;
+    const bare = page("/chat");
+    const prepared = await preparedNavigation(undefined, [page("/", "Home"), bare], ctx, "the app", async () => "");
+    expect(deliveredNavigation(prepared.items).map((entry) => (entry as { path: string }).path)).toEqual(["/"]);
+    await expect(preparedNavigation({ items: [{ type: "page", page: bare }] } as never, [bare], ctx, "the app", async () => "")).rejects.toMatchObject({
+      code: "ERR_UI_NAVIGATION_PAGE_UNTITLED",
+    });
+    const labelled = await preparedNavigation({ items: [{ type: "page", page: bare, text: text("Chat") }] } as never, [bare], ctx, "the app", async () => "");
+    expect(deliveredNavigation(labelled.items)).toEqual([{ type: "page", key: "chat", path: "/chat", text: text("Chat") }]);
+  });
 });

@@ -12,17 +12,16 @@ metadata:
     and drop and inline editing, validated forms, filter bars, swappable themes
     and custom React components. Mounted on an HTTP server, it turns page
     descriptions into an admin panel with no frontend build.
-requires:
-  # The App reads the application's translations (`ctx.translations`) and the
-  # keyed texts its kind names (`x-telo-text-keys`); 0.128.0 has neither, and
-  # cannot load the `ui` beneath it.
-  telo: ">=0.129.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.129.0" }
+    reason: "The App reads the application's translations (`ctx.translations`) and the keyed texts its kind names (`x-telo-text-keys`); 0.128.0 has neither and cannot load the `ui` beneath it."
 imports: { Ui: ../ui, SseCodec: ../sse-codec }
 exports:
   kinds: [App, Theme, Controls]
   resources: [defaultTheme]
   # The renderer's contracts as data — the parts, the controls of
-  # `ui_react_controls-3` and the layouts of `ui_react_layouts-1` with their
+  # `ui_react_controls-4` and the layouts of `ui_react_layouts-1` with their
   # vectors, the scenes — and the DOM-only interpreter that runs them.
   code:
     - specifier: "@telorun/ui-react-contract"
@@ -254,6 +253,15 @@ schema:
       message: >-
         names a page the application does not list in its pages, so it leads
         nowhere. Add the page to pages, or remove the entry.
+    # The page an entry names is read at the first two levels of the tree; a
+    # deeper entry is judged when the application starts.
+    - resolve: [/navigation/items/*/page, /navigation/items/*/items/*/page]
+      in: /navigation/items(/*/items)*
+      condition: !cel "this.type != 'page' || has(this.text) || !has(this.page.path) || has(this.page.title)"
+      code: UI_NAVIGATION_PAGE_UNTITLED
+      message: >-
+        names a page with no title and gives no text of its own, so it has no
+        label. Write the entry's text, or give the page a title.
 ---
 # The look of every part the renderer draws and, optionally, the controls it
 # draws with; the brand stays a separate `Ui.DesignTokens` set. Layering:
@@ -308,15 +316,15 @@ schema:
         each control one implementation.
 ---
 # What a module ships to draw some of the renderer's controls, declared beside
-# the code: its browser entry, written against `ui_react_controls-3`, and the
+# the code: its browser entry, written against `ui_react_controls-4`, and the
 # controls it exports, each under its own name.
 kind: Telo.Definition
 metadata:
   name: Controls
   description: >-
     A set of interactive controls for a web interface — text boxes, selects,
-    multi-selects, checkboxes, dialogs, drawers, menus, navigation menus,
-    tabs, tooltips, date pickers and icons — shipped as browser code by a
+    multi-selects, search boxes with suggestions, checkboxes, dialogs, drawers,
+    menus, navigation menus, tabs, tooltips, date pickers and icons — shipped as browser code by a
     module and drawn in place of the built-in ones by any theme listing it.
     Checked against the controls contract before the application starts.
 capability: Telo.Provider
@@ -330,7 +338,7 @@ schema:
       title: Entry
       description: >-
         The specifier of one of the declaring module's browser entries,
-        written against `ui_react_controls-3`.
+        written against `ui_react_controls-4`.
       type: string
     implements:
       title: Implements
@@ -343,27 +351,28 @@ schema:
         enum:
           [
           TextInput, NumberInput, TextArea, DateInput, DateTimeInput, TimeInput, TagsInput,
-          DateRangeInput, Checkbox, Switch, Slider, OptionGroup, Select, MultiSelect, Listbox,
+          DateRangeInput, Checkbox, Switch, Slider, OptionGroup, Select, MultiSelect, Combobox, Listbox,
           Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation, Tabs, Icon,
           ]
         x-telo-browser-export:
           entry: /entry
-          abi: [ui_react_controls-3]
+          abi: [ui_react_controls-4]
           external: [react, react/jsx-runtime, react-dom]
-  # The nine controls drawing a layer at the end of `<body>` are replaced as
+  # The ten controls drawing a layer at the end of `<body>` are replaced as
   # one unit, so every layer on a page comes from one implementation: a layer
   # stack cannot be made to cooperate with another library's.
   x-telo-resource-rules:
     - condition: !cel >-
-        !self.implements.exists(n, n in ['Select', 'MultiSelect', 'Dialog',
-        'Drawer', 'Popover', 'Confirmation', 'Menu', 'Tooltip', 'Navigation']) ||
-        ['Select', 'MultiSelect', 'Dialog', 'Drawer', 'Popover', 'Confirmation',
-        'Menu', 'Tooltip', 'Navigation'].all(n, n in self.implements)
+        !self.implements.exists(n, n in ['Select', 'MultiSelect', 'Combobox',
+        'Dialog', 'Drawer', 'Popover', 'Confirmation', 'Menu', 'Tooltip',
+        'Navigation']) || ['Select', 'MultiSelect', 'Combobox', 'Dialog',
+        'Drawer', 'Popover', 'Confirmation', 'Menu', 'Tooltip',
+        'Navigation'].all(n, n in self.implements)
       code: UI_CONTROLS_LAYERS_PARTIAL
       message: >-
         implements some of the layer controls but not all of them. A set
-        implementing any of Select, MultiSelect, Dialog, Drawer, Popover,
-        Confirmation, Menu, Tooltip and Navigation implements all nine.
+        implementing any of Select, MultiSelect, Combobox, Dialog, Drawer,
+        Popover, Confirmation, Menu, Tooltip and Navigation implements all ten.
 ---
 # The built-in look: one stylesheet styling every part, with every token's
 # default and its dark-scheme value. It replaces no control.

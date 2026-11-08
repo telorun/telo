@@ -11,11 +11,10 @@ metadata:
     or any other layout, create and edit forms and a confirmed delete. Related
     records are shown by name and picked from a list, all derived from the data
     model.
-requires:
-  # 0.125.1 checks this file clean and fails at boot: its forward past a
-  # source reads the instance, so the body's forms and listing get no `model`
-  # (ERR_RESOURCE_SCHEMA_VALIDATION_FAILED). Verified by execution.
-  telo: ">=0.126.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.126.0" }
+    reason: "0.125.1 checks this module clean and fails at boot: its forward past a source reads the instance, so the body's forms and listing get no `model` (ERR_RESOURCE_SCHEMA_VALIDATION_FAILED)."
 imports: { Crud: ../crud, UiKit: ../ui }
 exports: { kinds: [CollectionSource, Admin] }
 ---
@@ -75,9 +74,10 @@ schema:
     filters:
       title: Filters
       description: >-
-        How the filter bar behaves: which filters are on show, where its
-        controls sit, how each is entered, when a change applies, what
-        summarises it and where its state is kept.
+        How the filter bar behaves: where its controls sit and how they are
+        drawn (which filters are on show, how each is entered, what summarises
+        the bar, written on the placement), when a change applies and where its
+        state is kept.
       $ref: "telo://UiKit/FilterPolicy"
     create:
       title: Create

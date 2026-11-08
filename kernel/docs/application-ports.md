@@ -59,3 +59,5 @@ Each port entry of `Kernel.PortsResolved` carries `publicUrls: [{ need, host }]`
 when a `Telo.PublicUrl` names it, so a host deriving addresses from
 `TELO_HOST_PUBLIC_URL_TEMPLATE` routes those hosts to the port. See
 [Providing needs](../../docs/guides/providing-needs.md#public-addresses).
+A port whose socket the process embedding the kernel holds carries `address`
+and `suppliedBy: "host"`.

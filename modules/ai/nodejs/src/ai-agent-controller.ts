@@ -38,6 +38,16 @@ import {
   type ApproverConfig,
   type ToolSettlement,
 } from "./tool-approval.js";
+import { settleTextCalls } from "./text-call-settlement.js";
+import {
+  checkTextTools,
+  checkTextToolTags,
+  textCallsOf,
+  textCallTrace,
+  type TextCall,
+  type TextCallTrace,
+  type TextToolEntry,
+} from "./text-calls.js";
 import { parallelToolLimit } from "./tool-concurrency.js";
 import { toolResultByteLimit } from "./tool-result-bound.js";
 import {
@@ -50,6 +60,7 @@ import {
   type SystemPrompt,
   type ToolApproval,
   type ToolCall,
+  type ToolResultRecord,
   type Usage,
 } from "./types.js";
 
@@ -80,6 +91,7 @@ interface AiAgentResource extends StepBudgetConfig {
   toolProviders?: ToolProviderEntry[];
   approver?: ApproverConfig;
   resolver?: ContentResolverConfig;
+  textTools?: TextToolEntry[];
 }
 
 interface AiAgentInputs {
@@ -98,6 +110,8 @@ interface AiAgentInputs {
 interface StepTrace {
   text: string;
   toolCalls: ToolCall[];
+  /** The text calls the reply yielded; present when the agent declares `textTools`. */
+  textCalls?: TextCallTrace[];
 }
 
 /** A settled tool call as the model saw it; the tool's own result travels on
@@ -108,6 +122,7 @@ interface SettledToolCall {
   content: MessageContent;
   error?: boolean;
   denied?: boolean;
+  origin?: "text";
 }
 
 interface AiAgentOutput {
@@ -150,6 +165,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
     this.maxParallelTools = parallelToolLimit(resource.maxParallelTools, label);
     this.budget = stepBudget(resource, label);
     checkApprovalNames(resource.toolProviders, label);
+    checkTextToolTags(resource.textTools, label);
   }
 
   async invoke(inputs: AiAgentInputs = {}, ctx?: InvokeContext): Promise<AiAgentOutput> {
@@ -168,7 +184,8 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
       this.resource.approver && new Approver(this.resource.approver, this.ctx, label);
 
     const initial = buildInitialMessages(inputs, this.resource, label);
-    const pending = pendingWork(initial, inputs, label);
+    const deriveTextCalls = (text: string) => textCallsOf(text, this.resource.textTools, this.ctx);
+    const pending = pendingWork(initial, inputs, label, deriveTextCalls);
     const mergedOptions = mergeAgentOptions(this.resource, inputs);
 
     const tools = await this.tools();
@@ -220,13 +237,30 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
         if (part.type === "tool-approval-decision") decisions.push(part.approvalDecision);
         if (part.type === "tool-result") {
           const record = part.toolResult;
-          toolResults.push({
-            toolCallId: record.toolCallId,
-            name: record.name,
-            content: record.content,
-            ...(record.error ? { error: true } : {}),
-            ...(record.denied ? { denied: true } : {}),
-          });
+          toolResults.push(settledRecord(record));
+        }
+        step = await round.next();
+      }
+      return step.value;
+    };
+
+    /** Settle a reply's text calls in order; returns the call left waiting.
+     *  `traces` is the step's record of them, marked as each one succeeds. */
+    const settleText = async (
+      textCalls: readonly TextCall[],
+      approvals: ReadonlyMap<string, ToolApproval>,
+      traces?: readonly TextCallTrace[],
+    ): Promise<ToolCall | undefined> => {
+      const round = settleTextCalls(settlement, textCalls, approvals, conversation);
+      let step = await round.next();
+      while (!step.done) {
+        const part = step.value;
+        if (part.type === "tool-approval-decision") decisions.push(part.approvalDecision);
+        if (part.type === "tool-result") {
+          const record = part.toolResult;
+          toolResults.push(settledRecord(record));
+          const trace = traces?.find((entry) => entry.id === record.toolCallId);
+          if (trace) trace.ok = !record.error && !record.denied;
         }
         step = await round.next();
       }
@@ -268,6 +302,11 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
         const waiting = await settle(pending.calls, pending.approvals);
         if (waiting.length > 0) return await interrupted("", waiting);
       }
+      // No text call runs while a call of its reply is pending.
+      if (pending.textCalls.length > 0) {
+        const waiting = await settleText(pending.textCalls, pending.approvals);
+        if (waiting) return await interrupted("", [waiting]);
+      }
 
       for (let step = 0; step < maxSteps; step++) {
         ctx?.cancellation.throwIfCancelled();
@@ -302,10 +341,12 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
         addUsage(usage, turnUsage);
 
         const toolCalls = result.toolCalls ?? [];
-        if (toolCalls.length === 0) {
+        const text = result.text ?? "";
+        const textCalls = deriveTextCalls(text);
+        if (toolCalls.length === 0 && textCalls.length === 0) {
           // A step is one model call, the answering one included.
-          steps.push({ text: result.text ?? "", toolCalls: [] });
-          await conversation.append({ role: "assistant", content: result.text ?? "" });
+          steps.push({ text, toolCalls: [], ...this.textCallsField([]) });
+          await conversation.append({ role: "assistant", content: text });
           const output = finished(result.text, result.finishReason);
           // The aggregate across every turn, which is what the run actually cost —
           // a per-turn figure would understate an agent that looped eight times.
@@ -322,10 +363,19 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
           assertUniqueCallId(call, normalized, label);
           normalized.push(call);
         }
-        await conversation.append({ role: "assistant", content: result.text ?? "", toolCalls: normalized });
-        steps.push({ text: result.text ?? "", toolCalls: normalized });
-        const waiting = await settle(normalized, new Map());
-        if (waiting.length > 0) return await interrupted(result.text ?? "", waiting);
+        await conversation.append({
+          role: "assistant",
+          content: text,
+          ...(normalized.length > 0 ? { toolCalls: normalized } : {}),
+        });
+        const traces = textCalls.map(textCallTrace);
+        steps.push({ text, toolCalls: normalized, ...this.textCallsField(traces) });
+        if (normalized.length > 0) {
+          const waiting = await settle(normalized, new Map());
+          if (waiting.length > 0) return await interrupted(text, waiting);
+        }
+        const waiting = await settleText(textCalls, new Map(), traces);
+        if (waiting) return await interrupted(text, [waiting]);
       }
 
       if (onMaxSteps === "throw") {
@@ -361,7 +411,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
         await chatSpan.settle("ok", { attributes: chatAttributes(turnUsage, result.finishReason) });
         if (result.providerState !== undefined) providerState = result.providerState;
         addUsage(usage, turnUsage);
-        steps.push({ text: result.text ?? "", toolCalls: [] });
+        steps.push({ text: result.text ?? "", toolCalls: [], ...this.textCallsField([]) });
         await conversation.append({ role: "assistant", content: result.text ?? "" });
         const output = finished(result.text, result.finishReason, { limit: MAX_STEPS_LIMIT });
         logCompletion(this.ctx.log, "Agent run concluded at maxSteps", output.usage, result.finishReason, {
@@ -393,14 +443,34 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
    *  deferred). Delegates to the shared unit so both agents assemble identically. */
   private async tools(): Promise<AssembledTools> {
     if (!this.assembled) {
-      this.assembled = await assembleTools(this.resource.toolProviders, `Ai.Agent "${this.resource.metadata.name}"`);
+      const label = `Ai.Agent "${this.resource.metadata.name}"`;
+      const assembled = await assembleTools(this.resource.toolProviders, label);
+      checkTextTools(this.resource.textTools, assembled, label);
+      this.assembled = assembled;
     }
     return this.assembled;
+  }
+
+  /** A step's `textCalls`, recorded when the agent declares `textTools`. */
+  private textCallsField(traces: TextCallTrace[]): { textCalls?: TextCallTrace[] } {
+    return this.resource.textTools ? { textCalls: traces } : {};
   }
 
   snapshot(): Record<string, unknown> {
     return { accepts: acceptedByModel(this.resource.model) };
   }
+}
+
+/** A settled call as the run's `toolResults` lists it. */
+function settledRecord(record: ToolResultRecord): SettledToolCall {
+  return {
+    toolCallId: record.toolCallId,
+    name: record.name,
+    content: record.content,
+    ...(record.error ? { error: true } : {}),
+    ...(record.denied ? { denied: true } : {}),
+    ...(record.origin ? { origin: record.origin } : {}),
+  };
 }
 
 export function register(): void {}

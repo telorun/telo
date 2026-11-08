@@ -10,19 +10,10 @@ metadata:
     past the cursor it last read, and a writer raises that version after committing
     a change. Any number of waiters share a topic and all wake together, and running
     out of time is a normal result, so a request re-reads its data and waits again.
-requires:
-  # `Telo.Duration` is a value type an older analyzer does not know
-  # (X_TELO_TYPE_UNKNOWN); 0.92.0 is the first release that reads this file,
-  # verified by running each release's `telo check`. It also covers the
-  # effect-chain floor (0.82.0) the controllers need.
-  #
-  # 0.108.0: the wait controller reads a duration through the value domain
-  # (`isCelDuration`, `durationNanos`) rather than a host class. `@telorun/sdk`
-  # is external and collapsed to the runtime's own copy, so on a runtime whose
-  # SDK does not export those names they are undefined and the resource dies at
-  # creation with a TypeError naming this module. Verified by execution: the
-  # published 0.107.0 tarball exports neither name.
-  telo: ">=0.108.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.108.0" }
+    reason: "The wait controller reads a duration through the value domain (`isCelDuration`, `durationNanos`), which SDKs before 0.108.0 do not export; also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
 exports: { kinds: [Wait, Publish, Store, MemoryStore] }
 ---
 # Watch.Store — where topic versions and their waiters live. A Telo.Provider: a

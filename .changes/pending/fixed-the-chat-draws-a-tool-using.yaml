@@ -1,0 +1,7 @@
+modules:
+  modules/ui-react: Fixed
+body: "The chat draws a tool-using reply as one message: consecutive assistant entries
+  share one label and one usage line, and a tool call is answered by its result wherever
+  the stored reply keeps it, so a reloaded or finished turn no longer leaves its tool
+  cards running beside empty assistant messages. The Markdown export groups a reply the
+  same way."

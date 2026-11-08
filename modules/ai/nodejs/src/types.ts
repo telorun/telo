@@ -183,6 +183,9 @@ export interface ToolResultRecord {
   /** True when the call was decided against and never ran; `content` is what
    *  the model is told. Never beside `output` or `error`. */
   denied?: boolean;
+  /** `text` for a text call — one the agent gathered from the reply's fenced
+   *  blocks; absent for a call the model asked for. */
+  origin?: "text";
 }
 
 /** A caller's decision on one pending tool call, passed as an agent's

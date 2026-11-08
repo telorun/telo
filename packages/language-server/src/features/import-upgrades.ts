@@ -91,9 +91,8 @@ function candidateReader(host: HostClient) {
  *  by updating telo. */
 function skipAction(skip: ImportUpgradeSkip): string {
   if (skip.code !== "incompatible") return "run `telo upgrade`";
-  return skip.reason === "unreadable"
-    ? "its declared requirement cannot be read"
-    : "update telo to upgrade";
+  if (skip.reason === "unreadable") return "its declared requirement cannot be read";
+  return skip.reason === "too-old" ? "restricted to an older telo" : "update telo to upgrade";
 }
 
 /** Both counts in one line, so the `imports:` key carries a single lens. */
@@ -169,7 +168,7 @@ export function registerImportUpgrades({
       // A target short of the newest version says why, or the lens reads as the
       // tooling being behind rather than the runtime.
       const heldNote = u.heldBack
-        ? ` · ${u.heldBack.version} held back: ${describeReason(u.heldBack.reason)}`
+        ? ` · ${u.heldBack.version} held back: ${u.heldBack.detail ?? describeReason(u.heldBack.reason)}`
         : "";
       return {
         range: u.keyRange,

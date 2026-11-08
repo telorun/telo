@@ -23,7 +23,7 @@ A `Telo.Provider`, closed:
 | --- | --- | --- |
 | `tokens` | | a `Ui.DesignTokens`: the theme's token values and typefaces, under any the application sets |
 | `stylesheets` | | the theme's look, as host paths in order: `!module-path ./look.css` |
-| `controls` | | `UiReact.Controls` sets drawn in place of the built-in controls they implement; no two entries may implement one control (the same set listed through two aliases included), and the nine layer controls come from one set or none |
+| `controls` | | `UiReact.Controls` sets drawn in place of the built-in controls they implement; no two entries may implement one control (the same set listed through two aliases included), and the ten layer controls come from one set or none |
 
 A look of an application's own is a theme holding only stylesheets:
 
@@ -97,7 +97,7 @@ exports:
     - specifier: "@acme/controls"
       path: ./browser/controls.js
       source: ./nodejs/src/controls.tsx
-      abi: ui_react_controls-3
+      abi: ui_react_controls-4
       external: [react, react/jsx-runtime, react-dom]
       exports: [Checkbox, Switch, Icon]
 ---
@@ -125,10 +125,10 @@ contract](controls-abi.md).
 
 Any subset of the fifteen controls that draw in place — the entries, the
 choices, `Listbox`, `Tabs` and `Icon` — may be replaced, from any number of
-sets. The nine [layer controls](controls-abi.md#layers) — `Select`,
-`MultiSelect`, `Dialog`, `Drawer`, `Popover`, `Confirmation`, `Menu`, `Tooltip`
-and `Navigation` — are replaced as one unit: a set implementing any of them
-implements all nine, so
+sets. The ten [layer controls](controls-abi.md#layers) — `Select`,
+`MultiSelect`, `Combobox`, `Dialog`, `Drawer`, `Popover`, `Confirmation`,
+`Menu`, `Tooltip` and `Navigation` — are replaced as one unit: a set
+implementing any of them implements all ten, so
 every layer on a page comes from one implementation, the built-ins' or one
 set's. A primitive library keeps one stack of the layers it draws, and two
 stacks cannot be made to cooperate: one cancels the Escape or traps the focus
@@ -152,10 +152,10 @@ one set. `ui-react` runs `CheckTheme` on `UiReact.defaultTheme`.
 | `theme:`, `controls:` or `tokens:` naming the wrong kind | `REFERENCE_KIND_MISMATCH` | the kernel's reference refusal |
 | `entry` not a browser entry of the declaring module | `BROWSER_ENTRY_UNKNOWN` | `ERR_BROWSER_ENTRY_UNKNOWN` |
 | an implemented control the entry does not export | `BROWSER_EXPORT_UNKNOWN` | `ERR_BROWSER_EXPORT_UNKNOWN` |
-| an entry written against another generation than `ui_react_controls-3` | `BROWSER_ENTRY_ABI_UNSUPPORTED` | `ERR_BROWSER_ENTRY_ABI_UNSUPPORTED` |
+| an entry written against another generation than `ui_react_controls-4` | `BROWSER_ENTRY_ABI_UNSUPPORTED` | `ERR_BROWSER_ENTRY_ABI_UNSUPPORTED` |
 | an entry leaving anything but `react`, `react/jsx-runtime`, `react-dom` to its host | `BROWSER_ENTRY_IMPORT_UNSUPPLIED` | `ERR_BROWSER_ENTRY_IMPORT_UNSUPPLIED` |
 | two entries of a theme's `controls` implementing one control (the same set listed through two aliases included), reported at each entry | `RESOURCE_RULE_VIOLATED` with `data.rule: UI_THEME_CONTROL_DUPLICATE` | `ERR_UI_THEME_CONTROL_DUPLICATE` |
-| a set implementing some of the nine layer controls but not all of them — the eight of `ui_react_controls-1` without `Navigation` included | `RESOURCE_RULE_VIOLATED` with `data.rule: UI_CONTROLS_LAYERS_PARTIAL` | `ERR_UI_CONTROLS_LAYERS_PARTIAL` |
+| a set implementing some of the ten layer controls but not all of them — the nine of `ui_react_controls-3` without `Combobox` included | `RESOURCE_RULE_VIOLATED` with `data.rule: UI_CONTROLS_LAYERS_PARTIAL` | `ERR_UI_CONTROLS_LAYERS_PARTIAL` |
 | a stylesheet path missing or relative | `MODULE_PATH_NOT_FOUND` / `HOST_PATH_RELATIVE` | their twins |
 
 A control set from an imported library has its `entry` and exports checked at

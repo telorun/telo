@@ -10,10 +10,10 @@ metadata:
     every replica sees an issued, revoked or rotated key at its next request.
     Keys are stored as digests only, listed per owner with a cursor, and
     forgotten after a retention window once revoked or expired.
-requires:
-  # The table kind's duplicate-name rule binds `coReferrers:`, which 0.128.0
-  # evaluates unbound and reports as a defect in this module.
-  telo: ">=0.129.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.129.0" }
+    reason: "Before 0.129.0, the table kind's duplicate-name rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module."
 imports: { ApiKeySql: ../api-key-sql, Sqlite: ../sqlite }
 exports: { kinds: [Table, Store] }
 ---

@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: HostPathMediaType
+  version: 1.0.0
+  description: |
+    A `Telo.HostPath` slot may say what media type its file holds
+    (`mediaType: image/png`). An import handing a library's input a variable
+    declared to hold another media type is refused by `telo check`, as one
+    declared to name another kind of entry is.
+imports: { Assert: ../modules/assert }
+targets:
+  - !ref verifyHostPathMediaType
+---
+kind: Telo.Sequence
+metadata: { name: verifyHostPathMediaType }
+steps:
+  - name: importOfAnotherMediaType
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/host-path-media-type/telo.yaml
+      expect:
+        errors:
+          - code: HOST_PATH_CONTENT_MISMATCH
+            message: "'variables.logo' is the path of a file of image/png in the imported library, but 'variables.logo' is declared to hold image/jpeg (mediaType: image/jpeg)."

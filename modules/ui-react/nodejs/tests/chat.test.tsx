@@ -498,6 +498,86 @@ describe("a turn", () => {
     expect(calls.find((call) => call.method === "POST")?.body).toEqual({ conversation: "c1", parent: "e2", message: "", attachments: [], approvals: [{ id: "a1", approved: true }] });
   });
 
+  it("draws a reply stored as an entry of calls, one per result and one answer as one message, each call answered", async () => {
+    const stored = [
+      entry("e1", null, "user", "Convert it"),
+      entry("e2", "e1", "assistant", "", {
+        parts: [],
+        toolCalls: [
+          { id: "call_1", name: "convert", arguments: { to: "PLN" } },
+          { id: "call_2", name: "convert", arguments: { to: "USD" } },
+        ],
+        usage: { inputTokens: 10, outputTokens: 2 },
+      }),
+      entry("e3", "e2", "assistant", "", { parts: [], toolResults: [{ id: "call_1", result: { amount: 1098 } }] }),
+      entry("e4", "e3", "assistant", "", { parts: [], toolResults: [{ id: "call_2", result: "unavailable", isError: true }] }),
+      entry("e5", "e4", "assistant", "Done.", { usage: { inputTokens: 20, outputTokens: 5 } }),
+    ];
+    const { r } = await show(chat({ operations: [] }), (call) => {
+      if (call.path === "/conversations/c1") return json({ id: "c1", title: "One", archived: false, turn: "t0", running: false });
+      if (call.path === "/conversations/c1/entries") return page(stored);
+      return undefined;
+    });
+    await go(r, "c1");
+    await eventually(() => expect(r.parts("chat-message").map((each) => each.getAttribute("data-role"))).toEqual(["user", "assistant"]));
+    expect(r.parts("chat-tool").map((each) => each.getAttribute("data-status"))).toEqual(["done", "failed"]);
+    expect(r.parts("chat-message").map((each) => each.getAttribute("aria-posinset"))).toEqual(["1", "2"]);
+    expect(r.parts("chat-message")[1].textContent).toContain("Done.");
+    expect(r.part("chat-usage").textContent).toContain("30");
+    const markdown = transcriptMarkdown(stored as never, { user: "You", assistant: "Assistant" }, "/api/chat");
+    expect(markdown.match(/## Assistant/g)).toHaveLength(1);
+    expect(markdown).toContain('"amount": 1098');
+  });
+
+  it("draws a call's arguments each under its name, a text as written with its line breaks and anything nested as JSON", async () => {
+    const waiting = entry("e2", "e1", "assistant", "Saving", {
+      toolCalls: [{ id: "call_1", name: "save", arguments: { filename: "plan", content: "# Plan\n\n- one", options: { overwrite: true }, retries: 2 }, approval: { id: "a1", decision: null } }],
+    });
+    const { r } = await show(chat({ operations: ["cancel"] }), (call) => {
+      if (call.path === "/conversations/c1") return json({ id: "c1", title: "One", archived: false, turn: "t0", running: false });
+      if (call.path === "/conversations/c1/entries") return page([entry("e1", null, "user", "Go"), waiting]);
+      return undefined;
+    });
+    await go(r, "c1");
+    const card = r.part("chat-approval");
+    const text = (part: string) => [...card.querySelectorAll(`[data-telo-part="${part}"]`)].map((each) => each.textContent);
+    expect(text("chat-tool-label")).toEqual(["filename", "content", "options", "retries"]);
+    expect(text("chat-tool-data")).toEqual(["plan", "# Plan\n\n- one", '{\n  "overwrite": true\n}', "2"]);
+  });
+
+  it("draws an approval as one line: unfolded while it waits, folded once decided, with its state as a glyph at the end", async () => {
+    const call = (id: string, approval: Record<string, unknown>) => ({ id, name: "run", arguments: { cmd: id }, approval });
+    const stored = entry("e2", "e1", "assistant", "", {
+      parts: [],
+      toolCalls: [
+        call("c1", { id: "a1", decision: null }),
+        call("c2", { id: "a2", decision: { approved: true } }),
+        call("c3", { id: "a3", decision: { approved: false, reason: "too risky" } }),
+      ],
+    });
+    const { r } = await show(chat({ operations: ["cancel"] }), (request) => {
+      if (request.path === "/conversations/c1") return json({ id: "c1", title: "One", archived: false, turn: "t0", running: false });
+      if (request.path === "/conversations/c1/entries") return page([entry("e1", null, "user", "Go"), stored]);
+      return undefined;
+    });
+    await go(r, "c1");
+    const cards = r.parts("chat-approval");
+    const read = (card: Element) => ({
+      status: card.getAttribute("data-status"),
+      open: card.querySelector('[data-telo-part="chat-approval-toggle"]')?.getAttribute("aria-expanded"),
+      data: card.querySelectorAll('[data-telo-part="chat-tool-data"]').length,
+      state: card.querySelector('[data-telo-part="chat-approval-state"]')?.getAttribute("aria-label"),
+      decision: card.querySelector('[data-telo-part="chat-approval-decision"]')?.textContent ?? null,
+    });
+    expect(cards.map(read)).toEqual([
+      { status: "pending", open: "true", data: 1, state: "Waiting for your approval.", decision: null },
+      { status: "approved", open: "false", data: 0, state: "Approved", decision: "Approved" },
+      { status: "rejected", open: "false", data: 0, state: "Rejected: too risky", decision: "Rejected: too risky" },
+    ]);
+    await r.click(cards[1].querySelector('[data-telo-part="chat-approval-toggle"]') as Element);
+    expect(read(r.parts("chat-approval")[1])).toMatchObject({ open: "true", data: 1 });
+  });
+
   it("reopens a running turn by setting its entries aside and tailing its events from the start", async () => {
     let tail: ReadableStreamDefaultController<Uint8Array> | undefined;
     const encoder = new TextEncoder();

@@ -12,14 +12,10 @@ metadata:
     durable replay journal so a reader that disconnects, or outlives a restart, resumes
     from where it left off and tails live, or reads its state in one snapshot, with
     removal, retention, writer liveness and continuing a failed or abandoned recording.
-requires:
-  # 0.108.0: the controllers read and build durations through the value domain
-  # (`isCelDuration`, `durationNanos`, `celDurationFromNanos`) rather than a host
-  # class. `@telorun/sdk` is external and collapsed to the runtime's own copy, so
-  # on a runtime whose SDK does not export those names they are undefined and the
-  # resource dies at creation with a TypeError naming this module. Verified by
-  # execution: the published 0.107.0 tarball exports none of them.
-  telo: ">=0.108.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.108.0" }
+    reason: "The controllers read and build durations through the value domain (`isCelDuration`, `durationNanos`, `celDurationFromNanos`), which SDKs before 0.108.0 do not export; the resource dies at creation with a TypeError."
 exports:
   kinds: [ExtractText, Tee, EndHandler, OnComplete, JournalStore, MemoryJournalStore, Journal, JournalSink, JournalClaim, JournalSource, JournalRead, JournalRemoval, JournalCancel, JournalExpiry]
   resources: [StreamOutcome]

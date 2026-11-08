@@ -264,3 +264,66 @@ describe("what a host path names (`entry`)", () => {
     expect(checkSchemaCompatibility(file, any).compatible).toBe(true);
   });
 });
+
+describe("what a host path's file holds (`mediaType`)", () => {
+  const MEDIA_KIND = {
+    kind: "Telo.Definition",
+    metadata: { name: "Store", module: "App" },
+    capability: "Telo.Service",
+    schema: {
+      type: "object",
+      properties: {
+        icon: {
+          type: "string",
+          "x-telo-type": { name: "Telo.HostPath", entry: "file", mediaType: "image/png" },
+          "x-telo-eval": "compile",
+        },
+      },
+    },
+  };
+  const variable = (mediaType?: string) => ({
+    env: "P",
+    type: "string",
+    "x-telo-type": mediaType ? { name: "Telo.HostPath", mediaType } : "Telo.HostPath",
+    default: "a",
+  });
+  const check = (variables: Record<string, unknown>, fields: Record<string, unknown>) => {
+    const store = { kind: "App.Store", metadata: { name: "store" }, ...fields };
+    return new StaticAnalyzer()
+      .analyze(withSyntheticPositions([app(variables), MEDIA_KIND, store] as unknown as ResourceManifest[]))
+      .filter((d) => d.severity === 1)
+      .map((d) => ({ code: d.code, message: d.message }));
+  };
+
+  it("refuses a variable declared to hold another media type, accepting the same one or none", () => {
+    expect(check({ p: variable("image/jpeg") }, { icon: cel("variables.p") })).toEqual([
+      {
+        code: "HOST_PATH_CONTENT_MISMATCH",
+        message:
+          "App.Store/store: 'icon' takes a file of image/png, but 'variables.p' is declared to hold image/jpeg (mediaType: image/jpeg).",
+      },
+    ]);
+    expect(check({ p: variable("image/png") }, { icon: cel("variables.p") })).toEqual([]);
+    expect(check({ p: variable() }, { icon: cel("variables.p") })).toEqual([]);
+  });
+
+  it("refuses a media type with no signature, suggesting the near one", () => {
+    expect(check({ p: variable("image/pgn") }, {})).toEqual([
+      {
+        code: "X_TELO_TYPE_ARGUMENT_INVALID",
+        message:
+          "'Telo.HostPath' parameter 'mediaType' takes a media type it knows the signature of " +
+          "(application/pdf, image/gif, image/jpeg, image/png, image/webp), not \"image/pgn\". Did you mean 'image/png'?",
+      },
+    ]);
+  });
+
+  it("compares two media types by equality, an omitted one matching any", () => {
+    const png = { type: "string", "x-telo-type": { name: "Telo.HostPath", mediaType: "image/png" } };
+    const jpeg = { type: "string", "x-telo-type": { name: "Telo.HostPath", mediaType: "image/jpeg" } };
+    const any = { type: "string", "x-telo-type": "Telo.HostPath" };
+    expect(checkSchemaCompatibility(jpeg, png).compatible).toBe(false);
+    expect(checkSchemaCompatibility(png, png).compatible).toBe(true);
+    expect(checkSchemaCompatibility(any, png).compatible).toBe(true);
+  });
+});

@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: ParameterTagged
+  version: 0.0.0
+  description: A need parameter written as an expression.
+imports: { Fx: ../../../types }
+needs:
+  printer:
+    kind: Fx.LabelPrinter
+    optional: true
+    parameters: { caption: !cel "'Hello'" }

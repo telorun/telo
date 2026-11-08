@@ -1,0 +1,24 @@
+{
+  "title": "Restrictions",
+  "description": "Runtime requirements found after a version was measured, each with the reason whoever is held back is shown. An entry narrows the runtime range of the versions it covers: without `versions` only this one, with `versions` the listed earlier versions through this one.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "versions": {
+        "title": "Versions",
+        "description": "The module versions the entry covers, as `>=` / `>` / `<=` / `<` comparators; a range with no upper bound runs through this version. Absent, the entry covers only this version.",
+        "type": "string"
+      },
+      "requires": {
+        "$ref": "telo://manifest#/$defs/Requires"
+      },
+      "reason": {
+        "title": "Reason",
+        "description": "What breaks outside the range, shown to whoever the entry holds back.",
+        "type": "string"
+      }
+    },
+    "additionalProperties": true
+  }
+}

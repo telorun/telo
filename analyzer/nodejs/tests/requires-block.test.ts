@@ -4,8 +4,12 @@ import type { ResourceManifest } from "@telorun/sdk";
 
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
-import { evaluateRequires, readRequires } from "../src/requires-block.js";
-import { TELO_SURFACE_VERSION } from "../src/telo-version.js";
+import { readRequires } from "../src/requires-block.js";
+import { TELO_RUNNING_SURFACE } from "../src/telo-version.js";
+import { Loader } from "../src/manifest-loader.js";
+import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
+import { collectModuleDocuments } from "../src/index.js";
+import type { ManifestSource } from "../src/types.js";
 import { validateRequires } from "../src/validate-requires.js";
 import { DiagnosticSeverity } from "../src/types.js";
 
@@ -64,68 +68,43 @@ describe("readRequires", () => {
     expect(block.telo).toBeUndefined();
     expect(issues[0]?.message).toContain("admits no version");
   });
-});
 
-describe("evaluateRequires", () => {
-  const block = (raw: string) => readRequires({ requires: { telo: raw } }).block;
-
-  it("passes inside the range and fails outside it", () => {
-    expect(evaluateRequires(block(">=0.80.0"), "0.80.0").satisfied).toBe(true);
-    expect(evaluateRequires(block(">=0.80.0"), "0.76.0").satisfied).toBe(false);
-    expect(evaluateRequires(block(">=0.40.0 <0.80.0"), "0.85.0").satisfied).toBe(false);
+  // Kept in the block, because a published manifest's ceiling is honoured.
+  it("flags an upper bound on requires.telo as a ceiling and keeps the range", () => {
+    const { block, issues } = readRequires({ requires: { telo: ">=0.119.0 <0.121.0" } });
+    expect(block.telo?.raw).toBe(">=0.119.0 <0.121.0");
+    expect(issues).toEqual([
+      {
+        path: "requires.telo",
+        ceiling: true,
+        message:
+          "requires.telo '>=0.119.0 <0.121.0' declares an upper bound; requires.telo is a floor " +
+          "only. Write the ceiling as a restrictions: entry without versions, which covers this version.",
+      },
+    ]);
   });
 
-  // Bootstrap: everything published before the mechanism existed declares
-  // nothing, and none of it uses syntax that did not yet exist.
-  it("treats an absent declaration as no requirement", () => {
-    expect(evaluateRequires(readRequires({}).block, "0.1.0").satisfied).toBe(true);
+  it("keeps both bounds on host.node", () => {
+    const { block, issues } = readRequires({ requires: { host: { node: ">=20.0.0 <24.0.0" } } });
+    expect(issues).toEqual([]);
+    expect(block.host.node?.raw).toBe(">=20.0.0 <24.0.0");
   });
 
-  // A runtime that cannot name its own generation must not start rejecting
-  // modules on the strength of a number it could not read.
-  it("passes when the running version is unknown or unparseable", () => {
-    expect(evaluateRequires(block(">=0.80.0"), undefined).satisfied).toBe(true);
-    expect(evaluateRequires(block(">=0.80.0"), "dev").satisfied).toBe(true);
-  });
-
-  // The editor has no host to speak for, so an axis with no supplied version is
-  // skipped rather than guessed.
-  it("skips a host axis when the caller supplies no version for it", () => {
-    const { block: b } = readRequires({ requires: { host: { node: ">=99.0.0" } } });
-    expect(evaluateRequires(b, "0.1.0").satisfied).toBe(true);
-  });
-
-  // ...but enforces it once a host does report one. A declared requirement that
-  // nothing ever compares is the failure class this mechanism exists to remove.
-  it("enforces a host axis against a supplied version", () => {
-    const { block: b } = readRequires({ requires: { host: { node: ">=20.0.0" } } });
-    expect(evaluateRequires(b, "0.1.0", { node: "22.1.0" }).satisfied).toBe(true);
-    const verdict = evaluateRequires(b, "0.1.0", { node: "18.19.0" });
-    expect(verdict).toMatchObject({ satisfied: false, axis: "node", running: "18.19.0" });
-  });
-
-  // `telo` short-circuits: a module using a later host axis also declares the
-  // telo that defined it, so the skew must be reported before the axis.
-  it("reports the telo skew before any host axis", () => {
-    const { block: b } = readRequires({
-      requires: { telo: ">=0.90.0", host: { node: ">=99.0.0" } },
+  it("reads '>=unreleased' as the floor of the pending release, and only alone", () => {
+    expect(readRequires({ requires: { telo: ">=unreleased" } })).toMatchObject({
+      block: { telo: { raw: ">=unreleased", comparators: [], unreleased: true } },
+      issues: [],
     });
-    expect(evaluateRequires(b, "0.76.0", { node: "20.0.0" })).toMatchObject({ axis: "telo" });
-  });
-
-  // The guard is a PARSE, not a shape test. `0.76` and `2024.1` look like
-  // versions and are not three-part ones, so a leading-digit test would fail
-  // them CLOSED and gate every module on a number nothing could compare —
-  // exactly the direction this refuses to fail in. `manifestCompatibility`'s
-  // version is its caller's to supply, so this is where such a value arrives.
-  it("treats a version it cannot parse as satisfied, not as failing", () => {
-    const b = readRequires({ requires: { telo: ">=0.80.0" } }).block;
-    for (const running of ["0.76", "2024.1", "dev", "v", ""]) {
-      expect(evaluateRequires(b, running).satisfied, running).toBe(true);
-    }
-    // A parseable one below the bound still fails, so the guard has not
-    // swallowed the check itself.
-    expect(evaluateRequires(b, "0.76.0").satisfied).toBe(false);
+    const combined = readRequires({ requires: { telo: ">=unreleased <0.200.0" } });
+    expect(combined.block.telo).toBeUndefined();
+    expect(combined.issues[0]?.message).toBe(
+      "requires.telo '>=unreleased <0.200.0': unreleased is allowed only as the whole range '>=unreleased'.",
+    );
+    const host = readRequires({ requires: { host: { node: ">=unreleased" } } });
+    expect(host.block.host).toEqual({});
+    expect(host.issues[0]?.message).toBe(
+      "requires.host.node '>=unreleased': unreleased names a telo release and is allowed only as a telo floor.",
+    );
   });
 });
 
@@ -137,8 +116,39 @@ describe("validateRequires", () => {
       code: "MODULE_REQUIRES_NEWER_RUNTIME",
       severity: DiagnosticSeverity.Error,
     });
-    expect(diagnostics[0]?.message).toContain(">=999.0.0");
-    expect(diagnostics[0]?.message).toContain(TELO_SURFACE_VERSION);
+    expect(diagnostics[0]?.message).toBe(
+      `SQL requires telo '>=999.0.0'; this runtime reports ${TELO_RUNNING_SURFACE}. Upgrade telo.`,
+    );
+  });
+
+  // In source the ceiling is refused, and not enforced beside its refusal.
+  it("refuses an upper bound on the entry's own requires.telo without gating on it", () => {
+    const diagnostics = validateRequires([doc({ telo: ">=0.1.0 <0.2.0" }, "Mine")], {
+      entryModules: new Set(["Mine"]),
+    });
+    expect(diagnostics.map((d) => [d.code, d.severity, (d.data as any).path])).toEqual([
+      ["REQUIRES_INVALID", DiagnosticSeverity.Error, "requires.telo"],
+    ]);
+  });
+
+  // A published manifest's ceiling is a restriction of that version.
+  it("honours a dependency's upper bound as a ceiling", () => {
+    const diagnostics = validateRequires([doc({ telo: ">=0.1.0 <0.2.0" }, "Theirs")], {
+      entryModules: new Set(["Mine"]),
+    });
+    expect(diagnostics.map((d) => [d.code, d.message])).toEqual([
+      [
+        "MODULE_REQUIRES_OLDER_RUNTIME",
+        `file:///Theirs/telo.yaml is restricted to telo '<0.2.0'; this runtime reports ` +
+          `${TELO_RUNNING_SURFACE}. Use telo below 0.2.0, or another version of Theirs.`,
+      ],
+    ]);
+  });
+
+  // The running build is unreleased exactly when a telo-line changeset is pending.
+  it("meets '>=unreleased' exactly when this build is of the pending release", () => {
+    const codes = validateRequires([doc({ telo: ">=unreleased" })]).map((d) => d.code);
+    expect(codes).toEqual(TELO_RUNNING_SURFACE.endsWith("+unreleased") ? [] : ["MODULE_REQUIRES_NEWER_RUNTIME"]);
   });
 
   it("says nothing when the requirement is met", () => {
@@ -214,6 +224,16 @@ describe("suppression of a module this runtime cannot read", () => {
     expect(codes).toEqual(["MODULE_REQUIRES_NEWER_RUNTIME"]);
   });
 
+  it("suppresses the same way for a runtime above a ceiling", () => {
+    const manifests = app(undefined);
+    (manifests[0] as any).restrictions = [{ requires: { telo: "<0.1.0" }, reason: "Broken since 0.1.0." }];
+    const codes = new StaticAnalyzer()
+      .analyze(manifests)
+      .filter((d) => d.severity === DiagnosticSeverity.Error)
+      .map((d) => d.code);
+    expect(codes).toEqual(["MODULE_REQUIRES_OLDER_RUNTIME"]);
+  });
+
   // The counterpart: suppression must be exactly as wide as the skew, so a
   // satisfiable declaration hides nothing.
   it("reports the underlying errors once the requirement is satisfied", () => {
@@ -223,5 +243,30 @@ describe("suppression of a module this runtime cannot read", () => {
       .map((d) => d.code);
     expect(codes).toContain("UNDEFINED_KIND");
     expect(codes).not.toContain("MODULE_REQUIRES_NEWER_RUNTIME");
+  });
+});
+
+describe("the gate reaches a library the entry imports", () => {
+  const files: Record<string, string> = {
+    "/app/telo.yaml": "kind: Telo.Application\nmetadata: { name: App, version: 1.0.0 }\nimports: { Lib: ./lib }\n",
+    "/app/lib/telo.yaml":
+      'kind: Telo.Library\nmetadata: { name: Lib, version: 1.0.0 }\nrequires: { telo: ">=999.0.0" }\n',
+  };
+  const source: ManifestSource = {
+    supports: () => true,
+    async read(at: string) {
+      const text = files[at];
+      if (text === undefined) throw new Error(`File not found: ${at}`);
+      return { text, source: at };
+    },
+    resolveRelative: (base: string, relative: string) => new URL(relative, `file://${base}`).pathname.replace(/\/$/, "") + "/telo.yaml",
+  };
+
+  it("judges a library holding only its module document", async () => {
+    const loaded = await new Loader([source]).loadGraph("/app/telo.yaml", { desugarImports: true });
+    const codes = new StaticAnalyzer()
+      .analyze(flattenForAnalyzer(loaded), { moduleDocuments: collectModuleDocuments(loaded) })
+      .map((d) => d.code);
+    expect(codes).toContain("MODULE_REQUIRES_NEWER_RUNTIME");
   });
 });

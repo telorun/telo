@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 priority: high
 depends-on: []
 packages: [analyzer/nodejs, kernel/nodejs, templating/nodejs, tests, docs]

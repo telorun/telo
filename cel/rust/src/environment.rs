@@ -28,7 +28,10 @@
 //!   [`CelEnvironment::evaluate_parsed`] — Node's `check`, `compile` and `evaluate` handed
 //!   a tree; the methods handed text never refuse a namespace set.
 //! - [`CelProgramError`] and [`CelEvaluateError`] — what Node throws from `compile` and
-//!   `evaluate`, as a variant per class.
+//!   `evaluate`, as a variant per class; a namespaced function's host failure is
+//!   `CelEvaluateError::Host`, where Node throws the host's own error.
+//! - [`CelEnvironment::functions_named`] — Node's `definitions().functions` read for one
+//!   name, without listing the rest.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -42,11 +45,11 @@ use crate::backend_runtime::{CelCompileError, EnvironmentSnapshot, NominalRuntim
 use crate::bounded_cache::BoundedCache;
 use crate::cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
 use crate::cel_type::{format_type, is_dyn, CelType, NominalType, DYN};
-use crate::cel_program::{CelProgram, EvaluateOptions};
+use crate::cel_program::{CelEvaluationError, CelProgram, EvaluateOptions};
 use crate::check_diagnostic::{CelEngineError, CelEngineErrorCode};
 use crate::checker::{check_expression, CheckResult, CheckerContext, CheckerOptions, NamespaceFunction};
 use crate::closure_backend::compile_tree;
-use crate::function_registry::FunctionRegistry;
+use crate::function_registry::{FunctionRegistry, RegisteredFunction};
 use crate::json_schema_type::{
     field_map_type, schema_type, FieldDeclaration, JsonSchemaDocument, RecursiveSchemaReference, SchemaConversion,
     SchemaTypeResolver, UnjudgedSchemaNode,
@@ -58,6 +61,7 @@ use crate::nominal_type::{
 };
 use crate::parse_limits::CelParseLimits;
 use crate::parser::ParseOptions;
+use crate::backend_runtime::HostFailure;
 use crate::runtime_library::standard_constant_values;
 use crate::signature::{format_signature, parse_signature, CallForm, CelSignature, FunctionMetadata};
 use crate::standard_library::{register_standard_library, standard_constants, StandardLibraryOptions};
@@ -437,13 +441,14 @@ impl From<CelCompileError> for CelProgramError {
     }
 }
 
-/// Why an expression answered no value: it could not be compiled, or an error survived
-/// to the top of its evaluation.
-#[derive(Clone, PartialEq, Eq, Debug)]
+/// Why an expression answered no value: it could not be compiled, an error survived to
+/// the top of its evaluation, or a namespaced function failed with the host's own failure.
+#[derive(PartialEq, Eq, Debug)]
 pub enum CelEvaluateError {
     Engine(CelEngineError),
     Compile(CelCompileError),
     Evaluation(CelError),
+    Host(HostFailure),
 }
 
 impl fmt::Display for CelEvaluateError {
@@ -452,6 +457,7 @@ impl fmt::Display for CelEvaluateError {
             CelEvaluateError::Engine(error) => error.fmt(f),
             CelEvaluateError::Compile(error) => error.fmt(f),
             CelEvaluateError::Evaluation(error) => error.fmt(f),
+            CelEvaluateError::Host(_) => f.write_str("a namespaced function failed with the host's own failure"),
         }
     }
 }
@@ -470,6 +476,15 @@ impl From<CelProgramError> for CelEvaluateError {
 impl From<CelError> for CelEvaluateError {
     fn from(error: CelError) -> Self {
         CelEvaluateError::Evaluation(error)
+    }
+}
+
+impl From<CelEvaluationError> for CelEvaluateError {
+    fn from(error: CelEvaluationError) -> Self {
+        match error {
+            CelEvaluationError::Error(error) => CelEvaluateError::Evaluation(error),
+            CelEvaluationError::Host(failure) => CelEvaluateError::Host(failure),
+        }
     }
 }
 
@@ -1084,6 +1099,12 @@ impl CelEnvironment {
         is_dyn(ty) || self.registry.resolve("string", CallForm::Global, std::slice::from_ref(ty), None).is_ok()
     }
 
+    /// Every registration of one function name, in registration order, as
+    /// [`CelEnvironment::definitions`] lists each.
+    pub fn functions_named(&self, name: &str) -> Vec<FunctionDefinition> {
+        self.registry.named(name).iter().map(|entry| function_definition(entry)).collect()
+    }
+
     /// Every registration, for a listing a host prints or compares.
     pub fn definitions(&self) -> Definitions {
         let mut variables: Vec<(&String, &VariableRecord)> = self.variables.iter().collect();
@@ -1099,23 +1120,7 @@ impl CelEnvironment {
                     constant: held.constant,
                 })
                 .collect(),
-            functions: self
-                .registry
-                .list()
-                .iter()
-                .map(|entry| FunctionDefinition {
-                    name: entry.signature.name.clone(),
-                    signature: format_signature(&entry.signature),
-                    receiver_type: entry.signature.receiver.as_ref().map(|receiver| format_type(receiver, false)),
-                    parameters: entry.signature.parameters.iter().map(|ty| format_type(ty, false)).collect(),
-                    returns: format_type(&entry.signature.returns, false),
-                    deterministic: entry.metadata.deterministic,
-                    host_backed: entry.metadata.host_backed,
-                    throws: entry.metadata.throws.clone(),
-                    description: entry.metadata.description.clone(),
-                    origin: entry.metadata.origin.clone(),
-                })
-                .collect(),
+            functions: self.registry.list().iter().map(|entry| function_definition(entry)).collect(),
             types: self
                 .types
                 .order
@@ -1150,5 +1155,20 @@ impl CelEnvironment {
                 })
                 .collect(),
         }
+    }
+}
+
+fn function_definition(entry: &RegisteredFunction) -> FunctionDefinition {
+    FunctionDefinition {
+        name: entry.signature.name.clone(),
+        signature: format_signature(&entry.signature),
+        receiver_type: entry.signature.receiver.as_ref().map(|receiver| format_type(receiver, false)),
+        parameters: entry.signature.parameters.iter().map(|ty| format_type(ty, false)).collect(),
+        returns: format_type(&entry.signature.returns, false),
+        deterministic: entry.metadata.deterministic,
+        host_backed: entry.metadata.host_backed,
+        throws: entry.metadata.throws.clone(),
+        description: entry.metadata.description.clone(),
+        origin: entry.metadata.origin.clone(),
     }
 }

@@ -44,14 +44,47 @@ variables:
 
 The child's declaration is the authority on what it accepts, and it is read before anything runs: a name it does not declare is refused, with the names it does declare in the message — a value silently ignored is the failure this prevents. A name you leave out falls back to the environment, then to the child's default.
 
+## The child's state directory
+
+When the parent runs with `TELO_HOST_STATE_DIR`, each child gets a state
+directory of its own, `<state dir>/apps/<path>`, where the path is the module
+path and the resource's name joined with `.` as a need path is: `apps/web` for
+an instance `web` of the root, `apps/Admin.web` for the `web` of a library
+imported as `Admin`; an instance declared in a `Telo.Sequence`'s `with:` sits
+beneath its holder, as a scoped import's needs do (`apps/seq.web` for `web` in
+the scope of `seq`). The directory is created at load. It is the child's own `TELO_HOST_STATE_DIR`
+(never the parent's), so a child's `Telo.DurableDirectory` needs land at
+`apps/web/needs/<need path>` and its own children nest beneath it.
+
+The orphan rule covers `apps/` as it covers `needs/`: renaming the instance
+leaves `apps/web` behind, and a load that would create `apps/site` beside it is
+refused with `ERR_NEED_ORPHANED` before anything starts, otherwise it is a
+`NEED_ORPHANED` warning. Move the old directory to the new path to keep its
+files, or delete it. A need supplied under `needs:` keeps winning over the
+derived directory.
+
+## A child never asks
+
+Only the root application asks for a missing input, once, before boot. A child
+starts whenever its resource runs — after a crash, on a restart — and a question
+there would block it on a person. An input of the child with no value is
+refused when the child starts, naming the instance and the repair:
+
+```
+App.Instance/web: variable 'greeting' of ../hello-web has no value: supply it under web's variables:, or declare it on Telo.Application/HelloDesktop and pass it through, which asks for it
+```
+
+Supply it under the instance's `variables:` / `secrets:` / `ports:` / `needs:`,
+or declare it on the root and pass it through, which asks for it.
+
 ## Needs are supplied by name too
 
 A child is an application of its own: it does not inherit the host values its
-parent's kernel-declared needs are answered from (`TELO_HOST_STATE_DIR`,
-`TELO_HOST_PUBLIC_URL_TEMPLATE`, `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE`). So
-a child that declares a `Telo.DurableDirectory` gets no directory under its
-parent's state directory — its parent hands it one under `needs:`, keyed by the
-child's need name, in either of the two forms an import's `needs:` takes:
+parent's kernel-declared needs are answered from
+(`TELO_HOST_PUBLIC_URL_TEMPLATE`, `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE`).
+Its state directory is the one exception, described next. A need the parent
+hands the child under `needs:`, keyed by the child's need name, in either of the
+two forms an import's `needs:` takes, is answered before any host value:
 
 ```yaml
 kind: App.Instance

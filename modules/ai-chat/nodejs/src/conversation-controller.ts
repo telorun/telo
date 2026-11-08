@@ -7,6 +7,8 @@ import {
   type ResourceInstance,
 } from "@telorun/sdk";
 import { conversationSpec, type ConversationSpec } from "./conversation-spec.js";
+import { ConversationTitler } from "./conversation-titles.js";
+import { OperationCall } from "./operation-call.js";
 
 /** The schema's `default:` values, which never reach a controller; the module's
  *  unit test holds these to the manifest. */
@@ -22,6 +24,7 @@ interface ConversationResource {
   metadata: { name: string; module?: string };
   agent?: unknown;
   attachments?: { maxBytes?: unknown; maxPerMessage?: unknown; pendingRetention?: unknown };
+  titles?: { model?: unknown };
 }
 
 /** What the endpoint's own operations read beside the spec it provides. */
@@ -29,6 +32,8 @@ export interface ChatEndpoint {
   provide(): Promise<ConversationSpec>;
   /** How long an upload no message has sent is kept, in milliseconds. */
   pendingRetentionMs(): number;
+  /** What writes an untitled conversation's title; none when `titles` is omitted. */
+  titler?(): ConversationTitler | undefined;
 }
 
 export const isChatEndpoint = (candidate: unknown): candidate is ChatEndpoint =>
@@ -67,16 +72,25 @@ const isPublishing = (candidate: unknown): candidate is PublishingInstance =>
 class ChatConversation implements ResourceInstance, ChatEndpoint {
   private spec?: ConversationSpec;
   private readonly retentionMs: number;
+  private readonly titles?: ConversationTitler;
 
   constructor(
     private readonly resource: ConversationResource,
     private readonly label: string,
+    ctx: ResourceContext,
   ) {
     this.retentionMs = pendingRetentionOf(resource.attachments?.pendingRetention, label);
+    if (resource.titles?.model !== undefined) {
+      this.titles = new ConversationTitler(new OperationCall(ctx, resource.titles.model, `${label}: 'titles.model'`));
+    }
   }
 
   pendingRetentionMs(): number {
     return this.retentionMs;
+  }
+
+  titler(): ConversationTitler | undefined {
+    return this.titles;
   }
 
   async init(ctx: ResourceContext): Promise<void> {
@@ -118,6 +132,6 @@ class ChatConversation implements ResourceInstance, ChatEndpoint {
 
 export function register(): void {}
 
-export async function create(resource: ConversationResource): Promise<ChatConversation> {
-  return new ChatConversation(resource, `AiChat.Conversation "${resource.metadata.name}"`);
+export async function create(resource: ConversationResource, ctx: ResourceContext): Promise<ChatConversation> {
+  return new ChatConversation(resource, `AiChat.Conversation "${resource.metadata.name}"`, ctx);
 }

@@ -1,0 +1,78 @@
+# Search: three bars over the posts that turn typed text into filters. The
+# first draws the bar as one search box, the second draws the same filters
+# beside the table, and the third opens with a search already typed. The first
+# two keep their state under one key, so a filtered address opens either.
+# Every application places these pages at /search, /search-beside and
+# /search-releases.
+kind: Ui.Listing
+metadata: { name: searchPostTable }
+presentation: !ref postsPresentation
+model: !ref Post
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.title"
+    - value: !cel "row.authorId"
+    - value: !cel "row.status"
+    - value: !cel "row.publishedOn"
+---
+kind: Ui.Page
+metadata: { name: searchScreen }
+path: /search
+title: Search posts
+children:
+  - type: composite
+    ref:
+      kind: Ui.Filters
+      presentation: !ref postsPresentation
+      search: {}
+      policy:
+        placement: { kind: Ui.SearchBoxPlacement, placeholder: "Search posts, or filter by author, status or date" }
+        state: { key: posts, address: true }
+      fields:
+        - { property: title, operator: contains }
+        - { property: authorId, operator: eq, values: present }
+        - { property: status, operator: in }
+        - { property: publishedOn, operator: gte }
+        - { property: publishedOn, operator: lte }
+      presets:
+        - { label: Everything, values: [] }
+        - { label: Drafts about releases, search: release, values: [{ property: status, operator: in, value: [draft] }] }
+      content: { type: composite, ref: !ref searchPostTable }
+---
+kind: Ui.Page
+metadata: { name: searchBesideScreen }
+path: /search-beside
+title: Posts beside their filters
+children:
+  - type: composite
+    ref:
+      kind: Ui.Filters
+      presentation: !ref postsPresentation
+      search: { pinned: true }
+      policy:
+        # The folded bar on a narrow screen keeps `show` and `controls` from here.
+        placement: { kind: Ui.AsidePlacement, show: chosen, controls: chips, compact: { kind: Ui.CollapsiblePlacement } }
+        state: { key: posts, address: true }
+      fields:
+        - { property: title, operator: contains }
+        - { property: authorId, operator: eq, values: present }
+        - { property: status, operator: in }
+        - { property: publishedOn, operator: gte }
+        - { property: publishedOn, operator: lte }
+      content: { type: composite, ref: !ref searchPostTable }
+---
+kind: Ui.Page
+metadata: { name: searchReleasesScreen }
+path: /search-releases
+title: Release posts
+children:
+  - type: composite
+    ref:
+      kind: Ui.Filters
+      presentation: !ref postsPresentation
+      # Opens searching for "release"; changes wait for the Apply button.
+      search: { default: release }
+      policy: { placement: { kind: Ui.SearchBoxPlacement }, apply: button }
+      fields: [{ property: status, operator: in }]
+      content: { type: composite, ref: !ref searchPostTable }

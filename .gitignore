@@ -135,3 +135,4 @@ rust/*.dylib
 # way its own description says to run it.
 reports/
 .census/
+.telo-floor-measure.yaml

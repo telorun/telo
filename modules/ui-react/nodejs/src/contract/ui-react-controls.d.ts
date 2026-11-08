@@ -193,6 +193,45 @@ export interface MultiSelectProps extends Semantics {
   onEndReached?(): void;
 }
 
+/** One entry of a combobox's list. */
+export interface ComboboxEntry extends Option {
+  /** Finished text drawn beside the label. */
+  hint?: string;
+  /** Given, the entry is checkable and says whether it is checked; without it, it is picked and nothing more. */
+  checked?: boolean;
+}
+
+/** A labelled section of a combobox's list. */
+export interface ComboboxGroup {
+  /** Issued by the renderer, unique in the list. */
+  key: string;
+  /** The section's heading; without it, the section is unlabelled. */
+  label?: string;
+  entries: ComboboxEntry[];
+}
+
+export interface ComboboxProps extends Semantics {
+  /** What is typed. */
+  value: string;
+  placeholder: string;
+  /** The list is shown; it is drawn only while it has an entry. */
+  open: boolean;
+  /** What the list is placed against, where it is not the box itself. */
+  anchor?: HTMLElement | null;
+  /** The sections, in order; an entry's key is unique in the whole list. */
+  groups: ComboboxGroup[];
+  /** The key of the entry the box announces as highlighted, or `""`. */
+  highlighted: string;
+  onChange(value: string): void;
+  onOpenChange(open: boolean, reason?: CloseReason): void;
+  /** The arrow keys, or the pointer over an entry, move the highlight to this key. */
+  onHighlight(key: string): void;
+  /** Enter on the highlighted entry, or a press on an entry. */
+  onPick(key: string): void;
+  /** Backspace in a box with nothing typed. */
+  onBackspace(): void;
+}
+
 export interface ListboxProps {
   /** The list's accessible name. */
   label: string;
@@ -339,6 +378,7 @@ export type IconName =
   | "filter"
   | "go"
   | "loading"
+  | "maximize"
   | "menu"
   | "more"
   | "next"
@@ -358,7 +398,7 @@ export interface IconProps {
   name: IconName;
 }
 
-/** The control set of `ui_react_controls-3`: a module implementing any of them
+/** The control set of `ui_react_controls-4`: a module implementing any of them
  *  exports each under its name. */
 export interface Controls {
   TextInput: ComponentType<TextInputProps>;
@@ -375,6 +415,7 @@ export interface Controls {
   OptionGroup: ComponentType<OptionGroupProps>;
   Select: ComponentType<SelectProps>;
   MultiSelect: ComponentType<MultiSelectProps>;
+  Combobox: ComponentType<ComboboxProps>;
   Listbox: ComponentType<ListboxProps>;
   Dialog: ComponentType<DialogProps>;
   Drawer: ComponentType<DrawerProps>;

@@ -90,6 +90,9 @@ describe("the serializer", () => {
     // Written without backticks, it is still quoted: that is the name's only spelling.
     expect(serializeTree(plain)).toBe("m.`content-type`");
     expect(() => serializeTree({ ...plain, field: "a`b" })).toThrow(CelSerializeError);
+    // A line break has no spelling in a quoted name either, a carriage return as a line feed.
+    expect(() => serializeTree({ ...plain, field: "a\nb" })).toThrow('"a\\nb" cannot be written as a member name');
+    expect(() => serializeTree({ ...plain, field: "a\rb" })).toThrow('"a\\rb" cannot be written as a member name');
   });
 
   it("writes a qualified call back as the text it was read from", () => {

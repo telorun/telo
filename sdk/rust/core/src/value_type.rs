@@ -59,6 +59,13 @@ pub struct Parameter {
     /// a host path names when something is there — only on a `fromHost` entry, at
     /// most one per entry. Found by this flag, never by the parameter's name.
     pub host_entry: bool,
+    /// This parameter's argument is a media type, a key of `signatures`, saying what
+    /// the file a host path names starts with — only on a `fromHost` entry, at most
+    /// one per entry. Found by this flag, never by the parameter's name.
+    pub host_media_type: bool,
+    /// A host-media-type parameter's vocabulary: each media type with its alternative
+    /// signatures, each a byte pattern read from the file's first byte (`None` any byte).
+    pub signatures: Option<Vec<(String, Vec<MediaSignature>)>>,
     /// This parameter's argument is a BOUND on the value, one of [`VALUE_TYPE_BOUNDS`]:
     /// a value of the type itself, written in its plain encoding, every value at the
     /// slot must be at least / at most / above / below. Only on a non-live instance
@@ -75,6 +82,66 @@ pub const VALUE_TYPE_BOUNDS: &[&str] = &["minimum", "maximum", "exclusiveMinimum
 /// `file` anything that is not one, links followed. Each runtime maps a token to
 /// its own filesystem query.
 pub const HOST_ENTRY_KINDS: &[&str] = &["file", "directory"];
+
+/// A media type's signature: the bytes a file starts with, `None` where any byte stands.
+pub type MediaSignature = Vec<Option<u8>>;
+
+/// A media type as RFC 6838 spells one, in lower case — the Node reader's `MEDIA_TYPE_TOKEN`.
+fn is_media_type_token(token: &str) -> bool {
+    let part = |text: &str| {
+        let mut chars = text.chars();
+        chars.next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "!#$&^_.+-".contains(c))
+    };
+    token.split_once('/').is_some_and(|(kind, subtype)| part(kind) && part(subtype))
+}
+
+/// A signature from lower-case hex byte pairs, `??` for any byte, at least one byte fixed.
+fn read_signature(pattern: &str) -> Option<MediaSignature> {
+    if pattern.is_empty() || pattern.len() % 2 != 0 {
+        return None;
+    }
+    let bytes: Option<MediaSignature> = pattern
+        .as_bytes()
+        .chunks(2)
+        .map(|pair| match pair {
+            b"??" => Some(None),
+            [hi, lo] if pair.iter().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b)) => {
+                u8::from_str_radix(std::str::from_utf8(&[*hi, *lo]).ok()?, 16).ok().map(Some)
+            }
+            _ => None,
+        })
+        .collect();
+    bytes.filter(|bytes| bytes.iter().any(Option::is_some))
+}
+
+fn read_signatures(file: &str, raw: Option<&Value>) -> Vec<(String, Vec<MediaSignature>)> {
+    let Some(map) = raw.and_then(Value::as_object).filter(|map| !map.is_empty()) else {
+        panic!("Invalid value-type entry '{file}': a parameter's 'signatures' must be a non-empty mapping of media types to signatures");
+    };
+    map.iter()
+        .map(|(media_type, patterns)| {
+            assert!(
+                is_media_type_token(media_type),
+                "Invalid value-type entry '{file}': signatures key '{media_type}' is not a lower-case media type (type/subtype)"
+            );
+            let patterns = patterns.as_array().filter(|items| !items.is_empty()).unwrap_or_else(|| {
+                panic!("Invalid value-type entry '{file}': signatures.{media_type} must be a non-empty sequence of signatures")
+            });
+            let signatures = patterns
+                .iter()
+                .map(|pattern| {
+                    pattern.as_str().and_then(read_signature).unwrap_or_else(|| {
+                        panic!(
+                            "Invalid value-type entry '{file}': signatures.{media_type} signature {pattern} must be lower-case hex byte pairs, '??' for any byte, at least one byte fixed"
+                        )
+                    })
+                })
+                .collect();
+            (media_type.clone(), signatures)
+        })
+        .collect()
+}
 
 /// One value type, exactly as its entry file declares it.
 #[derive(Debug, Clone)]
@@ -115,14 +182,15 @@ pub struct ValueType {
 
 /// What this runtime can say about an `instance` representation.
 ///
-/// Kept deliberately thin. The Rust kernel today needs to know that a slot holds
-/// bytes (so an `!include-bytes` embed can fill it) and that a live slot is
-/// exempt; it has no CEL engine, so it carries no CEL type. A backend that grows
-/// one adds a field here rather than a second table.
+/// Kept deliberately thin: that a slot holds bytes (so an `!include-bytes` embed can
+/// fill it), that a live slot is exempt, whether values are ordered, and the CEL type a
+/// value carries. A backend that needs more adds a field here rather than a second table.
 #[derive(Debug, Clone, Copy)]
 pub struct Binding {
     /// A human-readable name for the host representation, used in diagnostics.
     pub rust_type: &'static str,
+    /// The CEL type a value of this representation carries — the Node row's `celType`.
+    pub cel_type: &'static str,
     /// Whether two values of the representation are ordered, which a bound parameter
     /// compares through. An entry declaring a bound over an unordered binding is
     /// refused, as the Node reader refuses one whose binding has no `compare`.
@@ -136,11 +204,18 @@ fn bindings() -> &'static HashMap<&'static str, Binding> {
     static BINDINGS: OnceLock<HashMap<&'static str, Binding>> = OnceLock::new();
     BINDINGS.get_or_init(|| {
         HashMap::from([
-            ("bytes", Binding { rust_type: "Bytes", ordered: false }),
-            ("duration", Binding { rust_type: "Duration", ordered: true }),
-            ("stream", Binding { rust_type: "Stream", ordered: false }),
-            ("timestamp", Binding { rust_type: "Timestamp", ordered: false }),
-            ("url", Binding { rust_type: "plain_encoding::url_text::Url", ordered: false }),
+            ("bytes", Binding { rust_type: "Bytes", cel_type: "bytes", ordered: false }),
+            ("duration", Binding { rust_type: "Duration", cel_type: "google.protobuf.Duration", ordered: true }),
+            ("stream", Binding { rust_type: "Stream", cel_type: "Stream", ordered: false }),
+            ("timestamp", Binding { rust_type: "Timestamp", cel_type: "google.protobuf.Timestamp", ordered: false }),
+            (
+                "url",
+                Binding {
+                    rust_type: "plain_encoding::url_text::Url",
+                    cel_type: crate::plain_encoding::url_text::URL_TYPE_KEY,
+                    ordered: false,
+                },
+            ),
         ])
     })
 }
@@ -148,6 +223,19 @@ fn bindings() -> &'static HashMap<&'static str, Binding> {
 /// The closed vocabulary of `fromHost` anchors, mirroring the Node reader's
 /// `HOST_ANCHORS`: an anchor one runtime cannot map is a hard error there.
 pub const HOST_ANCHORS: &[&str] = &["working-directory"];
+
+/// The CEL type a `json` base carries — the Node reader's `CEL_TYPE_FOR_BASE`.
+fn cel_type_for_base(base: &str) -> Option<&'static str> {
+    Some(match base {
+        "integer" => "int",
+        "number" => "double",
+        "string" => "string",
+        "boolean" => "bool",
+        "array" => "list",
+        "object" => "map",
+        _ => return None,
+    })
+}
 
 /// The CEL types a `json` base carries beyond its own, which only `celType` states.
 fn cel_types_beyond_base(base: &str) -> &'static [&'static str] {
@@ -296,7 +384,7 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                     if let Some(map) = item.as_object() {
                         for key in map.keys() {
                             assert!(
-                                matches!(key.as_str(), "name" | "description" | "element" | "member" | "hostEntry" | "bound"),
+                                matches!(key.as_str(), "name" | "description" | "element" | "member" | "hostEntry" | "hostMediaType" | "signatures" | "bound"),
                                 "Invalid value-type entry '{file}': a parameter has no key '{key}'"
                             );
                         }
@@ -319,6 +407,20 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                         Some(Value::Bool(flag)) => *flag,
                         Some(_) => panic!(
                             "Invalid value-type entry '{file}': a parameter's 'hostEntry' must be a boolean when present"
+                        ),
+                    },
+                    host_media_type: match item.get("hostMediaType") {
+                        None => false,
+                        Some(Value::Bool(flag)) => *flag,
+                        Some(_) => panic!(
+                            "Invalid value-type entry '{file}': a parameter's 'hostMediaType' must be a boolean when present"
+                        ),
+                    },
+                    signatures: match (item.get("hostMediaType"), item.get("signatures")) {
+                        (Some(Value::Bool(true)), raw) => Some(read_signatures(file, raw)),
+                        (_, None) => None,
+                        (_, Some(_)) => panic!(
+                            "Invalid value-type entry '{file}': a parameter declares 'signatures' exactly when it declares 'hostMediaType'"
                         ),
                     },
                     bound: item.get("bound").map(|bound| {
@@ -355,6 +457,12 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
     }
     if parameters.iter().filter(|p: &&Parameter| p.host_entry).count() > 1 {
         panic!("Invalid value-type entry '{file}': at most one parameter may declare 'hostEntry'");
+    }
+    if parameters.iter().any(|p| p.host_media_type) && from_host.is_none() {
+        panic!("Invalid value-type entry '{file}': 'hostMediaType' belongs to a parameter of a type declaring 'fromHost'");
+    }
+    if parameters.iter().filter(|p: &&Parameter| p.host_media_type).count() > 1 {
+        panic!("Invalid value-type entry '{file}': at most one parameter may declare 'hostMediaType'");
     }
     // A bound is a value of the type, written in its encoding and compared through its
     // binding's ordering, by the Node reader's rules.
@@ -467,24 +575,78 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
     }
 }
 
-/// Every declared value type, keyed by its `Telo.`-qualified name.
-pub fn value_types() -> &'static HashMap<String, ValueType> {
-    static TYPES: OnceLock<HashMap<String, ValueType>> = OnceLock::new();
-    TYPES.get_or_init(|| {
-        let mut out = HashMap::new();
+/// Every declared value type, by name and in entry-file order.
+struct Registry {
+    by_name: HashMap<String, ValueType>,
+    order: Vec<String>,
+}
+
+fn registry() -> &'static Registry {
+    static REGISTRY: OnceLock<Registry> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        let mut registry = Registry { by_name: HashMap::new(), order: Vec::new() };
         for (file, text) in ENTRY_FILES {
             let raw: Value = serde_json::from_str(text)
                 .unwrap_or_else(|e| panic!("Invalid value-type entry '{file}': {e}"));
             let entry = read_entry(file, &raw);
             assert!(
-                !out.contains_key(&entry.name),
+                !registry.by_name.contains_key(&entry.name),
                 "Invalid value-type entry '{file}': '{}' is already declared",
                 entry.name
             );
-            out.insert(entry.name.clone(), entry);
+            registry.order.push(entry.name.clone());
+            registry.by_name.insert(entry.name.clone(), entry);
         }
-        out
+        registry
     })
+}
+
+/// Every declared value type, keyed by its `Telo.`-qualified name.
+pub fn value_types() -> &'static HashMap<String, ValueType> {
+    &registry().by_name
+}
+
+/// Every declared value type in entry-file order — the order the Node reader's
+/// `VALUE_TYPES` iterates in, which is the order a type registration is made in.
+pub fn value_types_in_order() -> impl Iterator<Item = &'static ValueType> {
+    let registry = registry();
+    registry.order.iter().map(|name| &registry.by_name[name])
+}
+
+/// The CEL type a value at a slot of this type carries: a `json` representation its own
+/// name as a nominal brand (or its `celType`), an `instance` what its binding says.
+pub fn cel_type_of_value_type(entry: &ValueType) -> &str {
+    match entry.representation {
+        Representation::Json => entry.cel_type.as_deref().unwrap_or(&entry.name),
+        Representation::Instance => {
+            let key = entry.binding.as_deref().expect("an instance entry names its binding");
+            bindings()[key].cel_type
+        }
+    }
+}
+
+/// The CEL type a brand degrades to where the consuming slot declares none, or `None` for
+/// an `instance`, which has no base to fall back to.
+pub fn cel_base_of_value_type(entry: &ValueType) -> Option<&'static str> {
+    match entry.representation {
+        Representation::Json => entry.base.as_deref().and_then(cel_type_for_base),
+        Representation::Instance => None,
+    }
+}
+
+/// Every `json` representation's CEL brand and the base type it refines, in entry-file
+/// order. An entry declaring a `celType` is not a brand: its values carry that type.
+pub fn value_brand_bases() -> Vec<(&'static str, &'static str)> {
+    value_types_in_order()
+        .filter(|entry| entry.cel_type.is_none())
+        .filter_map(|entry| cel_base_of_value_type(entry).map(|base| (entry.name.as_str(), base)))
+        .collect()
+}
+
+/// The members of the value type a schema node declares, or `None` when it declares none
+/// or a type without members.
+pub fn members_of(schema: &Value) -> Option<&'static serde_json::Map<String, Value>> {
+    value_type_of(schema)?.members.as_ref()
 }
 
 /// The unit a JSON integer is read in for the type a runtime holds under `binding`, or
@@ -530,6 +692,66 @@ pub fn host_entry_of(schema: &Value) -> Option<&'static str> {
     let parameter = entry.parameters.iter().find(|p| p.host_entry)?;
     let token = schema.get(X_TELO_TYPE)?.as_object()?.get(&parameter.name)?.as_str()?;
     HOST_ENTRY_KINDS.iter().copied().find(|kind| *kind == token)
+}
+
+/// The host-media-type parameter's vocabulary of the type a schema node declares,
+/// and the media type the node names from it — `None` when it names none, or one
+/// with no signature (which the analyzer reports).
+fn host_media_type_vocabulary(schema: &Value) -> Option<(&'static str, &'static [(String, Vec<MediaSignature>)])> {
+    let entry = value_type_of(schema)?;
+    let parameter = entry.parameters.iter().find(|p| p.host_media_type)?;
+    let signatures = parameter.signatures.as_deref()?;
+    let token = schema.get(X_TELO_TYPE)?.as_object()?.get(&parameter.name)?.as_str()?;
+    let (declared, _) = signatures.iter().find(|(media_type, _)| media_type == token)?;
+    Some((declared.as_str(), signatures))
+}
+
+/// The media type a host-path slot says its file holds, or `None`.
+pub fn host_media_type_of(schema: &Value) -> Option<&'static str> {
+    host_media_type_vocabulary(schema).map(|(declared, _)| declared)
+}
+
+/// How many leading bytes decide every media type of every value type: what a
+/// reader of a file's head reads.
+pub fn host_media_head_length() -> usize {
+    value_types()
+        .values()
+        .flat_map(|entry| &entry.parameters)
+        .flat_map(|parameter| parameter.signatures.iter().flatten())
+        .flat_map(|(_, signatures)| signatures.iter().map(Vec::len))
+        .max()
+        .unwrap_or(0)
+}
+
+fn carries(head: &[u8], signatures: &[MediaSignature]) -> bool {
+    signatures.iter().any(|signature| {
+        head.len() >= signature.len()
+            && signature.iter().zip(head).all(|(byte, found)| byte.is_none_or(|byte| byte == *found))
+    })
+}
+
+/// A file's head that does not carry the media type its slot declares.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostMediaTypeMismatch {
+    pub declared: &'static str,
+    /// The media type of the slot's vocabulary the head does carry, or `None` when
+    /// it carries none of them.
+    pub found: Option<&'static str>,
+}
+
+/// Judge a file's leading bytes against the media type a host-path node declares:
+/// `None` when it declares none or the head carries it, else what was found.
+pub fn host_media_type_mismatch(schema: &Value, head: &[u8]) -> Option<HostMediaTypeMismatch> {
+    let (declared, signatures) = host_media_type_vocabulary(schema)?;
+    let (_, own) = signatures.iter().find(|(media_type, _)| media_type == declared)?;
+    if carries(head, own) {
+        return None;
+    }
+    let found = signatures
+        .iter()
+        .find(|(_, signatures)| carries(head, signatures))
+        .map(|(media_type, _)| media_type.as_str());
+    Some(HostMediaTypeMismatch { declared, found })
 }
 
 /// The `fromHost` anchor ([`HOST_ANCHORS`]) of the type a schema node declares,
@@ -624,6 +846,51 @@ mod tests {
         assert_eq!(types["Telo.Duration"].integer_unit.as_deref(), Some("ms"));
         assert_eq!(integer_unit_of_binding("duration"), Some("ms"));
         assert!(types["Telo.Timestamp"].integer_unit.is_none());
+    }
+
+    #[test]
+    fn reads_the_cel_face_of_each_type_as_the_node_reader_does() {
+        let order: Vec<&str> = value_types_in_order().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(
+            order,
+            [
+                "Telo.Bytes",
+                "Telo.Duration",
+                "Telo.HostPath",
+                "Telo.Stream",
+                "Telo.TcpPort",
+                "Telo.Timestamp",
+                "Telo.UdpPort",
+                "Telo.Uint64",
+                "Telo.Url",
+            ]
+        );
+        let faces: Vec<(&str, &str)> =
+            value_types_in_order().map(|entry| (entry.name.as_str(), cel_type_of_value_type(entry))).collect();
+        assert_eq!(
+            faces,
+            [
+                ("Telo.Bytes", "bytes"),
+                ("Telo.Duration", "google.protobuf.Duration"),
+                ("Telo.HostPath", "Telo.HostPath"),
+                ("Telo.Stream", "Stream"),
+                ("Telo.TcpPort", "Telo.TcpPort"),
+                ("Telo.Timestamp", "google.protobuf.Timestamp"),
+                ("Telo.UdpPort", "Telo.UdpPort"),
+                ("Telo.Uint64", "uint"),
+                ("Telo.Url", "Telo.Url"),
+            ]
+        );
+        assert_eq!(value_brand_bases(), [("Telo.HostPath", "string"), ("Telo.TcpPort", "int"), ("Telo.UdpPort", "int")]);
+        assert_eq!(cel_base_of_value_type(&value_types()["Telo.Uint64"]), Some("int"));
+        assert_eq!(cel_base_of_value_type(&value_types()["Telo.Bytes"]), None);
+        // In serde_json's map order, which `preserve_order` decides for the whole build.
+        let mut members: Vec<&str> =
+            members_of(&json!({ "x-telo-type": "Telo.Url" })).unwrap().keys().map(String::as_str).collect();
+        members.sort_unstable();
+        assert_eq!(members, ["host", "password", "path", "port", "query", "scheme", "user"]);
+        assert!(members_of(&json!({ "x-telo-type": "Telo.Bytes" })).is_none());
+        assert!(members_of(&json!({ "type": "object" })).is_none());
     }
 
     #[test]
@@ -738,6 +1005,37 @@ mod tests {
         assert!(is_bytes_slot(&json!({ "x-telo-type": "Telo.Bytes" })));
         assert!(!is_bytes_slot(&json!({ "x-telo-type": "Telo.Stream" })));
         assert!(!is_bytes_slot(&json!({ "type": "string" })));
+    }
+
+    #[test]
+    fn judges_a_file_head_against_the_declared_media_type() {
+        let png = json!({ "x-telo-type": { "name": "Telo.HostPath", "entry": "file", "mediaType": "image/png" } });
+        assert_eq!(host_media_type_mismatch(&png, &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]), None);
+        assert_eq!(
+            host_media_type_mismatch(&png, &[0xff, 0xd8, 0xff, 0xe0]),
+            Some(HostMediaTypeMismatch { declared: "image/png", found: Some("image/jpeg") })
+        );
+        assert_eq!(
+            host_media_type_mismatch(&png, &[0x89, 0x50]),
+            Some(HostMediaTypeMismatch { declared: "image/png", found: None })
+        );
+        assert_eq!(host_media_type_mismatch(&json!({ "x-telo-type": "Telo.HostPath" }), &[0xff, 0xd8, 0xff]), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "must be lower-case hex byte pairs")]
+    fn a_malformed_signature_is_refused() {
+        read_entry(
+            "x.json",
+            &json!({
+                "name": "Telo.Path2",
+                "representation": "json",
+                "base": "string",
+                "fromHost": "working-directory",
+                "description": "x",
+                "parameters": [{ "name": "mediaType", "hostMediaType": true, "signatures": { "image/png": ["89PN"] } }],
+            }),
+        );
     }
 
     #[test]

@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: Shell, version: 1.0.0 }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.shell, productName: Shell, port: http }

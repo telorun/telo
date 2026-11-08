@@ -1,0 +1,98 @@
+kind: Telo.Application
+metadata:
+  name: AiChatConversationTitles
+  version: 1.0.0
+  description: |
+    With `titles`, a conversation with no title is named by the title model as its
+    turn ends — the answer's first line, its trailing stop dropped — and the title
+    is readable once the turn's end is; a title already set, a rename, is kept by
+    every later turn.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Assert: ../../assert
+variables:
+  scratchDir:
+    env: AI_CHAT_API_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent: { kind: Ai.AgentStream, model: { kind: AiEcho.EchoModelStream, accepts: [] } }
+# The echo model answers with the user's message first, so the title is its first line.
+titles: { model: { kind: AiEcho.EchoModel, accepts: [] } }
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-conversation-titles')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.Api
+metadata: { name: chatApi }
+conversation: !ref chat
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 19415 }
+    mounts:
+      - { path: /chat, mount: !ref chatApi }
+targets: [!ref server]
+steps:
+  - name: first
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19415/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: Weather in Tokyo., attachments: [] }
+  - name: firstEnd
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19415/chat/turns/${{ steps.first.result.body.turn }}/events", responseType: text }
+  - name: titled
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19415/chat/conversations/${{ steps.first.result.body.conversation }}" }
+  - name: rename
+    invoke: { kind: HttpClient.Request, method: PATCH }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19415/chat/conversations/${{ steps.first.result.body.conversation }}"
+      headers: { content-type: application/json }
+      body: { title: My trip }
+  - name: second
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19415/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { conversation: !cel "steps.first.result.body.conversation", message: And in Osaka?, attachments: [] }
+  - name: secondEnd
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19415/chat/turns/${{ steps.second.result.body.turn }}/events", responseType: text }
+  - name: kept
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19415/chat/conversations/${{ steps.first.result.body.conversation }}" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        firstEnded: !cel "steps.firstEnd.result.body.contains('\"reason\":\"stop\"')"
+        titled: !cel "steps.titled.result.body.title"
+        secondEnded: !cel "steps.secondEnd.result.body.contains('\"reason\":\"stop\"')"
+        kept: !cel "steps.kept.result.body.title"
+      expected: { firstEnded: true, titled: Weather in Tokyo, secondEnded: true, kept: My trip }

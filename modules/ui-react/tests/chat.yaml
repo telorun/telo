@@ -93,7 +93,7 @@ steps:
         send: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].chatSend"
         position: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].chatBranchPosition"
       expected:
-        translated: 62
+        translated: 63
         message: { lang: pl, message: [Wiadomość] }
         send: { lang: pl, message: [Wyślij] }
         position: { lang: pl, message: [{ placeholder: position }, " z ", { placeholder: total }] }

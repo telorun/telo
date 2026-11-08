@@ -42,7 +42,13 @@ import {
   parseCanonicalTypeSchemaId,
   canonicalTypeSchemaId,
 } from "@telorun/sdk";
-import type { ApplicationTranslations, ErrorValue, TextRecord } from "@telorun/sdk";
+import type {
+  ApplicationTranslations,
+  ClaimedListener,
+  ErrorValue,
+  HandedConnection,
+  TextRecord,
+} from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
 import { declarationOfInstance } from "./instance-declaration.js";
 import { authoredDeclarationOf, declarationScopeOf } from "./declaration-scope.js";
@@ -71,6 +77,8 @@ import {
   type ResolvedReference,
   type SchemaIssue,
   type AnalysisRegistry,
+  effectiveAuthorSchema,
+  readApplicationSourceSlot,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
@@ -212,9 +220,43 @@ export class ResourceContextImpl implements ResourceContext {
     if (!this.#runtime) {
       const name = this.metadata?.name as string | undefined;
       const caller = name ? `${this.#resolvedKind ?? "resource"} '${name}'` : undefined;
-      this.#runtime = new KernelRuntimeSeam(this.kernel, caller);
+      const needPath = (this.moduleContext as unknown as { needPath?: readonly string[] }).needPath ?? [];
+      // A scope member sits beneath its holders, as a scoped import's needs do.
+      const holders = this.scopeRunContext()?.scopeHolders ?? [];
+      this.#runtime = new KernelRuntimeSeam(
+        this.kernel,
+        caller,
+        name
+          ? {
+              kind: this.#resolvedKind ?? "resource",
+              name,
+              path: [...needPath, ...holders, name],
+              source: this.#writtenApplicationSource(),
+            }
+          : undefined,
+      );
     }
     return this.#runtime;
+  }
+
+  /** The host's open-url hook, when it gave one (`KernelOptions.openUrl`). */
+  get openUrlHook(): ((url: string) => void | Promise<void>) | undefined {
+    return this.kernel.openUrl;
+  }
+
+  /** The child application's `source:` as the resource writes it, read off the
+   *  field its kind annotates `x-telo-application-source`. */
+  #writtenApplicationSource(): string | undefined {
+    const kind = this.#resolvedKind;
+    if (!kind || !this.#manifest) return undefined;
+    const registry = this.kernel.getAnalysisRegistry();
+    const definition = registry.resolveDefinition(kind);
+    if (!definition) return undefined;
+    const slot = readApplicationSourceSlot(
+      effectiveAuthorSchema(definition, (k) => registry.resolveDefinition(k)),
+    );
+    const written = slot ? this.#manifest[slot.field] : undefined;
+    return typeof written === "string" ? written : undefined;
   }
 
   kernelLoggingRootScope(): ScopeConfig {
@@ -1408,6 +1450,13 @@ export class ResourceContextImpl implements ResourceContext {
    */
   acquireHold(reason?: string): () => void {
     return this.kernel.acquireHold(reason);
+  }
+
+  async claimListener(
+    port: number,
+    accept: (connection: HandedConnection) => void,
+  ): Promise<ClaimedListener | null> {
+    return this.kernel.claimListener(port, accept, this.#describeSelf());
   }
 
   requestExit(code: number): void {

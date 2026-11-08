@@ -196,6 +196,7 @@ export {
   PUBLIC_URL_TYPE,
 } from "./public-address.js";
 export type { HostPattern } from "./public-address.js";
+export { DESKTOP_HOST_TYPE } from "./desktop-host.js";
 export {
   directoryForwardRefusal,
   directorySizeBytes,
@@ -789,19 +790,43 @@ export {
   renderFixReplacement,
 } from "./yaml-source-edit.js";
 export type { QuoteStyle, TextEdit } from "./yaml-source-edit.js";
-export { KNOWN_HOST_AXES, evaluateRequires, readRequires } from "./requires-block.js";
+export { KNOWN_HOST_AXES, UNRELEASED_FLOOR, readRequires } from "./requires-block.js";
 export type {
   HostAxis,
   HostVersions,
   ReadRequiresResult,
   RequiresBlock,
   RequiresIssue,
-  RequiresVerdict,
 } from "./requires-block.js";
-export { manifestCompatibility } from "./module-compatibility.js";
-export type { ModuleCompatibility } from "./module-compatibility.js";
-export { TELO_SURFACE_VERSION } from "./telo-version.js";
-export { validateRequires } from "./validate-requires.js";
+export { declaringVersion, readRestrictions, restrictionCovers } from "./restrictions.js";
+export type { ReadRestrictionsResult, Restriction } from "./restrictions.js";
+export {
+  REQUIREMENT_KEYS,
+  evaluateRange,
+  loadRange,
+  readModuleRequirements,
+  selectionRange,
+} from "./runtime-range.js";
+export type {
+  ModuleRequirements,
+  RangeConstraint,
+  RangeVerdict,
+  RequirementKey,
+  RequirementSource,
+} from "./runtime-range.js";
+export {
+  manifestCompatibility,
+  readModuleVersion,
+  selectionCompatibility,
+} from "./module-compatibility.js";
+export type {
+  ModuleCompatibility,
+  ModuleVersionManifest,
+  ModuleVersionRequirements,
+  SelectionVerdict,
+} from "./module-compatibility.js";
+export { TELO_RUNNING_SURFACE, TELO_SURFACE_VERSION } from "./telo-version.js";
+export { RUNTIME_GATE_CODES, validateRequires } from "./validate-requires.js";
 export type { ValidateRequiresOptions } from "./validate-requires.js";
 export {
   isUnsatisfiable,
@@ -1074,7 +1099,15 @@ export {
   readMembersValue,
   type MembersSlot,
 } from "./members-value-slot.js";
-export { describeHostEntry, holdsHostPath, hostAnchorFor, hostEntryAt } from "./host-path-slot.js";
+export {
+  describeHostEntry,
+  holdsHostPath,
+  hostAnchorFor,
+  hostEntryAt,
+  hostMediaTypeAt,
+  hostMediaTypeFinding,
+  hostMediaTypeMismatchAt,
+} from "./host-path-slot.js";
 export {
   compiledResultSlots,
   formatSlotPath,

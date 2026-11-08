@@ -115,7 +115,8 @@ interface InLanguage {
   translator: SpecTranslator<Translated>;
   shell: string;
   title: Translated;
-  pageTitles: Translated[];
+  /** Each page's title in the language; none for a page without one. */
+  pageTitles: (Translated | undefined)[];
   texts: KeyedTexts;
   /** Translates a text the application document carries. */
   translate(record: TextRecord): Translated;
@@ -151,6 +152,9 @@ interface Started {
 }
 
 /** A mount path with one leading slash and no trailing one; `""` at the root. */
+/** A page's title as a document member: absent for a page that has none. */
+const titled = (title: Translated | undefined) => (title === undefined ? {} : { title });
+
 function mountPrefix(prefix: string): string {
   const trimmed = prefix.replace(/\/+$/, "");
   return trimmed === "" || trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
@@ -184,18 +188,25 @@ export class UiReactApp {
     this.refuseUnroutedEntries(resource.navigation?.items ?? [], "navigation.items");
   }
 
-  /** Every entry naming a page, at any depth, names one `pages` lists. */
+  /** Every entry naming a page, at any depth, names one `pages` lists, and a label for it. */
   private refuseUnroutedEntries(entries: NavigationConfig["items"], at: string): void {
     for (const [index, entry] of (entries ?? []).entries()) {
       const where = `${at}[${index}]`;
       if (entry.type === "group") this.refuseUnroutedEntries(entry.items, `${where}.items`);
       if (entry.type !== "page") continue;
       const page = this.ctx.resolveRef(entry.page, isPage, () => `'${where}.page' of ${this.owner}`, "Ui.Page");
-      if (this.pages.some(({ instance }) => instance === page)) continue;
-      throw new RuntimeError(
-        "ERR_UI_NAVIGATION_PAGE_UNROUTED",
-        `${this.owner}: '${where}' names a page the application does not list in its pages ('${page.snapshot().path}'), so it leads nowhere. Add the page to pages, or remove the entry.`,
-      );
+      if (!this.pages.some(({ instance }) => instance === page)) {
+        throw new RuntimeError(
+          "ERR_UI_NAVIGATION_PAGE_UNROUTED",
+          `${this.owner}: '${where}' names a page the application does not list in its pages ('${page.snapshot().path}'), so it leads nowhere. Add the page to pages, or remove the entry.`,
+        );
+      }
+      if (entry.text == null && page.snapshot().title === undefined) {
+        throw new RuntimeError(
+          "ERR_UI_NAVIGATION_PAGE_UNTITLED",
+          `${this.owner}: '${where}' names a page with no title ('${page.snapshot().path}') and gives no text of its own, so it has no label. Write the entry's text, or give the page a title.`,
+        );
+      }
     }
   }
 
@@ -417,7 +428,7 @@ export class UiReactApp {
     const made: InLanguage = {
       translator,
       title,
-      pageTitles: this.pages.map(({ reading }) => translate(reading.title)),
+      pageTitles: this.pages.map(({ reading }) => (reading.title === undefined ? undefined : translate(reading.title))),
       texts: this.keyedTexts(tag, parsed),
       shell: shellHtml({
         title: formatMessage(title.message, title.lang, {}),
@@ -506,7 +517,7 @@ export class UiReactApp {
         bundle: started.bundle,
         title: language.title,
         ...(tag === "und" ? {} : { lang: tag }),
-        pages: this.pages.map(({ reading }, index) => ({ path: reading.path, title: language.pageTitles[index] })),
+        pages: this.pages.map(({ reading }, index) => ({ path: reading.path, ...titled(language.pageTitles[index]) })),
         navigation: { items: translatedEntries(items), placement: started.navigation.placement },
         header,
         texts: language.texts,
@@ -541,7 +552,7 @@ export class UiReactApp {
         specVersion: SPEC_VERSION,
         bundle: started.bundle,
         path: delivered.path,
-        title: language.pageTitles[index],
+        ...titled(language.pageTitles[index]),
         ...(tag === "und" ? {} : { lang: tag }),
         query: delivered.query,
         width: delivered.width,

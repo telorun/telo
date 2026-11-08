@@ -61,7 +61,8 @@ Everything a controller normally does is in the set: building and tearing down a
 instance, returning effect chains, holding the kernel open, reporting observed
 state, dispatching to another resource, opening zones and spans, resolving
 references and schemas, expanding a manifest's expressions, streaming bytes,
-logging, running a child manifest, and reaching its own module's files.
+logging, running a child manifest, serving a socket the host owns, and reaching its
+own module's files.
 
 ## The rules that most often surprise people
 
@@ -208,6 +209,28 @@ a failure is your kind's. In Node it is `ctx.resolveCoReferrers(slot)`, answerin
 `{ target, instance }` per co-referrer for `ctx.invokeResolved(target.ref.kind,
 target.ref.name, instance, inputs, ctx)`.
 
+## Serving a socket the host owns
+
+A process embedding the kernel may own a port's socket itself — to admit every
+connection before a server sees it — and supply that port's connections to the
+server configured with its number. `Listener.Claim` asks, by port number,
+whether the host holds such a socket: it answers with a listener handle and the
+socket's address, or with nothing, and then you bind as usual. A port another
+server has claimed is `ERR_LISTENER_CLAIMED`. Claim where the server becomes
+reachable — `run()` — and release it (`Listener.Release`) as that step's inverse.
+
+Each admitted connection arrives as `Listener.Accept`: two one-way channels of
+purpose `connection`, never an OS handle. The kernel opens the inbound one,
+whose first bytes are those the host already read while admitting the
+connection, so you read the connection exactly as the peer wrote it; you open
+the outbound one and write to the peer through it, and closing it ends the
+connection (with an `error`, resets it). A connection admitted before your
+claim, or after a release, is held by the host until the port is claimed again.
+In Node it is `ctx.claimListener(port, accept)`, answering a `ClaimedListener`
+(`address`, `release()`) or `null`, with each `HandedConnection` (`peer`,
+`inbound`, `write`, `close`) passed to `accept`; `Http.Server` is the reference
+(its `docs/host-supplied-sockets.md`).
+
 ## Generations, and `abi=telo-10`
 
 Generation `3` is the shape shipping today: JSON in ABI buffers, described only by
@@ -218,7 +241,7 @@ frame's millisecond timestamp payload (now RFC 3339 with a trimmed nanosecond
 fraction), `6` was `5` plus the two need messages, `7` was `6` with a child run's
 inputs carrying the child's needs and the declared display message, `8` was `7`
 with the translations lookup, `9` was `8` plus `Span.Carrier`, and `10` is `9`
-plus `Ref.CoReferrers`. Every handshake in the vectors states `10`, and
+plus `Ref.CoReferrers` and the three listener messages. Every handshake in the vectors states `10`, and
 `pnpm run check:controller-protocol` refuses a conformance vector whose handshake
 states another generation.
 

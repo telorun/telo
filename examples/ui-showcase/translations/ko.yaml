@@ -23,6 +23,7 @@ texts:
   # The navigation's groups.
   - { text: Building blocks, translation: "구성 요소" }
   - { text: Input, translation: "입력" }
+  - { text: Search, translation: "검색" }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
@@ -566,3 +567,11 @@ texts:
   - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "요청 본문이 이 서버가 허용하는 {$maxBodyBytes}바이트보다 큽니다." }
   - { text: "This server does not serve the host {$host}.", translation: "이 서버는 호스트 {$host}을(를) 처리하지 않습니다." }
   - { text: "The list request is not valid.", translation: "목록 요청이 올바르지 않습니다." }
+
+  # Search.
+  - { text: "Search posts", translation: "게시물 검색" }
+  - { text: "Posts beside their filters", translation: "필터 옆의 게시물" }
+  - { text: "Release posts", translation: "릴리스 게시물" }
+  - { text: "Everything", translation: "전체" }
+  - { text: "Drafts about releases", translation: "릴리스에 관한 초안" }
+  - { text: "Search posts, or filter by author, status or date", translation: "게시물을 검색하거나 작성자, 상태, 날짜로 필터링하세요" }

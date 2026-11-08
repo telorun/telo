@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: ParameterPathEntry
+  version: 0.0.0
+  description: A need parameter naming a directory where its type takes a file.
+imports: { Fx: ../../../types }
+needs:
+  printer:
+    kind: Fx.LabelPrinter
+    optional: true
+    parameters: { logo: !module-path assets }

@@ -116,11 +116,12 @@ function withChosen(offered: Option[], chosen: string[], shown: (value: unknown)
 /**
  * The choices of a `values: present` field: the values the facet request
  * answers under every filter but the field's own, each shown with its count
- * and labelled through the field's option source where it has one.
+ * and labelled through the field's option source where it has one. Nothing is
+ * read while it is not `active`.
  */
-export function usePresentChoices(field: FilterField, facet: FacetScope, chosen: string[], source: string): FilterChoices {
+export function usePresentChoices(field: FilterField, facet: FacetScope, chosen: string[], source: string, active = true): FilterChoices {
   const say = useSay();
-  const pages = useFacetPages(facet.basePath, field.property, facet.filters, field.options?.pageSize ?? FACET_LIMIT, true);
+  const pages = useFacetPages(facet.basePath, field.property, facet.filters, field.options?.pageSize ?? FACET_LIMIT, active);
   // The keys of each facet page are labelled in one batch of the source's page size.
   const labels = useRelatedLabels(field.options ? { [source]: field.options } : {}, {
     [source]: [...pages.values.map((each) => each.value), ...chosen.map((value) => typedValue(field.schema, value))],

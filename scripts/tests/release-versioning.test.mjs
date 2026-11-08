@@ -147,6 +147,39 @@ describe("Rust twins", () => {
   });
 });
 
+describe("floors waiting for a release", () => {
+  const MODULE = `kind: Telo.Library
+metadata:
+  name: Geocode
+  version: 1.2.0
+requires:
+  telo: ">=unreleased" # waiting
+  host: { node: ">=20.0.0" }
+restrictions:
+  - requires: { telo: '>=unreleased' }
+    reason: Needs the next kernel.
+  - versions: ">=1.0.0"
+    requires: { telo: "<0.122.0" }
+    reason: Broken above.
+`;
+
+  it("the version step rewrites >=unreleased in requires.telo and in entries, keeping the layout", () => {
+    const root = workspace();
+    put(root, "telo-workspace.yaml", "release:\n  modules:\n    - modules/*\n    - '!modules/skipped'\n");
+    put(root, "modules/geocode/telo.yaml", MODULE);
+    put(root, "modules/skipped/telo.yaml", MODULE);
+    const result = run(root, process.execPath, ["scripts/version-line.mjs"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /modules\/geocode\/telo.yaml: requires.telo >=unreleased → >=0.84.2/);
+    assert.match(result.stdout, /modules\/geocode\/telo.yaml: restrictions\[0\].requires.telo >=unreleased → >=0.84.2/);
+    assert.equal(
+      readFileSync(join(root, "modules/geocode/telo.yaml"), "utf8"),
+      MODULE.replace('">=unreleased" # waiting', '">=0.84.2" # waiting').replace("'>=unreleased'", "'>=0.84.2'"),
+    );
+    assert.equal(readFileSync(join(root, "modules/skipped/telo.yaml"), "utf8"), MODULE);
+  });
+});
+
 describe("changeset gate", () => {
   it("a main change with no changeset fails; a changeset covers it", () => {
     const root = workspace();

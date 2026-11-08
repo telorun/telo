@@ -18,6 +18,13 @@ describe("the application shell", () => {
     expect(links).toEqual(["/admin/_telo/ui/assets/aa/base.css"]);
   });
 
+  it("draws no heading for a page that declares no title, and the document is titled by the application alone", async () => {
+    rendered = await render({ path: "/", pages: { "/": { children: [{ type: "text", text: "First" }] } } });
+    expect(rendered.parts("page-title")).toEqual([]);
+    expect(rendered.part("page").textContent).toContain("First");
+    expect(document.title).toBe("Test App");
+  });
+
   it("draws the application's own header nodes before its title and after its navigation, on every page", async () => {
     const header = { start: [{ type: "image", src: "/logo.svg", alt: "Logo" }], end: [{ type: "link", text: "Help", href: address("/help") }] };
     rendered = await render({ path: "/nowhere", prefix: "/admin", pages, header });

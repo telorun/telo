@@ -4,6 +4,8 @@ import {
   MODULE_FILE_ENGINE_NAMES,
   walkCelExpressions,
 } from "@telorun/templating";
+import { stampedNeedParametersPaths } from "./flatten-for-analyzer.js";
+import { isAtOrBeneathPath, needParametersPaths } from "./need-type.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -49,6 +51,10 @@ export function isNeverInstantiated(kind: string): boolean {
  * `schema:`, `inputType:` — is equally unreadable, but that is a general
  * question about tags in schema metadata rather than one about these two, and
  * no pass answers it for any tag today.
+ *
+ * A need's `parameters:` are the exception: the kernel resolves a `!module-path`
+ * there at load, and the need table judges every tag written there — as are
+ * the copies an import's `metadata.requiredNeeds` stamp carries.
  */
 export function validateIncludePlacement(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
@@ -56,8 +62,10 @@ export function validateIncludePlacement(manifests: ResourceManifest[]): Analysi
     if (!NEVER_INSTANTIATED.has(manifest.kind)) continue;
     const name = (manifest.metadata as { name?: string } | undefined)?.name;
     const filePath = (manifest.metadata as { source?: string } | undefined)?.source;
+    const parameters = [...needParametersPaths(manifest), ...stampedNeedParametersPaths(manifest)];
     walkCelExpressions(manifest, "", (source, path, engineName) => {
       if (!MODULE_FILE_ENGINE_NAMES.has(engineName)) return;
+      if (isAtOrBeneathPath(path, parameters)) return;
       const embed = INCLUDE_ENGINE_NAMES.has(engineName);
       out.push({
         severity: DiagnosticSeverity.Error,

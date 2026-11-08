@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
+import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useControl } from "../effective-controls.js";
 import { useHostStore } from "../host.js";
 import { linkAddress } from "../link-address.js";
@@ -63,6 +63,75 @@ export function CopyButton({ text }: { text: string }) {
 
 const json = (value: unknown): string => JSON.stringify(value, null, 2) ?? "";
 
+/** An argument as it reads: text as written, line breaks included, anything else as JSON. */
+const argumentText = (value: unknown): string => (typeof value === "string" ? value : json(value));
+
+/** More lines than a box holds, for where nothing is laid out to measure. */
+const BOX_LINES = 6;
+
+/**
+ * A block of a call's text in a box of bounded height; one the box cuts off, or
+ * of more lines than it holds where nothing is measured, can be read whole in a dialog.
+ */
+function ToolText({ text, title }: { text: string; title?: string }) {
+  const say = useSay();
+  const Dialog = useControl("Dialog");
+  const Icon = useControl("Icon");
+  const titleId = useId();
+  const box = useRef<HTMLPreElement>(null);
+  const [cut, setCut] = useState(false);
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    setCut(element.clientHeight > 0 ? element.scrollHeight > element.clientHeight + 1 : text.split("\n").length > BOX_LINES);
+  }, [text]);
+  return (
+    <>
+      <div data-telo-part="chat-tool-block">
+        <pre data-telo-part="chat-tool-data" tabIndex={0} ref={box}>{text}</pre>
+        {cut && (
+          <button data-telo-part="chat-tool-preview" type="button" aria-haspopup="dialog" aria-label={say("chatToolPreview")} title={say("chatToolPreview")} onClick={() => setOpen(true)}>
+            <Icon name="maximize" />
+          </button>
+        )}
+      </div>
+      {open && (
+        <Dialog open modal labelledBy={titleId} attributes={{ "data-surface": "dialog", "data-size": "large", "data-modal": "true" }} onOpenChange={(next) => next || setOpen(false)}>
+          <div data-telo-part="surface-header">
+            <h2 data-telo-part="surface-title" id={titleId}>{title ?? say("chatToolArguments")}</h2>
+          </div>
+          <div data-telo-part="surface-body">
+            <pre data-telo-part="chat-tool-data" tabIndex={0}>{text}</pre>
+          </div>
+          <button data-telo-part="surface-close" type="button" aria-label={say("close")} onClick={() => setOpen(false)}>
+            <Icon name="close" />
+          </button>
+        </Dialog>
+      )}
+    </>
+  );
+}
+
+/**
+ * A call's arguments: each top-level one under its name, so a long text keeps its
+ * line breaks and reads as text; arguments that are not an object are one block of JSON.
+ */
+function ToolArguments({ value }: { value: unknown }) {
+  const entries = value !== null && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : undefined;
+  if (entries === undefined || entries.length === 0) return <ToolText text={json(value)} />;
+  return (
+    <>
+      {entries.map(([name, each]) => (
+        <Fragment key={name}>
+          <span data-telo-part="chat-tool-label">{name}</span>
+          <ToolText text={argumentText(each)} title={name} />
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 /** A disclosure: a button that opens or closes the panel it controls, kept open across the entry being drawn again. */
 function useDisclosure(slot: string, initial: boolean) {
   const id = useId();
@@ -91,7 +160,6 @@ function ToolCard({ block, detail }: { block: Extract<Block, { kind: "tool" }>; 
   const say = useSay();
   const { id, open, toggle } = useDisclosure(`tool:${block.id}`, false);
   const status = block.isError ? "failed" : block.done ? "done" : "running";
-  const args = block.arguments !== undefined ? json(block.arguments) : block.written;
   return (
     <section data-telo-part="chat-tool" data-status={status}>
       <div data-telo-part="chat-tool-header">
@@ -106,11 +174,11 @@ function ToolCard({ block, detail }: { block: Extract<Block, { kind: "tool" }>; 
       {detail && open && (
         <div data-telo-part="chat-tool-detail" id={id}>
           <span data-telo-part="chat-tool-label">{say("chatToolArguments")}</span>
-          <pre data-telo-part="chat-tool-data" tabIndex={0}>{args}</pre>
+          {block.arguments !== undefined ? <ToolArguments value={block.arguments} /> : <ToolText text={block.written} />}
           {block.done && (
             <>
               <span data-telo-part="chat-tool-label">{say("chatToolResult")}</span>
-              <pre data-telo-part="chat-tool-data" tabIndex={0}>{typeof block.result === "string" ? block.result : json(block.result)}</pre>
+              <ToolText text={typeof block.result === "string" ? block.result : json(block.result)} title={say("chatToolResult")} />
             </>
           )}
         </div>
@@ -118,6 +186,9 @@ function ToolCard({ block, detail }: { block: Extract<Block, { kind: "tool" }>; 
     </section>
   );
 }
+
+/** The glyph standing for where an approval is: waiting for a decision, approved, or rejected. */
+const APPROVAL_GLYPHS = { pending: "alert", approved: "done", rejected: "close" } as const;
 
 function ApprovalCard({
   block,
@@ -130,18 +201,42 @@ function ApprovalCard({
 }) {
   const say = useSay();
   const TextInput = useControl("TextInput");
+  const Icon = useControl("Icon");
   const id = useId();
   const [reason, setReason] = useEntryState(`approval:${block.id}`, "");
   const decision = block.decision;
+  const status = decision ? (decision.approved ? "approved" : "rejected") : "pending";
+  // A call waiting for a decision shows what it asks to run; a decided one is folded to its line.
+  const { id: bodyId, open, toggle } = useDisclosure(`approval-open:${block.id}`, !decision);
+  const title = say("chatApprovalRequest", { name: block.name });
+  const outcome = decision ? (decision.approved ? say("chatApproved") : decision.reason ? say("chatRejectedReason", { reason: decision.reason }) : say("chatRejected")) : undefined;
+  const stateLabel = outcome ?? say("chatTurnApproval");
   return (
-    <section data-telo-part="chat-approval" data-status={decision ? (decision.approved ? "approved" : "rejected") : "pending"}>
-      <span data-telo-part="chat-approval-title">{say("chatApprovalRequest", { name: block.name })}</span>
-      {detail && <pre data-telo-part="chat-tool-data" tabIndex={0}>{json(block.arguments)}</pre>}
-      {decision ? (
-        <span data-telo-part="chat-approval-decision">
-          {decision.approved ? say("chatApproved") : decision.reason ? say("chatRejectedReason", { reason: decision.reason }) : say("chatRejected")}
+    <section data-telo-part="chat-approval" data-status={status}>
+      <div data-telo-part="chat-approval-header">
+        {detail ? (
+          <button data-telo-part="chat-approval-toggle" type="button" aria-expanded={open} aria-controls={bodyId} onClick={toggle}>
+            <Icon name={open ? "collapse" : "expand"} />
+            <span data-telo-part="chat-approval-title">{title}</span>
+          </button>
+        ) : (
+          <span data-telo-part="chat-approval-title">{title}</span>
+        )}
+        {outcome !== undefined && (
+          <span data-telo-part="chat-approval-decision" title={outcome}>
+            {outcome}
+          </span>
+        )}
+        <span data-telo-part="chat-approval-state" role="img" aria-label={stateLabel} title={stateLabel}>
+          <Icon name={APPROVAL_GLYPHS[status]} />
         </span>
-      ) : (
+      </div>
+      {detail && open && (
+        <div data-telo-part="chat-tool-detail" id={bodyId}>
+          <ToolArguments value={block.arguments} />
+        </div>
+      )}
+      {!decision && (
         <div data-telo-part="chat-approval-actions">
           <TextInput
             id={id}

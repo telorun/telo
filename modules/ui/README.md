@@ -42,10 +42,11 @@ turns what it produces into a web application.
   create and edit forms appear in — a dialog, a drawer, a panel beside the
   list, a page of its own — with an address to link to and a replacement for
   narrow screens.
-- **How a filter bar behaves is declared too.** Which filters are on show,
-  where the controls sit, how each is entered, when a change applies, what it
-  starts from and whether the choice survives a reload or travels in a link
-  are keys of the bar, checked like the rest.
+- **How a filter bar behaves is declared too.** A text search over the
+  properties the collection declares, which filters are on show, where the
+  controls sit, how each is entered, when a change applies, what it starts from
+  and whether the choice survives a reload or travels in a link are keys of the
+  bar, checked like the rest.
 - **What could not be drawn is refused when the manifest is checked.** A form
   or an action listing a property no control can enter
   (`UI_FIELD_UNSUPPORTED`), a field kind whose control or options do not fit
@@ -108,7 +109,7 @@ turns what it produces into a web application.
 | [`Ui.Dialog`, `Ui.Drawer`, `Ui.Popover`, `Ui.InlineSurface`, `Ui.Panel`, `Ui.PageSurface`](docs/surfaces.md) | Where a form opens: over the page, in line, beside the list, or in place of the page. |
 | [`Ui.Surface`, `Ui.Overlay`, `Ui.ViewportOverlay`](docs/surfaces.md#the-abstracts) | The contracts every surface, every floating one, and every one placed against the viewport — what a narrow viewport uses — provides through. |
 | [`Ui.Filters`](docs/filters.md) | A filter bar over the listings it contains. |
-| [`Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`, `Ui.OverlayPlacement`](docs/filter-placement.md) | Where a filter bar's controls sit: above its content, beside it, folded behind a toggle, or in an overlay. |
+| [`Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`, `Ui.OverlayPlacement`, `Ui.SearchBoxPlacement`](docs/filter-placement.md) | Where a filter bar's controls sit: above its content, beside it, folded behind a toggle, in an overlay, or gathered into one search box. |
 | [`Ui.FilterPlacement`, `Ui.FoldingFilterPlacement`](docs/filter-placement.md) | The contracts every placement, and every one that folds — what a narrow viewport uses — provides through. |
 | [`Ui.LocalStore`, `Ui.SessionStore`](docs/state-store.md#stores) | Where a filter bar's, a form's or an action's values, and a sidebar's open groups, are kept between visits. |
 | [`Ui.StateStore`](docs/state-store.md#stores) | The contract every store provides through. |

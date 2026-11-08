@@ -69,6 +69,13 @@ export interface ValueTypeParameter {
    *  a host path names when something is there — only on a `fromHost` entry, at
    *  most one per entry. Found by this flag, never by the parameter's name. */
   readonly hostEntry?: boolean;
+  /** This parameter's argument is a MEDIA TYPE, a key of {@link signatures}, saying
+   *  what the file a host path names starts with — only on a `fromHost` entry, at
+   *  most one per entry. Found by this flag, never by the parameter's name. */
+  readonly hostMediaType?: boolean;
+  /** A host-media-type parameter's vocabulary: each media type with its alternative
+   *  signatures, each a byte pattern read from the file's first byte (`null` any byte). */
+  readonly signatures?: Readonly<Record<string, readonly MediaSignature[]>>;
   /** This parameter's argument is a BOUND on the value: a value of the type itself,
    *  written in its plain encoding (or its integer form), that every value at the slot
    *  must be at least / at most / above / below — compared through the binding's
@@ -88,6 +95,9 @@ export type ValueTypeBound = (typeof VALUE_TYPE_BOUNDS)[number];
  *  its own filesystem query; a runtime that cannot map one fails at startup. */
 export const HOST_ENTRY_KINDS = ["file", "directory"] as const;
 export type HostEntryKind = (typeof HOST_ENTRY_KINDS)[number];
+
+/** A media type's signature: the bytes a file starts with, `null` where any byte stands. */
+export type MediaSignature = readonly (number | null)[];
 
 /** One value type, exactly as its entry file declares it. */
 export interface ValueTypeEntry {
@@ -381,6 +391,8 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
         key !== "element" &&
         key !== "member" &&
         key !== "hostEntry" &&
+        key !== "hostMediaType" &&
+        key !== "signatures" &&
         key !== "bound"
       ) {
         throw new ValueTypeEntryError(file, `parameters[${i}] has no key '${key}'`);
@@ -391,6 +403,12 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
     }
     if (entry.hostEntry !== undefined && typeof entry.hostEntry !== "boolean") {
       throw new ValueTypeEntryError(file, `parameters[${i}].hostEntry must be a boolean when present`);
+    }
+    if (entry.hostMediaType !== undefined && typeof entry.hostMediaType !== "boolean") {
+      throw new ValueTypeEntryError(file, `parameters[${i}].hostMediaType must be a boolean when present`);
+    }
+    if ((entry.hostMediaType === true) !== (entry.signatures !== undefined)) {
+      throw new ValueTypeEntryError(file, `parameters[${i}] declares 'signatures' exactly when it declares 'hostMediaType'`);
     }
     if (entry.bound !== undefined && !(VALUE_TYPE_BOUNDS as readonly unknown[]).includes(entry.bound)) {
       throw new ValueTypeEntryError(
@@ -405,6 +423,9 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
       ...(entry.bound === undefined ? {} : { bound: entry.bound as ValueTypeBound }),
       ...(entry.member === undefined ? {} : { member: requireString(file, entry, "member") }),
       ...(entry.hostEntry === true ? { hostEntry: true as const } : {}),
+      ...(entry.hostMediaType === true
+        ? { hostMediaType: true as const, signatures: readSignatures(file, i, entry.signatures) }
+        : {}),
       ...(entry.description === undefined
         ? {}
         : { description: requireString(file, entry, "description") }),
@@ -419,12 +440,51 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
   if (params.filter((p) => p.hostEntry).length > 1) {
     throw new ValueTypeEntryError(file, "at most one parameter may declare 'hostEntry'");
   }
+  if (params.filter((p) => p.hostMediaType).length > 1) {
+    throw new ValueTypeEntryError(file, "at most one parameter may declare 'hostMediaType'");
+  }
   for (const bound of VALUE_TYPE_BOUNDS) {
     if (params.filter((p) => p.bound === bound).length > 1) {
       throw new ValueTypeEntryError(file, `at most one parameter may declare 'bound: ${bound}'`);
     }
   }
   return params;
+}
+
+/** A media type as RFC 6838 spells one, in lower case. */
+const MEDIA_TYPE_TOKEN = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
+/** A signature: lower-case hex byte pairs, `??` standing for any byte. */
+const SIGNATURE_PATTERN = /^(?:[0-9a-f]{2}|\?\?)+$/;
+
+function readSignatures(file: string, i: number, raw: unknown): Record<string, MediaSignature[]> {
+  const at = `parameters[${i}].signatures`;
+  if (!isPlainObject(raw) || Object.keys(raw).length === 0) {
+    throw new ValueTypeEntryError(file, `${at} must be a non-empty mapping of media types to signatures`);
+  }
+  const out: Record<string, MediaSignature[]> = {};
+  for (const [mediaType, patterns] of Object.entries(raw)) {
+    if (!MEDIA_TYPE_TOKEN.test(mediaType)) {
+      throw new ValueTypeEntryError(file, `${at} key '${mediaType}' is not a lower-case media type (type/subtype)`);
+    }
+    if (!Array.isArray(patterns) || patterns.length === 0) {
+      throw new ValueTypeEntryError(file, `${at}.${mediaType} must be a non-empty sequence of signatures`);
+    }
+    out[mediaType] = patterns.map((pattern) => {
+      if (typeof pattern !== "string" || !SIGNATURE_PATTERN.test(pattern) || /^(?:\?\?)+$/.test(pattern)) {
+        throw new ValueTypeEntryError(
+          file,
+          `${at}.${mediaType} signature ${JSON.stringify(pattern)} must be lower-case hex byte pairs, '??' for any byte, at least one byte fixed`,
+        );
+      }
+      const bytes: (number | null)[] = [];
+      for (let k = 0; k < pattern.length; k += 2) {
+        const pair = pattern.slice(k, k + 2);
+        bytes.push(pair === "??" ? null : parseInt(pair, 16));
+      }
+      return bytes;
+    });
+  }
+  return out;
 }
 
 /**
@@ -538,6 +598,9 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
   const parameters = readParameters(file, data.parameters);
   if (parameters.some((p) => p.hostEntry) && data.fromHost === undefined) {
     throw new ValueTypeEntryError(file, "'hostEntry' belongs to a parameter of a type declaring 'fromHost'");
+  }
+  if (parameters.some((p) => p.hostMediaType) && data.fromHost === undefined) {
+    throw new ValueTypeEntryError(file, "'hostMediaType' belongs to a parameter of a type declaring 'fromHost'");
   }
   if (
     parameters.some((p) => p.bound !== undefined) &&
@@ -746,8 +809,8 @@ export function readValueTypeSlot(schema: unknown): ValueTypeSlot | undefined {
     const args: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(raw)) {
       if (key === "name") continue;
-      // A host-entry argument is a token and a bound a written value, never a schema.
-      if (entry?.parameters.some((p) => (p.hostEntry || p.bound) && p.name === key)) {
+      // A host-entry or media-type argument is a token and a bound a written value, never a schema.
+      if (entry?.parameters.some((p) => (p.hostEntry || p.hostMediaType || p.bound) && p.name === key)) {
         args[key] = value;
         continue;
       }
@@ -776,6 +839,58 @@ export function hostEntryOf(schema: unknown): HostEntryKind | undefined {
   const parameter = hostEntryParameter(slot);
   const token = parameter ? slot!.args[parameter.name] : undefined;
   return (HOST_ENTRY_KINDS as readonly unknown[]).includes(token) ? (token as HostEntryKind) : undefined;
+}
+
+/** The host-media-type parameter of a slot's declared type, when it has one. */
+export function hostMediaTypeParameter(slot: ValueTypeSlot | undefined): ValueTypeParameter | undefined {
+  return slot?.entry?.parameters.find((p) => p.hostMediaType);
+}
+
+/** The media type a host-path slot says its file holds, or undefined when it says
+ *  nothing (or names one with no signature, which `X_TELO_TYPE_ARGUMENT_INVALID`
+ *  reports). */
+export function hostMediaTypeOf(schema: unknown): string | undefined {
+  const slot = readValueTypeSlot(schema);
+  const parameter = hostMediaTypeParameter(slot);
+  const token = parameter ? slot!.args[parameter.name] : undefined;
+  return typeof token === "string" && Object.hasOwn(parameter!.signatures!, token) ? token : undefined;
+}
+
+/** How many leading bytes decide every media type of every value type: what a
+ *  reader of a file's head reads. */
+export const HOST_MEDIA_HEAD_LENGTH: number = Math.max(
+  0,
+  ...[...VALUE_TYPES.values()].flatMap((entry) =>
+    entry.parameters.flatMap((p) => Object.values(p.signatures ?? {}).flat().map((signature) => signature.length)),
+  ),
+);
+
+function carries(head: Uint8Array, signatures: readonly MediaSignature[]): boolean {
+  return signatures.some(
+    (signature) =>
+      head.length >= signature.length && signature.every((byte, i) => byte === null || head[i] === byte),
+  );
+}
+
+/** A file's head that does not carry the media type its slot declares. */
+export interface HostMediaTypeMismatch {
+  readonly declared: string;
+  /** The media type of the slot's vocabulary the head does carry, or undefined
+   *  when it carries none of them. */
+  readonly found: string | undefined;
+}
+
+/**
+ * Judge a file's leading bytes against the media type a host-path node declares:
+ * undefined when it declares none or the head carries it, else what was found.
+ */
+export function hostMediaTypeMismatch(schema: unknown, head: Uint8Array): HostMediaTypeMismatch | undefined {
+  const declared = hostMediaTypeOf(schema);
+  if (declared === undefined) return undefined;
+  const signatures = hostMediaTypeParameter(readValueTypeSlot(schema))!.signatures!;
+  if (carries(head, signatures[declared]!)) return undefined;
+  const found = Object.keys(signatures).find((mediaType) => carries(head, signatures[mediaType]!));
+  return { declared, found };
 }
 
 /** The entry a schema node declares, or undefined. The common read. */

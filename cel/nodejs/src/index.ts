@@ -14,7 +14,7 @@
 export { parseExpression, resolvedUnder } from "./cel-expression.js";
 export type { CelExpression, ParseExpressionOptions } from "./cel-expression.js";
 
-export { MAX_INT, MAX_UINT, MIN_INT } from "./lexer.js";
+export { MAX_INT, MAX_UINT, MIN_INT, quotedLiteralEnd } from "./lexer.js";
 
 export {
   CelNamespaceError,

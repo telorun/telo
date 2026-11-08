@@ -1,0 +1,9 @@
+kind: Telo.Library
+metadata:
+  name: HostPathMediaTypeLib
+  version: 1.0.0
+  description: Fixture library taking the path of a PNG logo from its importer.
+variables:
+  logo:
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png }

@@ -112,7 +112,7 @@ async function resolveSentinel(
 /** A `!module-path` names a location, so resolving it reads nothing: it becomes
  *  the absolute path of the file or directory once the module's files are on
  *  disk, which is what a `Telo.HostPath` slot holds. */
-async function resolveModulePath(
+export async function resolveModulePath(
   sentinel: TaggedSentinel,
   moduleSource: string,
   lookup: ModuleFileLookup,

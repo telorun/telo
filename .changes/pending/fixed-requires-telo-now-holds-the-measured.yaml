@@ -1,0 +1,7 @@
+modules:
+  modules/auth: Fixed
+  modules/http-dispatch: Fixed
+  modules/http-server: Fixed
+  modules/web-search: Fixed
+body: "`requires.telo` now holds the measured floor: the lowest published telo that
+  reads this module."

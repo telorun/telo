@@ -130,6 +130,12 @@ describe("the literal grammar", () => {
       refusal("`a`"),
       refusal("rb'x'"),
       refusal("`a"),
+      refusal("'a\rb'"),
+      refusal("b'a\rb'"),
+      refusal("`a\rb`"),
+      refusal("a.`b\rc`"),
+      refusal("1 + 'a\rb'"),
+      refusal("'a\r\nb'"),
     ]).toEqual([
       { code: "unterminated_string", range: [0, 4] },
       { code: "unterminated_string", range: [0, 2] },
@@ -142,6 +148,12 @@ describe("the literal grammar", () => {
       { code: "bytes_unicode_escape", range: [2, 4] },
       { code: "unexpected_token", range: [0, 3] },
       { code: "unexpected_token", range: [2, 5] },
+      { code: "unterminated_string", range: [0, 2] },
+      { code: "unterminated_string", range: [0, 2] },
+      { code: "unterminated_string", range: [1, 3] },
+      { code: "unterminated_string", range: [0, 4] },
+      { code: "unterminated_string", range: [2, 6] },
+      { code: "unterminated_string", range: [4, 6] },
       { code: "unterminated_string", range: [0, 2] },
     ]);
   });
@@ -185,6 +197,19 @@ describe("the literal grammar", () => {
       { code: "invalid_escape_sequence", message, range: [1, 4] },
       { code: "invalid_escape_sequence", message, range: [2, 5] },
       { code: "invalid_escape_sequence", message, range: [2, 5] },
+    ]);
+  });
+
+  it("ends a single-line raw literal at a carriage return, a backslash before it or not", () => {
+    expect([diagnosed("r'a\\\rb'"), diagnosed("br'a\\\rb'"), diagnosed('"a\\\rb"')]).toEqual([
+      { code: "unterminated_string", message: "unterminated string", range: [1, 4] },
+      { code: "unterminated_string", message: "unterminated string", range: [2, 5] },
+      { code: "invalid_escape_sequence", message: "\\\r is not an escape sequence", range: [2, 4] },
+    ]);
+    // Triple-quoted: a carriage return is held as written, and a raw backslash takes it.
+    expect([literalOf("'''a\rb'''"), literalOf("r'''a\\\rb'''")]).toEqual([
+      { type: "string", value: "a\rb" },
+      { type: "string", value: "a\\\rb" },
     ]);
   });
 

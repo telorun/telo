@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: ParameterPathConsumer
+  version: 1.0.0
+  description: A library's need parameter written !module-path reaches the kind opening the need as the file's absolute path.
+imports:
+  Assert: ../../../../../modules/assert
+  Lib: { source: ./lib, needs: { printer: { device: lp0 } } }
+targets:
+  - !ref verify
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.Lib.labeler.logo"
+      expected: !module-path lib/logo.png

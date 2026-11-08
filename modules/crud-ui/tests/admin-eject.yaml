@@ -157,8 +157,7 @@ kind: Ui.Filters
 metadata: { name: taskFilters }
 presentation: !ref taskPresentation
 policy:
-  show: chosen
-  summary: chips
+  placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
   state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
 content: { type: composite, ref: !ref taskListing }
 ---
@@ -203,8 +202,7 @@ with:
                     kind: CrudUi.Admin
                     source: !ref tasksSource
                     filters:
-                      show: chosen
-                      summary: chips
+                      placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
                       state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
                     create: { surface: { kind: Ui.Drawer, side: end }, afterSubmit: again }
                     edit: { surface: { kind: Ui.Panel, address: { name: task } }, unsaved: confirm }
@@ -233,11 +231,8 @@ with:
                     kind: CrudUi.Admin
                     source: !ref tasksSource
                     filters:
-                      show: chosen
-                      placement: { kind: Ui.CollapsiblePlacement, open: true }
-                      controls: chips
+                      placement: { kind: Ui.CollapsiblePlacement, open: true, show: chosen, controls: chips, summary: chips }
                       apply: button
-                      summary: chips
                       state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
                     create:
                       surface: !ref sharedDrawer
@@ -295,11 +290,8 @@ with:
                     kind: Ui.Filters
                     presentation: !ref plainPresentation
                     policy:
-                      show: chosen
-                      placement: { kind: Ui.CollapsiblePlacement, open: true }
-                      controls: chips
+                      placement: { kind: Ui.CollapsiblePlacement, open: true, show: chosen, controls: chips, summary: chips }
                       apply: button
-                      summary: chips
                       state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
                     content:
                       type: composite
@@ -378,7 +370,7 @@ steps:
         shown:
           children: !cel "steps.generatedShown.result.body.children"
           digest: !cel "steps.generatedShown.result.body.digest"
-          drawn: !cel "steps.generatedShown.result.body.children.map(c, [c.content.create.surface.type, c.content.edit.surface.type, c.show, c.content.paging, c.content.layout.columns.map(l, l.value.path[0]), c.content.compact.type])"
+          drawn: !cel "steps.generatedShown.result.body.children.map(c, [c.content.create.surface.type, c.content.edit.surface.type, c.placement.show, c.content.paging, c.content.layout.columns.map(l, l.value.path[0]), c.content.compact.type])"
       expected:
         empty: { children: !cel "steps.writtenEmpty.result.body.children", digest: !cel "steps.writtenEmpty.result.body.digest" }
         one: { children: !cel "steps.writtenOne.result.body.children", digest: !cel "steps.writtenOne.result.body.digest" }
@@ -393,15 +385,12 @@ steps:
   - name: verifyMembers
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "[steps.generated, steps.generatedEmpty, steps.generatedOne, steps.generatedAll].map(s, s.result.body.children.map(c, {'bar': {'show': c.show, 'placement': c.placement, 'controls': c.controls, 'apply': c.apply, 'summary': c.summary, 'state': c.state}, 'paging': c.content.paging, 'create': {'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})[0])"
+      actual: !cel "[steps.generated, steps.generatedEmpty, steps.generatedOne, steps.generatedAll].map(s, s.result.body.children.map(c, {'bar': {'placement': c.placement, 'apply': c.apply, 'state': c.state}, 'paging': c.content.paging, 'create': {'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})[0])"
       expected:
         - &defaults
           bar:
-            show: all
-            placement: { type: above }
-            controls: direct
+            placement: { type: above, show: all, controls: direct, summary: none }
             apply: commit
-            summary: none
             state: { address: false, store: { type: memory }, fields: [text, isDone, status, dueOn] }
           paging: pages
           create: &opener
@@ -415,21 +404,15 @@ steps:
           edit: *opener
         - *defaults
         - bar:
-            show: all
-            placement: { type: above }
-            controls: direct
+            placement: { type: above, show: all, controls: direct, summary: none }
             apply: commit
-            summary: none
             state: { address: false, store: { type: memory }, fields: [text, isDone, status, dueOn] }
           paging: pages
           create: { surface: *dialog, afterSubmit: again, unsaved: confirm }
           edit: *opener
         - bar:
-            show: chosen
-            placement: { type: collapsible, open: true }
-            controls: chips
+            placement: { type: collapsible, open: true, show: chosen, controls: chips, summary: chips }
             apply: button
-            summary: chips
             state: { key: tasks, address: true, store: { type: local }, fields: [text, isDone, status, dueOn] }
           paging: pages
           create:
