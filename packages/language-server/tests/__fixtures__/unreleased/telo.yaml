@@ -1,0 +1,15 @@
+kind: Telo.Library
+metadata:
+  name: Unreleased
+  version: 1.0.0
+requires:
+  telo: ">=unreleased"
+exports:
+  kinds: [Entry]
+---
+kind: Telo.Definition
+metadata:
+  name: Entry
+capability: Telo.Runnable
+schema:
+  type: object

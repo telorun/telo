@@ -55,6 +55,8 @@ export interface Expectation {
   focus?: Target;
   /** The focus is inside this. */
   focusWithin?: Target;
+  /** The element with the focus names this one as its active descendant; `null`, none. */
+  activeDescendant?: Target | null;
   present?: Target[];
   absent?: Target[];
   attributes?: { of: Target; name: string; value: string | null }[];
@@ -384,6 +386,17 @@ function expectations(expectation: Expectation, session: Session, intents: unkno
     const around = candidates(expectation.focusWithin, session)[expectation.focusWithin.index ?? 0];
     if (!around || !around.contains(document.activeElement)) {
       problem(`the focus is on ${focusName(document.activeElement)}, not inside ${describe(expectation.focusWithin)}`);
+    }
+  }
+  if (expectation.activeDescendant !== undefined) {
+    const named = document.activeElement?.getAttribute("aria-activedescendant") ?? null;
+    if (expectation.activeDescendant === null) {
+      if (named !== null) problem(`the focus is on ${focusName(document.activeElement)}, which names '${named}' as its active descendant, not none`);
+    } else {
+      const wanted = candidates(expectation.activeDescendant, session)[expectation.activeDescendant.index ?? 0];
+      if (!wanted || named === null || wanted.id !== named) {
+        problem(`the focus is on ${focusName(document.activeElement)}, which names ${named === null ? "no active descendant" : `'${named}'`}, not ${describe(expectation.activeDescendant)}`);
+      }
     }
   }
   for (const target of expectation.present ?? []) if (candidates(target, session).length === 0) problem(`nothing is drawn as ${describe(target)}`);

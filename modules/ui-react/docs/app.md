@@ -503,6 +503,35 @@ of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
 - A filter under `absent` is a switch: on sends `<property>.absent=true`, off
   sends nothing. Two filters on one property are captioned by operator, the
   `absent` one with `operatorAbsent` (`Manager is`, `Manager not set`).
+- A bar with a search draws it first, in the placements that draw controls: a
+  typed box labelled by the text `searchFilter`. It is held under `search` in
+  the bar's state (`_telo.f.<key>.search` in the address), sent as `search=<text>`,
+  and follows `apply`, Reset, defaults and `pinned` as any filter does; under
+  `summary: chips` it is a chip worded by `searchChip`. A preset that sets a
+  `search` is active exactly while the bar holds that search and the preset's
+  values. A bar reads `show`, `controls` and `summary` from the placement it
+  draws — its `compact` one below the breakpoint. A placement this renderer
+  does not draw is drawn as the bar above the content.
+- `Ui.SearchBoxPlacement` is drawn as one `search-box`: a chip (`search-token`)
+  for the search and for each filter holding a value, in the bar's order,
+  then the `search-input` — the [`Combobox`](controls-abi.md#combobox) control,
+  so a theme set's layer stack draws the list too. The list is sectioned:
+  presets and fields for an empty box; for typed text the search
+  (`searchChip`), a `filterChip` entry per field the text can be a value for
+  and the fields it begins; after a field prefix (`status:`) that field's
+  values, checkable under `in` with the held ones checked. A relation's
+  records come through its `search` after the typing pause, and under
+  `values: present` only the values the facet request answers, with counts, under
+  the bar's search. Text of the form `<property><operator><value>` is read
+  as a token by the [typed-token conformance rows](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/):
+  Enter commits it as one chip that replaces what its filter held. One that
+  cannot be a value stays as text, with `data-reason` on the `search-box`,
+  and sends nothing. The focus never leaves the input: arrows move the
+  highlight (the first entry starts highlighted), Enter takes it, Escape
+  closes the list, and Backspace in an empty box removes the last chip, which
+  clears that filter or the search. Presets and fields are offered in the list,
+  so no `filters-presets` is drawn; under `apply: button` the Apply button
+  stands beside the box.
 - Edit, delete and the pager are icon buttons; each is named for a screen
   reader and shows that name on hover and on keyboard focus.
 - A value whose model property declares `format: uri` or `uri-reference` is

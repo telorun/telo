@@ -1,0 +1,7 @@
+modules:
+  modules/ui-react: Added
+body: "Draws Ui.SearchBoxPlacement as one search box on the Combobox control: chips
+  before the input, sectioned suggestions (presets and fields, the search and a filter
+  per field the text can be a value for, a field's values with counts and a relation's
+  records), keyboard selection with the focus kept in the input, and typed tokens such
+  as status:draft,review or publishedOn>=2026-11-01."

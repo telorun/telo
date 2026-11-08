@@ -35,3 +35,47 @@ it("emits telo/requirements for an analysed owner", async () => {
     ],
   });
 });
+
+it("reports a module at >=unreleased with a lower edge no released version meets", async () => {
+  const host = new HarnessHost();
+  await host.start();
+  const owner = join(FIXTURES, "unreleased", "telo.yaml");
+  host.open(owner);
+  await host.until(
+    () => host.notifications.some((n) => n.method === "telo/requirements"),
+    "telo/requirements",
+  );
+  const params = host.notifications.find((n) => n.method === "telo/requirements")!.params;
+  expect(params.ranges).toEqual([
+    {
+      module: canonical(owner),
+      text: ">=unreleased",
+      interval: { min: { version: "999999.0.0", inclusive: true } },
+    },
+  ]);
+});
+
+it("reports a dependency's load range narrowed by its own restriction, and gates the pin on it", async () => {
+  const host = new HarnessHost();
+  await host.start();
+  const owner = join(FIXTURES, "restricted", "app", "telo.yaml");
+  host.open(owner);
+  await host.until(
+    () => host.notifications.some((n) => n.method === "telo/requirements"),
+    "telo/requirements",
+  );
+  const params = host.notifications.find((n) => n.method === "telo/requirements")!.params;
+  expect(params.ranges).toEqual([
+    {
+      module: canonical(join(FIXTURES, "restricted", "lib", "telo.yaml")),
+      text: ">=0.1.0 <0.2.0",
+      interval: {
+        min: { version: "0.1.0", inclusive: true },
+        max: { version: "0.2.0", inclusive: false },
+      },
+    },
+  ]);
+  await host.published(owner);
+  const codes = [...host.diagnostics().values()].flat().map((d) => d.code);
+  expect(codes).toContain("MODULE_REQUIRES_OLDER_RUNTIME");
+});

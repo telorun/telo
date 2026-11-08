@@ -22,6 +22,16 @@ class AiEchoModelStream extends EchoBase implements ResourceInstance, AiModelStr
     if (this.resource.echoProviderState) {
       yield { type: "provider-state", providerState: { received: input.providerState ?? null } };
     }
+    const reply = this.scriptedReply(input);
+    if (reply) {
+      // One delta per line, so a block arrives as it is written.
+      for (const line of reply.text.split(/(?<=\n)/)) {
+        if (line !== "") yield { type: "text-delta", delta: line };
+      }
+      for (const toolCall of reply.toolCalls) yield { type: "tool-call", toolCall };
+      yield { type: "finish", usage: this.usage, finishReason: reply.finishReason };
+      return;
+    }
     if (this.shouldCallTool(input)) {
       // A call told to answer without a tool still gets its text here, before the
       // tool call the fixture returns regardless.

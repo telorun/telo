@@ -11,15 +11,10 @@ metadata:
     and each layer holds only its current statements. A layer overrides or hides
     what the layers beneath it state, writes take effect at once, and multi-hop
     traversals across layers run as one query.
-requires:
-  # The node and relationship kinds write `x-telo-schema-projection-from` on the
-  # kind document, the relationship kind in its object form (`{ from, omit }`).
-  # 0.104.0 checks this file clean but reads neither kind as projecting, so a graph
-  # operation over a layered relationship type is refused at dispatch
-  # (SCHEMA_PROJECTION_FROM_UNRESOLVED / ERR_SCHEMA_PROJECTION_UNRESOLVED).
-  # Verified by execution (`run` of the layered suite) against 0.104.0; 0.105.0
-  # and 0.113.0 run it whole.
-  telo: ">=0.105.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.105.0" }
+    reason: "Before 0.105.0, its kinds write `x-telo-schema-projection-from`, which 0.104.0 does not read as projecting, so a graph operation typed from them is refused at dispatch (ERR_SCHEMA_PROJECTION_UNRESOLVED)."
 imports: { GraphLayersSql: ../graph-layers-sql, SQLite: ../sqlite }
 exports: { kinds: [NodeTable, RelationshipTable, Node, Relationship, Store] }
 ---

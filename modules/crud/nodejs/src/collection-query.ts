@@ -26,6 +26,8 @@ export interface AcceptedQuery {
   sort: { property: string }[];
   /** Absent: no property is faceted. */
   facets?: { property: string }[];
+  /** Absent: a request carries no `search`. */
+  search?: { properties: string[] };
 }
 
 /** What a caller asks for, before anything in it has been judged. */
@@ -34,6 +36,8 @@ export interface QueryInputs {
   sort?: { property: string; direction?: string }[];
   /** The property whose present values are asked for instead of rows. */
   facet?: unknown;
+  /** One text looked for in the declared search properties. */
+  search?: unknown;
   limit?: unknown;
   cursor?: unknown;
 }
@@ -50,9 +54,16 @@ export interface Sort {
   descending: boolean;
 }
 
+/** A text and the string properties any of which may contain it. */
+export interface Search {
+  properties: ModelProperty[];
+  text: string;
+}
+
 /** A request every part of which is a declared filter or sort with a typed value. */
 export interface CollectionQuery {
   filters: Filter[];
+  search?: Search;
   sort: Sort;
   limit: number;
   /** The row the page starts after. */
@@ -62,6 +73,7 @@ export interface CollectionQuery {
 /** A request for one property's present values, with counts, under the filters. */
 export interface FacetQuery {
   filters: Filter[];
+  search?: Search;
   property: ModelProperty;
   limit: number;
   /** The value the page starts after. */
@@ -143,6 +155,25 @@ function readFilters(properties: Map<string, ModelProperty>, accepted: AcceptedQ
   return filters;
 }
 
+/** The request's `search`, refused where the collection declares none. */
+function readSearch(
+  properties: Map<string, ModelProperty>,
+  accepted: AcceptedQuery,
+  inputs: QueryInputs,
+  issues: ValueIssue[],
+): Search | undefined {
+  if (inputs.search === undefined || inputs.search === null) return undefined;
+  const declared = accepted.search?.properties.map((name) => properties.get(name)).filter((p) => p !== undefined);
+  if (!declared || declared.length === 0) {
+    issues.push(issueAt("search", "additionalProperties", { additionalProperty: "search" }));
+  } else if (typeof inputs.search !== "string") {
+    issues.push(issueAt("search", "type", { type: "string" }));
+  } else {
+    return { properties: declared, text: inputs.search };
+  }
+  return undefined;
+}
+
 function readLimit(inputs: QueryInputs, issues: ValueIssue[]): number {
   const limit = inputs.limit === undefined || inputs.limit === null ? DEFAULT_LIMIT : integerInput(inputs.limit);
   if (limit === undefined || limit < 1 || limit > MAX_LIMIT) {
@@ -179,6 +210,7 @@ export function planQuery(
 ): CollectionQuery {
   const issues: ValueIssue[] = [];
   const filters = readFilters(properties, accepted, inputs, issues);
+  const search = readSearch(properties, accepted, inputs, issues);
 
   const key = properties.get(KEY)!;
   let sort: Sort = { property: key, descending: false };
@@ -211,7 +243,7 @@ export function planQuery(
   }
 
   refuseIfAny(issues);
-  return { filters, sort, limit, ...(after ? { after } : {}) };
+  return { filters, ...(search ? { search } : {}), sort, limit, ...(after ? { after } : {}) };
 }
 
 /**
@@ -226,6 +258,7 @@ export function planFacet(
 ): FacetQuery {
   const issues: ValueIssue[] = [];
   const filters = readFilters(properties, accepted, inputs, issues);
+  const search = readSearch(properties, accepted, inputs, issues);
 
   const named = typeof inputs.facet === "string" ? inputs.facet : undefined;
   const faceted = facetable(properties, accepted);
@@ -252,7 +285,7 @@ export function planFacet(
   }
 
   refuseIfAny(issues);
-  return { filters, property: property!, limit, ...(after ? { after } : {}) };
+  return { filters, ...(search ? { search } : {}), property: property!, limit, ...(after ? { after } : {}) };
 }
 
 /** What a facet request may name. */

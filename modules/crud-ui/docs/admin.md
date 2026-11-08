@@ -8,7 +8,7 @@ confirmed delete on every record.
 | --- | --- | --- |
 | `source` | required | a `CrudUi.CollectionSource`: the [`Crud.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) and the `basePath` its [`Crud.Api`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) is served at |
 | `relations` | optional | how each related record is read, labelled and searched, keyed by a property the collection relates: `{ source, label, hint?, href?, search?, pageSize? }`, as on a [collection presentation](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) |
-| `filters` | optional | how the filter bar behaves — a [filter policy](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): `show`, `placement`, `controls`, `apply`, `summary`, `state` |
+| `filters` | optional | how the filter bar behaves — a [filter policy](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): `placement` (which carries `show`, `controls` and `summary`), `apply`, `state` |
 | `create` | optional | how the create form opens: `surface` (a [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) kind), `afterSubmit` (`close` \| `again` \| `keep`), `unsaved` (`confirm` \| `discard`) |
 | `edit` | optional | how the edit form opens: the same three, with `afterSubmit` `close` \| `keep` |
 | `paging` | optional | how further pages are reached: `pages`, `more` or `scroll` ([the listing](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)) |
@@ -94,8 +94,7 @@ kind: CrudUi.Admin
 metadata: { name: taskScreen }
 source: !ref tasksSource
 filters:
-  show: chosen
-  summary: chips
+  placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
   state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
 create:
   surface: { kind: Ui.Drawer, side: end }
@@ -115,7 +114,7 @@ compact:
   content: { type: value, value: !cel "row.text" }
 ```
 
-- `filters` is the bar's whole policy, handed to it as written.
+- `filters` is the bar's whole policy, handed to it as written: `show`, `controls` and `summary` are written on its `placement`. Writing neither `fields` nor `search`, the bar searches when the collection declares `query.search`, with `state.fields` able to list `search`.
 - `create` and `edit` each name the surface their form opens in, what the form
   does once its record is saved, and whether leaving unsaved input asks first.
 - `paging`, `layout` and `compact` are handed to the listing as written. A
@@ -152,7 +151,8 @@ module depends on no renderer.
   identifies a record and is not shown.
 - The filter bar shows one control per entry of the collection's
   `query.filters`, in that order and with that operator, drawn from the
-  collection's `model`. A column sorts where `query.sort` lists its property.
+  collection's `model`, preceded by a search over the properties its
+  `query.search` lists, when it declares one. A column sorts where `query.sort` lists its property.
   So the screen offers exactly the queries the API accepts.
 - Create sends `POST <basePath>` and returns to the first page.
 - Edit reads the record from `GET <basePath>/<id>`, opens its form filled from
@@ -214,8 +214,7 @@ kind: Ui.Filters
 metadata: { name: taskFilters }
 presentation: !ref taskPresentation
 policy:
-  show: chosen
-  summary: chips
+  placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
   state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
 content: { type: composite, ref: !ref taskListing }
 ```

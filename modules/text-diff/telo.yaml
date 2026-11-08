@@ -6,12 +6,12 @@ metadata:
   license: MIT
   categories: [Data]
   description: >-
-    Compare two texts line by line: how many lines were added and removed, and the
-    changes grouped into hunks with surrounding context — a unified diff as
-    structured data rather than text. For showing what an edit changed, summarizing
-    a change set or reviewing generated text. Inputs over a size limit are reported
-    as not comparable instead of being diffed.
-exports: { kinds: [LineDiff], resources: [lineDiff] }
+    Compare two texts line by line, or apply a SEARCH/REPLACE patch to a text. A line
+    diff returns the lines added and removed, grouped into hunks with context, as
+    data. A patch applies its sections in order, each matching exactly once, and a
+    refusal names the failing section. For reviewing generated text, showing what an
+    edit changed, or applying model-written edits.
+exports: { kinds: [LineDiff, ApplyPatch], resources: [lineDiff, applyPatch] }
 ---
 kind: Telo.Definition
 metadata:
@@ -115,3 +115,69 @@ metadata:
   description: >-
     Line diff of two texts with three lines of context around each change, for
     texts of up to 256 KiB each; a larger one is reported as not comparable.
+---
+kind: Telo.Definition
+metadata:
+  name: ApplyPatch
+  description: >-
+    Applies SEARCH/REPLACE edit sections to a text: each section replaces the one
+    exact match of its search text, in order. Returns the patched text, or why the
+    patch was refused — the code, the failing section and, when a search matched
+    more than once, the lines it matched. A patch that does not apply is a returned
+    result, never an error, and no partial text is returned.
+capability: Telo.Callable
+deterministic: true
+params:
+  - { name: text, schema: { type: string } }
+  - { name: patch, schema: { type: string } }
+returns:
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ applied, text, code, section, lines ]
+    properties:
+      applied:
+        description: True when every section applied. The other fields are then null.
+        type: boolean
+      text:
+        description: The patched text. Null when `applied` is false.
+        type: [ string, "null" ]
+      code:
+        description: Why the patch was refused. Null when `applied` is true.
+        type: [ string, "null" ]
+        enum: [ EDIT_BLOCK_MALFORMED, EDIT_SECTION_ABSENT, EDIT_SECTION_AMBIGUOUS, null ]
+      section:
+        description: >-
+          1-based number of the refused section. Null when the patch as a whole is
+          malformed or over the limit, and when `applied` is true.
+        type: [ integer, "null" ]
+        minimum: 1
+      lines:
+        description: >-
+          1-based line of every match of an ambiguous section, in the text the earlier
+          sections left. Null otherwise.
+        type: [ array, "null" ]
+        items: { type: integer, minimum: 1 }
+controllers: [pkg:telo/local/js?path=./nodejs/text-diff.mjs&local_path=./nodejs/src/index.ts#ApplyPatch]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    maxInputBytes:
+      title: Max input bytes
+      description: >-
+        The most UTF-8 bytes the text and the patch each may hold. A larger one is
+        refused as malformed without being applied.
+      type: integer
+      minimum: 0
+      default: 262144
+  examples:
+    - { maxInputBytes: 262144 }
+---
+kind: Self.ApplyPatch
+metadata:
+  name: applyPatch
+  description: >-
+    Applies SEARCH/REPLACE edit sections to a text of up to 256 KiB, returning the
+    patched text or the refusal with its code and failing section; a larger input
+    is refused as malformed.

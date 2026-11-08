@@ -10,19 +10,12 @@ metadata:
     application's own data, so a job can be enqueued in the same transaction as
     the rows it is about. Workers poll for messages, with leases, retries with
     backoff, delayed delivery, deduplication by id and per-group ordering.
-requires:
-  # The table kind's duplicate-name rule binds `coReferrers:`, which an older
-  # analyzer evaluates unbound and reports as a defect in this module (verified
-  # with 0.128.0). Forward-declared: 0.129.0 is the release that carries the
-  # binding.
-  telo: ">=0.129.0"
-imports:
-  QueueSql: ../queue-sql
-  SQLite: ../sqlite
-exports:
-  kinds:
-    - Table
-    - Queue
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.129.0" }
+    reason: "Before 0.129.0, the table kind's duplicate-name rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module."
+imports: { QueueSql: ../queue-sql, SQLite: ../sqlite }
+exports: { kinds: [Table, Queue] }
 ---
 # QueueSqlite.Table — a `SQLite.Table` holding the messages of every queue that
 # names it. The author names only the physical table; every column and index is
@@ -48,7 +41,7 @@ schema:
   additionalProperties: false
   required: [table]
   examples:
-    - table: queue_messages
+    - { table: queue_messages }
   properties:
     table:
       title: Table
@@ -127,8 +120,7 @@ metadata:
     and can be delivered in order per group.
 capability: Telo.Provider
 extends: QueueSql.Queue
-controllers:
-  - pkg:telo/local/js?path=./nodejs/queue-sqlite.mjs&local_path=./nodejs/src/index.ts#Queue
+controllers: [pkg:telo/local/js?path=./nodejs/queue-sqlite.mjs&local_path=./nodejs/src/index.ts#Queue]
 # Narrows the three storage slots to this engine's own kinds; `name`,
 # `messageType`, `maxMessageBytes`, `retention` and `groupBy` are the abstract's,
 # merged in unchanged.
@@ -149,20 +141,14 @@ schema:
       description: >-
         The connection the queue's table lives on, and the one a transactional
         enqueue must run inside a transaction of.
-      x-telo-ref:
-        kind: SQLite.Connection
-        use: dependency
+      x-telo-ref: { kind: SQLite.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
         The schema that lists the queue's table, on the same connection. It
         creates and migrates the table; the queue issues no DDL.
-      x-telo-ref:
-        kind: SQLite.Schema
-        use: dependency
+      x-telo-ref: { kind: SQLite.Schema, use: dependency }
     table:
       title: Table
       description: The table the messages are stored in.
-      x-telo-ref:
-        kind: Self.Table
-        use: dependency
+      x-telo-ref: { kind: Self.Table, use: dependency }

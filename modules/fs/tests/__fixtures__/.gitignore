@@ -9,3 +9,5 @@
 !.gitignore
 !write-content-literal.yaml
 !write-max-bytes-negative.yaml
+!copy-with-link/
+!copy-with-link/**

@@ -21,6 +21,8 @@
 //! when the left decides, and otherwise answer the decided value, else the left error,
 //! else the right; `?:` answers an erroring condition and evaluates only the chosen
 //! branch; a namespaced function is looked up before any of its arguments is evaluated.
+//! A namespaced function's host failure is not an operand: it ends the run where it is
+//! raised.
 //!
 //! A compile refusal is a [`CelCompileError`] with Node's text, raised at the first node
 //! Node's compiler refuses, in its order.
@@ -48,12 +50,13 @@ use crate::comprehension_runtime::{filter_verdict, ComprehensionFold, Comprehens
 use crate::declared_chain::split_declared_chain;
 use crate::macro_check::is_macro_call;
 use crate::member_read::cel_iterable;
-use crate::runtime_library::{optional_of_non_zero, CelCallContext, CelImplementation};
+use crate::backend_runtime::{HostFailure, NamespaceImplementation};
+use crate::runtime_library::{optional_of_non_zero, CelCallContext};
 use crate::signature::CallForm;
 use crate::syntax_tree::{CelBinaryOperator, CelNode, CelReceiverCallNode, CelSelectNode};
 
 /// What a namespaced call is dispatched through for one evaluation.
-pub(crate) type NamespaceDispatch<'a> = &'a dyn Fn(&str, &str) -> Option<CelImplementation>;
+pub(crate) type NamespaceDispatch<'a> = &'a dyn Fn(&str, &str) -> Option<NamespaceImplementation>;
 
 /// One step of a program. A `target` is the index of the instruction to go on at.
 enum Instruction {
@@ -625,18 +628,19 @@ struct Frame {
 
 const NO_FRAME: &str = "a comprehension step runs inside its frame";
 
-/// Runs a compiled tree: the value, or the error value that survived to the top.
+/// Runs a compiled tree: the value, or the error value that survived to the top — or the
+/// host failure a namespaced function answered, which ends the run where it is raised.
 pub(crate) fn run(
     tree: &CompiledTree,
     snapshot: &EnvironmentSnapshot,
     activation: &dyn CelActivation,
     namespace_function: Option<NamespaceDispatch<'_>>,
-) -> CelValue {
+) -> Result<CelValue, HostFailure> {
     let code = &tree.instructions;
     let mut stack: Vec<CelValue> = Vec::with_capacity(8);
     let mut slots: Vec<CelValue> = vec![CelValue::Null; tree.slots];
     let mut frames: Vec<Frame> = Vec::new();
-    let mut bound: Vec<CelImplementation> = Vec::new();
+    let mut bound: Vec<NamespaceImplementation> = Vec::new();
     let mut pc = 0;
     while pc < code.len() {
         let mut next = pc + 1;
@@ -757,7 +761,7 @@ pub(crate) fn run(
             Instruction::CallBound { count, range } => {
                 let implementation = bound.pop().expect("a namespaced call's function was bound");
                 let at = stack.len() - count;
-                let answer = implementation(&CelCallContext { range: Some(*range) }, &stack[at..]);
+                let answer = implementation(&CelCallContext { range: Some(*range) }, &stack[at..])?;
                 stack.truncate(at);
                 stack.push(answer);
             }
@@ -868,7 +872,7 @@ pub(crate) fn run(
         pc = next;
     }
     debug_assert!(frames.is_empty() && bound.is_empty() && stack.len() == 1);
-    pop(&mut stack)
+    Ok(pop(&mut stack))
 }
 
 fn pop(stack: &mut Vec<CelValue>) -> CelValue {

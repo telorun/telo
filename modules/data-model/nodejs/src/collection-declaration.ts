@@ -68,6 +68,7 @@ export function readCollection(resource: CollectionResource, ctx: ResourceContex
       filters: resource.query?.filters ?? [],
       sort: resource.query?.sort ?? [],
       facets: resource.query?.facets ?? [],
+      ...(resource.query?.search ? { search: resource.query.search } : {}),
     },
     relations: Object.fromEntries(
       Object.entries(resource.relations ?? {}).map(([property, entry]) => [property, target(entry, ctx, owner, property)]),

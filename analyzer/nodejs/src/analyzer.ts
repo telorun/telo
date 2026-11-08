@@ -342,7 +342,7 @@ import {
 import { applicationSourceAnnotationProblems, readApplicationSourceSlot } from "./application-source-slot.js";
 import { importInputsJoinSchema } from "./import-inputs.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
-import { validateRequires } from "./validate-requires.js";
+import { RUNTIME_GATE_CODES, validateRequires } from "./validate-requires.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateInvocationContract } from "./validate-invocation-contract.js";
 import {
@@ -4174,7 +4174,7 @@ function filesOfUnreadableModules(
   const gatedNames = new Set<string>();
 
   for (const d of requiresDiagnostics) {
-    if (d.code !== "MODULE_REQUIRES_NEWER_RUNTIME") continue;
+    if (!RUNTIME_GATE_CODES.has(String(d.code))) continue;
     const data = d.data as DiagnosticData | undefined;
     // The gated document itself, addressed by the file it was declared in.
     if (typeof data?.filePath === "string" && data.filePath) files.add(data.filePath);
@@ -4204,6 +4204,34 @@ function filesOfUnreadableModules(
 }
 
 /**
+ * The module documents the requires gate judges: the analysed set's own, plus
+ * the `Telo.Library` doc of every imported library the load reaches. The flat
+ * analysis list forwards a library's declarations and drops its module doc, so
+ * those are read from `moduleDocuments` — each kept only when the entry's import
+ * edges reach it (`reached`; a version reconciliation replaced the rest). A
+ * producer that did not read the edges leaves it absent, and the library is then
+ * kept when one of its files contributed to the analysed set.
+ */
+function requiresGateInput(
+  manifests: readonly ResourceManifest[],
+  moduleDocuments: readonly ModuleDocuments[] | undefined,
+): ResourceManifest[] {
+  if (!moduleDocuments || moduleDocuments.length === 0) return [...manifests];
+  const reached = new Set<string>();
+  for (const m of manifests) {
+    const source = (m.metadata as { source?: unknown } | undefined)?.source;
+    if (typeof source === "string") reached.add(source);
+  }
+  const libraries = moduleDocuments.flatMap((docs) =>
+    (docs.reached ??
+    docs.manifests.some((m) => reached.has((m.metadata as { source?: string } | undefined)?.source ?? "")))
+      ? docs.manifests.filter((m) => isModuleKind(m.kind))
+      : [],
+  );
+  return [...manifests, ...libraries];
+}
+
+/**
  * Drop every diagnostic anchored in a file whose module this runtime cannot
  * read, except the gate diagnostic itself.
  *
@@ -4219,7 +4247,7 @@ function suppressUnreadableModuleDiagnostics(
 ): AnalysisDiagnostic[] {
   if (unreadableFiles.size === 0) return diagnostics;
   return diagnostics.filter((d) => {
-    if (d.code === "MODULE_REQUIRES_NEWER_RUNTIME") return true;
+    if (RUNTIME_GATE_CODES.has(String(d.code))) return true;
     const filePath = (d.data as DiagnosticData | undefined)?.filePath;
     return typeof filePath !== "string" || !unreadableFiles.has(filePath);
   });
@@ -5602,7 +5630,10 @@ export class StaticAnalyzer {
       ...(forwardViews?.consumers() ?? []).map(([view, root]) => ({ view, root })),
       ...viewEntries.map((entry) => ({ view: entry.manifests[0]!, root: entry.root, rootOrigin: entry.rootOrigin })),
     ];
-    const requiresRead = whole ? allManifests : [...allManifests.filter((m) => !isModuleKind(m.kind)), ...moduleDocuments];
+    const requiresRead = requiresGateInput(
+      whole ? allManifests : [...allManifests.filter((m) => !isModuleKind(m.kind)), ...moduleDocuments],
+      options?.moduleDocuments,
+    );
     const unreadableFiles = filesOfUnreadableModules(
       allManifests,
       validateRequires(requiresRead, {
@@ -8046,7 +8077,7 @@ export class StaticAnalyzer {
     // schema — every one of which is true and blames the module's author for a
     // version skew. Reporting them beside the gate would bury the one message
     // that names the actual cause and the actual fix.
-    const requiresDiagnostics = validateRequires(allManifests as unknown as ResourceManifest[], {
+    const requiresDiagnostics = validateRequires(requiresGateInput(allManifests as unknown as ResourceManifest[], options?.moduleDocuments), {
       hostVersions: options?.hostVersions,
       entryModules: rootModules,
     });

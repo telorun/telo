@@ -1,0 +1,7 @@
+modules:
+  modules/fs: Added
+body: Adds Fs.Move, which renames a file or directory and creates missing parents of the
+  destination, and Fs.Copy, which copies a file or directory tree all or nothing. Both
+  refuse an existing destination, a destination inside the source and an absent source,
+  Fs.Move refuses a rename across filesystems, and Fs.Copy refuses a symbolic link or
+  special file in the source.

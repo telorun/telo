@@ -34,6 +34,11 @@ expect:
     - code: CONTRACT_INPUTS_MISMATCH
       message: "steps[4].inputs.messages[0].content[0].uri' do not satisfy echo's declared inputType: /messages/0/content/0/uri must match pattern"
     - { code: CONTRACT_INPUTS_MISMATCH, message: "'cacheControl' is not allowed" }
+    # A text call's result mark names its call, and marks a text part only.
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[6].inputs.messages[0].content[0]' do not satisfy echo's declared inputType: /messages/0/content/0 is missing required property 'toolCallId'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[7].inputs.messages[0].content' do not satisfy echo's declared inputType: /messages/0/content matches no alternative"
 ---
 kind: AiEcho.EchoModel
 metadata: { name: echo }

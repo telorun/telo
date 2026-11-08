@@ -11,6 +11,7 @@ metadata:
     on the same database. A message published inside a transaction is delivered
     when it commits and dropped when it rolls back; a subscription is told when its
     database connection dropped and came back, so it can re-read what it missed.
+requires: { telo: ">=unreleased" }
 imports: { Broadcast: ../broadcast, Postgres: ../postgres }
 exports: { kinds: [Channel] }
 ---

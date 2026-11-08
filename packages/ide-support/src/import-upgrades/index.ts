@@ -22,16 +22,19 @@ export type {
 } from "./find-import-entries.js";
 export {
   createVersionCompatibility,
+  describeHold,
   markVersionCompatibility,
   noneRunnableReason,
   selectCompatibleVersion,
   uncheckedVersionCompatibility,
 } from "./version-compatibility.js";
 export type {
+  HeldBack,
   IncompatibilityReason,
   MarkedVersion,
   ModuleCompatibility,
   ModuleManifestReader,
+  SelectionVerdict,
   VersionCompatibilityCheck,
   VersionSelection,
 } from "./version-compatibility.js";

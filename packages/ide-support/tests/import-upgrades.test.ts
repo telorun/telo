@@ -9,7 +9,7 @@ import {
 /** A runtime that can host anything. These cases are about which version an
  *  upgrade picks and how it rewrites the YAML; compatibility filtering has its
  *  own file. */
-const anyVersionRuns: VersionCompatibilityCheck = async () => "yes";
+const anyVersionRuns: VersionCompatibilityCheck = async () => ({ compatibility: "yes" });
 
 /** The builder as these tests exercise it: version lookup varies per case, the
  *  compatibility answer does not. */

@@ -1,0 +1,36 @@
+# A provider that declares no tools gives `telo check` nothing to hold the name
+# to, so the agent refuses it when it first lists its tools.
+kind: Telo.Application
+metadata: { name: TextToolsDiscovered, version: 1.0.0 }
+imports: { Ai: ../../.., AiEcho: ../ai-echo.yaml }
+targets:
+  - !ref firstRun
+---
+kind: Telo.Sequence
+metadata: { name: firstRun }
+steps:
+  - name: attempt
+    try:
+      - name: run
+        invoke: !ref agent
+        inputs: { prompt: "go" }
+    catch:
+      - name: report
+        throw:
+          code: !cel "error.code"
+          message: !interpolate "${{ error.code }}: ${{ error.message }}"
+---
+kind: AiEcho.EchoToolProvider
+metadata: { name: discovered }
+advertises: [search]
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model: { kind: AiEcho.EchoModel }
+textTools:
+  - tags: [telo-edit]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, b.body)"
+toolProviders:
+  - provider: !ref discovered

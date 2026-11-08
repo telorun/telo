@@ -1,5 +1,7 @@
 import { InvokeError } from "@telorun/sdk";
+import { contentToText } from "./content.js";
 import type { ContentResolution } from "./content-resolution.js";
+import { isTextResultMessage, textResultIds, type TextCall } from "./text-calls.js";
 import type { AgentStreamPart, Message, ToolApproval, ToolCall } from "./types.js";
 
 /**
@@ -71,24 +73,41 @@ export function inCallOrder(messages: readonly Message[]): Message[] {
   return ordered;
 }
 
+/** The text calls an assistant turn yields, derived from its recorded text. */
+export type TextCallDeriver = (text: string) => TextCall[];
+
+/** The calls a conversation leaves pending, in the order they settle. */
+export interface PendingCalls {
+  /** The last assistant turn's calls no tool message answers, in call order. */
+  calls: ToolCall[];
+  /** Its text calls no `text-tool-result` part answers, in reply order. */
+  textCalls: TextCall[];
+}
+
 /**
  * The calls a conversation leaves pending: when it ends with an assistant turn
- * carrying tool calls, followed only by tool messages, those of the turn's calls
- * no tool message answers. None when every call is answered.
+ * followed only by tool messages and messages made only of text call results,
+ * those of the turn's calls nothing answers, and its re-derived text calls
+ * minus those already answered. None when every call is answered.
  */
-export function pendingCalls(messages: readonly Message[]): ToolCall[] {
+export function pendingCalls(messages: readonly Message[], deriveTextCalls?: TextCallDeriver): PendingCalls {
   let turn = messages.length - 1;
-  while (turn >= 0 && messages[turn]!.role === "tool") turn--;
+  while (turn >= 0 && (messages[turn]!.role === "tool" || isTextResultMessage(messages[turn]!))) turn--;
   const assistant = messages[turn];
-  if (assistant?.role !== "assistant" || !assistant.toolCalls?.length) return [];
-  const answered = new Set(messages.slice(turn + 1).map((message) => message.toolCallId));
-  return assistant.toolCalls.filter((call) => !answered.has(call.id));
+  if (assistant?.role !== "assistant") return { calls: [], textCalls: [] };
+  const after = messages.slice(turn + 1);
+  const answered = new Set(after.map((message) => message.toolCallId));
+  const answeredText = textResultIds(after);
+  return {
+    calls: (assistant.toolCalls ?? []).filter((call) => !answered.has(call.id)),
+    textCalls: (deriveTextCalls?.(contentToText(assistant.content)) ?? []).filter(
+      (call) => !answeredText.has(call.id),
+    ),
+  };
 }
 
 /** What a run settles before it calls the model. */
-export interface PendingWork {
-  /** The pending calls, in call order. Empty when nothing is pending. */
-  calls: ToolCall[];
+export interface PendingWork extends PendingCalls {
   /** The caller's decisions, by call id. */
   approvals: Map<string, ToolApproval>;
 }
@@ -103,6 +122,7 @@ export function pendingWork(
   initial: readonly Message[],
   inputs: { prompt?: string; approvals?: ToolApproval[] },
   label: string,
+  deriveTextCalls?: TextCallDeriver,
 ): PendingWork {
   const refuse = (message: string) => new InvokeError("ERR_INVALID_INPUT", `${label}: ${message}`);
   const decisions = inputs.approvals ?? [];
@@ -111,15 +131,15 @@ export function pendingWork(
       "'approvals' decides the tool calls a conversation left pending, so it goes with 'messages', never with 'prompt'.",
     );
   }
-  const calls = pendingCalls(initial);
+  const { calls, textCalls } = pendingCalls(initial, deriveTextCalls);
   const ids = new Set<string>();
-  for (const call of calls) {
-    if (ids.has(call.id)) {
+  for (const id of [...calls.map((call) => call.id), ...textCalls.map((call) => call.id)]) {
+    if (ids.has(id)) {
       throw refuse(
-        `two pending tool calls share the id "${call.id}", so a decision or a result could not be matched to one of them.`,
+        `two pending tool calls share the id "${id}", so a decision or a result could not be matched to one of them.`,
       );
     }
-    ids.add(call.id);
+    ids.add(id);
   }
   const approvals = new Map<string, ToolApproval>();
   for (const decision of decisions) {
@@ -133,5 +153,5 @@ export function pendingWork(
     }
     approvals.set(decision.toolCallId, decision);
   }
-  return { calls, approvals };
+  return { calls, textCalls, approvals };
 }

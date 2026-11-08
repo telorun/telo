@@ -23,6 +23,7 @@ texts:
   # The navigation's groups.
   - { text: Building blocks, translation: "बिल्डिंग ब्लॉक" }
   - { text: Input, translation: "इनपुट" }
+  - { text: Search, translation: "खोज" }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
@@ -582,3 +583,11 @@ texts:
   - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "अनुरोध की बॉडी इस सर्वर द्वारा स्वीकार किए जाने वाले {$maxBodyBytes} बाइट से बड़ी है।" }
   - { text: "This server does not serve the host {$host}.", translation: "यह सर्वर होस्ट {$host} को सेवा नहीं देता।" }
   - { text: "The list request is not valid.", translation: "सूची का अनुरोध मान्य नहीं है।" }
+
+  # Search.
+  - { text: "Search posts", translation: "पोस्ट खोजें" }
+  - { text: "Posts beside their filters", translation: "फ़िल्टर के पास पोस्ट" }
+  - { text: "Release posts", translation: "रिलीज़ की पोस्ट" }
+  - { text: "Everything", translation: "सब कुछ" }
+  - { text: "Drafts about releases", translation: "रिलीज़ के बारे में ड्राफ़्ट" }
+  - { text: "Search posts, or filter by author, status or date", translation: "पोस्ट खोजें, या लेखक, स्थिति या तारीख़ से फ़िल्टर करें" }

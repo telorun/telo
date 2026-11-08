@@ -7,7 +7,8 @@ metadata:
     require, a filter, sort or facet by a property the model does not declare, an
     operator the property's type cannot carry (`absent` on a required property
     included), a filter named as a parameter the endpoint owns, a sort or facet
-    by a list, and a relation naming an undeclared property, holding another
+    by a list, a search over a property the model does not declare, over one
+    that is not a string, or over none, and a relation naming an undeclared property, holding another
     type than its target's key (a target another module exports included) or
     pointing at a target that cannot be asked for keys with `in`. Each is
     reported by `telo check` where the collection is declared, and refused by
@@ -26,6 +27,12 @@ targets:
   - !ref filterAbsentRequiredAtRuntime
   - !ref filterReservedName
   - !ref filterReservedNameAtRuntime
+  - !ref searchUnknownProperty
+  - !ref searchUnknownPropertyAtRuntime
+  - !ref searchUnsupported
+  - !ref searchUnsupportedAtRuntime
+  - !ref searchEmpty
+  - !ref searchEmptyAtRuntime
   - !ref sortUnknownProperty
   - !ref sortUnknownPropertyAtRuntime
   - !ref sortUnsupported
@@ -118,6 +125,48 @@ source: ./__fixtures__/refusals/filter-reserved-name/telo.yaml
 expect:
   errors: []
   runFails: "[ERR_DATA_MODEL_FILTER_RESERVED_NAME] RuntimeError: DataModel.Collection 'collection': 'query.filters[1]' filters by 'facet', named as a query parameter the list endpoint owns"
+---
+kind: Assert.Manifest
+metadata: { name: searchUnknownProperty }
+source: ./__fixtures__/refusals/search-unknown-property/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.search.properties[1]': searches a property `model` does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: searchUnknownPropertyAtRuntime }
+source: ./__fixtures__/refusals/search-unknown-property/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_SEARCH_UNKNOWN_PROPERTY] RuntimeError: DataModel.Collection 'collection': search property 'summary' is not declared by the model (declared: id, title, body, authorId)"
+---
+kind: Assert.Manifest
+metadata: { name: searchUnsupported }
+source: ./__fixtures__/refusals/search-unsupported/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.search.properties[1]': searches a property that is not a string"
+---
+kind: Assert.Manifest
+metadata: { name: searchUnsupportedAtRuntime }
+source: ./__fixtures__/refusals/search-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_SEARCH_UNSUPPORTED] RuntimeError: DataModel.Collection 'collection': search property 'authorId' is an integer; a search reads string properties only"
+---
+kind: Assert.Manifest
+metadata: { name: searchEmpty }
+source: ./__fixtures__/refusals/search-empty/lib/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "must NOT have fewer than 1 items" }
+---
+kind: Assert.Manifest
+metadata: { name: searchEmptyAtRuntime }
+source: ./__fixtures__/refusals/search-empty/telo.yaml
+expect: { errors: [], runFails: "[ERR_RESOURCE_SCHEMA_VALIDATION_FAILED]" }
 ---
 kind: Assert.Manifest
 metadata: { name: sortUnknownProperty }

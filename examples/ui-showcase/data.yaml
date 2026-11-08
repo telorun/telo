@@ -146,8 +146,7 @@ columns:
   id: { type: integer, primaryKey: true, identity: always }
   project_code: { type: text, nullable: false }
   tag: { type: text, nullable: false }
-indexes:
-  project_tags_unique: { columns: [ project_code, tag ], unique: true }
+indexes: { project_tags_unique: { columns: [project_code, tag], unique: true } }
 seeds:
   key: [ project_code, tag ]
   rows:
@@ -321,19 +320,13 @@ schema:
 kind: Telo.JsonSchema
 metadata: { name: ProjectEdit }
 extends: ProjectDraft
-schema:
-  type: object
-  required: [ budget, velocity, featured, open ]
+schema: { type: object, required: [budget, velocity, featured, open] }
 ---
 # What is read back: the key, and every column the table always fills in.
 kind: Telo.JsonSchema
 metadata: { name: Project }
 extends: ProjectEdit
-schema:
-  type: object
-  required: [ id ]
-  properties:
-    id: { type: integer }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
 kind: Crud.Collection
 metadata: { name: projects }
@@ -404,18 +397,12 @@ schema:
 kind: Telo.JsonSchema
 metadata: { name: TaskEdit }
 extends: TaskDraft
-schema:
-  type: object
-  required: [ status, priority, blocked ]
+schema: { type: object, required: [status, priority, blocked] }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Task }
 extends: TaskEdit
-schema:
-  type: object
-  required: [ id ]
-  properties:
-    id: { type: integer }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
 # Every operator a filter bar can send, each over the property it suits: text
 # contains, an equality on each enumerated, boolean and key property, a range
@@ -478,18 +465,12 @@ schema:
 kind: Telo.JsonSchema
 metadata: { name: PersonEdit }
 extends: PersonDraft
-schema:
-  type: object
-  required: [ active ]
+schema: { type: object, required: [active] }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Person }
 extends: PersonEdit
-schema:
-  type: object
-  required: [ id ]
-  properties:
-    id: { type: integer }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
 kind: Crud.Collection
 metadata: { name: people }
@@ -537,6 +518,7 @@ columns:
   id: { type: integer, primaryKey: true, identity: always }
   seed_key: { type: text, unique: true }
   title: { type: text, nullable: false }
+  body: { type: text }
   author_id: { type: integer }
   status: { type: text, nullable: false, default: draft }
   published_on: { type: text }
@@ -545,13 +527,13 @@ foreignKeys:
 seeds:
   key: [seed_key]
   rows:
-    - { seed_key: P01, title: How we plan a sprint, author_id: 1, status: published, published_on: "2026-10-05" }
-    - { seed_key: P02, title: Designing for small screens, author_id: 2, status: published, published_on: "2026-10-12" }
-    - { seed_key: P03, title: "Our handbook, rewritten", author_id: 1, status: published, published_on: "2026-10-19" }
-    - { seed_key: P04, title: Offline sync without tears, author_id: 3, status: review, published_on: "2026-11-02" }
-    - { seed_key: P05, title: A palette that passes contrast, author_id: 2, status: review, published_on: "2026-11-09" }
-    - { seed_key: P06, title: Writing release notes people read, author_id: 1, status: draft }
-    - { seed_key: P07, title: The case for boring tools, author_id: 3, status: draft }
+    - { seed_key: P01, title: How we plan a sprint, body: "We start from the backlog.", author_id: 1, status: published, published_on: "2026-10-05" }
+    - { seed_key: P02, title: Designing for small screens, body: "Test on a real phone first.", author_id: 2, status: published, published_on: "2026-10-12" }
+    - { seed_key: P03, title: "Our handbook, rewritten", body: "Everything now lives in one place.", author_id: 1, status: published, published_on: "2026-10-19" }
+    - { seed_key: P04, title: Offline sync without tears, body: "Queue writes and replay them when the connection is back.", author_id: 3, status: review, published_on: "2026-11-02" }
+    - { seed_key: P05, title: A palette that passes contrast, body: "Check every pair against the contrast ratio.", author_id: 2, status: review, published_on: "2026-11-09" }
+    - { seed_key: P06, title: Writing release notes people read, body: "Lead with what changed and go back to it last.", author_id: 1, status: draft }
+    - { seed_key: P07, title: The case for boring tools, body: "Pick what the team already knows.", author_id: 3, status: draft }
 ---
 # The studio's reporting lines: each person names the one they report to, so
 # the people form a tree whose roots report to nobody.
@@ -619,6 +601,7 @@ schema:
   required: [title, status]
   properties:
     title: { type: string, title: Title, minLength: 1 }
+    body: { type: string, title: Body }
     authorId: { type: integer, title: Author }
     status:
       type: string
@@ -638,17 +621,20 @@ schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
 # The posts. `authorId` holds an author's key, which the relation declares and
 # the table's foreign key agrees with; its present values and counts, and the
-# statuses', are what a facet request answers.
+# statuses', are what a facet request answers. One search text matches a post
+# when its title or its body contains it.
 kind: Crud.Collection
 metadata: { name: posts }
 model: !ref Post
 table: !ref postsTable
 schemas: { list: !ref Post, create: !ref PostDraft, update: !ref PostDraft }
 query:
+  search: { properties: [title, body] }
   filters:
     - { property: title, operator: contains }
     - { property: authorId, operator: eq }
     - { property: status, operator: eq }
+    - { property: status, operator: in }
     - { property: publishedOn, operator: gte }
     - { property: publishedOn, operator: lte }
   sort: [{ property: title }, { property: publishedOn }]

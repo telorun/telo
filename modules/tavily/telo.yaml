@@ -11,6 +11,7 @@ metadata:
     query, with language, country, recency and safe-search settings. Up to 20
     results per query, sliced with an opaque cursor. Authenticated with an API key
     on a configurable HTTP client.
+requires: { telo: ">=0.128.0" }
 imports: { WebSearch: ../web-search, Http: ../http-client, Run: ../run }
 exports: { kinds: [WebSearchEngine] }
 ---

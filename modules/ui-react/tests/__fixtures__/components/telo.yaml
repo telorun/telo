@@ -49,7 +49,7 @@ exports:
     - specifier: "@fixture/controls"
       path: ./browser/controls.js
       source: ./nodejs/src/controls.tsx
-      abi: ui_react_controls-3
+      abi: ui_react_controls-4
       external: [react, react/jsx-runtime, react-dom]
       exports: [Checkbox]
 ---

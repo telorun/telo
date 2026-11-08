@@ -11,16 +11,10 @@ metadata:
     layer's changes are staged in a draft and published together as a numbered
     revision. One draft per layer, conflicts listed and resolved on rebase, and
     only the current revision is kept.
-requires:
-  # The node and relationship kinds write `x-telo-schema-projection-from` on the
-  # kind document, the relationship kind in its object form (`{ from, omit }`).
-  # 0.104.0 reads neither kind as projecting, so a graph operation over a
-  # drafted relationship type is refused (SCHEMA_PROJECTION_FROM_UNRESOLVED).
-  # Verified by execution: `run` of relationship operations over a drafted store
-  # fails on 0.104.0 and passes on 0.105.0, 0.107.0 and 0.113.0. The drafting
-  # operations themselves are `GraphLayers`' kinds and carry that module's own,
-  # higher floor: the drafting suite runs whole from 0.108.0.
-  telo: ">=0.105.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.105.0" }
+    reason: "Before 0.105.0, its kinds write `x-telo-schema-projection-from`, which 0.104.0 does not read as projecting, so a graph operation typed from them is refused at dispatch (ERR_SCHEMA_PROJECTION_UNRESOLVED). The drafting operations are `GraphLayers`' kinds and carry that module's own, higher floor."
 imports: { GraphLayersSql: ../graph-layers-sql, Postgres: ../postgres }
 exports:
   kinds: [NodeTable, RelationshipTable, Node, Relationship, Store, LayersTable, DraftsTable]

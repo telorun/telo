@@ -1,0 +1,13 @@
+modules:
+  modules/ui-react: Added
+body: "Breaking: the controls contract is ui_react_controls-4, which adds a tenth layer
+  control, Combobox — a text box that keeps the focus and announces the highlighted
+  entry through aria-activedescendant, with a floating list of labelled sections whose
+  entries are checkable, reporting open, highlight, pick, input change and Backspace on
+  an empty box as intents (new parts combobox-content, combobox-group and
+  combobox-item). A control set built for ui_react_controls-3 is refused
+  (BROWSER_ENTRY_ABI_UNSUPPORTED) and one implementing the nine earlier layer controls
+  without Combobox is refused (UI_CONTROLS_LAYERS_PARTIAL). A filter bar reads show,
+  controls and summary from the placement it draws (its compact one on a narrow
+  viewport), draws the bar's search first as a typed box held under search
+  (_telo.f.<key>.search) and sent as search=<text>, and a preset may set a search."

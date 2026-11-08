@@ -10,24 +10,10 @@ metadata:
     parameters bound safely, build a SELECT from structured parts instead of raw text,
     group writes into an all-or-nothing transaction, and apply versioned schema
     migrations at start-up.
-requires:
-  # The zone-attribute object form of `x-telo-provides-zone` is syntax an older
-  # analyzer reads as a malformed annotation, so it would reject this module and
-  # blame its author. Declaring the floor turns that into one message naming the
-  # cause. Forward-declared: 0.79.0 is the release that carries the form.
-  # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime
-  # that does not execute a returned chain allocates nothing and undoes nothing.
-  # 0.82.1: `x-telo-referrer-rules` gains `peers:`. An older analyzer reads the
-  # rule, ignores the unknown key and evaluates the condition with `peers` and
-  # `entry` unbound — cel-js throws, and the throw is reported as a rule defect
-  # on a line the consumer cannot act on. Verified by execution: 0.82.0 against a
-  # manifest that exercises SQL_ENUM_NOT_DECLARED reports exactly that.
-  # 0.90.0: `Transaction` declares `throws: { inherit: true }` over a reference
-  # to its body rather than a step array; an older analyzer refuses that shape
-  # (INHERIT_WITHOUT_STEP_CONTEXT). Verified by execution against 0.89.0.
-  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
-  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
-  telo: ">=0.130.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.130.0" }
+    reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0); also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind. Before 0.82.1 `x-telo-referrer-rules` `peers:` is ignored and its rules are reported as defects."
 exports:
   kinds: [Connection, Query, Command, Transaction, Selection, Table, Enum, Schema]
   # The entry point a dependent module's controller bundle resolves

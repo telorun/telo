@@ -11,20 +11,13 @@ imports:
   # modules/ai/tests/__fixtures__/. Two levels up = modules/ai/, the @telorun/ai library.
   Ai: ../../
 exports:
-  kinds:
-    - EchoModel
-    - EchoModelStream
-    - EchoImageModel
-    - StreamCollector
-    - EchoToolProvider
+  kinds: [EchoModel, EchoModelStream, EchoImageModel, StreamCollector, EchoToolProvider]
 ---
 kind: Telo.Definition
-metadata:
-  name: EchoModel
+metadata: { name: EchoModel }
 capability: Telo.Invocable
 extends: Ai.Model
-controllers:
-  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoController
+controllers: [pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoController]
 schema:
   type: object
   properties:
@@ -39,10 +32,7 @@ schema:
         invoke()/stream() throw InvokeError(code, reason) instead of echoing.
         Used to exercise provider-error passthrough.
       type: object
-      properties:
-        message: { type: string }
-        code: { type: string }
-        reason: { type: string }
+      properties: { message: { type: string }, code: { type: string }, reason: { type: string } }
       required: [ message, code, reason ]
       additionalProperties: false
     emitToolCall:
@@ -70,6 +60,30 @@ schema:
           name: { type: string }
           arguments: { type: object, additionalProperties: true }
         required: [ id, name ]
+        additionalProperties: false
+    replies:
+      title: Replies
+      description: |
+        Test-only marker: the replies a conversation gets, in order — the call
+        whose request holds n assistant messages answers with entry n. A call
+        past the list echoes as usual.
+      type: array
+      items:
+        type: object
+        properties:
+          text: { type: string }
+          toolCalls:
+            type: array
+            items:
+              type: object
+              properties:
+                id: { type: string }
+                name: { type: string }
+                arguments: { type: object, additionalProperties: true }
+              required: [ id, name ]
+              additionalProperties: false
+          finishReason: { type: string, enum: [ stop, length, tool-calls ] }
+        required: [ text ]
         additionalProperties: false
     echoConversation:
       title: Echo conversation
@@ -116,12 +130,10 @@ schema:
 # whole point of the split, and what a provider that only streams would
 # implement alone.
 kind: Telo.Definition
-metadata:
-  name: EchoModelStream
+metadata: { name: EchoModelStream }
 capability: Telo.Invocable
 extends: Ai.ModelStream
-controllers:
-  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoStreamController
+controllers: [pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoStreamController]
 schema:
   type: object
   properties:
@@ -136,10 +148,7 @@ schema:
         invoke()/stream() throw InvokeError(code, reason) instead of echoing.
         Used to exercise provider-error passthrough.
       type: object
-      properties:
-        message: { type: string }
-        code: { type: string }
-        reason: { type: string }
+      properties: { message: { type: string }, code: { type: string }, reason: { type: string } }
       required: [ message, code, reason ]
       additionalProperties: false
     emitProviderState:
@@ -201,6 +210,30 @@ schema:
           arguments: { type: object, additionalProperties: true }
         required: [ id, name ]
         additionalProperties: false
+    replies:
+      title: Replies
+      description: |
+        Test-only marker: the replies a conversation gets, in order — the call
+        whose request holds n assistant messages answers with entry n. A call
+        past the list echoes as usual.
+      type: array
+      items:
+        type: object
+        properties:
+          text: { type: string }
+          toolCalls:
+            type: array
+            items:
+              type: object
+              properties:
+                id: { type: string }
+                name: { type: string }
+                arguments: { type: object, additionalProperties: true }
+              required: [ id, name ]
+              additionalProperties: false
+          finishReason: { type: string, enum: [ stop, length, tool-calls ] }
+        required: [ text ]
+        additionalProperties: false
     echoConversation:
       title: Echo conversation
       description: |
@@ -243,12 +276,10 @@ schema:
 # its `intent` field from it, so a manifest naming `variation` against THIS model is
 # a static error, which is what tests/image-rejects-unsupported-intent.yaml asserts.
 kind: Telo.Definition
-metadata:
-  name: EchoImageModel
+metadata: { name: EchoImageModel }
 capability: Telo.Provider
 extends: Ai.ImageModel
-controllers:
-  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoImageController
+controllers: [pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoImageController]
 schema:
   type: object
   properties:
@@ -278,9 +309,7 @@ schema:
         content-filter and yields only `keep` images. `keep: 0` is total refusal,
         a smaller-than-count value is partial.
       type: object
-      properties:
-        prompt: { type: string }
-        keep: { type: integer, minimum: 0 }
+      properties: { prompt: { type: string }, keep: { type: integer, minimum: 0 } }
       required: [ prompt ]
       additionalProperties: false
     reportUsage:
@@ -288,41 +317,32 @@ schema:
       description: Whether to report a usage quantity, exercising both the present and absent paths.
       type: boolean
   additionalProperties: false
-  $defs:
-    Intent:
-      type: string
-      enum: [ edit, inpaint ]
+  $defs: { Intent: { type: string, enum: [edit, inpaint] } }
 ---
 # Test-support Invocable: takes an Ai.ModelStream reference, drives it, collects
 # the parts, and returns them. Lets stream-contract tests exercise the streaming
 # path without a dedicated consumer kind.
 kind: Telo.Definition
-metadata:
-  name: StreamCollector
+metadata: { name: StreamCollector }
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#StreamCollectorController
+controllers: [pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#StreamCollectorController]
 schema:
   type: object
   properties:
     model:
       title: Model
       description: Reference to any Ai.ModelStream implementation whose parts will be collected.
-      x-telo-ref:
-        kind: Ai.ModelStream
-        use: [call, trigger.consumer]
+      x-telo-ref: { kind: Ai.ModelStream, use: [call, trigger.consumer] }
   required: [ model ]
   additionalProperties: false
 ---
 # Test-support tool provider: its tools are known only to its instance, the way
 # a provider that discovers them at runtime is seen by an agent.
 kind: Telo.Definition
-metadata:
-  name: EchoToolProvider
+metadata: { name: EchoToolProvider }
 capability: Telo.Mount
 extends: Ai.ToolProvider
-controllers:
-  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#EchoToolProviderController
+controllers: [pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#EchoToolProviderController]
 schema:
   type: object
   properties:

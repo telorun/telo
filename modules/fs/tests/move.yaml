@@ -1,0 +1,109 @@
+kind: Telo.Application
+metadata:
+  name: FsMove
+  version: 1.0.0
+  description: |
+    Fs.Move renames a file and a directory, creating missing parents, and refuses an
+    existing destination, a destination inside the source and an absent source with
+    their codes, leaving the tree as it was.
+imports: { Fs: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Fs.TreeSync
+metadata: { name: sync }
+cwd: !module-path ./__fixtures__
+---
+kind: Fs.TreeSnapshot
+metadata: { name: snapshot }
+cwd: !module-path ./__fixtures__
+---
+kind: Fs.Move
+metadata: { name: move }
+cwd: !module-path ./__fixtures__
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: reset
+    inputs: { delete: [scratch-move] }
+    invoke: !ref sync
+  - name: seed
+    inputs:
+      write:
+        - { path: scratch-move/solo.txt, content: solo }
+        - { path: scratch-move/tree/one.txt, content: one }
+        - { path: scratch-move/tree/sub/two.txt, content: two }
+        - { path: scratch-move/taken.txt, content: taken }
+    invoke: !ref sync
+
+  - name: moveFile
+    inputs: { path: scratch-move/solo.txt, destination: scratch-move/new/deep/solo.txt }
+    invoke: !ref move
+  - name: assertMoveFile
+    inputs:
+      actual: !cel "steps.moveFile.result"
+      expected: { moved: scratch-move/solo.txt, destination: scratch-move/new/deep/solo.txt }
+    invoke: !ref Assert.equals
+  - name: moveTree
+    inputs: { path: scratch-move/tree, destination: scratch-move/other/tree }
+    invoke: !ref move
+
+  - name: afterMoves
+    inputs: { paths: [scratch-move] }
+    invoke: !ref snapshot
+  - name: assertAfterMoves
+    inputs:
+      actual: !cel "steps.afterMoves.result.files.map(f, f.path)"
+      expected: [scratch-move/new/deep/solo.txt, scratch-move/other/tree/one.txt, scratch-move/other/tree/sub/two.txt, scratch-move/taken.txt]
+    invoke: !ref Assert.equals
+
+  - name: existingDestination
+    try:
+      - name: doMove
+        inputs: { path: scratch-move/taken.txt, destination: scratch-move/new/deep/solo.txt }
+        invoke: !ref move
+      - name: unexpected
+        inputs: { actual: moved, expected: refused }
+        invoke: !ref Assert.equals
+    catch:
+      - name: assertCode
+        inputs: { actual: !cel "error.code", expected: ERR_PATH_EXISTS }
+        invoke: !ref Assert.equals
+  - name: intoItself
+    try:
+      - name: doMove
+        inputs: { path: scratch-move/other, destination: scratch-move/other/tree/inner }
+        invoke: !ref move
+      - name: unexpected
+        inputs: { actual: moved, expected: refused }
+        invoke: !ref Assert.equals
+    catch:
+      - name: assertCode
+        inputs: { actual: !cel "error.code", expected: ERR_MOVE_INTO_ITSELF }
+        invoke: !ref Assert.equals
+  - name: absentSource
+    try:
+      - name: doMove
+        inputs: { path: scratch-move/absent.txt, destination: scratch-move/elsewhere/absent.txt }
+        invoke: !ref move
+      - name: unexpected
+        inputs: { actual: moved, expected: refused }
+        invoke: !ref Assert.equals
+    catch:
+      - name: assertCode
+        inputs: { actual: !cel "error.code", expected: ERR_PATH_NOT_FOUND }
+        invoke: !ref Assert.equals
+
+  - name: afterRefusals
+    inputs: { paths: [scratch-move] }
+    invoke: !ref snapshot
+  - name: assertUnchanged
+    inputs:
+      actual: !cel "steps.afterRefusals.result"
+      expected: !cel "steps.afterMoves.result"
+    invoke: !ref Assert.equals
+
+  - name: cleanup
+    inputs: { delete: [scratch-move] }
+    invoke: !ref sync

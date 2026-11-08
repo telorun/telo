@@ -35,7 +35,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Echo.TypedPlacement/placementCompact: /spec/compact must match exactly one schema in oneOf"
     - code: SCHEMA_VIOLATION
-      message: "Echo.TypedNode/filtersPlacement: /node/placement/type must be equal to one of the allowed values (above | aside | collapsible | overlay)"
+      message: "Echo.TypedNode/filtersPlacement: /node/placement/type must be equal to one of the allowed values (above | aside | collapsible | overlay | searchBox)"
     - code: SCHEMA_VIOLATION
       message: "Echo.TypedNode/filtersStore: /node matches no alternative"
 ---
@@ -128,6 +128,9 @@ steps:
             spec:
               type: overlay
               surface: { type: panel, side: end, size: medium, dismiss: { escape: true, closeButton: true } }
+              show: all
+              controls: direct
+              summary: none
       - name: placementSurfaceAccepted
         throw: { code: ACCEPTED, message: the provider's contract accepted the value }
     catch:
@@ -140,7 +143,7 @@ steps:
           kind: Probe.Read
           source:
             kind: Echo.AnyPlacement
-            spec: { type: above, compact: { type: aside, side: start } }
+            spec: { type: above, show: all, controls: direct, summary: none, compact: { type: aside, side: start } }
       - name: placementCompactAccepted
         throw: { code: ACCEPTED, message: the provider's contract accepted the value }
     catch:
@@ -159,11 +162,8 @@ steps:
               basePath: /api/todos
               fields: []
               content: { type: text, fill: false, text: { set: Ui.Translations, key: loading } }
-              show: all
               placement: { type: nowhere }
-              controls: direct
               apply: commit
-              summary: none
               state: { address: false, store: { type: memory }, fields: [] }
               presets: []
       - name: filtersPlacementAccepted
@@ -184,11 +184,8 @@ steps:
               basePath: /api/todos
               fields: []
               content: { type: text, fill: false, text: { set: Ui.Translations, key: loading } }
-              show: all
-              placement: { type: above }
-              controls: direct
+              placement: { type: above, show: all, controls: direct, summary: none }
               apply: commit
-              summary: none
               state: { address: false, store: { type: server }, fields: [] }
               presets: []
       - name: filtersStoreAccepted
@@ -209,4 +206,4 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "[steps.overlayCompactRefusal.result, steps.panelCompactRefusal.result, steps.listingSurfaceRefusal.result, steps.placementSurfaceRefusal.result, steps.placementCompactRefusal.result, steps.filtersPlacementRefusal.result, steps.filtersStoreRefusal.result]"
-      expected: ["ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected another shape", "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'size'", "ERR_OUTPUT_INVALID Error: /node/create/surface must match exactly one schema in oneOf", "ERR_OUTPUT_INVALID Error: /surface matches no alternative — expected one with 'modal', or one with 'align'", "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'open', or one with 'surface'", "ERR_OUTPUT_INVALID Error: /node/placement matches no alternative — expected one with 'side', or one with 'open', or one with 'surface'", "ERR_OUTPUT_INVALID Error: /node matches no alternative — expected one with 'children', or one with 'text', or one with 'tabs', or one with 'src', or one with 'markup', or one with 'schema', or one with 'module', or one with 'value', or one with 'rows', or one with 'start', or one with 'command', or one with 'spec', or one with 'side', or one with 'code'"]
+      expected: ["ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected another shape", "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'size'", "ERR_OUTPUT_INVALID Error: /node/create/surface must match exactly one schema in oneOf", "ERR_OUTPUT_INVALID Error: /surface matches no alternative — expected one with 'modal', or one with 'align'", "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'open', or one with 'surface'", "ERR_OUTPUT_INVALID Error: /node/placement matches no alternative — expected one with 'show', or one with 'side', or one with 'open', or one with 'surface', or one with 'placeholder'", "ERR_OUTPUT_INVALID Error: /node matches no alternative — expected one with 'children', or one with 'text', or one with 'tabs', or one with 'src', or one with 'markup', or one with 'schema', or one with 'module', or one with 'value', or one with 'rows', or one with 'start', or one with 'command', or one with 'spec', or one with 'side', or one with 'code'"]

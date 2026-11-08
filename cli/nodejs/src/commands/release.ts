@@ -2,7 +2,7 @@
  * `telo release` — one release system over the modules of a declared workspace.
  *
  * `add` writes a fragment; `status` explains what would bump and why; `check` is
- * the CI gate; `apply` produces the Version PR; `verify` reconciles the ledger
+ * the CI gate; `floor` writes each module's measured `requires.telo`; `apply` produces the Version PR; `verify` reconciles the ledger
  * against the registry; `stage` fetches the files `sources:` declares. `telo
  * publish` still keys off version movement.
  *
@@ -39,6 +39,12 @@ import { createLogger, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine, outProgress } from "../output.js";
 import { recordLedger, writePlannedVersions } from "../release/apply-plan.js";
 import { checkWorkspaceRequires } from "../release/check-requires.js";
+import {
+  RegistryUnreachableError,
+  floorText,
+  sameFloor,
+} from "../release/floor-measurement.js";
+import { floorLine, measureAndWriteFloors } from "../release/floor-workspace.js";
 import { checkCrateInputs } from "../release/crate-inputs.js";
 import { digestPayload, type ModuleTarget } from "../release/evidence.js";
 import { readImportGraph, resolveTargets } from "../release/targets.js";
@@ -201,36 +207,27 @@ async function check(argv: CommonArgv): Promise<void> {
   for (const line of renderPlan(plan, log)) outLine(line);
   const errors = reportDiagnostics(plan, log);
 
-  // Declared runtime requirements, verified by RUNNING the CLI at each edge of
-  // each declared range. This is where an adoption of new syntax without a
-  // matching bound is caught: the low-edge CLI cannot read it and says so. It is
-  // self-maintaining — nothing has to be annotated, and no list can go stale.
-  const requires = await checkWorkspaceRequires(workspace, TELO_SURFACE_VERSION);
+  // Declared telo floors, each proven equal to the measured one by RUNNING the
+  // published CLI (`release/check-requires.ts`): the CLI at the floor accepts the
+  // module and the release just below it rejects it.
+  const requires = await checkWorkspaceRequires(workspace, { currentVersion: TELO_SURFACE_VERSION });
   for (const c of requires.checks) {
-    const label = `telo ${c.edge}`;
+    const label = `telo ${c.floor}`;
     const count = `${c.modules.length} module${c.modules.length === 1 ? "" : "s"}`;
     if (c.status === "passed") {
       outLine(`${log.ok("✓")}  ${label}  ${log.dim(`${count} verified`)}`);
-    } else if (c.status === "pending") {
-      // The declared floor is a release that has not happened yet — the normal
-      // state on the commit that adopts new syntax. Naming the latest published
-      // version is what makes a TYPO'd bound visible: `>=0.790.0` beside a latest
-      // of `0.78.0` reads wrong at a glance, where "could not run" would not.
-      outLine(
-        `${log.dim("·")}  ${label}  ${log.dim(
-          `${count} pending — not published yet (latest: ${c.detail ?? "unknown"})`,
-        )}`,
-      );
-    } else if (c.status === "unavailable") {
-      // Unproven, not disproven — CI that cannot reach npm must not invent a
-      // verdict, and must not silently claim one either.
-      outErrLine(`${log.warn("!")}  ${label}  could not run (${c.detail ?? "unknown"})`);
     } else {
-      outErrLine(
-        `${log.err.error("✗")}  ${label}  rejects ${count} declaring it: ${c.modules.join(", ")}`,
-      );
-      if (c.detail) outErrLine(c.detail);
+      // Unproven is a failure: a gate that cannot run must not pass.
+      outErrLine(`${log.err.error("✗")}  ${label}  ${count} not verified (${c.detail ?? "unknown"})`);
     }
+  }
+  for (const failure of requires.failures) {
+    outErrLine(`${failure.module}: ${log.err.error(failure.code)} ${failure.message}`);
+  }
+  if (requires.failures.length > 0) {
+    outErrLine(
+      `${requires.failures.length} module${requires.failures.length === 1 ? "" : "s"} failed.`,
+    );
   }
 
   // Prebuilt files of a crate in this repository must not be older than the
@@ -242,9 +239,53 @@ async function check(argv: CommonArgv): Promise<void> {
     );
   }
 
-  const ok = errors === 0 && !requires.refuted && crateInputs.length === 0;
-  outEmit({ ok, ...(planPayload(plan) as object), requires: requires.checks, crateInputs });
+  const ok =
+    errors === 0 && !requires.refuted && requires.errors.length === 0 && crateInputs.length === 0;
+  outEmit({ ok, ...(planPayload(plan) as object), requires: { checks: requires.checks, failures: requires.failures, errors: requires.errors }, crateInputs });
   if (!ok) process.exitCode = 1;
+}
+
+// ---------------------------------------------------------------------------
+// floor
+// ---------------------------------------------------------------------------
+
+/**
+ * Write the measured `requires.telo` of each workspace module, up or down.
+ *
+ * Measurement is the published CLI's verdict over the module (`release/
+ * floor-measurement.ts`), so nobody writes a floor by hand: a registry that
+ * cannot be reached, or a run that says nothing about its manifest, fails the
+ * command with every file restored.
+ */
+async function floor(argv: CommonArgv & { module?: string[] }): Promise<void> {
+  const log = createLogger(false);
+  const workspace = loadWorkspace();
+  const selected =
+    argv.module && argv.module.length > 0
+      ? argv.module.map((key) => requireModule(workspace, key))
+      : workspace.modules.filter((module) => module.artifactKind === "registry");
+  let results;
+  try {
+    results = await measureAndWriteFloors(workspace, selected);
+  } catch (err) {
+    if (err instanceof RegistryUnreachableError) {
+      outErrLine(`${log.err.error("error")}: ${err.message}; nothing was written.`);
+      outEmit({ ok: false });
+      process.exitCode = 1;
+      return;
+    }
+    throw err;
+  }
+  for (const result of results) outLine(floorLine(result));
+  outEmit({
+    ok: true,
+    floors: results.map((r) => ({
+      module: r.module.key,
+      from: floorText(r.from),
+      to: floorText(r.to),
+      changed: !sameFloor(r.from, r.to),
+    })),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -576,6 +617,17 @@ export function releaseCommand(yargs: Argv): Argv {
         )
         .command("check", "Fail when no consistent release plan can be formed", (c) => c, guarded(check as any))
         .command(
+          "floor",
+          "Write the measured requires.telo floor of each module (up or down)",
+          (c) =>
+            c.option("module", {
+              type: "string",
+              array: true,
+              describe: "Module path (modules/geocode). Repeat for several; omit to measure every module.",
+            }),
+          guarded(floor as any),
+        )
+        .command(
           "apply",
           "Write versions, changelogs and the ledger, and consume the fragments",
           (c) =>
@@ -615,7 +667,7 @@ export function releaseCommand(yargs: Argv): Argv {
         )
         .demandCommand(
           1,
-          "Specify a release subcommand (add | status | order | check | apply | verify | stage)",
+          "Specify a release subcommand (add | status | order | check | floor | apply | verify | stage)",
         ),
     () => {},
   );

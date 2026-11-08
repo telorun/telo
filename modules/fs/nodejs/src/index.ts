@@ -15,5 +15,7 @@ export * as FileController from "./file-controller.js";
 export * as FileEditController from "./file-edit-controller.js";
 export * as FileRemovalController from "./file-removal-controller.js";
 export * as FileWriteController from "./file-write-controller.js";
+export * as PathCopyController from "./path-copy-controller.js";
+export * as PathMoveController from "./path-move-controller.js";
 export * as TreeSnapshotController from "./tree-snapshot-controller.js";
 export * as TreeSyncController from "./tree-sync-controller.js";

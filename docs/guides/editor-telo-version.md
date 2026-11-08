@@ -39,6 +39,10 @@ imports ([declaring runtime requirements](../extend/declaring-runtime-requiremen
 1. **The module declares `requires: telo:`** — the lowest available version that
    its own range and every imported module's range accept. Declaring a floor says
    "this is what I am verified against", so you edit against exactly that.
+   A later version of an imported module can narrow its range with a
+   `restrictions:` entry (a telo or Node release it breaks on); the editor
+   reads those too, marks such a version as held back with the author's reason
+   in the version picker, and offers no upgrade lens to it.
 2. **The module declares nothing** — the bundled version, as long as every
    imported module's range accepts it; otherwise the lowest available version
    they all accept.
@@ -71,7 +75,8 @@ deployment of the main branch — ships an engine that implements the coming
 release `X` but is not the `X` that will be published. It names itself
 `X+unreleased`, and the editor shows it as **Telo X (local)**. It
 counts as `X` for `requires: telo:` (a module declaring `>=X` is satisfied by
-it), but it is a different engine from a published `X`: where Auto could pick
+it), and its load gate is the only one that accepts `>=unreleased`, a floor waiting for
+the release that carries the module's syntax. Auto does not select an engine for that floor — no version meets it, so the bundled engine is kept, and a module holding one is edited without the gate's refusal only where the bundled engine is the local one. It is a different engine from a published `X`: where Auto could pick
 either, it picks the published one — except when it keeps the bundled engine
 because nothing asks for another — and a pin names one of them exactly
 (`0.102.0` or `0.102.0+unreleased`).

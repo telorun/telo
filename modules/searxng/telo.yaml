@@ -10,6 +10,7 @@ metadata:
     API with language, recency and safe-search settings and returns ranked results
     with title, URL, snippet and publication date, paging with an opaque cursor. No
     API key; the instance is reached through a configurable HTTP client.
+requires: { telo: ">=0.128.0" }
 imports: { WebSearch: ../web-search, Http: ../http-client, Run: ../run }
 exports: { kinds: [WebSearchEngine] }
 ---

@@ -1,0 +1,136 @@
+kind: Telo.Application
+metadata:
+  name: UiFilterSearchTest
+  version: 1.0.0
+  description: |
+    A filter bar's search and the placements it is drawn with, as the node a
+    renderer receives. A bar has a search when it writes one, or when it omits
+    both `fields` and `search` over a collection declaring one; a bar listing
+    its fields has none unless it writes it. The search joins the properties
+    the bar keeps in its state, a preset may set it, and the search box
+    placement carries its placeholder, written or the default text.
+imports:
+  Ui: ../
+  DataModel: ../../data-model
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+lang: en
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+    title: { type: string, title: Title }
+    body: { type: string }
+    status: { type: string, enum: [draft, review, published] }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: posts }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/posts
+  collection:
+    kind: DataModel.Collection
+    model: !ref Post
+    query:
+      search: { properties: [title, body] }
+      filters:
+        - { property: title, operator: contains }
+        - { property: status, operator: in }
+      sort: []
+---
+kind: Ui.Filters
+metadata: { name: box }
+presentation: !ref posts
+search: {}
+policy:
+  placement: { kind: Ui.SearchBoxPlacement, placeholder: Search posts }
+  state: { key: posts, address: true, fields: [search, status] }
+fields: [{ property: status, operator: in }]
+presets:
+  - { label: Everything, values: [] }
+  - { label: Back, search: back, values: [{ property: status, operator: in, value: [draft] }] }
+content: { type: text, text: Posts }
+---
+kind: Ui.Filters
+metadata: { name: table }
+presentation: !ref posts
+search: { pinned: true }
+policy:
+  placement: { kind: Ui.AsidePlacement, show: chosen, controls: chips, compact: { kind: Ui.CollapsiblePlacement } }
+fields: [{ property: status, operator: in }]
+content: { type: text, text: Posts }
+---
+kind: Ui.Filters
+metadata: { name: releases }
+presentation: !ref posts
+search: { default: release }
+policy: { placement: { kind: Ui.SearchBoxPlacement }, apply: button }
+fields: [{ property: status, operator: in }]
+content: { type: text, text: Posts }
+---
+kind: Ui.Filters
+metadata: { name: everything }
+presentation: !ref posts
+content: { type: text, text: Posts }
+---
+kind: Ui.Filters
+metadata: { name: listed }
+presentation: !ref posts
+fields: [{ property: title, operator: contains }]
+content: { type: text, text: Posts }
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: box
+    invoke: { kind: Probe.Read, source: !ref box }
+  - name: table
+    invoke: { kind: Probe.Read, source: !ref table }
+  - name: releases
+    invoke: { kind: Probe.Read, source: !ref releases }
+  - name: everything
+    invoke: { kind: Probe.Read, source: !ref everything }
+  - name: listed
+    invoke: { kind: Probe.Read, source: !ref listed }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        box: !cel >-
+          {
+            'search': steps.box.result.node.search,
+            'placement': steps.box.result.node.placement,
+            'stateFields': steps.box.result.node.state.fields,
+            'presets': steps.box.result.node.presets.map(p, [has(p.search) ? p.search : null, p['values'].size()])
+          }
+        table: !cel "{'search': steps.table.result.node.search, 'placement': steps.table.result.node.placement}"
+        releases: !cel "{'search': steps.releases.result.node.search, 'placement': steps.releases.result.node.placement}"
+        everything: !cel "{'hasSearch': has(steps.everything.result.node.search), 'stateFields': steps.everything.result.node.state.fields}"
+        listed: !cel "{'hasSearch': has(steps.listed.result.node.search), 'stateFields': steps.listed.result.node.state.fields}"
+      expected:
+        box:
+          search: { pinned: false, default: null }
+          placement: { type: searchBox, placeholder: { text: Search posts, context: null, lang: en, computed: false } }
+          stateFields: [search, status]
+          presets: [[null, 0], [back, 1]]
+        table:
+          search: { pinned: true, default: null }
+          placement:
+            type: aside
+            side: start
+            show: chosen
+            controls: chips
+            summary: none
+            compact: { type: collapsible, open: false, show: chosen, controls: chips, summary: none }
+        releases:
+          search: { pinned: false, default: release }
+          placement: { type: searchBox, placeholder: { set: Ui.Translations, key: searchAndFilter } }
+        everything: { hasSearch: true, stateFields: [search, title, status] }
+        listed: { hasSearch: false, stateFields: [title] }

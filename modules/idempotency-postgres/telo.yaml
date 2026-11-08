@@ -10,18 +10,12 @@ metadata:
     retried or redelivered operation's writes happen once per key. A key commits
     or rolls back with the caller's transaction, is remembered for a retention
     window and is removed in the background after it.
-requires:
-  # The table kind's duplicate-name rule binds `coReferrers:`, which an older
-  # analyzer evaluates unbound and reports as a defect in this module.
-  # Forward-declared: 0.129.0 is the release that carries the binding.
-  telo: ">=0.129.0"
-imports:
-  IdempotencySql: ../idempotency-sql
-  Postgres: ../postgres
-exports:
-  kinds:
-    - Table
-    - Ledger
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.129.0" }
+    reason: "Before 0.129.0, the table kind's duplicate-name rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module."
+imports: { IdempotencySql: ../idempotency-sql, Postgres: ../postgres }
+exports: { kinds: [Table, Ledger] }
 ---
 # IdempotencyPostgres.Table — a `Postgres.Table` holding the keys of every ledger
 # that names it. The author names only the physical table; every column and
@@ -47,7 +41,7 @@ schema:
   additionalProperties: false
   required: [table]
   examples:
-    - table: idempotency_keys
+    - { table: idempotency_keys }
   properties:
     table:
       title: Table
@@ -87,8 +81,7 @@ metadata:
     in the background in small batches once it has expired.
 capability: Telo.Service
 extends: IdempotencySql.Ledger
-controllers:
-  - pkg:telo/local/js?path=./nodejs/idempotency-postgres.mjs&local_path=./nodejs/src/index.ts#Ledger
+controllers: [pkg:telo/local/js?path=./nodejs/idempotency-postgres.mjs&local_path=./nodejs/src/index.ts#Ledger]
 schema:
   type: object
   # Only what this kind narrows; `name` and `retention` are inherited from
@@ -105,20 +98,14 @@ schema:
     connection:
       title: Connection
       description: The connection the ledger's table lives on, and the one a guarded transaction must be open on.
-      x-telo-ref:
-        kind: Postgres.Connection
-        use: dependency
+      x-telo-ref: { kind: Postgres.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
         The schema that lists the ledger's table, on the same connection. It
         creates and migrates the table; the ledger issues no DDL.
-      x-telo-ref:
-        kind: Postgres.Schema
-        use: dependency
+      x-telo-ref: { kind: Postgres.Schema, use: dependency }
     table:
       title: Table
       description: The table the keys are recorded in.
-      x-telo-ref:
-        kind: Self.Table
-        use: dependency
+      x-telo-ref: { kind: Self.Table, use: dependency }

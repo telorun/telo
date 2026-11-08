@@ -52,6 +52,9 @@ messages:
   filterControl: "{$label} {$operator}"
   filterChip: "{$label} {$operator} {$value}"
   filterGroupSummary: "{$label}: {$summary}"
+  searchFilter: Pesquisa
+  searchChip: "Pesquisa: {$text}"
+  searchAndFilter: Pesquisar e filtrar
   rangeFrom: De
   rangeTo: Até
   rangeStartsAfterEnd: Não pode começar depois de terminar

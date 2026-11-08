@@ -23,6 +23,7 @@ texts:
   # The navigation's groups.
   - { text: Building blocks, translation: "構成要素" }
   - { text: Input, translation: "入力" }
+  - { text: Search, translation: "検索" }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
@@ -563,3 +564,11 @@ texts:
   - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "リクエスト本文が、このサーバーが受け付ける {$maxBodyBytes} バイトを超えています。" }
   - { text: "This server does not serve the host {$host}.", translation: "このサーバーはホスト {$host} を処理しません。" }
   - { text: "The list request is not valid.", translation: "一覧のリクエストが無効です。" }
+
+  # Search.
+  - { text: "Search posts", translation: "投稿を検索" }
+  - { text: "Posts beside their filters", translation: "フィルターの横の投稿" }
+  - { text: "Release posts", translation: "リリースの投稿" }
+  - { text: "Everything", translation: "すべて" }
+  - { text: "Drafts about releases", translation: "リリースに関する下書き" }
+  - { text: "Search posts, or filter by author, status or date", translation: "投稿を検索するか、著者・ステータス・日付で絞り込みます" }

@@ -60,7 +60,7 @@ requires:
   # `x-telo-context-from-referrer` on an evaluated binding,
   # `x-telo-context-nullable-when`, `x-telo-ref.outputTo` and the object form of
   # `x-telo-catches-for`, which the mount authentication schema uses.
-  telo: ">=0.130.0"
+  telo: ">=0.131.0"
 lang: en
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at

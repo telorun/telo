@@ -10,6 +10,7 @@ metadata:
     model can call them like any other tool — a prompt is rendered with the model's
     arguments and its messages handed back. The catalogue and its argument schemas are
     discovered at run time over whichever MCP transport the connection uses.
+requires: { telo: ">=unreleased" }
 imports:
   # Import @telorun/ai for the Ai.ToolProvider abstract this definition implements.
   Ai: ../ai

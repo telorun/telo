@@ -485,6 +485,215 @@
       }
     ]
   },
+  "Combobox": {
+    "props": {
+      "id": "control",
+      "label": "Search",
+      "placeholder": "Search",
+      "value": "",
+      "open": false,
+      "groups": [
+        {
+          "key": "fields",
+          "label": "Fields",
+          "entries": [
+            { "key": "title", "label": "Title" },
+            { "key": "status", "label": "Status" }
+          ]
+        },
+        {
+          "key": "values",
+          "label": "Values",
+          "entries": [
+            { "key": "draft", "label": "Draft", "checked": false },
+            { "key": "review", "label": "In review", "checked": true }
+          ]
+        }
+      ],
+      "highlighted": "",
+      "invalid": false,
+      "required": false,
+      "disabled": false
+    },
+    "vectors": [
+      {
+        "name": "reports what is typed and asks to open, the focus staying in the box",
+        "props": { "describedBy": "hint", "invalid": true },
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "fill": { "id": "control" }, "value": "ba" },
+          {
+            "expect": {
+              "intents": [["onChange", "ba"], ["onOpenChange", true]],
+              "focus": { "id": "control" },
+              "outside": [{ "part": "combobox-content" }],
+              "attributes": [{ "of": { "id": "control" }, "name": "data-state", "value": "open" }]
+            }
+          },
+          { "fill": { "id": "control" }, "value": "bac" },
+          { "expect": { "intents": [["onChange", "bac"]], "focus": { "id": "control" } } }
+        ]
+      },
+      {
+        "name": "asks to open on a press on the box while closed, and on an arrow key",
+        "steps": [
+          { "click": { "id": "control" } },
+          { "expect": { "intents": [["onOpenChange", true]] } },
+          { "props": { "open": false } },
+          { "focus": { "id": "control" } },
+          { "key": "ArrowDown", "on": { "id": "control" } },
+          { "expect": { "intents": [["onOpenChange", true]], "focus": { "id": "control" } } }
+        ]
+      },
+      {
+        "name": "keeps the focus in the box while the arrows move the highlight it announces, round the list",
+        "props": { "open": true },
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "key": "ArrowDown" },
+          { "expect": { "intents": [["onHighlight", "title"]], "focus": { "id": "control" }, "activeDescendant": { "part": "combobox-item", "text": "Title" } } },
+          { "key": "ArrowDown" },
+          { "expect": { "intents": [["onHighlight", "status"]], "focus": { "id": "control" }, "activeDescendant": { "part": "combobox-item", "text": "Status" } } },
+          { "key": "ArrowUp" },
+          { "expect": { "intents": [["onHighlight", "title"]], "activeDescendant": { "part": "combobox-item", "text": "Title" } } },
+          { "key": "ArrowUp" },
+          { "expect": { "intents": [["onHighlight", "review"]], "focus": { "id": "control" }, "activeDescendant": { "part": "combobox-item", "text": "In review" } } },
+          { "key": "ArrowDown" },
+          { "expect": { "intents": [["onHighlight", "title"]], "focus": { "id": "control" } } }
+        ]
+      },
+      {
+        "name": "marks the highlighted entry alone, and announces none while closed",
+        "props": { "open": true, "highlighted": "draft" },
+        "steps": [
+          { "focus": { "id": "control" } },
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "part": "combobox-item", "text": "Draft" }, "name": "data-highlighted", "value": "" },
+                { "of": { "part": "combobox-item", "text": "Title" }, "name": "data-highlighted", "value": null }
+              ],
+              "activeDescendant": { "part": "combobox-item", "text": "Draft" }
+            }
+          },
+          { "props": { "open": false } },
+          { "expect": { "activeDescendant": null, "absent": [{ "part": "combobox-content" }] } }
+        ]
+      },
+      {
+        "name": "picks the highlighted entry on Enter, leaving the list open and the focus in the box",
+        "props": { "open": true, "highlighted": "status" },
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "key": "Enter" },
+          { "expect": { "intents": [["onPick", "status"]], "focus": { "id": "control" }, "present": [{ "part": "combobox-content" }] } },
+          { "props": { "highlighted": "" } },
+          { "key": "Enter" },
+          { "expect": { "intents": [] } }
+        ]
+      },
+      {
+        "name": "picks an entry that is pressed, the focus staying in the box",
+        "props": { "open": true },
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "click": { "part": "combobox-item", "text": "Draft" } },
+          { "expect": { "intents": [["onPick", "draft"]], "focus": { "id": "control" }, "present": [{ "part": "combobox-content" }] } }
+        ]
+      },
+      {
+        "name": "asks to highlight the entry the pointer moves over",
+        "props": { "open": true },
+        "steps": [
+          { "hover": { "part": "combobox-item", "text": "Status" } },
+          { "expect": { "intents": [["onHighlight", "status"]] } },
+          { "hover": { "part": "combobox-item", "text": "Status" } },
+          { "expect": { "intents": [] } }
+        ]
+      },
+      {
+        "name": "asks to close on Escape, and stays open until the renderer closes it",
+        "props": { "open": true },
+        "hold": ["open"],
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", false, "escape"]], "focus": { "id": "control" }, "present": [{ "part": "combobox-content" }] } }
+        ]
+      },
+      {
+        "name": "asks to close on a press outside it",
+        "props": { "open": true },
+        "hold": ["open"],
+        "steps": [
+          { "press": { "element": "body" } },
+          { "expect": { "intents": [["onOpenChange", false, "outside"]] } }
+        ]
+      },
+      {
+        "name": "counts a press on what it is placed against as inside it",
+        "props": { "open": true, "anchor": { "$element": "opener" } },
+        "hold": ["open"],
+        "steps": [
+          { "press": { "element": "opener" } },
+          { "expect": { "intents": [], "present": [{ "part": "combobox-content" }] } }
+        ]
+      },
+      {
+        "name": "reports Backspace only while nothing is typed",
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "key": "Backspace" },
+          { "expect": { "intents": [["onBackspace"]], "focus": { "id": "control" } } },
+          { "props": { "value": "b" } },
+          { "key": "Backspace" },
+          { "expect": { "intents": [] } }
+        ]
+      },
+      {
+        "name": "draws its list outside the application in labelled sections, an entry checkable where it says so",
+        "props": { "open": true },
+        "steps": [
+          {
+            "expect": {
+              "outside": [{ "part": "combobox-content" }, { "part": "combobox-group", "index": 1 }],
+              "present": [{ "role": "listbox" }, { "role": "group", "index": 1 }, { "text": "Fields" }, { "text": "Values" }],
+              "attributes": [
+                { "of": { "part": "combobox-item", "text": "Draft" }, "name": "data-state", "value": "unchecked" },
+                { "of": { "part": "combobox-item", "text": "In review" }, "name": "data-state", "value": "checked" },
+                { "of": { "part": "combobox-item", "text": "In review" }, "name": "aria-checked", "value": "true" },
+                { "of": { "part": "combobox-item", "text": "Title" }, "name": "data-state", "value": null }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "carries the open state on its box and its list, and draws no list while it has no entry",
+        "props": { "open": true },
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "id": "control" }, "name": "data-state", "value": "open" },
+                { "of": { "part": "combobox-content" }, "name": "data-state", "value": "open" }
+              ]
+            }
+          },
+          { "props": { "groups": [] } },
+          {
+            "expect": {
+              "absent": [{ "part": "combobox-content" }],
+              "attributes": [
+                { "of": { "id": "control" }, "name": "data-state", "value": "closed" },
+                { "of": { "id": "control" }, "name": "aria-expanded", "value": "false" }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
   "Listbox": {
     "props": {
       "label": "People",

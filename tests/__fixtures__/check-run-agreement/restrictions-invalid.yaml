@@ -1,0 +1,4 @@
+kind: Telo.Application
+metadata: { name: RestrictionsInvalid, version: 1.0.0 }
+restrictions:
+  - { requires: { telo: "<0.1.0" } }

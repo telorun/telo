@@ -10,13 +10,10 @@ metadata:
     existing resources as callable tools, readable resources and fetchable prompts,
     then serve them either over standard input and output for a locally spawned
     server, or over HTTP with optional per-session state.
-requires:
-  # Controllers return their effects from `init()` / `run()`; a runtime that does
-  # not execute a returned chain allocates nothing and undoes nothing.
-  #
-  # 0.130.0: the endpoint imports `errorValueOf` from the SDK for its error
-  # event; a 0.129.0 runtime fails to load the controller (verified by execution).
-  telo: ">=0.130.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.130.0" }
+    reason: "The endpoint imports `errorValueOf` from the SDK for its error event, so a 0.129.0 runtime fails to load the controller; also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
 # The server kind an endpoint's referrer rules read.
 imports: { Http: ../http-server }
 exports: { kinds: [StdioServer, HttpEndpoint, Tools, Resources, Prompts] }

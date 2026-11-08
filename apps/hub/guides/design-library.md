@@ -250,7 +250,7 @@ result:
   unnamed declaration — and `targets: [!for-each { in: !cel "self.jobs", emit:
   !ref crons[each.key] }]` starts its members. A computed source is
   `REPEAT_COMPUTED`. A module whose own manifest writes these tags declares
-  `requires: telo:` at the release that carries them.
+  a `requires: telo:` floor, which `telo release floor` measures in a Telo workspace.
 - **A reference the instance holds reaches an entry only through a bare
   `!cel "self.<path>"`** — one slot (`connection: !cel "self.connection"`) or
   a whole value holding several (`routes: !cel "self.routes"`). Never build
@@ -595,23 +595,18 @@ it proves the translations complete.
 
 ## Declaring the runtime it needs — `requires:`
 
-A library declares the oldest Telo it is verified against, open above:
+`requires: { telo: ">=<release>" }` is the oldest Telo that reads your syntax
+(a new annotation, a new key on a built-in document, a new shape of an existing
+field), so an older runtime reports one `MODULE_REQUIRES_NEWER_RUNTIME` instead
+of a schema error in your file. It is a floor only; an upper bound, `^`, `~`, a
+bare version, `||` and wildcards are `REQUIRES_INVALID`. In a Telo workspace
+`telo release floor` measures it; elsewhere write it by hand and check it with
+that release's `telo check`.
 
-```yaml
-requires:
-  telo: ">=<oldest verified release>"
-```
-
-Bounds use explicit comparators; `^`, `~`, a bare version, `||`, hyphen
-ranges and wildcards are refused (`REQUIRES_INVALID`). Raise the floor in the
-same change that adopts syntax an older release cannot read — a new
-annotation, a new key on a built-in document, a new shape of an existing
-field — so an older runtime reports one `MODULE_REQUIRES_NEWER_RUNTIME`
-instead of blaming your file with a schema error. Verify it by running the
-older release's `telo check` against the library: it must reject the file
-without the floor and report the floor with it. A field your kinds merely
-offer to importers needs no floor of yours; the importer who writes the new
-syntax declares it.
+What measurement cannot see goes in `restrictions:`, each entry with a
+`reason`: a runtime feature, a Node bound, a ceiling found after publishing.
+To restrict a published version, publish a later one whose entry `versions:`
+covers it.
 
 ## Inline or named
 

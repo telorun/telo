@@ -21,8 +21,7 @@ routes:
         body:
           type: object
           required: [question]
-          properties:
-            question: { type: string }
+          properties: { question: { type: string } }
     handler: !ref assistant
     inputs:
       messages:
@@ -55,7 +54,7 @@ routes:
         status: 500
         content: { application/json: { body: { code: !cel "error.code" } } }
       # The agent's own.
-      - when: !cel "error.code in ['ERR_INVALID_INPUT', 'ERR_CONTRACT_VIOLATION', 'ERR_AGENT_MAX_STEPS', 'ERR_AGENT_UNKNOWN_TOOL', 'ERR_AGENT_TOOL_COLLISION', 'ERR_AGENT_APPROVAL_UNKNOWN_TOOL', 'ERR_AGENT_APPROVAL_DECISION_INVALID', 'ERR_CONTENT_RESOLUTION_INVALID']"
+      - when: !cel "error.code in ['ERR_INVALID_INPUT', 'ERR_CONTRACT_VIOLATION', 'ERR_AGENT_MAX_STEPS', 'ERR_AGENT_UNKNOWN_TOOL', 'ERR_AGENT_TOOL_COLLISION', 'ERR_AGENT_APPROVAL_UNKNOWN_TOOL', 'ERR_AI_TEXT_TOOL_UNKNOWN', 'ERR_AI_TEXT_TOOL_ARGUMENT_UNKNOWN', 'ERR_AI_TEXT_TOOL_ARGUMENT_MISSING', 'ERR_AI_TEXT_TOOL_TAG_DUPLICATE', 'ERR_AGENT_APPROVAL_DECISION_INVALID', 'ERR_CONTENT_RESOLUTION_INVALID']"
         status: 500
         content: { application/json: { body: { code: !cel "error.code" } } }
 ---

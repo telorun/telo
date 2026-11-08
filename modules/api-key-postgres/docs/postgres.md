@@ -42,4 +42,4 @@ The table kind declares `API_KEY_STORE_NAME_DUPLICATE`: two stores naming one `K
 
 ## Runtime requirement
 
-`requires: telo: ">=0.129.0"`: the table kind's rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module.
+A `restrictions:` entry requires telo `>=0.129.0`: the table kind's rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module.

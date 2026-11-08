@@ -8,10 +8,14 @@
 //!
 //! The readings that are deliberate are Node's, stated in `lexer.ts`: the bytes marker
 //! comes first (`br` is raw bytes, `rb` a name beside a string); a raw literal lets a
-//! backslash take the next character with it, except a line feed in a single-line
-//! literal, which ends it; a bytes literal holds the UTF-8 of its text; a double may
-//! begin with its point. One is recorded as interim: a carriage return is content in a
-//! single-line literal and in a quoted member name.
+//! backslash take the next character with it, except a line feed or a carriage return
+//! in a single-line literal, which ends it; no single-line literal of any form (a
+//! quoted member name included) holds a line break; a bytes literal holds the UTF-8 of
+//! its text; a double may begin with its point.
+//!
+//! **Delimiting without decoding** is `quoted_literal_end`, Node's `quotedLiteralEnd`
+//! over byte offsets on character boundaries: where a quoted literal opened at an
+//! offset ends, for a host that must find that inside text it does not tokenize.
 //!
 //! **Positions.** One cursor advances a byte offset and a UTF-16 code-unit offset
 //! together; there is no position table and no rescan. Every range lies within the
@@ -128,6 +132,11 @@ fn is_ident_start(byte: u8) -> bool {
 
 fn is_ident_part(byte: u8) -> bool {
     is_ident_start(byte) || byte.is_ascii_digit()
+}
+
+/// A line break, which no single-line literal holds: a line feed or a carriage return.
+fn is_line_break(byte: u8) -> bool {
+    matches!(byte, b'\n' | b'\r')
 }
 
 fn is_space(byte: u8) -> bool {
@@ -326,15 +335,15 @@ impl<'s> Lexer<'s> {
     /// so the text between them is the name as written.
     fn read_quoted_identifier(&mut self, start: Cursor) -> Option<Token> {
         let mut at = start.ahead(1);
-        let mut holds_line_feed = false;
+        let mut holds_line_break = false;
         while let Some(byte) = self.byte_at(at.byte) {
             if byte == b'`' {
                 break;
             }
-            holds_line_feed |= byte == b'\n';
+            holds_line_break |= is_line_break(byte);
             at = self.past_character(at).0;
         }
-        if at.byte >= self.bytes.len() || holds_line_feed {
+        if at.byte >= self.bytes.len() || holds_line_break {
             self.diagnostics.report(
                 CelSyntaxCode::UnterminatedString,
                 "a quoted member name ends at its closing backtick",
@@ -504,7 +513,7 @@ impl<'s> Lexer<'s> {
 
     /// Decodes a literal's content, answering where the literal ends. A raw literal
     /// reads no escape: a backslash takes the next character with it, both kept as
-    /// written — except a line feed in a single-line literal, which ends it.
+    /// written — except a line break in a single-line literal, which ends it.
     fn scan_literal(
         &mut self,
         quote_at: Cursor,
@@ -519,14 +528,14 @@ impl<'s> Lexer<'s> {
             if self.bytes[at.byte..].starts_with(terminator) {
                 return Some(at.ahead(width));
             }
-            if !triple && byte == b'\n' {
+            if !triple && is_line_break(byte) {
                 break;
             }
             if byte != b'\\' {
                 at = self.literal_character(at, content);
             } else if !raw {
                 at = self.read_escape(at, content)?;
-            } else if self.byte_at(at.byte + 1).is_some_and(|next| triple || next != b'\n') {
+            } else if self.byte_at(at.byte + 1).is_some_and(|next| triple || !is_line_break(next)) {
                 content.push_named(0x5c);
                 at = self.literal_character(at.ahead(1), content);
             } else {
@@ -728,6 +737,55 @@ fn refuse_over_long() -> (Vec<Token>, FirstSyntaxDiagnostic) {
     (vec![token(TokenKind::Eof, start, start)], diagnostics)
 }
 
+/// The byte offset just past the quoted literal opened at `quote_at` — a string or bytes
+/// literal, or a member name between backticks — or `None` when it never ends; Node's
+/// `quotedLiteralEnd`. It delimits as the lexer does and decodes nothing, so a literal
+/// the lexer refuses for a bad escape still ends where the language ends it. The word
+/// directly before a string quote switches the reading only when it is a prefix the
+/// lexer accepts (`r`, `b`, `br`, in any case).
+///
+/// # Panics
+///
+/// When `quote_at` is not the offset of a quote or a backtick: a caller defect.
+pub fn quoted_literal_end(source: &str, quote_at: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let quote = match bytes.get(quote_at) {
+        Some(&byte @ (b'\'' | b'"' | b'`')) => byte,
+        _ => panic!("quoted_literal_end: offset {quote_at} holds no quote"),
+    };
+    if quote == b'`' {
+        let close = bytes[quote_at + 1..].iter().position(|&byte| byte == b'`')? + quote_at + 1;
+        let broken = bytes[quote_at + 1..close].iter().any(|&byte| is_line_break(byte));
+        return if broken { None } else { Some(close + 1) };
+    }
+    let word_start = bytes[..quote_at].iter().rposition(|&byte| !is_ident_part(byte)).map_or(0, |at| at + 1);
+    let raw = string_prefix(&source[word_start..quote_at]).is_some_and(|(raw, _)| raw);
+    let triple = bytes[quote_at..].starts_with(&[quote; 3]);
+    let terminator = if triple { vec![quote; 3] } else { vec![quote] };
+    let mut at = quote_at + terminator.len();
+    while let Some(&byte) = bytes.get(at) {
+        if bytes[at..].starts_with(&terminator) {
+            return Some(at + terminator.len());
+        }
+        if !triple && is_line_break(byte) {
+            return None;
+        }
+        if byte != b'\\' {
+            at += 1;
+            continue;
+        }
+        // A raw backslash that ends the source, or stands before a line break of a
+        // single-line literal, is content; any other takes the next character.
+        let next = bytes.get(at + 1).copied();
+        let content = raw && next.is_none_or(|next| !triple && is_line_break(next));
+        at += match (content, source[at + 1..].chars().next()) {
+            (false, Some(character)) => 1 + character.len_utf8(),
+            _ => 1,
+        };
+    }
+    None
+}
+
 /// Every token of the source, with at most one diagnostic for where it stopped.
 pub(crate) fn tokenize(source: &str) -> (Vec<Token>, FirstSyntaxDiagnostic) {
     // A source has no more code units than bytes, so only a long one is counted.
@@ -780,5 +838,146 @@ mod tests {
         assert_eq!(diagnostic.code, CelSyntaxCode::LimitExceeded);
         assert_eq!(diagnostic.message, "the expression has more UTF-16 code units than the limit of 4294967285");
         assert_eq!([diagnostic.range.start, diagnostic.range.end], [0, 0]);
+    }
+
+    // --- quoted_literal_end held to the lexer -------------------------------------
+    //
+    // The twin of `cel/nodejs/tests/quoted-literal-end.test.ts`; the number of
+    // enumerated strings is the Node build's (`@telorun/cel` at `bc6d1172` + slice 10
+    // card 1, Node v24.21.0). The explicit rows are Node's answers, executed.
+
+    const ALPHABET: [char; 14] = ['r', 'R', 'b', 'B', 'x', '1', '_', '\'', '"', '`', '\\', '\n', '\r', 'a'];
+
+    /// Sources the lexer tests read, which reach past length 5.
+    const LEXER_SOURCES: [&str; 30] = [
+        "''",
+        "\"a\"",
+        "'''a\nb'''",
+        "\"\"\"a\"b\"\"\"",
+        "r\"\\n\"",
+        "R'a\\'b'",
+        "r''''''",
+        "\"\\\\ \\? \\\" \\' \\` \\a \\b \\f \\n \\r \\t \\v\"",
+        "\"\\u270c \\U0001f431 \\ud83d\\udc31\"",
+        "b'\\000\\xff'",
+        "b'\u{ff}'",
+        "b'\u{1f431}'",
+        "br'\\n'",
+        "bR\"\\n\"",
+        "'abc",
+        "'a\nb'",
+        "'a\rb'",
+        "rb'x'",
+        "`a`",
+        "`a",
+        "a.`b\rc`",
+        "r'a\\\nb'",
+        "br'a\\\rb'",
+        "r'abc\\",
+        "r'\\''",
+        "r'''a\\'''b'''",
+        "r'''a\\\rb'''",
+        "'''a\r\nb'''",
+        "m.`it's}}`",
+        "'\u{1f600}' + b'\u{1f600}'",
+    ];
+
+    /// The number of strings up to length 5 over the alphabet.
+    const ENUMERATED: usize = 579_194;
+
+    /// The disagreements between the function and the lexer over one source.
+    fn disagreements(source: &str, found: &mut Vec<String>) {
+        let (tokens, diagnostics) = tokenize(source);
+        for token in &tokens {
+            let quote_at = match token.kind {
+                TokenKind::QuotedIdent => token.byte_start,
+                TokenKind::String | TokenKind::Bytes => {
+                    token.byte_start + source[token.byte_start..token.byte_end].find(['\'', '"']).expect("a quote")
+                }
+                _ => continue,
+            };
+            let end = quoted_literal_end(source, quote_at);
+            if end != Some(token.byte_end) {
+                found.push(format!("{source:?}: token ends {}, function {end:?}", token.byte_end));
+            }
+        }
+        if let Some(diagnostic) = diagnostics.first() {
+            if diagnostic.code == CelSyntaxCode::UnterminatedString {
+                let mut units = 0;
+                let quote_at = source
+                    .char_indices()
+                    .find(|(_, character)| {
+                        let at = units;
+                        units += character.len_utf16() as u32;
+                        at == diagnostic.range.start
+                    })
+                    .map(|(at, _)| at)
+                    .expect("a character boundary");
+                if let Some(end) = quoted_literal_end(source, quote_at) {
+                    found.push(format!("{source:?}: unterminated, function {end}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn quoted_literal_end_agrees_with_the_lexer_on_every_source_up_to_length_5() {
+        let mut found = Vec::new();
+        let mut count = 0;
+        for source in LEXER_SOURCES {
+            count += 1;
+            disagreements(source, &mut found);
+        }
+        let mut layer = vec![String::new()];
+        for _ in 0..5 {
+            let mut next = Vec::with_capacity(layer.len() * ALPHABET.len());
+            for prefix in &layer {
+                for ch in ALPHABET {
+                    let source = format!("{prefix}{ch}");
+                    count += 1;
+                    disagreements(&source, &mut found);
+                    next.push(source);
+                }
+            }
+            layer = next;
+        }
+        assert_eq!(found, Vec::<String>::new());
+        assert_eq!(count, LEXER_SOURCES.len() + ENUMERATED);
+    }
+
+    #[test]
+    fn quoted_literal_end_delimits_a_literal_the_lexer_refuses_for_an_escape() {
+        assert_eq!(
+            [
+                quoted_literal_end("'\\q'", 0),
+                quoted_literal_end("'a\\\nb'", 0),
+                quoted_literal_end("'a\\\rb'", 0),
+                quoted_literal_end("b'\\u0041'", 1),
+                quoted_literal_end("'\\", 0),
+            ],
+            [Some(4), Some(6), Some(6), Some(9), None]
+        );
+    }
+
+    /// Blind spot: the enumeration cannot tell a raw from a plain literal where the lexer stops on
+    /// invalid_escape_sequence, so these rows hold the prefix rule (a backslash before a line break).
+    #[test]
+    fn quoted_literal_end_holds_the_prefix_rule_where_a_raw_and_a_plain_literal_end_differently() {
+        assert_eq!(
+            [
+                quoted_literal_end("rb'\\\n'", 2),
+                quoted_literal_end("x'\\\n'", 1),
+                quoted_literal_end("bR'\\\n'", 2),
+                quoted_literal_end("Br'\\\n'", 2),
+                quoted_literal_end("BR'\\\n'", 2),
+            ],
+            [Some(6), Some(5), None, None, None]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "holds no quote")]
+    fn quoted_literal_end_refuses_an_offset_that_opens_no_literal() {
+        quoted_literal_end("abc", 1);
     }
 }

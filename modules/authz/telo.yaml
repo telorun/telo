@@ -11,6 +11,7 @@ metadata:
     expressions over the caller, the action, the resource and the request
     context. The first matching rule decides, anything unmatched is denied, and a
     denial can name the scopes the caller lacks.
+requires: { telo: ">=0.117.0" }
 imports: { Auth: ../auth }
 exports: { kinds: [CelPolicy] }
 ---

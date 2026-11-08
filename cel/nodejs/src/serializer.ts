@@ -114,7 +114,7 @@ function memberName(text: string, what: string): string {
  */
 function fieldName(text: string, quoted: boolean): string {
   if (!quoted && isIdentifierSpelling(text)) return text;
-  if (text.includes("`") || text.includes("\n") || text === "") {
+  if (text.includes("`") || text.includes("\n") || text.includes("\r") || text === "") {
     throw new CelSerializeError(`${JSON.stringify(text)} cannot be written as a member name`);
   }
   return `\`${text}\``;

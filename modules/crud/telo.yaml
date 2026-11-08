@@ -15,7 +15,7 @@ metadata:
 requires:
   # 0.122.0 refuses the reader's `throws:` `displayMessage` as SCHEMA_VIOLATION
   # (verified by execution); 0.125.1 reads and runs this file.
-  telo: ">=0.123.0"
+  telo: ">=unreleased"
 lang: en
 imports: { Http: ../http-server, Sql: ../sql, DataModel: ../data-model }
 exports: { kinds: [Collection, Api] }
@@ -28,7 +28,7 @@ metadata:
   name: Collection
   description: >-
     Records stored in one database table: the record shape and the filters,
-    sorts and facets a list accepts, one shape per write and per list row, and
+    sorts, facets and text search a list accepts, one shape per write and per list row, and
     relations to other collections. Refuses, before the app runs and at start, a
     property with no column, a key that is not the primary key, and a relation
     its column's foreign key contradicts.
@@ -193,8 +193,9 @@ metadata:
   description: >-
     Mounts a REST API over one collection's table. The list route pages with an
     opaque cursor and answers rows, a total and the next cursor, filtering and
-    sorting only by declared pairs, and a facet request answers each present
-    value of a property with its count. Create and update validate bodies
+    sorting only by declared pairs, a declared text search across several string
+    properties, and a facet request answers each present value of a property
+    with its count. Create and update validate bodies
     against their shapes and answer with the stored record; read and delete
     address one record by key.
 capability: Telo.Mount
@@ -309,12 +310,13 @@ resources:
                 cursor: { type: string, description: "The `next` of a previous response, passed back unchanged." }
                 sort: { type: string, description: "One property the collection sorts by; `-` before it for descending. `id` order when absent." }
                 facet: { type: string, description: "A property the collection facets. Answers its present values with counts instead of rows." }
+                search: { type: string, description: "A text matched, ignoring case, in any of the properties the collection declares for search; combined with the filters." }
         handler: !ref lister
         inputs:
           # A key with no `.` carries no operator, which is equality.
           filters: !cel >-
             keys(request.query)
-            .filter(k, !(k in ['limit', 'cursor', 'sort', 'facet']) && !k.startsWith('_telo'))
+            .filter(k, !(k in ['limit', 'cursor', 'sort', 'facet', 'search']) && !k.startsWith('_telo'))
             .map(k, k.contains('.')
               ? {
                   'property': k.substring(0, k.lastIndexOf('.')),
@@ -329,6 +331,7 @@ resources:
               'direction': s.startsWith('-') ? 'desc' : 'asc'
             })
           facet: !cel "'facet' in request.query ? request.query.facet : null"
+          search: !cel "'search' in request.query ? request.query.search : null"
           limit: !cel "request.query.limit"
           cursor: !cel "'cursor' in request.query ? request.query.cursor : null"
         returns:
@@ -464,8 +467,9 @@ metadata:
     Reads a database table as a collection, one page at a time: rows matching a
     list of property filters, ordered by one property with nulls last, after an
     opaque cursor, with the count of every match; or one property's present
-    values, each with its count. Refuses a request using a filter, sort or
-    facet it was not configured to accept.
+    values, each with its count, optionally narrowed by a text search over
+    declared properties. Refuses a request using a filter, sort, facet or search
+    it was not configured to accept.
 capability: Telo.Invocable
 controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#ReaderController]
 throws:
@@ -474,7 +478,7 @@ throws:
       description: >-
         The request asks for something the reader does not accept: a filter
         whose property and operator are not a declared pair, a sort or facet by
-        a property not declared for it, a value not of the property's type, a
+        a property not declared for it, a `search` where none is declared, a value not of the property's type, a
         limit outside 1–100, more than one sort property, a sort beside a facet,
         or a cursor that is malformed or was issued for another request. Carries
         `issues`, one `{ pointer, keyword, params }` per refused parameter, its
@@ -524,6 +528,8 @@ inputType:
           properties: { property: { type: string }, direction: { enum: [asc, desc], default: asc } }
       # Names the property whose present values are asked for instead of rows.
       facet: { type: [string, "null"] }
+      # One text, looked for in the properties `query.search` declares.
+      search: { type: [string, "null"] }
       limit: { type: integer }
       cursor: { type: [string, "null"] }
 outputType:
@@ -575,6 +581,11 @@ schema:
             additionalProperties: false
             required: [property]
             properties: { property: { type: string } }
+        search:
+          type: object
+          additionalProperties: false
+          required: [properties]
+          properties: { properties: { type: array, items: { type: string } } }
         facets:
           type: array
           items:

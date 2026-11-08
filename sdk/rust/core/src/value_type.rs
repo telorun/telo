@@ -115,14 +115,15 @@ pub struct ValueType {
 
 /// What this runtime can say about an `instance` representation.
 ///
-/// Kept deliberately thin. The Rust kernel today needs to know that a slot holds
-/// bytes (so an `!include-bytes` embed can fill it) and that a live slot is
-/// exempt; it has no CEL engine, so it carries no CEL type. A backend that grows
-/// one adds a field here rather than a second table.
+/// Kept deliberately thin: that a slot holds bytes (so an `!include-bytes` embed can
+/// fill it), that a live slot is exempt, whether values are ordered, and the CEL type a
+/// value carries. A backend that needs more adds a field here rather than a second table.
 #[derive(Debug, Clone, Copy)]
 pub struct Binding {
     /// A human-readable name for the host representation, used in diagnostics.
     pub rust_type: &'static str,
+    /// The CEL type a value of this representation carries — the Node row's `celType`.
+    pub cel_type: &'static str,
     /// Whether two values of the representation are ordered, which a bound parameter
     /// compares through. An entry declaring a bound over an unordered binding is
     /// refused, as the Node reader refuses one whose binding has no `compare`.
@@ -136,11 +137,18 @@ fn bindings() -> &'static HashMap<&'static str, Binding> {
     static BINDINGS: OnceLock<HashMap<&'static str, Binding>> = OnceLock::new();
     BINDINGS.get_or_init(|| {
         HashMap::from([
-            ("bytes", Binding { rust_type: "Bytes", ordered: false }),
-            ("duration", Binding { rust_type: "Duration", ordered: true }),
-            ("stream", Binding { rust_type: "Stream", ordered: false }),
-            ("timestamp", Binding { rust_type: "Timestamp", ordered: false }),
-            ("url", Binding { rust_type: "plain_encoding::url_text::Url", ordered: false }),
+            ("bytes", Binding { rust_type: "Bytes", cel_type: "bytes", ordered: false }),
+            ("duration", Binding { rust_type: "Duration", cel_type: "google.protobuf.Duration", ordered: true }),
+            ("stream", Binding { rust_type: "Stream", cel_type: "Stream", ordered: false }),
+            ("timestamp", Binding { rust_type: "Timestamp", cel_type: "google.protobuf.Timestamp", ordered: false }),
+            (
+                "url",
+                Binding {
+                    rust_type: "plain_encoding::url_text::Url",
+                    cel_type: crate::plain_encoding::url_text::URL_TYPE_KEY,
+                    ordered: false,
+                },
+            ),
         ])
     })
 }
@@ -148,6 +156,19 @@ fn bindings() -> &'static HashMap<&'static str, Binding> {
 /// The closed vocabulary of `fromHost` anchors, mirroring the Node reader's
 /// `HOST_ANCHORS`: an anchor one runtime cannot map is a hard error there.
 pub const HOST_ANCHORS: &[&str] = &["working-directory"];
+
+/// The CEL type a `json` base carries — the Node reader's `CEL_TYPE_FOR_BASE`.
+fn cel_type_for_base(base: &str) -> Option<&'static str> {
+    Some(match base {
+        "integer" => "int",
+        "number" => "double",
+        "string" => "string",
+        "boolean" => "bool",
+        "array" => "list",
+        "object" => "map",
+        _ => return None,
+    })
+}
 
 /// The CEL types a `json` base carries beyond its own, which only `celType` states.
 fn cel_types_beyond_base(base: &str) -> &'static [&'static str] {
@@ -467,24 +488,78 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
     }
 }
 
-/// Every declared value type, keyed by its `Telo.`-qualified name.
-pub fn value_types() -> &'static HashMap<String, ValueType> {
-    static TYPES: OnceLock<HashMap<String, ValueType>> = OnceLock::new();
-    TYPES.get_or_init(|| {
-        let mut out = HashMap::new();
+/// Every declared value type, by name and in entry-file order.
+struct Registry {
+    by_name: HashMap<String, ValueType>,
+    order: Vec<String>,
+}
+
+fn registry() -> &'static Registry {
+    static REGISTRY: OnceLock<Registry> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        let mut registry = Registry { by_name: HashMap::new(), order: Vec::new() };
         for (file, text) in ENTRY_FILES {
             let raw: Value = serde_json::from_str(text)
                 .unwrap_or_else(|e| panic!("Invalid value-type entry '{file}': {e}"));
             let entry = read_entry(file, &raw);
             assert!(
-                !out.contains_key(&entry.name),
+                !registry.by_name.contains_key(&entry.name),
                 "Invalid value-type entry '{file}': '{}' is already declared",
                 entry.name
             );
-            out.insert(entry.name.clone(), entry);
+            registry.order.push(entry.name.clone());
+            registry.by_name.insert(entry.name.clone(), entry);
         }
-        out
+        registry
     })
+}
+
+/// Every declared value type, keyed by its `Telo.`-qualified name.
+pub fn value_types() -> &'static HashMap<String, ValueType> {
+    &registry().by_name
+}
+
+/// Every declared value type in entry-file order — the order the Node reader's
+/// `VALUE_TYPES` iterates in, which is the order a type registration is made in.
+pub fn value_types_in_order() -> impl Iterator<Item = &'static ValueType> {
+    let registry = registry();
+    registry.order.iter().map(|name| &registry.by_name[name])
+}
+
+/// The CEL type a value at a slot of this type carries: a `json` representation its own
+/// name as a nominal brand (or its `celType`), an `instance` what its binding says.
+pub fn cel_type_of_value_type(entry: &ValueType) -> &str {
+    match entry.representation {
+        Representation::Json => entry.cel_type.as_deref().unwrap_or(&entry.name),
+        Representation::Instance => {
+            let key = entry.binding.as_deref().expect("an instance entry names its binding");
+            bindings()[key].cel_type
+        }
+    }
+}
+
+/// The CEL type a brand degrades to where the consuming slot declares none, or `None` for
+/// an `instance`, which has no base to fall back to.
+pub fn cel_base_of_value_type(entry: &ValueType) -> Option<&'static str> {
+    match entry.representation {
+        Representation::Json => entry.base.as_deref().and_then(cel_type_for_base),
+        Representation::Instance => None,
+    }
+}
+
+/// Every `json` representation's CEL brand and the base type it refines, in entry-file
+/// order. An entry declaring a `celType` is not a brand: its values carry that type.
+pub fn value_brand_bases() -> Vec<(&'static str, &'static str)> {
+    value_types_in_order()
+        .filter(|entry| entry.cel_type.is_none())
+        .filter_map(|entry| cel_base_of_value_type(entry).map(|base| (entry.name.as_str(), base)))
+        .collect()
+}
+
+/// The members of the value type a schema node declares, or `None` when it declares none
+/// or a type without members.
+pub fn members_of(schema: &Value) -> Option<&'static serde_json::Map<String, Value>> {
+    value_type_of(schema)?.members.as_ref()
 }
 
 /// The unit a JSON integer is read in for the type a runtime holds under `binding`, or
@@ -624,6 +699,51 @@ mod tests {
         assert_eq!(types["Telo.Duration"].integer_unit.as_deref(), Some("ms"));
         assert_eq!(integer_unit_of_binding("duration"), Some("ms"));
         assert!(types["Telo.Timestamp"].integer_unit.is_none());
+    }
+
+    #[test]
+    fn reads_the_cel_face_of_each_type_as_the_node_reader_does() {
+        let order: Vec<&str> = value_types_in_order().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(
+            order,
+            [
+                "Telo.Bytes",
+                "Telo.Duration",
+                "Telo.HostPath",
+                "Telo.Stream",
+                "Telo.TcpPort",
+                "Telo.Timestamp",
+                "Telo.UdpPort",
+                "Telo.Uint64",
+                "Telo.Url",
+            ]
+        );
+        let faces: Vec<(&str, &str)> =
+            value_types_in_order().map(|entry| (entry.name.as_str(), cel_type_of_value_type(entry))).collect();
+        assert_eq!(
+            faces,
+            [
+                ("Telo.Bytes", "bytes"),
+                ("Telo.Duration", "google.protobuf.Duration"),
+                ("Telo.HostPath", "Telo.HostPath"),
+                ("Telo.Stream", "Stream"),
+                ("Telo.TcpPort", "Telo.TcpPort"),
+                ("Telo.Timestamp", "google.protobuf.Timestamp"),
+                ("Telo.UdpPort", "Telo.UdpPort"),
+                ("Telo.Uint64", "uint"),
+                ("Telo.Url", "Telo.Url"),
+            ]
+        );
+        assert_eq!(value_brand_bases(), [("Telo.HostPath", "string"), ("Telo.TcpPort", "int"), ("Telo.UdpPort", "int")]);
+        assert_eq!(cel_base_of_value_type(&value_types()["Telo.Uint64"]), Some("int"));
+        assert_eq!(cel_base_of_value_type(&value_types()["Telo.Bytes"]), None);
+        // In serde_json's map order, which `preserve_order` decides for the whole build.
+        let mut members: Vec<&str> =
+            members_of(&json!({ "x-telo-type": "Telo.Url" })).unwrap().keys().map(String::as_str).collect();
+        members.sort_unstable();
+        assert_eq!(members, ["host", "password", "path", "port", "query", "scheme", "user"]);
+        assert!(members_of(&json!({ "x-telo-type": "Telo.Bytes" })).is_none());
+        assert!(members_of(&json!({ "type": "object" })).is_none());
     }
 
     #[test]

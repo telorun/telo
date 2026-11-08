@@ -10,10 +10,10 @@ metadata:
     Docker or Podman daemon, or a runner that serves one per session — reached
     over a unix socket or HTTP(S) with an optional bearer token. Each published
     port is bound to the engine's loopback interface.
-requires:
-  # The controllers return effect chains; everything newer the module relies on
-  # arrives through its `container` import.
-  telo: ">=0.82.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.82.0" }
+    reason: "Its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind; everything newer the module relies on arrives through its `container` import."
 imports: { Container: ../container }
 exports: { kinds: [Engine] }
 ---

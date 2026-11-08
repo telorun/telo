@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use support::{binary, literal_bool};
 use telorun_cel::{
-    CelCallContext, CelEnvironment, CelEnvironmentOptions, CelExpression, CelImplementation, CelParseLimits, CelValue,
+    CelCallContext, CelEnvironment, CelEnvironmentOptions, CelExpression, CelParseLimits, CelValue, NamespaceImplementation,
     EvaluateOptions, NamespaceOptions, PropertyMap,
 };
 use value_support::{i, rec};
@@ -116,8 +116,8 @@ fn evaluates_calls_and_namespaced_calls_a_hundred_thousand_deep() {
     on_a_small_stack(|| {
         let none = PropertyMap::new();
         assert_eq!(evaluated(&format!("{}1{}", "int(".repeat(DEEP), ")".repeat(DEEP)), &none), i(1));
-        let next: CelImplementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| match args {
-            [CelValue::Int(held)] => i(held + 1),
+        let next: NamespaceImplementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| match args {
+            [CelValue::Int(held)] => Ok(i(held + 1)),
             _ => unreachable!("Ns.f is handed an int"),
         });
         let bind = |namespace: &str, name: &str| Some(Arc::clone(&next));

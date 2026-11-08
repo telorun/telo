@@ -1,4 +1,4 @@
-/* The mechanics of the thirteen controls drawn on Radix: the layout their own
+/* The mechanics of the fourteen controls drawn on Radix: the layout their own
    elements need to work, placed by the application in the `telo.control`
    layer. Colour, spacing and type are the theme's. A list, a menu, a popover,
    a navigation panel and a tooltip are placed by the element Radix draws
@@ -15,6 +15,11 @@
 [data-telo-part="select-content"] { box-sizing: border-box; z-index: 50; overflow-x: hidden; overflow-y: auto; min-width: max(9rem, var(--radix-select-trigger-width, 0px), var(--radix-dropdown-menu-trigger-width, 0px)); max-height: min(var(--radix-select-content-available-height, 100vh), var(--radix-dropdown-menu-content-available-height, 100vh)); transform-origin: var(--radix-select-content-transform-origin, var(--radix-dropdown-menu-content-transform-origin)); }
 [data-telo-part="select-item"] { position: relative; display: flex; align-items: center; cursor: default; user-select: none; }
 [data-telo-part="select-item"] [data-telo-part="icon"] { position: absolute; }
+
+/* Combobox: the list is placed against the box, or the anchor holding it, and scrolls on its own. */
+[data-telo-part="combobox-content"] { box-sizing: border-box; z-index: 50; overflow-x: hidden; overflow-y: auto; min-width: max(12rem, var(--radix-popper-anchor-width, 0px)); max-height: min(20rem, var(--radix-popper-available-height, 100vh)); transform-origin: var(--radix-popper-transform-origin); }
+[data-telo-part="combobox-item"] { position: relative; display: flex; align-items: center; cursor: default; user-select: none; }
+[data-telo-part="combobox-item"] [data-telo-part="icon"] { position: absolute; }
 
 /* Listbox: the list scrolls on its own, which is what reads the next page at its end. */
 [data-telo-part="picker-list"] { list-style: none; margin: 0; padding: 0; max-height: min(20rem, 60vh); overflow-y: auto; }

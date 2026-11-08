@@ -695,11 +695,11 @@ a `tag` or the `input` inside the box, so one ring is drawn.
 | `filters-toggle` | the button unfolding a collapsible bar, or opening a bar drawn in an overlay |
 | `filters-count` | in that button, how many filters hold a value; absent when none does |
 | `filters-bar` | what holds the controls: the filters, then `filters-add` — and, in a bar that does not fold, `filters-apply` and `filters-reset` |
-| `filters-add` | the button listing the filters that are not on show, under `show: chosen` |
+| `filters-add` | the button listing the filters that are not on show, under the placement's `show: chosen` |
 | `filters-apply` | the button applying what was entered in the controls, under `apply: button` |
 | `filters-reset` | the button returning every filter to its declared default |
-| `filters-summary` | the row of chips, under `summary: chips` |
-| `summary-chip` | one filter holding a value: its label, its operator and the value |
+| `filters-summary` | the row of chips, under the placement's `summary: chips` |
+| `summary-chip` | one filter holding a value: its label, its operator and the value; the bar's search reads `Search: <text>` |
 | `summary-chip-remove` | the button in it that clears that filter, an icon |
 | `filters-content` | what the bar filters |
 | `filter` | the filters on one property: its label, and one control or a group of them |
@@ -708,8 +708,8 @@ a `tag` or the `input` inside the box, so one ring is drawn.
 | `filter-bound` | one of them: its caption and its control |
 | `filter-caption` | what tells it from the others: `from`, `to`, `after`, `before`, `is`, `contains`, `one of` |
 | `filter-remove` | the button taking a filter off show and clearing it, an icon; never on a pinned filter |
-| `filter-chip` | under `controls: chips`, the button naming a property's filters and what they hold, which opens them; its `title` holds the same text whole, for a theme that cuts it short |
-| `filter-input` | a filter typed into, and the box tags are typed into |
+| `filter-chip` | under the placement's `controls: chips`, the button naming a property's filters and what they hold, which opens them; its `title` holds the same text whole, for a theme that cuts it short |
+| `filter-input` | a filter typed into, the bar's search box among them, and the box tags are typed into |
 | `filter-select` | a filter chosen from a list: the button showing what is chosen |
 | `filter-options` | a filter's values side by side, under `control: options` |
 | `filter-option` | one of them |
@@ -719,6 +719,10 @@ a `tag` or the `input` inside the box, so one ring is drawn.
 | `filter-tags` | the values typed so far and the box the next is typed into, under `control: tags` |
 | `filter-tag` | one typed value |
 | `filter-tag-remove` | the button in it that removes that value, an icon |
+| `search-box` | under `Ui.SearchBoxPlacement`, the one box of the bar: its chips, then the input; `data-reason` names why the text typed is not a token while nothing is offered for it |
+| `search-token` | a chip in it: the search (`Search: <text>`), or a filter holding a value |
+| `search-token-remove` | the button in it that clears that filter, an icon |
+| `search-input` | the box's input, the root of the `Combobox` control |
 
 **Changed:** a bar's controls are inside `filters-bar` and what it filters
 inside `filters-content`; both were direct children of `filters`. A rule
@@ -742,6 +746,19 @@ unpinned and drawn — has no `filters-toggle` and no `filters-bar`.
 - `"overlay"`: `filters-bar` exists only while the overlay is open, inside the
   `surface-body` of a `surface` titled `Filters`, followed by a `form-actions`
   holding one `submit` reading `Done`.
+
+The bar's `show`, `controls` and `summary` are read from the placement drawn —
+below the application's breakpoint, its `compact` one. A bar with a search
+draws it first, as a `filter` labelled `Search` holding a `filter-input` (a
+pinned one stays outside what folds, as any pinned filter does). A placement
+this renderer does not draw is drawn as `data-placement="above"`.
+
+`data-placement="searchBox"`: `filters-bar` holds one `search-box` and, after
+it, `filters-apply` (under `apply: button`) and `filters-reset`. Inside
+`search-box` come the `search-token`s — the search first, then each filter
+holding a value, in the bar's order — then the `search-input`; its list is the
+`Combobox` control's `combobox-content`. The presets are suggestions in that
+list, so there is no `filters-presets`, and nothing folds or is summarised.
 
 Under `controls: chips` a `filter-chip` stands where the `filter` would, and
 the `filter` itself is drawn while the chip is open, inside a `surface` with
@@ -813,6 +830,9 @@ The full-screen viewer a picture opens, drawn in a `dialog` surface (`data-surfa
 | `glyph` | the glyph of an [icon resource](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) — a navigation entry's, drawn before its text and alone in a rail: the icon's file as a mask over `currentColor`, so it takes the colour of the text around it; hidden from assistive technology |
 | `select-content` | the open list of a `select` or a `filter-select` |
 | `select-item` | one entry of that list |
+| `combobox-content` | the open list of suggestions under a search box, a layer at the end of `<body>` |
+| `combobox-group` | one section of it, named by its heading where it has one |
+| `combobox-item` | one entry of a section; `data-highlighted` on the one the box announces, `data-state` `checked` or `unchecked` where it can be checked |
 | `menu` | an open list of things to do: the filters `filters-add` offers |
 | `menu-item` | one entry of it |
 | `tooltip` | the name of an icon-only button, shown on hover and focus |

@@ -15,6 +15,8 @@ export interface AcceptedQuery {
   filters: { property: string; operator: Operator }[];
   sort: { property: string }[];
   facets: { property: string }[];
+  /** Present when the collection declares a search: the properties it reads. */
+  search?: { properties: string[] };
 }
 
 /** Which declaration a collection is: its name in the module declaring it. */
@@ -147,7 +149,12 @@ class CollectionSource implements ResourceInstance, CollectionSourceInstance {
       ...(declared ? { identity: { name: declared.metadata.name, module } } : {}),
       model: reading.model.schema,
       key: reading.key,
-      query: { filters: reading.query.filters ?? [], sort: reading.query.sort ?? [], facets: reading.query.facets ?? [] },
+      query: {
+        filters: reading.query.filters ?? [],
+        sort: reading.query.sort ?? [],
+        facets: reading.query.facets ?? [],
+        ...(reading.query.search ? { search: reading.query.search } : {}),
+      },
       relations: Object.fromEntries(
         Object.entries(declared?.relations ?? {}).map(([property, entry]) => {
           const target = targetOf(entry?.collection);
