@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
@@ -181,36 +181,10 @@ describe("Cut release refusals", () => {
       "Error: main's changesets plan 0.85.1, a patch. Add a minor changeset before cutting.",
     );
   });
-
-  it("cut-prepare deletes the pending changesets and fragments and reports the branch point", () => {
-    const root = workspace("0.84.2");
-    changeset(root, "a", "minor");
-    changeset(root, "b", "patch");
-    put(root, ".changeset/README.md", "readme");
-    put(root, ".changes/pending/one.yaml", "x");
-    put(root, ".changes/pending/.gitkeep", "");
-    commit(root, "pending");
-    const parent = git(root, "rev-parse", "HEAD");
-    const result = script(root, "release-branch.mjs", ["cut-prepare"]);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /^changesets=2$/m);
-    assert.match(result.stdout, /^fragments=1$/m);
-    assert.match(result.stdout, new RegExp(`^parent=${parent}$`, "m"));
-    assert.ok(existsSync(join(root, ".changeset/README.md")) && existsSync(join(root, ".changes/pending/.gitkeep")));
-    assert.ok(!existsSync(join(root, ".changeset/a.md")) && !existsSync(join(root, ".changes/pending/one.yaml")));
-  });
-
-  it("reads the branch point from a cut PR's first commit", async () => {
-    const { cutBranchPoint } = await import(pathToFileURL(join(REPO, "scripts/release-branch.mjs")).href);
-    const commits = [{ commit: { message: "chore(release): cut 0.85" }, parents: [{ sha: "9b02f3d" }] }];
-    assert.deepEqual(cutBranchPoint({ head: "release-cut/0.85", commits }), { branch: "release/0.85", sha: "9b02f3d" });
-    assert.throws(() => cutBranchPoint({ head: "release-cut/0.86", commits }), /not the cut commit/);
-    assert.throws(() => cutBranchPoint({ head: "feat/x", commits }), /not a release-cut/);
-  });
 });
 
 describe("Finish release refusals", () => {
-  it("refuses main, a branch with no pre.json, and one that already exited", () => {
+  it("refuses main and a branch with no pre.json, and accepts one in candidates or past pre exit", () => {
     const root = workspace("0.85.0");
     branch(root, "release/0.84");
     assert.equal(
@@ -220,13 +194,16 @@ describe("Finish release refusals", () => {
     git(root, "switch", "-q", "release/0.84");
     assert.equal(
       refused(script(root, "release-branch.mjs", ["finish-check", "--ref", "release/0.84"])),
-      "Error: release/0.84 holds no .changeset/pre.json, so it is not in candidates.",
+      'Error: release/0.84 has published no candidate yet. Merge its rc Version PR ("chore(release): version packages") first, then finish.',
     );
-    put(root, ".changeset/pre.json", '{"mode":"exit","tag":"rc","initialVersions":{},"changesets":[]}');
+    git(root, "tag", "v0.84.0");
     assert.equal(
       refused(script(root, "release-branch.mjs", ["finish-check", "--ref", "release/0.84"])),
-      "Error: release/0.84 has already exited candidates; merge its Version PR to publish 0.84.0.",
+      "Error: release/0.84 has published 0.84.0 and takes patches only.",
     );
+    git(root, "tag", "-d", "v0.84.0");
+    put(root, ".changeset/pre.json", '{"mode":"exit","tag":"rc","initialVersions":{},"changesets":[]}');
+    assert.equal(script(root, "release-branch.mjs", ["finish-check", "--ref", "release/0.84"]).status, 0);
     put(root, ".changeset/pre.json", '{"mode":"pre","tag":"rc","initialVersions":{},"changesets":[]}');
     const ok = script(root, "release-branch.mjs", ["finish-check", "--ref", "release/0.84"]);
     assert.equal(ok.status, 0);
@@ -393,5 +370,112 @@ describe("release branch versioning and tags", () => {
     git(root, "tag", "v0.85.1");
     assert.equal(containedInMain({ cwd: root, ref: "v0.85.0" }), true);
     assert.equal(containedInMain({ cwd: root, ref: "v0.85.1" }), false);
+  });
+});
+
+const CHANGESET = join(REPO, "node_modules", ".bin", "changeset");
+
+function changesetCli(root, ...args) {
+  const result = spawnSync(CHANGESET, args, { cwd: root, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+}
+
+const cliVersion = (root) => JSON.parse(readFileSync(join(root, "cli/nodejs/package.json"), "utf8")).version;
+
+describe("two-PR release flow", () => {
+  it("enters candidates on a branch's first Version PR, exits when the open PR's head lost pre.json, and versions an rc again once it is closed", async () => {
+    const { prereleaseAction, versionPrHeadLacksPre } = await import(pathToFileURL(join(REPO, "scripts/release-version.mjs")).href);
+    const root = workspace("0.84.2");
+    changeset(root, "next", "minor");
+    commit(root, "feat");
+    git(root, "switch", "-q", "-c", "release/0.85");
+    assert.equal(prereleaseAction({ cwd: root, branch: "release/0.85" }), "enter");
+
+    changesetCli(root, "pre", "enter", "rc");
+    changesetCli(root, "version");
+    commit(root, "rc.0");
+    assert.equal(cliVersion(root), "0.85.0-rc.0");
+    changeset(root, "fix", "patch");
+    commit(root, "fix");
+
+    // An open rc Version PR keeps pre.json: the next version is an rc.
+    const head = "refs/remotes/origin/changeset-release/release/0.85";
+    git(root, "update-ref", head, "HEAD");
+    const lacks = () => versionPrHeadLacksPre({ cwd: root, branch: "release/0.85" });
+    assert.equal(lacks(), false);
+    assert.equal(prereleaseAction({ cwd: root, branch: "release/0.85", openPr: true, headLacksPre: lacks }), "none");
+
+    // The final Version PR's head has no pre.json: rebuilds exit again.
+    git(root, "switch", "-q", "--detach", "HEAD");
+    changesetCli(root, "pre", "exit");
+    changesetCli(root, "version");
+    assert.equal(cliVersion(root), "0.85.0");
+    assert.ok(!existsSync(join(root, ".changeset/pre.json")));
+    commit(root, "chore(release): version packages");
+    git(root, "update-ref", head, "HEAD");
+    git(root, "switch", "-q", "release/0.85");
+    assert.equal(lacks(), true);
+    assert.equal(prereleaseAction({ cwd: root, branch: "release/0.85", openPr: true, headLacksPre: lacks }), "exit");
+
+    // Closed: no open PR, back to candidates.
+    assert.equal(prereleaseAction({ cwd: root, branch: "release/0.85", openPr: false, headLacksPre: lacks }), "none");
+    // Finish itself always exits a branch in candidates.
+    assert.equal(prereleaseAction({ cwd: root, branch: "release/0.85", final: true }), "exit");
+  });
+
+  it("Finish release over an open rc Version PR produces the final carrying the rc's changesets", () => {
+    const root = workspace("0.84.2");
+    put(root, "package.json", '{"name":"root","private":true,"version":"1.0.0","scripts":{"version-packages":"changeset version"}}');
+    changeset(root, "next", "minor");
+    commit(root, "feat");
+    git(root, "switch", "-q", "-c", "release/0.85");
+    changesetCli(root, "pre", "enter", "rc");
+    changesetCli(root, "version");
+    commit(root, "rc.0");
+    changeset(root, "fix", "patch");
+    commit(root, "fix");
+    // rc.0 is versioned and a fix is pending: the state Finish starts from, whether or not an rc.1 Version PR is open.
+    assert.equal(script(root, "release-branch.mjs", ["finish-check", "--ref", "release/0.85"]).status, 0);
+    const result = script(root, "release-version.mjs", ["--final"], { GITHUB_REF_NAME: "release/0.85" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(cliVersion(root), "0.85.0");
+    assert.ok(!existsSync(join(root, ".changeset/pre.json")));
+    assert.ok(!existsSync(join(root, ".changeset/fix.md")) && !existsSync(join(root, ".changeset/next.md")));
+    assert.match(readFileSync(join(root, "cli/nodejs/package.json"), "utf8"), /"version": "0\.85\.0"/);
+  });
+
+  it("a final's merge-back deletes the released changesets and carries the floor rewrite, keeping a floor main added later", async () => {
+    const { rewriteUnreleasedFloors } = await import(pathToFileURL(join(REPO, "scripts/version-line.mjs")).href);
+    const manifest = (name, floor) =>
+      `kind: Telo.Library\nmetadata:\n  name: ${name}\nrequires:\n  telo: "${floor}"\n`;
+    const root = workspace("0.84.2");
+    put(root, "modules/a/telo.yaml", manifest("A", ">=unreleased"));
+    changeset(root, "next", "minor");
+    put(root, ".changes/pending/one.yaml", "x");
+    commit(root, "feat");
+
+    // Cut: the branch starts at main's commit, main is not touched.
+    const cutPoint = git(root, "rev-parse", "HEAD");
+    git(root, "switch", "-q", "-c", "release/0.85");
+    rmSync(join(root, ".changeset/next.md"));
+    put(root, "modules/a/telo.yaml", rewriteUnreleasedFloors(manifest("A", ">=unreleased"), "0.85.0").text);
+    commit(root, "chore(release): version packages");
+    git(root, "tag", "v0.85.0");
+    git(root, "rm", "-q", ".changes/pending/one.yaml");
+    commit(root, "chore(release): version modules");
+    git(root, "tag", "modules-0.85-1");
+
+    git(root, "switch", "-q", "main");
+    assert.equal(git(root, "rev-parse", "HEAD"), cutPoint);
+    put(root, "modules/b/telo.yaml", manifest("B", ">=unreleased"));
+    put(root, "unrelated.txt", "u");
+    commit(root, "work on main after the cut");
+
+    git(root, "merge", "-q", "--no-ff", "-m", "merge v0.85.0", "v0.85.0");
+    git(root, "merge", "-q", "--no-ff", "-m", "merge modules", "modules-0.85-1");
+    assert.ok(!existsSync(join(root, ".changeset/next.md")));
+    assert.ok(!existsSync(join(root, ".changes/pending/one.yaml")));
+    assert.match(readFileSync(join(root, "modules/a/telo.yaml"), "utf8"), />=0\.85\.0/);
+    assert.match(readFileSync(join(root, "modules/b/telo.yaml"), "utf8"), />=unreleased/);
   });
 });

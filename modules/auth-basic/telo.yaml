@@ -11,6 +11,7 @@ metadata:
     authenticated caller, or a refusal that challenges the client to send
     credentials again. Every failure looks the same to the client, so a caller
     cannot tell an unknown user from a wrong password.
+requires: { telo: ">=0.117.0" }
 imports: { Auth: ../auth }
 exports: { kinds: [Verifier] }
 ---

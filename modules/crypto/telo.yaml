@@ -11,11 +11,10 @@ metadata:
     argon2id, bcrypt, scrypt or PBKDF2 (pepper support, upgrade of weaker stored
     hashes on login, verification of imported hashes), constant-time comparison
     and HKDF key derivation.
-requires:
-  # 0.84.0 is the first release honouring `x-telo-sensitive` on contract
-  # properties; an older runtime ignores it and puts passwords and keys on the
-  # debug wire, so the floor guards against the silent leak.
-  telo: ">=0.84.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.84.0" }
+    reason: "0.84.0 is the first release honouring `x-telo-sensitive` on contract properties; an older runtime ignores it and puts passwords and keys on the debug wire."
 exports:
   kinds: [Random, Digest, Hmac, PasswordHash, Compare, DeriveKey]
   # The same operations as functions, for sibling controllers to call in-process.

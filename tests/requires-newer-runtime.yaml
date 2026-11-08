@@ -1,11 +1,12 @@
 kind: Telo.Application
-metadata:
-  name: RequiresNewerRuntimeTest
-  version: 1.0.0
-imports:
-  Assert: ../modules/assert
+metadata: { name: RequiresNewerRuntimeTest, version: 1.0.0 }
+imports: { Assert: ../modules/assert }
 targets:
   - !ref testRequiresNewerRuntime
+  - !ref testRestrictionFloor
+  - !ref testRestrictionCeiling
+  - !ref testPublishedCeiling
+  - !ref testDocOnlyLibrary
 ---
 # End-to-end proof that the gate fires through the real load + analyze path.
 #
@@ -14,10 +15,47 @@ targets:
 # property is asserted where it can be stated exactly, in
 # `analyzer/nodejs/tests/requires-block.test.ts`.
 kind: Assert.Manifest
-metadata:
-  name: testRequiresNewerRuntime
+metadata: { name: testRequiresNewerRuntime }
 source: ./__fixtures__/requires-future-telo.yaml
 expect:
   errors:
+    - { code: MODULE_REQUIRES_NEWER_RUNTIME, message: "requires telo '>=999.0.0'" }
+---
+# A floor stated by a restrictions: entry carries the entry's reason.
+kind: Assert.Manifest
+metadata: { name: testRestrictionFloor }
+source: ./__fixtures__/requires-restriction-floor.yaml
+expect:
+  errors:
     - code: MODULE_REQUIRES_NEWER_RUNTIME
-      message: "requires telo '>=999.0.0'"
+      message: "Reason: Needs a kernel that keeps the cache across a reload. Upgrade telo."
+  runFails: "[MODULE_REQUIRES_NEWER_RUNTIME] RequiresRestrictionFloor requires telo '>=999.0.0'"
+---
+# A runtime above an entry's ceiling is told to use an older one, with the reason.
+kind: Assert.Manifest
+metadata: { name: testRestrictionCeiling }
+source: ./__fixtures__/requires-restriction-ceiling.yaml
+expect:
+  errors:
+    - code: MODULE_REQUIRES_OLDER_RUNTIME
+      message: "is restricted to telo '<0.1.0'"
+  runFails: "Reason: Broken on every telo since 0.1.0. Use telo below 0.1.0, or another version of RequiresRestrictionCeiling."
+---
+# A dependency's published upper bound is honoured as a ceiling, with no reason to give.
+kind: Assert.Manifest
+metadata: { name: testPublishedCeiling }
+source: ./__fixtures__/requires-published-ceiling/telo.yaml
+expect:
+  errors:
+    - code: MODULE_REQUIRES_OLDER_RUNTIME
+      message: "Use telo below 0.2.0, or another version of CeilingLib."
+  runFails: "[MODULE_REQUIRES_OLDER_RUNTIME]"
+---
+# A library holding only its module document is still gated: reach follows the import edges.
+kind: Assert.Manifest
+metadata: { name: testDocOnlyLibrary }
+source: ./__fixtures__/requires-doc-only-library/telo.yaml
+expect:
+  errors:
+    - { code: MODULE_REQUIRES_NEWER_RUNTIME, message: "requires telo '>=999.0.0'" }
+  runFails: "[MODULE_REQUIRES_NEWER_RUNTIME]"

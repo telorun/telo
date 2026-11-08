@@ -11,14 +11,10 @@ metadata:
     a transactional outbox: a rollback discards both, a commit keeps both.
     Workers claim messages concurrently without blocking each other, with
     leases, retries, delays, deduplication by id and per-group ordering.
-requires:
-  # The controllers ask for the enqueue kinds' schema-root zone with the
-  # field-less `ctx.requireZone`, and need the engine Schema's
-  # `currentInstantPlus` / `instantParameter` / `skipLockedClause` members — all
-  # first in 0.129.0. This file alone reads clean on 0.128.0; the floor is the
-  # controllers' runtime surface. Forward-declared: 0.129.0 is the release that
-  # carries them.
-  telo: ">=0.129.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.129.0" }
+    reason: "The controllers ask for the enqueue kinds' schema-root zone with the field-less `ctx.requireZone` and need the engine Schema's `currentInstantPlus`, `instantParameter` and `skipLockedClause` members, all first in 0.129.0."
 imports:
   Sql: ../sql
   # Aliased by the module's own name rather than the usual `Queue`: one name
@@ -26,10 +22,7 @@ imports:
   # `Queue`.
   Queues: ../queue
 exports:
-  kinds:
-    - Queue
-    - Enqueue
-    - EnqueueMany
+  kinds: [Queue, Enqueue, EnqueueMany]
   # The controllers every engine module re-exports under its own kinds, so the
   # implementation is one module scope across engines.
   code:
@@ -63,23 +56,17 @@ schema:
       description: >-
         The connection the queue's table lives on, and the one a transactional
         enqueue must run inside a transaction of.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
         The engine schema that lists the queue's table. It creates and migrates
         the table and renders its name; the queue issues no DDL.
-      x-telo-ref:
-        kind: Sql.Schema
-        use: dependency
+      x-telo-ref: { kind: Sql.Schema, use: dependency }
     table:
       title: Table
       description: The queue's table, declared with the engine module's own queue table kind.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
     name:
       title: Name
       description: >-
@@ -89,8 +76,7 @@ schema:
         messages.
       type: string
       pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-    groupBy:
-      $ref: "telo://Queues/GroupBy"
+    groupBy: { $ref: "telo://Queues/GroupBy" }
 ---
 kind: Telo.Definition
 metadata:
@@ -103,8 +89,7 @@ metadata:
     message stores nothing.
 capability: Telo.Invocable
 extends: Queues.Enqueue
-controllers:
-  - pkg:telo/local/js?path=./nodejs/queue-sql.mjs&local_path=./nodejs/src/index.ts#Enqueue
+controllers: [pkg:telo/local/js?path=./nodejs/queue-sql.mjs&local_path=./nodejs/src/index.ts#Enqueue]
 schema:
   type: object
   additionalProperties: false
@@ -119,9 +104,7 @@ schema:
     queue:
       title: Queue
       description: The database-backed queue the message is added to.
-      x-telo-ref:
-        kind: Self.Queue
-        use: dependency
+      x-telo-ref: { kind: Self.Queue, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -133,8 +116,7 @@ metadata:
     message's id and whether it was stored, in input order.
 capability: Telo.Invocable
 extends: Queues.EnqueueMany
-controllers:
-  - pkg:telo/local/js?path=./nodejs/queue-sql.mjs&local_path=./nodejs/src/index.ts#EnqueueMany
+controllers: [pkg:telo/local/js?path=./nodejs/queue-sql.mjs&local_path=./nodejs/src/index.ts#EnqueueMany]
 schema:
   type: object
   additionalProperties: false
@@ -147,6 +129,4 @@ schema:
     queue:
       title: Queue
       description: The database-backed queue the messages are added to.
-      x-telo-ref:
-        kind: Self.Queue
-        use: dependency
+      x-telo-ref: { kind: Self.Queue, use: dependency }

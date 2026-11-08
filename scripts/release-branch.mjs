@@ -13,17 +13,15 @@
 //
 // Usage:
 //   node scripts/release-branch.mjs cut-check --ref <branch>      Cut release, before anything
-//   node scripts/release-branch.mjs cut-prepare                   Cut release, deletes what the branch carries
 //   node scripts/release-branch.mjs finish-check --ref <branch>   Finish release
 //   node scripts/release-branch.mjs publish-check --ref <branch>  every Publish job
-//   node scripts/release-branch.mjs branch-point --head <ref>     reads a cut PR's commits (JSON) on stdin
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { refuse, setOutput } from "./release-actions-output.mjs";
-import { ROOT, compareVersions, teloGeneration } from "./version-line.mjs";
+import { ROOT, compareVersions, finalPublished, teloGeneration } from "./version-line.mjs";
 
 export const RELEASE_BRANCH = /^release\/(\d+)\.(\d+)$/;
 const FINAL_TAG = /^v\d+\.\d+\.\d+$/;
@@ -171,25 +169,6 @@ export async function cutRefusal({ cwd = ROOT, ref, generation = () => teloGener
   return undefined;
 }
 
-/**
- * Delete what the new branch will carry from `cwd`'s working tree: the pending
- * changesets and module fragments. Returns how many of each, and the commit the
- * deletion sits on — the branch's start.
- */
-export function cutPrepare(cwd = ROOT) {
-  const changesetDir = join(cwd, ".changeset");
-  const fragmentDir = join(cwd, ".changes", "pending");
-  const changesets = existsSync(changesetDir)
-    ? readdirSync(changesetDir).filter((file) => file.endsWith(".md") && file !== "README.md")
-    : [];
-  const fragments = existsSync(fragmentDir)
-    ? readdirSync(fragmentDir).filter((file) => !file.startsWith("."))
-    : [];
-  for (const file of changesets) rmSync(join(changesetDir, file));
-  for (const file of fragments) rmSync(join(fragmentDir, file));
-  return { changesets: changesets.length, fragments: fragments.length, parent: git(cwd, "rev-parse", "HEAD") };
-}
-
 /** Why Finish release must not run at `ref`, or undefined. `cwd` is the checkout
  *  of `ref` itself: the file asked about is the branch's own. */
 export function finishRefusal({ cwd = ROOT, ref }) {
@@ -198,11 +177,11 @@ export function finishRefusal({ cwd = ROOT, ref }) {
   }
   const file = join(cwd, ".changeset", "pre.json");
   if (!existsSync(file)) {
-    return `Error: ${ref} holds no .changeset/pre.json, so it is not in candidates.`;
-  }
-  if (JSON.parse(readFileSync(file, "utf8")).mode === "exit") {
     const [, major, minor] = RELEASE_BRANCH.exec(ref);
-    return `Error: ${ref} has already exited candidates; merge its Version PR to publish ${major}.${minor}.0.`;
+    if (finalPublished({ cwd, branch: ref })) {
+      return `Error: ${ref} has published ${major}.${minor}.0 and takes patches only.`;
+    }
+    return `Error: ${ref} has published no candidate yet. Merge its rc Version PR ("chore(release): version packages") first, then finish.`;
   }
   return undefined;
 }
@@ -217,24 +196,6 @@ export function publishRefusal({ cwd = ROOT, ref }) {
     return `Error: ${ref} is frozen: ${live.name} was cut from main. Land the fix on ${live.name}.`;
   }
   return undefined;
-}
-
-/**
- * The branch a merged cut PR creates and where: `release/<x>.<y>` at the parent
- * of the PR's first commit — the cut commit — so main's tip as the cut was opened.
- * `commits` is the PR's commit list as the API returns it.
- */
-export function cutBranchPoint({ head, commits }) {
-  const match = /^release-cut\/(\d+\.\d+)$/.exec(head);
-  if (!match) throw new Error(`${head} is not a release-cut/<major>.<minor> branch.`);
-  const [first] = commits;
-  const subject = first?.commit?.message?.split("\n")[0];
-  if (subject !== `chore(release): cut ${match[1]}`) {
-    throw new Error(`the first commit of ${head} is "${subject}", not the cut commit "chore(release): cut ${match[1]}".`);
-  }
-  const parent = first.parents?.[0]?.sha;
-  if (!parent) throw new Error(`the cut commit of ${head} has no parent.`);
-  return { branch: `release/${match[1]}`, sha: parent };
 }
 
 function argument(name) {
@@ -255,13 +216,6 @@ async function main() {
       setOutput("release", `${major}.${minor}`);
       return;
     }
-    case "cut-prepare": {
-      const { changesets, fragments, parent } = cutPrepare();
-      setOutput("changesets", changesets);
-      setOutput("fragments", fragments);
-      setOutput("parent", parent);
-      return;
-    }
     case "finish-check": {
       const ref = argument("ref");
       const refusal = finishRefusal({ ref });
@@ -272,13 +226,6 @@ async function main() {
     case "publish-check": {
       const refusal = publishRefusal({ ref: argument("ref") });
       if (refusal) refuse(refusal);
-      return;
-    }
-    case "branch-point": {
-      const commits = JSON.parse(readFileSync(0, "utf8"));
-      const { branch, sha } = cutBranchPoint({ head: argument("head"), commits });
-      setOutput("branch", branch);
-      setOutput("sha", sha);
       return;
     }
     default:

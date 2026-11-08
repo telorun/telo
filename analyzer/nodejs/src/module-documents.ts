@@ -28,4 +28,7 @@ export interface ModuleDocuments {
   signature?: string;
   /** The library's declared `exports.resources` entries (bare names). */
   exportedNames: readonly string[];
+  /** Whether the entry's import edges reach this library, version reconciliation
+   *  applied. Absent when the producer did not read the graph's edges. */
+  reached?: boolean;
 }

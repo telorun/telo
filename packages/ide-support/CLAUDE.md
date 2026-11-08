@@ -18,7 +18,7 @@ Rename, definition and completion read the `!ref` verdict through `repeats/for-e
 
 ## Elsewhere in this package
 
-- Upgrade selection and per-version marking → `src/import-upgrades/version-compatibility.ts` (over the analyzer's `manifestCompatibility`; see the analyzer guide § `requires:`)
+- Upgrade selection and per-version marking → `src/import-upgrades/version-compatibility.ts` (over the analyzer's `selectionCompatibility`; see the analyzer guide § `requires:`). **A verdict is not a function of the candidate's manifest alone**: the check takes the module's published versions and reads every one newer than the candidate, through the one per-version cache (each version is read once, as candidate or as newer), because a newer version's `restrictions:` entry may speak for it. The verdict carries what held a version back (`too-new` below a floor, `too-old` above a ceiling, the bound, the entry's reason and the declaring version), which lenses and pickers word through `describeHold`; the build judged is `TELO_RUNNING_SURFACE`.
 - Rendering a `DiagnosticFix` back into YAML → `src/diagnostics/fix-edit.ts`
 - Which cascade of a broken import is held back, and where a diagnostic is located → not here: the analyzer's `assembleGraphDiagnostics` / `locateDiagnostic` (`analyzer/nodejs/src/graph-diagnostics.ts`, `diagnostic-location.ts`), shared with the kernel's `check()` seam, which cannot depend on this package
 - CEL symbols, completion, hover, go-to-declaration → `src/cel/symbols.ts`, `src/completions/cel-completions.ts`, the CEL branch of `src/hover/build-hover.ts`, `src/definition/locate-step.ts`, `src/definition/locate-context-binding.ts`

@@ -14,7 +14,7 @@ metadata:
 requires:
   # 0.129.0 first reads a bounded `Telo.Duration` (`exclusiveMinimum: 0s`),
   # which 0.128.0 rejects (verified by execution).
-  telo: ">=0.129.0"
+  telo: ">=unreleased"
 imports: { Sql: ../sql, ApiKey: ../api-key }
 exports:
   kinds: [Store]

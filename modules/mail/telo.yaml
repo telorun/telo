@@ -11,12 +11,10 @@ metadata:
     recipients, subject, text and HTML bodies, headers and attachments. Includes
     SMTP delivery with a connection pool and an in-memory capture transport that
     records each message so tests can read it back.
-requires:
-  # 0.82.0: the SMTP pool is created in `init()` as a returned effect.
-  # 0.100.0: `throws:` on a Telo.Abstract, the ceiling every transport falls within.
-  # 0.108.0: the SMTP controller reads `timeout` through the value domain
-  # (`isCelDuration`, `durationNanos`), which older SDKs do not export.
-  telo: ">=0.108.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.108.0" }
+    reason: "The SMTP controller reads `timeout` through the value domain (`isCelDuration`, `durationNanos`), which SDKs before 0.108.0 do not export; also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
 exports: { kinds: [Transport, Smtp, Capture, CaptureRead] }
 ---
 # Shapes are written inline (and in `$defs`) so a consumer's CEL is typed by them.

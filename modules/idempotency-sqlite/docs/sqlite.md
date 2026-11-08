@@ -41,4 +41,4 @@ The table kind declares `IDEMPOTENCY_LEDGER_NAME_DUPLICATE`: two ledgers naming 
 
 ## Runtime requirement
 
-`requires: telo: ">=0.129.0"`: the table kind's rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module.
+A `restrictions:` entry requires telo `>=0.129.0`: the table kind's rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module.

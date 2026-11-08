@@ -17,6 +17,7 @@ import {
 import { findImportEntries, type ImportEntry } from "./find-import-entries.js";
 import {
   selectCompatibleVersion,
+  type HeldBack,
   type IncompatibilityReason,
   type VersionCompatibilityCheck,
 } from "./version-compatibility.js";
@@ -96,7 +97,7 @@ export interface ImportUpgrade {
    *  `latestVersion` is not the newest published. Surfacing it is not optional:
    *  an upgrade that quietly stops short of the newest version, with no reason
    *  given, reads as a bug in the tooling. */
-  heldBack?: { version: string; reason: IncompatibilityReason };
+  heldBack?: HeldBack;
   /** Span of the alias key — where a per-entry affordance anchors. */
   keyRange: Range;
   /** Apply all of these to upgrade this one import. */
@@ -242,7 +243,7 @@ export async function buildImportUpgrades(
         reason: heldBack.reason,
         message:
           `'${entry.alias}' has newer versions (up to ${newest}), but none runs on telo ` +
-          `${TELO_SURFACE_VERSION} — ${describeReason(heldBack.reason)}. ` +
+          `${TELO_SURFACE_VERSION} — ${heldBack.detail ?? describeReason(heldBack.reason)}. ` +
           describeRemedy(heldBack.reason),
       });
       continue;
@@ -293,9 +294,8 @@ export async function buildImportUpgrades(
  *  nothing established — defaulting an absent reason to "requires a newer telo"
  *  is precisely the invented verdict the four-way split exists to prevent. */
 export function describeReason(reason: IncompatibilityReason): string {
-  return reason === "unreadable"
-    ? "its declared requirement cannot be read"
-    : "it requires a newer telo";
+  if (reason === "unreadable") return "its declared requirement cannot be read";
+  return reason === "too-old" ? "it is restricted to an older telo" : "it requires a newer telo";
 }
 
 /** What the author can do about it. Split from {@link describeReason} because
@@ -303,8 +303,9 @@ export function describeReason(reason: IncompatibilityReason): string {
  *  a version skew, so telling the author to update telo would send them after a
  *  fix that cannot work — only the module's own author can repair it. */
 export function describeRemedy(reason: IncompatibilityReason): string {
-  return reason === "unreadable"
-    ? "Only the module's author can fix that."
+  if (reason === "unreadable") return "Only the module's author can fix that.";
+  return reason === "too-old"
+    ? "Use an older telo to upgrade it, or stay on this version."
     : "Update telo to upgrade it.";
 }
 

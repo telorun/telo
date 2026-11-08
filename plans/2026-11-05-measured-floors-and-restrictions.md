@@ -1,5 +1,5 @@
 ---
-status: approved
+status: done
 priority: medium
 depends-on: []
 packages: [analyzer/nodejs, kernel/nodejs, cli/nodejs, scripts, packages/language-host, packages/language-server, packages/ide-support, apps/hub, apps/authoring-agent, docs]
@@ -216,7 +216,7 @@ A malformed entry, or one that leaves the declaring version usable by no runtime
 - Both suppress the module's other diagnostics, as today's gate does.
 - Today a runtime above an upper bound gets `MODULE_REQUIRES_NEWER_RUNTIME` and "Upgrade telo". That wording is replaced by the new code.
 
-One effective-range function in the analyzer's requires reader serves the CLI, the kernel, the editor engine and `telo upgrade`. The editor engine reads candidates through `telo/read`, as it does today. It reports each module's load range as the interval `telo/requirements` already carries, and the language-host keeps comparing plain versions against it; `>=unreleased` is reported with a lower edge no released version meets, so selection falls to the bundled engine as for any unsatisfiable range. The editor protocol is unchanged.
+One effective-range function in the analyzer's requires reader serves the CLI, the kernel, the editor engine and `telo upgrade`. A selection verdict on a version is no longer a function of that version's manifest alone: it takes the manifests of every published version newer than it as well. The upgrade walk has already read those when it reaches a candidate; the editor's version picker, which marks each version separately, reads every version newer than the one it marks, through the same per-version cache. The editor engine reads candidates through `telo/read`, as it does today. It reports each module's load range as the interval `telo/requirements` already carries, and the language-host keeps comparing plain versions against it; `>=unreleased` is reported with a lower edge no released version meets, so selection falls to the bundled engine as for any unsatisfiable range. The editor protocol is unchanged.
 
 **Example — a floor measurement cannot see.** After telo 0.121.0, `GeocodeCache` 0.4.0 keeps its cache across a reload, which only the unreleased kernel supports. Static checking accepts the module on 0.121.0, so measurement writes `>=0.121.0`, and the author states the requirement as an entry without `versions`:
 
@@ -500,4 +500,4 @@ modules/geocode/telo.yaml:20:31 error RESTRICTIONS_INVALID restrictions[4].requi
 - `telo check` and the kernel at load refuse the five entries of the refused example with `RESTRICTIONS_INVALID`.
 
 **Editors**
-- Studio web and VS Code on telo 0.122.0 offer no upgrade lens to 1.2.0 or 1.2.1, and show `MODULE_REQUIRES_OLDER_RUNTIME` on an existing pin to 1.2.1, with no change to `packages/editor-protocol`.
+- Studio web and VS Code on telo 0.122.0 offer no upgrade lens to 1.2.0 or 1.2.1, and show `MODULE_REQUIRES_OLDER_RUNTIME` on an existing pin to 1.2.1, with no change to `packages/editor-protocol`. The version picker marks 1.2.0 as held back by 1.2.1's entry, and once 1.3.1 lifts the `telo` key, marks it selectable on telo 0.122.1.

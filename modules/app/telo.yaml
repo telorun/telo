@@ -12,24 +12,10 @@ metadata:
     among them — are supplied by name and validated by the child; its exit code is
     reported as observed state, and it is shut down cleanly when the scope that
     declared it ends.
-requires:
-  # Controllers return their effects from `init()` / `run()`; a runtime that does
-  # not execute a returned chain allocates nothing and undoes nothing.
-  #
-  # The floor is what keeps a child's inputs from being silently dropped: an
-  # older runtime's child-manifest seam took an environment map alone, so the
-  # `variables:` / `secrets:` / `ports:` supplied here would reach the child as
-  # nothing at all and it would boot on its defaults — a wrong port, a wrong
-  # identity, and no error anywhere. The same release carries the rest of what
-  # this module stands on: a start that resolves once the child is listening, and
-  # the child's input and output reachable as a text channel.
-  #
-  # 0.93.0 carried them. `needs:` rests on the same seam: before 0.123.0 a
-  # child's needs could not be supplied by name, so a `needs:` entry here would
-  # reach the child as nothing and it would read its needs from its own
-  # environment instead. 0.123.0 is the release that will carry it —
-  # forward-declared, because 0.122.0 is the newest published one.
-  telo: ">=0.123.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.123.0" }
+    reason: "Before 0.123.0 the child-manifest seam drops the `variables:` / `secrets:` / `ports:` and `needs:` supplied by name, so the child boots on its defaults and reads its needs from its own environment, with no error; also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
 imports: { Channel: ../channel }
 exports: { kinds: [Instance] }
 ---

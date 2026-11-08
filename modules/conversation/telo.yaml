@@ -12,6 +12,7 @@ metadata:
     calls, approvals, usage, errors), the transcript entries a viewer reads back,
     and the routes and problems that carry them. Servers and clients agree on it
     without importing each other.
+requires: { telo: ">=unreleased" }
 imports: { DataModel: ../data-model }
 exports:
   kinds: [Conversation]

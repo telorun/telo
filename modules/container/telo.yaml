@@ -11,13 +11,10 @@ metadata:
     until it is ready, and read the address its ports are reached at. The
     container is removed with its volumes when the application stops, and one
     left behind by a killed process expires.
-requires:
-  # The controllers report a port's address from `init()` and consumers read it
-  # in startup fields: a Provider's observed state at startup is first carried by
-  # this release. An older analyzer refuses the read (OBSERVED_STATE_NEVER_RUN,
-  # verified against 0.115.2) and an older kernel refuses the report with
-  # ERR_OBSERVED_STATE_BEFORE_START.
-  telo: ">=0.116.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.116.0" }
+    reason: "The controllers report a port's address from `init()` and consumers read it in startup fields, which a Provider's observed state carries only from 0.116.0: an older analyzer refuses the read (OBSERVED_STATE_NEVER_RUN) and an older kernel refuses the report (ERR_OBSERVED_STATE_BEFORE_START)."
 exports:
   kinds: [Engine, Instance, Port, Readiness, LogReady]
   # The entry point an engine's or a readiness kind's controller bundle resolves

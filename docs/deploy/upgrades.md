@@ -56,6 +56,12 @@ the same skew, not second defects. A `host:` axis (`requires: host: node:
 ">=22"`) is checked the same way against the machine actually running the
 manifest; an IDE reports no host, so only the `telo` axis bites there.
 
+A later version of a module can also hold back earlier ones. Its `restrictions:` entries cover
+the versions it names, so a version found broken on a newer telo or Node is refused there with
+`MODULE_REQUIRES_OLDER_RUNTIME` and the author's reason, and `telo upgrade` skips it. A pinned
+version's own file decides at load, so an installed pin keeps loading offline; only a pin to the
+restricted version itself is refused.
+
 The standard library declares these floors, and the guide for module authors is
 [Declaring runtime requirements](/extend/declaring-runtime-requirements).
 
@@ -64,12 +70,19 @@ The standard library declares these floors, and the guide for module authors is
 `telo upgrade` does not move a pin to the newest published version. It reads each
 candidate version's own `telo.yaml`, newest first, and moves the pin to **the
 newest version whose `requires:` accepts the CLI that is running the command**.
-A version it passed over is reported, never swallowed:
+A version it passed over is reported, never swallowed, whether it needs a newer runtime or a later version restricts it:
 
 ```
 Upgrading apps/my-app/telo.yaml
   ↑  oci://ghcr.io/telorun/sql  0.8.0 → 0.8.3
   ·  oci://ghcr.io/telorun/sql  0.9.0 available — it requires a newer telo than 0.80.0
+```
+
+A restricted version is named with the reason its restricting version gave:
+
+```
+Geocode: oci://ghcr.io/acme/geocode@1.1.0 is the newest version this telo can use.
+  held back: 1.2.1 and 1.2.0 — Lookup never returns on telo 0.122.0 and later; a fix ships in 1.3.0.
 ```
 
 That last line is the whole point. Without it a pin becomes a silent ceiling and

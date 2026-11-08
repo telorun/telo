@@ -11,6 +11,7 @@ metadata:
     presented identifier and password against them without the plaintext password
     ever entering the application. An unknown identifier costs as much as a wrong
     password, so the two cannot be told apart by timing.
+requires: { telo: ">=unreleased" }
 imports: { Auth: ../auth, Crypto: ../crypto }
 exports: { kinds: [DeclaredUsers] }
 ---
