@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.35.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.34.0 - 2026-11-04
 ### Added
 * Declares lang: en, so the module's one text (the list request refusal) is written in a known language and an English application is no longer warned that it lacks a translation.

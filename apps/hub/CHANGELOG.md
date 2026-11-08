@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.0 - 2026-11-08
+### Added
+* A publisher's API key sent as Authorization: Bearer <key> to POST /register skips its per-address rate limit when it grants register:unlimited; a key that is presented and refused is answered 401, never served anonymously. Keys are stored as digests in the hub's own database and issued, listed and revoked with admin.yaml (telo run admin.yaml issue|list|revoke), a separate application the image warms beside the hub so it runs offline in the hub's container.
+### Fixed
+* The built-in vocabulary is never tracked at a release-candidate tag, so the newest telo the hub knows, and the default of get_kinds, is always a final release.
+
 ## 0.22.0 - 2026-11-06
 ### Added
 * The build_ui, design_library and write_integration_tests guides are written for any reader and are published on telo.run as well: exact schemas and imports lines are pointed to on the hub, with get_kinds named as the MCP route to them.

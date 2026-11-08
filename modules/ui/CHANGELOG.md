@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.10.0 - 2026-11-06
 ### Added
 * A `refreshes` entry of `Ui.Action.onSuccess` and `Ui.Chat` (the new `Ui.RefreshTarget`) may hold a whole `*` (one segment) or `**` (any number of segments, none included) segment in its literal path, so `/api/projects/{id}/**` covers `/api/projects/7` and everything beneath it; a wildcard in any other address or request target is a `SCHEMA_VIOLATION`, and a computed path or `pathParams` value is always exact. The matching rows are `conformance/refreshes.json`.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.21.0 - 2026-11-06
 ### Added
 * A tool, resource or prompt handler is dispatched exactly the map its `inputs:` evaluates to: nothing is spread into it and no copy of it is nested as an `inputs` member, so a closed `inputType` no longer refuses the extra member and an author's own `inputs` member is no longer overwritten.

@@ -1,4 +1,0 @@
-modules:
-  modules/queue: Fixed
-body: Documentation links now point at telo.run pages and hub module pages instead of
-  the repository tree.

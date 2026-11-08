@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.7.0 - 2026-11-06
 ### Added
 * A reserved property qualified by a state (a part's, or any part's) is judged only where a theme rule matched a part carrying that state in some scene, so a rule written with :not() of the state keeps the property at rest; property-reserved names the state in its subject and message, and flex, flex-flow, block-size and place-items count as setting the longhands they set.

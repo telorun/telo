@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.3.0 - 2026-11-06
 ### Added
 * `Queue.Worker`'s `inputs` and `onDead.inputs` declare `default: {}`, so `telo check` judges a handler or dead-letter hook wired without `inputs:` as receiving `{}`, and refuses one whose contract requires an argument.

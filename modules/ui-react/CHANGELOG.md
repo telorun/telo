@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.11.0 - 2026-11-06
 ### Added
 * A flush split view draws as one panel: the frame sits on the split, the aside only tints the same surface, and the content or open aside it holds directly is marked data-embedded so chat, list-layout, table-frame, tree-layout and calendar-grid draw no frame of their own. The aside's toggle sits in the new split-bar part, and chat-header and split-bar share one bar height, --ui-react-bar-height. A list record is one line with its actions at its end, its own link underlined only on hover and its row filled on hover.

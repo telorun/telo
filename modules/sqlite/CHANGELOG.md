@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.14.0 - 2026-11-06
 ### Fixed
 * Two connections to one database file inside one process (for example applications started with App.Instance) no longer fail with 'database is locked' when their writes overlap. A statement that finds the file locked now waits for up to 5 seconds between event-loop turns instead of blocking the thread in the driver, which had stopped the connection holding the lock from ever releasing it.

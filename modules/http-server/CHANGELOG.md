@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.43.1 - 2026-11-08
+### Fixed
+* Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
+
 ## 0.43.0 - 2026-11-06
 ### Added
 * A mount declaring protectedResource: must name a verifier in its authentication (PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION at check, ERR_PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION when the server is created); a verifier declaring no issuer is allowed, and the metadata then has no authorization_servers.
