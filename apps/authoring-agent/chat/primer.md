@@ -3785,6 +3785,9 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   (the `otlp` module) posts OTLP/JSON to a collector's traces URL. A typical
   pair switches on one variable:
   `sinks: [ { sink: { kind: Otlp.TraceSink, endpoint: !interpolate "${{ variables.otlpEndpoint }}/v1/traces" }, when: !cel "variables.otlpEndpoint != ''" }, { sink: { kind: Telo.LogTraceSink }, when: !cel "variables.otlpEndpoint == ''" } ]`.
+  Startup is ONE span, `startup <application name>`, from process start to the
+  end of initialization, exported only when a sink is attached (its duration is
+  the app's startup time).
   An HTTP request is ONE span, `<METHOD> <route>` (`GET /api/items`), with the
   mount's guard and the route's handler beneath it; a request carrying a W3C
   `traceparent` header continues the caller's trace under the caller's span.

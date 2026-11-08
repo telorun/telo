@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: LeadIntakeNodeContractTest
+  version: 1.0.0
+  description: >-
+    Runs the lead-intake contract tests against the Node implementation. A script builds it, starts it on a
+    fresh state directory, runs the contract with telo and stops it; this test passes when that run exits 0.
+imports: { Shell: ../../../modules/shell, Assert: ../../../modules/assert }
+variables:
+  nodeDirectory:
+    env: LEAD_INTAKE_NODE_DIRECTORY
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: ./benchmarks/lead-intake/node
+targets:
+  - !ref test
+---
+kind: Shell.LocalHost
+metadata: { name: local }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: contract
+    invoke: { kind: Shell.Command, host: !ref local }
+    inputs:
+      args: [node, run-contract.mjs]
+      cwd: !cel "variables.nodeDirectory"
+      timeoutMs: !cel "180000"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        exitCode: !cel "steps.contract.result.exitCode"
+        output: !cel "steps.contract.result.exitCode == 0 ? '' : steps.contract.result.stdout + steps.contract.result.stderr"
+      expected: { exitCode: 0, output: "" }

@@ -1,0 +1,45 @@
+# One small comparison of the fixture server: a stall every second, a request that 404s, and a
+# threshold that the 404s breach. Paths and the port come from the test.
+kind: Telo.Application
+metadata: { name: ServingComparison }
+imports: { Benchmark: ../../.. }
+variables:
+  subjectDir: { env: SUBJECT_DIR, type: string, x-telo-type: Telo.HostPath }
+  reportFile: { env: REPORT_FILE, type: string, x-telo-type: Telo.HostPath }
+  bootLog: { env: BOOT_LOG, type: string }
+  port: { env: PORT, type: integer }
+targets:
+  - !ref serving
+---
+kind: Benchmark.Comparison
+metadata: { name: serving }
+rounds: 1
+boots: 2
+subjects:
+  - name: stalling
+    command: node
+    args: [server.mjs]
+    cwd: !cel "variables.subjectDir"
+    env:
+      PORT: !interpolate "${{ variables.port }}"
+      BOOT_LOG: !cel "variables.bootLog"
+      STALL_MS: "200"
+    readiness: { url: !interpolate "http://127.0.0.1:${{ variables.port }}/ping" }
+    caches: [.cache]
+    stateDirectory: { env: STATE_DIR }
+    bootTimeout: 10s
+workloads:
+  - name: ping
+    duration: 2s
+    warmup: 200ms
+    concurrency: 4
+    rate: 100
+    requests:
+      - url: !interpolate "http://127.0.0.1:${{ variables.port }}/ping"
+        weight: 9
+        expect: { status: 200 }
+      - url: !interpolate "http://127.0.0.1:${{ variables.port }}/missing"
+report:
+  file: !cel "variables.reportFile"
+  thresholds:
+    - { workload: ping, errorRate: 0 }

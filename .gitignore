@@ -136,3 +136,9 @@ rust/*.dylib
 reports/
 .census/
 .telo-floor-measure.yaml
+
+# Written by the lead-intake Telo implementation when it starts, in the working directory
+benchmarks/**/spans.jsonl
+
+# Written by benchmarks/feature-cost/run.mjs: the generated applications, their comparisons and reports
+benchmarks/feature-cost/generated/

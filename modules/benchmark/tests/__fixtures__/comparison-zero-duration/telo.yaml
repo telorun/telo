@@ -1,0 +1,17 @@
+# A workload measured for zero time: refused by `telo check`.
+kind: Telo.Library
+metadata: { name: ComparisonZeroDuration }
+imports: { Benchmark: ../../.. }
+---
+kind: Benchmark.Comparison
+metadata: { name: zero }
+subjects:
+  - name: app
+    command: node
+    cwd: !module-path work
+    readiness: { url: "http://127.0.0.1:9490/ping" }
+workloads:
+  - name: ping
+    duration: 0s
+    concurrency: 1
+    requests: [{ url: "http://127.0.0.1:9490/ping" }]

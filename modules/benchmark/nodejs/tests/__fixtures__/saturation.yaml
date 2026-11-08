@@ -1,0 +1,33 @@
+# A throughput pass against a server cheaper per request than the generator.
+kind: Telo.Application
+metadata: { name: SaturationComparison }
+imports: { Benchmark: ../../.. }
+variables:
+  subjectDir: { env: SUBJECT_DIR, type: string, x-telo-type: Telo.HostPath }
+  reportFile: { env: REPORT_FILE, type: string, x-telo-type: Telo.HostPath }
+  port: { env: PORT, type: integer }
+targets:
+  - !ref saturation
+---
+kind: Benchmark.Comparison
+metadata: { name: saturation }
+rounds: 1
+boots: 1
+subjects:
+  - name: fast
+    command: node
+    args: [fast-server.mjs]
+    cwd: !cel "variables.subjectDir"
+    env:
+      PORT: !interpolate "${{ variables.port }}"
+    readiness: { url: !interpolate "http://127.0.0.1:${{ variables.port }}/" }
+    bootTimeout: 10s
+workloads:
+  - name: hello
+    duration: 1s
+    warmup: 200ms
+    concurrency: 8
+    requests:
+      - url: !interpolate "http://127.0.0.1:${{ variables.port }}/"
+report:
+  file: !cel "variables.reportFile"

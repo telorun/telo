@@ -80,7 +80,7 @@ async function bootApp(text: string) {
       .split("\n")
       .filter((line) => line.startsWith("{"))
       .map((line) => JSON.parse(line) as Record<string, any>)
-      .filter((record) => record.event_name === "telo.span")
+      .filter((record) => record.event_name === "telo.span" && !String(record.msg).startsWith("startup "))
       .map((record) => record.attributes?.["telo.resource.name"] as string);
   return { kernel, appPath, events, spanNames };
 }

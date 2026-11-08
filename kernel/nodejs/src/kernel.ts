@@ -101,6 +101,7 @@ import {
   registeredCoReferrerCalls,
   type CoReferrerCall,
 } from "@telorun/analyzer";
+import { spanRecordOf } from "./span-export.js";
 import { CoReferrerIndex } from "./co-referrer-index.js";
 import { refuseOutlivingCoReferrers, refuseScopedCoReferrers } from "./scoped-co-referrers.js";
 import { sharedLibraries } from "./controllers/module/shared-libraries.js";
@@ -110,6 +111,8 @@ import {
   ControllerPolicy,
   createCancellationSource,
   Kernel as IKernel,
+  nowUnixNano,
+  unixNanoFromMillis,
   ResourceContext,
   ResourceDefinition,
   ResourceInstance,
@@ -372,6 +375,9 @@ export interface KernelOptions {
    *  configured with a held number serves the host's socket and binds nothing.
    *  A child application this kernel starts claims through the same set. */
   listeners?: HostListeners;
+  /** When the process started, in epoch milliseconds — where the `startup <name>`
+   *  span begins. Without it the span begins at this kernel's creation. */
+  processStartedAt?: number;
 }
 
 /** What `Kernel.load` is told beyond the manifest's URL. */
@@ -402,6 +408,9 @@ export class Kernel implements IKernel {
   private controllers: ControllerRegistry = new ControllerRegistry();
   private eventBus: EventBus = new EventBus();
   private readonly tracer = new KernelTracer();
+  /** Where the `startup <name>` span begins; only a time is kept until a trace
+   *  sink is attached. */
+  private readonly startedAt: bigint;
 
   private holdCount = 0;
   private idleResolvers: Array<() => void> = [];
@@ -561,6 +570,10 @@ export class Kernel implements IKernel {
   private readonly listenerClaims?: KernelListeners;
 
   constructor(options: KernelOptions) {
+    this.startedAt =
+      options.processStartedAt === undefined
+        ? nowUnixNano()
+        : unixNanoFromMillis(options.processStartedAt);
     this.stdin = options.stdin ?? process.stdin;
     this.stdout = options.stdout ?? process.stdout;
     this.stderr = options.stderr ?? process.stderr;
@@ -2408,10 +2421,28 @@ export class Kernel implements IKernel {
     // for the process lifetime. The sink-counting and the tree walk are logging
     // logic, so they live on KernelLogging; the kernel just hands it the graph.
     this.logging.sealBootstrap(this.attachedLogSinkCount());
+    this.exportStartupSpan();
 
     await this.eventBus.emit("Kernel.Initialized", {});
 
     this._isBooted = true;
+  }
+
+  /** The `startup <application name>` span, from the start time to now. Built only
+   *  when a trace sink is attached; with none it is never created. */
+  private exportStartupSpan(): void {
+    if (!this.tracer.exporting) return;
+    const record = spanRecordOf({
+      name: `startup ${this._appName ?? "application"}`,
+      traceId: this.tracer.newTraceId(),
+      spanId: this.tracer.next(),
+      parentSpanId: undefined,
+      startTime: this.startedAt,
+      endTime: nowUnixNano(),
+      outcome: "ok",
+      attributes: {},
+    });
+    if (record) this.tracer.finish(record);
   }
 
   /** Every module context's resolved logging configuration, keyed by its dotted

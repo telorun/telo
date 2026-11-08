@@ -1,0 +1,103 @@
+kind: Telo.Sequence
+metadata: { name: createHeavy }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [lead]
+    properties:
+      lead: { type: object, additionalProperties: false, required: [email, company, plan], properties: { email: { type: string, format: email }, company: { type: object, additionalProperties: false, required: [name, employees, country, industry], properties: { name: { type: string, minLength: 1 }, employees: { type: integer, minimum: 0 }, country: { type: string, minLength: 2, maxLength: 2 }, industry: { type: string, minLength: 1 } } }, plan: { type: string, enum: [free, trial, starter, growth, enterprise] } } }
+steps:
+  - name: build
+    value:
+      id: !cel "uuidv4()"
+      level: heavy
+      lead: !cel "inputs.lead"
+      derived:
+        domain: !cel "split(inputs.lead.email, '@')[1]"
+        personal: !cel "split(inputs.lead.email, '@')[1] in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com']"
+        sizeBand: !cel "inputs.lead.company.employees > 1000 ? 'enterprise' : inputs.lead.company.employees > 100 ? 'mid' : inputs.lead.company.employees > 10 ? 'smb' : 'startup'"
+        planTier: !cel "inputs.lead.plan == 'enterprise' ? 4 : inputs.lead.plan == 'growth' ? 3 : inputs.lead.plan == 'starter' ? 2 : inputs.lead.plan == 'trial' ? 1 : 0"
+        score: !cel "(inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0)"
+        corporateDomain: !cel "split(inputs.lead.email, '@')[1].endsWith('.com') || split(inputs.lead.email, '@')[1].endsWith('.io') || split(inputs.lead.email, '@')[1].endsWith('.co')"
+        region: !cel "inputs.lead.company.country == 'US' || inputs.lead.company.country in ['CA', 'MX'] ? 'NA' : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'IE', 'ES', 'IT'] ? 'EU' : inputs.lead.company.country in ['JP', 'SG', 'AU', 'IN'] ? 'APAC' : 'OTHER'"
+        priorityCountry: !cel "inputs.lead.company.country in ['US', 'DE', 'UK', 'JP', 'CA']"
+        isB2B: !cel "inputs.lead.company.industry in ['saas', 'fintech', 'enterprise', 'manufacturing']"
+        paid: !cel "inputs.lead.plan != 'free' && inputs.lead.plan != 'trial'"
+        isPremium: !cel "inputs.lead.plan == 'enterprise' || inputs.lead.plan == 'growth'"
+        validEmail: !cel "inputs.lead.email.contains('@') && size(inputs.lead.email) > 5"
+        nameLength: !cel "size(inputs.lead.company.name)"
+        emailLocal: !cel "split(inputs.lead.email, '@')[0]"
+        geoScore: !cel "inputs.lead.company.country == 'US' ? 20 : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15 : 5"
+        industryScore: !cel "inputs.lead.company.industry in ['saas', 'fintech', 'enterprise'] ? 15 : 5"
+        employeesHundreds: !cel "inputs.lead.company.employees / 100"
+        isEnterprise: !cel "inputs.lead.company.employees > 1000"
+        isStartup: !cel "inputs.lead.company.employees <= 10"
+        slug: !cel "replace(lower(inputs.lead.company.name), ' ', '-')"
+        dotCount: !cel "size(split(inputs.lead.email, '.')) - 1"
+        tier: !cel "(inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) > 80 ? 'A' : (inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) > 50 ? 'B' : 'C'"
+        summary: !cel "inputs.lead.company.name + ' (' + (inputs.lead.company.employees > 1000 ? 'enterprise' : inputs.lead.company.employees > 100 ? 'mid' : inputs.lead.company.employees > 10 ? 'smb' : 'startup') + ', ' + inputs.lead.company.country + ') on ' + inputs.lead.plan + ' plan'"
+        emailLength: !cel "size(inputs.lead.email)"
+        hasPlus: !cel "inputs.lead.email.contains('+')"
+        isUS: !cel "inputs.lead.company.country == 'US'"
+        isUK: !cel "inputs.lead.company.country == 'UK'"
+        isDE: !cel "inputs.lead.company.country == 'DE'"
+        isNorthAmerica: !cel "inputs.lead.company.country == 'US' || inputs.lead.company.country in ['CA', 'MX']"
+        isEurope: !cel "inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'IE', 'ES', 'IT']"
+        isApac: !cel "inputs.lead.company.country in ['JP', 'SG', 'AU', 'IN']"
+        isSaas: !cel "inputs.lead.company.industry == 'saas'"
+        isFintech: !cel "inputs.lead.company.industry == 'fintech'"
+        isEnterpriseIndustry: !cel "inputs.lead.company.industry == 'enterprise'"
+        isManufacturing: !cel "inputs.lead.company.industry == 'manufacturing'"
+        isRetail: !cel "inputs.lead.company.industry == 'retail'"
+        isHealthcare: !cel "inputs.lead.company.industry == 'healthcare'"
+        isFree: !cel "inputs.lead.plan == 'free'"
+        isTrial: !cel "inputs.lead.plan == 'trial'"
+        isStarter: !cel "inputs.lead.plan == 'starter'"
+        isGrowth: !cel "inputs.lead.plan == 'growth'"
+        isEnterprisePlan: !cel "inputs.lead.plan == 'enterprise'"
+        employeesOver10: !cel "inputs.lead.company.employees > 10"
+        employeesOver50: !cel "inputs.lead.company.employees > 50"
+        employeesOver100: !cel "inputs.lead.company.employees > 100"
+        employeesOver500: !cel "inputs.lead.company.employees > 500"
+        employeesOver1000: !cel "inputs.lead.company.employees > 1000"
+        employeesOver5000: !cel "inputs.lead.company.employees > 5000"
+        domainLength: !cel "size(split(inputs.lead.email, '@')[1])"
+        localLength: !cel "size(split(inputs.lead.email, '@')[0])"
+        domainHasHyphen: !cel "split(inputs.lead.email, '@')[1].contains('-')"
+        domainEndsWithOrg: !cel "split(inputs.lead.email, '@')[1].endsWith('.org')"
+        domainEndsWithIo: !cel "split(inputs.lead.email, '@')[1].endsWith('.io')"
+        domainEndsWithCom: !cel "split(inputs.lead.email, '@')[1].endsWith('.com')"
+        emailLower: !cel "lower(inputs.lead.email)"
+        emailIsLowercase: !cel "inputs.lead.email == lower(inputs.lead.email)"
+        nameHasInc: !cel "inputs.lead.company.name.contains('Inc')"
+        nameHasCorp: !cel "inputs.lead.company.name.contains('Corp')"
+        nameWordCount: !cel "size(split(inputs.lead.company.name, ' '))"
+        nameFirstWord: !cel "split(inputs.lead.company.name, ' ')[0]"
+        nameUpper: !cel "upper(inputs.lead.company.name)"
+        nameIsLong: !cel "size(inputs.lead.company.name) > 20"
+        nameIsShort: !cel "size(inputs.lead.company.name) < 4"
+        companyPoints: !cel "inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5"
+        planPoints: !cel "inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0"
+        geoPoints: !cel "inputs.lead.company.country == 'US' ? 20 : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15 : 5"
+        industryPoints: !cel "inputs.lead.company.industry in ['saas', 'fintech', 'enterprise'] ? 15 : 5"
+        emailPoints: !cel "(inputs.lead.email.contains('@') && size(inputs.lead.email) > 5) ? 5 : 0"
+        totalPoints: !cel "(inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) + (inputs.lead.company.country == 'US' ? 20 : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15 : 5) + (inputs.lead.company.industry in ['saas', 'fintech', 'enterprise'] ? 15 : 5) + ((inputs.lead.email.contains('@') && size(inputs.lead.email) > 5) ? 5 : 0)"
+        scoreBand: !cel "(inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) + (inputs.lead.company.country == 'US' ? 20 : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15 : 5) + (inputs.lead.company.industry in ['saas', 'fintech', 'enterprise'] ? 15 : 5) + ((inputs.lead.email.contains('@') && size(inputs.lead.email) > 5) ? 5 : 0) > 100 ? 'hot' : (inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) + (inputs.lead.company.country == 'US' ? 20 : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15 : 5) + (inputs.lead.company.industry in ['saas', 'fintech', 'enterprise'] ? 15 : 5) + ((inputs.lead.email.contains('@') && size(inputs.lead.email) > 5) ? 5 : 0) > 60 ? 'warm' : 'cold'"
+        needsReview: !cel "(inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) + (inputs.lead.company.country == 'US' ? 20 : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15 : 5) + (inputs.lead.company.industry in ['saas', 'fintech', 'enterprise'] ? 15 : 5) + ((inputs.lead.email.contains('@') && size(inputs.lead.email) > 5) ? 5 : 0) < 40"
+        employeesHalf: !cel "inputs.lead.company.employees / 2"
+        employeesDoubled: !cel "inputs.lead.company.employees * 2"
+        employeesMod7: !cel "inputs.lead.company.employees % 7"
+        employeesTens: !cel "inputs.lead.company.employees / 10"
+        employeesIsEven: !cel "inputs.lead.company.employees % 2 == 0"
+        contactable: !cel "(inputs.lead.email.contains('@') && size(inputs.lead.email) > 5) && !(split(inputs.lead.email, '@')[1] in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com'])"
+        qualified: !cel "(inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) + (inputs.lead.company.country == 'US' ? 20 : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15 : 5) + (inputs.lead.company.industry in ['saas', 'fintech', 'enterprise'] ? 15 : 5) + ((inputs.lead.email.contains('@') && size(inputs.lead.email) > 5) ? 5 : 0) > 60 && inputs.lead.plan != 'free' && inputs.lead.plan != 'trial'"
+        fastTrack: !cel "(inputs.lead.company.employees > 1000 ? 50 : inputs.lead.company.employees > 100 ? 30 : inputs.lead.company.employees > 10 ? 15 : 5) + (inputs.lead.plan == 'enterprise' ? 40 : inputs.lead.plan == 'growth' ? 25 : inputs.lead.plan == 'starter' ? 10 : 0) + (inputs.lead.company.country == 'US' ? 20 : inputs.lead.company.country in ['DE', 'FR', 'NL', 'UK', 'CA', 'AU'] ? 15 : 5) + (inputs.lead.company.industry in ['saas', 'fintech', 'enterprise'] ? 15 : 5) + ((inputs.lead.email.contains('@') && size(inputs.lead.email) > 5) ? 5 : 0) > 100 && inputs.lead.company.employees > 1000"
+        sizeLabel: !cel "upper(inputs.lead.company.employees > 1000 ? 'enterprise' : inputs.lead.company.employees > 100 ? 'mid' : inputs.lead.company.employees > 10 ? 'smb' : 'startup')"
+  - name: store
+    invoke: !ref insertLead
+    inputs:
+      sql: INSERT INTO leads (id, body) VALUES (?, ?)
+      bindings: [!cel "steps.build.result.id", !cel "json(steps.build.result)"]
+outputs:
+  body: !cel "steps.build.result"

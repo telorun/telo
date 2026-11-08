@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata:
+  name: StartupSpanFixtures
+  version: 0.0.0
+  description: A test fixture, a resource that takes 200 ms to initialize.
+exports: { kinds: [SlowInit] }
+---
+kind: Telo.Definition
+metadata: { name: SlowInit, description: Sleeps 200 ms in init(). }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./slow-init.mjs#SlowInit]
+schema: { type: object, additionalProperties: false }

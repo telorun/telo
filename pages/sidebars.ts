@@ -148,6 +148,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/cel-reference", label: "CEL Functions" },
         { type: "doc", id: "docs/reference/diagnostics", label: "Diagnostics reference" },
         { type: "doc", id: "docs/reference/environment-variables", label: "Environment variables" },
+        { type: "doc", id: "docs/reference/benchmarks", label: "Benchmarks" },
         {
           type: "category",
           label: "Kernel",

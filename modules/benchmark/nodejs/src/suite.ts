@@ -1,5 +1,9 @@
 import { Static, Type } from "@sinclair/typebox";
 import type { Invocable, KindRef, ResourceContext } from "@telorun/sdk";
+import { ErrorGroups, type ErrorsRecord } from "./error-groups.js";
+import { LatencyHistogram } from "./latency-histogram.js";
+import { classifyThrown, classifyValidateFailure } from "./suite-failure.js";
+import { renderTextTable } from "./text-table.js";
 
 const ThresholdEntry = Type.Object({
   scenario: Type.Optional(Type.String()),
@@ -60,12 +64,6 @@ function parseDuration(str: string): number {
   return value;
 }
 
-function percentile(sorted: number[], p: number): number {
-  if (sorted.length === 0) return 0;
-  const idx = Math.min(Math.floor(p * sorted.length), sorted.length - 1);
-  return sorted[idx];
-}
-
 function fmtMs(ms: number): string {
   return `${Math.round(ms)}ms`;
 }
@@ -74,8 +72,8 @@ class BenchmarkSuite {
   private resolved: ResolvedScenario[] = [];
   private cumulativeWeights: number[] = [];
   private totalWeight = 0;
-  private samples = new Map<string, number[]>();
-  private errorCounts = new Map<string, number>();
+  private latencies = new Map<string, LatencyHistogram>();
+  private failures = new Map<string, ErrorGroups>();
   private measureStart = 0;
   private measureEnd = 0;
 
@@ -110,8 +108,8 @@ class BenchmarkSuite {
         validate: scenario.validate,
         inputs,
       });
-      this.samples.set(scenario.name, []);
-      this.errorCounts.set(scenario.name, 0);
+      this.latencies.set(scenario.name, new LatencyHistogram());
+      this.failures.set(scenario.name, new ErrorGroups());
     }
 
     // Build cumulative weight array for O(n) selection
@@ -152,9 +150,9 @@ class BenchmarkSuite {
     while (!stop.done()) {
       const scenario = this.pickScenario();
       const t0 = performance.now();
-      let result: unknown;
-      let isError = false;
+      let failure: { code: string; message: string; sample: string } | undefined;
       try {
+        let result: unknown;
         result = await this.ctx.invoke(scenario.kind, scenario.name, scenario.inputs);
         if (scenario.validate) {
           // Require strict `true` — matches Http.Api `when:` semantics
@@ -162,21 +160,18 @@ class BenchmarkSuite {
           // result (e.g. an accidentally-string template) from masking a
           // failed scenario.
           const passed = this.ctx.expandValue(scenario.validate, { result }) === true;
-          if (!passed) isError = true;
+          if (!passed) failure = classifyValidateFailure(result);
         }
-      } catch {
-        isError = true;
+      } catch (error) {
+        failure = classifyThrown(error);
       }
       const latency = performance.now() - t0;
 
       if (Date.now() >= warmupUntil) {
         if (this.measureStart === 0) this.measureStart = performance.now() - latency;
-        this.samples.get(scenario.scenarioName)!.push(latency);
-        if (isError) {
-          this.errorCounts.set(
-            scenario.scenarioName,
-            (this.errorCounts.get(scenario.scenarioName) ?? 0) + 1,
-          );
+        this.latencies.get(scenario.scenarioName)!.recordMs(latency);
+        if (failure) {
+          this.failures.get(scenario.scenarioName)!.record(failure.code, failure.message, failure.sample);
         }
       }
       stop.tick();
@@ -226,26 +221,23 @@ class BenchmarkSuite {
   }
 
   private buildStats(scenarioName: string) {
-    const raw = this.samples.get(scenarioName) ?? [];
-    const errors = this.errorCounts.get(scenarioName) ?? 0;
-    const total = raw.length + errors;
-    const sorted = [...raw].sort((a, b) => a - b);
+    const latencies = this.latencies.get(scenarioName)!;
+    const total = latencies.count;
     const elapsedMs = this.measureEnd - this.measureStart;
-    const rps = elapsedMs > 0 ? (raw.length / elapsedMs) * 1000 : 0;
     return {
       total,
-      rps,
-      p50: percentile(sorted, 0.5),
-      p95: percentile(sorted, 0.95),
-      p99: percentile(sorted, 0.99),
-      errors,
-      errorRate: total > 0 ? errors / total : 0,
+      rps: elapsedMs > 0 ? (total / elapsedMs) * 1000 : 0,
+      p50: latencies.percentileMs(0.5),
+      p95: latencies.percentileMs(0.95),
+      p99: latencies.percentileMs(0.99),
+      errors: this.failures.get(scenarioName)!.toRecord(total),
     };
   }
 
   private printTable(thresholds: Static<typeof ThresholdEntry>[]) {
     const header = ["Scenario", "Reqs", "RPS", "p50", "p95", "p99", "Errors"];
     const rows: string[][] = [];
+    const errorRows: string[][] = [];
 
     for (const s of this.resolved) {
       const st = this.buildStats(s.scenarioName);
@@ -256,30 +248,25 @@ class BenchmarkSuite {
         fmtMs(st.p50),
         fmtMs(st.p95),
         fmtMs(st.p99),
-        `${(st.errorRate * 100).toFixed(2)}%`,
+        `${(st.errors.rate * 100).toFixed(2)}%`,
       ]);
+      for (const g of st.errors.groups) {
+        errorRows.push([s.scenarioName, g.code, String(g.count), g.message, g.sample]);
+      }
     }
 
-    const widths = header.map((h, i) =>
-      Math.max(h.length, ...rows.map((r) => r[i].length)),
-    );
-
-    const pad = (s: string, w: number) => s.padEnd(w);
-    const line = header.map((h, i) => this.bold(pad(h, widths[i]))).join("  ");
-
-    this.ctx.stdout.write("\n" + line + "\n");
-    this.ctx.stdout.write(widths.map((w) => "-".repeat(w)).join("  ") + "\n");
-
-    for (const row of rows) {
-      this.ctx.stdout.write(row.map((cell, i) => pad(cell, widths[i])).join("  ") + "\n");
+    this.ctx.stdout.write("\n" + renderTextTable(header, rows, this.bold) + "\n");
+    if (errorRows.length > 0) {
+      this.ctx.stdout.write(
+        renderTextTable(["Scenario", "Code", "Count", "Message", "Sample"], errorRows, this.bold) + "\n",
+      );
     }
-    this.ctx.stdout.write("\n");
 
     this.enforceThresholds(thresholds);
   }
 
   private printJson(thresholds: Static<typeof ThresholdEntry>[]) {
-    const result: Record<string, object> = {};
+    const result: Record<string, { total: number; rps: number; p50: number; p95: number; p99: number; errors: ErrorsRecord }> = {};
     for (const s of this.resolved) {
       result[s.scenarioName] = this.buildStats(s.scenarioName);
     }
@@ -310,9 +297,9 @@ class BenchmarkSuite {
           this.ctx.stderr.write(this.red(`THRESHOLD FAIL [${name}] p99 ${fmtMs(st.p99)} > ${fmtMs(t.p99)}\n`));
           failed = true;
         }
-        if (t.errorRate != null && st.errorRate > t.errorRate) {
+        if (t.errorRate != null && st.errors.rate > t.errorRate) {
           this.ctx.stderr.write(
-            this.red(`THRESHOLD FAIL [${name}] errorRate ${(st.errorRate * 100).toFixed(2)}% > ${(t.errorRate * 100).toFixed(2)}%\n`),
+            this.red(`THRESHOLD FAIL [${name}] errorRate ${(st.errors.rate * 100).toFixed(2)}% > ${(t.errorRate * 100).toFixed(2)}%\n`),
           );
           failed = true;
         }

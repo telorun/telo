@@ -89,7 +89,10 @@ A runtime MUST produce a span for:
 | Every `invoke` dispatch through the kernel's chokepoint | `invoke <resource name>` | when the dispatch starts |
 | Every `run` dispatch (a boot target, a `Telo.Sequence` target) | `run <resource name>` | when the dispatch starts |
 | The root Application's boot run | `run <application name>` | before its first target |
+| The Application's startup | `startup <application name>` | at process start (as the host reports it; a kernel started any other way, at its creation) |
 | A span a controller opens (`ctx.openSpan`) | the `label` it passes, else its `ref.name` | when opened |
+
+The startup span ends when the init loop does. Until `tracing:` resolves a runtime keeps only the start time; with a trace sink attached the span is exported with that real start time, and with none it is never created.
 
 A controller-opened span is how a unit of work that is not a dispatch — an HTTP
 request, an agent's model call — becomes a span. A dispatch the controller then

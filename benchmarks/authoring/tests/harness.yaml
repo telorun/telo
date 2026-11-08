@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: AuthoringHarnessTest
+  version: 1.0.0
+  description: >-
+    Runs the authoring harness's unit tests with a fake agent: the record, the limits, the report and
+    the contract tests against known apps. No container and no model are involved.
+imports: { Shell: ../../../modules/shell, Assert: ../../../modules/assert }
+variables:
+  testDirectory:
+    env: AUTHORING_TEST_DIRECTORY
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: ./benchmarks/authoring/tests
+targets:
+  - !ref test
+---
+kind: Shell.LocalHost
+metadata: { name: local }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: unit
+    invoke: { kind: Shell.Command, host: !ref local }
+    inputs:
+      args: [node, --test, harness.test.mjs]
+      cwd: !cel "variables.testDirectory"
+      timeoutMs: !cel "600000"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        exitCode: !cel "steps.unit.result.exitCode"
+        output: !cel "steps.unit.result.exitCode == 0 ? '' : steps.unit.result.stdout + steps.unit.result.stderr"
+      expected: { exitCode: 0, output: "" }

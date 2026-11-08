@@ -1,0 +1,46 @@
+# What `telo check` refuses about a comparison's names, subjects and thresholds, at the
+# author's own lines, and the same refusals from the controller when an importer's
+# entry-scoped check is silent (`runFails:`).
+kind: Telo.Application
+metadata: { name: BenchmarkComparisonRulesTest }
+imports: { Assert: ../../assert }
+targets:
+  - !ref refusedAtCheck
+  - !ref refusedAtCreation
+  - !ref zeroDuration
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCheck }
+source: ./__fixtures__/comparison-invalid/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'subjects[0]': shares its name with another subject." }
+    - { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'subjects[1]': shares its name with another subject." }
+    - { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'workloads[0]': shares its name with another workload." }
+    - { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'workloads[1]': shares its name with another workload." }
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Benchmark.Comparison/invalid at 'subjects[0]': names no readiness url, so it runs to exit and cannot serve the workloads."
+    - { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'report.thresholds[0]': judges no workload this comparison declares." }
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Benchmark.Comparison/invalid at 'report.thresholds[1]': names a subject this comparison does not declare."
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Benchmark.Comparison/invalid at 'report.thresholds[2]': sets a latency limit, but a workload it judges states no rate."
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCreation }
+source: ./__fixtures__/comparison-invalid-app.yaml
+expect:
+  errors: []
+  runFails: >-
+    Benchmark.Comparison "invalid": two subjects are named "app"; two workloads are named "ping"; subject "app"
+    names no readiness url, so it runs to exit and cannot serve the workloads; the threshold for leads/every
+    subject names workload "leads", which this comparison does not declare; the threshold for every
+    workload/ghost names subject "ghost", which this comparison does not declare; the threshold for every
+    workload/every subject sets a latency limit, but a workload it judges states no rate.
+---
+kind: Assert.Manifest
+metadata: { name: zeroDuration }
+source: ./__fixtures__/comparison-zero-duration/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/zero: /workloads/0/duration must be a Telo.Duration greater than 0s, not 0s" }

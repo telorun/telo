@@ -1,0 +1,74 @@
+kind: Telo.Application
+metadata: { name: LeadIntakeComparison }
+imports: { Benchmark: ../../modules/benchmark }
+variables:
+  reportFile:
+    env: REPORT_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./comparison.json
+targets:
+  - !ref leadIntake
+---
+kind: Benchmark.Comparison
+metadata: { name: leadIntake }
+rounds: 5
+boots: 20
+subjects:
+  - name: telo
+    command: telo
+    args: [run, telo.yaml]
+    cwd: !module-path telo
+    env: { PORT: "8845", TELO_CACHE_DIR: .telo }
+    readiness: { url: http://127.0.0.1:8845/ping }
+    caches: [.telo]
+    stateDirectory: { env: STATE_DIR }
+  - name: teloObserved
+    command: telo
+    args: [run, telo.yaml]
+    cwd: !module-path telo
+    env: { PORT: "8845", TRACE: "true", TELO_CACHE_DIR: .telo }
+    readiness: { url: http://127.0.0.1:8845/ping }
+    caches: [.telo]
+    stateDirectory: { env: STATE_DIR }
+    traceFile: spans.jsonl
+  - name: node
+    command: node
+    args: [dist/server.js]
+    cwd: !module-path node
+    env: { PORT: "8845" }
+    readiness: { url: http://127.0.0.1:8845/ping }
+    stateDirectory: { env: STATE_DIR }
+workloads:
+  - name: ping
+    duration: 30s
+    warmup: 5s
+    concurrency: 64
+    rate: 2000
+    requests:
+      - { method: GET, url: http://127.0.0.1:8845/ping, expect: { status: 200 } }
+  - name: leads
+    duration: 30s
+    warmup: 5s
+    concurrency: 64
+    rate: 1000
+    requests:
+      - method: POST
+        url: http://127.0.0.1:8845/leads/heavy
+        weight: 3
+        headers: { content-type: application/json }
+        body:
+          email: alice.johnson@acme-corp.com
+          company: { name: Acme Corp, employees: 850, country: US, industry: saas }
+          plan: growth
+        expect: { status: 201 }
+      - { method: GET, url: http://127.0.0.1:8845/leads/seed, expect: { status: 200 } }
+      - method: POST
+        url: http://127.0.0.1:8845/leads/light
+        headers: { content-type: application/json }
+        body: { email: not-an-email }
+        expect: { status: 400 }
+report:
+  file: !cel "variables.reportFile"
+  thresholds:
+    - { workload: leads, subject: telo, errorRate: 0.001 }

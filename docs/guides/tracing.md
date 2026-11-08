@@ -85,7 +85,7 @@ the same two entry forms.
 ## What a span carries
 
 - its trace id, span id and parent span id;
-- a name — `invoke <resource>`, `run <resource>`, or whatever a controller named
+- a name — `invoke <resource>`, `run <resource>`, `startup <application>`, or whatever a controller named
   the span it opened;
 - start and end times;
 - an outcome: `ok`, `rejected` (a coded error), `failed` (anything else),
@@ -95,6 +95,8 @@ the same two entry forms.
 - `telo.cancellation.reason` when it was cancelled;
 - `telo.resource.kind` / `telo.resource.name` on a dispatch span;
 - the attributes its contract or its controller declares.
+
+`startup <application>` is the time from process start (under `telo run`, including loading the CLI) to the end of initialization, so startup time is read from your own traces: its duration is `telo.span.duration_ms` on a `Telo.LogTraceSink` record. It is exported only when a trace sink is attached.
 
 A span **never** carries the dispatch's inputs, outputs or CEL scope. Payload
 stays out of the trace backend.

@@ -1,8 +1,9 @@
 ---
-status: approved
+status: done
 priority: medium
 depends-on: []
 packages: [benchmarks, modules/benchmark, kernel]
+tracking: feat/benchmark-program
 ---
 
 # Benchmark program: Telo vs native, feature cost, agent authoring
@@ -351,10 +352,10 @@ $ TRACE=true telo run telo.yaml
 ### Running and publishing
 
 - **Comparison and feature cost:** `.github/workflows/benchmarks.yml` runs them nightly at 03:00 UTC on `main`, plus manually, on GitHub-hosted runners. The two headline ratios are the published figures; absolute numbers carry the host's specs.
-- **Authoring:** `.github/workflows/benchmarks-authoring.yml` runs it after each telo release, against that release's published CLI and hub, plus manually.
+- **Authoring:** `.github/workflows/benchmarks-authoring.yml` runs it on manual dispatch only, against a published CLI and the hub.
 - **History:** each run appends its records, one per line, to `comparison.jsonl`, `feature-cost.jsonl` or `authoring.jsonl` on the orphan branch `benchmark-results`, adding the commit. Every record carries the commit, telo version, host and, for authoring, the model. Both workflows share one concurrency group, so two runs never append at once.
 - **Regression alerts:** a figure opens an issue labelled `benchmark-regression` when it is worse than the median of the last 10 runs by more than the threshold, and worse than every one of those 10. The figures are the two headline ratios per workload (threshold 10%) and each feature's run and check times at the largest N every run in the window completed (threshold 15%); a feature whose `firstFailure` moves to a smaller N also alerts. Fewer than 10 runs of history means no alert, and a figure that already has an open issue gets a comment instead of a second issue.
-- **Docs page:** `docs/reference/benchmarks.md` holds the hand-written methodology. The docs build reads `benchmark-results` and renders the latest tables, the two headline ratios and the throughput ratio per workload, and the trend charts beneath them; without the branch (a local or fork build) it renders "no results yet" in their place. The nightly workflow triggers the docs deployment after appending.
+- **Docs page:** `docs/reference/benchmarks.md` holds the hand-written methodology. The page reads the history files from `benchmark-results` in the reader's browser, through `raw.githubusercontent.com`, and renders the latest tables, the two headline ratios and the throughput ratio per workload, and the trend charts beneath them; when the fetch fails (no branch yet, a fork, offline) it renders "no results yet" in their place. Nothing redeploys the site: the docs deploy from release tags only, and the page shows the newest results whichever release built it.
 
 **Retired:** `benchmarks/feedback`, `benchmarks/score`, `benchmarks/scripts/run-bench.mjs`, and their lines in the root `ci` script.
 
@@ -376,7 +377,7 @@ $ TRACE=true telo run telo.yaml
 - **Only `telo check` time is measured for analysis.** The editor engine runs the same analysis, so driving an editor protocol session would add a harness and measure nothing new.
 - **Startup time comes from tracing, as one span.** Authors then get the same figure in their own traces. A benchmark-only timing flag was rejected as a second mechanism next to tracing. Per-phase spans were rejected: the init loop interleaves controller loading, compilation and creation, so a span per phase would claim intervals that never happened.
 - **The same general agent on both sides, given the prose contract only.** Using the repo's authoring agent for Telo would mix that agent's quality into the comparison. The contract tests are Telo manifests the Node side could not run, so neither side gets them; they decide parity from outside.
-- **Authoring runs per release, not nightly.** Every attempt costs tokens, and a release is the unit an author actually uses.
+- **Authoring runs only on manual dispatch.** Every attempt costs tokens, so a person decides when one is worth it.
 - **Regressions alert instead of failing CI.** There are no per-feature time budgets until a few weeks of history show what the stable values are.
 - **History lives on an orphan branch.** Workflow artifacts expire after 90 days, and bot commits on `main` would add noise to its history.
 

@@ -1,0 +1,41 @@
+kind: Telo.Application
+metadata: { name: FailingEndpointBenchmark }
+imports:
+  Benchmark: ../../..
+  Http: ../../../../http-server
+  HttpClient: ../../../../http-client
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /broken, method: GET }
+    handler: { kind: Telo.Sequence, steps: [{ name: noop, value: 1 }] }
+    returns:
+      - status: 500
+        content:
+          application/json: { body: { code: ERR_SQL_BUSY, detail: database is locked } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9485 }
+    mounts: [{ mount: !ref api }]
+  - kind: Benchmark.Suite
+    metadata: { name: load }
+    duration: 1s
+    warmup: 500ms
+    report:
+      thresholds: [{ errorRate: 0 }]
+    scenarios:
+      - name: broken
+        invoke: { kind: HttpClient.Request }
+        inputs: { method: GET, url: "http://127.0.0.1:9485/broken" }
+        validate: !cel "result.status == 200"
+targets:
+  - !ref server
+  - !ref load
+steps: []

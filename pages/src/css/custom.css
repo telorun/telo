@@ -250,3 +250,45 @@
 .teloCodeCopy:focus-visible {
   opacity: 1;
 }
+
+/* Benchmark results (src/components/BenchmarkResults.tsx) */
+.benchmarkCharts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: var(--ifm-leading);
+}
+
+.benchmarkChart {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: var(--ifm-global-radius);
+}
+
+.benchmarkChart figcaption {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.benchmarkChart svg {
+  width: 100%;
+  height: auto;
+}
+
+.benchmarkChartLine {
+  fill: none;
+  stroke: var(--ifm-color-primary);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.benchmarkChartDot {
+  fill: var(--ifm-color-primary);
+}
+
+.benchmarkChartRange {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ifm-color-emphasis-700);
+}

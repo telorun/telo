@@ -54,6 +54,16 @@ module.exports = function remarkShiki() {
   return async (tree) => {
     const blocks = [];
     const walk = (node, parent) => {
+      // ```benchmark-results: the page of benchmark results, drawn in the reader's browser.
+      if (node.type === "code" && node.lang === "benchmark-results" && parent) {
+        parent.children[parent.children.indexOf(node)] = {
+          type: "mdxJsxFlowElement",
+          name: "BenchmarkResults",
+          attributes: [],
+          children: [],
+        };
+        return;
+      }
       if (node.type === "code" && !node.meta && (node.lang ?? "text") in LANGS) {
         blocks.push({ node, parent });
       }

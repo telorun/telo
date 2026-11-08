@@ -1,0 +1,29 @@
+# A comparison breaking every rule of the kind: refused by `telo check` here, and by the
+# controller when the library is imported.
+kind: Telo.Library
+metadata: { name: ComparisonInvalid }
+imports: { Benchmark: ../../.. }
+---
+kind: Benchmark.Comparison
+metadata: { name: invalid }
+subjects:
+  - { name: app, command: node, cwd: !module-path work }
+  - name: app
+    command: node
+    cwd: !module-path work
+    readiness: { url: "http://127.0.0.1:9490/ping" }
+workloads:
+  - name: ping
+    duration: 1s
+    concurrency: 1
+    requests: [{ url: "http://127.0.0.1:9490/ping" }]
+  - name: ping
+    duration: 1s
+    concurrency: 1
+    rate: 10
+    requests: [{ url: "http://127.0.0.1:9490/ping" }]
+report:
+  thresholds:
+    - { workload: leads, errorRate: 0 }
+    - { subject: ghost, errorRate: 0 }
+    - { p99: 5 }

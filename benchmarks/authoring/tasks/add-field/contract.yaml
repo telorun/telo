@@ -1,0 +1,120 @@
+kind: Telo.Application
+metadata:
+  name: LeadIntakeAddFieldContract
+  version: 1.0.0
+  description: The base lead-intake contract plus the cases of the add-field task, run against the implementation at BASE_URL.
+imports:
+  Contract:
+    source: ../../../lead-intake/contract
+    variables:
+      baseUrl: !cel "variables.baseUrl"
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+variables: { baseUrl: { env: BASE_URL, type: string, default: "http://127.0.0.1:8845" } }
+targets:
+  - !ref Contract.cases
+  - !ref addedCases
+---
+kind: Telo.Sequence
+metadata: { name: addedCases }
+steps:
+  - name: withPhone
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/light"
+      body:
+        email: dana@northwind.io
+        company: { name: Northwind, employees: 40, country: DE, industry: retail }
+        plan: starter
+        phone: "+49 30 1234567"
+  - name: verifyWithPhone
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.withPhone.result.status"
+        lead: !cel "steps.withPhone.result.body.lead"
+      expected:
+        status: 201
+        lead:
+          email: dana@northwind.io
+          company: { name: Northwind, employees: 40, country: DE, industry: retail }
+          plan: starter
+          phone: "+49 30 1234567"
+  - name: readBack
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/${{ steps.withPhone.result.body.id }}"
+  - name: verifyReadBack
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.readBack.result.status"
+        body: !cel "steps.readBack.result.body"
+      expected:
+        status: 200
+        body: !cel "steps.withPhone.result.body"
+  - name: heavyWithPhone
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/heavy"
+      body:
+        email: dana@northwind.io
+        company: { name: Northwind, employees: 40, country: DE, industry: retail }
+        plan: starter
+        phone: "0301234567"
+  - name: verifyHeavyWithPhone
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.heavyWithPhone.result.status"
+        phone: !cel "steps.heavyWithPhone.result.body.lead.phone"
+        level: !cel "steps.heavyWithPhone.result.body.level"
+        score: !cel "steps.heavyWithPhone.result.body.derived.totalPoints"
+      expected: { status: 201, phone: "0301234567", level: heavy, score: 50 }
+  - name: withoutPhone
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/medium"
+      body:
+        email: dana@northwind.io
+        company: { name: Northwind, employees: 40, country: DE, industry: retail }
+        plan: starter
+  - name: verifyWithoutPhone
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.withoutPhone.result.status"
+        lead: !cel "steps.withoutPhone.result.body.lead"
+      expected:
+        status: 201
+        lead:
+          email: dana@northwind.io
+          company: { name: Northwind, employees: 40, country: DE, industry: retail }
+          plan: starter
+  - name: phoneTooShort
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/medium"
+      body:
+        email: dana@northwind.io
+        company: { name: Northwind, employees: 40, country: DE, industry: retail }
+        plan: starter
+        phone: "12345"
+  - name: phoneNotString
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ variables.baseUrl }}/leads/heavy"
+      body:
+        email: dana@northwind.io
+        company: { name: Northwind, employees: 40, country: DE, industry: retail }
+        plan: starter
+        phone: 3012345678
+  - name: verifyInvalid
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        tooShort: { status: !cel "steps.phoneTooShort.result.status", code: !cel "steps.phoneTooShort.result.body.code" }
+        notString: { status: !cel "steps.phoneNotString.result.status", code: !cel "steps.phoneNotString.result.body.code" }
+      expected:
+        tooShort: { status: 400, code: ERR_INPUT_INVALID }
+        notString: { status: 400, code: ERR_INPUT_INVALID }

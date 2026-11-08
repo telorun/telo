@@ -1,0 +1,42 @@
+# Runs the sweep end to end on two fixture features: one stops exiting at n = 4, so its limit is
+# recorded and the next feature is still measured. Needs what Benchmark.Comparison needs -- Linux,
+# taskset, two physical cores, and the telo command in TELO_COMMAND (default: telo on PATH).
+kind: Telo.Application
+metadata: { name: FeatureCostSweep }
+imports: { Shell: ../../../../modules/shell, Assert: ../../../../modules/assert }
+targets:
+  - !ref sweep
+---
+kind: Shell.LocalHost
+metadata: { name: local }
+cwd: !module-path __fixtures__
+---
+kind: Telo.Sequence
+metadata: { name: sweep }
+steps:
+  - name: run
+    invoke: { kind: Shell.Command, host: !ref local }
+    inputs:
+      args: [node, ../../../run.mjs, --features-module, ./features.mjs, --features, "hangsAtFour,steady", --sizes, "1,2,4", --rounds, "1", --boot-timeout, 2s]
+  - name: records
+    value: !cel "steps.run.result.stdout.trim().split('\\n').map(line, parseJson(line))"
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        exitCode: !cel "steps.run.result.exitCode"
+        features: !cel "steps.records.result.map(r, r.feature)"
+        hangsSizes: !cel "steps.records.result[0].sizes.map(s, s.n)"
+        hangsFailure:
+          n: !cel "steps.records.result[0].firstFailure.n"
+          code: !cel "steps.records.result[0].firstFailure.code"
+          namesSubject: !cel "steps.records.result[0].firstFailure.message.contains('subject \"run\"')"
+        steadySizes: !cel "steps.records.result[1].sizes.map(s, s.n)"
+        steadyFailed: !cel "'firstFailure' in steps.records.result[1]"
+      expected:
+        exitCode: 0
+        features: [hangsAtFour, steady]
+        hangsSizes: [1, 2]
+        hangsFailure: { n: 4, code: ERR_BENCHMARK_BOOT_FAILED, namesSubject: true }
+        steadySizes: [1, 2, 4]
+        steadyFailed: false

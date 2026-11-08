@@ -1,0 +1,203 @@
+name: Benchmarks (authoring)
+
+# Whether a coding agent builds the lead-intake app, and changes to it, with fewer tokens in Telo
+# than in plain Node, against a published CLI and the hub. Run manually only: every attempt spends
+# tokens (at most USD 20 each, 40 attempts per run).
+#
+# One job per task and side runs its attempts one after another (5 x at most 60 minutes fits a
+# hosted runner's limit); the last job appends every record to authoring.jsonl on the
+# `benchmark-results` branch in one go, so parallel jobs never push at once. The `benchmarks`
+# concurrency group is shared with the nightly benchmarks workflow, so two runs never append at once.
+
+on:
+  workflow_dispatch:
+    inputs:
+      telo_version:
+        description: "Published @telorun/cli version to benchmark (default: the latest release)."
+        type: string
+        required: false
+      model:
+        description: "The pinned model; results compare only within one model."
+        type: string
+        default: claude-opus-5-5
+      attempts:
+        description: "Attempts per side per task."
+        type: string
+        default: "5"
+      tasks:
+        description: 'JSON list of tasks (default: all four).'
+        type: string
+        required: false
+
+concurrency:
+  group: benchmarks
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve what to benchmark
+    runs-on: ubuntu-24.04
+    outputs:
+      telo_version: ${{ steps.resolve.outputs.telo_version }}
+      tasks: ${{ steps.resolve.outputs.tasks }}
+    steps:
+      - name: Resolve
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.telo_version }}
+          INPUT_TASKS: ${{ inputs.tasks }}
+        run: |
+          version="$INPUT_VERSION"
+          if [ -z "$version" ]; then version="$(npm view @telorun/cli version)"; fi
+          tasks="$INPUT_TASKS"
+          if [ -z "$tasks" ]; then tasks='["build","add-field","add-validation-rule","add-endpoint"]'; fi
+          echo "telo_version=$version" >> "$GITHUB_OUTPUT"
+          echo "tasks=$tasks" >> "$GITHUB_OUTPUT"
+
+  attempts:
+    name: ${{ matrix.task }} / ${{ matrix.side }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        task: ${{ fromJSON(needs.resolve.outputs.tasks) }}
+        side: [telo, node]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      # The contract manifests import the standard library by path, so its controllers build from
+      # this checkout.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the published telo CLI
+        env:
+          TELO_VERSION: ${{ needs.resolve.outputs.telo_version }}
+        run: |
+          npm install -g "@telorun/cli@$TELO_VERSION"
+          telo --version
+
+      - name: Run the attempts
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COMMIT: ${{ github.sha }}
+          TASK: ${{ matrix.task }}
+          SIDE: ${{ matrix.side }}
+          ATTEMPTS: ${{ inputs.attempts || '5' }}
+          MODEL: ${{ inputs.model || 'claude-opus-5-5' }}
+          TELO_VERSION: ${{ needs.resolve.outputs.telo_version }}
+        run: |
+          node benchmarks/authoring/run.mjs run --out out --build-images \
+            --tasks "$TASK" --sides "$SIDE" --attempts "$ATTEMPTS" --model "$MODEL" \
+            --telo-version "$TELO_VERSION"
+
+      - name: Upload records and built apps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authoring-${{ matrix.task }}-${{ matrix.side }}
+          path: |
+            out/
+            !out/**/node_modules/**
+            !out/**/.telo/**
+          if-no-files-found: ignore
+          retention-days: 30
+
+  publish:
+    name: Append to the history
+    needs: [resolve, attempts]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download the records
+        uses: actions/download-artifact@v4
+        with:
+          pattern: authoring-*
+          path: out
+          merge-multiple: true
+
+      - name: Summarize
+        run: |
+          node benchmarks/authoring/run.mjs summary --out out | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Append to authoring.jsonl on benchmark-results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node benchmarks/history/append.mjs --records out/authoring.jsonl --target authoring.jsonl
+
+      - name: Keep the combined records
+        uses: actions/upload-artifact@v4
+        with:
+          name: authoring-summary
+          path: |
+            out/authoring.jsonl
+            out/summary.md
+
+  comparison:
+    name: Built apps through the Telo-vs-native comparison
+    needs: [resolve, publish]
+    if: ${{ needs.publish.result == 'success' && contains(fromJSON(needs.resolve.outputs.tasks), 'build') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the published telo CLI
+        env:
+          TELO_VERSION: ${{ needs.resolve.outputs.telo_version }}
+        run: npm install -g "@telorun/cli@$TELO_VERSION"
+
+      - name: Download the built apps
+        uses: actions/download-artifact@v4
+        with:
+          pattern: authoring-build-*
+          path: out
+          merge-multiple: true
+
+      - name: Run the comparison
+        run: node benchmarks/authoring/run.mjs compare --out out --run
+
+      - name: Upload the comparison record
+        uses: actions/upload-artifact@v4
+        with:
+          name: authoring-comparison
+          path: out/comparison/comparison.json
