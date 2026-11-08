@@ -284,9 +284,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
+      # By pattern: inside the Publish run the Docker jobs' build records are
+      # artifacts too, and they cannot be downloaded.
+      - name: Download every binary
         uses: actions/download-artifact@v4
         with:
+          pattern: telo-*
           path: artifacts
 
       # Every asset in one directory, checksummed into one `checksums.txt` in

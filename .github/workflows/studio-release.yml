@@ -267,9 +267,12 @@ jobs:
     needs: [gate, build]
     runs-on: ubuntu-latest
     steps:
+      # By pattern: inside the Publish run the Docker jobs' build records are
+      # artifacts too, and they cannot be downloaded.
       - name: Download all bundles
         uses: actions/download-artifact@v4
         with:
+          pattern: studio-*
           path: artifacts
           merge-multiple: true
 

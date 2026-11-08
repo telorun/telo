@@ -81,7 +81,10 @@ function compose(args) {
   if (!channel || !version || !out) throw new Error("usage: compose --channel C --version V --out DIR [--own-root FILE] [--own-next FILE]");
   const repository = process.env.GITHUB_REPOSITORY;
   const releases = JSON.parse(
-    execFileSync("gh", ["api", "--paginate", "--slurp", `repos/${repository}/releases?per_page=100`], { encoding: "utf8" }),
+    execFileSync("gh", ["api", "--paginate", "--slurp", `repos/${repository}/releases?per_page=100`], {
+      encoding: "utf8",
+      maxBuffer: 256 * 1024 * 1024,
+    }),
   ).flat();
   const plan = composePlan({ channel, version, releases });
 
