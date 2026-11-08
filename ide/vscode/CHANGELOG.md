@@ -1,5 +1,37 @@
 # telo-kernel
 
+## 0.6.5
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- e457b1a: The README links into the repository are relative paths, resolved to the release tag when the package is packed, instead of absolute links pinned to `main`.
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [e457b1a]
+- Updated dependencies [e457b1a]
+- Updated dependencies [e457b1a]
+- Updated dependencies [ba2e682]
+- Updated dependencies [ba2e682]
+  - @telorun/kernel@0.132.0
+  - @telorun/editor-protocol@0.3.1
+  - @telorun/language-host@0.4.1
+
+## 0.6.5-rc.0
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- e457b1a: The README links into the repository are relative paths, resolved to the release tag when the package is packed, instead of absolute links pinned to `main`.
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [e457b1a]
+- Updated dependencies [e457b1a]
+- Updated dependencies [e457b1a]
+- Updated dependencies [ba2e682]
+- Updated dependencies [ba2e682]
+  - @telorun/kernel@0.132.0-rc.0
+  - @telorun/editor-protocol@0.3.1-rc.0
+  - @telorun/language-host@0.4.1-rc.0
+
 ## 0.6.4
 
 ### Patch Changes

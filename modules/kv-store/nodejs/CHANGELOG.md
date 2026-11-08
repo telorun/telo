@@ -1,5 +1,7 @@
 # @telorun/kv-store
 
+## 0.5.2
+
 ## 0.3.0
 
 ### Minor Changes

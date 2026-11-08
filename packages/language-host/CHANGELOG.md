@@ -1,5 +1,27 @@
 # @telorun/language-host
 
+## 0.4.1
+
+### Patch Changes
+
+- e457b1a: A bundled engine that is a release candidate (`X.Y.Z-rc.N`) is accepted at its handshake and ordered by its release's version; the registry catalog still never offers a candidate.
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- ba2e682: A request still pending on an engine the router stops because no open document uses it any more — its document moved to another telo version, or closed — is now rejected as `ContentModified` (`-32801`) instead of an internal error. Editors drop such an answer silently and ask again, so VS Code no longer logs `Request textDocument/codeAction failed … engine was stopped` when a module moves engines. An engine that fails still rejects its pending requests as an error.
+- Updated dependencies [e457b1a]
+- Updated dependencies [e457b1a]
+  - @telorun/editor-protocol@0.3.1
+
+## 0.4.1-rc.0
+
+### Patch Changes
+
+- e457b1a: A bundled engine that is a release candidate (`X.Y.Z-rc.N`) is accepted at its handshake and ordered by its release's version; the registry catalog still never offers a candidate.
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- ba2e682: A request still pending on an engine the router stops because no open document uses it any more — its document moved to another telo version, or closed — is now rejected as `ContentModified` (`-32801`) instead of an internal error. Editors drop such an answer silently and ask again, so VS Code no longer logs `Request textDocument/codeAction failed … engine was stopped` when a module moves engines. An engine that fails still rejects its pending requests as an error.
+- Updated dependencies [e457b1a]
+- Updated dependencies [e457b1a]
+  - @telorun/editor-protocol@0.3.1-rc.0
+
 ## 0.4.0
 
 ### Minor Changes

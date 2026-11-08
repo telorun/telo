@@ -1,5 +1,21 @@
 # @telorun/k8s-runner
 
+## 0.25.1
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- Updated dependencies [e457b1a]
+  - @telorun/runner-core@0.24.1
+
+## 0.25.1-rc.0
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- Updated dependencies [e457b1a]
+  - @telorun/runner-core@0.24.1-rc.0
+
 ## 0.25.0
 
 ### Minor Changes

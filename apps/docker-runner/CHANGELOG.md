@@ -1,5 +1,19 @@
 # @telorun/docker-runner
 
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies [e457b1a]
+  - @telorun/runner-core@0.24.1
+
+## 0.16.1-rc.0
+
+### Patch Changes
+
+- Updated dependencies [e457b1a]
+  - @telorun/runner-core@0.24.1-rc.0
+
 ## 0.16.0
 
 ### Minor Changes

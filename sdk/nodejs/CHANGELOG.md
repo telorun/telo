@@ -1,5 +1,31 @@
 # @telorun/sdk
 
+## 0.132.0
+
+### Minor Changes
+
+- 1bcbfd7: A controller asks for the co-referrers of one of its `callsCoReferrers` slots with `ctx.resolveCoReferrers(slot)` — the controller protocol's new `Ref.CoReferrers` message, which makes the protocol generation `telo-10` (`9` is withdrawn, as `4`–`8` were). The answer is every module-scope declaration of the slot's co-referrer kind whose own slot names the same target in the same module instance, live and in application load order: the root, then its imports depth-first in `imports:` order (a `shared` library at its first reach), each module instance's documents in the order they are read, a template instance's body entries — a `!for-each` family in family order — after them. It is read at the call from an index the kernel builds once the application has initialized and rebuilds after each reconcile, so a caller is ordered after none of its co-referrers and a reconcile adding one reaches the next call; asked before the application has initialized, it is `ERR_LOCAL_REF_PENDING`, and while a reconcile rebuilds it, `ERR_INVOKE_CANCELLED`, as a dispatch to a resource the reconcile unwound is. `telo check` sees the same set: an importer's check holds every imported library's co-referrers, holders and the paths reaching them, so a library's handler is checked against every emit of the application — a requirement of its target is reported at the importer's emit, or at the `imports:` entry reaching the library when only the importer's composition of two libraries makes it — while a library's own check covers its own handlers and its imports'. The caller dispatches each one itself through `ctx.invokeResolved`, so each gets its own span under the caller's and runs inside the caller's zones and cancellation. The kernel refuses a malformed `callsCoReferrers` when the kind registers (`ERR_X_TELO_REF_INVALID_CALLS_CO_REFERRERS`) and a co-referrer declared in a `with:` / `x-telo-scope` scope when the scope's holder is wired (`ERR_CO_REFERRER_SCOPED`), each worded as `telo check` words its twin. A `Telo.Import` declared in a `with:` scope is now loaded and checked as an `imports:` entry is — its import refusals reported at the member and refused at load, its library a module instance beneath its holders (its needs named `TELO_NEED_<HOLDER>__<MEMBER>__…`), giving the scope its exported instances (`!ref <Member>.<name>`, `resources.<Member>.<name>`) and no kinds or functions — and its library's co-referrers are indexed per scope run, a co-referrer there whose target outlives the run being refused (`CO_REFERRER_SCOPED` / `ERR_CO_REFERRER_SCOPED`).
+
+### Patch Changes
+
+- e457b1a: The README links into the repository are relative paths, resolved to the release tag when the package is packed, instead of absolute links pinned to `main`.
+- Updated dependencies [e457b1a]
+  - @telorun/cel@0.132.0
+  - @telorun/message-format@0.132.0
+
+## 0.132.0-rc.0
+
+### Minor Changes
+
+- 1bcbfd7: A controller asks for the co-referrers of one of its `callsCoReferrers` slots with `ctx.resolveCoReferrers(slot)` — the controller protocol's new `Ref.CoReferrers` message, which makes the protocol generation `telo-10` (`9` is withdrawn, as `4`–`8` were). The answer is every module-scope declaration of the slot's co-referrer kind whose own slot names the same target in the same module instance, live and in application load order: the root, then its imports depth-first in `imports:` order (a `shared` library at its first reach), each module instance's documents in the order they are read, a template instance's body entries — a `!for-each` family in family order — after them. It is read at the call from an index the kernel builds once the application has initialized and rebuilds after each reconcile, so a caller is ordered after none of its co-referrers and a reconcile adding one reaches the next call; asked before the application has initialized, it is `ERR_LOCAL_REF_PENDING`, and while a reconcile rebuilds it, `ERR_INVOKE_CANCELLED`, as a dispatch to a resource the reconcile unwound is. `telo check` sees the same set: an importer's check holds every imported library's co-referrers, holders and the paths reaching them, so a library's handler is checked against every emit of the application — a requirement of its target is reported at the importer's emit, or at the `imports:` entry reaching the library when only the importer's composition of two libraries makes it — while a library's own check covers its own handlers and its imports'. The caller dispatches each one itself through `ctx.invokeResolved`, so each gets its own span under the caller's and runs inside the caller's zones and cancellation. The kernel refuses a malformed `callsCoReferrers` when the kind registers (`ERR_X_TELO_REF_INVALID_CALLS_CO_REFERRERS`) and a co-referrer declared in a `with:` / `x-telo-scope` scope when the scope's holder is wired (`ERR_CO_REFERRER_SCOPED`), each worded as `telo check` words its twin. A `Telo.Import` declared in a `with:` scope is now loaded and checked as an `imports:` entry is — its import refusals reported at the member and refused at load, its library a module instance beneath its holders (its needs named `TELO_NEED_<HOLDER>__<MEMBER>__…`), giving the scope its exported instances (`!ref <Member>.<name>`, `resources.<Member>.<name>`) and no kinds or functions — and its library's co-referrers are indexed per scope run, a co-referrer there whose target outlives the run being refused (`CO_REFERRER_SCOPED` / `ERR_CO_REFERRER_SCOPED`).
+
+### Patch Changes
+
+- e457b1a: The README links into the repository are relative paths, resolved to the release tag when the package is packed, instead of absolute links pinned to `main`.
+- Updated dependencies [e457b1a]
+  - @telorun/cel@0.132.0-rc.0
+  - @telorun/message-format@0.132.0-rc.0
+
 ## 0.131.0
 
 ### Minor Changes

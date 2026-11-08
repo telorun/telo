@@ -1,5 +1,21 @@
 # @telorun/runner-core
 
+## 0.24.1
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- Updated dependencies [e457b1a]
+  - @telorun/debug-wire@0.4.7
+
+## 0.24.1-rc.0
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- Updated dependencies [e457b1a]
+  - @telorun/debug-wire@0.4.7-rc.0
+
 ## 0.24.0
 
 ### Minor Changes
