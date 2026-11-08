@@ -21,7 +21,7 @@
       "chat-message-actions", "chat-copy", "chat-edit", "chat-edit-form", "chat-regenerate", "chat-branches",
       "chat-branch-previous", "chat-branch-position", "chat-branch-next", "chat-reasoning", "chat-reasoning-toggle",
       "chat-reasoning-body", "chat-tool", "chat-tool-header", "chat-tool-name", "chat-tool-status", "chat-tool-toggle",
-      "chat-tool-detail", "chat-tool-label", "chat-tool-data", "chat-approval", "chat-approval-title",
+      "chat-tool-detail", "chat-tool-label", "chat-tool-data", "chat-tool-block", "chat-tool-preview", "chat-approval", "chat-approval-header", "chat-approval-toggle", "chat-approval-title", "chat-approval-state",
       "chat-approval-actions", "chat-approval-decision", "chat-approve", "chat-reject", "chat-image", "chat-media",
       "chat-attachment", "chat-sources", "chat-sources-title", "chat-source-list", "chat-source", "chat-source-quote",
       "chat-refusal", "chat-refusal-title", "chat-usage", "chat-turn-note", "chat-continue", "chat-pending",

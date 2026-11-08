@@ -136,6 +136,12 @@
   [data-telo-part="chat-edit-form"] > :is(:first-child, [data-telo-part="chat-attachments"], [data-telo-part="chat-attachment-refusals"]) { flex: 1 0 100%; min-width: 0; }
   [data-telo-part="chat-edit-form"] > [data-telo-part="chat-attach"] { margin-inline-end: auto; }
   [data-compact] [data-telo-part="chat-edit-form"] > button { flex: 1 0 100%; }
+  /* An approval's line stays one line: its title gives way, the decision and the state stay. */
+  [data-telo-part="chat-approval-header"] { display: flex; align-items: center; min-width: 0; }
+  [data-telo-part="chat-approval-toggle"] { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+  [data-telo-part="chat-approval-title"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  [data-telo-part="chat-approval-decision"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  [data-telo-part="chat-approval-state"] { display: inline-flex; flex: none; align-items: center; }
   [data-telo-part="chat-message-actions"],
   [data-telo-part="chat-tool-header"],
   [data-telo-part="chat-approval-actions"],

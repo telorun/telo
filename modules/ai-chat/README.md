@@ -16,6 +16,8 @@ in a `blob` store.
   and the conversation takes a new turn.
 - **Retried sends start one turn** — an idempotency key answers the turn the first
   send started, and refuses the key reused with another request.
+- **Conversations name themselves** — with `titles`, a small model writes a short
+  title for an untitled conversation as its turn ends; a rename is never overwritten.
 - **Served as the conversation contract** — one mount gives a `Ui.Chat` page, or any
   client of the contract, its routes, problems and uploads.
 - **Attachments the model can read** — an upload is detected from its bytes, held to

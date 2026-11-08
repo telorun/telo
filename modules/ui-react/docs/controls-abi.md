@@ -51,7 +51,7 @@ control's **sub-parts** are the only other parts it may draw.
 
 The glyph names an `Icon` is drawn with are closed too: `add`, `alert`,
 `attach`, `close`, `collapse`, `copy`, `delete`, `done`, `edit`, `expand`, `export`,
-`filter`, `go`, `loading`, `menu`, `more`, `next`, `panel-close`, `panel-open`,
+`filter`, `go`, `loading`, `maximize`, `menu`, `more`, `next`, `panel-close`, `panel-open`,
 `previous`, `regenerate`, `remove`, `reset`, `send`, `sort-ascending`,
 `sort-descending`, `sortable`, `stop`. A glyph inside a
 control — a select's chevron, a checkbox's mark, a tag's × — is that control's
@@ -59,7 +59,8 @@ control — a select's chevron, a checkbox's mark, a tag's × — is that contro
 
 `collapse` and `expand` are disclosure chevrons (open and closed);
 `panel-close` and `panel-open` draw a side panel shown and folded away; `go` is
-an arrow toward a destination; `done` is a check mark, drawn in place of a
+an arrow toward a destination; `maximize` is a button's glyph for
+opening what it belongs to larger, in a dialog; `done` is a check mark, drawn in place of a
 button's own glyph while it shows that a press succeeded. A look mirrors the two panel glyphs for a panel
 at the end edge and `go` in a right-to-left page.
 
@@ -779,6 +780,7 @@ export type IconName =
   | "filter"
   | "go"
   | "loading"
+  | "maximize"
   | "menu"
   | "more"
   | "next"

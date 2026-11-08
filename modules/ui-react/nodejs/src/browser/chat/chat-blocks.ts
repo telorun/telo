@@ -119,15 +119,43 @@ export function applyEvent(turn: LiveTurn, event: ChatEvent): LiveTurn {
   }
 }
 
-/** A stored entry as blocks: its parts, then its tool calls with what they answered. */
-export function entryBlocks(entry: Entry): Block[] {
+type ToolResult = NonNullable<Entry["toolResults"]>[number];
+
+/** Every tool result the entries carry, by the id of the call it answers. */
+export function toolResultsById(entries: readonly Entry[]): ReadonlyMap<string, ToolResult> {
+  const results = new Map<string, ToolResult>();
+  for (const entry of entries) for (const result of entry.toolResults ?? []) results.set(result.id, result);
+  return results;
+}
+
+/**
+ * The entries grouped as messages are drawn: a user entry alone, and each run of
+ * consecutive assistant entries as one reply — a tool-using reply is stored as
+ * an entry holding the calls, one per result and one holding the answer.
+ */
+export function transcriptMessages(entries: readonly Entry[]): Entry[][] {
+  const messages: Entry[][] = [];
+  for (const entry of entries) {
+    const last = messages[messages.length - 1];
+    if (entry.role === "assistant" && last?.[0].role === "assistant") last.push(entry);
+    else messages.push([entry]);
+  }
+  return messages;
+}
+
+/** The token counts of a message's entries together; none when no entry carries any. */
+export const messageUsage = (message: readonly Entry[]): Usage | undefined =>
+  message.reduce<Usage | undefined>((total, entry) => (entry.usage ? addUsage(total, entry.usage) : total), undefined);
+
+/** A stored entry as blocks: its parts, then its tool calls with what they answered, found on the entry or in `results`. */
+export function entryBlocks(entry: Entry, results?: ReadonlyMap<string, ToolResult>): Block[] {
   const blocks: Block[] = [];
   for (const part of entry.parts) {
     if (part.type === "text" || part.type === "reasoning") blocks.push({ kind: part.type, text: (part as { text: string }).text });
     else blocks.push({ kind: "part", part });
   }
   for (const call of entry.toolCalls ?? []) {
-    const answer = entry.toolResults?.find((result) => result.id === call.id);
+    const answer = entry.toolResults?.find((result) => result.id === call.id) ?? results?.get(call.id);
     blocks.push({
       kind: "tool",
       id: call.id,
@@ -176,10 +204,12 @@ export const attachmentAddress = (basePath: string, url: string): string =>
 /** The name a media part is shown by. */
 export const partName = (part: { name?: string; url: string }): string => part.name ?? attachmentId(part.url);
 
-/** A conversation as Markdown, for export: its entries from the root, as drawn. */
+/** A conversation as Markdown, for export: its messages from the root, as drawn. */
 export function transcriptMarkdown(entries: readonly Entry[], labels: { user: string; assistant: string }, basePath: string): string {
-  const sections = entries.map((entry) => {
-    const body = entryBlocks(entry)
+  const results = toolResultsById(entries);
+  const sections = transcriptMessages(entries).map((message) => {
+    const body = message
+      .flatMap((entry) => entryBlocks(entry, results))
       .map((block) => {
         if (block.kind === "text") return block.text;
         if (block.kind === "tool") return `\`\`\`json\n${JSON.stringify({ tool: block.name, arguments: block.arguments, result: block.result }, null, 2)}\n\`\`\``;
@@ -192,7 +222,7 @@ export function transcriptMarkdown(entries: readonly Entry[], labels: { user: st
       })
       .filter((each) => each !== "")
       .join("\n\n");
-    return `## ${labels[entry.role]}\n\n${body}`;
+    return `## ${labels[message[0].role]}\n\n${body}`;
   });
   return `${sections.join("\n\n")}\n`;
 }

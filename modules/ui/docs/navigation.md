@@ -42,7 +42,7 @@ Tagged by `type`:
 
 | `type` | Keys | |
 | --- | --- | --- |
-| `page` | `page`, `text?`, `icon?`, `when?` | a page the application lists; `text` defaults to the page's title |
+| `page` | `page`, `text?`, `icon?`, `when?` | a page the application lists; `text` defaults to the page's title, and is required for a page with none |
 | `link` | `text`, `href`, `icon?`, `when?` | any address a [`link` node](nodes.md#addresses) may hold: an app-relative path, or `https://`, `http://`, `mailto:` |
 | `group` | `text`, `items`, `icon?`, `when?` | entries nested to any depth |
 

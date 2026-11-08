@@ -29,8 +29,9 @@ pages:
   - !ref Billing.invoices      # a page a library exports
 ```
 
-- Each entry is a [`Ui.Page`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): its `path`, `title`,
-  `query` and `children`. The application invokes it for every request to its
+- Each entry is a [`Ui.Page`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): its `path`, optional `title`,
+  `query` and `children`; a page with a `title` draws it as its heading, and one
+  without draws none. The application invokes it for every request to its
   path; the page's composites are resolved once, when the page is created.
 - Two pages at one path are refused: `RESOURCE_RULE_VIOLATED` with
   `data.rule: UI_PAGE_PATH_DUPLICATE` at `telo check`,
@@ -113,6 +114,10 @@ file: !module-path ./icons/reports.svg
   `RESOURCE_RULE_VIOLATED` with `data.rule: UI_NAVIGATION_PAGE_UNROUTED` at
   `telo check`, at that entry however deep, and
   `ERR_UI_NAVIGATION_PAGE_UNROUTED` at creation.
+- An entry's label is its `text`, else its page's `title`. A page with no title
+  is left out of an omitted navigation, and an entry naming one without `text` is
+  `UI_NAVIGATION_PAGE_UNTITLED` at `telo check` (the first two levels of the
+  tree) and `ERR_UI_NAVIGATION_PAGE_UNTITLED` at creation.
 - **In the header** (`Ui.HeaderNavigation`) the tree is drawn in the `nav`
   part by the [`Navigation` control](controls-abi.md#navigation) in a row: a
   group opens as a dropdown, a group inside it as a submenu, and what does not

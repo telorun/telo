@@ -58,7 +58,8 @@ class FakeEventSource extends EventTarget {
 (globalThis as any).EventSource = FakeEventSource;
 
 export interface Page {
-  title: string;
+  /** None: the page declares no title, so no heading is drawn. */
+  title?: string;
   /** `contained` when not given. */
   width?: "contained" | "full";
   children: SpecNode[];
@@ -195,9 +196,9 @@ export async function render(options: {
         digest: "app-1",
         title: wireText("Test App"),
         lang: options.lang ?? "en",
-        pages: Object.entries(pages).map(([path, page]) => ({ path, title: wireText(page.title) })),
+        pages: Object.entries(pages).map(([path, page]) => ({ path, ...(page.title === undefined ? {} : { title: wireText(page.title) }) })),
         navigation: options.navigation ?? {
-          items: Object.entries(pages).map(([path, page]) => ({ type: "page", path, text: wireText(page.title) })),
+          items: Object.entries(pages).flatMap(([path, page]) => (page.title === undefined ? [] : [{ type: "page", path, text: wireText(page.title) }])),
           placement: HEADER_NAVIGATION,
         },
         texts: uiTexts(options.messages),
@@ -211,7 +212,7 @@ export async function render(options: {
       const path = url.searchParams.get("path") as string;
       const digest = `${path}#${versions[path] ?? 0}`;
       if (new Headers(init?.headers).get("if-none-match") === `"${digest}"`) return new Response(null, { status: 304 });
-      return json({ specVersion: 1, bundle, digest, path, title: wireText(pages[path].title), lang: options.lang ?? "en", width: pages[path].width ?? "contained", children: wire(pages[path].children) });
+      return json({ specVersion: 1, bundle, digest, path, ...(pages[path].title === undefined ? {} : { title: wireText(pages[path].title as string) }), lang: options.lang ?? "en", width: pages[path].width ?? "contained", children: wire(pages[path].children) });
     }
     const base = Object.keys(collections).find((candidate) => url.pathname === prefix + candidate || url.pathname.startsWith(`${prefix}${candidate}/`));
     if (base) {

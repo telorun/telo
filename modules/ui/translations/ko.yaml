@@ -125,6 +125,7 @@ messages:
   chatThinking: "생각하는 중…"
   chatShowDetails: "세부 정보 보기"
   chatHideDetails: "세부 정보 숨기기"
+  chatToolPreview: "미리보기"
   chatToolCall: "도구: {$name}"
   chatToolRunning: "실행 중…"
   chatToolFailed: "실패"

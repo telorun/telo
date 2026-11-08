@@ -260,7 +260,8 @@ else its `pageWidth`, else `contained`, resolved by `ui`'s `resolvedPageWidth`
 }
 ```
 
-`children` are `Ui.SpecNode`s, produced for this request: no `when` is left in
+`title` is absent for a page that declares none — in this document and in the
+application document's `pages` — and the renderer then draws no heading. `children` are `Ui.SpecNode`s, produced for this request: no `when` is left in
 them, and every `shown` is carried as written. `query` is the page's declared
 query parameters, `{}` when it declares none; the renderer reads each from the
 address as the page's `query` root. `width` is how wide the page's content is

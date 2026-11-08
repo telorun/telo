@@ -180,6 +180,7 @@ messages:
   chatThinking: "Réflexion en cours…"
   chatShowDetails: "Afficher les détails"
   chatHideDetails: "Masquer les détails"
+  chatToolPreview: "Aperçu"
   chatToolCall: "Outil : {$name}"
   chatToolRunning: "En cours…"
   chatToolFailed: "Échec"

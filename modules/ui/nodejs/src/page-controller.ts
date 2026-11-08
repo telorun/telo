@@ -7,7 +7,7 @@ import type { HeaderReads } from "./request-header-reads.js";
 
 type PageResource = RuntimeResource & {
   path: string;
-  title: TextRecord;
+  title?: TextRecord | null;
   query?: Record<string, unknown> | null;
   width?: PageWidth | null;
   children: unknown;
@@ -30,17 +30,18 @@ export interface PageRequest {
 /** A page as delivered for one request. */
 export interface PageDocument {
   path: string;
-  title: TextRecord;
+  /** Absent when the page declares none: no heading is drawn. */
+  title?: TextRecord;
   /** The query parameters its nodes read, by name; empty when none is declared. */
   query: Record<string, unknown>;
   width: PageWidth;
   children: SpecNode[];
 }
 
-/** What a page publishes: its address, its title and what it reads. */
+/** What a page publishes: its address, its title when it has one and what it reads. */
 export interface PageReading {
   path: string;
-  title: TextRecord;
+  title?: TextRecord;
   query: Record<string, unknown>;
 }
 
@@ -96,5 +97,5 @@ export async function create(resource: PageResource, ctx: ResourceContext): Prom
   // the values its `value` and `list` nodes name.
   const queryShape = modelShape({ type: "object", properties: query, additionalProperties: false }, { ctx, owner: where }, "query");
   const nodes = await RequestNodes.prepare(resource.children, { query: queryShape }, ctx, `${where} children`);
-  return new Page({ path: resource.path, title: resource.title, query }, resource.width ?? undefined, nodes);
+  return new Page({ path: resource.path, ...(resource.title == null ? {} : { title: resource.title }), query }, resource.width ?? undefined, nodes);
 }

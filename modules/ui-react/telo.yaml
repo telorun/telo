@@ -253,6 +253,15 @@ schema:
       message: >-
         names a page the application does not list in its pages, so it leads
         nowhere. Add the page to pages, or remove the entry.
+    # The page an entry names is read at the first two levels of the tree; a
+    # deeper entry is judged when the application starts.
+    - resolve: [/navigation/items/*/page, /navigation/items/*/items/*/page]
+      in: /navigation/items(/*/items)*
+      condition: !cel "this.type != 'page' || has(this.text) || !has(this.page.path) || has(this.page.title)"
+      code: UI_NAVIGATION_PAGE_UNTITLED
+      message: >-
+        names a page with no title and gives no text of its own, so it has no
+        label. Write the entry's text, or give the page a title.
 ---
 # The look of every part the renderer draws and, optionally, the controls it
 # draws with; the brand stays a separate `Ui.DesignTokens` set. Layering:

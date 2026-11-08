@@ -1,6 +1,6 @@
 # Ui.Page
 
-One page of an application: its address, its title and its nodes. A
+One page of an application: its address, its optional title and its nodes. A
 `Telo.Invocable`: a renderer's application lists it, routes the page's path to
 it, and invokes it once per request with the request; the page answers with
 its nodes as delivered for that request.
@@ -23,7 +23,7 @@ children:
 | Field | | |
 | --- | --- | --- |
 | `path` | required | the page's address under the application's mount |
-| `title` | required | a text, shown above the page and in the navigation unless an entry says otherwise |
+| `title` | | a text, shown above the page as its heading and in the navigation unless an entry says otherwise. Omitted, no heading is drawn, the document is titled by the application alone, an omitted navigation leaves the page out, and a [navigation](navigation.md) entry naming it must give its own `text` |
 | `query` | | the query parameters the page's own nodes read, as [`Ui.QueryParameters`](conditions.md#query-parameters) |
 | `width` | | how wide its content is drawn, a `Ui.PageWidth`: `contained` or `full`; omitted, the application's — see [Width](#width) |
 | `children` | required | the page's [nodes](nodes.md), top to bottom |

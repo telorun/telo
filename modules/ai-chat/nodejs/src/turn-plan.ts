@@ -9,6 +9,7 @@ export const TURN_OPERATIONS = [
   "create",
   "read",
   "admit",
+  "update",
   "append",
   "entries",
   "recordApproval",

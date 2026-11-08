@@ -20,7 +20,8 @@ metadata:
     written against the previous controls generation. A
     navigation entry naming a page the application does not list, at any
     depth of its groups, is refused where it is written and by the
-    application itself.
+    application itself; so is an entry naming a page with no title that gives
+    no text of its own.
 imports: { Probe: ./__fixtures__/probe, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref computedChildren
@@ -45,6 +46,8 @@ targets:
   - !ref controlsPreviousGenerationImported
   - !ref unroutedPage
   - !ref unroutedPageAtRuntime
+  - !ref untitledPage
+  - !ref untitledPageAtRuntime
 ---
 kind: Assert.Manifest
 metadata: { name: computedChildren }
@@ -225,3 +228,18 @@ source: ./__fixtures__/invalid/unrouted-page/telo.yaml
 expect:
   errors: []
   runFails: "UiReact.App 'deep': 'navigation.items[1].items[0].items[0].items[0]' names a page the application does not list in its pages ('/hidden')"
+---
+kind: Assert.Manifest
+metadata: { name: untitledPage }
+source: ./__fixtures__/invalid/untitled-page/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/bare at 'navigation.items[1].items[0]': names a page with no title and gives no text of its own"
+---
+kind: Assert.Manifest
+metadata: { name: untitledPageAtRuntime }
+source: ./__fixtures__/invalid/untitled-page/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.App 'bare': 'navigation.items[1].items[0]' names a page with no title ('/chat') and gives no text of its own"

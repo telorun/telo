@@ -191,6 +191,7 @@ messages:
   chatThinking: "Думає…"
   chatShowDetails: "Показати подробиці"
   chatHideDetails: "Сховати подробиці"
+  chatToolPreview: "Перегляд"
   chatToolCall: "Інструмент: {$name}"
   chatToolRunning: "Виконується…"
   chatToolFailed: "Помилка"

@@ -3148,7 +3148,7 @@ kind: Telo.Definition
 metadata:
   name: Page
   description: >-
-    One screen of a web application at its own address: a title and a tree of
+    One screen of a web application at its own address: an optional heading and a tree of
     layout, text, data grids, forms and custom components, whose parts can be
     shown per request by a header such as a role or a tenant. Listed by an
     application to route to it and named in its navigation menu.
@@ -3176,7 +3176,7 @@ outputType:
   schema:
     type: object
     additionalProperties: false
-    required: [path, title, query, width, children]
+    required: [path, query, width, children]
     properties:
       path: { type: string }
       title: { $ref: "telo://manifest#/$defs/TextRecord" }
@@ -3189,7 +3189,7 @@ outputType:
 schema:
   type: object
   additionalProperties: false
-  required: [path, title, children]
+  required: [path, children]
   properties:
     path:
       title: Path
@@ -3201,7 +3201,10 @@ schema:
       not: { pattern: "^/_telo(/|$)" }
     title:
       title: Title
-      description: Shown above the page, and in the navigation unless an entry says otherwise.
+      description: >-
+        Shown above the page and in the navigation unless an entry says otherwise.
+        Omitted, no heading is drawn, an omitted navigation leaves the page out,
+        and a navigation entry naming it must give its own text.
       $ref: "telo://manifest#/$defs/Text"
       x-telo-text-values: {}
     query:
@@ -6677,6 +6680,7 @@ keys:
   chatThinking: { message: "Thinking…", description: "Shown while the model is reasoning." }
   chatShowDetails: { message: "Show details", description: "Expands a panel." }
   chatHideDetails: { message: "Hide details", description: "Collapses a panel." }
+  chatToolPreview: { message: Preview, description: "Opens a tool call's long argument or result in a dialog." }
   chatToolCall:
     message: "Tool: {$name}"
     values: { name: { type: string } }

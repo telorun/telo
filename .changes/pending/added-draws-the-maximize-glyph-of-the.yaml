@@ -1,0 +1,3 @@
+modules:
+  modules/ui-react-radix: Added
+body: Draws the maximize glyph of the controls contract's closed glyph set.
