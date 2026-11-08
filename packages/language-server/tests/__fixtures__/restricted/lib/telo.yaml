@@ -1,0 +1,19 @@
+kind: Telo.Library
+metadata:
+  name: Geocode
+  version: 1.2.1
+requires:
+  telo: ">=0.1.0"
+restrictions:
+  - versions: ">=1.2.0"
+    requires: { telo: "<0.2.0" }
+    reason: Lookup never returns on newer telo releases.
+exports:
+  kinds: [Lookup]
+---
+kind: Telo.Definition
+metadata:
+  name: Lookup
+capability: Telo.Runnable
+schema:
+  type: object

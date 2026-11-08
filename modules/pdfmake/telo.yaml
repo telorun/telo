@@ -11,12 +11,10 @@ metadata:
     backgrounds, headers and footers, and embedded brand fonts. One document
     resource is a report template — invoke it per customer and its content
     expressions fill in that customer's rows.
-# A kind schema referencing a named shape needs a runtime that can READ one: an
-# older kernel's placeholder walk stops at the reference, collapses every
-# expression under `content` to an empty string, and then rejects the document
-# for a value the author never wrote. Verified by running the previous released
-# CLI against this module's own test.
-requires: { telo: ">=0.82.0" }
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.82.0" }
+    reason: "A kind schema referencing a named shape needs a runtime that can read one: an older kernel's placeholder walk stops at the reference, collapses every expression under `content` to an empty string, and rejects the document for a value the author never wrote."
 imports: { Font: ../font }
 exports: { kinds: [Document], resources: [Node, Style] }
 ---

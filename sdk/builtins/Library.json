@@ -147,6 +147,9 @@
       "requires": {
         "$ref": "telo://manifest#/$defs/Requires"
       },
+      "restrictions": {
+        "$ref": "telo://manifest#/$defs/Restrictions"
+      },
       "lang": {
         "title": "Language",
         "description": "The language this module's own texts are written in, as an RFC 5646 language tag. A plural source text is selected with this language's plural rules; a module without it writes in `und`, whose only category is `other`.",

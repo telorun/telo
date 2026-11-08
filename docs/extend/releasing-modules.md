@@ -181,6 +181,7 @@ $ telo release order      # modules in publish order (a dependency first)
 $ telo release apply      # write versions, changelogs and the ledger
 $ telo release verify     # reconcile the ledger against the registry
 $ telo release stage      # fetch and verify the files `sources:` declares
+$ telo release floor      # measure and write each module's requires.telo
 ```
 
 `status` prints the plan with its attribution:
@@ -209,6 +210,21 @@ a tax on nobody's behalf. It fails when no consistent plan can be formed:
 
 It *warns* — `CHANGELOG_ENTRY_REQUESTED` — when a module's own files changed and
 no fragment names it.
+
+`check` also verifies every module's `requires.telo`: `REQUIRES_FLOOR_TOO_LOW` when the
+floor is below what published telo releases need to read the module, and
+`REQUIRES_FLOOR_TOO_HIGH` when it is above (a `>=unreleased` that a published
+release now accepts, a number raised by hand). Each names the measured value.
+
+`floor` measures the lowest published telo that reads each module (or `--module <dir>`)
+with the published CLI, siblings first (a dependent is never below the floors of the siblings it
+imports by relative path), and writes it into `requires.telo`: a version,
+`>=unreleased` when no published telo reads the syntax yet, or no `requires:` when the oldest
+telo that reads `requires:` accepts it. It writes nothing if the registry cannot be reached.
+Nobody types `requires.telo` in a workspace; what measurement cannot see is a
+[`restrictions:` entry](./declaring-runtime-requirements.md#restrictions). The version step
+that follows `changeset version` rewrites every `>=unreleased` in the manifests, entries
+included, to the version it gave the telo line, and `telo publish` refuses one still present.
 
 `apply` writes the new version into every manifest the module owns
 (`telo.yaml`, `nodejs/package.json`, `rust/Cargo.toml`), appends to each
@@ -239,12 +255,38 @@ running a manifest needs no `stage`; publish, which reads every tuple, does. See
 
 Modules publish from a release branch (`release/<major>.<minor>`), never from `main`, and only after that branch's final:
 
-- **No module publishes during candidates.** The Module Release PR does not open on a branch holding `.changeset/pre.json`, nor while the branch's changesets still plan a release, so every floor a module declares (`requires: telo:`) names a published telo. A module adopting grammar of the release in candidates declares that release's floor and is tried in the checkout through relative imports.
+- **No module publishes during candidates.** The Module Release PR does not open on a branch holding `.changeset/pre.json`, nor while the branch's changesets still plan a release, so every floor a module declares (`requires: telo:`) names a published telo. A module adopting grammar of the release in candidates holds `>=unreleased` until the final's version step writes the number, and is tried in the checkout through relative imports.
 - **After the final** the Module Release PR opens on the branch as it used to on main; merging it publishes the changed modules. Each such release is tagged `modules-<major>.<minor>-<n>` (`n` counts the branch's module releases) and merged back into `main` by a pull request, so the ledger on `main` holds every published version and the next cut never plans one twice. `telo release check` does not ask for a fragment for files a `v*`, `modules-*` or `packages-*` tag contains.
 - **Image modules** build their images in the same Publish run: `:latest` moves only forward and only on a final, patch or module release; a push to `main` publishes no image.
 - **Module docs link only to `https://telo.run/…` pages or another module's hub page** (`https://hub.telo.run/module/oci/ghcr.io/telorun/<name>/`), never into the repository tree, so a module's bytes do not depend on which release publishes it. `pnpm run check:links` refuses the rest.
 
 The whole procedure, with recovery, is in [RELEASING.md](../../RELEASING.md).
+
+## Restricting a published version
+
+A published `telo.yaml` is fixed: consumer pins hash it and publish refuses different bytes at the
+same version. So a ceiling found after publishing (a telo release or a Node major that breaks the
+module) is stated by publishing a later version whose `restrictions:` entries cover the broken ones:
+
+```yaml
+version: 1.2.1
+restrictions:
+  - versions: ">=1.2.0"
+    requires: { telo: "<0.122.0" }
+    reason: Lookup never returns on telo 0.122.0 and later; a fix ships in 1.3.0.
+```
+
+- A restriction only changes selection. A pin on the covered version keeps loading, because the
+  gate reads that version's own bytes; `telo upgrade` and the editor skip it and name the reason.
+- The fixed later version is selected as usual: a release whose own range accepts the runtime and
+  which no newer entry covers.
+- A range with no upper bound runs through the declaring version: `">=1.2.0"` written at 1.2.0
+  covers 1.2.0 and 1.2.1 once `telo release apply` moves the document to 1.2.1, and no further.
+- An entry a later version omits still holds. Lifting is restating the key from a later version
+  with an entry covering the same versions (`">=1.2.0 <=1.2.1"` with `telo: ">=0.121.0"`); a key
+  not restated keeps its older statement.
+
+See [Declaring runtime requirements](./declaring-runtime-requirements.md#restrictions).
 
 ## Consumers in the same repository
 

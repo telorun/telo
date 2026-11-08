@@ -37,7 +37,7 @@ Not built yet: releases shipped inside a library, diff / history / restore, a pu
 
 ## Runtime
 
-This module requires telo **0.108.0 or newer** (`requires: telo: ">=0.108.0"`). Every strategy module imports it, so that is the floor of a layered graph of **any** strategy — the current one included — whatever lower floor a strategy module declares for its own file. The floor is the module's as a whole: an instant is returned as a native timestamp, and one bundle carries every kind.
+This module requires telo **0.108.0 or newer** (a `restrictions:` entry). Every strategy module imports it, so that is the floor of a layered graph of **any** strategy — the current one included — whatever lower floor a strategy module declares for its own file. The floor is the module's as a whole: an instant is returned as a native timestamp, and one bundle carries every kind.
 
 ## What the current strategy cannot do
 

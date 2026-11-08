@@ -12,12 +12,10 @@ metadata:
     collections. Contradictions between those declarations are refused before
     the app runs, and the declaration is the contract APIs enforce and screens
     offer.
-requires:
-  # A collection relating to itself, or two relating to each other, fail to boot
-  # on 0.125.1 with ERR_LOCAL_REF_PENDING: a `use: schema` reference was awaited
-  # there. Verified by running 0.125.1; forward-declared at the release carrying
-  # the declaration read.
-  telo: ">=0.126.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.126.0" }
+    reason: "A collection relating to itself, or two relating to each other, fail to boot on 0.125.1 with ERR_LOCAL_REF_PENDING because a `use: schema` reference was awaited there."
 exports:
   kinds: [Collection]
   # The entry point a kind extending `Collection` resolves `@telorun/data-model`

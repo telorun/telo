@@ -61,10 +61,10 @@ metadata:
     Import it and hand its one ready-made model to a recognizer, beside any other
     languages a page mixes. Packaged from the integer-quantized best models of the
     tesseract-ocr project.
-requires:
-  # 0.100.0: \`!module-path\` naming a \`sources:\`-staged model counts as present,
-  # in \`telo check\` and in release planning from pins.
-  telo: ">=0.100.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.100.0" }
+    reason: "\`!module-path\` naming a \`sources:\`-staged model counts as present in \`telo check\` and in release planning from pins only from 0.100.0."
 imports:
   TesseractModel: ../../tesseract-model
 exports:
@@ -139,13 +139,15 @@ for (const lang of languages) {
   const dir = join(familyDir, lang.code);
   mkdirSync(join(dir, "notices"), { recursive: true });
   const manifestPath = join(dir, "telo.yaml");
-  // Keep a released version and the pin: regenerating must not reset either.
+  // Keep the version, the measured floor and the pin: regenerating must reset none of them.
   const previous = existsSync(manifestPath) ? readFileSync(manifestPath, "utf8") : undefined;
   let next = manifest(lang);
   if (previous) {
     const version = previous.match(/^  version: (\S+)$/m)?.[1];
+    const floor = previous.match(/^requires: \{ telo: "[^"]*" \}$/m)?.[0];
     const pinned = previous.match(/^        \{ upstream: .*\}$/m)?.[0];
     if (version) next = next.replace(/^  version: \S+$/m, `  version: ${version}`);
+    if (floor) next = next.replace(/^requires: \{ telo: "[^"]*" \}$/m, floor);
     if (pinned) next = next.replace(/^        \{ upstream: .*\}$/m, pinned);
   }
   writeFileSync(manifestPath, next);

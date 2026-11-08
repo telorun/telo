@@ -11,10 +11,10 @@ metadata:
     every effect or losing them all. Backend-neutral — an engine module supplies the
     recording and the resumption; this module supplies the pieces a body uses whatever
     engine is underneath.
-requires:
-  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
-  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
-  telo: ">=0.130.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.130.0" }
+    reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0)."
 exports: { kinds: [Run, Idempotent, Sleep, Await, Value] }
 ---
 # Durable.Run — a MARKER, and deliberately nothing else.

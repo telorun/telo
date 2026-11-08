@@ -12,23 +12,10 @@ metadata:
     changes in a draft, publish them atomically as a numbered revision, resolve
     conflicts when a draft falls behind, follow a layer's revision history, and
     pin a layer to labelled revisions of others so an upgrade is a reviewed merge.
-requires:
-  # Two floors, the higher of which is declared.
-  # 0.105.0: the retract and drafting contracts use the object form of
-  # `x-telo-schema-projection-from` (`{ from, pick, omit }`) with pointers that
-  # cross references, exactly as `Graph`'s operations do. 0.104.0 checks this
-  # file clean but reads none of them: a retract over a node type then runs with
-  # its inputs unchecked. Verified by execution (`check` and `run`) against
-  # 0.104.0.
-  # 0.108.0: the drafting kinds return instants as native timestamps, built
-  # through the SDK's value factories (`celTimestampFromMillis`), which a
-  # runtime before 0.108.0 does not provide. 0.107.0 checks this file clean and
-  # fails to load the module's controllers ("'@telorun/sdk' does not provide an
-  # export named 'celTimestampFromMillis'"), so every kind here, the retract
-  # ones included, fails at creation. Verified by execution: `run` of the
-  # drafting suite fails on 0.105.0, 0.106.0 and 0.107.0 and passes whole on
-  # 0.108.0, 0.109.0, 0.111.0 and 0.113.0.
-  telo: ">=0.108.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.108.0" }
+    reason: "The drafting kinds build instants through the SDK's `celTimestampFromMillis`, which a runtime before 0.108.0 does not export, so every kind here fails at creation; before 0.105.0 the retract and drafting contracts' `x-telo-schema-projection-from` object form is not read."
 imports: { Graph: ../graph }
 exports:
   kinds: [Store, RetractNode, RetractRelationship, DraftedStore, OpenDraft, DraftSession, Publish, DiscardDraft, RebaseDraft, ListDrafts, NodeConflicts, RelationshipConflicts, ResolveNodeConflict, ResolveRelationshipConflict, RevisionedStore, ListRevisions, PinBase, UnpinBase, ListBases, LabelRevision]

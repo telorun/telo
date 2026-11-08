@@ -53,4 +53,4 @@ The table kind declares `QUEUE_NAME_DUPLICATE`: two queues naming one `Queue.Tab
 
 ## Runtime requirement
 
-`requires: telo: ">=0.129.0"`: the table kind's rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module.
+A `restrictions:` entry requires telo `>=0.129.0`: the table kind's rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module.

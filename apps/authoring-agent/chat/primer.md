@@ -1326,8 +1326,8 @@ one renames no other. In a list of STEPS a `!for-each` emits steps; named
 (`name: runs`) its results are `steps.runs[each.key].result`; an emitted step carries no
 `name:` of its own. An indexed `!ref` outside a body is `REF_MEMBER_INVALID`. A body
 `targets:` item may be a `!ref`, an inline Service/Runnable declaration or a tag emitting
-them. The module declaring your template must declare `requires: telo:` at the release
-that carries this syntax.
+them. The module declaring your template needs a `requires: telo:` floor at the release
+that carries this syntax (`telo release floor` measures it in a Telo workspace).
 
 ## Execution zones — "this must run inside that"
 
@@ -3173,6 +3173,19 @@ PascalCase (`OAuthClient`, `HttpServer`, `SQL`), which the whole standard
 library uses. It must contain no dot.
 `metadata.version` is a semver string, required on the root doc.
 
+RUNTIME REQUIREMENTS: a module doc may carry `requires: { telo: ">=<version>",
+host: { node: ">=20.0.0" } }`. `requires.telo` is a FLOOR ONLY (`">=<version>"`
+or `">=unreleased"`; an upper bound there is `REQUIRES_INVALID`), the lowest
+telo that reads the module's syntax. In a Telo release workspace never write it
+by hand: `telo release floor` measures it (and removes it when every telo that
+reads `requires:` accepts the module). What measurement cannot see — a runtime
+feature a controller needs, a Node bound, a ceiling found after publishing — is
+a top-level `restrictions:` list, each entry `{ versions?, requires, reason }`
+(`reason` is required, `RESTRICTIONS_INVALID` otherwise): it narrows the
+declaring version and, with `versions`, earlier ones. A runtime below a floor
+reports `MODULE_REQUIRES_NEWER_RUNTIME`, above a ceiling
+`MODULE_REQUIRES_OLDER_RUNTIME`.
+
 ONE NAMESPACE PER MODULE, and it holds more than the resources: every import
 alias, every kind you declare (`Telo.Definition` / `Telo.Abstract`) and the
 module's own `metadata.name` share it. So do not name an application after
@@ -4465,7 +4478,7 @@ any list of steps. It runs ordered steps with `if` / `while` / `switch` / `try`
 and takes `steps`, `with`, `targets`, `inputType`, `outputType` and `outputs`.
 `Run.Sequence` is DEPRECATED (`DEPRECATED_KIND`, replaced by `Telo.Sequence`):
 never write it. A manifest declaring `Telo.Sequence` needs
-`requires: { telo: ">=0.128.0" }`. Import the `run` module only for what a
+telo `>=0.128.0` (`requires: { telo: ">=0.128.0" }`). Import the `run` module only for what a
 sequence is not, and OMIT the import when the app uses none of it. The rest of
 `run` is COMPOSITION too — do not go looking for a kind that "loops" as if it
 were a third-party capability: `Run.Loop` repeats a body while a CEL condition holds, seeing

@@ -1,14 +1,17 @@
 import {
-  TELO_SURFACE_VERSION,
+  TELO_RUNNING_SURFACE,
   compareModuleVersions,
   isNewerModuleVersion,
-  manifestCompatibility,
   parseModuleVersion,
+  readModuleVersion,
+  selectionCompatibility,
   type ModuleCompatibility,
+  type ModuleVersionRequirements,
+  type SelectionVerdict,
 } from "@telorun/analyzer";
 import type { ModuleVersion } from "./build-import-upgrades.js";
 
-export type { ModuleCompatibility };
+export type { ModuleCompatibility, SelectionVerdict };
 
 /**
  * Host capability: the `telo.yaml` text of one version of a module, or `null`
@@ -25,11 +28,18 @@ export type ModuleManifestReader = (
   version: string,
 ) => Promise<string | null | undefined>;
 
-/** The question an upgrade asks of a candidate version. */
+/**
+ * The question an upgrade asks of a candidate version. `published` lists the
+ * module's published versions: a verdict is not a function of the candidate's
+ * manifest alone, since a newer version's `restrictions:` entry may hold it
+ * back, so the check reads every version newer than the candidate (and none
+ * older). Omitted, no version speaks for the candidate.
+ */
 export type VersionCompatibilityCheck = (
   baseRef: string,
   version: string,
-) => Promise<ModuleCompatibility>;
+  published?: readonly string[],
+) => Promise<SelectionVerdict>;
 
 /**
  * A compatibility check backed by `read`, memoized per module and version for
@@ -39,47 +49,77 @@ export type VersionCompatibilityCheck = (
  * affordances on every keystroke, and a published version's declared
  * requirement is immutable, so refetching it would be pure waste against an
  * answer that cannot have changed. In-flight promises are shared, so the
- * concurrent lookups one file's imports produce collapse to one read each.
+ * concurrent lookups one file's imports produce collapse to one read each, and
+ * a version read as a candidate is the same read when a later candidate needs
+ * it as a newer version.
  *
- * The verdict is always the analyzer's {@link manifestCompatibility}: an IDE
- * reports NO host versions, because it is not the machine that will run the
- * manifest. Only the telo surface is checked here; a host requirement still
- * surfaces at the load gate when the manifest is actually run.
+ * The verdict is the analyzer's {@link selectionCompatibility}: an IDE reports
+ * NO host versions, because it is not the machine that will run the manifest.
+ * Only the telo surface is checked here; a host requirement still surfaces at
+ * the load gate when the manifest is actually run.
  */
 export function createVersionCompatibility(
   read: ModuleManifestReader,
-  teloVersion: string = TELO_SURFACE_VERSION,
+  teloVersion: string = TELO_RUNNING_SURFACE,
 ): VersionCompatibilityCheck {
-  const cache = new Map<string, Promise<ModuleCompatibility>>();
-  return (baseRef, version) => {
+  const cache = new Map<string, Promise<ModuleVersionRequirements>>();
+  const requirementsOf = (baseRef: string, version: string): Promise<ModuleVersionRequirements> => {
     const key = `${baseRef}@${version}`;
     const cached = cache.get(key);
     if (cached) return cached;
     const pending = read(baseRef, version)
-      .then((text) => (text ? manifestCompatibility(text, teloVersion) : "unknown"))
-      .catch(() => "unknown" as const);
+      .then((text) => (text ? readModuleVersion({ version, text }) : unknownVersion(version)))
+      .catch(() => unknownVersion(version));
     cache.set(key, pending);
-    // Only a DECIDED verdict is kept. What is immutable is a published version's
+    // Only a DECIDED reading is kept. What is immutable is a published version's
     // declared requirement, not the network: caching `unknown` would let one
     // offline moment disable the check for the rest of the session, leaving the
     // UI reading as though every version had been checked and cleared. Dropped
     // after it settles rather than before, so concurrent asks still share the
     // one in-flight read.
-    void pending.then((verdict) => {
-      if (verdict === "unknown" && cache.get(key) === pending) cache.delete(key);
+    void pending.then((reading) => {
+      if (reading.requirements === "unknown" && cache.get(key) === pending) cache.delete(key);
     });
     return pending;
   };
+  return async (baseRef, version, published = []) => {
+    const candidate = await requirementsOf(baseRef, version);
+    if (candidate.requirements === "unknown") return { compatibility: "unknown" };
+    const newer = await Promise.all(
+      published
+        .filter((v) => (compareModuleVersions(v, version) ?? 0) > 0)
+        .map((v) => requirementsOf(baseRef, v)),
+    );
+    return selectionCompatibility(candidate, newer, teloVersion);
+  };
+}
+
+function unknownVersion(version: string): ModuleVersionRequirements {
+  return { version, requirements: "unknown" };
 }
 
 /** A check that answers `unknown` for everything — the honest reading for a
  *  host with no way to fetch a candidate manifest. Never blocks an upgrade. */
-export const uncheckedVersionCompatibility: VersionCompatibilityCheck = async () => "unknown";
+export const uncheckedVersionCompatibility: VersionCompatibilityCheck = async () => ({
+  compatibility: "unknown",
+});
 
 /** Why a candidate was not offered. `unknown` never appears: a version that
  *  could not be read is offered, since an unreachable source must not silently
  *  freeze an author's imports. */
-export type IncompatibilityReason = Exclude<ModuleCompatibility, "yes" | "unknown">;
+export type IncompatibilityReason = Exclude<
+  SelectionVerdict["compatibility"],
+  "yes" | "unknown"
+>;
+
+/** A version held back, with the sentence naming what held it. */
+export interface HeldBack {
+  version: string;
+  reason: IncompatibilityReason;
+  /** The bound and, for a `restrictions:` entry, its reason and the version
+   *  declaring it. Absent for an unreadable requirement. */
+  detail?: string;
+}
 
 export interface VersionSelection {
   /** The newest version this runtime can host that is also newer than the
@@ -89,7 +129,7 @@ export interface VersionSelection {
    *  Reported rather than swallowed: without it an upgrade affordance says
    *  "up to date" while newer versions exist, which is a silent ceiling and a
    *  worse report than the load failure this whole check replaces. */
-  heldBack: { version: string; reason: IncompatibilityReason } | null;
+  heldBack: HeldBack | null;
 }
 
 /**
@@ -113,24 +153,40 @@ export async function selectCompatibleVersion(
   const candidates = upgradeCandidates(versions, currentVersion, options);
   if (candidates.length === 0) return { best: null, heldBack: null };
 
+  const published = versions.map((v) => v.version);
   const newest = candidates[0]!;
-  let firstReason: IncompatibilityReason | null = null;
+  let first: HeldBack | null = null;
   for (const candidate of candidates) {
-    const verdict = await isCompatible(baseRef, candidate.version);
-    if (verdict === "too-new" || verdict === "unreadable") {
-      firstReason ??= verdict;
-      continue;
+    const verdict = await isCompatible(baseRef, candidate.version, published);
+    if (verdict.compatibility === "yes" || verdict.compatibility === "unknown") {
+      return { best: candidate, heldBack: candidate === newest ? null : first };
     }
-    const held = candidate === newest ? null : { version: newest.version, reason: firstReason! };
-    return { best: candidate, heldBack: held };
+    first ??= { version: newest.version, reason: verdict.compatibility, ...heldDetail(verdict) };
   }
-  return { best: null, heldBack: { version: newest.version, reason: firstReason! } };
+  return { best: null, heldBack: first };
 }
 
 /** One version as a picker renders it: what it is, and what this runtime makes
- *  of it. */
+ *  of it. `detail` names what held it back when a bound did. */
 export interface MarkedVersion extends ModuleVersion {
-  compatibility: ModuleCompatibility;
+  compatibility: SelectionVerdict["compatibility"];
+  detail?: string;
+}
+
+/** The sentence a bound-based verdict carries: the bound, the entry's reason
+ *  and the version declaring it when that is not the held version itself. */
+export function describeHold(verdict: SelectionVerdict): string | undefined {
+  if (verdict.compatibility !== "too-new" && verdict.compatibility !== "too-old") return undefined;
+  const bound = `${verdict.key === "telo" ? "telo" : `${verdict.key}`} '${verdict.bound}'`;
+  const source = verdict.source;
+  if (source.from === "requires") return `requires ${bound}; this runtime reports ${verdict.running}`;
+  const by = source.version ? ` in ${source.version}` : "";
+  return `restricted to ${bound} by an entry${by}: ${source.reason}`;
+}
+
+function heldDetail(verdict: SelectionVerdict): { detail?: string } {
+  const detail = describeHold(verdict);
+  return detail ? { detail } : {};
 }
 
 /**
@@ -147,11 +203,13 @@ export async function markVersionCompatibility(
   versions: readonly ModuleVersion[],
   isCompatible: VersionCompatibilityCheck,
 ): Promise<MarkedVersion[]> {
+  const published = versions.map((v) => v.version);
   return Promise.all(
-    versions.map(async (version) => ({
-      ...version,
-      compatibility: await isCompatible(baseRef, version.version),
-    })),
+    versions.map(async (version) => {
+      const verdict = await isCompatible(baseRef, version.version, published);
+      const detail = describeHold(verdict);
+      return { ...version, compatibility: verdict.compatibility, ...(detail ? { detail } : {}) };
+    }),
   );
 }
 

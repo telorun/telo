@@ -12,9 +12,10 @@ metadata:
     WebP, PDF, ZIP, Office Open XML documents and common audio and video (MP3,
     WAV, OGG, FLAC, MP4, M4A, WebM, QuickTime), so an endpoint can validate an
     upload before storing, transcribing or serving it.
-requires:
-  # The release this module was first checked against; nothing older has read it.
-  telo: ">=0.114.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.114.0" }
+    reason: "Declared by hand: 0.114.0 is the release this module was first checked against, and measurement cannot confirm an older one runs it."
 exports: { kinds: [Detector] }
 ---
 # MediaType.Detector — what the bytes are, against what they were declared to be.

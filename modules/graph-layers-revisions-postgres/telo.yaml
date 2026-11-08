@@ -12,19 +12,10 @@ metadata:
     labelled releases of other layers and upgraded by moving a pin, merging
     three ways per property. Parallel drafts read consistent snapshots and
     publish atomically; history is a change feed by revision number.
-requires:
-  # The node and relationship kinds write `x-telo-schema-projection-from` on the
-  # kind document, the relationship kind in its object form (`{ from, omit }`).
-  # 0.104.0 checks this file clean but reads neither kind as projecting, so a
-  # graph operation over a revisioned relationship type is refused
-  # (SCHEMA_PROJECTION_FROM_UNRESOLVED). Verified by execution (run there on the SQLite twin, whose kind documents write the same syntax): with
-  # this block stripped, `run` of relationship operations over a revisioned
-  # store fails on 0.104.0 and passes on 0.105.0, 0.107.0 and 0.113.0; with it,
-  # `check` on 0.104.0 reports MODULE_REQUIRES_NEWER_RUNTIME. The drafting and
-  # history operations are `GraphLayers`' kinds and carry that module's own,
-  # higher floor: the drafting suite and this module's own run whole from
-  # 0.108.0.
-  telo: ">=0.105.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.105.0" }
+    reason: "Before 0.105.0, its kinds write `x-telo-schema-projection-from`, which 0.104.0 does not read as projecting, so a graph operation typed from them is refused at dispatch (ERR_SCHEMA_PROJECTION_UNRESOLVED). The drafting and history operations are `GraphLayers`' kinds and carry that module's own, higher floor."
 imports: { GraphLayersSql: ../graph-layers-sql, Postgres: ../postgres }
 exports:
   kinds: [NodeTable, RelationshipTable, Node, Relationship, Store, LayersTable, ChangesetsTable, ChangesetBasesTable]

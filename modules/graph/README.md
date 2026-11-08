@@ -72,7 +72,7 @@ steps:
 
 ## Runtime
 
-This module requires telo **0.108.0 or newer** (`requires: telo: ">=0.108.0"`): a listing's cursor carries keys in an encoding the runtime first provides in that release. Every backend imports this module, so that is the floor of any graph.
+This module requires telo **0.108.0 or newer** (a `restrictions:` entry): a listing's cursor carries keys in an encoding the runtime first provides in that release. Every backend imports this module, so that is the floor of any graph.
 
 ## Docs
 

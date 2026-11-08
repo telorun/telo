@@ -65,6 +65,8 @@ targets:
   - !ref ownNamePrefix
   - !ref argBindingInvalid
   - !ref argBindingOnSecret
+  - !ref requiresTeloCeiling
+  - !ref restrictionsInvalid
   - !ref bodyOutwardRef
   - !ref inheritedRequiredHint
   - !ref inlineStepNestedInline
@@ -2194,6 +2196,24 @@ expect:
     - code: ARG_BINDING_ON_SECRET
       message: "a secret cannot be bound to the command line"
   runFails: "[ARG_BINDING_ON_SECRET] Telo.Application secrets.token: a secret cannot be bound to the command line — a command line is readable in the process table and in shell history. Bind it with 'env:'."
+---
+# An upper bound on a module's own requires.telo, which is a floor only.
+kind: Assert.Manifest
+metadata: { name: requiresTeloCeiling }
+source: ./__fixtures__/check-run-agreement/requires-telo-ceiling.yaml
+expect:
+  errors:
+    - { code: REQUIRES_INVALID, message: "requires.telo is a floor only" }
+  runFails: "[REQUIRES_INVALID] requires.telo '>=0.1.0 <0.2.0' declares an upper bound; requires.telo is a floor only. Write the ceiling as a restrictions: entry without versions, which covers this version."
+---
+# A restrictions: entry with no reason for whoever it holds back.
+kind: Assert.Manifest
+metadata: { name: restrictionsInvalid }
+source: ./__fixtures__/check-run-agreement/restrictions-invalid.yaml
+expect:
+  errors:
+    - { code: RESTRICTIONS_INVALID, message: "restrictions[0] has no reason" }
+  runFails: "[RESTRICTIONS_INVALID] restrictions[0] has no reason; say what breaks, so whoever is held back knows why."
 ---
 # A plain string holding `${{` that no hole can be read out of: the untagged-
 # interpolation migration leaves it, and neither half reads it as text.

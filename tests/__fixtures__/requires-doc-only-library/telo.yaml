@@ -1,0 +1,4 @@
+# A library holding only its module document still gates the application importing it.
+kind: Telo.Application
+metadata: { name: RequiresDocOnlyLibrary, version: 1.0.0 }
+imports: { Future: ./lib }
