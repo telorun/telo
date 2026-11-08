@@ -21,11 +21,11 @@ metadata:
     swap them for pinned `oci://ghcr.io/telorun/...` refs once ai, openai
     and fs ship it.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.34.0#sha256-KOU81irDbfXWnLBF0bKhovfbSe0qhaBn8ook46M44Ek
-  OpenAI: oci://ghcr.io/telorun/openai@0.20.0#sha256-AtYiWyXJ9Ixt3UnW4EAaiEb9h9sndXN0nnNui6hxfRE
+  Ai: oci://ghcr.io/telorun/ai@0.34.1#sha256-H9oIwMDlFy576XVNJEz-PtGflGC38-iGwz3_TYysYtE
+  OpenAI: oci://ghcr.io/telorun/openai@0.20.1#sha256-kSqphJdaw9ZPpRbo1DiX5BKJ_uuWqj5TqOL1d7QjwqQ
   Http: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
   Fs: oci://ghcr.io/telorun/fs@0.15.1#sha256-DB68pWLeWJ3An4QhSocN4KhUEB-14j0jzLheGTATKkM
-  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
+  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY

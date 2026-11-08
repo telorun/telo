@@ -45,11 +45,11 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  Durable: oci://ghcr.io/telorun/durable@0.4.0#sha256-ufhUzR3-6fqceQEzrl0f846dUfeVa20CQI1y6EkQvqE
-  Local: oci://ghcr.io/telorun/durable-local@0.6.0#sha256-HcsaMPNMPbTRgGfLxT_4JnVnduiY7_pUl8x8ANa-MZ0
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.8.0#sha256-N52v9ynhRXTDjX6NGeTE38zI9vbtoJrfgNKl5QdOo6Q
-  Http: oci://ghcr.io/telorun/http-server@0.43.0#sha256-cmk_CIEwtw9Tpv3LjPVqstfObUL4owHq410ST-nn8fI
-  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
+  Durable: oci://ghcr.io/telorun/durable@0.4.1#sha256-U6o5cEZ10pfN6JXQ6ia0vAg6GK7knlVeo7i8ObRGLbg
+  Local: oci://ghcr.io/telorun/durable-local@0.6.1#sha256-dtKR-c8y_WdDUJqnYRRbYs5cCMq6zXbY8ZMDpPfe7tM
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.8.1#sha256-2MbA4-Wc3BBNA0UKgPyHIAfrh3xATbTt8ne53S8Z8Ps
+  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
+  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
   Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
 targets:
   - !ref server

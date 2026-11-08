@@ -49,9 +49,9 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  Sql: oci://ghcr.io/telorun/sql@0.31.0#sha256-QamrEtwX41Cim9gVjoKuuKQBGGrb19C0r63im-rRcmY
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.0#sha256-2bFuhkRBtPY9mcybUoFc1l4D009TOlYuW5zCJeKbrMU
-  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
+  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
+  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
 targets:
   - !ref appSchema
   - !ref report

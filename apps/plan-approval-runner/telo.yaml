@@ -16,7 +16,7 @@ requires:
   telo: ">=0.128.0"
 imports:
   RunnerProtocol: ../plan-approval-runner-protocol
-  Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
   Log: oci://ghcr.io/telorun/log@0.3.1#sha256-FJAHRqUCHHlXRJJxwojW1u6E7z8o-jOuvKJ0rbTlaxs

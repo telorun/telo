@@ -17,16 +17,16 @@ metadata:
     own stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME, never a
     developer's database. Run only by the hub's own suite through that command.
 imports:
-  Postgres: oci://ghcr.io/telorun/postgres@0.12.0#sha256-Ki7STbcpZFbPAbi_P-0iSfn4QZp0uf9Zf4NEMiujT1A
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.1#sha256-VNaEhwdFO0EmZR7ips4zvp1U7d1ohi72O_uTi-7E3AQ
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
-  Embedding: oci://ghcr.io/telorun/embedding@0.12.1#sha256--HWfwJ_HlgbgxR5I1Pki0r45FkYhWRyfp_-UKmFbOF0
-  OpenAI: oci://ghcr.io/telorun/openai@0.20.0#sha256-AtYiWyXJ9Ixt3UnW4EAaiEb9h9sndXN0nnNui6hxfRE
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.2#sha256-XHN0qwYwQm_Lk2OaYZEiqRzEyvIHdhd6u29bfYkvT64
+  OpenAI: oci://ghcr.io/telorun/openai@0.20.1#sha256-kSqphJdaw9ZPpRbo1DiX5BKJ_uuWqj5TqOL1d7QjwqQ
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.1#sha256-Btmgt0SXpUDgQ7Pd2E7LyX_LoZ3_-DSNgReYO5ru0Zk
-  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.0#sha256-slYSARQWWzGgBG5_C8oxRbXtyUM6DYwngjCaSeIeu1M
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.0#sha256-WyLU2IJCzc0SNfpYXp_Mj4MR9lOneyBoWELrLdcYwEA
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.0#sha256-PpWQrYiyH4dm-2tAMaHTpTjMzaKgy8Met-ueLP2J4Pg
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.2#sha256-X_V4hFmjTZsOvGlvV9N7kIdpQ-vsnduMukV8jNXpt8A
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.1#sha256-BG_pTt2PgZ6U_lhfHqg_y7bd0HjgunDZX7kZjDnB0vQ
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.1#sha256-KNKZRcIImlr9IWZkQVDgwIGzWIKrCh2pGWD8MN853vY
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.1#sha256-t7sQFquKZBO4mQ1eblT_D3m7ytIzx5FYr_QAm7wef1Y
   Assert: ../../../../modules/assert
   Schema:
     source: ../../hub-schema.yaml
