@@ -19,9 +19,9 @@ requires:
   # 0.128.0: `Telo.Sequence`.
   telo: ">=0.128.0"
 imports:
-  Postgres: oci://ghcr.io/telorun/postgres@0.12.0#sha256-Ki7STbcpZFbPAbi_P-0iSfn4QZp0uf9Zf4NEMiujT1A
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.1#sha256-VNaEhwdFO0EmZR7ips4zvp1U7d1ohi72O_uTi-7E3AQ
   ApiKey: oci://ghcr.io/telorun/api-key@0.2.0#sha256-743LoVZkoEbwWDRImNVFgjFlREB1vMpo5ozSmOeV2C4
-  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
+  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
   Schema:
     source: ./hub-schema.yaml
     resources: { connection: !ref db }
