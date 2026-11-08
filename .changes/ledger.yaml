@@ -3,27 +3,27 @@
 # `telo release verify` reconciles it against the registry.
 modules:
   apps/authoring-agent:
-    version: 0.33.0
+    version: 0.33.1
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-MxznB2uagyjJPf_zyikC1wkChoSy7kr69hX2P8MYiTg
+      image: sha256-ene77e5W3vLGuy-VdLlYTav85W_qAeVnj2AzVj4AYao
   apps/hub:
-    version: 0.23.0
+    version: 0.23.1
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-IRO4VPXG-6khNuQBCqE3cfow1Rwy0V9UuTV_1fNDdsM
+      image: sha256-1pQivStzQNaZ5ALmpQpGa4hAzQwVIfFwCXVCig2xuS8
   blueprints/agent-app:
-    version: 0.4.6
+    version: 0.4.7
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-YlT3C1DeIZlO7LC2XD2jwT7STYgiddKMENSCijFR13U
+      manifest: sha256-ay8_5IY3YeRmRYk7zv__r18nXbj8W-XiQ90GFEeCFGU
   blueprints/approval-app:
-    version: 0.4.6
+    version: 0.4.7
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-nJhyD8gCJ2qqdXtEwcW27ooa4gIdwEI3fjKxa0JhrNQ
+      manifest: sha256-fRP6Y4Nlwj9FWNvliIp9AF1sAvJKNA3VLvhkR6lYSuU
   blueprints/scheduled-jobs-app:
     version: 0.2.2
     registry: oci://ghcr.io/telorun/blueprints
@@ -31,11 +31,11 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-39cBWv36PhWY40Ae-d6STtmxRFfFJpq5j4nJhlsKvpA
   blueprints/workflow-app:
-    version: 0.4.1
+    version: 0.4.2
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-UnlQBcRQ8li3PiicF-hw31TblhRMl1Hil5oUf_uXXTo
+      manifest: sha256-3p-op728ayy21utxi_UoJNlpJo-C0T8wGszB5-9aExk
   modules/ai:
     version: 0.34.1
     registry: oci://ghcr.io/telorun
