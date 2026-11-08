@@ -42,10 +42,13 @@ jobs:
       # What main takes back (the tag, or the commit): empty for a candidate.
       merge-ref: ${{ steps.release.outputs.merge-ref }}
     steps:
+      # TELO_BOT_TOKEN: the Version PR is pushed with the checkout's credentials, and
+      # a push made with the default token starts no checks.
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.TELO_BOT_TOKEN }}
 
       - name: Check
         run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
@@ -85,9 +88,10 @@ jobs:
         with:
           # The Version PR is `changeset-release/<this branch>`, based on it. The
           # branch's first one enters prerelease mode (`rc`); inside it, changesets
-          # publishes under the `rc` dist-tag. The action pushes the PR branch and
-          # opens the PR with the bot token, so the required checks run on it; the
-          # changeset gate exempts its head branch.
+          # publishes under the `rc` dist-tag. A Version PR whose head has no
+          # `.changeset/pre.json` (Finish release) is the final, and rebuilds as one.
+          # The bot token pushes the PR branch and opens the PR, so the required
+          # checks run on it; the changeset gate exempts its head branch.
           version: pnpm run version-release
           publish: pnpm run release
           commit: "chore(release): version packages"
@@ -95,6 +99,9 @@ jobs:
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.TELO_BOT_TOKEN }}
+          # The version step asks for the open Version PR.
+          GH_TOKEN: ${{ secrets.TELO_BOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TELO_PACK_LINKS_TAG: ${{ steps.planned.outputs.tag }}
 

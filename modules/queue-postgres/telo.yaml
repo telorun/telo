@@ -11,19 +11,12 @@ metadata:
     the rows it is about. Workers on many machines claim messages concurrently,
     skipping each other's locked rows, and wake promptly on new work; with
     leases, retries with backoff, delays, deduplication and per-group ordering.
-requires:
-  # The table kind's duplicate-name rule binds `coReferrers:`, which an older
-  # analyzer evaluates unbound and reports as a defect in this module (verified
-  # with 0.128.0). Forward-declared: 0.129.0 is the release that carries the
-  # binding.
-  telo: ">=0.129.0"
-imports:
-  QueueSql: ../queue-sql
-  Postgres: ../postgres
-exports:
-  kinds:
-    - Table
-    - Queue
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.129.0" }
+    reason: "Before 0.129.0, the table kind's duplicate-name rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module."
+imports: { QueueSql: ../queue-sql, Postgres: ../postgres }
+exports: { kinds: [Table, Queue] }
 ---
 # QueuePostgres.Table — a `Postgres.Table` holding the messages of every queue that
 # names it. The author names only the physical table; every column and index is
@@ -49,7 +42,7 @@ schema:
   additionalProperties: false
   required: [table]
   examples:
-    - table: queue_messages
+    - { table: queue_messages }
   properties:
     table:
       title: Table
@@ -127,8 +120,7 @@ metadata:
     retention window and can be delivered in order per group.
 capability: Telo.Provider
 extends: QueueSql.Queue
-controllers:
-  - pkg:telo/local/js?path=./nodejs/queue-postgres.mjs&local_path=./nodejs/src/index.ts#Queue
+controllers: [pkg:telo/local/js?path=./nodejs/queue-postgres.mjs&local_path=./nodejs/src/index.ts#Queue]
 # Narrows the three storage slots to this engine's own kinds; `name`,
 # `messageType`, `maxMessageBytes`, `retention` and `groupBy` are the abstract's,
 # merged in unchanged.
@@ -149,20 +141,14 @@ schema:
       description: >-
         The connection the queue's table lives on, and the one a transactional
         enqueue must run inside a transaction of.
-      x-telo-ref:
-        kind: Postgres.Connection
-        use: dependency
+      x-telo-ref: { kind: Postgres.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
         The schema that lists the queue's table, on the same connection. It
         creates and migrates the table; the queue issues no DDL.
-      x-telo-ref:
-        kind: Postgres.Schema
-        use: dependency
+      x-telo-ref: { kind: Postgres.Schema, use: dependency }
     table:
       title: Table
       description: The table the messages are stored in.
-      x-telo-ref:
-        kind: Self.Table
-        use: dependency
+      x-telo-ref: { kind: Self.Table, use: dependency }

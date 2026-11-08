@@ -17,10 +17,10 @@
  *   beside a string, which no expression admits.
  * - **A raw literal still lets a backslash take the next character with it**, keeping
  *   both as written, so `r'\''` is a backslash and a quote rather than an unclosed
- *   string. The one character it does not take is a line feed in a single-line
- *   literal: the backslash is content and the line feed ends the literal unclosed, so
- *   no single-line literal of any form holds a line feed. A backslash that ends the
- *   source is content too.
+ *   string. The characters it does not take are a line feed and a carriage return in a
+ *   single-line literal: the backslash is content and the break ends the literal
+ *   unclosed, so no single-line literal of any form (a quoted member name included)
+ *   holds a line break. A backslash that ends the source is content too.
  * - **A bytes literal holds the UTF-8 of its text.** `b'ÿ'` is `0xC3 0xBF`, two bytes,
  *   and an escape (`\xff`, `\303`) is the one byte it names. cel-spec's own answer, and
  *   the only reading under which `b'ÿ' == b'\303\277'` — a row — holds.
@@ -30,10 +30,6 @@
  * the basic plane is reported whole, over its two code units, and an escape is ranged
  * as it is written — the backslash, its marker and the digits actually there — never
  * by the width it should have had.
- *
- * One reading is recorded as interim rather than intended: a carriage return is
- * content in a single-line literal and in a quoted member name. cel-spec ends a
- * single-line literal at one.
  */
 
 import { wordReading } from "./reserved-words.js";
@@ -127,6 +123,11 @@ function stringPrefix(text: string): { raw: boolean; bytes: boolean } | undefine
   if (lower === "b") return { raw: false, bytes: true };
   if (lower === "br") return { raw: true, bytes: true };
   return undefined;
+}
+
+/** A line break, which no single-line literal holds: a line feed or a carriage return. */
+function isLineBreak(ch: string | undefined): boolean {
+  return ch === "\n" || ch === "\r";
 }
 
 function isSpace(ch: string): boolean {
@@ -230,7 +231,7 @@ export class Lexer {
    */
   private readQuotedIdentifier(start: number): Token | undefined {
     const close = this.source.indexOf("`", start + 1);
-    if (close === -1 || this.source.slice(start + 1, close).includes("\n")) {
+    if (close === -1 || /[\n\r]/.test(this.source.slice(start + 1, close))) {
       this.diagnostics.report(
         "unterminated_string",
         "a quoted member name ends at its closing backtick",
@@ -371,7 +372,7 @@ export class Lexer {
 
   /**
    * A raw literal: a backslash takes the next character with it, both kept as written —
-   * except a line feed in a single-line literal, which ends it.
+   * except a line break in a single-line literal, which ends it.
    */
   private scanRaw(
     from: number,
@@ -385,8 +386,8 @@ export class Lexer {
     while (at < source.length) {
       if (source.startsWith(terminator, at)) return { units, end: at + terminator.length };
       const ch = source[at]!;
-      if (!triple && ch === "\n") break;
-      if (ch === "\\" && at + 1 < source.length && (triple || source[at + 1] !== "\n")) {
+      if (!triple && isLineBreak(ch)) break;
+      if (ch === "\\" && at + 1 < source.length && (triple || !isLineBreak(source[at + 1]))) {
         units.push(0x5c);
         at += 1 + this.literalCharacter(at + 1, bytes, units);
         continue;
@@ -423,7 +424,7 @@ export class Lexer {
     while (at < source.length) {
       if (source.startsWith(terminator, at)) return { units, end: at + terminator.length };
       const ch = source[at]!;
-      if (!triple && ch === "\n") break;
+      if (!triple && isLineBreak(ch)) break;
       if (ch !== "\\") {
         at += this.literalCharacter(at, bytes, units);
         continue;
@@ -585,6 +586,48 @@ function textOf(units: readonly number[]): string {
     text += String.fromCharCode(...units.slice(at, at + 4096));
   }
   return text;
+}
+
+/**
+ * The offset just past the quoted literal opened at `quoteAt` — a string or bytes
+ * literal, or a backtick-quoted member name — or `undefined` when it never ends. It
+ * delimits exactly as the lexer does and decodes nothing, so a literal the lexer would
+ * refuse for an escape still ends where the language ends it. The word directly before
+ * a string quote switches the reading only when it is a prefix the lexer accepts (`r`,
+ * `b`, `br`, in any case); a character other than a quote or a backtick at `quoteAt` is
+ * a caller defect.
+ */
+export function quotedLiteralEnd(source: string, quoteAt: number): number | undefined {
+  const quote = source[quoteAt];
+  if (quote === "`") {
+    const close = source.indexOf("`", quoteAt + 1);
+    if (close === -1 || /[\n\r]/.test(source.slice(quoteAt + 1, close))) return undefined;
+    return close + 1;
+  }
+  if (quote !== "'" && quote !== '"') {
+    throw new Error(`quotedLiteralEnd: offset ${quoteAt} holds no quote`);
+  }
+  let wordStart = quoteAt;
+  while (wordStart > 0 && isIdentPart(source[wordStart - 1]!)) wordStart -= 1;
+  const raw = stringPrefix(source.slice(wordStart, quoteAt))?.raw ?? false;
+  const triple = source.slice(quoteAt, quoteAt + 3) === quote.repeat(3);
+  const terminator = triple ? quote.repeat(3) : quote;
+  let at = quoteAt + terminator.length;
+  while (at < source.length) {
+    if (source.startsWith(terminator, at)) return at + terminator.length;
+    const ch = source[at]!;
+    if (!triple && isLineBreak(ch)) return undefined;
+    if (ch !== "\\") {
+      at += 1;
+    } else if (raw && (at + 1 >= source.length || (!triple && isLineBreak(source[at + 1])))) {
+      // A raw backslash that ends the source, or stands before a line break of a
+      // single-line literal, is content.
+      at += 1;
+    } else {
+      at += 2;
+    }
+  }
+  return undefined;
 }
 
 /** Every token of the source, with at most one diagnostic for where it stopped. */

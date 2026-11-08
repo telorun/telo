@@ -58,8 +58,7 @@ content:
             values:
               - { property: blocked, operator: eq, value: true }
         policy:
-          summary: chips
-          placement: { kind: Ui.AbovePlacement, compact: { kind: Ui.CollapsiblePlacement } }
+          placement: { kind: Ui.AbovePlacement, summary: chips, compact: { kind: Ui.CollapsiblePlacement } }
           state: { key: board, address: true }
         content: { type: composite, ref: !ref taskList }
 
@@ -85,12 +84,12 @@ content:
           - { property: estimate, operator: lt }
           - { property: assigneeEmail, operator: eq }
         policy:
-          show: chosen
-          controls: chips
           apply: typing
           placement:
             kind: Ui.AsidePlacement
             side: start
+            show: chosen
+            controls: chips
             compact: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Drawer, side: bottom } }
           state: { key: aside, store: { kind: Ui.LocalStore } }
         content: { type: composite, ref: !ref taskList }
@@ -119,8 +118,7 @@ content:
               - { property: status, operator: in, value: [ todo, doing, review ] }
         policy:
           apply: button
-          summary: chips
-          placement: { kind: Ui.AsidePlacement, side: end }
+          placement: { kind: Ui.AsidePlacement, side: end, summary: chips }
           state: { key: review, store: { kind: Ui.SessionStore } }
         content: { type: composite, ref: !ref taskList }
 
@@ -144,8 +142,7 @@ content:
           - { property: blocked, operator: eq }
           - { property: label, operator: eq }
         policy:
-          show: chosen
-          placement: { kind: Ui.CollapsiblePlacement, open: true }
+          placement: { kind: Ui.CollapsiblePlacement, open: true, show: chosen }
           state: { key: folded, address: true, store: { kind: Ui.LocalStore } }
         content: { type: composite, ref: !ref taskList }
 
@@ -164,9 +161,7 @@ content:
           - { property: title, operator: contains, pinned: true }
           - { property: label, operator: in, control: options, default: [ bug ] }
           - { property: status, operator: in, control: select }
-        policy:
-          apply: button
-          placement: { kind: Ui.CollapsiblePlacement, open: false }
+        policy: { apply: button, placement: { kind: Ui.CollapsiblePlacement, open: false } }
         content: { type: composite, ref: !ref taskList }
 
     # ---- In a dialog ----
@@ -187,10 +182,10 @@ content:
           - { property: label, operator: in }
           - { property: blocked, operator: eq }
         policy:
-          summary: chips
           placement:
             kind: Ui.OverlayPlacement
             surface: { kind: Ui.Dialog, size: small, address: { name: taskFilters } }
+            summary: chips
         content: { type: composite, ref: !ref taskList }
 
     # ---- In a drawer ----

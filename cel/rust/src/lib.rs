@@ -172,10 +172,10 @@ mod zone_database;
 mod zoned_calendar;
 
 pub use activation::CelActivation;
-pub use backend_runtime::{CelCompileError, CALL_SITE_CACHE_CAPACITY};
+pub use backend_runtime::{CelCompileError, HostFailure, NamespaceImplementation, CALL_SITE_CACHE_CAPACITY};
 pub use bounded_cache::BoundedCache;
 pub use cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
-pub use cel_program::{CelProgram, EvaluateOptions};
+pub use cel_program::{CelEvaluationError, CelProgram, EvaluateOptions};
 pub use catalog_runtime::{
     catalog_guarded_names, catalog_implementation, catalog_implemented_keys, catalog_literal_check, CatalogRefusal,
     CelCatalogHandlers,
@@ -221,6 +221,7 @@ pub use json_schema_type::{
     SchemaConversion, SchemaTypeAnswer, SchemaTypeResolver, SchemaTypeResult, UnjudgedReason, UnjudgedSchemaNode,
     TYPE_CONSTRAINING_KEYWORDS, TYPE_KEYWORDS_READ, UNJUDGED_REASONS,
 };
+pub use lexer::quoted_literal_end;
 pub use json_text_scan::{read_json_text, scan_json_prefix, JsonRefusal, JsonTextError};
 pub use json_value::JsonValue;
 pub use member_read::{cel_has, cel_iterable, cel_lookup, cel_read, lookup_absence, lookup_error, HostFields, Lookup};

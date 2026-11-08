@@ -11,10 +11,12 @@ import {
   browserStorage,
   declaredDefaults,
   filterKey,
+  isSearch,
   paramsOf,
   readAddress,
   readStore,
   sameValues,
+  searchFilter,
   storageKey,
   withPreset,
   writeAddress,
@@ -26,22 +28,38 @@ import {
 import { useHost, useHostStore } from "./host.js";
 import type { OptionSourceSpec } from "./option-source.js";
 import { useRelatedLabels, type RelatedLabels } from "./related-labels.js";
+import { SearchBox } from "./search-box.js";
 import { Node, type SpecNode } from "./nodes.js";
 import { openValue } from "./open-address.js";
 import { FilterContext, RendererContext } from "./renderer-context.js";
 import { Surface, useHeldInside, type SurfaceSpec } from "./surface.js";
-import { labelFor, useSay, useText, type Say, type WireText } from "./texts.js";
+import { labelFor, TextsContext, useSay, useText, type Say, type WireText } from "./texts.js";
 import { plainTypes } from "./validation.js";
 
-/** Where a bar's controls sit, as the page document says it. */
+/** Where a bar's controls sit, as the page document says it. The four placements
+ *  that draw controls carry what they show; the others carry none of it. */
 interface Placement {
-  type: "above" | "aside" | "collapsible" | "overlay";
+  type: "above" | "aside" | "collapsible" | "overlay" | "searchBox";
+  show?: "all" | "chosen";
+  controls?: "direct" | "chips";
+  summary?: "none" | "chips";
   side?: "start" | "end";
   open?: boolean;
   surface?: SurfaceSpec;
   /** The placement used instead on a narrow viewport. */
   compact?: Placement;
+  /** What the box shows where nothing is typed. */
+  placeholder?: WireText;
 }
+
+/** The bar's search as the node carries it. */
+interface BarSearch {
+  pinned: boolean;
+  default: string | null;
+}
+
+/** The placements this renderer draws. */
+const DRAWN: ReadonlySet<string> = new Set(["above", "aside", "collapsible", "overlay", "searchBox"]);
 
 interface BarState {
   /** Present when the bar keeps its state anywhere but memory. */
@@ -177,13 +195,21 @@ export function Filters({ node }: { node: SpecNode }) {
   const store = useHostStore();
   const environment = useContext(RendererContext);
   const outer = useContext(FilterContext);
-  const fields = node.fields as FilterField[];
+  const texts = useContext(TextsContext);
+  const search = node.search as BarSearch | undefined;
+  // The search is the bar's first filter, held under `search` and sent as `search=`.
+  const fields = useMemo(() => {
+    const listed = node.fields as FilterField[];
+    return search === undefined ? listed : [searchFilter(search, texts.own), ...listed];
+  }, [node.fields, search?.pinned, search?.default, texts.own]);
   const basePath = node.basePath as string;
   const presets = node.presets as FilterPreset[];
   const state = node.state as BarState;
-  const chosenOnly = node.show === "chosen";
   const declared = node.placement as Placement;
-  const placement = environment.compact && declared.compact ? declared.compact : declared;
+  const chosen = environment.compact && declared.compact ? declared.compact : declared;
+  // A placement this renderer does not draw is drawn as the bar above the content.
+  const placement: Placement = DRAWN.has(chosen.type) ? chosen : { type: "above", show: "all", controls: "direct", summary: "none" };
+  const chosenOnly = placement.show === "chosen";
   // A placement that folds keeps the pinned filters and the bar's own buttons
   // outside the fold; over a bar with no filter it could fold, there is no fold.
   const folding = placement.type === "collapsible" || placement.type === "overlay";
@@ -343,7 +369,7 @@ export function Filters({ node }: { node: SpecNode }) {
         )}
       </div>
     );
-    if (node.controls !== "chips") return <Fragment key={group.members[0]}>{drawn}</Fragment>;
+    if (placement.controls !== "chips") return <Fragment key={group.members[0]}>{drawn}</Fragment>;
     const summary = members
       .filter((field) => held(field).length > 0)
       .map((field) => (members.length > 1 ? `${caption(field.operator)} ` : "") + valuesOf(field, held(field)))
@@ -430,6 +456,7 @@ export function Filters({ node }: { node: SpecNode }) {
     </button>
   );
 
+  const boxed = placement.type === "searchBox";
   const chosenPreset = activePreset(presets, draft);
   const PresetGroup = presets.length > 0 ? control("OptionGroup") : undefined;
   return (
@@ -442,7 +469,7 @@ export function Filters({ node }: { node: SpecNode }) {
       data-fill={fillAttribute(node)}
       data-style={styleAttribute(node.style)}
     >
-      {PresetGroup && (
+      {PresetGroup && !boxed && (
         <PresetGroup
           id={`${id}-presets`}
           label={say("presets")}
@@ -476,19 +503,37 @@ export function Filters({ node }: { node: SpecNode }) {
             </div>
           </Surface>
         )
+      ) : boxed ? (
+        <div data-telo-part="filters-bar">
+          <SearchBox
+            id={id}
+            fields={fields}
+            placeholder={placement.placeholder as WireText}
+            presets={presets}
+            draft={draft}
+            caption={caption}
+            valuesOf={valuesOf}
+            change={change}
+            clear={clear}
+            facetOf={facetOf}
+            actions={actions}
+          />
+        </div>
       ) : (
         <div data-telo-part="filters-bar">
           {bar}
           {actions}
         </div>
       )}
-      {node.summary === "chips" && (
+      {placement.summary === "chips" && (
         <div data-telo-part="filters-summary">
           {fields
             .filter((field) => field.control !== "none" && held(field).length > 0)
             .map((field) => (
               <span key={filterKey(field)} data-telo-part="summary-chip">
-                {say("filterChip", { label: text(field.label), operator: caption(field.operator), value: valuesOf(field, held(field)) })}
+                {isSearch(field)
+                  ? say("searchChip", { text: held(field)[0] })
+                  : say("filterChip", { label: text(field.label), operator: caption(field.operator), value: valuesOf(field, held(field)) })}
                 <button
                   data-telo-part="summary-chip-remove"
                   type="button"

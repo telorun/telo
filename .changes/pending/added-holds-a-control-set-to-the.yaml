@@ -1,0 +1,4 @@
+modules:
+  modules/ui-react-conformance: Added
+body: Holds a control set to the Combobox vectors of ui_react_controls-4, and counts
+  Combobox among the layer controls a set implements as one unit (ten).

@@ -50,6 +50,18 @@ describe("selecting the telo version for a module", () => {
     });
   });
 
+  it("never picks a published engine for a module at >=unreleased", () => {
+    // The engine reports `>=unreleased` as a lower edge above every release.
+    const requirements = requirementsFor(OWNER, [OWNER], [
+      { module: OWNER, text: ">=unreleased", min: "999999.0.0" },
+    ]);
+    const unreleased: VersionCatalog = { ...catalog, bundled: "0.104.0+unreleased" };
+    expect(selectVersion({ catalog: unreleased, requirements })).toEqual({
+      version: "0.104.0+unreleased",
+      reason: { kind: "unsatisfiable", ranges: [">=unreleased"] },
+    });
+  });
+
   it("rule 3 — falls back to the bundled version when nothing satisfies the closure", () => {
     const requirements = requirementsFor(OWNER, [OWNER], [
       { module: OWNER, text: ">=0.200.0", min: "0.200.0" },

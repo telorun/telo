@@ -1,26 +1,24 @@
-# A control set replacing the eight layer controls of the first generation and
-# not the navigation, the ninth.
+# A control set replacing the nine layer controls of the third generation and
+# not the combobox, the tenth.
 kind: Telo.Library
 metadata:
   name: UiReactControlsLayersPartial
   version: 1.0.0
   description: >-
-    Test fixture exporting a control set that implements eight of the layer
-    controls, without the navigation.
-imports:
-  UiReact: ../../../../../
+    Test fixture exporting a control set that implements nine of the layer
+    controls, without the combobox.
+imports: { UiReact: ../../../../../ }
 exports:
-  resources: [eightLayers]
+  resources: [nineLayers]
   browser:
-    - specifier: "@fixture/eight-layers"
-      path: ./browser/eight-layers.js
-      source: ./eight-layers.js
-      abi: ui_react_controls-3
+    - specifier: "@fixture/nine-layers"
+      path: ./browser/nine-layers.js
+      source: ./nine-layers.js
+      abi: ui_react_controls-4
       external: [react, react/jsx-runtime, react-dom]
-      exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]
+      exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]
 ---
 kind: UiReact.Controls
-metadata:
-  name: eightLayers
-entry: "@fixture/eight-layers"
-implements: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]
+metadata: { name: nineLayers }
+entry: "@fixture/nine-layers"
+implements: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]

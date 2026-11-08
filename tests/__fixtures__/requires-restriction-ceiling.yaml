@@ -1,0 +1,6 @@
+# A restrictions: entry without versions, holding this version below a telo no
+# runtime under test is below.
+kind: Telo.Application
+metadata: { name: RequiresRestrictionCeiling, version: 1.0.0 }
+restrictions:
+  - { requires: { telo: "<0.1.0" }, reason: Broken on every telo since 0.1.0. }

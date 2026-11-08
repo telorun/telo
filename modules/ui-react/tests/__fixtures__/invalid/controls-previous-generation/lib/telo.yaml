@@ -1,0 +1,23 @@
+# A control set written against the generation before this renderer's.
+kind: Telo.Library
+metadata:
+  name: UiReactControlsPreviousGeneration
+  version: 1.0.0
+  description: >-
+    Test fixture exporting a control set whose entry is written against
+    ui_react_controls-3.
+imports: { UiReact: ../../../../../ }
+exports:
+  resources: [previousControls]
+  browser:
+    - specifier: "@fixture/previous-controls"
+      path: ./browser/previous-controls.js
+      source: ./previous-controls.js
+      abi: ui_react_controls-3
+      external: [react, react/jsx-runtime, react-dom]
+      exports: [Checkbox]
+---
+kind: UiReact.Controls
+metadata: { name: previousControls }
+entry: "@fixture/previous-controls"
+implements: [Checkbox]

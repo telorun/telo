@@ -12,6 +12,7 @@ metadata:
     contracts for deciding whether a credential is valid, whether a password is
     right and whether an action is allowed. Includes verification of an identity
     asserted by a trusted reverse proxy.
+requires: { telo: ">=0.117.0" }
 exports:
   kinds: [Verifier, PasswordVerifier, Policy, TrustedHeader]
   resources: [Principal, Presentation, TokenPresentation, BasicPresentation, CertificatePresentation, AssertedPresentation, Confirmation, VerifierOutput, PasswordOutput, PolicyDecision, Issuer]

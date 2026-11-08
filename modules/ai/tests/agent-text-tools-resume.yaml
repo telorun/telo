@@ -1,0 +1,291 @@
+kind: Telo.Application
+metadata:
+  name: AgentTextToolsResumeTest
+  version: 1.0.0
+  description: |
+    A text call waits for a decision as a JSON call does: the run ends asking,
+    naming the call by its content-addressed `block_` id, and another agent
+    instance resumes it from the recorded messages alone. The answered text calls
+    are always a prefix of the reply's, and no text call runs while a JSON call of
+    its reply is pending.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref gatedTextCallResumes
+  - !ref changedArgumentsRefused
+  - !ref pendingJsonCallFirst
+  - !ref secondOfThreeWaits
+---
+kind: Ai.Tools
+metadata: { name: resumeTools }
+tools:
+  - name: apply_changes
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            changes:
+              type: array
+              items: { type: object, properties: { path: { type: string }, body: { type: string } } }
+      value: !cel "'wrote ' + inputs.changes.map(c, c.path).join(', ')"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [changes]
+      properties: { changes: { type: array } }
+  - name: multiply
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, properties: { a: { type: integer }, b: { type: integer } } }
+      value: !cel "string(inputs.a * inputs.b)"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [a, b]
+      properties: { a: { type: integer }, b: { type: integer } }
+  - name: note
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, properties: { text: { type: string } } }
+      value: !cel "'noted ' + inputs.text"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties: { text: { type: string } }
+---
+# The reply every agent below is given first, then `done`.
+kind: AiEcho.EchoModel
+metadata: { name: editsTwoFiles }
+replies:
+  - text: "```telo-edit path=a.yaml\nx\n```\n```telo-file path=b.yaml\ny\n```\n"
+  - { text: done }
+---
+# The first run and the resuming one are two instances of one configuration.
+kind: Ai.Agent
+metadata: { name: gatedFirst }
+model: !ref editsTwoFiles
+textTools:
+  - tags: [telo-edit, telo-file]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, {'path': b.attributes.path, 'body': b.body})"
+toolProviders:
+  - provider: !ref resumeTools
+    approval: { include: [apply_changes] }
+---
+kind: Ai.Agent
+metadata: { name: gatedSecond }
+model: !ref editsTwoFiles
+textTools:
+  - tags: [telo-edit, telo-file]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, {'path': b.attributes.path, 'body': b.body})"
+toolProviders:
+  - provider: !ref resumeTools
+    approval: { include: [apply_changes] }
+---
+# The interrupt names the call by an id computed from the reply and the evaluated
+# arguments alone — the literal below — and another instance, given the recorded
+# messages and a decision under that id, runs it.
+kind: Telo.Sequence
+metadata: { name: gatedTextCallResumes }
+steps:
+  - name: first
+    invoke: !ref gatedFirst
+    inputs: { prompt: "edit" }
+  - name: checkInterrupt
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        interrupt: !cel "steps.first.result.interrupt"
+        approvalRequests: !cel "steps.first.result.approvalRequests"
+        messages: !cel "steps.first.result.messages"
+      expected:
+        interrupt: approval
+        approvalRequests:
+          - id: block_7a5def48-45ae-836d-bcf9-e51f26fe2386
+            name: apply_changes
+            arguments:
+              changes:
+                - { path: a.yaml, body: "x\n" }
+                - { path: b.yaml, body: "y\n" }
+        messages:
+          - { role: assistant, content: "```telo-edit path=a.yaml\nx\n```\n```telo-file path=b.yaml\ny\n```\n" }
+  - name: resumed
+    invoke: !ref gatedSecond
+    inputs:
+      messages: !cel "[{'role': 'user', 'content': 'edit'}] + steps.first.result.messages"
+      approvals: [{ toolCallId: block_7a5def48-45ae-836d-bcf9-e51f26fe2386, approved: true }]
+  - name: checkResumed
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        toolResults: !cel "steps.resumed.result.toolResults"
+        messages: !cel "steps.resumed.result.messages"
+      expected:
+        toolResults:
+          - toolCallId: block_7a5def48-45ae-836d-bcf9-e51f26fe2386
+            name: apply_changes
+            content: "apply_changes (telo-edit path=a.yaml, telo-file path=b.yaml):\nwrote a.yaml, b.yaml"
+            origin: text
+        messages:
+          - role: user
+            content:
+              - type: text
+                text: "apply_changes (telo-edit path=a.yaml, telo-file path=b.yaml):\nwrote a.yaml, b.yaml"
+                kind: text-tool-result
+                toolCallId: block_7a5def48-45ae-836d-bcf9-e51f26fe2386
+          - { role: assistant, content: done }
+---
+# An agent whose mapping changed since the interrupt derives another id, so the
+# decision names a call that is not pending and is refused.
+kind: Ai.Agent
+metadata: { name: gatedChanged }
+model: !ref editsTwoFiles
+textTools:
+  - tags: [telo-edit, telo-file]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, {'path': b.attributes.path, 'body': b.body + '!'})"
+toolProviders:
+  - provider: !ref resumeTools
+    approval: { include: [apply_changes] }
+---
+kind: Telo.Sequence
+metadata: { name: changedArgumentsRefused }
+steps:
+  - name: first
+    invoke: !ref gatedFirst
+    inputs: { prompt: "edit" }
+  - name: attempt
+    try:
+      - name: resumed
+        invoke: !ref gatedChanged
+        inputs:
+          messages: !cel "[{'role': 'user', 'content': 'edit'}] + steps.first.result.messages"
+          approvals: [{ toolCallId: !cel "steps.first.result.approvalRequests[0].id", approved: true }]
+      - name: unexpected
+        throw: { code: ERR_UNEXPECTED, message: the changed arguments were run }
+    catch:
+      - name: check
+        invoke: !ref Assert.equals
+        inputs:
+          actual: { code: !cel "error.code", message: !cel "error.message" }
+          expected:
+            code: ERR_INVALID_INPUT
+            message: >-
+              Ai.Agent "gatedChanged": 'approvals' names the tool call
+              "block_7a5def48-45ae-836d-bcf9-e51f26fe2386", which is not pending. Pending:
+              block_a69b1276-70d2-8cf9-8f0b-9fb4f088ab53.
+---
+# A JSON call of the reply waits, so none of its text calls runs; resumed, the
+# JSON call's result is recorded first, then the text calls' parts.
+kind: Ai.Agent
+metadata: { name: jsonGated }
+model:
+  kind: AiEcho.EchoModel
+  replies:
+    - text: "```telo-edit path=a.yaml\nx\n```\n"
+      toolCalls: [{ id: j1, name: multiply, arguments: { a: 6, b: 7 } }]
+    - { text: done }
+textTools:
+  - tags: [telo-edit]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, {'path': b.attributes.path, 'body': b.body})"
+toolProviders:
+  - provider: !ref resumeTools
+    approval: { include: [multiply] }
+---
+kind: Telo.Sequence
+metadata: { name: pendingJsonCallFirst }
+steps:
+  - name: first
+    invoke: !ref jsonGated
+    inputs: { prompt: "go" }
+  - name: resumed
+    invoke: !ref jsonGated
+    inputs:
+      messages: !cel "[{'role': 'user', 'content': 'go'}] + steps.first.result.messages"
+      approvals: [{ toolCallId: j1, approved: true }]
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        firstRequests: !cel "steps.first.result.approvalRequests.map(c, c.id)"
+        firstResults: !cel "steps.first.result.toolResults"
+        resumed: !cel "steps.resumed.result.messages.map(m, m.role == 'tool' ? 'tool ' + m.toolCallId : m.role)"
+        results: !cel "steps.resumed.result.toolResults.map(r, r.content)"
+      expected:
+        firstRequests: [j1]
+        firstResults: []
+        resumed: [tool j1, user, assistant]
+        results: ["42", "apply_changes (telo-edit path=a.yaml):\nwrote a.yaml"]
+---
+# Text call 2 of 3 waits: call 1 has run and is recorded; resumed, it does not
+# run again, and calls 2 and 3 run in order.
+kind: Ai.Agent
+metadata: { name: threeCalls }
+model:
+  kind: AiEcho.EchoModel
+  replies:
+    - text: "```one\na\n```\n```two\nb\n```\n```three\nc\n```\n"
+    - { text: done }
+textTools:
+  - tags: [one]
+    tool: first_note
+    arguments: { text: !cel "blocks[0].body" }
+  - tags: [two]
+    tool: second_note
+    arguments: { text: !cel "blocks[0].body" }
+  - tags: [three]
+    tool: third_note
+    arguments: { text: !cel "blocks[0].body" }
+toolProviders:
+  - provider: !ref resumeTools
+    prefix: first_
+    include: [note]
+  - provider: !ref resumeTools
+    prefix: second_
+    include: [note]
+    approval: { include: [note] }
+  - provider: !ref resumeTools
+    prefix: third_
+    include: [note]
+---
+kind: Telo.Sequence
+metadata: { name: secondOfThreeWaits }
+steps:
+  - name: first
+    invoke: !ref threeCalls
+    inputs: { prompt: "go" }
+  - name: resumed
+    invoke: !ref threeCalls
+    inputs:
+      messages: !cel "[{'role': 'user', 'content': 'go'}] + steps.first.result.messages"
+      approvals: [{ toolCallId: !cel "steps.first.result.approvalRequests[0].id", approved: true }]
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        firstRequests: !cel "steps.first.result.approvalRequests.map(c, c.name)"
+        firstResults: !cel "steps.first.result.toolResults.map(r, r.content)"
+        resumedResults: !cel "steps.resumed.result.toolResults.map(r, r.content)"
+        resumedParts: !cel "steps.resumed.result.messages[0].content.map(p, p.text)"
+      expected:
+        firstRequests: [second_note]
+        firstResults: ["first_note (one):\nnoted a\n"]
+        resumedResults: ["second_note (two):\nnoted b\n", "third_note (three):\nnoted c\n"]
+        resumedParts: ["second_note (two):\nnoted b\n", "third_note (three):\nnoted c\n"]

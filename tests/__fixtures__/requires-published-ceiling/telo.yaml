@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: RequiresPublishedCeiling, version: 1.0.0 }
+imports: { Ceiling: ./lib }

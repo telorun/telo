@@ -10,12 +10,10 @@ metadata:
     with no engine to deploy: progress is recorded to a store you choose, and a poller
     picks up runs the process died in the middle of. Records what each step returned and
     every decision the body reached, so a resume takes the same branches it took before.
-requires:
-  # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime
-  # that does not execute a returned chain allocates nothing and undoes nothing.
-  # 0.129.0: `durationMs` from `@telorun/sdk`, which an older runtime lacks (controller load fails).
-  # 0.130.0: a `d` / `w` duration literal at a `Telo.Duration` slot reads only from this release.
-  telo: ">=0.130.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.130.0" }
+    reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0); also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
 imports: { Durable: ../durable }
 exports:
   kinds: [Workflow, Journal, Resumer, Deliver, Status, Result, Cancel, Schedule, Resume]

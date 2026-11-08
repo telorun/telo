@@ -16,7 +16,7 @@ requires:
   # rejects as X_TELO_TYPE_UNKNOWN.
   # 0.121.0: `Journal.directory` declares `entry: directory`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
-  telo: ">=0.121.0"
+  telo: ">=unreleased"
 imports: { DurableLocal: ../durable-local }
 exports: { kinds: [Journal] }
 ---

@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata:
+  name: StoreLocator
+  version: 1.0.0
+imports:
+  Geocode: ../lib

@@ -28,19 +28,25 @@
  * kernel implementation genuinely share a name. Under `host:` position carries
  * the disambiguation and no word has to.
  *
+ * **`requires.telo` is a floor only**: `>=<version>`, or `>=unreleased` — the
+ * telo release carrying the pending telo-line changesets, met only by a build
+ * whose version carries `+unreleased`. A ceiling is a `restrictions:` entry
+ * (`restrictions.ts`); one on a module's own `requires.telo` is flagged
+ * `ceiling` and kept in the block, since a published manifest's is honoured as a
+ * restriction of that version. `host.node` keeps both bounds.
+ *
  * **Ordering is normative: `telo` is checked before `host`, and before any
  * unknown-axis complaint.** A module using an axis introduced in telo 0.85 also
  * declares telo `>=0.85`, so an older runtime fails on the telo axis first and
  * never has to decide what an axis it has never heard of means. That is what
  * makes the block safely extensible; consumers get the order from
- * {@link evaluateRequires} rather than re-deriving it.
+ * `evaluateRange` (`runtime-range.ts`) rather than re-deriving it.
  */
 
-import { parseModuleVersion } from "./module-version-order.js";
 import {
   isUnsatisfiable,
   parseVersionRange,
-  rangeAccepts,
+  upperBound,
   type VersionRange,
 } from "./version-range.js";
 
@@ -82,6 +88,10 @@ export interface RequiresIssue {
    *  requirement itself is unmet — an older runtime not knowing a newer axis is
    *  a consequence of the version skew, not a second defect to report. */
   unknownAxis?: boolean;
+  /** True for an upper bound on a module's own `requires.telo`. The range stays
+   *  in the block: a published manifest's ceiling is honoured as a restriction
+   *  covering that version, while in a module's own source it is refused. */
+  ceiling?: boolean;
 }
 
 export interface ReadRequiresResult {
@@ -94,6 +104,15 @@ export interface ReadRequiresResult {
 
 const EMPTY: RequiresBlock = { host: {} };
 
+/** Where a requirement map is written: the module doc's own `requires:`, whose
+ *  `telo` is a floor only, or a `restrictions:` entry's, which may also bound it
+ *  from above. */
+export type RequirementPlace = "module" | "restriction";
+
+/** The `>=unreleased` floor: the telo release carrying the pending telo-line
+ *  changesets, met only by a build of it. */
+export const UNRELEASED_FLOOR = ">=unreleased";
+
 /**
  * Read and parse the block off a module doc. Never throws. A malformed entry
  * yields an issue AND is omitted from the block, so a consumer enforcing the
@@ -103,16 +122,25 @@ const EMPTY: RequiresBlock = { host: {} };
 export function readRequires(doc: Record<string, unknown> | undefined): ReadRequiresResult {
   const raw = doc?.requires;
   if (raw === undefined) return { declared: false, block: EMPTY, issues: [] };
+  const { block, issues } = readRequirementMap(raw, "requires", "module");
+  return { declared: true, block, issues };
+}
 
+/** One requirement map — the module's `requires:` or an entry's — at `path`. */
+export function readRequirementMap(
+  raw: unknown,
+  path: string,
+  place: RequirementPlace,
+): { block: RequiresBlock; issues: RequiresIssue[] } {
   const issues: RequiresIssue[] = [];
   const block: RequiresBlock = { host: {} };
 
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     issues.push({
-      path: "requires",
-      message: `'requires' must be a mapping of axes, got ${describe(raw)}.`,
+      path,
+      message: `'${path}' must be a mapping of axes, got ${describe(raw)}.`,
     });
-    return { declared: true, block, issues };
+    return { block, issues };
   }
 
   const entries = raw as Record<string, unknown>;
@@ -120,9 +148,9 @@ export function readRequires(doc: Record<string, unknown> | undefined): ReadRequ
   for (const key of Object.keys(entries)) {
     if (!(KNOWN_AXES as readonly string[]).includes(key)) {
       issues.push({
-        path: `requires.${key}`,
+        path: `${path}.${key}`,
         message:
-          `'requires.${key}' is not a known axis. This runtime knows ` +
+          `'${path}.${key}' is not a known axis. This runtime knows ` +
           `${KNOWN_AXES.map((a) => `'${a}'`).join(" and ")}; host requirements go under 'host'.`,
         unknownAxis: true,
       });
@@ -130,7 +158,7 @@ export function readRequires(doc: Record<string, unknown> | undefined): ReadRequ
   }
 
   if (entries.telo !== undefined) {
-    const range = parseRangeAt(entries.telo, "requires.telo", issues);
+    const range = parseTeloAt(entries.telo, `${path}.telo`, place, issues);
     if (range) block.telo = range;
   }
 
@@ -138,28 +166,70 @@ export function readRequires(doc: Record<string, unknown> | undefined): ReadRequ
     const host = entries.host;
     if (host === null || typeof host !== "object" || Array.isArray(host)) {
       issues.push({
-        path: "requires.host",
-        message: `'requires.host' must be a mapping of host axes, got ${describe(host)}.`,
+        path: `${path}.host`,
+        message: `'${path}.host' must be a mapping of host axes, got ${describe(host)}.`,
       });
     } else {
       for (const [axis, value] of Object.entries(host as Record<string, unknown>)) {
+        const at = `${path}.host.${axis}`;
         if (!(KNOWN_HOST_AXES as readonly string[]).includes(axis)) {
           issues.push({
-            path: `requires.host.${axis}`,
+            path: at,
             message:
-              `'requires.host.${axis}' is not a known host axis. This runtime knows ` +
+              `'${at}' is not a known host axis. This runtime knows ` +
               `${KNOWN_HOST_AXES.map((a) => `'${a}'`).join(", ")}.`,
             unknownAxis: true,
           });
           continue;
         }
-        const range = parseRangeAt(value, `requires.host.${axis}`, issues);
+        if (namesUnreleased(value)) {
+          issues.push({
+            path: at,
+            message:
+              `${at} '${value.trim()}': unreleased names a telo release and is allowed only as ` +
+              `a telo floor.`,
+          });
+          continue;
+        }
+        const range = parseRangeAt(value, at, issues);
         if (range) block.host[axis as HostAxis] = range;
       }
     }
   }
 
-  return { declared: true, block, issues };
+  return { block, issues };
+}
+
+function namesUnreleased(value: unknown): value is string {
+  return typeof value === "string" && /\bunreleased\b/.test(value);
+}
+
+function parseTeloAt(
+  value: unknown,
+  path: string,
+  place: RequirementPlace,
+  issues: RequiresIssue[],
+): VersionRange | undefined {
+  if (namesUnreleased(value)) {
+    const text = value.trim();
+    if (text === UNRELEASED_FLOOR) return { raw: text, comparators: [], unreleased: true };
+    issues.push({
+      path,
+      message: `${path} '${text}': unreleased is allowed only as the whole range '${UNRELEASED_FLOOR}'.`,
+    });
+    return undefined;
+  }
+  const range = parseRangeAt(value, path, issues);
+  if (range && place === "module" && upperBound(range)) {
+    issues.push({
+      path,
+      ceiling: true,
+      message:
+        `${path} '${range.raw}' declares an upper bound; requires.telo is a floor only. Write ` +
+        `the ceiling as a restrictions: entry without versions, which covers this version.`,
+    });
+  }
+  return range;
 }
 
 function parseRangeAt(
@@ -182,68 +252,12 @@ function parseRangeAt(
   return result.range;
 }
 
-/** What a runtime concluded about a module's declared requirements. */
-export type RequiresVerdict =
-  | { satisfied: true }
-  /** An axis whose declared range excludes the version this runtime reported. */
-  | {
-      satisfied: false;
-      axis: "telo" | HostAxis;
-      declared: VersionRange;
-      running: string;
-    };
-
 /** The versions a host can speak for. Absent entries are not checked — the
  *  editor has no host to report, and an axis nothing supplies is skipped rather
  *  than guessed. Every axis in {@link KNOWN_HOST_AXES} has a supplier; an axis
  *  with none does not belong in the vocabulary (see the note there). */
 export interface HostVersions {
   node?: string;
-}
-
-/**
- * Evaluate a module's declared requirements against the runtime performing the
- * analysis.
- *
- * `telo` is checked FIRST and short-circuits: a module using a host axis
- * introduced in a later telo also declares that telo, so an older runtime must
- * report the version skew rather than a host axis it may not even know. Absent
- * declarations are satisfied — the bootstrap rule, permanent for everything
- * published before the mechanism existed.
- *
- * **A version this cannot PARSE is satisfied, on every axis.** A runtime that
- * cannot name its own version must not start rejecting modules on the strength
- * of a number it could not read — the refusal-to-guess `module-version-order.ts`
- * makes, pointed in the safe direction. The test is a parse, not a shape: `0.76`
- * and `2024.1` look like versions and are not three-part ones, so a cheaper
- * check (a leading digit, say) would fail them CLOSED and gate every module in
- * the graph on a number nothing could compare. `manifestCompatibility`'s version
- * is its caller's to supply, so that is exactly where such a value arrives.
- */
-export function evaluateRequires(
-  block: RequiresBlock,
-  running: string | undefined,
-  host: HostVersions = {},
-): RequiresVerdict {
-  const telo = check("telo", block.telo, running);
-  if (telo) return telo;
-  for (const axis of KNOWN_HOST_AXES) {
-    const verdict = check(axis, block.host[axis], host[axis]);
-    if (verdict) return verdict;
-  }
-  return { satisfied: true };
-}
-
-/** One axis, or `undefined` when it is satisfied / undeclared / unreportable. */
-function check(
-  axis: "telo" | HostAxis,
-  declared: VersionRange | undefined,
-  running: string | undefined,
-): RequiresVerdict | undefined {
-  if (!declared || !running) return undefined;
-  if (!parseModuleVersion(running)) return undefined;
-  if (rangeAccepts(declared, running)) return undefined;
-  return { satisfied: false, axis, declared, running };
 }
 
 function describe(value: unknown): string {

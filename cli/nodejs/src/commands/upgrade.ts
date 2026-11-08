@@ -1,10 +1,13 @@
 import {
-  TELO_SURFACE_VERSION,
+  TELO_RUNNING_SURFACE,
   applyTextEdits,
   isLocalPathSource,
-  manifestCompatibility,
+  readModuleVersion,
+  selectionCompatibility,
   splitIntegrity,
-  type ModuleCompatibility,
+  type HostVersions,
+  type ModuleVersionRequirements,
+  type SelectionVerdict,
 } from "@telorun/analyzer";
 import { defaultTransportRegistry, nodeHostVersions, type Transport } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
@@ -37,84 +40,165 @@ export function pickLatest(versions: string[], includePrerelease: boolean): stri
   return [...eligible].sort(semver.rcompare)[0];
 }
 
-/** How a candidate version answered the compatibility question. The verdict
- *  vocabulary and the rule behind it are the analyzer's, shared with every IDE
- *  that filters upgrade candidates — see `manifestCompatibility`. */
-type Compatibility = ModuleCompatibility;
+/** The runtime upgrade judges candidates against. A build of the pending release
+ *  reports `+unreleased`, which is what meets a `>=unreleased` floor. */
+export interface UpgradeRuntime {
+  telo: string;
+  host: HostVersions;
+}
+
+function currentRuntime(): UpgradeRuntime {
+  return { telo: TELO_RUNNING_SURFACE, host: nodeHostVersions() };
+}
+
+type Rejection = { compatibility: "unreadable" } | Extract<SelectionVerdict, { key: string }>;
+
+/** A published version the runtime cannot be offered, and why. */
+interface Held {
+  version: string;
+  verdict: Rejection;
+}
+
+/** What the newest-first walk established. */
+interface Walk {
+  /** The newest version this runtime can use — at or above the pin when the pin
+   *  is published. `null` when none is. */
+  best: string | null;
+  /** Rejected versions newer than `best` (or than the pin), newest first. */
+  held: Held[];
+  /** Why the pin itself is rejected, when the walk reached it and it is. */
+  pinVerdict: Rejection | null;
+}
 
 /**
- * Read a candidate version's declared `requires.telo` and decide whether this
- * runtime can host it.
- *
- * The manifest is its own artifact layer, so this costs a `telo.yaml` fetch and
- * never pulls a payload. Unlike an IDE, the CLI runs on the host that will
- * execute the manifest, so it reports its own host versions and the host axes
- * are checked too.
+ * Read one published version's `telo.yaml`. The manifest is its own artifact
+ * layer, so this costs a manifest fetch and never pulls a payload. A manifest
+ * that cannot be read speaks for nothing and holds nothing back: an unreachable
+ * registry must not silently freeze a consumer's imports.
  */
-async function versionCompatibility(
+async function readVersion(
   transport: Transport,
   source: string,
   version: string,
-): Promise<Compatibility> {
-  let text: string;
+): Promise<ModuleVersionRequirements> {
   try {
-    ({ text } = await transport.source.read(transport.withVersion(source, version)));
+    const { text } = await transport.source.read(transport.withVersion(source, version));
+    return readModuleVersion({ version, text });
   } catch {
-    return "unknown";
+    return { version, requirements: "unknown" };
   }
-  return manifestCompatibility(text, TELO_SURFACE_VERSION, nodeHostVersions());
-}
-
-interface Selection {
-  /** The newest version this runtime can host, or `null` when none can be. */
-  best: string | null;
-  /** The newest version overall, when it is NOT `best` — what was held back. */
-  heldBack: string | null;
-  /** Why `heldBack` was rejected, so the message states the cause it actually
-   *  established rather than assuming a version skew. */
-  reason: Exclude<Compatibility, "yes"> | null;
 }
 
 /**
- * The newest version whose declared range accepts this runtime.
+ * The newest version whose range accepts this runtime, walking newest-first.
  *
- * Walks newest-first and stops at the first satisfied candidate, so the common
- * case — the newest version is compatible — costs a single manifest fetch. The
- * held-back version is reported rather than swallowed: without it `upgrade` says
- * "up to date" while newer versions exist, which is a silent ceiling and a worse
- * report than the failure this whole mechanism replaces.
+ * A version's verdict depends on the manifests of every version NEWER than it (a
+ * later `restrictions:` entry speaks for it), and the walk has read exactly
+ * those by the time it reaches a candidate, so restrictions cost no request
+ * beyond the manifests upgrade already reads. The walk stops at the pin when it
+ * is published: `upgrade` moves pins forward, never backwards. Every rejection
+ * newer than what it stops at is returned, or the pin is a silent ceiling and
+ * *"up to date"* becomes the new confusing report.
  */
-async function selectCompatible(
+async function walkVersions(
   transport: Transport,
   source: string,
   versions: string[],
   includePrerelease: boolean,
-): Promise<Selection> {
+  pin: string | null,
+  runtime: UpgradeRuntime,
+): Promise<Walk> {
   const eligible = (
     includePrerelease ? versions : versions.filter((v) => semver.prerelease(v) === null)
   )
     .slice()
     .sort(semver.rcompare);
-  if (eligible.length === 0) return { best: null, heldBack: null, reason: null };
-
-  let firstReason: Exclude<Compatibility, "yes"> | null = null;
+  const walk: Walk = { best: null, held: [], pinVerdict: null };
+  const read: ModuleVersionRequirements[] = [];
+  // Prereleases speak only when no release does, as in the editor: a newer
+  // prerelease is never a candidate here, but it narrows one the walk is about to
+  // accept, so it is read — once — only then.
+  const prereleases = includePrerelease
+    ? []
+    : versions.filter((v) => semver.prerelease(v) !== null);
   for (const version of eligible) {
-    const verdict = await versionCompatibility(transport, source, version);
-    if (verdict === "too-new" || verdict === "unreadable") {
-      firstReason ??= verdict;
-      continue;
+    if (pin !== null && semver.lte(version, pin) && !semver.eq(version, pin)) break;
+    const candidate = await readVersion(transport, source, version);
+    let verdict = selectionCompatibility(candidate, read, runtime.telo, runtime.host);
+    if (verdict.compatibility === "yes" || verdict.compatibility === "unknown") {
+      for (const pre of prereleases) {
+        if (semver.lte(pre, version) || read.some((r) => r.version === pre)) continue;
+        read.push(await readVersion(transport, source, pre));
+      }
+      verdict = selectionCompatibility(candidate, read, runtime.telo, runtime.host);
     }
-    const held = version === eligible[0] ? null : eligible[0]!;
-    return { best: version, heldBack: held, reason: held ? firstReason : null };
+    read.push(candidate);
+    if (verdict.compatibility === "yes" || verdict.compatibility === "unknown") {
+      walk.best = version;
+      return walk;
+    }
+    if (pin !== null && semver.eq(version, pin)) {
+      walk.pinVerdict = verdict as Rejection;
+      return walk;
+    }
+    walk.held.push({ version, verdict: verdict as Rejection });
   }
-  return { best: null, heldBack: eligible[0]!, reason: firstReason };
+  return walk;
 }
 
-/** How a rejected candidate reads in the held-back line. */
-function describeReason(reason: Exclude<Compatibility, "yes"> | null): string {
-  if (reason === "unreadable") return "its declared requirement cannot be read";
-  if (reason === "too-new") return `it requires a newer telo than ${TELO_SURFACE_VERSION}`;
-  return "it could not be checked";
+/** `a`, `a and b`, `a, b and c`. */
+function listOf(versions: string[]): string {
+  if (versions.length <= 1) return versions.join("");
+  return `${versions.slice(0, -1).join(", ")} and ${versions[versions.length - 1]}`;
+}
+
+/** Consecutive held versions with the same cause share one line. */
+function heldBackLines(held: Held[]): string[] {
+  const groups: Array<{ key: string; versions: string[]; verdict: Rejection }> = [];
+  for (const { version, verdict } of held) {
+    const key =
+      verdict.compatibility === "unreadable"
+        ? "unreadable"
+        : verdict.source.from === "restriction"
+          ? `restriction|${verdict.source.reason}`
+          : `${verdict.compatibility}|${verdict.key}|${verdict.bound}`;
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.versions.push(version);
+    else groups.push({ key, versions: [version], verdict });
+  }
+  return groups.map(({ versions, verdict }) => {
+    const list = listOf(versions);
+    const plural = versions.length > 1;
+    if (verdict.compatibility === "unreadable") {
+      return `held back: ${list} declare${plural ? "" : "s"} a requirement that cannot be read.`;
+    }
+    if (verdict.source.from === "restriction") return `held back: ${list} — ${verdict.source.reason}`;
+    if (verdict.compatibility === "too-new") {
+      return (
+        `held back: ${list} require${plural ? "" : "s"} ${verdict.key} '${verdict.bound}'; ` +
+        `this runtime reports ${verdict.running}.`
+      );
+    }
+    return (
+      `held back: ${list} ${plural ? "are" : "is"} restricted to ${verdict.key} ` +
+      `'${verdict.bound}'; this runtime reports ${verdict.running}.`
+    );
+  });
+}
+
+/** Why the pin cannot be offered, as one sentence. */
+function pinRestriction(where: string, verdict: Rejection): string {
+  if (verdict.compatibility !== "unreadable" && verdict.source.from === "restriction") {
+    return `${where} is restricted by ${verdict.source.version ?? "a later version"}: ${verdict.source.reason}`;
+  }
+  if (verdict.compatibility === "unreadable") {
+    return `${where} declares a requirement that cannot be read.`;
+  }
+  return (
+    `${where} is not usable by this telo: it ` +
+    (verdict.compatibility === "too-new" ? "requires" : "is restricted to") +
+    ` ${verdict.key} '${verdict.bound}'; this runtime reports ${verdict.running}.`
+  );
 }
 
 interface ImportUpgrade {
@@ -150,9 +234,18 @@ interface UpgradeResult {
   pinned: number;
   repins: LocalRepin[];
   pendingLocal: PendingLocalImport[];
+  /** Published versions this runtime cannot be offered, per import. */
+  heldBack: HeldBack[];
   unchanged: number;
   skipped: number;
   errors: number;
+}
+
+interface HeldBack {
+  manifest?: string;
+  import: string;
+  /** The held-back lines as printed. */
+  lines: string[];
 }
 
 /** Mirror LocalFileSource: a directory path resolves to `<dir>/telo.yaml`. */
@@ -190,8 +283,11 @@ export async function upgradeManifest(args: {
   /** When set, a relative import of a released module is rewritten to its
    *  published pin once the published artifact is the working copy's. */
   pinLocal?: PinLocalImport;
+  /** The runtime candidates are judged against; this process by default. */
+  runtime?: UpgradeRuntime;
 }): Promise<{ content: string; result: UpgradeResult; relativeImports: string[] }> {
   const { content, includePrerelease, log, displayName, recursive, pinLocal } = args;
+  const runtime = args.runtime ?? currentRuntime();
 
   const result: UpgradeResult = {
     changed: false,
@@ -199,6 +295,7 @@ export async function upgradeManifest(args: {
     pinned: 0,
     repins: [],
     pendingLocal: [],
+    heldBack: [],
     unchanged: 0,
     skipped: 0,
     errors: 0,
@@ -384,28 +481,38 @@ export async function upgradeManifest(args: {
       continue;
     }
 
-    // Compatibility-aware selection: the highest version whose declared
-    // `requires.telo` accepts this runtime, not the highest full stop. Without
-    // it a consumer is handed syntax their runtime cannot read, which is the
-    // failure the requirement declaration exists to prevent reaching at all.
-    const { best, heldBack, reason } = await selectCompatible(
+    // Selection: the highest version whose range — narrowed by the `restrictions:`
+    // of the newer versions — accepts this runtime, not the highest full stop.
+    // Without it a consumer is handed syntax their runtime cannot read, or a
+    // version a later release marked as broken on it.
+    const currentPublished = normalized.some((v) => semver.eq(v, currentVersion));
+    const { best, held, pinVerdict } = await walkVersions(
       transport,
       source,
       normalized,
       includePrerelease,
+      currentPublished ? currentVersion : null,
+      runtime,
     );
+    const where = `${importRef.alias}: ${splitIntegrity(source).base}`;
+    const lines = heldBackLines(held);
+    const reportHeld = (): void => {
+      for (const line of lines) outLine(`      ${log.dim(line)}`);
+      if (lines.length > 0) result.heldBack.push({ import: label, lines });
+    };
+
+    if (pinVerdict) {
+      // The pin is a published version this runtime cannot be offered: say why,
+      // and leave it — the load gate reports what it cannot read.
+      outLine(`  ${log.warn("!")}  ${pinRestriction(where, pinVerdict)}`);
+      reportHeld();
+      result.skipped++;
+      continue;
+    }
     if (!best) {
-      if (heldBack) {
-        // Every published version declares a runtime this one is not — the
-        // abandoned-module case a closed upper bound exists for. Reporting it as
-        // "up to date" would be a lie in the most expensive direction.
-        outLine(
-          `  ${log.warn("!")}  ${label}  ` +
-            log.warn(
-              `no published version is usable here — newest is ${heldBack}, and ` +
-                `${describeReason(reason)}`,
-            ),
-        );
+      if (held.length > 0) {
+        outLine(`  ${log.warn("!")}  ${label}  ${log.warn("no published version is usable here")}`);
+        reportHeld();
       } else {
         // Versions exist but none pass the prerelease filter / semver parser.
         outLine(`  ${log.warn("!")}  ${label}  ${log.dim("no eligible versions in registry")}`);
@@ -413,20 +520,17 @@ export async function upgradeManifest(args: {
       result.skipped++;
       continue;
     }
-    if (heldBack) {
-      outLine(
-        `  ${log.dim("·")}  ${label}  ` +
-          log.dim(`${heldBack} available — ${describeReason(reason)}`),
-      );
-    }
 
-    const currentPublished = normalized.some((v) => semver.eq(v, currentVersion));
     const cmp = semver.compare(best, currentVersion);
 
-    // Already at the latest published version (`cmp < 0` is defensive — `best`
-    // is the max of `published` and `currentPublished` means the pin is in that
-    // list). Nothing to upgrade; ensure it carries an integrity hash.
+    // The pin is the newest version usable here — nothing to upgrade; ensure it
+    // carries an integrity hash (`cmp < 0` is defensive: the walk stops at a
+    // published pin).
     if (currentPublished && cmp <= 0) {
+      if (held.length > 0) {
+        outLine(`  ${log.dim("·")}  ${where} is the newest version this telo can use.`);
+        reportHeld();
+      }
       await ensurePinned(importRef, transport, label, currentVersion);
       continue;
     }
@@ -469,6 +573,7 @@ export async function upgradeManifest(args: {
         `  ${arrow}  ${label}  ${currentVersion} → ${log.ok(best)}  ${log.warn("(pinned version not in registry)")}`,
       );
     }
+    reportHeld();
   }
 
   return { content: applyTextEdits(content, edits), result, relativeImports };
@@ -521,6 +626,7 @@ function emptyResult(errors = 0): UpgradeResult {
     pinned: 0,
     repins: [],
     pendingLocal: [],
+    heldBack: [],
     unchanged: 0,
     skipped: 0,
     errors,
@@ -533,6 +639,7 @@ function mergeResults(into: UpgradeResult, child: UpgradeResult): void {
   into.pinned += child.pinned;
   into.repins.push(...child.repins);
   into.pendingLocal.push(...child.pendingLocal);
+  into.heldBack.push(...child.heldBack);
   into.unchanged += child.unchanged;
   into.skipped += child.skipped;
   into.errors += child.errors;
@@ -596,7 +703,7 @@ export async function upgradeOne(
       ? { pinLocal: (source: string) => pinLocal.pinner.verdictFor(path.dirname(filePath), source) }
       : {}),
   });
-  for (const entry of [...result.upgrades, ...result.repins, ...result.pendingLocal]) {
+  for (const entry of [...result.upgrades, ...result.repins, ...result.pendingLocal, ...result.heldBack]) {
     entry.manifest = displayPath;
   }
 
@@ -657,6 +764,7 @@ export async function upgrade(argv: {
   const upgrades: ImportUpgrade[] = [];
   const repins: LocalRepin[] = [];
   const pendingLocal: PendingLocalImport[] = [];
+  const heldBack: HeldBack[] = [];
   let totalPinned = 0;
   let totalUnchanged = 0;
   let totalSkipped = 0;
@@ -679,6 +787,7 @@ export async function upgrade(argv: {
     upgrades.push(...r.upgrades);
     repins.push(...r.repins);
     pendingLocal.push(...r.pendingLocal);
+    heldBack.push(...r.heldBack);
     totalPinned += r.pinned;
     totalUnchanged += r.unchanged;
     totalSkipped += r.skipped;
@@ -708,6 +817,7 @@ export async function upgrade(argv: {
     upgrades,
     repins,
     pendingLocal,
+    heldBack,
     unchanged: totalUnchanged,
     skipped: totalSkipped,
     errorCount: totalErrors,

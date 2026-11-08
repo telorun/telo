@@ -30,17 +30,10 @@ content:
         kind: CrudUi.Admin
         source: !ref tasksSource
         filters:
-          show: chosen
-          controls: chips
-          summary: chips
-          placement: { kind: Ui.AsidePlacement, side: end }
+          placement: { kind: Ui.AsidePlacement, side: end, show: chosen, controls: chips, summary: chips }
           state: { key: aside, store: { kind: Ui.LocalStore } }
-        create:
-          surface: { kind: Ui.Drawer, side: end }
-          afterSubmit: again
-        edit:
-          surface: { kind: Ui.Panel, address: { name: crudTask } }
-          unsaved: confirm
+        create: { surface: { kind: Ui.Drawer, side: end }, afterSubmit: again }
+        edit: { surface: { kind: Ui.Panel, address: { name: crudTask } }, unsaved: confirm }
 ---
 # The page every application lists at /crud, placing the view.
 kind: Ui.Page

@@ -10,6 +10,7 @@ metadata:
     results with title, URL, snippet and page age for a query, with country,
     language, recency and safe-search settings, paging with an opaque cursor.
     Authenticated with a subscription token on a configurable HTTP client.
+requires: { telo: ">=0.128.0" }
 imports: { WebSearch: ../web-search, Http: ../http-client, Run: ../run }
 exports: { kinds: [WebSearchEngine] }
 ---

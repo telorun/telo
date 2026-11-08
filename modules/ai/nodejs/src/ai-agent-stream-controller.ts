@@ -44,6 +44,8 @@ import {
   type ApproverConfig,
   type ToolSettlement,
 } from "./tool-approval.js";
+import { settleTextCalls } from "./text-call-settlement.js";
+import { checkTextTools, checkTextToolTags, textCallsOf, type TextToolEntry } from "./text-calls.js";
 import { parallelToolLimit } from "./tool-concurrency.js";
 import { toolResultByteLimit } from "./tool-result-bound.js";
 import {
@@ -83,6 +85,7 @@ interface AiAgentStreamResource extends StepBudgetConfig {
   toolProviders?: ToolProviderEntry[];
   approver?: ApproverConfig;
   resolver?: ContentResolverConfig;
+  textTools?: TextToolEntry[];
 }
 
 interface AiAgentStreamInputs {
@@ -137,6 +140,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     this.maxParallelTools = parallelToolLimit(resource.maxParallelTools, label);
     this.budget = stepBudget(resource, label);
     checkApprovalNames(resource.toolProviders, label);
+    checkTextToolTags(resource.textTools, label);
   }
 
   async invoke(
@@ -187,13 +191,15 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
 
     const initial = buildInitialMessages(inputs, this.resource, label);
     // Refused here, from the input alone, so a bad `approvals` fails the CALL.
-    const pending = pendingWork(initial, inputs, label);
+    const pending = pendingWork(initial, inputs, label, (text) => this.textCallsOf(text));
     const mergedOptions = mergeAgentOptions(this.resource, inputs);
 
     // Assemble tools eagerly so a collision / bad-reference error surfaces from
     // invoke() rather than mid-stream. Cached across invokes (list_changed deferred).
     if (!this.assembled) {
-      this.assembled = await assembleTools(this.resource.toolProviders, label);
+      const assembled = await assembleTools(this.resource.toolProviders, label);
+      checkTextTools(this.resource.textTools, assembled, label);
+      this.assembled = assembled;
     }
 
     // Referenced content the run was given is resolved here, so a resolver
@@ -214,7 +220,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     const agentSpan = await openAgentSpan(this.ctx, ctx, agent);
     const spans: CallSpans = { agentSpan, agent, modelName: modelNameOf(model), label };
     let first: OpenedCall | undefined;
-    if (pending.calls.length === 0) {
+    if (pending.calls.length === 0 && pending.textCalls.length === 0) {
       try {
         first = await this.openModelCall(
           this.stepRequest(conversation, mergedOptions, this.assembled, inputs.providerState),
@@ -412,6 +418,19 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
           return;
         }
       }
+      // No text call runs while a call of its reply is pending.
+      if (pending.textCalls.length > 0) {
+        const waiting = yield* settleTextCalls(
+          settlement,
+          pending.textCalls,
+          pending.approvals,
+          conversation,
+        );
+        if (waiting) {
+          yield* interrupt([waiting]);
+          return;
+        }
+      }
 
       for (let step = 0; step < maxSteps; step++) {
         ctx?.cancellation.throwIfCancelled();
@@ -436,8 +455,12 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
         };
         ctx?.cancellation.throwIfCancelled();
 
+        // Derived once the reply has finished: the blocks are decided from the
+        // whole text, whatever the finish reason.
+        const textCalls = this.textCallsOf(turn.text);
+
         // No tools requested this call — the model has answered.
-        if (turn.toolCalls.length === 0) {
+        if (turn.toolCalls.length === 0 && textCalls.length === 0) {
           const total = withTokenQuantity(usage);
           // Reported on the same terms as the buffered agent: the aggregate across
           // every call, since a per-call figure understates a run that looped.
@@ -453,7 +476,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
         yield await conversation.append({
           role: "assistant",
           content: turn.text,
-          toolCalls: turn.toolCalls,
+          ...(turn.toolCalls.length > 0 ? { toolCalls: turn.toolCalls } : {}),
         });
 
         // With onToolError: "throw", dispatch throws — and the throw PROPAGATES,
@@ -461,9 +484,16 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
         // step all see it; none of them could see a data part. Results are
         // reported as each completes; the next call is given them in the order
         // they were asked for.
-        const waiting = yield* settleToolCalls(settlement, turn.toolCalls, new Map(), conversation);
-        if (waiting.length > 0) {
-          yield* interrupt(waiting);
+        if (turn.toolCalls.length > 0) {
+          const waiting = yield* settleToolCalls(settlement, turn.toolCalls, new Map(), conversation);
+          if (waiting.length > 0) {
+            yield* interrupt(waiting);
+            return;
+          }
+        }
+        const textWaiting = yield* settleTextCalls(settlement, textCalls, new Map(), conversation);
+        if (textWaiting) {
+          yield* interrupt([textWaiting]);
           return;
         }
       }
@@ -540,6 +570,11 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
         release();
       }
     }
+  }
+
+  /** The text calls a reply yields. */
+  private textCallsOf(text: string) {
+    return textCallsOf(text, this.resource.textTools, this.ctx);
   }
 
   /** Dispatch one model call under its `chat` span, which stays open until the

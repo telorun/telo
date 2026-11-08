@@ -1062,6 +1062,7 @@ function canonicalizeInputKind(
  *  instances; the need graph, every library's declarations and imports). */
 export function collectModuleDocuments(graph: LoadedGraph): ModuleDocuments[] {
   stampScopedImportIdentity(graph);
+  const reached = reachedModuleSources(graph);
   const out: ModuleDocuments[] = [];
   for (const [source, mod] of graph.modules) {
     if (source === graph.rootSource) continue;
@@ -1080,9 +1081,34 @@ export function collectModuleDocuments(graph: LoadedGraph): ModuleDocuments[] {
       sourceId: mod.owner.source,
       manifests: collectModuleManifests(mod),
       exportedNames,
+      reached: reached.has(mod.owner.source),
     });
   }
   return out;
+}
+
+/** The owner source of every module the entry reaches through import edges —
+ *  edges reconciliation repointed at their winner, so a replaced version is not
+ *  among them. */
+function reachedModuleSources(graph: LoadedGraph): Set<string> {
+  const reached = new Set<string>();
+  const visit = (mod: LoadedModule): void => {
+    if (reached.has(mod.owner.source)) return;
+    reached.add(mod.owner.source);
+    for (const file of [mod.owner, ...mod.partials]) {
+      const edges = [
+        ...(graph.importEdges.get(file.source)?.values() ?? []),
+        ...(graph.scopedImportEdges?.get(file.source) ?? []),
+      ];
+      for (const edge of edges) {
+        const target = graph.modules.get(edge.targetSource);
+        if (target) visit(target);
+      }
+    }
+  };
+  visit(graph.entry);
+  reached.delete(graph.entry.owner.source);
+  return reached;
 }
 
 /** Project a LoadedModule (owner + partials) to a flat ResourceManifest[]

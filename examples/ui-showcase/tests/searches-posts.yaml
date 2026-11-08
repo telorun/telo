@@ -1,0 +1,108 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseSearchTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/ui-showcase` on a database of its own and reads its search
+    pages: the three bars over the posts, one drawn as a search box, one beside
+    the table and one opening with a search already typed, with the search and
+    placement each carries; and the requests those bars send, a search joined
+    to a status filter, the authors present under a search, and the refusal of
+    a search over the authors, which declare none.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's database goes in; see `serves-the-showcase.yaml`.
+  dbFile:
+    env: UI_SHOWCASE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: browser }
+baseUrl: http://127.0.0.1:8158
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    variables:
+      dbFile: !cel "variables.dbFile.joinPath('ui-showcase-search-' + uuidv4() + '.db')"
+    ports: { http: 8158 }
+targets:
+  - !ref app
+steps:
+  - name: box
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/search" }
+  - name: beside
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/search-beside" }
+  - name: releases
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/search-releases" }
+  - name: bars
+    value:
+      box: !cel "steps.box.result.body.children[0]"
+      beside: !cel "steps.beside.result.body.children[0]"
+      releases: !cel "steps.releases.result.body.children[0]"
+
+  # Each bar's search and the placement that draws it. The first two keep
+  # their state under one key, so one address opens either.
+  - name: verifyBars
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        search: !cel "[steps.bars.result.box.search, steps.bars.result.beside.search, steps.bars.result.releases.search]"
+        placement: !cel "[steps.bars.result.box.placement, steps.bars.result.beside.placement, steps.bars.result.releases.placement]"
+        state: !cel "[steps.bars.result.box.state.key, steps.bars.result.beside.state.key]"
+      expected:
+        search:
+          - { pinned: false, default: null }
+          - { pinned: true, default: null }
+          - { pinned: false, default: release }
+        placement:
+          - type: searchBox
+            placeholder: { lang: en, message: ["Search posts, or filter by author, status or date"] }
+          - type: aside
+            side: start
+            show: chosen
+            controls: chips
+            summary: none
+            compact: { type: collapsible, open: false, show: chosen, controls: chips, summary: none }
+          - { type: searchBox, placeholder: { set: Ui.Translations, key: searchAndFilter } }
+        state: [posts, posts]
+
+  # The requests the bars send: a search joined to a filter, the authors
+  # present under a search, and a search over a collection declaring none.
+  - name: filtered
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/posts?search=back&status.in=draft&status.in=review&sort=title" }
+  - name: facet
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/posts?facet=authorId&search=back" }
+  - name: refused
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/authors?search=sofia" }
+  - name: verifyRequests
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        filtered: !cel "[steps.filtered.result.status, steps.filtered.result.body.rows.map(r, r.title), steps.filtered.result.body.total]"
+        facet: !cel "steps.facet.result.body"
+        refused: !cel "[steps.refused.result.status, steps.refused.result.body]"
+      expected:
+        filtered: [200, [Offline sync without tears, Writing release notes people read], 2]
+        facet: { values: [{ value: 1, count: 2 }, { value: 3, count: 1 }], next: null }
+        refused:
+          - 400
+          - type: about:blank
+            title: Bad Request
+            status: 400
+            detail: The list request is not valid.
+            code: ERR_CRUD_QUERY_INVALID
+            data:
+              issues:
+                - { pointer: /query/search, keyword: additionalProperties, params: { additionalProperty: search } }

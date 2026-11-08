@@ -112,4 +112,4 @@ Two queues with one name in one table would deliver, deduplicate and purge each 
 
 ## Runtime requirement
 
-`requires: telo: ">=0.129.0"` — the controllers use the field-less `ctx.requireZone` and the engine Schema's `currentInstantPlus` / `instantParameter` / `skipLockedClause`.
+A `restrictions:` entry requires telo `>=0.129.0` — the controllers use the field-less `ctx.requireZone` and the engine Schema's `currentInstantPlus` / `instantParameter` / `skipLockedClause`.

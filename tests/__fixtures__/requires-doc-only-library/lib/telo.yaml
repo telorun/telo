@@ -1,0 +1,3 @@
+kind: Telo.Library
+metadata: { name: FutureLib, version: 1.0.0 }
+requires: { telo: ">=999.0.0" }

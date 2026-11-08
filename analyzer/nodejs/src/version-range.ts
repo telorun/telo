@@ -61,11 +61,16 @@ export interface VersionComparator {
   parsed: ParsedModuleVersion;
 }
 
-/** A parsed range: every comparator must hold. Never empty. */
+/** A parsed range: every comparator must hold. Never empty, except for the
+ *  `>=unreleased` floor, which `requires-block.ts` reads as `unreleased` with no
+ *  comparator. */
 export interface VersionRange {
   /** The range exactly as authored, quoted verbatim in diagnostics. */
   raw: string;
   comparators: VersionComparator[];
+  /** `>=unreleased`: met only by a build of the pending telo release, whose
+   *  version carries the `+unreleased` build identifier. */
+  unreleased?: true;
 }
 
 /** Why a range string was refused. `hint` is the spelling to use instead, when
@@ -189,12 +194,26 @@ export function parseVersionRange(
   return { ok: true, range: { raw: text, comparators } };
 }
 
+/** A version with its build metadata split off: precedence ignores it, and the
+ *  `unreleased` identifier is what a build of a pending release carries. */
+export function splitBuildMetadata(version: string): { core: string; unreleased: boolean } {
+  const plus = version.indexOf("+");
+  if (plus < 0) return { core: version, unreleased: false };
+  return {
+    core: version.slice(0, plus),
+    unreleased: version.slice(plus + 1).split(".").includes("unreleased"),
+  };
+}
+
 /** True when `version` satisfies every comparator. An unparseable `version` is
  *  `false` — never a pass, since the caller is asking whether a real runtime is
- *  admitted and "cannot tell" must not read as "yes". */
+ *  admitted and "cannot tell" must not read as "yes". Build metadata is ignored
+ *  by the comparators, and is what the `unreleased` floor reads. */
 export function rangeAccepts(range: VersionRange, version: string): boolean {
-  const parsed = parseModuleVersion(version);
+  const { core, unreleased } = splitBuildMetadata(version);
+  const parsed = parseModuleVersion(core);
   if (!parsed) return false;
+  if (range.unreleased && !unreleased) return false;
   return range.comparators.every((c) => {
     const cmp = compareParsedModuleVersions(parsed, c.parsed);
     switch (c.operator) {

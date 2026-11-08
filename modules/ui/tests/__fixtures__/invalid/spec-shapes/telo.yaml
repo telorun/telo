@@ -59,10 +59,13 @@ metadata: { name: placementSurface }
 spec:
   type: overlay
   surface: { type: panel, side: end, size: medium, dismiss: { escape: true, closeButton: true } }
+  show: all
+  controls: direct
+  summary: none
 ---
 kind: Echo.TypedPlacement
 metadata: { name: placementCompact }
-spec: { type: above, compact: { type: aside, side: start } }
+spec: { type: above, show: all, controls: direct, summary: none, compact: { type: aside, side: start } }
 ---
 kind: Echo.TypedNode
 metadata: { name: filtersPlacement }
@@ -72,11 +75,8 @@ node:
   basePath: /api/todos
   fields: []
   content: { type: text, fill: false, text: { set: Ui.Translations, key: loading } }
-  show: all
   placement: { type: nowhere }
-  controls: direct
   apply: commit
-  summary: none
   state: { address: false, store: { type: memory }, fields: [] }
   presets: []
 ---
@@ -88,10 +88,7 @@ node:
   basePath: /api/todos
   fields: []
   content: { type: text, fill: false, text: { set: Ui.Translations, key: loading } }
-  show: all
-  placement: { type: above }
-  controls: direct
+  placement: { type: above, show: all, controls: direct, summary: none }
   apply: commit
-  summary: none
   state: { address: false, store: { type: server }, fields: [] }
   presets: []

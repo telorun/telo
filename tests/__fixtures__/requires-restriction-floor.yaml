@@ -1,0 +1,6 @@
+# A restrictions: entry stating a floor no released runtime meets.
+kind: Telo.Application
+metadata: { name: RequiresRestrictionFloor, version: 1.0.0 }
+restrictions:
+  - requires: { telo: ">=999.0.0" }
+    reason: Needs a kernel that keeps the cache across a reload.

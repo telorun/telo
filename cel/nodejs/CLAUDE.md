@@ -160,17 +160,22 @@ name the expression bound takes precedence, exactly as for a bare name — unles
 a quoted or absolute name as a namespaced call; and container-dependent resolution of a **bare** name,
 which would mean inventing a container Telo never declares.
 
-**A single-line literal never holds a line feed, in any form.** A raw literal lets a backslash take the
-next character with it, both kept as written (`r'\''` is a backslash and a quote) — except a line feed
-in a single-line literal: there the backslash is content and the line feed ends the literal
-unterminated. A triple-quoted raw literal takes the line feed like any other character, and a
-backslash that ends the source is content.
+**A single-line literal never holds a line break — a line feed or a carriage return — in any form.** A
+raw literal lets a backslash take the next character with it, both kept as written (`r'\''` is a backslash
+and a quote) — except a line feed or a carriage return in a single-line literal: there the backslash is
+content and the break ends the literal unterminated. An escaped literal's backslash takes the next code
+unit whatever it is, so `\` followed by a break is the ordinary `invalid_escape_sequence`. A triple-quoted
+literal, raw or not, takes both as content, and a backslash that ends the source is content. A quoted
+member name ends unterminated at either too, and the writer refuses a member name holding either.
 
-**One reading is recorded as interim, not intended: a carriage return.** It is content in a
-single-line string, a bytes literal and a quoted member name, and only a line feed ends one, where
-cel-spec's single-line literal excludes a carriage return too. It stays because a conformance row pins
-`'a<CR>b'` reading clean, and the vectors do not change in this loop. The writer accordingly still
-writes a member name holding one.
+**`quotedLiteralEnd(source, quoteAt)` is the lexer's delimiting, exported for a host that must find where a
+quoted literal ends inside text it does not tokenize** (Telo's `${{ … }}` hole reader). It answers the offset
+just past a string, bytes or backtick-quoted literal, or `undefined` when it never ends, deciding the prefix
+from the identifier run directly before the quote (`r`, `b`, `br` in any case — never `rb`) and decoding
+nothing, so a literal the lexer refuses for a bad escape still ends where the language ends it.
+`tests/quoted-literal-end.test.ts` holds it to the lexer over every string up to length 5 of the alphabet
+that matters, and pins the prefix rule's explicit rows (a raw marker before a line break), which that
+enumeration cannot reach; the two agree on every row the test holds, not beyond it.
 
 **Two cel-go libraries ship and the rest do not.** The **optional** library enters whole under
 `enableOptionalTypes` — **whole including its presence reading**: cel-go answers "not found" for a

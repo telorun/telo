@@ -13,10 +13,10 @@ metadata:
     Import it and hand its one ready-made model to a recognizer, beside any other
     languages a page mixes. Packaged from the integer-quantized best models of the
     tesseract-ocr project.
-requires:
-  # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
-  # in `telo check` and in release planning from pins.
-  telo: ">=0.100.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.100.0" }
+    reason: "`!module-path` naming a `sources:`-staged model counts as present in `telo check` and in release planning from pins only from 0.100.0."
 imports: { TesseractModel: ../../tesseract-model }
 exports: { resources: [ita] }
 assets: [./tessdata/]

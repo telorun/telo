@@ -11,9 +11,10 @@ metadata:
     contract every provider implements. Tells a refused message apart from an
     unreachable or failing service, and includes an in-memory capture transport
     that records each message so tests can read it back.
-requires:
-  # 0.100.0: `throws:` on a Telo.Abstract, the ceiling every transport falls within.
-  telo: ">=0.100.0"
+requires: { telo: ">=unreleased" }
+restrictions:
+  - requires: { telo: ">=0.100.0" }
+    reason: "The `throws:` ceiling on a `Telo.Abstract` that every transport falls within, which a kernel before 0.100.0 does not enforce."
 exports: { kinds: [Transport, Capture, CaptureRead] }
 ---
 # The provider-neutral contract. Anything that sends a text message types its

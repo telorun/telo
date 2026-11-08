@@ -29,6 +29,8 @@ metadata: { name: above }
 kind: Ui.AsidePlacement
 metadata: { name: beside }
 side: end
+show: chosen
+summary: chips
 compact: !ref folded
 ---
 kind: Ui.AsidePlacement
@@ -37,10 +39,14 @@ metadata: { name: besideBare }
 kind: Ui.CollapsiblePlacement
 metadata: { name: folded }
 open: true
+controls: chips
 ---
 kind: Ui.OverlayPlacement
 metadata: { name: floating }
 surface: { kind: Ui.Drawer, side: bottom, address: { name: filters } }
+show: chosen
+controls: chips
+summary: chips
 ---
 kind: Ui.SessionStore
 metadata: { name: tab }
@@ -110,11 +116,8 @@ presets:
     values:
       - { property: status, operator: eq, value: done }
 policy:
-  show: chosen
   placement: !ref floating
-  controls: chips
   apply: button
-  summary: chips
   state:
     key: todos
     address: true
@@ -176,11 +179,8 @@ steps:
         plain: !cel >-
           {
             'basePath': steps.plain.result.node.basePath,
-            'show': steps.plain.result.node.show,
             'placement': steps.plain.result.node.placement,
-            'controls': steps.plain.result.node.controls,
             'apply': steps.plain.result.node.apply,
-            'summary': steps.plain.result.node.summary,
             'state': steps.plain.result.node.state,
             'presets': steps.plain.result.node.presets,
             'firstField': steps.plain.result.node.fields[0]
@@ -188,12 +188,10 @@ steps:
         declaredAboveIsTheSame: !cel "steps.declaredAbove.result.node == steps.plain.result.node"
         written: !cel >-
           {
-            'show': steps.written.result.node.show,
             'placement': steps.written.result.node.placement.type,
             'surface': steps.written.result.node.placement.surface.type,
-            'controls': steps.written.result.node.controls,
+            'display': [steps.written.result.node.placement.show, steps.written.result.node.placement.controls, steps.written.result.node.placement.summary],
             'apply': steps.written.result.node.apply,
-            'summary': steps.written.result.node.summary,
             'state': steps.written.result.node.state,
             'presets': steps.written.result.node.presets
           }
@@ -202,9 +200,21 @@ steps:
         nullable: !cel "steps.nullable.result.node.fields.map(f, has(f.default) ? [f.property, f.control, f.default] : [f.property, f.control])"
         nullablePresets: !cel "steps.nullable.result.node.presets"
       expected:
-        above: { type: above }
-        beside: { type: aside, side: end, compact: { type: collapsible, open: true } }
-        besideBare: { type: aside, side: start, compact: { type: collapsible, open: false } }
+        above: { type: above, show: all, controls: direct, summary: none }
+        beside:
+          type: aside
+          side: end
+          show: chosen
+          controls: direct
+          summary: chips
+          compact: { type: collapsible, open: true, show: chosen, controls: chips, summary: chips }
+        besideBare:
+          type: aside
+          side: start
+          show: all
+          controls: direct
+          summary: none
+          compact: { type: collapsible, open: false, show: all, controls: direct, summary: none }
         floating:
           type: overlay
           surface:
@@ -214,25 +224,23 @@ steps:
             modal: true
             dismiss: { escape: true, outside: true, closeButton: true }
             address: { name: filters }
+          show: chosen
+          controls: chips
+          summary: chips
         tab: { type: session }
         plain:
           basePath: /api/todos
-          show: all
-          placement: { type: above }
-          controls: direct
+          placement: { type: above, show: all, controls: direct, summary: none }
           apply: commit
-          summary: none
           state: { address: false, store: { type: memory }, fields: [text, isDone, priority, effort, status, archived, rank] }
           presets: []
           firstField: { property: text, operator: contains, label: { text: Task, context: null, lang: und, computed: false }, schema: { type: string, title: Task }, pinned: false, control: auto, values: all, labels: [] }
         declaredAboveIsTheSame: true
         written:
-          show: chosen
           placement: overlay
           surface: drawer
-          controls: chips
+          display: [chosen, chips, chips]
           apply: button
-          summary: chips
           state: { key: todos, address: true, store: { type: session }, fields: [text, isDone, priority, effort, status] }
           presets:
             - label: { text: Urgent, context: null, lang: und, computed: false }

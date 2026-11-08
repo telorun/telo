@@ -16,7 +16,9 @@
 //!
 //! File twins stay keyed by name within the `sdk` package:
 //!
+//! * `cel_host_value.rs` — `sdk/nodejs/src/cel-host-value.ts`
 //! * `cel_value_identity.rs` — `sdk/nodejs/src/cel-value-identity.ts`
+//! * `compiled_value.rs` — `sdk/nodejs/src/compiled-value.ts` (its data half)
 //! * `controller_protocol.rs` — `sdk/nodejs/tests/controller-protocol.test.ts`
 //! * `failure_trace.rs` — `sdk/nodejs/src/failure-trace.ts`
 //! * `function_controller.rs` — `sdk/nodejs/src/function-controller.ts`
@@ -32,7 +34,9 @@
 
 pub use serde_json::Value;
 
+mod cel_host_value;
 mod cel_value_identity;
+pub mod compiled_value;
 mod controller_protocol;
 mod error;
 pub mod failure_trace;
@@ -45,7 +49,9 @@ mod traits;
 pub mod typed_frame;
 pub mod value_type;
 
+pub use cel_host_value::host_value_of;
 pub use cel_value_identity::{Bytes, Duration, Timestamp, Uint64};
+pub use compiled_value::{is_parameterized_sql, ParameterizedSql};
 // The CEL value domain, re-exported by name from `telorun-cel-value`.
 pub use cel_value_identity::{
     cel_duration_from_nanos, cel_map_from_entries, cel_map_keys, cel_none, cel_some, cel_timestamp,

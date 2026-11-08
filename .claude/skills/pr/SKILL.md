@@ -150,18 +150,37 @@ never yours.
 
 ## 3. Keep CI green
 
-- **Watch the PR's checks** with `gh pr checks <n>`. The first poll is **10 minutes** after the
-  push, then every **minute**, until no check is pending. Use a background watch that wakes you,
-  never a foreground sleep. Run this in the background (`run_in_background`), with the PR's
-  number in place of `<n>`; it prints the final table of checks and exits, which is what wakes
-  you:
+- **Watch the PR's checks, and wake on the first failure.** The first poll is **10 minutes**
+  after the push, then every **minute**, until a check fails or none is pending. Use a background
+  watch that wakes you, never a foreground sleep. Run this in the background
+  (`run_in_background`), with the PR's number in place of `<n>`; it prints the checks and exits,
+  which is what wakes you:
 
   ```sh
-  sleep 600; while true; do out=$(gh pr checks <n> 2>&1); if echo "$out" | grep -qE "\bpending\b|\bqueued\b|in_progress"; then sleep 60; else echo "$out"; break; fi; done
-  ```- **A failing check:** read its log with `gh run view --log-failed` and find the cause.
+  sleep 600; while true; do out=$(gh pr checks <n> --json name,bucket,link 2>&1); echo "$out" | jq -e 'any(.[]; .bucket == "fail") or all(.[]; .bucket != "pending")' >/dev/null; s=$?; if [ $s -ne 1 ]; then echo "$out"; break; fi; sleep 60; done
+  ```
+
+  It also exits when `gh` itself fails; read the output, and restart the watch after a
+  transient error.
+- **A failing check is fixed as soon as it appears**, while the rest of the run is still going —
+  never wait for the other checks to finish first.
+- **Read a failing check's log**, even while its run is in progress: the run id is in the check's
+  `link` (`…/actions/runs/<run-id>/job/…`); list its failed jobs with
+  `gh run view <run-id> --json jobs --jq '.jobs[] | select(.conclusion == "failure") | {name, databaseId}'`
+  and read each with `gh run view --job <databaseId> --log-failed`. Find the cause.
   - **A fix inside this change:** make it, re-run the failing suite locally, then
-    `git commit --amend --no-edit` (still no footer), bring the branch up to date as in step 2, and `git push --force-with-lease origin <branch>`. **Never add a new commit** to fix CI. Then
-    restart the watch from the 10-minute first poll.
+    `git commit --amend --no-edit` (still no footer). **Never add a new commit** to fix CI. Do
+    not push yet — sweep first (below).
+  - **Sweep CI before every push.** Bring the branch up to date and run the changeset gate as in
+    step 2; then, as the last thing before the push, read the checks once more
+    (`gh pr checks <n> --json name,bucket,link`). Every failing check there must be either fixed
+    in the commit you are about to push or a failure outside this change (below). One that is
+    neither — it failed while you were fixing the last — is read, fixed, re-run locally and
+    amended the same way, and the sweep runs again. Push only when a sweep finds no failure left
+    unfixed locally.
+  - **Checks still running do not hold the push.** Push as soon as the sweep is clean —
+    `git push --force-with-lease origin <branch>` — and restart the watch from the 10-minute
+    first poll. The push starts a fresh run.
   - **A flaky test** — one that fails, then passes on a re-run of the same commit, whether or not
     this change touched it — is fixed in this PR, not re-run until it happens to pass. Find why it
     is non-deterministic (a timing window, shared state between cases, a port or file two tests
@@ -171,8 +190,10 @@ never yours.
     reported with its failing log line and your finding; do not paper over it with retries or
     longer timeouts alone.
   - **A failure outside this change** — an infrastructure error, a check that also fails on
-    `main`: re-run it once with `gh run rerun --failed`. If it fails again, stop and report it
-    with its log line; do not fix other code to get green.
+    `main`: re-run it once with `gh run rerun <run-id> --failed` after its run has finished
+    (GitHub refuses to re-run a run in progress). A push carrying a fix for another check re-runs
+    it anyway, and counts as that re-run. If it fails again, stop and report it with its log line;
+    do not fix other code to get green.
   - **The same check failing after three amend rounds:** stop and report. Grinding is not
     progress.
 - **A pull request that reports conflicts with `main`, or falls behind it while its checks run,**
@@ -191,7 +212,7 @@ End with one message:
   you resolved;
 - when you staged the scope yourself, the files you staged, the working files that rode along,
   and the changed files you left out;
-- each CI round (what failed, what you amended);
+- each CI round (what failed, what you amended, which failures each push carried fixes for);
 - the final state of every check.
 
 A stop for any other reason gets the same message, saying where it stopped and why.
@@ -206,6 +227,8 @@ A stop for any other reason gets the same message, saying where it stopped and w
 - Add a new commit to fix CI; amend instead.
 - Push a branch that does not contain its base's head, or over commits its own remote holds.
 - Push while `node scripts/check-changeset-status.mjs origin/main` fails.
+- Wait for the remaining checks before fixing a failed one, or push a CI fix while a check that
+  failed from this change is not yet fixed locally.
 - Commit onto a branch whose pull request has already been merged or closed.
 - Add a change to an open pull request whose description does not cover it.
 - Leave a pull request holding more than one commit: fold its own work into its commit, and give

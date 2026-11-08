@@ -24,14 +24,17 @@
 //! - `readHostValue`, `noCelTypeRefusal`'s `undefined` wording, the thenable check at
 //!   dispatch and a host implementation's answer — no Rust value can be awaited or be
 //!   `undefined`.
-//! - `NamespaceImplementation` — it is [`CelImplementation`](crate::CelImplementation);
-//!   `NamespaceDispatch` is `EvaluateOptions::namespace_function`'s type.
+//! - `NamespaceDispatch` — it is `EvaluateOptions::namespace_function`'s type.
 //! - `EvaluationFrame`, `CelStep`, `CompileTarget`, `MemberReads`, `memberReadsOf`,
 //!   `callSiteOf` — the emitter-facing shape of a step; the evaluator's frame, its
 //!   snapshot and its sites are crate-private here.
 //! - `CallSite`'s array entry point `call` and its `call0` … `call4` — one entry point
 //!   takes the arguments as a slice of the operand stack.
+//!
+//! [`NamespaceImplementation`] answers a [`HostFailure`] where Node's namespaced function
+//! throws its host's own error, which ends the evaluation where it is raised.
 
+use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::num::NonZeroUsize;
@@ -48,6 +51,51 @@ use crate::function_registry::{FunctionRegistry, Resolution, ResolutionFailure};
 use crate::member_read::{cel_has, cel_lookup, cel_read, lookup_absence, lookup_error, HostFields, Lookup};
 use crate::runtime_library::{implementation_of, CelCallContext, CelImplementation, CALL_SITE_DIRECT_ARITY};
 use crate::signature::{CallForm, CelSignature};
+
+/// What a namespaced function IS: a value, an error value as any implementation answers
+/// one, or the host's own failure. A failure ends the evaluation at once — no later
+/// operand, element or call is evaluated, and no `&&`, `||`, `?:` or comprehension sees
+/// it — and leaves it as the evaluation's `Host` error, so a failure carrying a host's own
+/// code is never absorbed by a short circuit.
+pub type NamespaceImplementation =
+    Arc<dyn Fn(&CelCallContext, &[CelValue]) -> Result<CelValue, HostFailure> + Send + Sync>;
+
+/// A host's own failure, carried out of an evaluation whole. Opaque to the engine; the host
+/// that raised it reads it back with [`HostFailure::downcast`]. Two failures are equal only
+/// when they are the same failure.
+pub struct HostFailure(Box<dyn Any + Send + Sync>);
+
+impl HostFailure {
+    pub fn new<T: Any + Send + Sync>(payload: T) -> Self {
+        Self(Box::new(payload))
+    }
+
+    /// The payload, or the failure unchanged when it holds another type.
+    pub fn downcast<T: Any>(self) -> Result<T, HostFailure> {
+        match self.0.downcast::<T>() {
+            Ok(payload) => Ok(*payload),
+            Err(payload) => Err(Self(payload)),
+        }
+    }
+
+    pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+        self.0.downcast_ref::<T>()
+    }
+}
+
+impl fmt::Debug for HostFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("HostFailure(..)")
+    }
+}
+
+impl PartialEq for HostFailure {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
+    }
+}
+
+impl Eq for HostFailure {}
 
 /// A tree no evaluation can be compiled from. Its message is Node's.
 #[derive(Clone, PartialEq, Eq, Debug)]

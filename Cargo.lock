@@ -1430,6 +1430,9 @@ version = "0.132.0"
 dependencies = [
  "serde_json",
  "serde_yaml",
+ "telorun-cel",
+ "telorun-cel-value",
+ "telorun-sdk-core",
 ]
 
 [[package]]

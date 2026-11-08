@@ -142,7 +142,7 @@ fn write_field_name(out: &mut String, text: &str, quoted: bool) -> Result<(), Ce
         out.push_str(text);
         return Ok(());
     }
-    if text.contains('`') || text.contains('\n') || text.is_empty() {
+    if text.contains('`') || text.contains('\n') || text.contains('\r') || text.is_empty() {
         return Err(refusal(format!("{} cannot be written as a member name", json_quote(text))));
     }
     out.push('`');

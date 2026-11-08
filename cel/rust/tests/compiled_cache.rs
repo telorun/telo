@@ -15,7 +15,8 @@ use std::sync::Arc;
 use evaluation_support::{bindings, loose, program_answer};
 use telorun_cel::{
     CelActivation, CelCallContext, CelEnvironment, CelEnvironmentOptions, CelHostValue, CelImplementation,
-    CelProgram, CelValue, EvaluateOptions, FunctionMetadata, NamespaceOptions, NominalTypeDefinition, PropertyMap,
+    CelProgram, CelValue, EvaluateOptions, FunctionMetadata, NamespaceImplementation, NamespaceOptions,
+    NominalTypeDefinition, PropertyMap,
 };
 use value_support::{i, rec, s};
 
@@ -173,7 +174,7 @@ fn forgets_what_it_compiled_when_a_namespace_is_registered() {
     environment.register_namespace("Billing", vec!["total(int): int".into()], NamespaceOptions::default()).unwrap();
     let compiled = environment.compile("Billing.total(1)").unwrap();
     assert!(!Arc::ptr_eq(&held, &compiled));
-    let seven: CelImplementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| i(7));
+    let seven: NamespaceImplementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| Ok(i(7)));
     let bind = |namespace: &str, name: &str| Some(Arc::clone(&seven));
     let options = EvaluateOptions { namespace_function: Some(&bind) };
     let answer = |program: &CelProgram| evaluation_support::answer(program.evaluate(&(), &options).map_err(Into::into));

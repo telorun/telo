@@ -168,3 +168,16 @@ fn answers_whether_a_type_converts_to_text_which_is_the_environments_own_string(
     environment.register_function("string(Money): string", FunctionMetadata::default()).unwrap();
     assert!(environment.converts_to_string(&type_of(&environment, "paid")));
 }
+
+/// This crate's own: the listing of one name, which a host asks instead of listing every
+/// registration and filtering it.
+#[test]
+fn lists_the_registrations_of_one_name_as_the_whole_listing_lists_them() {
+    let mut environment = CelEnvironment::default();
+    environment.register_type(money()).unwrap();
+    environment.register_function("string(Money): string", FunctionMetadata::default()).unwrap();
+    let listed: Vec<_> = environment.definitions().functions.into_iter().filter(|entry| entry.name == "string").collect();
+    assert_eq!(environment.functions_named("string"), listed);
+    assert_eq!(listed.last().map(|entry| entry.signature.as_str()), Some("string(Money): string"));
+    assert!(environment.functions_named("nothing").is_empty());
+}

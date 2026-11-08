@@ -264,6 +264,24 @@ export function deniedToolRecord(
   };
 }
 
+/** A call refused before it could be dispatched — a text call whose
+ *  `arguments` failed to evaluate. It is reported under its own
+ *  `execute_tool` span and handled by `onToolError` as a tool's failure is. */
+export async function refuseToolCall(
+  call: ToolCall,
+  err: unknown,
+  onToolError: "feedback" | "throw",
+  maxToolResultBytes: number | undefined,
+  spans: SpanOpener,
+  agent: AgentSpanIdentity,
+  ctx: InvokeContext | undefined,
+): Promise<ToolResultRecord> {
+  const span = await openToolSpan(spans, ctx, agent, { name: call.name, callId: call.id });
+  await settleFailure(span, err);
+  if (onToolError === "throw" || isCancellationError(err) || isSuspension(err)) throw err;
+  return toolFailureRecord(call, err, maxToolResultBytes);
+}
+
 /** Execute one model-requested tool call and return a neutral result record. On
  *  `onToolError: "feedback"` a failure (unknown tool or a throw from the tool)
  *  becomes an `error: true` record whose `content` is the error string fed back to
