@@ -1,5 +1,7 @@
 # @telorun/record-stream
 
+## 0.21.2
+
 ## 0.21.1
 
 ## 0.8.1

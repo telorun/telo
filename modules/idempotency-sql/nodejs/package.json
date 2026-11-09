@@ -1,6 +1,6 @@
 {
   "name": "@telorun/idempotency-sql",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Telo idempotency-sql module — the SQL family's shared half of the transactional idempotency ledger: the ledger and once controllers, written against the Sql contracts and never an engine.",
   "license": "MIT",
