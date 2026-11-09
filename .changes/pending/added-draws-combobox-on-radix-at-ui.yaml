@@ -1,4 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: Draws Combobox on Radix at ui_react_controls-4, the search box's suggestion list
-  on Radix's popover, and styles the search box, its chips and the suggestion list.

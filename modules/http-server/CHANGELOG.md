@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.44.0 - 2026-11-09
+### Added
+* Http.Server reports the URL its socket listens on as status.localUrl (https under tls, a wildcard address written as localhost), and its http.server.started record gains url.full with the same value.
+* Http.Server serves a host-supplied socket: when the process embedding the kernel holds the socket of listen.port, the server serves the connections that host admits (the bytes the host already read replayed first, WebSocket and other upgrades included) and binds nothing, and gives the socket back when it stops. Requires the telo release that carries it.
+### Fixed
+* `requires.telo` now holds the measured floor: the lowest published telo that reads this module.
+
 ## 0.43.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

@@ -1,6 +1,0 @@
-modules:
-  modules/ui: Added
-body: "A Ui.Page's title is optional: a page without one draws no heading, is left out
-  of an omitted navigation, and a navigation entry naming it must give its own text. The
-  page's reading and document carry no title then, and preparedNavigation refuses such
-  an entry with ERR_UI_NAVIGATION_PAGE_UNTITLED."

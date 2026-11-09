@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.34.0 - 2026-11-09
+### Added
+* The primer teaches search in a filter bar: a collection's query.search and the search= request parameter, the bar's search, the Ui.SearchBoxPlacement search box with its typed filter tokens (status:draft,review, publishedOn>=2026-11-01), and show, controls and summary written on the filter placement.
+
 ## 0.33.0 - 2026-11-08
 ### Added
 * The primer teaches that a module's docs link only to telo.run pages or another module's hub page, never into the repository tree or to telo.run/next.

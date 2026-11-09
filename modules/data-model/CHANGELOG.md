@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 - 2026-11-09
+### Added
+* A collection can declare `query.search: { properties }`, a list of at least one string property: one text matches a record when any of them contains it, ignoring case, and a request carries it as `search=<text>`. `search` is now a reserved query name, so a filter on a property called `search` is refused (`DATA_MODEL_FILTER_RESERVED_NAME`), and a search over an undeclared property or one that is not a string is refused (`DATA_MODEL_SEARCH_UNKNOWN_PROPERTY`, `DATA_MODEL_SEARCH_UNSUPPORTED`).
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.2.2 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

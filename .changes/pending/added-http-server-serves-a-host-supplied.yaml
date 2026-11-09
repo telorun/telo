@@ -1,7 +1,0 @@
-modules:
-  modules/http-server: Added
-body: "Http.Server serves a host-supplied socket: when the process embedding the kernel
-  holds the socket of listen.port, the server serves the connections that host admits
-  (the bytes the host already read replayed first, WebSocket and other upgrades
-  included) and binds nothing, and gives the socket back when it stops. Requires the
-  telo release that carries it."
