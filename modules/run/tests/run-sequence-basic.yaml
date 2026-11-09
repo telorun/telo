@@ -4,7 +4,7 @@ imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testInvokeStep
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInvokeStep }
 steps:
   - name: addNumbers

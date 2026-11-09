@@ -24,7 +24,7 @@ metadata: { name: impatient }
 languages: [!ref Tesseract.eng]
 maxRecognitionTime: 1ms
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refusesBadCalls }
 steps:
   - name: notAnImage

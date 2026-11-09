@@ -20,6 +20,7 @@ metadata:
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 include: [./__fixtures__/stack-processes/model.yaml]
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -30,7 +31,6 @@ imports:
   Graph: ../../../graph
   GraphLayers: ../../../graph-layers
   App: ../../../app
-  Run: ../../../run
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
@@ -78,7 +78,7 @@ kind: GraphLayers.ListRevisions
 metadata: { name: topRevisions }
 store: !ref top
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -88,7 +88,7 @@ steps:
 # Every layer is registered, and each layer to pin has a revision, before any
 # child starts: the children race on `top` rather than on a layer's first
 # write. A draft opened and discarded registers a layer and leaves nothing.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: register }
 steps:
   - name: left
@@ -150,7 +150,7 @@ steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 # Both moves were applied, one after the other.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: twoPins }
 steps:
   - name: awaitLeft
@@ -185,7 +185,7 @@ steps:
         pinnedAt: [1, 1]
 ---
 # A draft of `top` that pins a third layer and states one person.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stageDraft }
 steps:
   - name: open
@@ -243,7 +243,7 @@ steps:
 # allows. The publish first: revision 3 holds the third pin and the write is
 # revision 4. The write first: it is revision 3, the publish was refused as
 # stale, and the pin is still only in the draft.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: publishOrWrite }
 steps:
   - name: awaitPublisher
@@ -319,7 +319,7 @@ steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 # One label names one revision: whichever asked second was refused.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: oneLabel }
 steps:
   - name: awaitOne

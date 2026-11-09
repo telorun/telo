@@ -10,12 +10,12 @@ metadata:
     route and drained, so the full tool-call → tool-result → text-delta → finish
     order and the pinned tool-result fields are asserted without a live provider.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
   Http: ../../http-server
   Ndjson: ../../ndjson-codec
   JS: ../../javascript
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testAgentStream
@@ -123,18 +123,18 @@ inputType:
     required: [ url, prompt ]
 outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: true } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testAgentStream }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8951 }
     openapi: { info: { title: AgentStream test, version: 1.0.0 } }
     mounts:
       - path: /
         mount: !ref api
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: hit
     inputs: { url: http://127.0.0.1:8951/chat, prompt: "multiply 6 and 7" }

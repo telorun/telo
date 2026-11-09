@@ -9,7 +9,6 @@ metadata:
     declaring a workflow is enough to serve it; this is each of them, served.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 targets:
@@ -17,20 +16,16 @@ targets:
 ---
 kind: HttpClient.Request
 metadata: { name: call }
-client:
-  kind: HttpClient.Client
-  baseUrl: http://127.0.0.1:8111
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8111 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8111
-    variables:
-      orderLimitCents: 10000
+    ports: { http: 8111 }
+    variables: { orderLimitCents: 10000 }
 targets:
   - !ref app
 steps:

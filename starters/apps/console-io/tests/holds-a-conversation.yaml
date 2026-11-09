@@ -10,7 +10,6 @@ metadata:
 imports:
   App: ../../../../modules/app
   Channel: ../../../../modules/channel
-  Run: ../../../../modules/run
   Assert: ../../../../modules/assert
 targets:
   - !ref app
@@ -31,7 +30,7 @@ kind: Channel.SendLine
 metadata: { name: send }
 channel: !ref app
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: question

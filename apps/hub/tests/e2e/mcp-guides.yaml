@@ -12,7 +12,6 @@ metadata:
     the server's own answer is what is asserted.
 imports:
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref initialize_InstructionsNameTheGuidesWithinTheBound
@@ -31,7 +30,7 @@ inputs:
     accept: application/json, text/event-stream
   responseType: text
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: initialize_InstructionsNameTheGuidesWithinTheBound }
 steps:
   - name: init
@@ -56,7 +55,7 @@ steps:
               .all(n, i.contains('`' + n + '`'))})[0]
       expected: { withinBound: true, namesGuides: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: toolsList_OffersTheThreeGuides }
 steps:
   - name: list
@@ -94,7 +93,7 @@ steps:
 ---
 # Each guide tool answers one text block, starting with its heading and within
 # the 32768-byte bound.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: toolsCall_AnswersEachGuideWhole }
 steps:
   - name: buildUi

@@ -9,15 +9,11 @@ metadata:
     filled: its rail, its store, and that compact placement as it provides it.
     An entry's icon, a file of the application's own, reaches it as the
     address the application serves that file at by its content digest.
-imports:
-  App: ../../app
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

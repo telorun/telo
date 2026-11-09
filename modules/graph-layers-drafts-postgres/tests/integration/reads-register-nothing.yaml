@@ -21,7 +21,6 @@ imports:
   Graph: ../../../graph
   GraphLayers: ../../../graph-layers
   Layers: ../..
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -46,7 +45,7 @@ access:
       path: /postgres
       query: { options: "-c search_path=public" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -107,7 +106,7 @@ metadata: { name: findPeople }
 store: !ref top
 node: !ref person
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readsRegisterNothing }
 steps:
   - name: found

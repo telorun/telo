@@ -12,7 +12,6 @@ imports:
   Cache: ../../cache
   CacheMemory: ../../cache-memory
   Timer: ../../timer
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testCron
@@ -29,7 +28,7 @@ kind: Cache.Lookup
 metadata: { name: get }
 store: !ref counters
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: bump }
 steps:
   - name: read
@@ -41,16 +40,16 @@ steps:
       key: cron
       value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testCron }
 with:
   - kind: Schedule.Cron
-    metadata: { name: EverySecond }
+    metadata: { name: everySecond }
     cron: "* * * * * *"
     timezone: UTC
     invoke: !ref bump
 targets:
-  - !ref EverySecond
+  - !ref everySecond
 steps:
   - name: wait
     invoke: { kind: Timer.Delay }

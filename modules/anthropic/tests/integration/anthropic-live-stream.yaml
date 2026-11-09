@@ -13,7 +13,6 @@ imports:
   Http: ../../../http-client
   Ai: ../../../ai
   Stream: ../../../stream
-  Run: ../../../run
   Assert: ../../../assert
 targets:
   - !ref liveStream
@@ -43,7 +42,7 @@ kind: Ai.TextStream
 metadata: { name: textStream }
 model: !ref live
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: liveStream }
 steps:
   - name: guardEnv

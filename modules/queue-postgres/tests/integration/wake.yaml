@@ -14,6 +14,7 @@ metadata:
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -23,7 +24,6 @@ imports:
   Queue: ../..
   Postgres: ../../../postgres
   Sql: ../../../sql
-  Run: ../../../run
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
@@ -56,20 +56,13 @@ name: pings
 retention: 1h
 messageType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [n]
-    properties:
-      n: { type: integer }
+  schema: { type: object, required: [n], properties: { n: { type: integer } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: handle }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      n: { type: integer }
+  schema: { type: object, properties: { n: { type: integer } } }
 steps:
   - name: done
     value: !cel "inputs.n"
@@ -78,32 +71,26 @@ kind: Sql.Transaction
 metadata: { name: enqueueInTransaction }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps:
     - name: enqueue
       invoke: { kind: QueueSql.Enqueue, queue: !ref pings }
-      inputs:
-        id: w-1
-        message: { n: 1 }
-    - name: linger
-      invoke: { kind: Timer.Delay }
-      inputs: { duration: 1s }
+      inputs: { id: w-1, message: { n: 1 } }
+    - { name: linger, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
 ---
 kind: Run.Loop
 metadata: { name: awaitCompleted }
 condition: !cel "previous == null || previous.status.result.state != 'completed'"
 maxIterations: 400
 steps:
-  - name: pause
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 10ms }
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 10ms } }
   - name: status
     invoke: { kind: Queues.Status, queue: !ref pings }
     inputs: { id: w-1 }
 outputs:
   status: !cel "steps.status.result"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: wakesOnCommit }
 with:
   - kind: Queues.Worker
@@ -118,9 +105,7 @@ with:
 targets:
   - !ref worker
 steps:
-  - name: idle
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 3s }
+  - { name: idle, invoke: { kind: Timer.Delay }, inputs: { duration: 3s } }
   - name: enqueue
     invoke: !ref enqueueInTransaction
   - name: done

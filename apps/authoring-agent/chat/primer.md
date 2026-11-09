@@ -1618,6 +1618,18 @@ belongs outside the durable body; and a `Run.Loop`'s `maxIterations` is not a
 decision and is not recorded, so write it over the run's own inputs rather than
 over a clock.
 
+A LONG RUN COMPACTS. Once the body holds `compactAfter` records (`1000` by
+default) the workflow replaces them with one baseline — where the run stands and
+its `steps` map — and a resume starts there. It is taken only at a step of the
+workflow's OWN `steps:` and their `if` / `switch` / `try` branches and `while`
+turns, never inside a body a step dispatches or a `Run.Iteration` / `Run.Loop`, so
+put a long polling loop in the workflow's own steps as a `while`.
+
+A FINISHED RUN IS DELETED. The workflow's `Local.Resumer` removes a completed,
+failed or cancelled run's record and entries `retainFinished` after it ended
+(`30d` by default); it then reads as `unknown`. A parked or running run is never
+removed, and workflows sharing a journal need distinct names.
+
 A START DOES NOT BLOCK. `Local.Workflow` records the run and returns
 `{ runId, status }` — plus `started` or `attached` — and nothing else; the body
 keeps going. That contract is DECLARED, so reading anything else off a start
@@ -1690,6 +1702,9 @@ When you AUTHOR a durable manifest:
     ordinary durable step is FINE: it is recorded once and replayed.
   - Do not stream inside a durable body: a live value cannot be recorded
     (DURABLE_UNJOURNALABLE_RESULT).
+  - Give a step's target inside a durable body a declared `outputType:` where its
+    kind accepts one; without it `telo check` warns (DURABLE_CONTRACT_REQUIRED) and
+    the recorded value is guarded only at run time.
   - Give `Durable.Await` an `outputType:`, and write a `token:` when something
     must hand the address out BEFORE the wait starts (an approval email). Omit
     `token:` only when whatever reads the run hands the address out.

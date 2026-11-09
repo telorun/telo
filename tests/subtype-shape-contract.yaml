@@ -5,7 +5,6 @@ kind: Telo.Application
 metadata: { name: SubtypeShapeContract, version: 1.0.0 }
 imports:
   Kinds: ./__fixtures__/subtype-shape-contract/kinds.yaml
-  Run: ../modules/run
   Assert: ../modules/assert
 variables: { badEvent: { env: BAD_EVENT, type: object, default: { userId: 1 } } }
 targets:
@@ -30,7 +29,7 @@ kind: Kinds.Echo
 metadata: { name: echo }
 event: !ref UserCreated
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInputType }
 steps:
   - name: attempt
@@ -46,7 +45,7 @@ steps:
           actual: !cel "error.code"
           expected: ERR_INPUT_INVALID
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testValueSchemaFrom }
 steps:
   - name: attempt

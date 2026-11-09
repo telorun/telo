@@ -10,11 +10,7 @@ metadata:
     `maxEntries: 1` makes the boundary reachable: the first key claims, the
     second must raise ERR_STORE_FULL rather than quietly displacing it. The
     first key is then confirmed still settled, proving nothing was evicted.
-imports:
-  Idempotency: ../../idempotency
-  KvStoreMemory: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Idempotency: ../../idempotency, KvStoreMemory: ../, Assert: ../../assert }
 targets:
   - !ref testOverflow
 ---
@@ -33,7 +29,7 @@ claimTtl: "30s"
 ttl: "60s"
 invoke: !ref body
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testOverflow }
 steps:
   - name: first

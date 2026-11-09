@@ -20,7 +20,6 @@ metadata:
 imports:
   Server: ../modules/http-server
   Http: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
   JS: ../modules/javascript
   Stream: ../modules/stream
@@ -61,11 +60,11 @@ code: |
     return { attempt: globalThis.__attempts };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: TestApi }
+    metadata: { name: testApi }
     routes:
       - request: { path: /echo, method: POST, schema: { body: { type: string } } }
         inputs:
@@ -108,14 +107,14 @@ with:
                 body:
                   attempt: !cel "result.attempt"
   - kind: Server.Server
-    metadata: { name: TestServer }
+    metadata: { name: testServer }
     listen: { port: 8871 }
     openapi: { info: { title: Bodies And Classification, version: 1.0.0 } }
     mounts:
       - path: /api
-        mount: !ref TestApi
+        mount: !ref testApi
 targets:
-  - !ref TestServer
+  - !ref testServer
 steps:
   # A byte body produced by CEL. A byte slot also takes base64url text, decoded
   # where it is written; this row is about the computed form, which must already

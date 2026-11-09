@@ -10,8 +10,8 @@ metadata:
     re-applied to the database it just produced is the failure this whole design
     exists to prevent.
 imports:
-  App: ../../../modules/app
   Run: ../../../modules/run
+  App: ../../../modules/app
   Timer: ../../../modules/timer
   Assert: ../../../modules/assert
 variables:
@@ -54,12 +54,9 @@ condition: !cel >-
   resources.releaseTwoAgain.status.exitCode == null
 maxIterations: 300
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 20ms
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: awaitExits
@@ -71,7 +68,4 @@ steps:
         releaseOne: !cel "resources.releaseOne.status.exitCode"
         releaseTwo: !cel "resources.releaseTwo.status.exitCode"
         releaseTwoAgain: !cel "resources.releaseTwoAgain.status.exitCode"
-      expected:
-        releaseOne: 0
-        releaseTwo: 0
-        releaseTwoAgain: 0
+      expected: { releaseOne: 0, releaseTwo: 0, releaseTwoAgain: 0 }

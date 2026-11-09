@@ -6,11 +6,11 @@
 kind: Telo.Application
 metadata: { name: SearxngPagingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   SearXNG: ..
   WebSearch: ../../web-search
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref paging
@@ -31,11 +31,11 @@ value:
   "9999": [z1]
   "10000": [y1]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: paging }
 with:
   - kind: Server.Api
-    metadata: { name: FakeSearxng }
+    metadata: { name: fakeSearxng }
     routes:
       - request:
           path: /search
@@ -52,13 +52,13 @@ with:
                     ? result[request.query.pageno].map(t, {'title': t, 'url': 'https://example.com/' + t, 'content': t})
                     : []}
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18842 }
     mounts:
       - path: /
-        mount: !ref FakeSearxng
+        mount: !ref fakeSearxng
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: first
     invoke: !ref engine

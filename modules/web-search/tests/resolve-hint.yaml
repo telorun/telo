@@ -6,7 +6,7 @@ imports: { WebSearch: .., Run: ../../run, Assert: ../../assert }
 targets:
   - !ref resolveHint
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: resolveHint }
 steps:
   - { name: table, value: { en: en, en-GB: en-GB, pt-BR: pt-BR } }

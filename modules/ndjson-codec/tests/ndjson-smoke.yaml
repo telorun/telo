@@ -11,7 +11,6 @@ imports:
   Ndjson: ../
   JS: ../../javascript
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testEncode
@@ -37,7 +36,7 @@ code: |
 kind: Ndjson.Encoder
 metadata: { name: encoder }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testEncode }
 steps:
   - name: source

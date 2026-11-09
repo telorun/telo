@@ -8,11 +8,7 @@ metadata:
     duration as seconds, bytes as base64url — with no response schema to say so.
     Inbound, a body field declared `Telo.Timestamp` arrives in CEL as a
     timestamp, and text its encoding does not read is a 400.
-imports:
-  Http: ../
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -50,17 +46,17 @@ routes:
             body:
               later: !cel "request.body.at + duration('1h')"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8983 }
     mounts:
       - path: /
         mount: !ref api
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: read
     invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8983/values, method: GET }

@@ -22,6 +22,7 @@ metadata:
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL. Kept out of `tests/` proper for exactly that reason.
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -31,7 +32,6 @@ imports:
   Journal: ../../
   Postgres: ../../../postgres
   Sql: ../../../sql
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -58,7 +58,7 @@ value: { done: true }
 ---
 # Its OWN prefix, for the reason the sibling tests state: two journals over one
 # prefix are two applications sharing a store.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reconcileAndRun }
 with:
   - kind: Journal.Journal
@@ -98,7 +98,7 @@ outputs:
   status: !cel "steps.settled.result.status"
   replayed: !cel "steps.settled.result.replayed"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # THE PRE-MIGRATION TABLES, written out rather than derived: the point is that

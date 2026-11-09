@@ -15,7 +15,6 @@ imports:
   Stars: ./__fixtures__/external-field
   Assert: ../../assert
   Probe: ./__fixtures__/probe
-  Run: ../../run
 targets:
   - !ref main
   - !ref ratingRefused
@@ -117,7 +116,7 @@ fields:
   - { kind: Stars.Rating, property: stars }
 state: { key: task, address: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: bare

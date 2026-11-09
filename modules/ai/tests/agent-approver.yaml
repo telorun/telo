@@ -11,10 +11,10 @@ metadata:
     token usage stays out of the agent's. A sequence of rules at the same slot
     defers a call, ending the run asking.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref modelReviewsEachCall
@@ -55,7 +55,7 @@ tools:
 # The reviewer is a completion whose model echoes its prompt — the name of the
 # tool being called — and bills 200 tokens for it. The result mapping approves
 # a multiplication and rejects anything else.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: modelReviewsEachCall }
 steps:
   - name: run
@@ -133,7 +133,7 @@ steps:
 ---
 # Rules instead of a model: a transfer above 1000 is rejected, one above 100 is
 # left to a human, anything else goes through.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: rulesDeferACall }
 steps:
   - name: run
@@ -147,7 +147,7 @@ steps:
         - provider: !ref bankTools
       approver:
         invoke:
-          kind: Run.Sequence
+          kind: Telo.Sequence
           inputType:
             kind: Telo.JsonSchema
             schema:

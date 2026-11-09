@@ -15,7 +15,7 @@ variables:
     enum: [ debug, info, warn, error ]
 secrets: { apiKey: { env: API_KEY, type: string, default: test-key } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testConfigEnv }
 steps:
   - name: assertPort

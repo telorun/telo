@@ -8,7 +8,6 @@ metadata:
     VAT rate given and omitted, and a product name that needs every slug rule.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 targets:
@@ -16,18 +15,15 @@ targets:
 ---
 kind: HttpClient.Request
 metadata: { name: call }
-client:
-  kind: HttpClient.Client
-  baseUrl: http://127.0.0.1:8204
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8204 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ./__fixtures__/price-app.yaml
-    ports:
-      http: 8204
+    ports: { http: 8204 }
 targets:
   - !ref app
 steps:

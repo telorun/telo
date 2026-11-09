@@ -17,7 +17,6 @@ imports:
   DataModel: ../../data-model
   Font: ../../font
   Probe: ./__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -107,7 +106,7 @@ color.accent: "#1f8fff"
 radius.md: 6px
 font.body: !ref inter
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: derived

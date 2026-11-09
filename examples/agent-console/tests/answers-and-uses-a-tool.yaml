@@ -11,7 +11,6 @@ metadata:
 imports:
   App: ../../../modules/app
   Channel: ../../../modules/channel
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
 variables:
   # The DIRECTORY each run's history file goes in, anchored at the working
@@ -48,7 +47,7 @@ kind: Channel.SendLine
 metadata: { name: send }
 channel: !ref app
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: firstPrompt

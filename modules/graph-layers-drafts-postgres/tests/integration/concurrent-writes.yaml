@@ -22,6 +22,7 @@ metadata:
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 include: [./__fixtures__/write-race/model.yaml]
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -45,7 +46,6 @@ imports:
   Graph: ../../../graph
   GraphLayers: ../../../graph-layers
   App: ../../../app
-  Run: ../../../run
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
@@ -84,7 +84,7 @@ access:
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -127,7 +127,7 @@ maxIterations: 6000
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: mergeRace }
 steps:
   - name: awaitLeft
@@ -176,7 +176,7 @@ maxIterations: 6000
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: deleteRace }
 steps:
   - name: awaitDeleter
@@ -225,7 +225,7 @@ maxIterations: 6000
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: sessionRace }
 steps:
   - name: awaitSessionWriter

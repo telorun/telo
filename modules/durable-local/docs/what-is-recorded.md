@@ -113,8 +113,40 @@ key — and since the first record wins, the second would be handed the first's
 *result*. Where both dispatch the same target there is nothing to detect, and the
 run simply continues with a value produced for a different step.
 
+## A baseline instead of the whole history
+
+Recording every step and decision is what makes a replay a function of the record — and it means a long run's record grows with every turn. So once the body holds `compactAfter` records, the next step boundary writes one **baseline** entry replacing all of them:
+
+```yaml
+path: steps/poll/do[36]/fetch       # the step the run had just completed
+kind: baseline
+v: 2
+value:
+  position:
+    - { step: steps/poll, branch: do, turn: 36 }
+    - { step: steps/poll/do[36]/fetch }
+  steps: { … }                       # the steps map in scope there
+```
+
+The position names each enclosing step by its record path and the branch the run is inside (`then`, `elseif` with its index, `else`, `cases` with the key, `default`, `try`, or `do` with the turn); the value is a typed frame under the same codec version as any entry. Nothing else is needed, because every decision is recorded: the branch taken and the turn reached are what the replaced decisions said, and the step results in scope are what later expressions read. A resume restores `steps`, enters each recorded branch without deciding it again, and continues with the next step — at the next turn's condition when the baseline closed a turn.
+
+A baseline is taken only where the workflow's own step list can resume from it: never inside a body a step dispatches, a composer's body, a concurrent region, a `catch:` / `finally:` (the caught failure is not a value a record can hold) or a collapsed region. It is never taken while a resume is still replaying, and a step answered from the record counts the records its own body wrote as passed, since that body will not run again. The workflow's root `inputs` record is outside the body and is kept.
+
+The journal operation is `replaceWithBaseline(run, baseline, replaced)`: write the baseline and delete the listed records — the previous baseline among them — as one atomic write, keeping any record it was not given. On PostgreSQL that is one transaction; the file journal stages the new file beside the old one (`<run>.ndjson.compacting`) and renames it into place, so a crash before the rename leaves the old file intact and the staging file unread, overwritten by the next compaction and removed with the run.
+
 ## What this costs
 
 One record per decision, on top of one per step. For an ordinary body that is a handful of small writes. For a hot loop it is not, which is what [`Durable.Idempotent`](https://hub.telo.run/module/oci/ghcr.io/telorun/durable/) is for: wrap a region whose re-execution is genuinely a no-op and the whole region becomes one record — *and* its decisions stop being recorded, because the region re-runs wholesale by its own claim.
 
 That is also why an impure expression inside such a region is a `telo check` error: the region promised re-running was a no-op, and `uuidv4()` makes that false.
+
+## Finished runs, and the journal operations that retire them
+
+A run's record carries the name of the workflow that admitted it (`workflow`, written at admission by a start or a schedule) and the time it finished (`finishedAt`, epoch milliseconds, stamped by the journal when it settles the run as completed, failed or cancelled). Both are absent on a run written before they existed, and such a run is never purged.
+
+Two journal operations serve retention:
+
+- `finishedRuns(workflow, finishedBefore, limit)` lists the terminal runs of that workflow finished at or before the cutoff, oldest first.
+- `deleteFinishedRun(run, finishedBefore)` deletes the run's record and every entry, answering whether it did. The terminal-and-old condition is part of the operation, so a run resumed or re-settled after it was listed is not deleted, and the record and its entries go together or not at all (one statement on PostgreSQL, one file removal on the file journal).
+
+The resumer asks for its workflow's runs with the cutoff `now - retainFinished` on each sweep, and deletes up to a hundred per pass.

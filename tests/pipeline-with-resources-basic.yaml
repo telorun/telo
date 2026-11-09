@@ -1,31 +1,21 @@
 kind: Telo.Application
-metadata:
-  name: PipelineWithResourcesBasic
-  version: 1.0.0
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+metadata: { name: PipelineWithResourcesBasic, version: 1.0.0 }
+imports: { Run: ../modules/run, Assert: ../modules/assert }
 ---
-kind: Run.Sequence
-metadata:
-  name: testWithResources
+kind: Telo.Sequence
+metadata: { name: testWithResources }
 with:
   - kind: Run.Value
-    metadata:
-      name: SharedHelper
+    metadata: { name: sharedHelper }
     inputType:
       kind: Telo.JsonSchema
-      schema:
-        type: object
-        properties:
-          value: { type: number }
+      schema: { type: object, properties: { value: { type: number } } }
     value:
       doubled: !cel "inputs.value * 2"
 steps:
   - name: useHelper
-    inputs:
-      value: 5
-    invoke: !ref SharedHelper
+    inputs: { value: 5 }
+    invoke: !ref sharedHelper
 
   - name: verifyResult
     inputs:
@@ -34,9 +24,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          doubled:
-            type: number
-            const: 10
-        required:
-          - doubled
+        properties: { doubled: { type: number, const: 10 } }
+        required: [doubled]

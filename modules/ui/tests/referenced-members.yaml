@@ -15,7 +15,6 @@ imports:
   Ui: ../
   DataModel: ../../data-model
   Probe: ./__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -111,7 +110,7 @@ metadata: { name: derived }
 model: !ref Report
 presentation: !ref reportsPresentation
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: generate

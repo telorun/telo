@@ -12,7 +12,6 @@ metadata:
     refuses, and each row action's route on a table and on a list.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 variables:
@@ -29,7 +28,7 @@ kind: HttpClient.Client
 metadata: { name: page }
 baseUrl: http://127.0.0.1:8154
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -37,8 +36,7 @@ with:
     source: ../telo.yaml
     variables:
       dbFile: !cel "variables.dbFile.joinPath('ui-showcase-forms-' + uuidv4() + '.db')"
-    ports:
-      http: 8154
+    ports: { http: 8154 }
 targets:
   - !ref app
 steps:
@@ -68,16 +66,13 @@ steps:
       body: { title: Fix the footer, kind: build, channels: [ email, phone ], seats: 1, urgent: false, keywords: [ footer ] }
   - name: titleTaken
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests, method: POST }
-    inputs:
-      body: { title: Refresh the logo, kind: design }
+    inputs: { body: { title: Refresh the logo, kind: design } }
   - name: titleShort
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests, method: POST }
-    inputs:
-      body: { title: Go, kind: design }
+    inputs: { body: { title: Go, kind: design } }
   - name: budgetOff
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests, method: POST }
-    inputs:
-      body: { title: Paint the office, kind: design, budget: 75 }
+    inputs: { body: { title: Paint the office, kind: design, budget: 75 } }
   - name: requestsAfter
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests }
   - name: verifyRequests
@@ -236,20 +231,17 @@ steps:
   # ---- An answer drawn from the result, and one the output model refuses ----
   - name: estimate
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/estimate, method: POST }
-    inputs:
-      body: { projectCode: TEL-42, pace: 8 }
+    inputs: { body: { projectCode: TEL-42, pace: 8 } }
   - name: narrowEstimate
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/estimate, method: POST }
     inputs:
       body: { projectCode: TEL-42, pace: 20, labels: [ bug, feature ], includeBlocked: true }
   - name: estimateRefused
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/estimate, method: POST }
-    inputs:
-      body: { projectCode: TEL-42, pace: 6 }
+    inputs: { body: { projectCode: TEL-42, pace: 6 } }
   - name: estimateUnknown
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/estimate, method: POST }
-    inputs:
-      body: { projectCode: NOPE-1, pace: 8 }
+    inputs: { body: { projectCode: NOPE-1, pace: 8 } }
   - name: verifyEstimate
     invoke: { kind: Assert.Equals }
     inputs:
@@ -288,24 +280,19 @@ steps:
   # ---- A failure tree: assigning a task ----
   - name: assignNobody
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
-    inputs:
-      body: { id: 4 }
+    inputs: { body: { id: 4 } }
   - name: assignStranger
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
-    inputs:
-      body: { id: 4, assigneeEmail: who@elsewhere.example }
+    inputs: { body: { id: 4, assigneeEmail: who@elsewhere.example } }
   - name: assignNoTask
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
-    inputs:
-      body: { id: 999, assigneeEmail: james@northwind.example }
+    inputs: { body: { id: 999, assigneeEmail: james@northwind.example } }
   - name: assignLeft
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
-    inputs:
-      body: { id: 4, assigneeEmail: tomas@northwind.example }
+    inputs: { body: { id: 4, assigneeEmail: tomas@northwind.example } }
   - name: assign
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
-    inputs:
-      body: { id: 4, assigneeEmail: james@northwind.example }
+    inputs: { body: { id: 4, assigneeEmail: james@northwind.example } }
   - name: assigned
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/tasks/4 }
   - name: verifyAssign
@@ -331,29 +318,23 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/task-counts?code=TEL-42" }
   - name: unblock
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/unblock, method: POST }
-    inputs:
-      body: {}
+    inputs: { body: {} }
   # The Start row action, then Close, as the table's rows send them.
   - name: start
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
-    inputs:
-      body: { id: 29, status: doing }
+    inputs: { body: { id: 29, status: doing } }
   - name: startAgain
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
-    inputs:
-      body: { id: 29, status: doing }
+    inputs: { body: { id: 29, status: doing } }
   - name: close
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
-    inputs:
-      body: { id: 4, status: done }
+    inputs: { body: { id: 4, status: done } }
   - name: moveUnknown
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
-    inputs:
-      body: { id: 999, status: review }
+    inputs: { body: { id: 999, status: review } }
   - name: moveRefused
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
-    inputs:
-      body: { id: 4, status: archived }
+    inputs: { body: { id: 4, status: archived } }
   - name: countsAfter
     invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/task-counts?code=TEL-42" }
   - name: otherCounts
@@ -386,16 +367,13 @@ steps:
   # ---- Where a success goes ----
   - name: projectPage
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/project-page, method: POST }
-    inputs:
-      body: { code: OPS-7 }
+    inputs: { body: { code: OPS-7 } }
   - name: noProjectPage
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/project-page, method: POST }
-    inputs:
-      body: { code: NOPE-1 }
+    inputs: { body: { code: NOPE-1 } }
   - name: homepage
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/homepage, method: POST }
-    inputs:
-      body: {}
+    inputs: { body: {} }
   - name: verifyNavigation
     invoke: { kind: Assert.Equals }
     inputs:
@@ -413,45 +391,35 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments }
   - name: comment
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments, method: POST }
-    inputs:
-      body: { taskId: 3, body: The logo landed. }
+    inputs: { body: { taskId: 3, body: The logo landed. } }
   - name: firstComment
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments, method: POST }
-    inputs:
-      body: { taskId: 30, body: Retire them after the migration. }
+    inputs: { body: { taskId: 30, body: Retire them after the migration. } }
   - name: commentShort
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments, method: POST }
-    inputs:
-      body: { taskId: 3, body: ok }
+    inputs: { body: { taskId: 3, body: ok } }
   - name: commentNoTask
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments, method: POST }
-    inputs:
-      body: { taskId: 999, body: Anyone there? }
+    inputs: { body: { taskId: 999, body: Anyone there? } }
   - name: pin
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/pin, method: POST }
-    inputs:
-      body: { id: 1 }
+    inputs: { body: { id: 1 } }
   - name: pinMissing
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/pin, method: POST }
-    inputs:
-      body: { id: 99 }
+    inputs: { body: { id: 99 } }
   # The Edit row action's dialog left empty, then filled.
   - name: editEmpty
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/edit, method: POST }
-    inputs:
-      body: { id: 3 }
+    inputs: { body: { id: 3 } }
   - name: edit
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/edit, method: POST }
-    inputs:
-      body: { id: 3, body: Three header variants are ready. }
+    inputs: { body: { id: 3, body: Three header variants are ready. } }
   - name: remove
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/delete, method: POST }
-    inputs:
-      body: { id: 4 }
+    inputs: { body: { id: 4 } }
   - name: removeAgain
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/delete, method: POST }
-    inputs:
-      body: { id: 4 }
+    inputs: { body: { id: 4 } }
   - name: commentsAfter
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments }
   - name: verifyComments

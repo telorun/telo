@@ -13,11 +13,11 @@ metadata:
     ANTHROPIC_API_KEY is unset.
 secrets: { anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" } }
 imports:
+  Run: ../../../run
   Anthropic: ../../
   Http: ../../../http-client
   Ai: ../../../ai
   Stream: ../../../stream
-  Run: ../../../run
   Assert: ../../../assert
 targets:
   - !ref liveToolLoop
@@ -88,7 +88,7 @@ system: Think about which tool to use, call it, then state the number it returne
 toolProviders:
   - provider: !ref tools
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: liveToolLoop }
 steps:
   - name: guardEnv

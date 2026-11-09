@@ -33,7 +33,7 @@ inputType:
   schema: { type: object, properties: { n: { type: integer } } }
 value: !cel "double(inputs.n) * 2.0"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testObject }
 steps:
   - name: shape
@@ -50,7 +50,7 @@ steps:
         properties: { greeting: { const: "Hello, telo!" }, product: { const: 42 } }
         required: [ greeting, product ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testConstant }
 steps:
   - name: parts
@@ -67,7 +67,7 @@ steps:
         properties: { type0: { const: text }, type1: { const: image }, media: { const: image/png } }
         required: [ type0, type1, media ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testScalar }
 steps:
   - name: answer

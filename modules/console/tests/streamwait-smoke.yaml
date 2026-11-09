@@ -11,11 +11,7 @@ metadata:
     is interleaved into the output stream — exactness is verified by
     capturing the output via a JS.Script consumer and asserting the
     forwarded items + the presence of the prefix.
-imports:
-  Console: ../
-  JS: ../../javascript
-  Run: ../../run
-  Assert: ../../assert
+imports: { Console: ../, JS: ../../javascript, Assert: ../../assert }
 targets:
   - !ref testForwardsItems
   - !ref testEmptyStream
@@ -81,7 +77,7 @@ metadata: { name: wait }
 prefix: "loading: "
 intervalMs: 50
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testForwardsItems }
 steps:
   - name: source
@@ -110,7 +106,7 @@ steps:
 ---
 # Empty source: StreamWait yields prefix + reserved cell + first frame +
 # clear, then ends without forwarding any items. No crash, output drains.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testEmptyStream }
 steps:
   - name: emptySrc
@@ -139,7 +135,7 @@ steps:
 #   1. The clear sequence (' \b') is present in the captured output (proves
 #      StreamWait wiped the spinner before the error fired).
 #   2. The error reaches the catch block with the source's original message.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testSourceErrorBeforeFirstItem }
 steps:
   - name: errSrc
@@ -209,7 +205,7 @@ code: |
     return { returnCalled: !!globalThis.__sw_returnCalled };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testCancellationPropagatesUpstream }
 steps:
   - name: trackedSrc

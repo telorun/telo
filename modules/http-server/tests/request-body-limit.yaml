@@ -16,12 +16,12 @@ metadata:
     assertion on the kernel's dispatch record is that the catch and the step
     after the sink never ran.
 imports:
+  Run: ../../run
   Http: ../
   HttpClient: ../../http-client
   Mcp: ../../mcp-server
   Octet: ../../octet-codec
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 variables:
   raisedLimit: { env: HTTP_BODY_LIMIT_TEST_RAISED, type: integer, default: 256 }
@@ -46,7 +46,7 @@ kind: Octet.Decoder
 metadata: { name: drain }
 ---
 # Drains the body inside `try:`, then goes on to a further step.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: guardedSink }
 inputType:
   kind: Telo.JsonSchema
@@ -125,11 +125,11 @@ tools:
 kind: HttpClient.Request
 metadata: { name: post }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8972 }
     maxBodyBytes: 64
     contentTypeParsers:
@@ -140,7 +140,7 @@ with:
       - path: /mcp
         mount: !ref mcpHttp
 targets:
-  - !ref Server
+  - !ref server
 steps:
   # 100 bytes of JSON: over the server's 64, under the raised route's 256.
   - name: document

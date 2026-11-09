@@ -9,9 +9,7 @@ metadata:
     duration declares an integer form. Each row writes all three forms at one
     decode site — a resource's own config and a call's `inputs:` — and reads
     each back as its CEL type and its text.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Run: ../modules/run, Assert: ../modules/assert }
 targets:
   - !ref verifyInstanceUnion
 ---
@@ -27,15 +25,14 @@ schema:
   properties:
     after:
       anyOf:
-        - x-telo-type: Telo.Duration
-        - x-telo-type: Telo.Timestamp
+        - { x-telo-type: Telo.Duration }
+        - { x-telo-type: Telo.Timestamp }
 base:
   value: !cel "(type(self.after) == type(duration('0s')) ? 'duration ' : 'timestamp ') + string(self.after)"
 ---
 # The same union at a call's argument.
 kind: Run.Value
-metadata:
-  name: render
+metadata: { name: render }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -44,20 +41,17 @@ inputType:
     properties:
       after:
         anyOf:
-          - x-telo-type: Telo.Duration
-          - x-telo-type: Telo.Timestamp
+          - { x-telo-type: Telo.Duration }
+          - { x-telo-type: Telo.Timestamp }
 value: !cel "(type(inputs.after) == type(duration('0s')) ? 'duration ' : 'timestamp ') + string(inputs.after)"
 ---
-kind: Run.Sequence
-metadata:
-  name: verifyInstanceUnion
+kind: Telo.Sequence
+metadata: { name: verifyInstanceUnion }
 steps:
-  - name: configDuration
-    invoke: { kind: Self.After, after: 2s }
+  - { name: configDuration, invoke: { kind: Self.After, after: 2s } }
   - name: configTimestamp
     invoke: { kind: Self.After, after: "2026-01-01T00:00:00Z" }
-  - name: configInteger
-    invoke: { kind: Self.After, after: 1500 }
+  - { name: configInteger, invoke: { kind: Self.After, after: 1500 } }
   - name: callDuration
     invoke: !ref render
     inputs: { after: 2s }
@@ -77,10 +71,4 @@ steps:
         - !cel "steps.callDuration.result"
         - !cel "steps.callTimestamp.result"
         - !cel "steps.callInteger.result"
-      expected:
-        - duration 2s
-        - timestamp 2026-01-01T00:00:00Z
-        - duration 1.5s
-        - duration 2s
-        - timestamp 2026-01-01T00:00:00Z
-        - duration 1.5s
+      expected: [duration 2s, timestamp 2026-01-01T00:00:00Z, duration 1.5s, duration 2s, timestamp 2026-01-01T00:00:00Z, duration 1.5s]

@@ -10,7 +10,6 @@ imports:
   RateLimit: ../
   Cache: ../../cache
   CacheMemory: ../../cache-memory
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -31,7 +30,7 @@ store: !ref mem
 limit: !cel "1 + 1"
 window: "60s"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: r1

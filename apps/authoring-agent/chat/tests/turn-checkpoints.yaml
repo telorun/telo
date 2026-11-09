@@ -59,8 +59,7 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: stub-key
+    secrets: { anthropicApiKey: stub-key }
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('.telo-agent')" }
     variables:
@@ -77,7 +76,6 @@ imports:
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
   Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref Chat.ensureWorkspace
@@ -95,9 +93,7 @@ metadata: { name: call }
 ---
 kind: HttpClient.Request
 metadata: { name: lenientCall }
-client:
-  kind: HttpClient.Client
-  throwOnHttpError: false
+client: { kind: HttpClient.Client, throwOnHttpError: false }
 ---
 # The agent's database, reached from outside the library.
 kind: SQLite.Connection
@@ -124,7 +120,7 @@ host:
 ---
 # Starts a turn in a conversation of its own, telling the stub which tool
 # calls to ask for.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: begin }
 inputType:
   kind: Telo.JsonSchema
@@ -134,9 +130,7 @@ inputType:
     required: [directive, calls]
     properties:
       directive: { type: string }
-      calls:
-        type: array
-        items: { type: object, additionalProperties: true }
+      calls: { type: array, items: { type: object, additionalProperties: true } }
 steps:
   - name: conversation
     invoke: !ref Chat.createConversation
@@ -152,7 +146,7 @@ outputs:
   turnId: !cel "steps.start.result.turnId"
 ---
 # A turn's records, read to its end.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: finished }
 inputType:
   kind: Telo.JsonSchema
@@ -160,8 +154,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: read
     invoke: !ref Chat.journalSource
@@ -178,7 +171,7 @@ outputs:
   results: !cel "steps.drain.result.items.filter(r, r.data.type == 'tool-result').map(r, r.data.toolResult)"
 ---
 # Fails until the stub has received `count` agent requests carrying `text`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stubReceived }
 inputType:
   kind: Telo.JsonSchema
@@ -186,9 +179,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [text, count]
-    properties:
-      text: { type: string }
-      count: { type: integer }
+    properties: { text: { type: string }, count: { type: integer } }
 steps:
   - name: sent
     invoke: !ref call
@@ -204,7 +195,7 @@ steps:
           message: The stub has not received the request yet.
 ---
 # A turn's checkpoint as the database and the state directory hold it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checkpoint }
 inputType:
   kind: Telo.JsonSchema
@@ -212,8 +203,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: entries
     invoke: !ref agentQuery
@@ -233,7 +223,7 @@ outputs:
   blobs: !cel "size(steps.blobs.result.files)"
   directory: !cel "size(steps.blobs.result.missing) == 0"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -247,8 +237,7 @@ steps:
   # A run cut short may have left the directory unlistable.
   - name: unlockLeftover
     invoke: !ref inWorkspace
-    inputs:
-      args: [sh, -c, "chmod 755 locked 2>/dev/null; true"]
+    inputs: { args: [sh, -c, "chmod 755 locked 2>/dev/null; true"] }
   - name: seed
     invoke: !ref Chat.syncWorkspace
     inputs:
@@ -268,8 +257,7 @@ steps:
   # A link to a directory, and a link inside a tree.
   - name: links
     invoke: !ref inWorkspace
-    inputs:
-      args: [sh, -c, "ln -s heavy linkdir && ln -s ../big.txt linked/link"]
+    inputs: { args: [sh, -c, "ln -s heavy linkdir && ln -s ../big.txt linked/link"] }
   # ── what a turn checkpoints ────────────────────────────────────────────────
   - name: authored
     invoke: !ref begin
@@ -367,8 +355,7 @@ steps:
     inputs: { turnId: !cel "steps.gone.result.turnId" }
   - name: goneFile
     invoke: !ref onDisk
-    inputs:
-      paths: [e.txt]
+    inputs: { paths: [e.txt] }
   # ── a cancelled call's entries, settled when the turn ends ─────────────────
   # The stub holds the request carrying the two writes' results. The turn's
   # entries are un-confirmed, as a cancelled call leaves them, and one of the
@@ -441,8 +428,7 @@ steps:
     inputs: { turnId: !cel "steps.cut.result.turnId" }
   - name: cutDisk
     invoke: !ref onDisk
-    inputs:
-      paths: [s1.txt, s2.txt]
+    inputs: { paths: [s1.txt, s2.txt] }
   # ── a directory that is there but cannot be listed ─────────────────────────
   # Mode 0311: its entries can be reached by name, the directory cannot be
   # read. A turn lists the workspace when it starts, so the stub holds the
@@ -461,8 +447,7 @@ steps:
     inputs: { text: STUB_SLOW write there, count: 1 }
   - name: lock
     invoke: !ref inWorkspace
-    inputs:
-      args: [sh, -c, "chmod 311 locked && ! ls locked > /dev/null 2>&1"]
+    inputs: { args: [sh, -c, "chmod 311 locked && ! ls locked > /dev/null 2>&1"] }
   - name: unlistableRelease
     invoke: !ref call
     inputs: { url: http://127.0.0.1:18540/release, method: POST }
@@ -472,8 +457,7 @@ steps:
     inputs: { text: STUB_SLOW write there, count: 2 }
   - name: unlock
     invoke: !ref inWorkspace
-    inputs:
-      args: [sh, -c, "cat locked/x.txt; chmod 755 locked"]
+    inputs: { args: [sh, -c, "cat locked/x.txt; chmod 755 locked"] }
   - name: unlistableReleaseSecond
     invoke: !ref call
     inputs: { url: http://127.0.0.1:18540/release, method: POST }
@@ -588,18 +572,15 @@ steps:
     inputs: { turnId: !cel "steps.refused.result.turnId" }
   - name: remaining
     invoke: !ref onDisk
-    inputs:
-      paths: [bin.dat, big.txt, many, heavy, deep, linked, .telo-agent/x.txt]
+    inputs: { paths: [bin.dat, big.txt, many, heavy, deep, linked, .telo-agent/x.txt] }
   - name: remainingLinks
     invoke: !ref listed
-    inputs:
-      recursive: true
-      exclude: [many, heavy, .telo-agent, apps, notes, deep]
+    inputs: { recursive: true, exclude: [many, heavy, .telo-agent, apps, notes, deep] }
   # ── a state directory two levels down ──────────────────────────────────────
   # `own` holds the agent's state directory; `side` is its sibling.
   - name: nested
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: nestedAgent }
@@ -611,8 +592,7 @@ steps:
             workspaceDir: !cel "variables.nested"
             modelEndpoint: http://127.0.0.1:18540/v1
             teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref nestedAgent ]
       steps:
         - name: seeded
@@ -629,21 +609,18 @@ steps:
           inputs:
             url: http://127.0.0.1:18551/workspace
             method: POST
-            body:
-              delete: [ side, own ]
+            body: { delete: [side, own] }
         - name: sibling
           invoke: !ref lenientCall
           inputs:
             url: http://127.0.0.1:18551/workspace
             method: POST
-            body:
-              delete: [ side ]
+            body: { delete: [side] }
         - name: left
           invoke:
             kind: Fs.TreeSnapshot
             cwd: !cel "variables.nested"
-          inputs:
-            paths: [ own/keep.txt, side ]
+          inputs: { paths: [own/keep.txt, side] }
       outputs:
         firstLevel: !cel "[steps.firstLevel.result.status, steps.firstLevel.result.body.code, steps.firstLevel.result.body.error]"
         sibling: !cel "steps.sibling.result.status"
@@ -654,8 +631,7 @@ steps:
     inputs: { turnId: !cel "steps.authored.result.turnId" }
   - name: afterRevert
     invoke: !ref onDisk
-    inputs:
-      paths: [apps/demo/telo.yaml, notes/b.txt, c.txt]
+    inputs: { paths: [apps/demo/telo.yaml, notes/b.txt, c.txt] }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
@@ -760,13 +736,7 @@ steps:
       expected:
         authored:
           last: finish
-          entries:
-            - apps/demo/telo.yaml absent>file
-            - notes/b.txt absent>file
-            - notes/b.txt file>file
-            - c.txt absent>file
-            - c.txt file>absent
-            - c.txt absent>file
+          entries: [apps/demo/telo.yaml absent>file, notes/b.txt absent>file, notes/b.txt file>file, c.txt absent>file, c.txt file>absent, c.txt absent>file]
           blobs: 6
           written:
             changes: [ [ notes/b.txt, created, null, true, 3, 0 ] ]
@@ -789,10 +759,7 @@ steps:
           directory: false
           written: false
         reverted:
-          outcome:
-            - apps/demo/telo.yaml created restored
-            - c.txt created restored
-            - notes/b.txt created restored
+          outcome: [apps/demo/telo.yaml created restored, c.txt created restored, notes/b.txt created restored]
           missing: [ apps/demo/telo.yaml, notes/b.txt, c.txt ]
         cut:
           status: aborted

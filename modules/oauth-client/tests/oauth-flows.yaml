@@ -13,7 +13,6 @@ imports:
   HttpClient: ../../http-client
   Store: ../../kv-store-memory
   JS: ../../javascript
-  Run: ../../run
   Assert: ../../assert
 include: [__fixtures__/fake-authorization-server.yaml]
 variables:
@@ -125,12 +124,12 @@ path: /NEVER
 # The terminal sign-in, exactly as a consumer composes it: the listener is a
 # scoped Service started from `targets:`, so it is bound BEFORE the steps build
 # the consent URL and torn down when the sequence ends.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: consoleLogin }
 with:
   - { kind: OAuth.RedirectListener, metadata: { name: loopback } }
   - kind: OAuth.RedirectAwait
-    metadata: { name: AwaitRedirect }
+    metadata: { name: awaitRedirect }
     listener: !ref loopback
     timeout: 30s
 targets:
@@ -154,7 +153,7 @@ steps:
       method: GET
       url: !cel "steps.auth.result.redirectUri + '?code=good-code&iss=' + variables.issuer + '&state=' + steps.auth.result.state"
   - name: redirect
-    invoke: !ref AwaitRedirect
+    invoke: !ref awaitRedirect
     inputs:
       state: !cel "steps.auth.result.state"
   - name: assertCode
@@ -184,7 +183,7 @@ steps:
 # The same sign-in against a redirect carrying no `iss`: the null reaches the
 # exchange, whose own issuer check refuses it because the stand-in server's
 # discovery document advertises the parameter.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: consoleLoginWithoutIss }
 with:
   # A `!cel` integer is a 64-bit integer, not the number a YAML literal is.
@@ -192,7 +191,7 @@ with:
     metadata: { name: loopback }
     port: !cel "0"
   - kind: OAuth.RedirectAwait
-    metadata: { name: AwaitRedirect }
+    metadata: { name: awaitRedirect }
     listener: !ref loopback
     timeout: 30s
 targets:
@@ -209,7 +208,7 @@ steps:
       method: GET
       url: !cel "steps.auth.result.redirectUri + '?code=good-code&state=' + steps.auth.result.state"
   - name: redirect
-    invoke: !ref AwaitRedirect
+    invoke: !ref awaitRedirect
     inputs:
       state: !cel "steps.auth.result.state"
   - name: exchanging
@@ -242,11 +241,11 @@ metadata: { name: assertEquals }
 kind: Assert.Matches
 metadata: { name: assertContains }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: FakeServer8991 }
+    metadata: { name: fakeServer8991 }
     listen: { address: 127.0.0.1, port: 8991 }
     contentTypeParsers:
       - { contentType: application/x-www-form-urlencoded }
@@ -254,7 +253,7 @@ with:
       - path: /
         mount: !ref fakeServerApi
 targets:
-  - !ref FakeServer8991
+  - !ref fakeServer8991
 steps:
   # ---- Terminal sign-in over the loopback listener --------------------------
   - name: consoleLogin

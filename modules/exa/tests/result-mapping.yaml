@@ -6,10 +6,10 @@
 kind: Telo.Application
 metadata: { name: ExaResultMappingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Exa: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref resultMapping
@@ -34,11 +34,11 @@ value:
     - { title: Space, url: "https://example.com/a b", highlights: [space] }
     - { title: No URL, highlights: [dropped] }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: resultMapping }
 with:
   - kind: Server.Api
-    metadata: { name: FakeExa }
+    metadata: { name: fakeExa }
     routes:
       - request:
           path: /search
@@ -52,13 +52,13 @@ with:
                 schema: { type: object, additionalProperties: true }
                 body: !cel "result"
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18865 }
     mounts:
       - path: /
-        mount: !ref FakeExa
+        mount: !ref fakeExa
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: dates
     invoke: !ref engine

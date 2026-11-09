@@ -1,11 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: HttpClientTest
-  version: 1.0.0
-imports:
-  Http: ../modules/http-client
-  Run: ../modules/run
-  Assert: ../modules/assert
+metadata: { name: HttpClientTest, version: 1.0.0 }
+imports: { Http: ../modules/http-client, Assert: ../modules/assert }
 targets:
   - !ref testGetAbsoluteUrl
   - !ref testGetWithClient
@@ -14,15 +9,13 @@ targets:
 ---
 # Shared Http.Client with baseUrl for tests that exercise client resolution
 kind: Http.Client
-metadata:
-  name: placeholderApi
+metadata: { name: placeholderApi }
 baseUrl: https://jsonplaceholder.typicode.com
 timeout: 10000
 ---
 # Test 1: GET with absolute URL — verifies status + JSON body deserialization
-kind: Run.Sequence
-metadata:
-  name: testGetAbsoluteUrl
+kind: Telo.Sequence
+metadata: { name: testGetAbsoluteUrl }
 steps:
   - name: fetchTodo
     inputs: {}
@@ -39,21 +32,12 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          status:
-            type: integer
-            const: 200
-          id:
-            type: integer
-            const: 1
-        required:
-          - status
-          - id
+        properties: { status: { type: integer, const: 200 }, id: { type: integer, const: 1 } }
+        required: [status, id]
 ---
 # Test 2: GET with Http.Client (relative URL) — verifies baseUrl merging
-kind: Run.Sequence
-metadata:
-  name: testGetWithClient
+kind: Telo.Sequence
+metadata: { name: testGetWithClient }
 steps:
   - name: fetchUser
     inputs: {}
@@ -71,21 +55,12 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          status:
-            type: integer
-            const: 200
-          id:
-            type: integer
-            const: 1
-        required:
-          - status
-          - id
+        properties: { status: { type: integer, const: 200 }, id: { type: integer, const: 1 } }
+        required: [status, id]
 ---
 # Test 3: POST with JSON body — verifies serialization + 201 response
-kind: Run.Sequence
-metadata:
-  name: testPostWithJsonBody
+kind: Telo.Sequence
+metadata: { name: testPostWithJsonBody }
 steps:
   - name: createPost
     inputs: {}
@@ -93,10 +68,7 @@ steps:
       kind: Http.Request
       url: https://jsonplaceholder.typicode.com/posts
       method: POST
-      body:
-        title: Hello
-        body: World
-        userId: 1
+      body: { title: Hello, body: World, userId: 1 }
 
   - name: assertPostResponse
     inputs:
@@ -106,21 +78,12 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          status:
-            type: integer
-            const: 201
-          title:
-            type: string
-            const: Hello
-        required:
-          - status
-          - title
+        properties: { status: { type: integer, const: 201 }, title: { type: string, const: Hello } }
+        required: [status, title]
 ---
 # Test 4: 4xx response must NOT throw — returns response object per spec section 3.1
-kind: Run.Sequence
-metadata:
-  name: testNotFoundDoesNotThrow
+kind: Telo.Sequence
+metadata: { name: testNotFoundDoesNotThrow }
 steps:
   - name: fetchMissing
     inputs: {}
@@ -136,36 +99,19 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          status:
-            type: integer
-            const: 404
-        required:
-          - status
+        properties: { status: { type: integer, const: 404 } }
+        required: [status]
 ---
 kind: Assert.Events
-metadata:
-  name: verifyAllInvocations
+metadata: { name: verifyAllInvocations }
 filter:
-  - type: "*"
+  - { type: "*" }
 expect:
   - event: "*.Invoked"
-    payload:
-      ref: { kind: Http.Request }
-      outputs:
-        status: 200
+    payload: { ref: { kind: Http.Request }, outputs: { status: 200 } }
   - event: "*.Invoked"
-    payload:
-      ref: { kind: Http.Request }
-      outputs:
-        status: 200
+    payload: { ref: { kind: Http.Request }, outputs: { status: 200 } }
   - event: "*.Invoked"
-    payload:
-      ref: { kind: Http.Request }
-      outputs:
-        status: 201
+    payload: { ref: { kind: Http.Request }, outputs: { status: 201 } }
   - event: "*.Invoked"
-    payload:
-      ref: { kind: Http.Request }
-      outputs:
-        status: 404
+    payload: { ref: { kind: Http.Request }, outputs: { status: 404 } }

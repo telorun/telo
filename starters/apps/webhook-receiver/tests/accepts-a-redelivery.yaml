@@ -9,7 +9,6 @@ metadata:
     is the claim the starter makes about where its idempotency records live.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   Timer: ../../../../modules/timer
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
@@ -25,9 +24,7 @@ targets:
 kind: HttpClient.Client
 metadata: { name: provider }
 baseUrl: http://127.0.0.1:8047
-credential:
-  kind: HttpClient.BearerToken
-  token: local-dev-token
+credential: { kind: HttpClient.BearerToken, token: local-dev-token }
 ---
 kind: HttpClient.Request
 metadata: { name: send }
@@ -39,10 +36,9 @@ schema:
   type: object
   additionalProperties: false
   required: [ deliveryId ]
-  properties:
-    deliveryId: { type: string }
+  properties: { deliveryId: { type: string } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # Both halves share one database file, which outlives the test — so the
@@ -57,15 +53,14 @@ steps:
     invoke: !ref afterRestart
     inputs: !cel "steps.run.result"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: beforeRestart }
 inputType: !ref Delivery
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8047
+    ports: { http: 8047 }
     variables:
       dbFile: !cel "variables.scratchDir.joinPath('webhook-receiver-test.db')"
       sweepEvery: 200ms
@@ -100,13 +95,10 @@ steps:
       body: { nonsense: true }
   - name: letTheSweeperRun
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 1s
+    inputs: { duration: 1s }
   - name: listed
     invoke: !ref send
-    inputs:
-      url: /webhooks/events
-      method: GET
+    inputs: { url: /webhooks/events, method: GET }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
@@ -126,15 +118,14 @@ steps:
         stored:
           - [ !cel "inputs.deliveryId", order.created, processed ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: afterRestart }
 inputType: !ref Delivery
 with:
   - kind: App.Instance
     metadata: { name: restarted }
     source: ../telo.yaml
-    ports:
-      http: 8047
+    ports: { http: 8047 }
     variables:
       dbFile: !cel "variables.scratchDir.joinPath('webhook-receiver-test.db')"
 targets:
@@ -151,15 +142,11 @@ steps:
         payload: { orderId: 1 }
   - name: listed
     invoke: !ref send
-    inputs:
-      url: /webhooks/events
-      method: GET
+    inputs: { url: /webhooks/events, method: GET }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         third: !cel "steps.third.result.body"
         stored: !cel "size(steps.listed.result.body.filter(e, e.deliveryId == inputs.deliveryId))"
-      expected:
-        third: { subject: order.created, state: replayed }
-        stored: 1
+      expected: { third: { subject: order.created, state: replayed }, stored: 1 }

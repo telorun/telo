@@ -1,0 +1,4 @@
+modules:
+  modules/exa: Fixed
+body: The search engine's template body uses the built-in Telo.Sequence instead of the
+  deprecated Run.Sequence, so using it no longer reports DEPRECATED_KIND.

@@ -8,7 +8,7 @@ targets:
   - !ref findsArticle
   - !ref noContent
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: findsArticle }
 steps:
   - name: parse
@@ -62,7 +62,7 @@ steps:
         hasFooter: false
         hasBody: true
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: noContent }
 steps:
   - name: parse

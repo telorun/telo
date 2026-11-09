@@ -14,11 +14,7 @@ metadata:
 
     The schedule here is `with:`-scoped, so it is torn down when the sequence
     ends — which is what makes BOTH halves observable inside one run.
-imports:
-  Schedule: ../
-  Timer: ../../timer
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Schedule: ../, Timer: ../../timer, Assert: ../../assert }
 targets:
   - !ref runSchedule
   - !ref assertHeldThenReleased
@@ -27,15 +23,15 @@ kind: Run.Value
 metadata: { name: tick }
 value: { ok: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: runSchedule }
 with:
   - kind: Schedule.Interval
-    metadata: { name: Ticker }
+    metadata: { name: ticker }
     every: "50ms"
     invoke: !ref tick
 targets:
-  - !ref Ticker
+  - !ref ticker
 steps:
   - name: wait
     invoke: { kind: Timer.Delay }

@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: AgentToolErrorTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testToolError
 ---
@@ -41,7 +37,7 @@ onToolError: feedback
 toolProviders:
   - provider: !ref localTools
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testToolError }
 steps:
   - name: invoke

@@ -23,7 +23,6 @@ metadata:
     nested declaration — are unit-tested in kernel/nodejs/tests/, where the
     failure can be asserted directly rather than inferred from a boot error.
 imports:
-  Run: ../modules/run
   Assert: ../modules/assert
   JS: ../modules/javascript
   Lib: ./__fixtures__/include-assets/lib
@@ -60,7 +59,7 @@ code: |
     };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyIncludes }
 steps:
   # Text embed, written with a leading `./` and an interior `..` that resolves
@@ -79,10 +78,7 @@ steps:
   - name: assertBytes
     inputs:
       actual: !cel "steps.describe.result"
-      expected:
-        isUint8Array: true
-        length: 20
-        magic: png
+      expected: { isUint8Array: true, length: 20, magic: png }
     invoke: { kind: Assert.Equals }
 ---
 # Confinement is a pure string check on a root-relative path, so `telo check`
@@ -93,14 +89,14 @@ metadata: { name: verifyEscapingPathIsRejected }
 source: ./__fixtures__/include-assets/escaping-path.yaml
 expect:
   errors:
-    - code: INCLUDE_PATH_ESCAPES_MODULE
+    - { code: INCLUDE_PATH_ESCAPES_MODULE }
 ---
 kind: Assert.Manifest
 metadata: { name: verifyEmbedOnModuleDocIsRejected }
 source: ./__fixtures__/include-assets/embed-on-module-doc.yaml
 expect:
   errors:
-    - code: INCLUDE_OUTSIDE_RESOURCE
+    - { code: INCLUDE_OUTSIDE_RESOURCE }
 ---
 # A library embeds its OWN asset. `source` is what every module-relative
 # reference is measured from — `ctx.resolveModuleFile` for a controller, an
@@ -109,7 +105,7 @@ expect:
 # worse than a hard error: a consumer with a file at the same relative path gets
 # theirs, silently. It also contradicted packaging, which is per-module and had
 # already put this file in the library's own artifact.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyLibraryEmbedsItsOwnAsset }
 steps:
   - name: read

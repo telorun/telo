@@ -32,24 +32,14 @@ imports:
   Run: ../../../../run
   Assert: ../../../../assert
 resources:
-  base:
-    kind: GraphLayers.Store
-    description: Layer `base`, built on nothing.
-  middle:
-    kind: GraphLayers.Store
-    description: Layer `middle`, built on `base`.
-  side:
-    kind: GraphLayers.Store
-    description: Layer `side`, built on nothing.
+  base: { kind: GraphLayers.Store, description: "Layer `base`, built on nothing." }
+  middle: { kind: GraphLayers.Store, description: "Layer `middle`, built on `base`." }
+  side: { kind: GraphLayers.Store, description: "Layer `side`, built on nothing." }
   top:
     kind: GraphLayers.Store
     description: Layer `top`, built on `middle` then `side`.
-  left:
-    kind: GraphLayers.Store
-    description: Layer `left`, built on `base`.
-  right:
-    kind: GraphLayers.Store
-    description: Layer `right`, built on `base`.
+  left: { kind: GraphLayers.Store, description: "Layer `left`, built on `base`." }
+  right: { kind: GraphLayers.Store, description: "Layer `right`, built on `base`." }
   apex:
     kind: GraphLayers.Store
     description: Layer `apex`, built on `left` then `right`.
@@ -68,21 +58,12 @@ resources:
     kind: Graph.Relationship
     description: person → document, with a text `role` and an integer `share` defaulting to 100.
   refreshStacks:
-    kind: Run.Sequence
+    kind: Telo.Sequence
     description: >-
       Brings every store's stack up to date with what the stores beneath it now
       hold. Takes no input.
 exports:
-  resources:
-    - overlay
-    - writes
-    - relationships
-    - traversals
-    - deletions
-    - retractions
-    - diamond
-    - paging
-    - defaults
+  resources: [overlay, writes, relationships, traversals, deletions, retractions, diamond, paging, defaults]
 ---
 kind: Assert.Equals
 metadata: { name: check }
@@ -92,11 +73,7 @@ kind: Run.Value
 metadata: { name: gathered }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [items]
-    properties:
-      items: { type: array }
+  schema: { type: object, required: [items], properties: { items: { type: array } } }
 value:
   items: !cel "inputs.items"
 ---
@@ -282,7 +259,7 @@ node: !ref person
 ---
 # A store reads its own layer, then each base in order followed by that base's
 # own bases; the first statement for a key wins, and `origin` names its layer.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: overlay }
 steps:
   - name: baseAlice
@@ -381,7 +358,7 @@ steps:
 # A write states only in the store's own layer. A key that resolves from any
 # layer cannot be created again; changing a value from beneath copies the whole
 # row into the store's layer and applies the change there.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: writes }
 steps:
   - name: baseOne
@@ -482,7 +459,7 @@ steps:
 ---
 # Endpoints are keys resolved in the store's view: a layer may link its own
 # node to one a layer beneath states, and never to one it cannot see.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: relationships }
 steps:
   - name: baseR1
@@ -608,7 +585,7 @@ steps:
 ---
 # A traversal follows the resolved relationships and returns the resolved end
 # nodes, so it crosses a link between layers and stops at whatever a layer hides.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: traversals }
 steps:
   - name: baseT1
@@ -715,7 +692,7 @@ steps:
 # layer's own relationships touching the node are withdrawn, nothing is stated
 # about those beneath — they are out of the view because the node is — and the
 # layers beneath are untouched.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: deletions }
 steps:
   - name: baseD1
@@ -984,7 +961,7 @@ steps:
 ---
 # Retracting withdraws exactly one statement of the layer's own — a value or a
 # removal — so what lies beneath shows again.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: retractions }
 steps:
   - name: baseX1
@@ -1236,7 +1213,7 @@ steps:
 # Two bases built on the same layer: that layer has one place in the stack, the
 # lowest, so `apex` resolves apex, left, right, base and every layer outranks
 # the layers it is built on.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: diamond }
 steps:
   - name: baseG1
@@ -1309,7 +1286,7 @@ steps:
 ---
 # Following `next` to the end returns every key of the resolved view exactly
 # once, in order, whichever layers state, restate or hide it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: paging }
 steps:
   - name: baseP1
@@ -1486,7 +1463,7 @@ steps:
 # A key the store's view does not show — never stated, or hidden by the layer's
 # own removal — is stated as a new value: the given properties plus the declared
 # default of every other one, and nothing of the statement the removal hid.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: defaults }
 steps:
   - name: mergeNew

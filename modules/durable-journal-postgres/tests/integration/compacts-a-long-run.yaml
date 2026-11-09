@@ -1,0 +1,152 @@
+kind: Telo.Application
+metadata:
+  name: DurableJournalPostgresCompactionTest
+  version: 1.0.0
+  description: |
+    The file journal's compaction test, against this journal. With `compactAfter: 10` a 50-turn
+    `while` parks at turn 37 and is resumed: every turn's `work` is dispatched exactly once, the
+    resume replays only the three steps recorded after the last baseline, and the entries table
+    then holds one baseline row plus two body rows for the run.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL. Kept out of `tests/` proper for exactly that reason.
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  Durable: ../../../durable
+  Local: ../../../durable-local
+  Journal: ../../
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref test
+  - !ref dispatches
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Journal.Journal
+metadata: { name: journal }
+connection: !ref db
+table: !cel "'telo_durable_compaction_test'"
+---
+kind: Run.Value
+metadata: { name: work }
+outputType: { kind: Telo.JsonSchema, schema: { type: object, required: [done], properties: { done: { type: boolean } } } }
+value: { done: true }
+---
+kind: Durable.Await
+metadata: { name: approval }
+token: !cel "'pgcompact:' + inputs.ticket"
+timeout: 30d
+outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: true } }
+---
+kind: Local.Workflow
+metadata: { name: long }
+journal: !ref journal
+compactAfter: 10
+runId: !cel "'pgcompact-' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - { name: turn, value: 0 }
+  - name: rounds
+    while: !cel "steps.turn.result < 50"
+    do:
+      - name: work
+        invoke: !ref work
+      - name: hold
+        if: !cel "steps.turn.result == 37"
+        then:
+          - name: wait
+            invoke: !ref approval
+            inputs:
+              ticket: !cel "inputs.ticket"
+      - name: turn
+        value: !cel "steps.turn.result + 1"
+---
+kind: Local.Status
+metadata: { name: status }
+journal: !ref journal
+---
+kind: Local.Deliver
+metadata: { name: approve }
+journal: !ref journal
+await: !ref approval
+token: !cel "'pgcompact:' + inputs.ticket"
+payload: { approved: true }
+---
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 30s
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter: [{ type: "work.Invoked" }]
+expect: [{ event: work.Invoked, times: 50 }]
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: ticket
+    value: !cel "'t' + string(nowMillis())"
+  - name: start
+    invoke: !ref long
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: parked
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParked
+    while: !cel "steps.parked.result.status != 'parked'"
+    maxIterations: 400
+    do:
+      - name: parked
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+  - name: deliver
+    invoke: !ref approve
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  # Submitting the same id again takes the released claim and continues the run.
+  - name: resume
+    invoke: !ref long
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: finished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: baselineRows
+    invoke: !ref query
+    inputs:
+      sql: !sql "SELECT count(*) AS n FROM telo_durable_compaction_test_entries WHERE run = ${{ steps.start.result.runId }} AND entry_kind = 'baseline'"
+  - name: bodyRows
+    invoke: !ref query
+    inputs:
+      sql: !sql "SELECT count(*) AS n FROM telo_durable_compaction_test_entries WHERE run = ${{ steps.start.result.runId }} AND entry_kind <> 'baseline' AND path LIKE 'steps%'"
+  - name: assertCompacted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        turns: !cel "steps.finished.result.result.steps.turn.result"
+        replayedSteps: !cel "steps.finished.result.replayedSteps"
+        baselines: !cel "int(steps.baselineRows.result.rows[0].n)"
+        bodyEntries: !cel "int(steps.bodyRows.result.rows[0].n)"
+      expected: { status: completed, turns: 50, replayedSteps: 3, baselines: 1, bodyEntries: 2 }

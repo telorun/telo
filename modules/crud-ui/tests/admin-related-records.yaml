@@ -18,7 +18,6 @@ imports:
   SQLite: ../../sqlite
   Ui: ../../ui
   Probe: ../../ui/tests/__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -131,7 +130,7 @@ layout:
       id: !cel "row.id"
       status: !cel "to.status"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: admin

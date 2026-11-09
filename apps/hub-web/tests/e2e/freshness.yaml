@@ -9,17 +9,17 @@ metadata:
     reserved for this test — never seeded, never registered by another test.
     Reads hub-web at http://localhost:8050 and the hub at http://localhost:8040.
 imports:
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
   Html: oci://ghcr.io/telorun/html@0.3.1#sha256-G81fLbqXcpYtcnNCYNd51ZlFbgQM4MMXh5DoGUpeIqs
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref freshness_RegisteredModuleAppears
 ---
 # What one side of the check reads: the module's page status, whether shard 0
 # lists it, and what the hub says about its registration.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: observeLog }
 steps:
   - name: page
@@ -39,8 +39,7 @@ steps:
   - name: read
     invoke:
       kind: Html.Extraction
-      fields:
-        locs: { selector: loc, type: text, many: true }
+      fields: { locs: { selector: loc, type: text, many: true } }
     inputs:
       document: !cel "steps.parse.result"
   - name: registration
@@ -53,7 +52,7 @@ outputs:
   listed: !cel "'http://hub.telo.localhost:8060/module/oci/ghcr.io/telorun/log/' in steps.read.result.fields.locs"
   registration: !cel "steps.registration.result.body.status"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: freshness_RegisteredModuleAppears }
 steps:
   - name: before
@@ -64,12 +63,8 @@ steps:
   - name: assertBefore
     inputs:
       actual: !cel "steps.before.result"
-      expected:
-        page: 404
-        listed: false
-        registration: unknown
-    invoke:
-      kind: Assert.Equals
+      expected: { page: 404, listed: false, registration: unknown }
+    invoke: { kind: Assert.Equals }
   - name: register
     invoke:
       kind: HttpClient.Request
@@ -78,8 +73,7 @@ steps:
       # The ref is validated synchronously: two origin round trips, each a `telo`
       # subprocess doing an anonymous OCI token handshake.
       timeout: 30000
-      body:
-        ref: oci://ghcr.io/telorun/log
+      body: { ref: oci://ghcr.io/telorun/log }
   # Bounded, and the assertion stays outside the loop: an exhausted loop just
   # stops, so an assertion inside it would never run when the module never
   # becomes ready.
@@ -89,10 +83,7 @@ steps:
       maxIterations: 60
       condition: !cel "iteration == 0 || previous.status.result.body.status != 'ready'"
       steps:
-        - name: wait
-          invoke: { kind: Timer.Delay }
-          inputs:
-            duration: 2s
+        - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
         - name: status
           invoke:
             kind: HttpClient.Request
@@ -104,9 +95,5 @@ steps:
   - name: assertAfter
     inputs:
       actual: !cel "steps.after.result"
-      expected:
-        page: 200
-        listed: true
-        registration: ready
-    invoke:
-      kind: Assert.Equals
+      expected: { page: 200, listed: true, registration: ready }
+    invoke: { kind: Assert.Equals }

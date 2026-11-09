@@ -4,7 +4,6 @@ imports:
   Mcp: ../
   Http: ../../http-server
   JS: ../../javascript
-  Run: ../../run
   Assert: ../../assert
 targets: [ !ref testRun ]
 ---
@@ -74,15 +73,15 @@ instructions: |
   Compatible MCP clients surface it to the LLM as system context.
 tools: [ !ref NoTools ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRun }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8954 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
-targets: [ !ref Server ]
+targets: [ !ref server ]
 steps:
   - name: initialize
     inputs: { url: http://127.0.0.1:8954/mcp }

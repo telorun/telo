@@ -1,10 +1,10 @@
 kind: Telo.Application
 metadata: { name: McpHttpStatefulSessionTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Mcp: ../
   Http: ../../http-server
   JS: ../../javascript
-  Run: ../../run
   Assert: ../../assert
 targets: [ !ref testRun ]
 ---
@@ -96,15 +96,15 @@ serverInfo: { name: telo-test-stateful, version: 1.0.0 }
 stateful: true
 tools: [ !ref PingTools ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRun }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8955 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
-targets: [ !ref Server ]
+targets: [ !ref server ]
 steps:
   - name: probe
     inputs: { url: http://127.0.0.1:8955/mcp }

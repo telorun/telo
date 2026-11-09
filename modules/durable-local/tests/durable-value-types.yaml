@@ -34,7 +34,6 @@ imports:
   Local: ../
   Journal: ../../durable-journal-file
   Values: ./__fixtures__/durable-values
-  Run: ../../run
   Timer: ../../timer
   Assert: ../../assert
 variables:
@@ -126,7 +125,7 @@ kind: Local.Status
 metadata: { name: status }
 journal: !ref journal
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # One ticket per process, so a journal directory left behind by an earlier run

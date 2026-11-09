@@ -30,7 +30,6 @@ imports:
   Layers: ../
   Graph: ../../graph
   GraphLayers: ../../graph-layers
-  Run: ../../run
 targets:
   - !ref appSchema
   - !ref Suite.overlay
@@ -48,7 +47,7 @@ targets:
 # and discards it — a write that leaves nothing behind; then each upper layer
 # is pinned at the head of its bases, bottom-up. A pin that is already at the
 # head changes nothing and makes no revision.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refreshStacks }
 steps:
   - name: registerBase

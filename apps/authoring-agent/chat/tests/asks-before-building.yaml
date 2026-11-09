@@ -29,11 +29,7 @@ metadata:
     This is the suite's only live case: the question turn is conditional on
     the request leaving something material unsaid, and the build that follows
     must not ask again. Skips silently when ANTHROPIC_API_KEY is unset.
-secrets:
-  anthropicApiKey:
-    env: ANTHROPIC_API_KEY
-    type: string
-    default: ""
+secrets: { anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" } }
 variables:
   # This case OWNS its workspace and starts from an empty one. The agent is told
   # to look before it asks, so a todo app left behind by an earlier run is a
@@ -71,7 +67,6 @@ imports:
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
   Fs: ../../../../modules/fs
   Stream: ../../../../modules/stream
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   # Before ensureWorkspace, which creates the directory this removes.
@@ -86,7 +81,7 @@ metadata: { name: hub }
 url: https://telo.sh/mcp
 clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cleanWorkspace }
 steps:
   - name: clean
@@ -99,10 +94,9 @@ steps:
         invoke: { kind: Fs.FileRemoval }
     catch:
       # A first run, and every fresh checkout, has no directory to remove.
-      - name: absent
-        value: true
+      - { name: absent, value: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testAsks }
 steps:
   - name: runIfKey
@@ -123,8 +117,7 @@ steps:
           key: !cel "steps.chat.result.turnId"
           fromId: 0
       - name: drain
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
         inputs:
           input: !cel "steps.read.result.output"
       - name: reply
@@ -141,9 +134,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              wroteFile: { const: false }
-              askedQuestions: { const: true }
+            properties: { wroteFile: { const: false }, askedQuestions: { const: true } }
             required: [wroteFile, askedQuestions]
       # The answers. In the user's own words rather than as picks from the
       # block: which questions a live model asks is not fixed, and these settle
@@ -167,8 +158,7 @@ steps:
           key: !cel "steps.answer.result.turnId"
           fromId: 0
       - name: drainAnswer
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
         inputs:
           input: !cel "steps.readAnswer.result.output"
       - name: answerReply

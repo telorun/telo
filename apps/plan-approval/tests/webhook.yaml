@@ -10,10 +10,10 @@ metadata:
     and a server restarted on the same DB_FILE delivers `plan.revised`. The
     product lists every attempt, the failures with their errors.
 imports:
+  Run: ../../../modules/run
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Timer: ../../../modules/timer
   Assert: ../../../modules/assert
 variables:
@@ -30,7 +30,7 @@ metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18746, throwOnHttpError: true }
 ---
 # The product's delivery record: attempts so far, newest first, and rows owed.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: deliveries }
 steps:
   - name: get
@@ -44,24 +44,18 @@ kind: Run.Loop
 metadata: { name: awaitAttempts }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [count]
-    properties:
-      count: { type: integer }
+  schema: { type: object, required: [count], properties: { count: { type: integer } } }
 condition: !cel "previous == null || size(previous.read.result.attempts) < inputs.count"
 maxIterations: 150
 steps:
-  - name: pause
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 100ms }
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 100ms } }
   - name: read
     invoke: !ref deliveries
 outputs:
   attempts: !cel "steps.read.result.attempts"
   pending: !cel "steps.read.result.pending"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -75,7 +69,7 @@ steps:
     inputs: { path: !cel "string(variables.scratch)", createParents: true }
   - name: first
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: server }
@@ -106,7 +100,7 @@ steps:
           inputs: { count: 1 }
         - name: receiverUp
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             with:
               - kind: App.Instance
                 metadata: { name: receiver }
@@ -140,7 +134,7 @@ steps:
         revisedFailed: !cel "steps.revisedFailed.result"
   - name: restarted
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: receiver }

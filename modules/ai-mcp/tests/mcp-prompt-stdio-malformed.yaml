@@ -11,12 +11,11 @@ imports:
   AiMcp: ../
   Mcp: ../../mcp-client
   AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: list

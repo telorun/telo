@@ -7,11 +7,7 @@ metadata:
     for its declared `who` is the one it used — supplied by the child's own name for
     it, never by the environment variable it binds. Once the child is gone its exit
     code is what this resource reports.
-imports:
-  App: ../
-  Run: ../../run
-  Timer: ../../timer
-  Assert: ../../assert
+imports: { Run: ../../run, App: ../, Timer: ../../timer, Assert: ../../assert }
 targets:
   - !ref greeter
   - !ref test
@@ -33,7 +29,7 @@ maxIterations: 200
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: awaitExit

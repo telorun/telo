@@ -4,7 +4,6 @@ imports:
   Mcp: ../
   Http: ../../http-server
   JS: ../../javascript
-  Run: ../../run
   Assert: ../../assert
 targets: [ !ref testRun ]
 ---
@@ -79,7 +78,7 @@ code: |
 ---
 # Handler unconditionally throws an InvokeError. The catches: entry maps the
 # `not_found` Telo error code to JSON-RPC error -32001.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: throwsNotFoundImpl }
 throws:
   - { code: not_found }
@@ -109,15 +108,15 @@ metadata: { name: mcpHttp }
 serverInfo: { name: telo-test-mcp, version: 1.0.0 }
 tools: [ !ref WeatherTools ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRun }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8952 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
-targets: [ !ref Server ]
+targets: [ !ref server ]
 steps:
   - name: callGetWeather
     inputs:

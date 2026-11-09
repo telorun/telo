@@ -16,7 +16,6 @@ metadata:
     reverse order it started.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   Timer: ../../../modules/timer
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
@@ -31,7 +30,7 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -42,14 +41,11 @@ with:
 targets:
   - !ref workerA
 steps:
-  - name: settle
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 400ms
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 400ms } }
   - name: withSecondReplica
     invoke: !ref secondReplica
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: secondReplica }
 with:
   - kind: App.Instance
@@ -60,14 +56,11 @@ with:
 targets:
   - !ref workerB
 steps:
-  - name: settle
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 400ms
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 400ms } }
   - name: withThirdReplica
     invoke: !ref thirdReplica
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: thirdReplica }
 with:
   - kind: App.Instance
@@ -81,24 +74,14 @@ steps:
   # All three are running here: the two outer scopes are still open.
   - name: letThemTick
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 1500ms
+    inputs: { duration: 1500ms }
 
   - name: statusA
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8051/status
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8051/status, method: GET }
   - name: statusB
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8052/status
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8052/status, method: GET }
   - name: statusC
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8053/status
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8053/status, method: GET }
 
   - name: verifyIdentities
     invoke: { kind: Assert.Equals }

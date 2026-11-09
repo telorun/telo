@@ -8,9 +8,7 @@ metadata:
     member, and publishes `steps.<name>` as a map by element key; a later repeat
     over the same source reads `steps.runs[each.key].result`, typed. An unnamed
     repeat's steps run in order and publish nothing.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Assert: ../modules/assert }
 targets:
   - !ref test
   - !ref ranInOrder
@@ -27,21 +25,19 @@ schema:
       additionalProperties:
         type: object
         required: [label, factor]
-        properties:
-          label: { type: string }
-          factor: { type: integer }
+        properties: { label: { type: string }, factor: { type: integer } }
 resources:
   - !for-each
     metadata: { name: tasks }
     in: !cel "self.jobs"
     emit:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       steps:
         - name: scaled
           value: !cel "each.key + ':' + each.value.label + ':' + string(each.value.factor * 10)"
       outputs:
         scaled: !cel "steps.scaled.result"
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: pipeline }
     steps:
       - !for-each
@@ -70,7 +66,7 @@ jobs:
   beta: { label: two, factor: 2 }
   gamma: { label: three, factor: 3 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: run
@@ -89,8 +85,8 @@ steps:
 kind: Assert.Events
 metadata: { name: ranInOrder }
 filter:
-  - type: "*.Invoked"
+  - { type: "*.Invoked" }
 expect:
-  - event: "tasks['alpha'].Invoked"
-  - event: "tasks['beta'].Invoked"
-  - event: "tasks['gamma'].Invoked"
+  - { event: "tasks['alpha'].Invoked" }
+  - { event: "tasks['beta'].Invoked" }
+  - { event: "tasks['gamma'].Invoked" }

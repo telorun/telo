@@ -44,7 +44,6 @@ imports:
   Log: ../modules/log
   Fs: ../modules/fs
   Timer: ../modules/timer
-  Run: ../modules/run
   Assert: ../modules/assert
 variables:
   dbHost: { env: TELO_TEST_URL_DB_HOST, type: string, default: db.internal }
@@ -56,15 +55,13 @@ variables:
   rootDb:
     env: TELO_TEST_URL_ROOT_DB
     type: object
-    properties:
-      url: { x-telo-type: Telo.Url }
+    properties: { url: { x-telo-type: Telo.Url } }
     default: { url: "postgres://root:n3sted-r00t-pw@db.internal/orders" }
 secrets:
   rootSecretDb:
     env: TELO_TEST_URL_ROOT_SECRET_DB
     type: object
-    properties:
-      url: { x-telo-type: Telo.Url }
+    properties: { url: { x-telo-type: Telo.Url } }
     default: { url: "postgres://root:n3sted-s3cret-pw@db.internal/orders" }
 targets:
   - !ref members
@@ -79,8 +76,7 @@ targets:
 # The text, its password escaped as RFC 3986 requires.
 kind: Fx.DatabaseAccess
 metadata: { name: textDatabase }
-fields:
-  url: postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders?sslmode=require
+fields: { url: postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders?sslmode=require }
 ---
 # The same URL as an object of its members: the password is written as it is, and one
 # member is an expression.
@@ -98,8 +94,7 @@ fields:
 ---
 kind: Fx.DatabaseAccess
 metadata: { name: bareDatabase }
-fields:
-  url: POSTGRES://db.internal
+fields: { url: POSTGRES://db.internal }
 ---
 # Text an expression builds is read through the type's encoding at creation.
 kind: Fx.DatabaseAccess
@@ -112,7 +107,7 @@ kind: Fx.Database
 metadata: { name: consumer }
 access: !ref objectDatabase
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: members }
 steps:
   - name: verify
@@ -163,14 +158,11 @@ steps:
         sameText: true
         written: postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders?sslmode=require
         built: [postgresql, db.internal, "6432"]
-        bare:
-          password: false
-          port: 5432
-          text: postgres://db.internal
+        bare: { password: false, port: 5432, text: postgres://db.internal }
 ---
 # A kind opening the fulfilment whole receives the URL value, and the field marked
 # sensitive: the type declares its password sensitive and this URL holds one.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: consumed }
 steps:
   - name: verify
@@ -187,7 +179,7 @@ steps:
 ---
 # A call's argument at a `Telo.Url` input is built when the call is dispatched: text an
 # expression produced arrives as the URL it reads as.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hostOf }
 inputType:
   kind: Telo.JsonSchema
@@ -195,15 +187,14 @@ inputType:
     type: object
     required: [url]
     properties:
-      url:
-        x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+      url: { x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } } }
 steps:
   - name: host
     value: !cel "inputs.url.host"
 outputs:
   host: !cel "steps.host.result"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: dispatched }
 steps:
   - name: call
@@ -220,7 +211,7 @@ steps:
 # by name, never re-attempted by a retry policy, and carrying the type's entry — its
 # finding (pointer, `format` naming the type) and `ERR_URL_INVALID`, the reason in
 # its message — with no part of the value.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: dispatchRefused }
 steps:
   - name: attempt
@@ -271,31 +262,25 @@ steps:
               code: ERR_URL_INVALID
           givesReason: true
           quotesPassword: false
-        otherField:
-          code: ERR_INPUT_INVALID
-          censored: true
-          quotesPassword: false
+        otherField: { code: ERR_INPUT_INVALID, censored: true, quotesPassword: false }
 ---
 # A URL that builds, beside a field the contract refuses.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: taggedHostOf }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [url, tag]
-    properties:
-      url: { x-telo-type: Telo.Url }
-      tag: { type: string, minLength: 5 }
+    properties: { url: { x-telo-type: Telo.Url }, tag: { type: string, minLength: 5 } }
 steps: []
 ---
 kind: Assert.Events
 metadata: { name: refusedOnce }
 filter:
-  - type: "hostOf.InvokeRejected"
+  - { type: "hostOf.InvokeRejected" }
 expect:
-  - event: hostOf.InvokeRejected
-    times: 1
+  - { event: hostOf.InvokeRejected, times: 1 }
 ---
 # A result is built too: a template's `result:` producing URL text at an `outputType`
 # `Telo.Url` slot hands its caller the URL.
@@ -309,25 +294,22 @@ outputType:
     type: object
     required: [url]
     properties:
-      url:
-        x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+      url: { x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } } }
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: text }
     steps:
-      - name: text
-        value: postgresql://app@db.internal:6432/orders
+      - { name: text, value: postgresql://app@db.internal:6432/orders }
     outputs:
       text: !cel "steps.text.result"
 invoke: !ref text
 result:
   url: !cel "result.text"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: produced }
 steps:
-  - name: call
-    invoke: { kind: Self.Address }
+  - { name: call, invoke: { kind: Self.Address } }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
@@ -336,7 +318,7 @@ steps:
 ---
 # An import's variable written as text, and a library default holding text, are URLs
 # inside the library.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: imported }
 steps:
   - name: hosts
@@ -352,11 +334,10 @@ steps:
         anything: { shape: open }
         cap: 2s
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: redacted }
 with:
-  - kind: Fs.File
-    metadata: { name: readLog }
+  - { kind: Fs.File, metadata: { name: readLog } }
 steps:
   - name: marker
     value: !cel "'url-' + uuidv4()"
@@ -434,12 +415,9 @@ steps:
             rootSecretNestedPassword: "[redacted]"
         - scope: Reporter
           attributes: { host: db.internal, password: "[redacted]", text: "[redacted]" }
-        - scope: application
-          attributes: { host: db.internal, url: "[redacted]" }
-        - scope: application
-          attributes: { host: db.internal, url: "[redacted]" }
-        - scope: Vars
-          attributes: { host: db.internal, url: "[redacted]" }
+        - { scope: application, attributes: { host: db.internal, url: "[redacted]" } }
+        - { scope: application, attributes: { host: db.internal, url: "[redacted]" } }
+        - { scope: Vars, attributes: { host: db.internal, url: "[redacted]" } }
         - scope: Vars
           attributes: { password: "[redacted]", nestedPassword: "[redacted]" }
         - scope: application

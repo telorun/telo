@@ -6,10 +6,10 @@
 kind: Telo.Application
 metadata: { name: BraveResultMappingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Brave: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref resultMapping
@@ -37,11 +37,11 @@ value:
       - { title: Space, url: "https://example.com/a b", description: space }
       - { title: No URL, description: dropped }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: resultMapping }
 with:
   - kind: Server.Api
-    metadata: { name: FakeBrave }
+    metadata: { name: fakeBrave }
     routes:
       - request:
           path: /res/v1/web/search
@@ -61,13 +61,13 @@ with:
                 schema: { type: object, additionalProperties: true }
                 body: { type: search, query: { more_results_available: false } }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18847 }
     mounts:
       - path: /
-        mount: !ref FakeBrave
+        mount: !ref fakeBrave
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: dates
     invoke: !ref engine

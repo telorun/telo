@@ -4,7 +4,7 @@ imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testWhileLoop
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testWhileLoop }
 steps:
   # --- while: basic counter loop ---

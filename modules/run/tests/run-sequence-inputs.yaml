@@ -8,7 +8,7 @@ targets:
 # variable across step `inputs:`, an `if:` predicate, and the `outputs:` mapping.
 # Regression: the controller used to spread caller inputs flat, so `inputs.x`
 # failed at runtime with "Unknown variable: inputs".
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: greet }
 steps:
   - name: build
@@ -36,7 +36,7 @@ steps:
 outputs:
   loud: !cel "steps.loud.result.text"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInputs }
 steps:
   - name: callGreet

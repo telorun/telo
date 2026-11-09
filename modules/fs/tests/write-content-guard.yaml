@@ -28,7 +28,7 @@ kind: Fs.FileRemoval
 metadata: { name: remove }
 cwd: !cel "variables.fixturesDir"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testContentGuard }
 steps:
   # `dyn(...)` hides the value's type from `telo check`, which would refuse a map

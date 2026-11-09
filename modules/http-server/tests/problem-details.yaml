@@ -14,11 +14,7 @@ metadata:
     failure with no code — a crash, or the framework refusing an unparseable
     body — is the bare problem of its status.
 lang: en
-imports:
-  Http: ../
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
   - !ref unguardedProblemMember
@@ -30,13 +26,13 @@ expect:
   errors:
     - { code: CEL_NULLABLE_ACCESS, message: "'problem.data' may be null" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: failBare }
 steps:
   - name: bare
     throw: { code: BARE_FAILURE, message: no display message and no data }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: findOrder }
 inputType:
   kind: Telo.JsonSchema
@@ -127,7 +123,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: !ref client
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

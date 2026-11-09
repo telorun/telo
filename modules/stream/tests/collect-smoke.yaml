@@ -18,7 +18,7 @@ items:
   - { type: text-delta, delta: "llo" }
   - { type: finish }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: src

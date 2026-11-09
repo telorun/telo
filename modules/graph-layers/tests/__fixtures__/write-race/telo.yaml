@@ -16,19 +16,11 @@ metadata:
   description: >-
     Test fixture: two processes writing the same keys through one layer of a
     layered graph of people.
-imports:
-  Graph: ../../../../graph
-  GraphLayers: ../../..
-  Run: ../../../../run
-  Assert: ../../../../assert
+imports: { Graph: ../../../../graph, GraphLayers: ../../.., Assert: ../../../../assert }
 variables:
-  value:
-    type: string
-    description: What this process names the nodes it merges.
+  value: { type: string, description: What this process names the nodes it merges. }
 resources:
-  base:
-    kind: GraphLayers.Store
-    description: Layer `base`, built on nothing.
+  base: { kind: GraphLayers.Store, description: "Layer `base`, built on nothing." }
   top:
     kind: GraphLayers.Store
     description: Layer `top`, whose stack reaches `base`.
@@ -36,17 +28,11 @@ resources:
     kind: Graph.Node
     description: People keyed by a text `id`, with a non-null text `name` and an integer `age`.
   refreshStacks:
-    kind: Run.Sequence
+    kind: Telo.Sequence
     description: >-
       Brings `top`'s stack up to date with what `base` now holds. Takes no input.
 exports:
-  resources:
-    - mergeFresh
-    - mergedOnce
-    - seedVisible
-    - deleteVisible
-    - updateVisible
-    - deletedAreAbsent
+  resources: [mergeFresh, mergedOnce, seedVisible, deleteVisible, updateVisible, deletedAreAbsent]
 ---
 kind: Assert.Equals
 metadata: { name: check }
@@ -58,7 +44,7 @@ node: !ref person
 ---
 # One process's half of the merge race: the same 200 fresh keys as the other
 # process, under this process's own value. Any failure fails the process.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: mergeFresh }
 steps:
   - name: n
@@ -75,7 +61,7 @@ steps:
         value: !cel "steps.n.result + 1"
 ---
 # After both mergers: every key is listed once, and holds one of the two values.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: mergedOnce }
 steps:
   - name: n
@@ -105,7 +91,7 @@ steps:
         more: false
 ---
 # 200 people in `base`, visible through `top`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: seedVisible }
 steps:
   - name: n
@@ -126,7 +112,7 @@ steps:
 # One process deletes the seeded people through `top`. Each delete that answers
 # success is recorded as a marker in `base`; a node already absent is the one
 # refusal the contract allows, and anything else fails the process.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: deleteVisible }
 steps:
   - name: n
@@ -157,7 +143,7 @@ steps:
 ---
 # The other process updates the same people through `top` meanwhile. An update
 # cannot re-create a node, so one that lost to the delete answers not found.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: updateVisible }
 steps:
   - name: n
@@ -185,7 +171,7 @@ steps:
 ---
 # After both: every delete answered success, and no key whose delete answered
 # success is still visible through `top`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: deletedAreAbsent }
 steps:
   - name: stillVisible
@@ -203,7 +189,4 @@ steps:
         deletesAnswered: !cel "size(steps.deleted.result)"
         deletedYetVisible: !cel "steps.stillVisible.result.nodes.map(n, n.key).filter(k, k in steps.deleted.result)"
         visible: !cel "steps.stillVisible.result.nodes.map(n, n.key)"
-      expected:
-        deletesAnswered: 200
-        deletedYetVisible: []
-        visible: []
+      expected: { deletesAnswered: 200, deletedYetVisible: [], visible: [] }

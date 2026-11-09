@@ -27,7 +27,6 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
   RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # This test's own workspace, emptied before each run.
@@ -41,7 +40,7 @@ targets:
 ---
 # One turn's event stream, every frame decoded: a record frame's id and data,
 # or an error frame's code and message.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readEvents }
 inputType:
   kind: Telo.JsonSchema
@@ -49,9 +48,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId, fromId]
-    properties:
-      turnId: { type: string }
-      fromId: { type: integer }
+    properties: { turnId: { type: string }, fromId: { type: integer } }
 steps:
   - name: get
     timeout: 30000
@@ -77,18 +74,16 @@ outputs:
   kinds: !cel >-
     steps.all.result.items.map(r, r.event == 'error' ? parseJson(r.data).code : parseJson(r.data).data.type)
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: newConversation }
 steps:
   - name: post
     invoke: { kind: HttpClient.Request }
-    inputs:
-      url: http://127.0.0.1:18481/conversations
-      method: POST
+    inputs: { url: http://127.0.0.1:18481/conversations, method: POST }
 outputs:
   id: !cel "steps.post.result.body.id"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: startTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -96,9 +91,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: post
     invoke: { kind: HttpClient.Request }
@@ -113,7 +106,7 @@ outputs:
   turnId: !cel "steps.post.result.body.turnId"
 ---
 # POST /chat/{turnId}/<action>, no body.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turnAction }
 inputType:
   kind: Telo.JsonSchema
@@ -121,9 +114,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId, action]
-    properties:
-      turnId: { type: string }
-      action: { type: string, enum: [abort, continue] }
+    properties: { turnId: { type: string }, action: { type: string, enum: [abort, continue] } }
 steps:
   - name: post
     invoke: { kind: HttpClient.Request }
@@ -137,7 +128,7 @@ outputs:
 # Fails until the stub has received an agent model request (not a naming call)
 # carrying `text` — retried by the caller, so a release is sent only once the
 # request it lets go is held.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stubReceived }
 inputType:
   kind: Telo.JsonSchema
@@ -145,13 +136,11 @@ inputType:
     type: object
     additionalProperties: false
     required: [text]
-    properties:
-      text: { type: string }
+    properties: { text: { type: string } }
 steps:
   - name: sent
     invoke: { kind: HttpClient.Request }
-    inputs:
-      url: http://127.0.0.1:18480/requests
+    inputs: { url: http://127.0.0.1:18480/requests }
   - name: notYet
     if: !cel >-
       !steps.sent.result.body.requests.exists(r, json(r).contains(inputs.text)
@@ -162,7 +151,7 @@ steps:
           code: ERR_TEST_NOT_RECEIVED_YET
           message: !cel "'The stub has not received a request carrying ' + inputs.text + ' yet.'"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: records }
 inputType:
   kind: Telo.JsonSchema
@@ -170,8 +159,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: get
     invoke: { kind: HttpClient.Request }
@@ -180,7 +168,7 @@ steps:
 outputs:
   turns: !cel "steps.get.result.body.turns"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -202,7 +190,7 @@ steps:
       recursive: true
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -213,8 +201,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18480/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         # ── abort ────────────────────────────────────────────────────────────
@@ -253,9 +240,7 @@ steps:
           inputs: { text: hello again }
         - name: releaseNext
           invoke: { kind: HttpClient.Request }
-          inputs:
-            url: http://127.0.0.1:18480/release
-            method: POST
+          inputs: { url: http://127.0.0.1:18480/release, method: POST }
         - name: nextEvents
           invoke: !ref readEvents
           inputs: { turnId: !cel "steps.next.result.turnId", fromId: 0 }
@@ -269,7 +254,7 @@ steps:
         # it cancelled, cleared again on the finished turn it did not.
         - name: marks
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             with:
               - kind: SQLite.Connection
                 metadata: { name: markDb }
@@ -333,9 +318,7 @@ steps:
           inputs: { conversationId: !cel "steps.heldConversation.result.id" }
         - name: release
           invoke: { kind: HttpClient.Request }
-          inputs:
-            url: http://127.0.0.1:18480/release
-            method: POST
+          inputs: { url: http://127.0.0.1:18480/release, method: POST }
         - name: rest
           invoke: !ref readEvents
           inputs:
@@ -368,7 +351,7 @@ steps:
         # continued attempt must not inherit it.
         - name: staleMark
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             with:
               - kind: SQLite.Connection
                 metadata: { name: agentDb }
@@ -398,7 +381,7 @@ steps:
           inputs: { turnId: !cel "steps.refused.result.turnId", fromId: !cel "steps.continued.result.body.fromId" }
         - name: markCleared
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             with:
               - kind: SQLite.Connection
                 metadata: { name: agentDb }
@@ -475,7 +458,7 @@ steps:
         # Removed through the same journal, from outside the agent.
         - name: remove
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             with:
               - kind: SQLite.Connection
                 metadata: { name: agentDb }
@@ -516,8 +499,7 @@ steps:
   # What the model was sent: the continued attempt's request carries the note.
   - name: sent
     invoke: { kind: HttpClient.Request }
-    inputs:
-      url: http://127.0.0.1:18480/requests
+    inputs: { url: http://127.0.0.1:18480/requests }
   - name: noteSentToModel
     invoke: { kind: Assert.Equals }
     inputs:

@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: CanBuildSelections, version: 1.0.0 }
-imports:
-  Sql: ../
-  SQLite: ../../sqlite
-  Run: ../../run
-  Assert: ../../assert
+imports: { Sql: ../, SQLite: ../../sqlite, Assert: ../../assert }
 targets:
   - !ref testSelectionBuilder
 ---
@@ -29,7 +25,7 @@ orderBy:
 limit: 10
 connection: !ref db
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testSelectionBuilder }
 steps:
   - name: createTable

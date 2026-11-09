@@ -20,10 +20,10 @@ metadata:
     commands and sessions paged from either end, bounded by `after` and `before`,
     with `cursor` the last key in page order.
 imports:
+  Run: ../../../modules/run
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Timer: ../../../modules/timer
   Assert: ../../../modules/assert
 variables:
@@ -39,7 +39,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18749, throwOnHttpError: false }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: report }
 inputType:
   kind: Telo.JsonSchema
@@ -62,15 +62,11 @@ outputs:
   answer: !cel "[steps.put.result.status, 'code' in steps.put.result.body ? steps.put.result.body.code : 'ok']"
 ---
 # A runner's feed read: [status, [[seq, type, state-relevant fields]], cursor].
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: feed }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [query]
-    properties:
-      query: { type: string }
+  schema: { type: object, required: [query], properties: { query: { type: string } } }
 steps:
   - name: start
     value: !cel "nowMillis()"
@@ -85,15 +81,11 @@ outputs:
   body: !cel "steps.get.result.body"
 ---
 # One page of a review list, as [keys, cursor]: command seqs, or session IDs.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: page }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [url]
-    properties:
-      url: { type: string }
+  schema: { type: object, required: [url], properties: { url: { type: string } } }
 steps:
   - name: get
     invoke: !ref call
@@ -105,7 +97,7 @@ outputs:
       : steps.get.result.body.sessions.map(s, string(s.id)),
      steps.get.result.body.cursor]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: decide }
 inputType:
   kind: Telo.JsonSchema
@@ -127,7 +119,7 @@ steps:
 outputs:
   status: !cel "steps.post.result.status"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -150,7 +142,7 @@ steps:
   - name: run
     inputs: !cel "steps.ids.result"
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
         schema:
@@ -259,10 +251,7 @@ steps:
               schema:
                 type: object
                 required: [query, plan, hash]
-                properties:
-                  query: { type: string }
-                  plan: { type: string }
-                  hash: { type: string }
+                properties: { query: { type: string }, plan: { type: string }, hash: { type: string } }
             collection: [poll, decide]
             concurrency: 2
             steps:
@@ -273,9 +262,7 @@ steps:
                     invoke: !ref feed
                     inputs: { query: !cel "inputs.query" }
                 else:
-                  - name: pause
-                    invoke: { kind: Timer.Delay }
-                    inputs: { duration: 300ms }
+                  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 300ms } }
                   - name: decided
                     invoke: !ref decide
                     inputs: { plan: !cel "inputs.plan", decision: approve, revision: 1, hash: !cel "inputs.hash" }
@@ -417,18 +404,7 @@ steps:
         - name: paging
           invoke:
             kind: Run.Projection
-            collection:
-              - /api/review/runners/r1/commands?order=desc&limit=2
-              - /api/review/runners/r1/commands?order=desc&before=5&limit=2
-              - /api/review/runners/r1/commands?order=desc&before=3&limit=2
-              - /api/review/runners/r1/commands?order=desc&before=1&limit=2
-              - /api/review/runners/r1/commands?order=desc&after=3
-              - /api/review/runners/r2/commands?order=desc
-              - /api/review/runners/r1/commands?after=4&limit=1
-              - /api/review/runners/r1/commands?after=6
-              - /api/review/runners/r1/sessions?order=desc
-              - /api/review/runners/r1/sessions?state=inactive&order=desc&limit=1
-              - /api/review/runners/r1/sessions?state=inactive
+            collection: [/api/review/runners/r1/commands?order=desc&limit=2, /api/review/runners/r1/commands?order=desc&before=5&limit=2, /api/review/runners/r1/commands?order=desc&before=3&limit=2, /api/review/runners/r1/commands?order=desc&before=1&limit=2, /api/review/runners/r1/commands?order=desc&after=3, /api/review/runners/r2/commands?order=desc, /api/review/runners/r1/commands?after=4&limit=1, /api/review/runners/r1/commands?after=6, /api/review/runners/r1/sessions?order=desc, /api/review/runners/r1/sessions?state=inactive&order=desc&limit=1, /api/review/runners/r1/sessions?state=inactive]
             steps:
               - name: read
                 invoke: !ref page

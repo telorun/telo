@@ -15,18 +15,18 @@ metadata:
     slot (validation), the JSON encoding (including a value beyond 2^53 that a
     double could not carry), and `Assert.Equals` against an integer literal.
 imports:
+  Run: ../modules/run
   Http: ../modules/http-server
   HttpClient: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref verifyIntegersCrossJson
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyIntegersCrossJson }
 with:
   - kind: Run.Value
-    metadata: { name: CountItems }
+    metadata: { name: countItems }
     inputType:
       kind: Telo.JsonSchema
       schema: { type: object, properties: { items: { type: array } } }
@@ -36,11 +36,11 @@ with:
       # change it. Serializing it is what the route below has to survive.
       big: !cel "9007199254740993"
   - kind: Http.Api
-    metadata: { name: CountApi }
+    metadata: { name: countApi }
     routes:
       - request: { path: /count, method: GET }
         inputs: { items: [a, b, c] }
-        handler: !ref CountItems
+        handler: !ref countItems
         returns:
           - status: 200
             content:
@@ -55,16 +55,16 @@ with:
                   count: !cel "result.count"
                   big: !cel "result.big"
   - kind: Http.Server
-    metadata: { name: CountServer }
+    metadata: { name: countServer }
     listen: { port: 8846 }
     mounts:
       - path: /
-        mount: !ref CountApi
+        mount: !ref countApi
 targets:
-  - !ref CountServer
+  - !ref countServer
 steps:
   - name: local
-    invoke: !ref CountItems
+    invoke: !ref countItems
     inputs: { items: [a, b, c] }
   # An integer result compares equal to an integer literal: YAML has no way to
   # write an int64, so requiring an exact type match would make every

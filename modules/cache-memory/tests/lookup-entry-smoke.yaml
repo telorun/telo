@@ -6,11 +6,7 @@ metadata:
     Writes a value via Cache.Entry with a fresh window, reads it back via
     Cache.Lookup (asserting state=fresh + value), and confirms an absent key
     reports state=miss.
-imports:
-  Cache: ../../cache
-  CacheMemory: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Cache: ../../cache, CacheMemory: ../, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -26,7 +22,7 @@ kind: Cache.Lookup
 metadata: { name: get }
 store: !ref mem
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: write

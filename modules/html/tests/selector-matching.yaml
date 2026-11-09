@@ -72,7 +72,7 @@ targets:
   - !ref nestedScope
 ---
 # `:nth-child(An+B of S)` counts only the siblings matching S.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nthChildOf }
 steps:
   - name: parse
@@ -88,7 +88,7 @@ steps:
       expected: [l1, l5]
 ---
 # `:nth-last-child(An+B of S)`, from the end.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nthLastChildOf }
 steps:
   - name: parse
@@ -104,7 +104,7 @@ steps:
       expected: [l5]
 ---
 # `of` takes a selector list.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nthChildOfList }
 steps:
   - name: parse
@@ -120,7 +120,7 @@ steps:
       expected: [l2]
 ---
 # A complex selector inside `:is()`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: isComplex }
 steps:
   - name: parse
@@ -136,7 +136,7 @@ steps:
       expected: [p1, p2]
 ---
 # A complex selector inside `:not()`, against the whole document.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: notComplex }
 steps:
   - name: parse
@@ -152,7 +152,7 @@ steps:
       expected: [artlink]
 ---
 # `:where()` with a list, under a combinator.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: whereComplex }
 steps:
   - name: parse
@@ -168,7 +168,7 @@ steps:
       expected: [navlink, artlink]
 ---
 # `:has(> S)`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hasChild }
 steps:
   - name: parse
@@ -184,7 +184,7 @@ steps:
       expected: [imgbox]
 ---
 # `:has(+ S)` looks at the next sibling.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hasNextSibling }
 steps:
   - name: parse
@@ -200,7 +200,7 @@ steps:
       expected: [t1]
 ---
 # `:has(~ S)` looks at later siblings.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hasLaterSibling }
 steps:
   - name: parse
@@ -216,7 +216,7 @@ steps:
       expected: [t2]
 ---
 # `col || td` — the cells in a column group's columns, spans included.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: columnCombinator }
 steps:
   - name: parse
@@ -232,7 +232,7 @@ steps:
       expected: [r1b, r2b, r2c]
 ---
 # `:nth-col()`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nthCol }
 steps:
   - name: parse
@@ -248,7 +248,7 @@ steps:
       expected: [r1a, r2a]
 ---
 # `:nth-last-col()`, a spanning cell belonging to each of its columns.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nthLastCol }
 steps:
   - name: parse
@@ -264,7 +264,7 @@ steps:
       expected: [r1b, r2c]
 ---
 # `:default` — a checked box and a form's first submit button.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: default }
 steps:
   - name: parse
@@ -280,7 +280,7 @@ steps:
       expected: [cb, b1]
 ---
 # `:indeterminate` — radios in a group with none checked, a progress with no value.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: indeterminate }
 steps:
   - name: parse
@@ -296,7 +296,7 @@ steps:
       expected: [ra, rb, pg]
 ---
 # `:placeholder-shown`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: placeholderShown }
 steps:
   - name: parse
@@ -312,7 +312,7 @@ steps:
       expected: [ph]
 ---
 # `:in-range`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: inRange }
 steps:
   - name: parse
@@ -328,7 +328,7 @@ steps:
       expected: [num]
 ---
 # `:out-of-range`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: outOfRange }
 steps:
   - name: parse
@@ -344,7 +344,7 @@ steps:
       expected: [big]
 ---
 # `:valid` — constraint validation from the markup.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: valid }
 steps:
   - name: parse
@@ -360,7 +360,7 @@ steps:
       expected: [cb, ra, rb, ph, num, b1, b2]
 ---
 # `:invalid` — a form holding an invalid control is invalid too.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: invalid }
 steps:
   - name: parse
@@ -376,7 +376,7 @@ steps:
       expected: [f, big, req]
 ---
 # `:defined` — an autonomous custom element is not, in a static page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: defined }
 steps:
   - name: parse
@@ -392,7 +392,7 @@ steps:
       expected: [xw]
 ---
 # HTML compares `type` values case-insensitively.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: attributeValueCase }
 steps:
   - name: parse
@@ -408,7 +408,7 @@ steps:
       expected: [cb, up]
 ---
 # …and other attribute values exactly.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: attributeValueExact }
 steps:
   - name: parse
@@ -424,7 +424,7 @@ steps:
       expected: []
 ---
 # The `i` flag makes any comparison case-insensitive.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: attributeValueFlag }
 steps:
   - name: parse
@@ -440,7 +440,7 @@ steps:
       expected: [up]
 ---
 # `:lang()` reads the nearest `lang`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: lang }
 steps:
   - name: parse
@@ -456,7 +456,7 @@ steps:
       expected: [he]
 ---
 # `:dir()` reads the directionality.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: dir }
 steps:
   - name: parse
@@ -472,7 +472,7 @@ steps:
       expected: [he]
 ---
 # `:checked`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checked }
 steps:
   - name: parse
@@ -488,7 +488,7 @@ steps:
       expected: [cb]
 ---
 # `:disabled`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: disabled }
 steps:
   - name: parse
@@ -504,7 +504,7 @@ steps:
       expected: [dis]
 ---
 # `:empty` — white space does not count.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: empty }
 steps:
   - name: parse
@@ -520,7 +520,7 @@ steps:
       expected: [blank]
 ---
 # `:hover` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverHover }
 steps:
   - name: parse
@@ -536,7 +536,7 @@ steps:
       expected: []
 ---
 # `:focus` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverFocus }
 steps:
   - name: parse
@@ -552,7 +552,7 @@ steps:
       expected: []
 ---
 # `:focus-within` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverFocusWithin }
 steps:
   - name: parse
@@ -568,7 +568,7 @@ steps:
       expected: []
 ---
 # `:focus-visible` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverFocusVisible }
 steps:
   - name: parse
@@ -584,7 +584,7 @@ steps:
       expected: []
 ---
 # `:visited` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverVisited }
 steps:
   - name: parse
@@ -600,7 +600,7 @@ steps:
       expected: []
 ---
 # `:target` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverTarget }
 steps:
   - name: parse
@@ -616,7 +616,7 @@ steps:
       expected: []
 ---
 # `:target-within` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverTargetWithin }
 steps:
   - name: parse
@@ -632,7 +632,7 @@ steps:
       expected: []
 ---
 # `:local-link` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverLocalLink }
 steps:
   - name: parse
@@ -648,7 +648,7 @@ steps:
       expected: []
 ---
 # `:user-invalid` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverUserInvalid }
 steps:
   - name: parse
@@ -664,7 +664,7 @@ steps:
       expected: []
 ---
 # `:playing` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverPlaying }
 steps:
   - name: parse
@@ -680,7 +680,7 @@ steps:
       expected: []
 ---
 # `:paused` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverPaused }
 steps:
   - name: parse
@@ -696,7 +696,7 @@ steps:
       expected: []
 ---
 # `:modal` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverModal }
 steps:
   - name: parse
@@ -712,7 +712,7 @@ steps:
       expected: []
 ---
 # `:fullscreen` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverFullscreen }
 steps:
   - name: parse
@@ -728,7 +728,7 @@ steps:
       expected: []
 ---
 # `:popover-open` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverPopoverOpen }
 steps:
   - name: parse
@@ -744,7 +744,7 @@ steps:
       expected: []
 ---
 # `:autofill` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverAutofill }
 steps:
   - name: parse
@@ -760,7 +760,7 @@ steps:
       expected: []
 ---
 # `:state(open)` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverStateOpen }
 steps:
   - name: parse
@@ -776,7 +776,7 @@ steps:
       expected: []
 ---
 # `:current` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverCurrent }
 steps:
   - name: parse
@@ -792,7 +792,7 @@ steps:
       expected: []
 ---
 # `:past` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverPast }
 steps:
   - name: parse
@@ -808,7 +808,7 @@ steps:
       expected: []
 ---
 # `:future` needs a live user agent: it matches nothing in a parsed page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: neverFuture }
 steps:
   - name: parse
@@ -825,7 +825,7 @@ steps:
 ---
 # A nested field's selector is matched against the whole page, so an ancestor
 # outside the scope element still counts: `article` is above `#sec`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nestedScope }
 steps:
   - name: parse

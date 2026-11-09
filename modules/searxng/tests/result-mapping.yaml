@@ -7,10 +7,10 @@
 kind: Telo.Application
 metadata: { name: SearxngResultMappingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   SearXNG: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref resultMapping
@@ -38,11 +38,11 @@ value:
     - { title: Space, url: "https://example.com/a b", content: space }
     - { title: No URL, content: dropped }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: resultMapping }
 with:
   - kind: Server.Api
-    metadata: { name: FakeSearxng }
+    metadata: { name: fakeSearxng }
     routes:
       - request:
           path: /search
@@ -60,13 +60,13 @@ with:
             content:
               application/json: { schema: { type: object, additionalProperties: true }, body: { results: [] } }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18841 }
     mounts:
       - path: /
-        mount: !ref FakeSearxng
+        mount: !ref fakeSearxng
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: search
     invoke: !ref engine

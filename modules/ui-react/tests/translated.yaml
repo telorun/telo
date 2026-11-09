@@ -18,15 +18,11 @@ metadata:
     nodes travel in the application document, translated like the rest of it,
     with a composite provided, a menu's text and items translated, a node and
     a menu item delivered per request, and the header they read joins `Vary`.
-imports:
-  App: ../../app
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

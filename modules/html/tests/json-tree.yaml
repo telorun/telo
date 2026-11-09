@@ -15,7 +15,7 @@ targets:
 # SVG with foreignObject, MathML, a template, a legacy doctype, boolean and
 # duplicate attributes and entities: serialized, then parsed again, the tree is
 # the same.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: roundTrip }
 steps:
   - name: parse
@@ -103,7 +103,7 @@ steps:
 ---
 # A subset of the html5lib tree-construction cases: implied tags, the adoption
 # agency, foster parenting, and a paragraph a table closes only in no-quirks mode.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: treeConstruction }
 steps:
   - name: cases
@@ -136,7 +136,7 @@ steps:
             expected: !cel "item.tree"
 ---
 # A byte order mark wins over the declared charset.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: bomOverridesCharset }
 steps:
   - name: parse
@@ -157,7 +157,7 @@ steps:
           children: [{ type: text, text: Zażółć }]
 ---
 # With no byte order mark and no declared charset, the `<meta>` prescan decides.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: metaCharset }
 steps:
   - name: parse
@@ -174,7 +174,7 @@ steps:
       actual: !cel "steps.text.result.text"
       expected: Zażółć gęślą jaźń
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: fragmentParse }
 steps:
   - name: parse
@@ -192,7 +192,7 @@ steps:
 ---
 # The first `<base href>` resolves against the page URL; with no page URL only an
 # absolute one gives a base, and nothing is inferred.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: baseUrlRule }
 steps:
   - name: relativeBase

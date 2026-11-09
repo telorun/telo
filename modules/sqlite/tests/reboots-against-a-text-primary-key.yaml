@@ -11,11 +11,7 @@ metadata:
 
     Two boots is the whole test, and it needs a second application to express: a
     schema is reconciled at boot, so one kernel can only ever do it once.
-imports:
-  App: ../../app
-  Run: ../../run
-  Timer: ../../timer
-  Assert: ../../assert
+imports: { Run: ../../run, App: ../../app, Timer: ../../timer, Assert: ../../assert }
 targets:
   - !ref firstBoot
   - !ref secondBoot
@@ -55,7 +51,7 @@ maxIterations: 200
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: awaitExits

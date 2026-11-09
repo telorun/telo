@@ -1,0 +1,8 @@
+modules:
+  modules/durable-local: Added
+body: DurableLocal.Workflow gains compactAfter (default 1000) — a long run replaces the
+  entries it holds with one baseline at a step boundary of the workflow's own steps and
+  a resume starts there — and retainFinished (default 30d), after which the resumer
+  deletes a finished run. Both need a journal implementing the new operations
+  (replaceWithBaseline, finishedRuns, deleteFinishedRun); one without them runs
+  uncompacted and unpurged. Needs telo >=unreleased.

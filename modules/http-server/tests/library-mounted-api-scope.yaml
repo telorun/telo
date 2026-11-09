@@ -15,7 +15,6 @@ imports:
   Lib: ./__fixtures__/scope-lib
   Http: ../
   Runner: ../../javascript
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -37,17 +36,17 @@ outputType:
     properties: { status: { type: integer }, body: { type: string } }
     required: [ status, body ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8952 }
     mounts:
       - path: /
         mount: !ref Lib.api
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: hitInline
     inputs: { url: http://127.0.0.1:8952/inline }

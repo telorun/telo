@@ -12,7 +12,7 @@ imports: { Run: .., Assert: ../../assert }
 targets:
   - !ref testMessages
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testMessages }
 steps:
   - name: both

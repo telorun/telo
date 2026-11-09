@@ -1,23 +1,23 @@
 kind: Telo.Application
 metadata: { name: PipelineWithServer, version: 1.0.0 }
 imports:
+  Run: ../modules/run
   Http: ../modules/http-server
   HttpClient: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testServerWithLifecycle }
 with:
   - kind: Run.Value
-    metadata: { name: GreetingHandler }
+    metadata: { name: greetingHandler }
     inputType:
       kind: Telo.JsonSchema
       schema: { type: object, properties: { name: { type: string } } }
     value:
       greeting: !cel "'Hello ' + inputs.name + '!'"
   - kind: Http.Api
-    metadata: { name: TestApi }
+    metadata: { name: testApi }
     routes:
       - request:
           path: /hello
@@ -26,7 +26,7 @@ with:
             query: { type: object, properties: { name: { type: string } }, required: ["name"] }
         inputs:
           name: !cel "request.query.name"
-        handler: !ref GreetingHandler
+        handler: !ref greetingHandler
         returns:
           - status: 200
             content:
@@ -35,12 +35,12 @@ with:
                 body:
                   message: !cel "result.greeting"
   - kind: Http.Server
-    metadata: { name: TestServer }
+    metadata: { name: testServer }
     listen: { port: 8845 }
     openapi: { info: { title: Test Server, version: 1.0.0 } }
     mounts:
       - path: /api
-        mount: !ref TestApi
+        mount: !ref testApi
 steps:
   - name: fetchGreeting
     inputs: {}

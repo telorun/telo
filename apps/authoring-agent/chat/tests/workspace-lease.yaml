@@ -31,12 +31,12 @@ metadata:
     was; a `write_file` call returns an error leading with ERR_WORKSPACE_BUSY
     and writes nothing; and the holder answers 200 once the pipe is read.
 imports:
+  Run: ../../../../modules/run
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # This test's own workspace, emptied before each run.
@@ -66,7 +66,7 @@ host:
   kind: Shell.LocalHost
   cwd: !cel "variables.scratch.joinPath('workspace')"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: push }
 inputType:
   kind: Telo.JsonSchema
@@ -74,10 +74,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [write]
-    properties:
-      write:
-        type: array
-        items: { type: object, additionalProperties: true }
+    properties: { write: { type: array, items: { type: object, additionalProperties: true } } }
 steps:
   - name: post
     invoke: !ref call
@@ -92,7 +89,7 @@ outputs:
 ---
 # A push that is applied: one refused because the lease stayed held (503) is
 # an error, so the step invoking this sends it again — what a client does.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: applied }
 inputType:
   kind: Telo.JsonSchema
@@ -100,10 +97,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [write]
-    properties:
-      write:
-        type: array
-        items: { type: object, additionalProperties: true }
+    properties: { write: { type: array, items: { type: object, additionalProperties: true } } }
 steps:
   - name: attempt
     invoke: !ref push
@@ -119,7 +113,7 @@ steps:
 # The gated holder: a push that takes the lease, writes `<gate>.marker`, then
 # stops at the named pipe `<gate>.pipe` until the pipe is read, then writes
 # `rest` and lets the lease go.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hold }
 inputType:
   kind: Telo.JsonSchema
@@ -129,9 +123,7 @@ inputType:
     required: [gate, rest]
     properties:
       gate: { type: string }
-      rest:
-        type: array
-        items: { type: object, additionalProperties: true }
+      rest: { type: array, items: { type: object, additionalProperties: true } }
 steps:
   - name: held
     invoke: !ref push
@@ -144,7 +136,7 @@ outputs:
 ---
 # Lets a holder go: reads its pipe — after `pause` seconds — and removes the
 # pipe, which is how the scenario's way out knows it was read.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: release }
 inputType:
   kind: Telo.JsonSchema
@@ -152,9 +144,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [gate, pause]
-    properties:
-      gate: { type: string }
-      pause: { type: integer }
+    properties: { gate: { type: string }, pause: { type: integer } }
 steps:
   - name: read
     invoke: !ref inWorkspace
@@ -169,7 +159,7 @@ outputs:
 ---
 # A scenario's way out, whatever happened in it: a pipe still there was not
 # read, so a holder is — or will be — stopped at it; it is read here.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: letGo }
 inputType:
   kind: Telo.JsonSchema
@@ -177,8 +167,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [gate]
-    properties:
-      gate: { type: string }
+    properties: { gate: { type: string } }
 steps:
   - name: drain
     invoke: !ref inWorkspace
@@ -191,7 +180,7 @@ steps:
             + inputs.gate + '.pipe; fi; true'
 ---
 # Starts a turn of scripted tool calls in a conversation of its own.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: begin }
 inputType:
   kind: Telo.JsonSchema
@@ -201,9 +190,7 @@ inputType:
     required: [directive, calls]
     properties:
       directive: { type: string }
-      calls:
-        type: array
-        items: { type: object, additionalProperties: true }
+      calls: { type: array, items: { type: object, additionalProperties: true } }
 steps:
   - name: conversation
     invoke: !ref call
@@ -221,7 +208,7 @@ outputs:
   turnId: !cel "string(steps.start.result.body.turnId)"
 ---
 # Waits for a turn to end: its event stream read to its last frame.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: ended }
 inputType:
   kind: Telo.JsonSchema
@@ -229,8 +216,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: get
     timeout: 300000
@@ -244,7 +230,7 @@ steps:
     inputs:
       input: !cel "steps.get.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: revert }
 inputType:
   kind: Telo.JsonSchema
@@ -252,8 +238,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: post
     invoke: !ref call
@@ -269,7 +254,7 @@ outputs:
 ---
 # A revert that ran to its end: one refused because the lease stayed held
 # (503) is an error, so the step invoking this sends it again.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reverted }
 inputType:
   kind: Telo.JsonSchema
@@ -277,8 +262,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: attempt
     invoke: !ref revert
@@ -287,9 +271,7 @@ steps:
     if: !cel "steps.attempt.result.status == 503"
     then:
       - name: again
-        throw:
-          code: ERR_TEST_REVERT_BUSY
-          message: The revert answered 503.
+        throw: { code: ERR_TEST_REVERT_BUSY, message: The revert answered 503. }
 outputs:
   status: !cel "steps.attempt.result.status"
   outcome: !cel "steps.attempt.result.outcome"
@@ -299,7 +281,7 @@ metadata: { name: onDisk }
 cwd: !cel "variables.scratch.joinPath('workspace')"
 ---
 # Fails until something exists at a path under the agent's workspace.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: exists }
 inputType:
   kind: Telo.JsonSchema
@@ -307,8 +289,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [path]
-    properties:
-      path: { type: string }
+    properties: { path: { type: string } }
 steps:
   - name: look
     invoke: !ref onDisk
@@ -322,7 +303,7 @@ steps:
           code: ERR_TEST_NOT_THERE_YET
           message: !cel "'Nothing exists at ' + inputs.path + ' yet.'"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -344,7 +325,7 @@ steps:
       recursive: true
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -356,8 +337,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18546/v1
             teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: seed
@@ -369,8 +349,7 @@ steps:
               + range(500).map(i, {'path': 'many/f' + string(i) + '.txt', 'content': 'many\n'})
         - name: pipes
           invoke: !ref inWorkspace
-          inputs:
-            args: [mkfifo, waits.pipe, exhausts.pipe]
+          inputs: { args: [mkfifo, waits.pipe, exhausts.pipe] }
         # ── a revert racing pushes to the paths it restores ──────────────────
         - name: removed
           invoke: !ref begin
@@ -415,8 +394,7 @@ steps:
             write: !cel "range(60).map(i, {'path': 'race/p' + string(i) + '.txt', 'content': 'X\\n'})"
         - name: afterRace
           invoke: !ref onDisk
-          inputs:
-            paths: [ race ]
+          inputs: { paths: [race] }
         # ── an edit racing a push to the same file ───────────────────────────
         - name: edit
           invoke: !ref begin
@@ -504,8 +482,7 @@ steps:
               inputs: { gate: waits }
         - name: afterWait
           invoke: !ref onDisk
-          inputs:
-            paths: [ slow ]
+          inputs: { paths: [slow] }
         - name: verifyWaits
           invoke: { kind: Assert.Equals }
           inputs:
@@ -523,9 +500,7 @@ steps:
                   steps.afterWait.result.files.map(f, f.path + ' '
                     + (f.hash == sha256('holder\n') ? 'holder' : f.hash == sha256('contender\n') ? 'contender' : 'other'))
             expected:
-              raced:
-                outcome: [ 60, true ]
-                files: [ 60, true ]
+              raced: { outcome: [60, true], files: [60, true] }
               edit: true
               waited:
                 answers:
@@ -640,8 +615,7 @@ steps:
                       # What the refused callers left, while the lease is still held.
                       - name: absent
                         invoke: !ref onDisk
-                        inputs:
-                          paths: [ late.txt, tool.txt, held.txt ]
+                        inputs: { paths: [late.txt, tool.txt, held.txt] }
                       - name: released
                         invoke: !ref release
                         inputs: { gate: exhausts, pause: 0 }
@@ -658,8 +632,7 @@ steps:
               inputs: { gate: exhausts }
         - name: afterBusy
           invoke: !ref onDisk
-          inputs:
-            paths: [ late.txt, tool.txt, held.txt ]
+          inputs: { paths: [late.txt, tool.txt, held.txt] }
         - name: manyRecords
           invoke: !ref call
           inputs: { url: !interpolate "http://127.0.0.1:18547/conversations/${{ steps.many.result.conversationId }}/records" }

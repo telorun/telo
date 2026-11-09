@@ -9,7 +9,6 @@ imports:
   Tesseract: ../
   PdfMake: ../../pdfmake
   Pdf: ../../pdf
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref readsEveryFormat
@@ -23,7 +22,7 @@ metadata: { name: rasterizer }
 scale: 2
 quality: 90
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readsEveryFormat }
 steps:
   - name: render

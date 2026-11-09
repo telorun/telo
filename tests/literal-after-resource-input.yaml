@@ -6,12 +6,10 @@
 # its RFC 3339 text reached the library as text and was refused at the call
 # (`ERR_INPUT_INVALID`: `/at must be a Telo.Timestamp`).
 kind: Telo.Application
-metadata:
-  name: LiteralAfterResourceInputTest
-  version: 1.0.0
+metadata: { name: LiteralAfterResourceInputTest, version: 1.0.0 }
 imports:
-  Assert: ../modules/assert
   Run: ../modules/run
+  Assert: ../modules/assert
   Lib:
     source: ./__fixtures__/literal-after-resource-input
     resources:
@@ -19,14 +17,12 @@ imports:
 targets:
   - !ref verify
 ---
-kind: Run.Sequence
-metadata:
-  name: verify
+kind: Telo.Sequence
+metadata: { name: verify }
 steps:
   - name: read
     invoke: !ref Lib.instantText
-    inputs:
-      at: "2020-01-01T00:00:00Z"
+    inputs: { at: "2020-01-01T00:00:00Z" }
   - name: assertInstant
     invoke: { kind: Assert.Equals }
     inputs:
@@ -34,6 +30,5 @@ steps:
       expected: "2020-01-01T00:00:00Z"
 ---
 kind: Run.Value
-metadata:
-  name: marker
+metadata: { name: marker }
 value: 1

@@ -13,11 +13,11 @@ metadata:
     spans are `debug` log records, so the agent boots to its startup warning
     at the default level without writing one.
 imports:
+  Run: ../../../../modules/run
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -41,7 +41,7 @@ metadata: { name: repo }
 ---
 # Every exported span as { name, trace, span, parent, attrs }, attributes
 # flattened to their string form — once the turn's own spans are in.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: exported }
 inputType:
   kind: Telo.JsonSchema
@@ -49,8 +49,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: get
     invoke: !ref call
@@ -78,7 +77,7 @@ steps:
 outputs:
   spans: !cel "steps.spans.result"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -103,7 +102,7 @@ steps:
       recursive: true
   - name: traced
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -117,15 +116,12 @@ steps:
             otlpEndpoint: http://127.0.0.1:18512
             # The repo's own CLI, relative to the workspace the check runs in.
             teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: conversation
           invoke: !ref call
-          inputs:
-            url: http://127.0.0.1:18514/conversations
-            method: POST
+          inputs: { url: http://127.0.0.1:18514/conversations, method: POST }
         - name: start
           invoke: !ref call
           inputs:

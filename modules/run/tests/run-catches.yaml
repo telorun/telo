@@ -31,7 +31,7 @@ catches:
       - fallback: true
         failedWith: !cel "error.code"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyCatches }
 steps:
   - name: project

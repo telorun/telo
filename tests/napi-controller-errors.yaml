@@ -15,7 +15,6 @@ metadata:
     `create` crosses the bridge as the string the kernel minted.
 imports:
   NapiErrors: ./__fixtures__/napi-controller-errors/telo.yaml
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref testInvokeError
@@ -26,7 +25,7 @@ targets:
 kind: NapiErrors.Probe
 metadata: { name: probe }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInvokeError }
 steps:
   - name: succeeds
@@ -70,7 +69,7 @@ steps:
             data: { id: "42" }
             displayMessage: { text: "Probe {$id} failed.", context: null, lang: en, computed: false }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testIntegers }
 steps:
   - name: returned
@@ -94,7 +93,7 @@ steps:
         aboveSafe: true
         belowNegativeSafe: true
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testKernelInstanceId }
 steps:
   - name: returned

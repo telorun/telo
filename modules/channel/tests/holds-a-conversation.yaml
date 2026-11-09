@@ -7,11 +7,7 @@ metadata:
     after the first is answered, so nothing that hands over a fixed script at boot
     can reach it — reading up to a marker, answering, and reading again is the whole
     point.
-imports:
-  App: ../../app
-  Channel: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { App: ../../app, Channel: ../, Assert: ../../assert }
 targets:
   - !ref quiz
   - !ref test
@@ -31,7 +27,7 @@ kind: Channel.SendLine
 metadata: { name: send }
 channel: !ref quiz
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: namePrompt

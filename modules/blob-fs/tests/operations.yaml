@@ -15,7 +15,6 @@ imports:
   Fs: ../../fs
   Octet: ../../octet-codec
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 variables:
   fixturesDir:
@@ -51,7 +50,7 @@ metadata: { name: remove }
 cwd: !cel "variables.fixturesDir"
 ---
 # Reads a blob whole: what it holds as text, with its size and media type.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: load }
 inputType:
   kind: Telo.JsonSchema
@@ -68,7 +67,7 @@ outputs:
   size: !cel "steps.found.result.size"
   contentType: !cel "steps.found.result.contentType"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: reset

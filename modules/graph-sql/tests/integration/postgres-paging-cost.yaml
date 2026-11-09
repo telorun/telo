@@ -27,6 +27,7 @@ metadata:
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -35,7 +36,6 @@ imports:
   Postgres: ../../../postgres
   GraphSql: ../..
   Graph: ../../../graph
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -144,7 +144,7 @@ metadata: { name: write }
 connection: !ref db
 ---
 # What this transaction has read from the two tables so far.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readCounters }
 steps:
   - name: read
@@ -160,7 +160,7 @@ outputs:
   rows: !cel "steps.read.result.rows"
 ---
 # What was read between two readings, per table.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readBetween }
 inputType:
   kind: Telo.JsonSchema
@@ -180,7 +180,7 @@ outputs:
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -189,7 +189,7 @@ steps:
 ---
 # 10,000 people. p00001 knows five, each of whom knows six others — thirty end
 # nodes two hops out — and 20,000 relationships among people it never reaches.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: populate }
 steps:
   - name: noAutovacuumOnPeople
@@ -222,7 +222,7 @@ steps:
     inputs: { from: 1, to: 20000 }
 ---
 # Relationships among p01001…p09025, none of which the measured walks reach.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: addUnrelated }
 inputType:
   kind: Telo.JsonSchema
@@ -247,7 +247,7 @@ steps:
     invoke: !ref write
     inputs: { sql: ANALYZE graph_paging.knows }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: findCost }
 steps:
   # Five pages of 1,000 reach the middle of the table.
@@ -265,7 +265,7 @@ steps:
       kind: Sql.Transaction
       connection: !ref db
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -305,7 +305,7 @@ kind: Sql.Transaction
 metadata: { name: twoHopsFirstPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps:
     - name: before
       invoke: !ref readCounters
@@ -327,7 +327,7 @@ kind: Sql.Transaction
 metadata: { name: twoHopsNextPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -354,7 +354,7 @@ kind: Sql.Transaction
 metadata: { name: withinTwoFirstPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps:
     - name: before
       invoke: !ref readCounters
@@ -376,7 +376,7 @@ kind: Sql.Transaction
 metadata: { name: withinTwoNextPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -419,7 +419,7 @@ value:
   laterWithinFirst: !cel "inputs.laterWithinFirst"
 ---
 # A traversal followed to its end, a measured page at a time.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drainTwoHops }
 steps:
   - name: first
@@ -457,7 +457,7 @@ outputs:
     knows: !cel "steps.first.result.read.knows.fetched"
     people: !cel "steps.first.result.read.people.fetched"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drainWithinTwo }
 steps:
   - name: first
@@ -495,7 +495,7 @@ outputs:
     knows: !cel "steps.first.result.read.knows.fetched"
     people: !cel "steps.first.result.read.people.fetched"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: traversalCost }
 steps:
   - name: twoHopsSmall

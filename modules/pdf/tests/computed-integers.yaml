@@ -6,15 +6,11 @@ metadata:
     A page number and a quality an expression computes — a 64-bit integer,
     not the number a YAML literal is — select and encode the same page the
     literal does, in Pdf.Rasterizer, Pdf.Text and Pdf.FormFields.
-imports:
-  Pdf: ../
-  Fixture: ./__fixtures__/sample-form.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Pdf: ../, Fixture: ./__fixtures__/sample-form.yaml, Assert: ../../assert }
 targets:
   - !ref testComputedIntegers
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testComputedIntegers }
 steps:
   - name: fixture

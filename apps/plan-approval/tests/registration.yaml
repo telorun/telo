@@ -15,7 +15,6 @@ imports:
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
 variables:
   scratch:
@@ -30,7 +29,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18741, throwOnHttpError: false }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -44,7 +43,7 @@ steps:
     inputs: { path: !cel "string(variables.scratch)", createParents: true }
   - name: run
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: server }
@@ -75,10 +74,7 @@ steps:
             body: { name: Acme Corp, deadline: 2h }
         - name: replaceUnknown
           invoke: !ref call
-          inputs:
-            url: /api/review/products/nope
-            method: PUT
-            body: { name: Nope }
+          inputs: { url: /api/review/products/nope, method: PUT, body: { name: Nope } }
         - name: products
           invoke: !ref call
           inputs: { url: /api/review/products }
@@ -105,19 +101,13 @@ steps:
           inputs: { url: /api/review/repos }
         - name: foreignOrigin
           invoke: !ref call
-          inputs:
-            url: /api/review/products
-            headers: { origin: "http://evil.example" }
+          inputs: { url: /api/review/products, headers: { origin: "http://evil.example" } }
         - name: foreignOriginAgent
           invoke: !ref call
-          inputs:
-            url: /api/agent/plans/x
-            headers: { origin: "http://127.0.0.1:18742" }
+          inputs: { url: /api/agent/plans/x, headers: { origin: "http://127.0.0.1:18742" } }
         - name: sameOrigin
           invoke: !ref call
-          inputs:
-            url: /api/review/products
-            headers: { origin: "http://127.0.0.1:18741" }
+          inputs: { url: /api/review/products, headers: { origin: "http://127.0.0.1:18741" } }
         - name: index
           invoke: !ref call
           inputs: { url: /, responseType: text }

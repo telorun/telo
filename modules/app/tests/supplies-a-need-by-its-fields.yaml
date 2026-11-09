@@ -8,9 +8,9 @@ metadata:
     whatever its environment or host would name. The child writes into the
     directory it was handed, and the file is found there.
 imports:
+  Run: ../../run
   App: ../
   Fs: ../../fs
-  Run: ../../run
   Timer: ../../timer
   Assert: ../../assert
 variables:
@@ -37,7 +37,7 @@ maxIterations: 200
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: awaitExit

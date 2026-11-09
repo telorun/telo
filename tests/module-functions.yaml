@@ -12,7 +12,6 @@ imports:
   IsolatedB: ./__fixtures__/module-functions/counter
   SharedA: ./__fixtures__/module-functions/shared-counter
   SharedB: ./__fixtures__/module-functions/shared-counter
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref verify
@@ -24,15 +23,12 @@ metadata:
   name: greet
   description: A greeting the library's template must never reach.
 params:
-  - name: who
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: who, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel "'wrong ' + who"
 ---
-kind: Run.Sequence
-metadata:
-  name: verify
+kind: Telo.Sequence
+metadata: { name: verify }
 steps:
   - name: flow
     invoke: !ref Lib.flow
@@ -47,10 +43,7 @@ steps:
         greeting: hello telo?
         failure: ERR_FUNCTION_FAILED
         functionInResources: false
-  - name: greeted
-    invoke:
-      kind: Lib.Greeter
-      who: template
+  - { name: greeted, invoke: { kind: Lib.Greeter, who: template } }
   - name: isolatedA
     invoke: !ref IsolatedA.read
   - name: isolatedB
@@ -66,7 +59,4 @@ steps:
         template: !cel "steps.greeted.result"
         isolatedBindTwice: !cel "steps.isolatedA.result.ordinal != steps.isolatedB.result.ordinal"
         sharedBindsOnce: !cel "steps.sharedA.result.ordinal == steps.sharedB.result.ordinal"
-      expected:
-        template: hello template!
-        isolatedBindTwice: true
-        sharedBindsOnce: true
+      expected: { template: hello template!, isolatedBindTwice: true, sharedBindsOnce: true }

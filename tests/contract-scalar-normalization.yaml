@@ -10,9 +10,7 @@ metadata:
     compares an int64 and a plain number equal by design — so every claim here is
     ARITHMETIC against an int literal, which is the overload that used to fail at
     dispatch with `no such overload: dyn<double> + int`.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Run: ../modules/run, Assert: ../modules/assert }
 targets:
   - !ref verifyNormalization
 ---
@@ -20,8 +18,7 @@ targets:
 # contract boundary as ordinary JS numbers — the same shape any controller hands
 # back, and the input the normalization exists to correct.
 kind: Run.Value
-metadata:
-  name: producer
+metadata: { name: producer }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -37,10 +34,7 @@ outputType:
       # The symmetric case: declared `number` is a double, whichever way round.
       ratio: { type: number }
       counts: { type: array, items: { type: integer } }
-      nested:
-        type: object
-        properties:
-          deep: { type: integer }
+      nested: { type: object, properties: { deep: { type: integer } } }
       # Not an integer slot — a numeric-looking string must survive untouched,
       # since normalization is to the DECLARED representation, never a parse.
       label: { type: string }
@@ -51,14 +45,12 @@ value:
   quota: 5
   ratio: 0.5
   counts: [1, 2]
-  nested:
-    deep: 7
+  nested: { deep: 7 }
   label: "9"
   maybe: 41
 ---
-kind: Run.Sequence
-metadata:
-  name: verifyNormalization
+kind: Telo.Sequence
+metadata: { name: verifyNormalization }
 steps:
   - name: produced
     invoke: !ref producer

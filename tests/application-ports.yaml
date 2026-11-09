@@ -3,32 +3,31 @@ metadata: { name: ApplicationPorts, version: 1.0.0 }
 imports:
   Http: ../modules/http-server
   HttpClient: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
 # Declared inbound port. `PORT` is unset under the test runner, so the
 # `default` applies. `${{ ports.http }}` must resolve to this integer at
 # runtime and feed the HTTP server.
 ports: { http: { env: PORT, protocol: tcp, default: 8858 } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPorts }
 with:
   - kind: Http.Api
-    metadata: { name: TestApi }
+    metadata: { name: testApi }
     routes:
       - request: { path: /ping, method: GET }
         returns:
           - { status: 200, content: { application/json: { body: { pong: true } } } }
   - kind: Http.Server
-    metadata: { name: TestServer }
+    metadata: { name: testServer }
     listen:
       address: !cel "'127.0.0.1'"
       port: !cel "ports.http"
     mounts:
       - path: /api
-        mount: !ref TestApi
+        mount: !ref testApi
 targets:
-  - !ref TestServer
+  - !ref testServer
 steps:
   - name: ping
     invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8858/api/ping, method: GET }

@@ -7,11 +7,7 @@ metadata:
     clients presenting a certificate signed by clientCa, and reports the
     request's TLS session as request.tls — null on a plain socket. Certificates
     are test fixtures in __fixtures__/tls.
-imports:
-  Http: ../
-  Client: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, Client: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -73,7 +69,7 @@ kind: Run.Value
 metadata: { name: pong }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

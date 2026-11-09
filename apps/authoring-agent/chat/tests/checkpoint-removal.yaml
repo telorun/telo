@@ -23,8 +23,7 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: stub-key
+    secrets: { anthropicApiKey: stub-key }
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -36,7 +35,6 @@ imports:
   Stream: ../../../../modules/stream
   Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref Chat.ensureWorkspace
@@ -59,7 +57,7 @@ metadata: { name: libraryQuery }
 connection: !ref libraryDb
 ---
 # One turn in a conversation — a new one, or the one named — run to its end.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turn }
 inputType:
   kind: Telo.JsonSchema
@@ -67,9 +65,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: conversation
     if: !cel "!has(inputs.conversationId)"
@@ -102,7 +98,7 @@ outputs:
 # What is left of a set of turns: which still have a checkpoint directory, and
 # how many checkpoint, change and revert rows name them. And whether every
 # directory under `checkpoints/` belongs to a live turn.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: left }
 inputType:
   kind: Telo.JsonSchema
@@ -110,17 +106,13 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnIds]
-    properties:
-      turnIds:
-        type: array
-        items: { type: string }
+    properties: { turnIds: { type: array, items: { type: string } } }
 steps:
   - name: directories
     invoke:
       kind: Fs.DirectoryListing
       cwd: !cel "variables.scratch.joinPath('state')"
-    inputs:
-      path: checkpoints
+    inputs: { path: checkpoints }
   - name: rows
     invoke: !ref libraryQuery
     inputs:
@@ -132,16 +124,14 @@ steps:
       bindings: [ !cel "json(inputs.turnIds)" ]
   - name: live
     invoke: !ref libraryQuery
-    inputs:
-      sql: "SELECT turn_id FROM turns WHERE removed_at IS NULL"
-      bindings: []
+    inputs: { sql: "SELECT turn_id FROM turns WHERE removed_at IS NULL", bindings: [] }
 outputs:
   directories: !cel "inputs.turnIds.map(t, steps.directories.result.entries.exists(e, e.name == t))"
   rows: !cel "int(steps.rows.result.rows[0].n)"
   onlyLive: !cel >-
     steps.directories.result.entries.all(e, steps.live.result.rows.exists(r, r.turn_id == e.name))
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -253,8 +243,7 @@ steps:
     inputs: { turnId: !cel "string(steps.copy.result.turns[0].turnId)" }
   - name: workspace
     invoke: !ref Chat.treeSnapshot
-    inputs:
-      paths: [branched.txt]
+    inputs: { paths: [branched.txt] }
   # ── the retention sweep: everything is idle ────────────────────────────────
   - name: sweep
     invoke: !ref Chat.retentionSweep

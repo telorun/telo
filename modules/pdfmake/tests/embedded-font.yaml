@@ -21,7 +21,6 @@ imports:
   PdfMake: ../
   Font: ../../font
   Pdf: ../../pdf
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testEmbeddedFont
@@ -47,7 +46,7 @@ content:
 ---
 # Declared inside a scope rather than at the top level: at the top level this
 # document would fail at boot — correctly — and take the whole test with it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: renderUnembeddable }
 with:
   - kind: PdfMake.Document
@@ -61,7 +60,7 @@ steps:
   - name: render
     invoke: !ref unembeddable
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testEmbeddedFont }
 steps:
   - name: render

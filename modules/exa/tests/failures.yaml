@@ -8,10 +8,10 @@
 kind: Telo.Application
 metadata: { name: ExaFailuresTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Exa: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref failures
@@ -46,11 +46,11 @@ value:
   invalid: { status: 400, tag: INVALID_NUM_RESULTS, error: numResults is out of range. }
   overloaded: { status: 503, tag: SERVICE_OVERLOADED, error: The service is overloaded. }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: failures }
 with:
   - kind: Server.Api
-    metadata: { name: FakeExa }
+    metadata: { name: fakeExa }
     routes:
       - request:
           path: /search
@@ -101,13 +101,13 @@ with:
             content:
               application/json: { schema: { type: object, additionalProperties: true }, body: { requestId: r } }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18868 }
     mounts:
       - path: /
-        mount: !ref FakeExa
+        mount: !ref fakeExa
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: outcomes
     invoke:

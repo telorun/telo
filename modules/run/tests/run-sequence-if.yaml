@@ -4,7 +4,7 @@ imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testIfBranches
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testIfBranches }
 steps:
   # --- if/then: condition true, then branch executes ---

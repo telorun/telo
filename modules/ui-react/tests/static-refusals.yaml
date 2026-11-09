@@ -89,7 +89,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "UiReact.App/offsiteLink: /pages/0/children/0/href must match a schema in anyOf"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: ruleRuns }
 steps:
   - name: check

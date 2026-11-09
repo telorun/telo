@@ -9,9 +9,7 @@ metadata:
     is held; a literal outside one is refused by `telo check` at a resource's
     own field and at a call's `inputs:`, naming the bound and the value, and a
     bound that reads as no duration is refused where the type is declared.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Run: ../modules/run, Assert: ../modules/assert }
 targets:
   - !ref verifyDurationBounds
 ---
@@ -23,19 +21,15 @@ extends: Run.Value
 schema:
   type: object
   required: [lasts]
-  properties:
-    lasts: { x-telo-type: { name: Telo.Duration, minimum: 100, maximum: 1h } }
+  properties: { lasts: { x-telo-type: { name: Telo.Duration, minimum: 100, maximum: 1h } } }
 base:
   value: !cel "string(self.lasts)"
 ---
-kind: Run.Sequence
-metadata:
-  name: verifyDurationBounds
+kind: Telo.Sequence
+metadata: { name: verifyDurationBounds }
 steps:
-  - name: atMinimum
-    invoke: { kind: Self.Pause, lasts: 100 }
-  - name: atMaximum
-    invoke: { kind: Self.Pause, lasts: 1h }
+  - { name: atMinimum, invoke: { kind: Self.Pause, lasts: 100 } }
+  - { name: atMaximum, invoke: { kind: Self.Pause, lasts: 1h } }
   - name: check
     invoke: { kind: Assert.Equals }
     inputs:

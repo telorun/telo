@@ -5,11 +5,7 @@ metadata:
   description: |
     A declared table is created by the boot pass, an after-migration seeds it, and
     the schema reports what it reconciled as observed state.
-imports:
-  Sql: ../../sql
-  SQLite: ../
-  Assert: ../../assert
-  Run: ../../run
+imports: { Sql: ../../sql, SQLite: ../, Assert: ../../assert }
 targets:
   - !ref appSchema
   - !ref test
@@ -80,7 +76,7 @@ migrations:
   20260401_seed: { statement: "INSERT INTO users (id, email) VALUES (1, 'a@example.com')" }
 reclaim: { afterVersions: 3, afterDuration: 30d }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: read

@@ -10,10 +10,10 @@ metadata:
     received as the model's answer text — as a JSON body for the buffered kinds
     and, under a second mount, as an event stream for the streaming ones.
 imports:
+  Run: ../../run
   OpenAI: ../
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Stream: ../../stream
   Assert: ../../assert
 targets:
@@ -71,11 +71,11 @@ value:
       parameters: { type: object, properties: { city: { type: string } } }
   toolChoice: none
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: EchoApi }
+    metadata: { name: echoApi }
     routes:
       - request:
           path: /chat/completions
@@ -112,7 +112,7 @@ with:
                           text: !cel "string(size(request.body.tools)) + ' tool, tool_choice ' + string(request.body.tool_choice)"
                   usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
   - kind: Server.Api
-    metadata: { name: EchoStreamApi }
+    metadata: { name: echoStreamApi }
     routes:
       - request:
           path: /chat/completions
@@ -145,16 +145,16 @@ with:
                   event: response.completed
                   data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}
   - kind: Server.Server
-    metadata: { name: EchoServer }
+    metadata: { name: echoServer }
     listen: { port: 8876 }
     openapi: { info: { title: Fake OpenAI API, version: 1.0.0 } }
     mounts:
       - path: /v1
-        mount: !ref EchoApi
+        mount: !ref echoApi
       - path: /stream/v1
-        mount: !ref EchoStreamApi
+        mount: !ref echoStreamApi
 targets:
-  - !ref EchoServer
+  - !ref echoServer
 steps:
   - name: request
     invoke: !ref request

@@ -28,7 +28,7 @@ select:
   id: !cel "left.id"
   label: !cel "right.label"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testIntKeys }
 steps:
   - name: distinct

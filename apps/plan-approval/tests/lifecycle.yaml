@@ -13,10 +13,10 @@ metadata:
     vocabulary per type, an unchanged status records nothing, and every timeline
     entry carries its source.
 imports:
+  Run: ../../../modules/run
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
 variables:
   scratch:
@@ -32,15 +32,11 @@ metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18743, throwOnHttpError: false }
 ---
 # Submits a plan and returns its ID and first hash.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: submit }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [loop]
-    properties:
-      loop: { type: string }
+  schema: { type: object, required: [loop], properties: { loop: { type: string } } }
 steps:
   - name: post
     invoke: !ref call
@@ -52,7 +48,7 @@ outputs:
   id: !cel "string(steps.post.result.body.planId)"
   hash: !cel "string(steps.post.result.body.hash)"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -66,7 +62,7 @@ steps:
     inputs: { path: !cel "string(variables.scratch)", createParents: true }
   - name: run
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: server }
@@ -138,15 +134,13 @@ steps:
               - name: send
                 # One POST to a plan, answering [status, state or code].
                 invoke:
-                  kind: Run.Sequence
+                  kind: Telo.Sequence
                   inputType:
                     kind: Telo.JsonSchema
                     schema:
                       type: object
                       required: [path, body]
-                      properties:
-                        path: { type: string }
-                        body: { type: object }
+                      properties: { path: { type: string }, body: { type: object } }
                   steps:
                     - name: post
                       invoke: !ref call

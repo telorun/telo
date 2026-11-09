@@ -13,7 +13,6 @@ imports:
   Countless: ./__fixtures__/countless-connection
   Http: ../../http-server
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -44,7 +43,7 @@ metadata: { name: TaskRecord }
 extends: Task
 schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

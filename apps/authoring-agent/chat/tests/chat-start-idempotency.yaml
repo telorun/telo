@@ -28,7 +28,6 @@ imports:
   HttpClient: ../../../../modules/http-client
   Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # This test's own workspaces, emptied before each run.
@@ -40,7 +39,7 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # Created first so the removal always has something to remove.
@@ -56,7 +55,7 @@ steps:
       recursive: true
   - name: sameKey
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -66,8 +65,7 @@ steps:
             agentState: { path: !cel "variables.scratch.joinPath('admitted').joinPath('agent-state')" }
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('admitted').joinPath('workspace')"
-          secrets:
-            anthropicApiKey: dummy-key-never-used
+          secrets: { anthropicApiKey: dummy-key-never-used }
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -76,30 +74,21 @@ steps:
             url: http://127.0.0.1:18433/conversations
             method: POST
         - name: first
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18433/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18433/chat, method: POST }
           inputs:
             headers: { idempotency-key: send-1 }
             body:
               conversationId: !cel "steps.conversation.result.body.id"
               message: add a health endpoint
         - name: repeat
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18433/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18433/chat, method: POST }
           inputs:
             headers: { idempotency-key: send-1 }
             body:
               conversationId: !cel "steps.conversation.result.body.id"
               message: add a health endpoint
         - name: reused
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18433/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18433/chat, method: POST }
           inputs:
             headers: { idempotency-key: send-1 }
             body:
@@ -125,12 +114,10 @@ steps:
         - name: history
           retry: { attempts: 40, initialDelay: 100, factor: 1, jitter: none }
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             steps:
               - name: read
-                invoke:
-                  kind: HttpClient.Request
-                  method: GET
+                invoke: { kind: HttpClient.Request, method: GET }
                 inputs:
                   url: !interpolate "http://127.0.0.1:18433/conversations/${{ inputs.conversationId }}/records"
               - name: notYet
@@ -155,7 +142,7 @@ steps:
               first: { type: user-message, content: add a health endpoint, model: claude-haiku-5-5 }
   - name: atCapacity
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -167,8 +154,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('refused').joinPath('workspace')"
             # Below one turn's reservation, so every start is refused.
             budgetLimit: 1
-          secrets:
-            anthropicApiKey: dummy-key-never-used
+          secrets: { anthropicApiKey: dummy-key-never-used }
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -177,10 +163,7 @@ steps:
             url: http://127.0.0.1:18434/conversations
             method: POST
         - name: refused
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18434/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18434/chat, method: POST }
           inputs:
             headers: { idempotency-key: send-1 }
             body:
@@ -189,19 +172,14 @@ steps:
         # A refusal releases the key: the same key is a fresh attempt, refused
         # on its own merits, not a replay of an admission.
         - name: retried
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18434/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18434/chat, method: POST }
           inputs:
             headers: { idempotency-key: send-1 }
             body:
               conversationId: !cel "steps.conversation.result.body.id"
               message: add a health endpoint
         - name: read
-          invoke:
-            kind: HttpClient.Request
-            method: GET
+          invoke: { kind: HttpClient.Request, method: GET }
           inputs:
             url: !interpolate "http://127.0.0.1:18434/conversations/${{ steps.conversation.result.body.id }}/records"
         - name: nothingWritten
@@ -221,7 +199,7 @@ steps:
               turns: []
   - name: inFlight
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -231,8 +209,7 @@ steps:
             agentState: { path: !cel "variables.scratch.joinPath('in-flight').joinPath('agent-state')" }
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('in-flight').joinPath('workspace')"
-          secrets:
-            anthropicApiKey: dummy-key-never-used
+          secrets: { anthropicApiKey: dummy-key-never-used }
         # The instance's own database, reached from outside it.
         - kind: SQLite.Connection
           metadata: { name: agentDb }
@@ -260,19 +237,14 @@ steps:
               # 2100-01-01: never lapses within the test.
               - 4102444800000
         - name: overlapping
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18435/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18435/chat, method: POST }
           inputs:
             headers: { idempotency-key: send-1 }
             body:
               conversationId: !cel "steps.conversation.result.body.id"
               message: add a health endpoint
         - name: read
-          invoke:
-            kind: HttpClient.Request
-            method: GET
+          invoke: { kind: HttpClient.Request, method: GET }
           inputs:
             url: !interpolate "http://127.0.0.1:18435/conversations/${{ steps.conversation.result.body.id }}/records"
         - name: refusedInFlight
@@ -282,13 +254,10 @@ steps:
               status: !cel "steps.overlapping.result.status"
               code: !cel "steps.overlapping.result.body.code"
               turns: !cel "steps.read.result.body.turns"
-            expected:
-              status: 409
-              code: ERR_IDEMPOTENCY_KEY_IN_FLIGHT
-              turns: []
+            expected: { status: 409, code: ERR_IDEMPOTENCY_KEY_IN_FLIGHT, turns: [] }
   - name: leaseRefused
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: stub }
@@ -305,8 +274,7 @@ steps:
             modelEndpoint: http://127.0.0.1:18437/v1
             # Two turns' reservations, and no more.
             budgetLimit: 80000
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref stub, !ref agent ]
       steps:
         - name: conversation
@@ -317,36 +285,25 @@ steps:
         # The stub holds its model call until released — never, here — so the
         # turn is still running when the next two starts arrive.
         - name: running
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18436/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18436/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.conversation.result.body.id"
               message: STUB_SLOW build it
         - name: overlapping
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18436/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18436/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.conversation.result.body.id"
               message: and another thing
         - name: again
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18436/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18436/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.conversation.result.body.id"
               message: and another thing
         - name: read
-          invoke:
-            kind: HttpClient.Request
-            method: GET
+          invoke: { kind: HttpClient.Request, method: GET }
           inputs:
             url: !interpolate "http://127.0.0.1:18436/conversations/${{ steps.conversation.result.body.id }}/records"
         - name: refusedAndTakenBack

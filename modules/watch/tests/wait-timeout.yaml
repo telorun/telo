@@ -19,7 +19,7 @@ metadata: { name: wait }
 store: !ref store
 maxTimeout: 30s
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: publish

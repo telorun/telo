@@ -16,7 +16,7 @@ languages: [!ref Tesseract.eng]
 orientationModel: !ref Tesseract.osd
 pageSegmentation: autoOsd
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: detectsTheRotation }
 steps:
   - name: read

@@ -9,11 +9,11 @@ metadata:
 
     Offline: a local server that answers only the client's key.
 imports:
+  Run: ../../run
   Anthropic: ../
   Ai: ../../ai
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -39,11 +39,11 @@ kind: Run.Value
 metadata: { name: noop }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: MessagesApi }
+    metadata: { name: messagesApi }
     routes:
       - request:
           path: /messages
@@ -76,13 +76,13 @@ with:
                   type: error
                   error: { type: authentication_error, message: invalid x-api-key }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 8976 }
     mounts:
       - path: /v1
-        mount: !ref MessagesApi
+        mount: !ref messagesApi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: call
     inputs: { messages: [{ role: user, content: hi }] }

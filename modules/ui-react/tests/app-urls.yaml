@@ -17,13 +17,12 @@ metadata:
 imports:
   App: ../../app
   Probe: ./__fixtures__/probe
-  Run: ../../run
   HttpClient: ../../http-client
   Assert: ../../assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

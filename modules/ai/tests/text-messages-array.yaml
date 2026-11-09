@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: TextMessagesArrayTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testMessagesArray
 ---
@@ -17,7 +13,7 @@ model: !ref echo
 ---
 # Full `messages` array is passed through unchanged; Echo returns the last message's
 # content. Verifies multi-turn shape without relying on prompt shorthand.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testMessagesArray }
 steps:
   - name: invoke

@@ -10,7 +10,6 @@ metadata:
     connection, inside the importer's transaction.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 variables:
@@ -24,18 +23,15 @@ targets:
 ---
 kind: HttpClient.Request
 metadata: { name: call }
-client:
-  kind: HttpClient.Client
-  baseUrl: http://127.0.0.1:8205
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8205 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ./__fixtures__/orders-app.yaml
-    ports:
-      http: 8205
+    ports: { http: 8205 }
     variables:
       dbFile: !cel "variables.scratchDir.joinPath('shared-connection-library-test-' + string(nowMillis()) + '.db')"
 targets:
@@ -49,10 +45,7 @@ steps:
       body: { actor: ada, item: keyboard, quantity: 2 }
   - name: refused
     invoke: !ref call
-    inputs:
-      url: /orders
-      method: POST
-      body: { actor: bob, item: nothing, quantity: 0 }
+    inputs: { url: /orders, method: POST, body: { actor: bob, item: nothing, quantity: 0 } }
   - name: placedAgain
     invoke: !ref call
     inputs:

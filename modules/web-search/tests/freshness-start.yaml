@@ -6,7 +6,7 @@ imports: { WebSearch: .., Run: ../../run, Assert: ../../assert }
 targets:
   - !ref freshnessStart
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: freshnessStart }
 steps:
   - name: starts

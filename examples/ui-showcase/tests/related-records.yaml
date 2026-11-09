@@ -13,7 +13,6 @@ metadata:
     a board move, and a write the foreign key refuses.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 variables:
@@ -30,7 +29,7 @@ kind: HttpClient.Client
 metadata: { name: browser }
 baseUrl: http://127.0.0.1:8157
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

@@ -22,7 +22,6 @@ imports:
   SQLite: ../../sqlite
   GraphSql: ../
   Graph: ../../graph
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -147,7 +146,7 @@ key: id
 ---
 # On a new node a property not given takes its column's default, through a
 # merge as through a create.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: mergeDefaults }
 steps:
   - name: mergeNew

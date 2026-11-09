@@ -25,9 +25,9 @@ metadata:
     producer still sending when the consumer gives up; no manifest can express
     one, since `Stream.Of` emits instantly and CEL has no side effects.
 imports:
+  Run: ../modules/run
   Server: ../modules/http-server
   Http: ../modules/http-client
-  Run: ../modules/run
   Stream: ../modules/stream
   Sse: ../modules/sse-codec
   Assert: ../modules/assert
@@ -60,7 +60,7 @@ kind: Http.Client
 metadata: { name: client }
 baseUrl: http://127.0.0.1:8883
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api

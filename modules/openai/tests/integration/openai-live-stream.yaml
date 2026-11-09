@@ -11,7 +11,6 @@ imports:
   OpenAI: ../../
   Http: ../../../http-client
   AiEcho: ../../../ai/tests/__fixtures__/ai-echo.yaml
-  Run: ../../../run
   Assert: ../../../assert
 targets:
   - !ref liveStream
@@ -47,7 +46,7 @@ kind: AiEcho.StreamCollector
 metadata: { name: collector }
 model: !ref live
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: liveStream }
 steps:
   - name: guardEnv

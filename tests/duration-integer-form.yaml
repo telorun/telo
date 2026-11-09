@@ -15,21 +15,15 @@ metadata:
 imports:
   Run: ../modules/run
   Assert: ../modules/assert
-  WithInteger:
-    source: ./__fixtures__/duration-integer-form/lib
-    variables:
-      pause: 250
+  WithInteger: { source: ./__fixtures__/duration-integer-form/lib, variables: { pause: 250 } }
   WithText:
     source: ./__fixtures__/duration-integer-form/lib
-    variables:
-      pause: 250ms
-      fallback: 1500ms
+    variables: { pause: 250ms, fallback: 1500ms }
 targets:
   - !ref verifyIntegerForm
 ---
 kind: Assert.Equals
-metadata:
-  name: assertEquals
+metadata: { name: assertEquals }
 ---
 # A duration read back as its text, from a resource's own config.
 kind: Telo.Definition
@@ -40,32 +34,26 @@ extends: Run.Value
 schema:
   type: object
   required: [lasts]
-  properties:
-    lasts: { x-telo-type: Telo.Duration }
+  properties: { lasts: { x-telo-type: Telo.Duration } }
 base:
   value: !cel "string(self.lasts)"
 ---
 # A call's argument, read back as text.
 kind: Run.Value
-metadata:
-  name: render
+metadata: { name: render }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [lasts]
-    properties:
-      lasts: { x-telo-type: Telo.Duration }
+    properties: { lasts: { x-telo-type: Telo.Duration } }
 value: !cel "string(inputs.lasts)"
 ---
-kind: Run.Sequence
-metadata:
-  name: verifyIntegerForm
+kind: Telo.Sequence
+metadata: { name: verifyIntegerForm }
 steps:
-  - name: configInteger
-    invoke: { kind: Self.Span, lasts: 5400000 }
-  - name: configText
-    invoke: { kind: Self.Span, lasts: 1h30m }
+  - { name: configInteger, invoke: { kind: Self.Span, lasts: 5400000 } }
+  - { name: configText, invoke: { kind: Self.Span, lasts: 1h30m } }
   - name: stepInteger
     invoke: !ref render
     inputs: { lasts: 5400000 }
@@ -115,5 +103,4 @@ steps:
             message: "a number written in the manifest only as an integer, read as that many ms"
           - code: SCHEMA_VIOLATION
             message: "a number written in the manifest only as an integer, read as that many ms"
-          - code: SCHEMA_VIOLATION
-            message: "is read only as a CEL duration string"
+          - { code: SCHEMA_VIOLATION, message: "is read only as a CEL duration string" }

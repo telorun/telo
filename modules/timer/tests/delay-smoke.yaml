@@ -10,7 +10,7 @@ imports: { Timer: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testDelay
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testDelay }
 steps:
   - name: wait

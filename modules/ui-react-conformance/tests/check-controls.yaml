@@ -6,15 +6,11 @@ metadata:
     A control set is held to its controls' vectors: one implementing the ten
     layer controls whose Select closes on Escape on its own, without asking the
     renderer, fails exactly that vector.
-imports:
-  Conformance: ../
-  Fixture: ./__fixtures__/controls
-  Run: ../../run
-  Assert: ../../assert
+imports: { Conformance: ../, Fixture: ./__fixtures__/controls, Assert: ../../assert }
 targets:
   - !ref checkBrokenSelect
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checkBrokenSelect }
 steps:
   - name: check

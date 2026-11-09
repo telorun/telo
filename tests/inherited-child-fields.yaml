@@ -1,11 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: InheritedChildFieldsTest
-  version: 1.0.0
-imports:
-  Ph: ./__fixtures__/inherited-client/telo.yaml
-  Run: ../modules/run
-  Assert: ../modules/assert
+metadata: { name: InheritedChildFieldsTest, version: 1.0.0 }
+imports: { Ph: ./__fixtures__/inherited-client/telo.yaml, Assert: ../modules/assert }
 # Publication is asserted with no network in the sequence: a merge-form child's
 # reading is a function of its config, and gating it behind a live request would
 # take this coverage down with any outage.
@@ -16,25 +11,22 @@ targets:
 # and `timeout` are the parent's, one set by the author and one left to the
 # parent's normalized default.
 kind: Ph.TaggedClient
-metadata:
-  name: tagged
+metadata: { name: tagged }
 baseUrl: https://example.com
 label: demo
 ---
 # A merge-form child of Http.Request, which declares NO snapshot() of its own —
 # so own-field publication cannot rely on the parent having one.
 kind: Ph.TaggedRequest
-metadata:
-  name: taggedRequest
+metadata: { name: taggedRequest }
 url: https://example.com/x
 method: GET
 plain: literal
 timeout: 5000
 tag: !cel "'computed'"
 ---
-kind: Run.Sequence
-metadata:
-  name: testInheritedChildFields
+kind: Telo.Sequence
+metadata: { name: testInheritedChildFields }
 steps:
   # The child's own field publishes beside the parent's reading, and an unset
   # inherited field keeps the parent's default rather than being overwritten.
@@ -47,8 +39,7 @@ steps:
         timeout: 10000
         followRedirects: true
         label: demo
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # `plain` publishes. `tag` does NOT: a runtime-eval field is still a compiled
   # expression when the reading is taken, and publishing it would put the
@@ -60,7 +51,5 @@ steps:
   - name: guardsWithholdNonReadings
     inputs:
       actual: !cel "resources.taggedRequest"
-      expected:
-        plain: literal
-    invoke:
-      kind: Assert.Equals
+      expected: { plain: literal }
+    invoke: { kind: Assert.Equals }

@@ -7,7 +7,7 @@ imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref roundTrip
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: roundTrip }
 steps:
   - name: assertEscape

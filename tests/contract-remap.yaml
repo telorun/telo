@@ -1,11 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: ContractRemapTest
-  version: 1.0.0
-imports:
-  Assert: ../modules/assert
-  Remap: ./__fixtures__/contract-remap
-  Run: ../modules/run
+metadata: { name: ContractRemapTest, version: 1.0.0 }
+imports: { Assert: ../modules/assert, Remap: ./__fixtures__/contract-remap }
 targets:
   - !ref main
 ---
@@ -19,24 +14,19 @@ targets:
 # checks the child's inputs, maps them onto the parent's call, checks those
 # against the parent, runs, and maps the result back.
 kind: Remap.Doubler
-metadata:
-  name: double
+metadata: { name: double }
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: doubled
     invoke: !ref double
-    inputs:
-      value: 21
+    inputs: { value: 21 }
   - name: check
     invoke: !ref checkResult
     inputs:
       actual: !cel "steps.doubled.result"
-      expected:
-        doubled: 42
+      expected: { doubled: 42 }
 ---
 kind: Assert.Equals
-metadata:
-  name: checkResult
+metadata: { name: checkResult }

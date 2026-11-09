@@ -28,7 +28,6 @@ imports:
   JS: ../../javascript
   Fs: ../../fs
   Timer: ../../timer
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testMountLevels
@@ -115,11 +114,11 @@ code: |
     };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testMountLevels }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8912 }
     mounts:
       - path: /health
@@ -128,25 +127,25 @@ with:
         logging: { level: warn }
       - path: /api
         mount: !ref businessApi
-  - { kind: HttpClient.Request, metadata: { name: Call } }
-  - { kind: Fs.File, metadata: { name: ReadLog } }
+  - { kind: HttpClient.Request, metadata: { name: call } }
+  - { kind: Fs.File, metadata: { name: readLog } }
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: hitQuiet
-    invoke: !ref Call
+    invoke: !ref call
     inputs: { url: "http://127.0.0.1:8912/health/live" }
   - name: hitLoud
-    invoke: !ref Call
+    invoke: !ref call
     inputs: { url: "http://127.0.0.1:8912/api/things" }
   - name: hitQuietFailure
-    invoke: !ref Call
+    invoke: !ref call
     inputs: { url: "http://127.0.0.1:8912/health/broken" }
   - name: settle
     invoke: { kind: Timer.Delay }
     inputs: { duration: "250ms", value: {} }
   - name: read
-    invoke: !ref ReadLog
+    invoke: !ref readLog
     inputs: { path: /tmp/telo-mount-access-log.jsonl }
   - name: summary
     invoke: !ref summarize

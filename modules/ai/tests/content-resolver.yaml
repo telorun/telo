@@ -8,9 +8,9 @@ metadata:
   version: 1.0.0
   description: References by a resolver's schemes are resolved for the model, once per uri per call, and kept as written everywhere else.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
   Stream: ../../stream
   Assert: ../../assert
 targets:
@@ -64,7 +64,7 @@ tools:
     name: attach
     parameters: { type: object, additionalProperties: false }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: textResolvesListedScheme }
 steps:
   - name: call
@@ -111,7 +111,7 @@ resolver:
     id: !cel "context.conversationId + '/' + part.uri"
   result: !cel "{'type': 'text', 'text': result.body}"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: agentResolvesOncePerUri }
 steps:
   - name: call
@@ -146,7 +146,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 # The streaming agent sends the model the same resolved conversation.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: agentStreamResolves }
 steps:
   - name: run
@@ -186,7 +186,7 @@ expect:
   - { event: fetchUpload.Invoked, times: 4 }
 ---
 # An answer that is again a reference by a scheme the resolver lists.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: answerByClaimedSchemeRefused }
 steps:
   - name: attempt

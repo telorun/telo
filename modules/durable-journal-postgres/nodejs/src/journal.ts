@@ -58,7 +58,7 @@ interface JournalManifest extends ResourceManifest {
  */
 interface JournalEntry {
   path: string;
-  kind: "step" | "decision";
+  kind: "step" | "decision" | "baseline";
   decision?: string;
   target?: { kind: string; name: string; module?: string };
   v?: number;
@@ -93,6 +93,9 @@ interface RunRecord {
    *  record rather than executing. Absent — never zero — for a run settled
    *  before the column existed. */
   replayedSteps?: number;
+  /** The workflow that admitted the run, and when it reached a terminal status. */
+  workflow?: string;
+  finishedAt?: number;
 }
 
 /** The `LISTEN`/`NOTIFY` half, which only PostgreSQL answers — declared
@@ -125,16 +128,18 @@ interface RunRow {
   collapsed_regions: number | null;
   collapse_reasons: string | null;
   replayed_steps: number | null;
+  workflow: string | null;
+  finished_at: string | number | null;
 }
 
 /** Every column a run record is read from, in the one order both reads use. */
 const RUN_COLUMNS = `run, status, due_at, parked_path, parked_resource, parked_token,
               inputs, inputs_codec_version, result, result_codec_version, error,
-              collapsed_regions, collapse_reasons, replayed_steps`;
+              collapsed_regions, collapse_reasons, replayed_steps, workflow, finished_at`;
 
 interface EntryRow {
   path: string;
-  entry_kind: "step" | "decision";
+  entry_kind: "step" | "decision" | "baseline";
   decision: string | null;
   target: string | null;
   codec_version: number | null;
@@ -245,6 +250,8 @@ function rowToRecord(row: RunRow): RunRecord {
       ? {}
       : { collapseReasons: decodeJsonValue(row.collapse_reasons) as string[] }),
     ...(row.replayed_steps === null ? {} : { replayedSteps: row.replayed_steps }),
+    ...(row.workflow === null ? {} : { workflow: row.workflow }),
+    ...(millis(row.finished_at) === undefined ? {} : { finishedAt: millis(row.finished_at) }),
   };
 }
 
@@ -368,6 +375,8 @@ class PostgresJournalController {
          collapsed_regions INTEGER,
          collapse_reasons TEXT,
          replayed_steps INTEGER,
+         workflow TEXT,
+         finished_at BIGINT,
          claim_holder TEXT,
          claim_until BIGINT
        )`,
@@ -391,6 +400,8 @@ class PostgresJournalController {
       replayed_steps: "INTEGER",
       inputs_codec_version: "INTEGER",
       result_codec_version: "INTEGER",
+      workflow: "TEXT",
+      finished_at: "BIGINT",
     });
     await this.reconcileSchemaObject(
       `CREATE TABLE IF NOT EXISTS ${this.#entries} (
@@ -424,6 +435,11 @@ class PostgresJournalController {
     );
     await this.reconcileSchemaObject(
       `CREATE INDEX IF NOT EXISTS ${this.indexName("due")} ON ${this.#runs} (status, due_at)`,
+    );
+    // Retention lists one workflow's finished runs oldest first.
+    await this.reconcileSchemaObject(
+      `CREATE INDEX IF NOT EXISTS ${this.indexName("finished")} ` +
+        `ON ${this.#runs} (workflow, finished_at) WHERE finished_at IS NOT NULL`,
     );
   }
 
@@ -498,6 +514,7 @@ class PostgresJournalController {
       inputs?: unknown;
       inputsCodecVersion?: number;
       claim?: { holder: string; ttlMs: number };
+      workflow?: string;
     },
   ): Promise<{ admitted: boolean; existing?: RunRecord }> {
     await this.ready();
@@ -508,8 +525,8 @@ class PostgresJournalController {
     // there is no excuse for.
     const inserted = await this.executeOutsideTransaction<{ run: string }>(
       `INSERT INTO ${this.#runs}
-         (run, status, due_at, inputs, inputs_codec_version, claim_holder, claim_until)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (run, status, due_at, inputs, inputs_codec_version, claim_holder, claim_until, workflow)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (run) DO NOTHING
        RETURNING run`,
       [
@@ -521,6 +538,7 @@ class PostgresJournalController {
         // Claimed in the insert, so the row never exists unclaimed.
         init?.claim?.holder ?? null,
         init?.claim ? Date.now() + init.claim.ttlMs : null,
+        init?.workflow ?? null,
       ],
     );
     if (inserted.rows.length > 0) return { admitted: true };
@@ -604,6 +622,35 @@ class PostgresJournalController {
     return rowToEntry(row);
   }
 
+  /**
+   * Delete the replaced entries and insert the baseline in one transaction of its
+   * own, so a crash leaves the old entries or the baseline and never both. Its own
+   * rather than the caller's: a baseline records the run, not any step's work.
+   */
+  async replaceWithBaseline(
+    run: string,
+    baseline: JournalEntry,
+    replaced: readonly string[],
+  ): Promise<void> {
+    await this.ready();
+    const conn = this.conn();
+    const zone: ZoneEntry = { kind: this.ctx.self.ref.kind, provider: this.ctx.self };
+    await conn.runInTransaction(async (bind) => {
+      bind(zone);
+      await conn.execute(
+        `DELETE FROM ${this.#entries} WHERE run = $1 AND path = ANY($2::text[])`,
+        [run, [...replaced]],
+        zone,
+      );
+      await conn.execute(
+        `INSERT INTO ${this.#entries} (run, path, entry_kind, codec_version, value)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [run, baseline.path, baseline.kind, baseline.v ?? null, encodeOptional(baseline.value)],
+        zone,
+      );
+    });
+  }
+
   async completeRun(run: string, outcome: Omit<RunRecord, "run">): Promise<void> {
     await this.ready();
     // The park is cleared as part of settling: a completed run that kept its
@@ -613,7 +660,7 @@ class PostgresJournalController {
       `UPDATE ${this.#runs}
           SET status = $2, result = $3, error = $4,
               collapsed_regions = $5, collapse_reasons = $6, replayed_steps = $7,
-              result_codec_version = $8,
+              result_codec_version = $8, finished_at = $9,
               due_at = NULL, parked_path = NULL, parked_resource = NULL, parked_token = NULL,
               claim_holder = NULL, claim_until = NULL
         WHERE run = $1`,
@@ -626,8 +673,46 @@ class PostgresJournalController {
         outcome.collapseReasons === undefined ? null : encodeJsonValue(outcome.collapseReasons),
         outcome.replayedSteps ?? null,
         outcome.resultCodecVersion ?? null,
+        Date.now(),
       ],
     );
+  }
+
+  async finishedRuns(workflow: string, finishedBefore: number, limit: number): Promise<string[]> {
+    await this.ready();
+    const result = await this.conn().execute<{ run: string }>(
+      `SELECT run FROM ${this.#runs}
+        WHERE workflow = $1 AND finished_at IS NOT NULL AND finished_at <= $2
+          AND status IN ('completed', 'failed', 'cancelled')
+        ORDER BY finished_at
+        LIMIT $3`,
+      [workflow, finishedBefore, limit],
+    );
+    return result.rows.map((row) => row.run);
+  }
+
+  /**
+   * One statement, so the run and its entries go together or not at all: the
+   * data-modifying CTE deletes the entries of exactly the row the first delete
+   * removed. The terminal/age condition lives in that first delete, so a run
+   * resumed or re-settled after it was listed is not touched. Outside the
+   * caller's transaction like every lifecycle write.
+   */
+  async deleteFinishedRun(run: string, finishedBefore: number): Promise<boolean> {
+    await this.ready();
+    const result = await this.executeOutsideTransaction<{ run: string }>(
+      `WITH gone AS (
+         DELETE FROM ${this.#runs}
+          WHERE run = $1 AND status IN ('completed', 'failed', 'cancelled')
+            AND finished_at IS NOT NULL AND finished_at <= $2
+          RETURNING run
+       ), entries_gone AS (
+         DELETE FROM ${this.#entries} WHERE run IN (SELECT run FROM gone)
+       )
+       SELECT run FROM gone`,
+      [run, finishedBefore],
+    );
+    return result.rows.length > 0;
   }
 
   async parkRun(run: string, park: ParkRecord): Promise<void> {

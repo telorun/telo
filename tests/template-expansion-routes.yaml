@@ -8,9 +8,9 @@ metadata:
     hook is the instance the consumer wrote, and an inline handler an emitted
     route holds is created per hook and reads its hook.
 imports:
+  Run: ../modules/run
   Http: ../modules/http-server
   HttpClient: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref test
@@ -27,8 +27,7 @@ schema:
       additionalProperties:
         type: object
         required: [handler]
-        properties:
-          handler: { x-telo-ref: { kind: Telo.Invocable, use: call } }
+        properties: { handler: { x-telo-ref: { kind: Telo.Invocable, use: call } } }
 resources:
   - kind: Http.Api
     metadata: { name: api }
@@ -42,7 +41,7 @@ resources:
               method: POST
             handler: !cel "hook.value.handler"
             returns:
-              - status: 202
+              - { status: 202 }
           - request:
               path: !interpolate "/hooks/${{ hook.key }}/who"
               method: GET
@@ -69,14 +68,13 @@ hooks:
 kind: Http.Reference
 metadata: { name: docs }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
     listen: { port: 9754 }
-    openapi:
-      info: { title: Hooks, version: 1.0.0 }
+    openapi: { info: { title: Hooks, version: 1.0.0 } }
     mounts:
       - { path: /, mount: !ref receiver }
       - { path: /docs, mount: !ref docs }
@@ -100,7 +98,4 @@ steps:
           - !cel "'/hooks/pager' in steps.openapi.result.body.paths"
           - !cel "'/hooks/github/who' in steps.openapi.result.body.paths"
           - !cel "'/hooks/pager/who' in steps.openapi.result.body.paths"
-      expected:
-        status: 202
-        who: pager
-        documented: [true, true, true, true]
+      expected: { status: 202, who: pager, documented: [true, true, true, true] }

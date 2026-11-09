@@ -19,7 +19,6 @@ imports:
   SQLite: ../../sqlite
   Graph: ../../graph
   Layers: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -117,7 +116,7 @@ metadata: { name: teamFindKnows }
 store: !ref team
 relationship: !ref knows
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: joinsTransaction }
 steps:
   - name: alice
@@ -136,7 +135,7 @@ steps:
           kind: Sql.Transaction
           connection: !ref db
           steps:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             steps:
               - name: hideAlice
                 invoke: !ref teamDeletePerson
@@ -163,7 +162,7 @@ steps:
         links: !cel "steps.fromAlice.result.relationships.map(r, [r.target, r.origin])"
       expected: { node: shared, links: [[b, team]] }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: commitsOnItsOwn }
 steps:
   - name: carol

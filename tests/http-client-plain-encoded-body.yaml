@@ -7,9 +7,9 @@ metadata:
     plain encoding — a timestamp as RFC 3339 `Z` text, a duration as seconds —
     never type-tagged. A local server echoes the body back exactly as it arrived.
 imports:
+  Run: ../modules/run
   Server: ../modules/http-server
   Http: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref test
@@ -20,30 +20,25 @@ routes:
   - request:
       path: /echo
       method: POST
-      schema:
-        body: { type: object, additionalProperties: true }
-    handler:
-      kind: Run.Value
-      value: {}
+      schema: { body: { type: object, additionalProperties: true } }
+    handler: { kind: Run.Value, value: {} }
     returns:
       - status: 200
         content:
           application/json:
             body: !cel "request.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Server
-    metadata: { name: EchoServer }
-    listen:
-      address: 127.0.0.1
-      port: 8984
+    metadata: { name: echoServer }
+    listen: { address: 127.0.0.1, port: 8984 }
     mounts:
       - path: /
         mount: !ref echoApi
 targets:
-  - !ref EchoServer
+  - !ref echoServer
 steps:
   - name: sent
     inputs:
@@ -52,13 +47,9 @@ steps:
       body:
         at: !cel "timestamp('2026-01-15T09:30:00+02:00')"
         took: !cel "duration('1h30m')"
-    invoke:
-      kind: Http.Request
+    invoke: { kind: Http.Request }
   - name: assertPlainBody
     inputs:
       actual: !cel "steps.sent.result.body"
-      expected:
-        at: "2026-01-15T07:30:00Z"
-        took: "5400s"
-    invoke:
-      kind: Assert.Equals
+      expected: { at: "2026-01-15T07:30:00Z", took: "5400s" }
+    invoke: { kind: Assert.Equals }

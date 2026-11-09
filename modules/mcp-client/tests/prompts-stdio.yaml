@@ -22,7 +22,7 @@ command: node
 args: [./__fixtures__/stdio-server.mjs, --malformed-prompt-list]
 clientInfo: { name: telo-test, version: 1.0.0 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRun }
 steps:
   - name: list

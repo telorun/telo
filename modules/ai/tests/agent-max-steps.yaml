@@ -8,9 +8,9 @@ metadata:
   version: 1.0.0
   description: An agent's step budget ends a run by throwing, returning or concluding, and marks the result.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
   Stream: ../../stream
   Assert: ../../assert
 targets:
@@ -100,7 +100,7 @@ toolProviders:
 # One call beyond the budget: it declares the tools, may not use one, and ends
 # with the conclusion prompt. The tool call it returns anyway is not run — the
 # trace's last step has none — and its usage is in the total.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: concludes }
 steps:
   - name: run
@@ -139,7 +139,7 @@ steps:
 ---
 # The same run as a stream: the concluding call's text is emitted, its tool call
 # is not, and the terminal finish carries the limit and every call's usage.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: streamConcludes }
 steps:
   - name: run
@@ -165,7 +165,7 @@ steps:
           limit: max-steps
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: returnsLastTurn }
 steps:
   - name: run
@@ -185,7 +185,7 @@ steps:
         totalTokens: !cel "4"
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: streamReturnsLastTurn }
 steps:
   - name: run
@@ -205,7 +205,7 @@ steps:
         limit: max-steps
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: convergedRunHasNoLimit }
 steps:
   - name: run
@@ -217,7 +217,7 @@ steps:
       expected: false
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: throwsByDefault }
 steps:
   - name: exhausted

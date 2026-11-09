@@ -9,8 +9,8 @@ metadata:
     cache the second time it is asked for; and the manual trigger must be
     refused once its rate limit is spent.
 imports:
-  App: ../../../../modules/app
   Run: ../../../../modules/run
+  App: ../../../../modules/app
   Http: ../../../../modules/http-server
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
@@ -27,7 +27,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8116 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Api

@@ -18,7 +18,6 @@ imports:
   Server: ../../http-server
   Http: ../../http-client
   Multipart: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -27,11 +26,11 @@ targets:
 kind: Multipart.Decoder
 metadata: { name: serverDecoder }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: UploadApi }
+    metadata: { name: uploadApi }
     # One mapping of the two codes for every route of this router.
     catches:
       - when: !cel "error.code == 'ERR_MULTIPART_MALFORMED'"
@@ -78,13 +77,13 @@ with:
                   count: !cel "size(result.parts)"
                   bytes: !cel "size(result.parts[0].content)"
   - kind: Server.Server
-    metadata: { name: UploadServer }
+    metadata: { name: uploadServer }
     listen: { port: 8884 }
     mounts:
       - path: /api
-        mount: !ref UploadApi
+        mount: !ref uploadApi
 targets:
-  - !ref UploadServer
+  - !ref uploadServer
 steps:
   - name: truncated
     inputs:

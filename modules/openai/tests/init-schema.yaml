@@ -12,10 +12,10 @@ metadata:
     ERR_LOCAL_REF_PENDING. Offline: the model is just config, no /embeddings call
     is ever made.
 imports:
+  Run: ../../run
   OpenAI: ../
   Http: ../../http-client
   Embedding: ../../embedding
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -47,7 +47,7 @@ kind: Embedding.Query
 metadata: { name: queryVector }
 model: !ref model
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: inspect

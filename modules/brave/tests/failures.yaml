@@ -8,10 +8,10 @@
 kind: Telo.Application
 metadata: { name: BraveFailuresTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Brave: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref failures
@@ -44,11 +44,11 @@ value:
   invalid: { status: 422, code: VALIDATION, detail: Unable to validate request parameter(s). }
   broken: { status: 500, code: INTERNAL, detail: Something went wrong. }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: failures }
 with:
   - kind: Server.Api
-    metadata: { name: FakeBrave }
+    metadata: { name: fakeBrave }
     routes:
       - request:
           path: /res/v1/web/search
@@ -81,13 +81,13 @@ with:
             content:
               application/json: { schema: { type: object, additionalProperties: true }, body: { type: search } }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18850 }
     mounts:
       - path: /
-        mount: !ref FakeBrave
+        mount: !ref fakeBrave
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: outcomes
     invoke:

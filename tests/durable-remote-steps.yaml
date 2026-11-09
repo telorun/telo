@@ -28,10 +28,7 @@ metadata:
     the scope, and this backend ships that whole sequence as one step — so the scoped
     resolution never happens in this process at all. It is asserted at the encoder,
     in sdk/nodejs/tests/durable-target-encoding.test.ts.
-imports:
-  Remote: ./__fixtures__/durable-remote
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Remote: ./__fixtures__/durable-remote, Assert: ../modules/assert }
 targets:
   - !ref test
 ---
@@ -49,13 +46,12 @@ steps:
       at: "2026-01-15T09:30:00.250Z"
       key: YWJj
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: run
     invoke: !ref greeter
-    inputs:
-      name: ada
+    inputs: { name: ada }
 
   # The result came back from the resource the step named, carrying the child's
   # own stamp — so it was resolved from the encoded identity rather than from an

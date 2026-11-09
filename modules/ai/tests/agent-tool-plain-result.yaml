@@ -5,15 +5,11 @@ metadata:
   description: |
     A model is not Telo, so a structured tool result is written to it as plain
     JSON — a duration as seconds — never with a CEL value as an empty object.
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testPlainToolResult
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPlainToolResult }
 steps:
   # Echo emits one tool call on the first turn, then echoes the tool result's

@@ -18,7 +18,6 @@ imports:
   UiReact: ../../ui-react
   Http: ../../http-server
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -167,7 +166,7 @@ metadata: { name: sharedDrawer }
 side: start
 size: large
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

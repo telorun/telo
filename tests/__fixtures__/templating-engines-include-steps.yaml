@@ -1,6 +1,5 @@
-kind: Run.Sequence
-metadata:
-  name: testTaggedInInclude
+kind: Telo.Sequence
+metadata: { name: testTaggedInInclude }
 steps:
   # Tagged values inside an included partial must round-trip through
   # loadPartialFile's parseAllDocuments call site (the second of the five
@@ -15,9 +14,7 @@ steps:
         kind: Telo.JsonSchema
         schema:
           type: object
-          properties:
-            computed: { type: number }
-            raw: { type: string }
+          properties: { computed: { type: number }, raw: { type: string } }
       value:
         computed: !cel "inputs.computed"
         raw: !cel "inputs.raw"
@@ -30,9 +27,7 @@ steps:
       schema:
         type: object
         properties:
-          computed:
-            type: number
-            const: 42
+          computed: { type: number, const: 42 }
           raw:
             type: string
             const: !literal "literal-${{ untouched }}"

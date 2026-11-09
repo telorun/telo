@@ -9,7 +9,6 @@ metadata:
     over REST, and both transports are tried without the token.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   McpClient: ../../../../modules/mcp-client
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
@@ -20,8 +19,7 @@ kind: McpClient.HttpClient
 metadata: { name: assistant }
 url: http://127.0.0.1:8067/mcp
 clientInfo: { name: starter-test, version: 1.0.0 }
-headers:
-  authorization: Bearer local-dev-token
+headers: { authorization: Bearer local-dev-token }
 ---
 kind: McpClient.ToolsList
 metadata: { name: listTools }
@@ -31,14 +29,13 @@ kind: McpClient.ToolsCall
 metadata: { name: callTool }
 client: !ref assistant
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8067
+    ports: { http: 8067 }
 targets:
   - !ref app
 steps:
@@ -92,8 +89,7 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8067/api/notes
       method: GET
-      headers:
-        authorization: Bearer local-dev-token
+      headers: { authorization: Bearer local-dev-token }
     inputs:
       query:
         q: !cel "steps.subject.result.title"
@@ -162,25 +158,19 @@ steps:
         removeGone: !cel "steps.removeGoneFailure.result"
       expected:
         removed: !cel "'Deleted note #' + string(steps.saved.result.id)"
-        readGone:
-          code: ERR_MCP_TOOL_ERROR
-          message: "MCP tool call returned isError: true"
+        readGone: { code: ERR_MCP_TOOL_ERROR, message: "MCP tool call returned isError: true" }
         removeGone:
           code: ERR_MCP_JSON_RPC_ERROR
           message: !cel "'MCP server returned JSON-RPC error -32010: no note #' + string(steps.saved.result.id)"
 
   - name: restWithoutToken
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8067/api/notes
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8067/api/notes, method: GET }
   - name: mcpWithoutToken
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8067/mcp
       method: POST
-      headers:
-        accept: application/json, text/event-stream
+      headers: { accept: "application/json, text/event-stream" }
       body: { jsonrpc: "2.0", id: 1, method: tools/list }
   - name: verifyGuard
     invoke: { kind: Assert.Equals }
@@ -188,6 +178,4 @@ steps:
       actual:
         rest: !cel "steps.restWithoutToken.result.status"
         mcp: !cel "steps.mcpWithoutToken.result.status"
-      expected:
-        rest: 401
-        mcp: 401
+      expected: { rest: 401, mcp: 401 }

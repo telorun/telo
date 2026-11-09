@@ -26,6 +26,7 @@ metadata:
     whose window ended before it changed leaves it whole, and one whose window
     ends after removes it, its turns and their keys.
 imports:
+  Run: ../../../../modules/run
   Mcp: ../../../../modules/mcp-client
   Chat:
     source: ../
@@ -46,7 +47,6 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
   RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
-  Run: ../../../../modules/run
   Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
@@ -81,7 +81,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: !ref client
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: create }
 steps:
   - name: post
@@ -90,7 +90,7 @@ steps:
 outputs:
   id: !cel "steps.post.result.body.id"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: startTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -113,7 +113,7 @@ outputs:
   body: !cel "steps.post.result.body"
 ---
 # Drains a turn's event stream to its end.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drain }
 inputType:
   kind: Telo.JsonSchema
@@ -141,7 +141,7 @@ steps:
 outputs:
   count: !cel "size(steps.all.result.items)"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: remove }
 inputType:
   kind: Telo.JsonSchema
@@ -160,7 +160,7 @@ outputs:
   status: !cel "steps.send.result.status"
   body: !cel "steps.send.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: read }
 inputType:
   kind: Telo.JsonSchema
@@ -181,7 +181,7 @@ outputs:
 # Fails until the stub holds an agent call (not a naming call) carrying every
 # one of `texts`. The stub keeps every request this file sent, so a text an
 # earlier case's calls also carry would match their call instead.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stubHolds }
 inputType:
   kind: Telo.JsonSchema
@@ -205,7 +205,7 @@ steps:
           message: !cel "'The stub holds no agent call carrying ' + join(inputs.texts, ' and ') + ' yet.'"
 ---
 # Fails until the stub holds `count` agent calls carrying `text`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stubHoldsAll }
 inputType:
   kind: Telo.JsonSchema
@@ -230,7 +230,7 @@ steps:
 ---
 # Every journal key with no `turns` row, as the events route answers it: a
 # removed key is 410, a live one would be served.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: keysWithoutTurns }
 with:
   - kind: SQLite.Connection
@@ -262,7 +262,7 @@ steps:
 outputs:
   states: !cel "distinct(steps.answers.result.map(a, a.status))"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: rowsOf }
 inputType:
   kind: Telo.JsonSchema
@@ -295,7 +295,7 @@ outputs:
     [int(steps.counts.result.rows[0].turns), int(steps.counts.result.rows[0].messages),
      int(steps.counts.result.rows[0].projections)]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -316,7 +316,7 @@ steps:
       recursive: true
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -437,7 +437,7 @@ steps:
   # running when its conversation's DELETE decides.
   - name: racing
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -515,7 +515,7 @@ steps:
   # twenty starts and then all twenty continues.
   - name: failedTurns
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -552,7 +552,7 @@ steps:
         turns: !cel "steps.turns.result"
   - name: contested
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
         schema:
@@ -671,7 +671,7 @@ steps:
         givenBack: [ open, true, true, true, true ]
 ---
 # A turn's journal read to its end, however it ends.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: settled }
 inputType:
   kind: Telo.JsonSchema
@@ -705,7 +705,7 @@ outputs:
 # turn whose conversation was deleted is not continued. A key a continue took
 # over but did not start is given back, with the error the takeover reported,
 # as it was: failed, with its recorded error and its records.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: continueAndDelete }
 steps:
   - name: held
@@ -849,7 +849,7 @@ journal: !ref libraryJournal
 ---
 # One copied turn of the hand-crafted branch: its row, then its key claimed and
 # written, as a copy leaves it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: copiedTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -882,7 +882,7 @@ steps:
       writer: crashed-branch
       input: !cel "steps.records.result.output"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hiddenState }
 inputType:
   kind: Telo.JsonSchema
@@ -918,7 +918,7 @@ outputs:
   turns: !cel "int(steps.counts.result.rows[0].turns)"
   keys: !cel "steps.keys.result.map(k, k.state)"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: crashedBranch }
 steps:
   - name: ids

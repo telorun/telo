@@ -16,7 +16,7 @@ kind: McpClient.ToolsCall
 metadata: { name: echoCall }
 client: !ref localMcp
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRun }
 steps:
   - name: echo

@@ -136,7 +136,7 @@ expect:
 # Bars pin a filter or the search under every placement; the ones where nothing
 # ever folds are told it says nothing. An aside bar folds on a narrow viewport,
 # compact named or not, and a bar showing only the chosen filters folds them.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: pinned }
 steps:
   - name: check

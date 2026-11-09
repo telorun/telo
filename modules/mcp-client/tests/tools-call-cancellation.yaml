@@ -21,7 +21,7 @@ client: !ref localMcp
 ---
 # The step's bound cancels the call while `wait_for_cancel` is unanswered; the
 # call ends only if the cancellation reaches the request.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testCancelledCall }
 steps:
   - name: bounded

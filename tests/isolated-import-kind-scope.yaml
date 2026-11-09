@@ -10,7 +10,6 @@ metadata:
     the kind. It used to be the latter: `A.Greet` returned `B`'s variable.
 imports:
   Assert: ../modules/assert
-  Run: ../modules/run
   A:
     source: ./__fixtures__/isolated-import-kind-scope/greet
     variables: { greeting: from-a }
@@ -44,7 +43,7 @@ metadata: { name: greetW1 }
 kind: W2.Greet
 metadata: { name: greetW2 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: check }
 steps:
   - name: greetA

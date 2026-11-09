@@ -17,7 +17,6 @@ metadata:
 imports:
   Server: ../modules/http-server
   Http: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
   JS: ../modules/javascript
 targets:
@@ -48,11 +47,11 @@ code: |
     };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: TestApi }
+    metadata: { name: testApi }
     routes:
       - request: { path: /deny, method: POST }
         handler: !ref denial
@@ -73,14 +72,14 @@ with:
                     message: !cel "result.error.message"
                     type: !cel "result.error.type"
   - kind: Server.Server
-    metadata: { name: TestServer }
+    metadata: { name: testServer }
     listen: { port: 8879 }
     openapi: { info: { title: Failure Detail, version: 1.0.0 } }
     mounts:
       - path: /api
-        mount: !ref TestApi
+        mount: !ref testApi
 targets:
-  - !ref TestServer
+  - !ref testServer
 steps:
   # A BUFFERED refusal. The body was already parsed, so what this pins is that
   # the error carries it rather than discarding it on the way out.

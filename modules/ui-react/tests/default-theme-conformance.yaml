@@ -6,15 +6,11 @@ metadata:
     The built-in look meets the renderer's contract with nothing left out:
     every part the renderer draws is styled, no rule sets a reserved layout
     property, and every scene draws with it.
-imports:
-  UiReact: ../
-  Conformance: ../../ui-react-conformance
-  Run: ../../run
-  Assert: ../../assert
+imports: { UiReact: ../, Conformance: ../../ui-react-conformance, Assert: ../../assert }
 targets:
   - !ref checkDefaultTheme
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checkDefaultTheme }
 steps:
   - name: check

@@ -27,6 +27,7 @@ metadata:
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 include: [./__fixtures__/cross-process/model.yaml]
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -37,7 +38,6 @@ imports:
   Graph: ../../../graph
   GraphLayers: ../../../graph-layers
   App: ../../../app
-  Run: ../../../run
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
@@ -120,7 +120,7 @@ kind: GraphLayers.RebaseDraft
 metadata: { name: topRebase }
 store: !ref top
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -129,7 +129,7 @@ steps:
 ---
 # The layers are registered before any child starts, so the children race on
 # drafts and revisions rather than on a layer's first write.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: register }
 steps:
   - name: seed
@@ -168,7 +168,7 @@ maxIterations: 3000
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: oneDraft }
 steps:
   - name: awaitA
@@ -234,7 +234,7 @@ maxIterations: 3000
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: oneRevision }
 steps:
   - name: awaitA
@@ -259,7 +259,7 @@ steps:
       actual: !cel "[resources.publisherA.status.exitCode, resources.publisherB.status.exitCode, steps.state.result.rows[0].head - steps.state.result.rows[0].parent, steps.state.result.rows[0].revision - steps.state.result.rows[0].parent, steps.state.result.rows[0].published, steps.state.result.rows[0].drafts]"
       expected: [0, 0, 1, 1, 1, 1]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: prepareRace }
 steps:
   - name: open
@@ -311,7 +311,7 @@ steps:
 # Whichever landed first, nothing is lost and nothing is doubled: the outside
 # write is a revision of its own, and the draft is either the revision after it
 # or refused as stale and still open.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: raceIsWhole }
 steps:
   - name: awaitPublisher
@@ -357,7 +357,7 @@ steps:
     inputs: { draft: !cel "steps.reopen.result.draft.id" }
 ---
 # Twelve people both sides change: twelve conflicts once the draft is rebased.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: prepareConflicts }
 steps:
   - name: seed
@@ -432,7 +432,7 @@ maxIterations: 3000
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: decidedOnce }
 steps:
   - name: awaitA
@@ -483,7 +483,7 @@ steps:
 ---
 # The other process, started by the session's own body and gone when this
 # sequence ends: starting it waits for its work, so the publish has happened.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: publishElsewhere }
 with:
   - kind: App.Instance
@@ -497,7 +497,7 @@ targets:
 steps:
   - { name: done, value: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: closedFromElsewhere }
 steps:
   - name: open
@@ -584,7 +584,7 @@ steps:
 # times. Whichever order the database takes them in, every call is answered:
 # an open finds the layer's open draft or makes one, and never falls between a
 # draft closing and the next one opening.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: openNeverFails }
 steps:
   - name: awaitOpener

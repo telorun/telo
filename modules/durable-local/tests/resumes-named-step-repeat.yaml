@@ -13,10 +13,10 @@ metadata:
     member is dispatched once across the two executions, and exactly three steps
     (two emitted, one wait) are handed to the resume as recorded.
 imports:
+  Run: ../../run
   Durable: ../../durable
   Local: ../
   Journal: ../../durable-journal-file
-  Run: ../../run
   Assert: ../../assert
 variables:
   journalDir:
@@ -120,7 +120,7 @@ expect:
   - { event: "tasks['b'].Invoked", times: 1 }
   - { event: closing.Invoked, times: 1 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: ticket

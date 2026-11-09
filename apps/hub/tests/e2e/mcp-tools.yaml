@@ -14,8 +14,8 @@ metadata:
     `find_implementations` / `find_instances` / `list_categories` / `suggest_module_refs` mirror
     the hub's keyed-read HTTP routes as tools.
 imports:
-  McpClient: oci://ghcr.io/telorun/mcp-client@0.18.0#sha256-4Kt7hdp8rXPewhAMWQN1w5b05iQB3KnWhzXMF52lQLM
   Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  McpClient: oci://ghcr.io/telorun/mcp-client@0.18.0#sha256-4Kt7hdp8rXPewhAMWQN1w5b05iQB3KnWhzXMF52lQLM
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
   Yaml: oci://ghcr.io/telorun/yaml@0.11.1#sha256-s7o7ypsk5oWGomn3BQpnfbfH_j61uOwn3ZqkPNU24yg
 targets:
@@ -60,7 +60,7 @@ client: !ref hubMcp
 kind: Yaml.Parse
 metadata: { name: parsePayload }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_ReturnsKindHits }
 steps:
   - name: call
@@ -88,7 +88,7 @@ steps:
 # A hit carries only what says something: a kind hit has no `entry`, a hit that
 # extends nothing no `extends`, and the response no category facet — each of
 # which a caller that pays per byte would otherwise be sent on every hit.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_OmitsWhatSaysNothing }
 steps:
   - name: call
@@ -118,7 +118,7 @@ steps:
 ---
 # Several needs in one call: each query is answered on its own, in the order
 # asked, and `limit` bounds each answer's hits.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_AnswersSeveralQueries }
 steps:
   - name: call
@@ -145,7 +145,7 @@ steps:
 # A query that spells a module and one of its kinds leads with that kind, the
 # rest of the module's matching kinds beside it — the name is a vote of its own
 # rather than one term among a description's many.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_LeadsWithTheNamedKind }
 steps:
   - name: call
@@ -169,7 +169,7 @@ steps:
 ---
 # Neither `query` nor `queries` is an error result, not an empty answer. The
 # call must fail — reaching the step after it is itself the failure.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_RefusesNoQuery }
 steps:
   - name: refused
@@ -191,7 +191,7 @@ steps:
 # get_kinds answers with exactly what a caller writes against: the `imports:`
 # line for the version read, the asked kind's own document without its
 # controllers, and the parent a kind takes fields from — in another module.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_ReturnsDefinitionsAndImportLine }
 steps:
   - name: call
@@ -228,7 +228,7 @@ steps:
 ---
 # A name the module does not define is said so, beside what it does export — and
 # an alias-qualified name is read by its suffix, an alias being the caller's own.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_NamesWhatIsNotDefined }
 steps:
   - name: call
@@ -253,7 +253,7 @@ steps:
 ---
 # A definition whose `kind:` and `name:` are quoted YAML scalars is found, not
 # reported as undefined beside an export list naming it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_ReadsQuotedScalars }
 steps:
   - name: call
@@ -275,7 +275,7 @@ steps:
 ---
 # `implementation: true` keeps what the default answer cuts — here a kind's
 # `controllers:` — for a caller tracing a runtime error into a kind.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_KeepsTheImplementationWhenAsked }
 steps:
   - name: call
@@ -296,7 +296,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 # A call naming only refs the hub does not track is an error result.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_ReportsAnUntrackedRef }
 steps:
   - name: refused
@@ -321,7 +321,7 @@ steps:
 ---
 # An empty `version` is no version: a model whose tool calls must fill every
 # property sends `""` for one it means to omit, and is answered with the latest.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_ReadsAnEmptyVersionAsTheLatest }
 steps:
   - name: call
@@ -346,7 +346,7 @@ steps:
 ---
 # A tracked ref asked for at a version the hub does not hold is said so, with
 # the versions it does — never reported as an untracked ref.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_NamesTheVersionsOfATrackedRef }
 steps:
   - name: refused
@@ -375,7 +375,7 @@ steps:
 ---
 # A parent kind is read at the version the CHILD pins it at, not at whatever is
 # latest: an older child was written against an older parent.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_ReadsTheParentTheChildPins }
 steps:
   - name: call
@@ -396,7 +396,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 # An empty `kinds` list is an error result saying what to pass.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_RefusesNoKinds }
 steps:
   - name: refused
@@ -417,7 +417,7 @@ steps:
 ---
 # A `telo` version the hub tracks no built-in vocabulary at is a bad argument,
 # answered with the versions it does track. 0.0.1 predates the vocabulary.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getKinds_RefusesAnUntrackedTeloVersion }
 steps:
   - name: refused
@@ -444,7 +444,7 @@ steps:
         invoke: { kind: Assert.Equals }
 ---
 # A `limit` outside 1–50 is a bad argument, not an internal failure.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_RefusesLimitOutOfRange }
 steps:
   - name: refused
@@ -467,7 +467,7 @@ steps:
 ---
 # list_libraries is the whole of a publisher's library in one answer: a summary
 # no longer than a line, and the kinds each library exports.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listLibraries_ListsAPublishersLibraries }
 steps:
   - name: call
@@ -489,7 +489,7 @@ steps:
       expected: { timerKinds: [Delay], onlyThePublisher: true, oneLine: true }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getModuleManifest_ReturnsCachedYaml }
 steps:
   - name: call
@@ -513,7 +513,7 @@ steps:
 ---
 # Same refusal as the HTTP route: an application's runtime reach is not indexed.
 # The call must fail — reaching the step after it is itself the failure.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_RefusesRuntimeForApplications }
 steps:
   - name: refused
@@ -543,7 +543,7 @@ steps:
 # A tool's arguments are not validated against its `argumentsSchema`, so an
 # unknown entry type reaches the search — which refuses it rather than answering
 # with the empty set it would otherwise select.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_RefusesUnknownEntryType }
 steps:
   - name: refused
@@ -566,7 +566,7 @@ steps:
 ---
 # get_module mirrors GET /module: keyed facts about the seeded timer module,
 # not ranked hits — the kind list carries its Delay kind either way.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getModule_ReturnsTrackedModuleFacts }
 steps:
   - name: call
@@ -586,7 +586,7 @@ steps:
 ---
 # list_module_versions mirrors GET /module/versions: the pin an agent needs to
 # write a reproducible `imports:` entry.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listModuleVersions_ReturnsPinnedVersions }
 steps:
   - name: call
@@ -610,7 +610,7 @@ steps:
 ---
 # find_implementations mirrors GET /implementations: the seeded redis and
 # memory backends both extend kv-store's Store abstract from their own module.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: findImplementations_ListsKvStoreBackends }
 steps:
   - name: call
@@ -638,7 +638,7 @@ steps:
 # one model of tesseract-model's `Language` kind and define no kind of their own.
 # They are seeded from the checkout, so the kind's owner is the local ref their
 # relative import resolves to.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: findInstances_ListsSeededLanguagePacks }
 steps:
   - name: call
@@ -660,7 +660,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 # list_categories mirrors GET /categories: browsable without a search query.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listCategories_CarriesSchedulingSlug }
 steps:
   - name: call
@@ -678,7 +678,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 # suggest_module_refs mirrors GET /refs: lexical typeahead, not semantic search.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: suggestModuleRefs_ResolvesPartialToken }
 steps:
   - name: call
@@ -698,7 +698,7 @@ steps:
 ---
 # find_dependents answers in the short form a model is re-sent: ref, name and a
 # one-sentence summary, never the whole description, with the total and paging.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: findDependents_ListsImportersInOneLine }
 steps:
   - name: call
@@ -738,7 +738,7 @@ steps:
 ---
 # `publisher` keeps a search inside one host and org; one with no module selects
 # nothing rather than being refused.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_StaysWithinAPublisher }
 steps:
   - name: call

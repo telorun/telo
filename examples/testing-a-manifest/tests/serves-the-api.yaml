@@ -12,28 +12,22 @@ imports:
   Api: ../api
   Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
-    listen:
-      port: 8971
-      address: 127.0.0.1
-    openapi:
-      info:
-        title: Cart pricing under test
-        version: 1.0.0
+    metadata: { name: server }
+    listen: { port: 8971, address: 127.0.0.1 }
+    openapi: { info: { title: Cart pricing under test, version: 1.0.0 } }
     mounts:
       - path: /cart
         mount: !ref Api.cartApi
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: price
     invoke:
@@ -53,10 +47,7 @@ steps:
         body: !cel "steps.price.result.body"
       expected:
         status: 200
-        body:
-          subtotalCents: 11000
-          discountCents: 1100
-          totalCents: 9900
+        body: { subtotalCents: 11000, discountCents: 1100, totalCents: 9900 }
 
   # The route declares its request schema, so a malformed body is refused before
   # the handler runs. Asserting the 400 is what keeps that guarantee from being

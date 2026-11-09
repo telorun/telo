@@ -7,9 +7,9 @@ metadata:
     fulfilment an imported library exports: the child receives that fulfilment's
     fields and writes into the directory the library names.
 imports:
+  Run: ../../run
   App: ../
   Fs: ../../fs
-  Run: ../../run
   Timer: ../../timer
   Assert: ../../assert
   Storage:
@@ -39,7 +39,7 @@ maxIterations: 200
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: awaitExit

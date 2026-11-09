@@ -7,11 +7,7 @@ metadata:
   name: AgentContextTest
   version: 1.0.0
   description: Typed caller data flows from an agent's `context` input into its tools' mappings.
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref toolReceivesCallerContext
   - !ref everyProviderConstrainsContext
@@ -91,7 +87,7 @@ toolProviders:
 ---
 # The tool's `inputs:` maps `id: context.turnId`; its result is what the echo
 # model answers with on the second turn.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: toolReceivesCallerContext }
 steps:
   - name: call
@@ -104,7 +100,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 # Two providers, two declared types: a `context` satisfying both is accepted.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: everyProviderConstrainsContext }
 steps:
   - name: call
@@ -116,7 +112,7 @@ steps:
       expected: '{"id":"turn-7"}'
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: undeclaredProviderAcceptsAnyContext }
 steps:
   - name: call

@@ -1,10 +1,10 @@
 kind: Telo.Application
 metadata: { name: McpHttpToolCallTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Mcp: ../
   McpClient: ../../mcp-client
   Http: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets: [ !ref testRun ]
 ---
@@ -48,15 +48,15 @@ kind: McpClient.ToolsCall
 metadata: { name: callGetWeather }
 client: !ref weatherMcpClient
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRun }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8951 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
-targets: [ !ref Server ]
+targets: [ !ref server ]
 steps:
   - name: callGetWeather
     inputs: { name: get_weather, arguments: { city: Atlantis } }

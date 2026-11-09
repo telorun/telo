@@ -13,7 +13,6 @@ imports:
   SQLite: ../../sqlite
   Graph: ../../graph
   GraphSql: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -55,7 +54,7 @@ node: !ref ticket
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: integerKey }
 steps:
   - name: create

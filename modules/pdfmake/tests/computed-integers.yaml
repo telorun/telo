@@ -7,15 +7,11 @@ metadata:
     expressions — 64-bit integers, not the numbers YAML literals are — lay the
     document out as the same literals do: the banded table renders, the
     row span holds, and the list counts from 3.
-imports:
-  PdfMake: ../
-  Pdf: ../../pdf
-  Run: ../../run
-  Assert: ../../assert
+imports: { PdfMake: ../, Pdf: ../../pdf, Assert: ../../assert }
 targets:
   - !ref testComputedIntegers
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testComputedIntegers }
 steps:
   - name: render

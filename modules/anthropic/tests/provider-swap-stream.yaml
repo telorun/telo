@@ -19,8 +19,8 @@ metadata:
     naming `ERR_MODEL_RATE_LIMITED`, and reaches the reading route's `catches:`
     with `retryAfterSeconds` 7, under either.
 imports:
-  App: ../../app
   Run: ../../run
+  App: ../../app
   HttpClient: ../../http-client
   Server: ../../http-server
   Assert: ../../assert
@@ -59,11 +59,11 @@ client:
   baseUrl: http://127.0.0.1:8920
   throwOnHttpError: false
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: AnthropicApi }
+    metadata: { name: anthropicApi }
     routes:
       - request:
           path: /messages
@@ -107,7 +107,7 @@ with:
                   event: message_stop
                   data: {"type":"message_stop"}
   - kind: Server.Api
-    metadata: { name: OpenaiApi }
+    metadata: { name: openaiApi }
     routes:
       - request:
           path: /chat/completions
@@ -136,14 +136,14 @@ with:
 
                   data: [DONE]
   - kind: Server.Server
-    metadata: { name: Vendors }
+    metadata: { name: vendors }
     listen: { port: 8918 }
     openapi: { info: { title: Fake vendor endpoints, version: 1.0.0 } }
     mounts:
       - path: /anthropic/v1
-        mount: !ref AnthropicApi
+        mount: !ref anthropicApi
       - path: /openai/v1
-        mount: !ref OpenaiApi
+        mount: !ref openaiApi
   - kind: App.Instance
     metadata: { name: anthropicApp }
     source: ./__fixtures__/swap-stream/anthropic-app.yaml
@@ -155,7 +155,7 @@ with:
     variables: { endpoint: http://127.0.0.1:8918/openai/v1 }
     ports: { http: 8920 }
 targets:
-  - !ref Vendors
+  - !ref vendors
   - !ref anthropicApp
   - !ref openaiApp
 steps:

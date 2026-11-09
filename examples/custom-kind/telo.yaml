@@ -39,14 +39,14 @@ kind: Telo.Sequence
 metadata: { name: demo }
 with:
   - kind: Http.Server
-    metadata: { name: Receiver }
+    metadata: { name: receiver }
     listen: { port: 8033, address: 127.0.0.1 }
     openapi: { info: { title: Fake webhook receiver, version: 1.0.0 } }
     mounts:
       - path: /hooks
         mount: !ref inbox
 targets:
-  - !ref Receiver
+  - !ref receiver
 steps:
   - name: generic
     invoke: !ref deploys

@@ -13,7 +13,6 @@ imports:
   Lib: ./__fixtures__/native-resolve/lib
   Child: ./__fixtures__/native-resolve/child
   Assert: ../modules/assert
-  Run: ../modules/run
 native:
   - { name: greeting, format: txt, os: linux, arch: amd64, path: ./__fixtures__/native-resolve/app/native/linux-amd64/greeting.txt }
   - { name: greeting, format: txt, os: linux, arch: arm64, path: ./__fixtures__/native-resolve/app/native/linux-arm64/greeting.txt }
@@ -24,25 +23,18 @@ native:
 targets:
   - !ref verify
 ---
-kind: Run.Sequence
-metadata:
-  name: verify
+kind: Telo.Sequence
+metadata: { name: verify }
 steps:
-  - name: fromLibraryKind
-    invoke:
-      kind: Lib.Reader
+  - { name: fromLibraryKind, invoke: { kind: Lib.Reader } }
   - name: assertLibraryKind
     inputs:
       actual: !cel "steps.fromLibraryKind.result"
       expected: { text: from lib }
-    invoke:
-      kind: Assert.Equals
-  - name: fromInheritingKind
-    invoke:
-      kind: Child.Greeter
+    invoke: { kind: Assert.Equals }
+  - { name: fromInheritingKind, invoke: { kind: Child.Greeter } }
   - name: assertInheritingKind
     inputs:
       actual: !cel "steps.fromInheritingKind.result"
       expected: { text: from lib }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

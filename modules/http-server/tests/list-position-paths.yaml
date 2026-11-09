@@ -8,11 +8,7 @@ metadata:
     encoding does not read. Both answer the same problem, each finding a JSON
     Pointer into the request as CEL reads it (`/body/items/0/name`,
     `/body/items/0/at`) with its keyword and params and no prose.
-imports:
-  Http: ../
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -35,17 +31,17 @@ routes:
     returns:
       - { status: 200, content: { application/json: { body: { ok: true } } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8997 }
     mounts:
       - path: /
         mount: !ref api
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: tooLong
     invoke:

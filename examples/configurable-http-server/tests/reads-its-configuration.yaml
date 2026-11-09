@@ -10,34 +10,26 @@ metadata:
     echoed.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 4444
-    variables:
-      apiBaseUrl: https://api.example.test
-    secrets:
-      stripeSecretKey: sk_test_0000000000001234
+    ports: { http: 4444 }
+    variables: { apiBaseUrl: https://api.example.test }
+    secrets: { stripeSecretKey: sk_test_0000000000001234 }
 targets:
   - !ref app
 steps:
   - name: charge
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:4444/v1/charge
-      method: POST
-    inputs:
-      body: {}
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:4444/v1/charge, method: POST }
+    inputs: { body: {} }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
@@ -46,7 +38,4 @@ steps:
         body: !cel "steps.charge.result.body"
       expected:
         status: 200
-        body:
-          ok: true
-          upstream: https://api.example.test
-          keyHint: "sk_t…1234"
+        body: { ok: true, upstream: https://api.example.test, keyHint: "sk_t…1234" }

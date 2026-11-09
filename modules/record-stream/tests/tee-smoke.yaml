@@ -10,7 +10,6 @@ imports:
   RecordStream: ../
   JS: ../../javascript
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testSequentialDrain
@@ -60,7 +59,7 @@ kind: RecordStream.Tee
 metadata: { name: teeStream }
 ---
 # Drain consumer A entirely, then consumer B. Both must see [1, 2, 3].
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testSequentialDrain }
 steps:
   - name: seqSource
@@ -94,7 +93,7 @@ steps:
 # item then sees the error. (Consumer B's behaviour after A's error is also
 # "throws on next pull" but isn't exercised here — would deadlock the
 # sequential drain pattern.)
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testErrorPropagation }
 steps:
   - name: errSource
@@ -122,7 +121,7 @@ steps:
 ---
 # Side A breaks after 2 items; side B must still drain all 5. Confirms the
 # early-cancellation path doesn't starve the running consumer or deadlock.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testEarlyCancellation }
 steps:
   - name: earlySource

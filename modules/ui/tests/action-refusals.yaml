@@ -94,7 +94,7 @@ expect:
 ---
 # A table and a list each offer a row an action that draws an answer, bound
 # from the row: nothing is reported, and no rule is skipped.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: rowActionAnswers }
 steps:
   - name: check

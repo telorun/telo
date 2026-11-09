@@ -6,25 +6,18 @@ metadata:
     A templated kind's schema `default:` reaches `self` when the instance leaves
     the field out, and an expression calling a function whose result differs per
     call (`uuidv4()`) is evaluated per call rather than once for the instance.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Assert: ../modules/assert }
 targets:
   - !ref test
 ---
 kind: Telo.Definition
-metadata:
-  name: Greeter
+metadata: { name: Greeter }
 capability: Telo.Invocable
 schema:
   type: object
-  properties:
-    greeting:
-      type: string
-      default: Hello
-      x-telo-eval: compile
+  properties: { greeting: { type: string, default: Hello, x-telo-eval: compile } }
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: greet }
     steps:
       - name: id
@@ -37,7 +30,7 @@ invoke: !ref greet
 kind: Self.Greeter
 metadata: { name: greeter }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: one
@@ -50,6 +43,4 @@ steps:
       actual:
         text: !cel "steps.one.result.text"
         distinctIds: !cel "steps.one.result.id != steps.two.result.id"
-      expected:
-        text: Hello!
-        distinctIds: true
+      expected: { text: Hello!, distinctIds: true }

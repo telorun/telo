@@ -9,7 +9,6 @@ metadata:
     caller through the importer's server.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 targets:
@@ -17,18 +16,15 @@ targets:
 ---
 kind: HttpClient.Request
 metadata: { name: call }
-client:
-  kind: HttpClient.Client
-  baseUrl: http://127.0.0.1:8202
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8202 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ./__fixtures__/greeter-app.yaml
-    ports:
-      http: 8202
+    ports: { http: 8202 }
 targets:
   - !ref app
 steps:

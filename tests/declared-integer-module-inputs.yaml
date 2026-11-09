@@ -20,8 +20,7 @@ imports:
     variables:
       retentionDays: 3
       ratio: !cel "1 + 1"
-    secrets:
-      pin: 9
+    secrets: { pin: 9 }
   Forwarded:
     source: ./__fixtures__/declared-integer-inputs/retention
     variables:
@@ -38,11 +37,9 @@ variables:
   limits:
     env: DECLARED_INTEGER_LIMITS
     type: object
-    properties:
-      burst: { type: integer }
+    properties: { burst: { type: integer } }
     default: { burst: 5 }
-secrets:
-  pin: { type: integer, env: DECLARED_INTEGER_PIN, default: 7 }
+secrets: { pin: { type: integer, env: DECLARED_INTEGER_PIN, default: 7 } }
 targets:
   - !ref child
   - !ref test
@@ -56,7 +53,7 @@ source: ./__fixtures__/declared-integer-inputs/child.yaml
 variables:
   count: !cel "resources.Forwarded.variables.retentionDays"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: defaulted
@@ -95,16 +92,12 @@ steps:
       condition: !cel "resources.child.status.exitCode == null"
       maxIterations: 200
       steps:
-        - name: wait
-          invoke: { kind: Timer.Delay }
-          inputs:
-            duration: 20ms
+        - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
   - name: reversedOrder
     invoke:
       kind: Assert.Manifest
       source: ./__fixtures__/declared-integer-inputs/shared-forwarded-first.yaml
-      expect:
-        runs: true
+      expect: { runs: true }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:

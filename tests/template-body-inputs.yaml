@@ -4,60 +4,48 @@
 # kind's own annotations, which is why no standard-library template had a body
 # of more than one dispatch.
 kind: Telo.Application
-metadata:
-  name: TemplateBodyInputs
-  version: 1.0.0
+metadata: { name: TemplateBodyInputs, version: 1.0.0 }
 imports:
   SQLite: ../modules/sqlite
   Sql: ../modules/sql
   Assert: ../modules/assert
-  Run: ../modules/run
   Body: ./__fixtures__/template-body
 targets:
   - !ref seed
   - !ref verify
 ---
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: ":memory:"
 ---
-kind: Run.Sequence
-metadata:
-  name: seed
+kind: Telo.Sequence
+metadata: { name: seed }
 steps:
   - name: create
     invoke: !ref exec
-    inputs:
-      sql: "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)"
+    inputs: { sql: "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)" }
   - name: alpha
     invoke: !ref exec
-    inputs:
-      sql: "INSERT INTO notes (id, body) VALUES (1, 'alpha')"
+    inputs: { sql: "INSERT INTO notes (id, body) VALUES (1, 'alpha')" }
   - name: beta
     invoke: !ref exec
-    inputs:
-      sql: "INSERT INTO notes (id, body) VALUES (2, 'alphabet')"
+    inputs: { sql: "INSERT INTO notes (id, body) VALUES (2, 'alphabet')" }
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref db
 ---
 kind: Body.Resources
-metadata:
-  name: notes
+metadata: { name: notes }
 connection: !ref db
 table: notes
 ---
-kind: Run.Sequence
-metadata:
-  name: verify
+kind: Telo.Sequence
+metadata: { name: verify }
 steps:
   - name: found
     invoke: !ref notes
-    inputs:
-      q: "alpha%"
+    inputs: { q: "alpha%" }
   - name: assertLabels
     invoke: { kind: Assert.Equals }
     inputs:

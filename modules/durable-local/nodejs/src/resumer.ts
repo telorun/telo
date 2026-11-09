@@ -23,6 +23,7 @@ import {
   type ResourceManifest,
 } from "@telorun/sdk";
 import { recordedRunInputs } from "./journal-codec.js";
+import type { DurableJournal } from "./journal.js";
 import type { WorkflowController } from "./workflow.js";
 
 interface ResumerManifest extends ResourceManifest {
@@ -41,6 +42,10 @@ const CLAIM_TTL_MS = 60_000;
 /** One pass at a time, so a slow batch cannot overlap itself into two pollers
  *  racing for the same runs inside one process. */
 const BATCH = 10;
+
+/** Finished runs purged per sweep, so a large backlog drains over several passes
+ *  rather than holding one sweep (and its timer slot) for as long as it takes. */
+const PURGE_BATCH = 100;
 
 /** A run this process cannot READ: written by a newer codec, or holding a frame
  *  that does not decode. Retrying it changes nothing until the runtime or the
@@ -179,14 +184,36 @@ export class ResumerController {
           });
         }
       }
+      await this.purgeFinished(workflow, journal);
     } catch (err) {
-      // The journal itself is unreachable. Logged rather than thrown: this runs
-      // on a timer with no caller to receive it, and the next sweep may succeed.
-      this.ctx.log.warn("Could not look for interrupted runs", {
-        "error.message": (err as Error).message,
-      });
+      // The sweep itself failed (an unreachable journal, a failed purge). Logged
+      // rather than thrown: this runs on a timer with no caller to receive it,
+      // and the next sweep may succeed.
+      this.ctx.log.warn(
+        "Could not sweep the journal for interrupted or finished runs",
+        {},
+        { error: this.ctx.errorValueOf(err) },
+      );
     } finally {
       this.#sweeping = false;
+    }
+  }
+
+  /**
+   * Delete this workflow's runs that finished longer ago than its `retainFinished`.
+   *
+   * Only runs recorded under this workflow's name are listed, so each run is held
+   * to its own workflow's window; a run with no recorded workflow or finish time
+   * (written before they were) is never listed and stays.
+   */
+  private async purgeFinished(workflow: WorkflowController, journal: DurableJournal): Promise<void> {
+    const { finishedRuns, deleteFinishedRun } = journal;
+    if (!finishedRuns || !deleteFinishedRun) return;
+    const cutoff = Date.now() - workflow.retainFinishedMs;
+    for (const run of await finishedRuns.call(journal, workflow.name, cutoff, PURGE_BATCH)) {
+      if (await deleteFinishedRun.call(journal, run, cutoff)) {
+        this.ctx.log.info("Purged a finished run", { "durable.run": run });
+      }
     }
   }
 

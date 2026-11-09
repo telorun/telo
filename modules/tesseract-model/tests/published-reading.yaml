@@ -15,7 +15,7 @@ data: !module-path ./__fixtures__/sample.traineddata
 ---
 # A recognizer reads a model only through this reading: `data` as an absolute
 # path, and `code` for a language.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readingIsPublished }
 steps:
   - name: check

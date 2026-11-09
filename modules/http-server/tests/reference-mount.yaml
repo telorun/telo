@@ -7,11 +7,7 @@ metadata:
     OpenAPI document and its reference page under the prefix the mount declares,
     and a `when:` that resolves false leaves it out of the server entirely — the
     prefix answers 404 rather than being registered and hidden.
-imports:
-  Http: ../
-  JS: ../../javascript
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, JS: ../../javascript, Assert: ../../assert }
 targets:
   - !ref test
   - !ref testMissingOpenApi
@@ -55,7 +51,7 @@ title: Reference Mount
 kind: Http.Reference
 metadata: { name: internalDocs }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

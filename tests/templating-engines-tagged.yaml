@@ -1,10 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: TemplatingEnginesTagged
-  version: 1.0.0
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+metadata: { name: TemplatingEnginesTagged, version: 1.0.0 }
+imports: { Run: ../modules/run, Assert: ../modules/assert }
 targets:
   - !ref testTagged
 ---
@@ -13,9 +9,8 @@ targets:
 # received — !cel evaluates the expression, !literal keeps the string
 # verbatim (the literal `${{...}}` text is passed through, not interpolated),
 # and !interpolate joins text with its holes.
-kind: Run.Sequence
-metadata:
-  name: testTagged
+kind: Telo.Sequence
+metadata: { name: testTagged }
 steps:
   # !cel — entire scalar is one CEL expression, no ${{ }} wrapping.
   - name: celTaggedSum
@@ -26,11 +21,7 @@ steps:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            a: { type: number }
-            b: { type: number }
+        schema: { type: object, properties: { a: { type: number }, b: { type: number } } }
       value:
         value: !cel "inputs.a + inputs.b"
   - name: assertCelSum
@@ -40,10 +31,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          value:
-            type: number
-            const: 43
+        properties: { value: { type: number, const: 43 } }
         required: [ value ]
 
   # !literal — the controller must receive the raw string, including the
@@ -55,10 +43,7 @@ steps:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            raw: { type: string }
+        schema: { type: object, properties: { raw: { type: string } } }
       value:
         passthrough: !cel "inputs.raw"
   - name: assertLiteralPassthrough
@@ -86,9 +71,7 @@ steps:
         kind: Telo.JsonSchema
         schema:
           type: object
-          properties:
-            interpolated: { type: string }
-            celField: { type: number }
+          properties: { interpolated: { type: string }, celField: { type: number } }
       value:
         interpolated: !cel "inputs.interpolated"
         celField: !cel "inputs.celField"
@@ -101,10 +84,6 @@ steps:
       schema:
         type: object
         properties:
-          interpolated:
-            type: string
-            const: "answer is 42"
-          celField:
-            type: number
-            const: 42
+          interpolated: { type: string, const: "answer is 42" }
+          celField: { type: number, const: 42 }
         required: [ interpolated, celField ]

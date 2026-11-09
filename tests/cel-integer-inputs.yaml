@@ -11,33 +11,27 @@ metadata:
 imports:
   Http: ../modules/http-server
   HttpClient: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref verifyIntegerInputs
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: twicePlusOne }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [n]
-    properties:
-      n: { type: integer }
+  schema: { type: object, required: [n], properties: { n: { type: integer } } }
 steps:
   - name: computed
     value: !cel "inputs.n * 2 + 1"
 outputs:
   value: !cel "steps.computed.result"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyIntegerInputs }
 with:
   - kind: Http.Server
-    metadata: { name: IntegerServer }
-    listen:
-      port: 8851
+    metadata: { name: integerServer }
+    listen: { port: 8851 }
     mounts:
       - path: /
         mount:
@@ -47,11 +41,7 @@ with:
                 path: /price
                 method: POST
                 schema:
-                  body:
-                    type: object
-                    required: [price]
-                    properties:
-                      price: { type: integer }
+                  body: { type: object, required: [price], properties: { price: { type: integer } } }
               inputs:
                 n: !cel "request.body.price + 1"
               handler: !ref twicePlusOne
@@ -61,12 +51,11 @@ with:
                     application/json:
                       body: !cel "result"
 targets:
-  - !ref IntegerServer
+  - !ref integerServer
 steps:
   - name: direct
     invoke: !ref twicePlusOne
-    inputs:
-      n: 4
+    inputs: { n: 4 }
   - name: assertDirect
     invoke: { kind: Assert.Equals }
     inputs:

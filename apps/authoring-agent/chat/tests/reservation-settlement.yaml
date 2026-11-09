@@ -25,7 +25,6 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
   RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # This test's own workspaces, emptied before each run.
@@ -39,7 +38,7 @@ targets:
 ---
 # One turn's event stream, every frame read as its record type, an error frame
 # as its code and message.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readEvents }
 inputType:
   kind: Telo.JsonSchema
@@ -47,8 +46,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [url]
-    properties:
-      url: { type: string }
+    properties: { url: { type: string } }
 steps:
   - name: get
     timeout: 30000
@@ -71,7 +69,7 @@ outputs:
       ? {'type': 'error', 'code': parseJson(r.data).code, 'message': parseJson(r.data).message}
       : {'type': parseJson(r.data).data.type})
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # Created first so the removal always has something to remove.
@@ -87,7 +85,7 @@ steps:
       recursive: true
   - name: admissionFails
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -102,8 +100,7 @@ steps:
             modelEndpoint: http://127.0.0.1:9/v1
             # Exactly one turn's reservation.
             budgetLimit: 40000
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
         # The instance's own database, reached from outside it.
         - kind: SQLite.Connection
           metadata: { name: agentDb }
@@ -145,28 +142,21 @@ steps:
               WHEN NEW.conversation_id = '${{ steps.refusedConversation.result.body.id }}'
               BEGIN SELECT RAISE(ABORT, 'turn refused by the test'); END
         - name: refused
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18495/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18495/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.refusedConversation.result.body.id"
               message: add a health endpoint
         - name: claimed
           invoke: !ref keys
-          inputs:
-            sql: "SELECT journal_key FROM turn_journal_keys"
+          inputs: { sql: "SELECT journal_key FROM turn_journal_keys" }
         - name: key
           invoke: !ref readKey
           inputs:
             key: !cel "steps.claimed.result.rows[0].journal_key"
             limit: 0
         - name: next
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18495/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18495/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.nextConversation.result.body.id"
@@ -188,7 +178,7 @@ steps:
               next: 200
   - name: projectionFails
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: stub }
@@ -206,8 +196,7 @@ steps:
             # One turn's reservation and a little more: a second start fits only
             # once the first turn is settled to what it spent.
             budgetLimit: 60000
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
         - kind: SQLite.Connection
           metadata: { name: agentDb }
           file: !cel "variables.scratch.joinPath('projection').joinPath('agent-state').joinPath('agent.sqlite')"
@@ -235,10 +224,7 @@ steps:
               WHEN NEW.role = 'assistant'
               BEGIN SELECT RAISE(ABORT, 'projection refused by the test'); END
         - name: first
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18496/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18496/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.firstConversation.result.body.id"
@@ -248,10 +234,7 @@ steps:
           inputs:
             url: !interpolate "http://127.0.0.1:18496/chat/${{ steps.first.result.body.turnId }}/events"
         - name: second
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18496/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18496/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.secondConversation.result.body.id"
@@ -265,13 +248,10 @@ steps:
                 cel.bind(last, steps.firstEvents.result.frames[size(steps.firstEvents.result.frames) - 1],
                   last.type == 'error' && last.message.contains('projection refused by the test'))
               second: !cel "steps.second.result.status"
-            expected:
-              completed: true
-              ended: true
-              second: 200
+            expected: { completed: true, ended: true, second: 200 }
   - name: continueFails
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -286,8 +266,7 @@ steps:
             # Two reservations: the failed turn is charged its own, which leaves
             # exactly one — the continue's, or the next start's once refunded.
             budgetLimit: 80000
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
         - kind: SQLite.Connection
           metadata: { name: agentDb }
           file: !cel "variables.scratch.joinPath('continue').joinPath('agent-state').joinPath('agent.sqlite')"
@@ -307,10 +286,7 @@ steps:
             url: http://127.0.0.1:18497/conversations
             method: POST
         - name: failing
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18497/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18497/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.failingConversation.result.body.id"
@@ -332,10 +308,7 @@ steps:
             url: !interpolate "http://127.0.0.1:18497/chat/${{ steps.failing.result.body.turnId }}/continue"
             method: POST
         - name: next
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18497/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18497/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.nextConversation.result.body.id"

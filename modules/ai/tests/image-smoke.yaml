@@ -6,11 +6,7 @@ metadata:
     Ai.Image against the hermetic echo image model: option merging, the produced
     result shape, the refusal path, and the input combinations the schema cannot
     express. No live model — the echo fixture reports back what reached it.
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testGeneration
   - !ref testEdit
@@ -72,7 +68,7 @@ model: !ref partialRefuser
 # Text-to-image: the resource's options sit beneath the call's, the result carries
 # one entry per produced image with the provider's reported dimensions, and usage
 # arrives as the provider-neutral { unit, total } quantity.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testGeneration }
 steps:
   - name: generate
@@ -107,7 +103,7 @@ steps:
 # the provider, and a mask must reach it too under an inpainting intent. The
 # references are real bytes produced by an earlier generation — the same round trip
 # a caller makes when it reworks a picture it just generated.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testEdit }
 steps:
   - name: seed
@@ -143,7 +139,7 @@ steps:
 # A refusal is a RESULT, not an error: the run reports content-filter and hands back
 # whatever survived. Total and partial refusal share the reason and differ only in
 # how many images came back.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRefusal }
 steps:
   - name: whole
@@ -177,7 +173,7 @@ steps:
 # Ai.Image owns them; the mask requirement is the PROVIDER's, since it owns the
 # intent vocabulary — `inpaint` means nothing to the generic module, and a backend
 # whose repaint mode is called `outpaint` would silently lose the rule if it did.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInputRules }
 steps:
   - name: seed

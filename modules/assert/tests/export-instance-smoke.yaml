@@ -15,7 +15,7 @@ imports: { Assert: ../, Run: ../../run }
 targets:
   - !ref check
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: check }
 steps:
   - name: equals

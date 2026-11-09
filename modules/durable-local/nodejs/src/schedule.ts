@@ -57,6 +57,7 @@ class ScheduleController {
     const admission = await journal.admitRun(runId, {
       status: "scheduled",
       dueAt,
+      workflow: this.workflow().name,
       ...(frame === undefined ? {} : { inputs: frame, inputsCodecVersion: RECORDED_VALUE_CODEC_VERSION }),
     });
     // An id already taken is not scheduled a second time. Same rule the

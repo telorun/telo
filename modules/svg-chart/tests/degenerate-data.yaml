@@ -31,7 +31,7 @@ series: !cel "row.name"
 width: 300
 height: 200
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testDegenerateData }
 steps:
   # Zero rows is not an error. The chart is still a chart — the canvas, the

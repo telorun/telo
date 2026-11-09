@@ -10,10 +10,10 @@ metadata:
     agent that lost its cursor resumes from the plan ID alone: the plan read
     carries its state and cursor. An unknown plan is 404.
 imports:
+  Run: ../../../modules/run
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Timer: ../../../modules/timer
   Assert: ../../../modules/assert
 variables:
@@ -30,7 +30,7 @@ metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18745, throwOnHttpError: false }
 ---
 # One long poll, timed: [elapsed ms, event types, cursor].
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: poll }
 inputType:
   kind: Telo.JsonSchema
@@ -48,7 +48,7 @@ outputs:
   status: !cel "steps.get.result.status"
   body: !cel "steps.get.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -62,7 +62,7 @@ steps:
     inputs: { path: !cel "string(variables.scratch)", createParents: true }
   - name: run
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: server }

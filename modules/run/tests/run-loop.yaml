@@ -31,7 +31,7 @@ maxIterations: !cel "inputs.cap"
 steps:
   - { name: tick, invoke: { kind: Run.Value, value: { ok: true } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyLoop }
 steps:
   - name: runLoop
@@ -80,7 +80,7 @@ outputs:
   ordinal: !cel "iteration + 1"
   lastLabel: !cel "previous.tick.result.label"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyIterationIsInteger }
 steps:
   - name: run

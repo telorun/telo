@@ -15,7 +15,6 @@ imports:
   Durable: ../modules/durable
   Local: ../modules/durable-local
   Journal: ../modules/durable-journal-file
-  Run: ../modules/run
   Assert: ../modules/assert
 variables:
   journalDir:
@@ -44,8 +43,7 @@ outputType:
     type: object
     required: [ok]
     additionalProperties: false
-    properties:
-      ok: { type: boolean }
+    properties: { ok: { type: boolean } }
 ---
 kind: Local.Workflow
 metadata: { name: record }
@@ -72,7 +70,7 @@ kind: Local.Status
 metadata: { name: status }
 journal: !ref journal
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # One ticket per process, so a journal directory left behind by an earlier run
@@ -101,8 +99,7 @@ steps:
       journal: !ref journal
       await: !ref approval
       token: !cel "'url:' + inputs.ticket"
-      payload:
-        ok: true
+      payload: { ok: true }
     inputs:
       ticket: !cel "steps.ticket.result"
   - name: resume

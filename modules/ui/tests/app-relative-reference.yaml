@@ -14,7 +14,7 @@ targets:
   - !ref main
   - !ref refusedAtCreation
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: addresses

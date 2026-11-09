@@ -18,13 +18,13 @@ metadata:
     ten-turn branch completes whole while the retention sweep runs over and
     over beside it.
 imports:
+  Run: ../../../../modules/run
   Mcp: ../../../../modules/mcp-client
   Chat:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: stub-key
+    secrets: { anthropicApiKey: stub-key }
     needs:
       agentState: { path: !cel "variables.libraryScratch.joinPath('state')" }
     variables:
@@ -37,7 +37,6 @@ imports:
   HttpClient: ../../../../modules/http-client
   Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
   Stream: ../../../../modules/stream
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -71,18 +70,16 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: !ref client
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: create }
 steps:
   - name: post
     invoke: !ref call
-    inputs:
-      url: http://127.0.0.1:18527/conversations
-      method: POST
+    inputs: { url: http://127.0.0.1:18527/conversations, method: POST }
 outputs:
   id: !cel "steps.post.result.body.id"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: startTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -90,9 +87,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: post
     invoke: !ref call
@@ -105,7 +100,7 @@ steps:
 outputs:
   turnId: !cel "steps.post.result.body.turnId"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drain }
 inputType:
   kind: Telo.JsonSchema
@@ -113,8 +108,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: get
     timeout: 30000
@@ -135,7 +129,7 @@ outputs:
   count: !cel "size(steps.all.result.items)"
 ---
 # One turn to its end.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turn }
 inputType:
   kind: Telo.JsonSchema
@@ -143,9 +137,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: start
     invoke: !ref startTurn
@@ -158,7 +150,7 @@ steps:
 outputs:
   turnId: !cel "steps.start.result.turnId"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: read }
 inputType:
   kind: Telo.JsonSchema
@@ -166,8 +158,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [path]
-    properties:
-      path: { type: string }
+    properties: { path: { type: string } }
 steps:
   - name: get
     invoke: !ref call
@@ -178,7 +169,7 @@ outputs:
   body: !cel "steps.get.result.body"
 ---
 # Fails until the stub holds an agent call (not a naming call) carrying `text`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stubHolds }
 inputType:
   kind: Telo.JsonSchema
@@ -186,13 +177,11 @@ inputType:
     type: object
     additionalProperties: false
     required: [text]
-    properties:
-      text: { type: string }
+    properties: { text: { type: string } }
 steps:
   - name: sent
     invoke: !ref call
-    inputs:
-      url: http://127.0.0.1:18526/requests
+    inputs: { url: http://127.0.0.1:18526/requests }
   - name: notYet
     if: !cel >-
       !steps.sent.result.body.requests.exists(r, json(r).contains(inputs.text)
@@ -203,7 +192,7 @@ steps:
           code: ERR_TEST_NOT_RECEIVED_YET
           message: !cel "'The stub holds no agent call carrying ' + inputs.text + ' yet.'"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: branch }
 inputType:
   kind: Telo.JsonSchema
@@ -211,9 +200,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, throughTurnId]
-    properties:
-      conversationId: { type: string }
-      throughTurnId: { type: string }
+    properties: { conversationId: { type: string }, throughTurnId: { type: string } }
 steps:
   - name: send
     invoke: !ref call
@@ -228,7 +215,7 @@ outputs:
 # What a refused branch left: hidden conversations still live, turn rows of any
 # conversation but the source, and every key without a turn row as the events
 # route answers it (410 once removed).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: partialCopy }
 inputType:
   kind: Telo.JsonSchema
@@ -236,8 +223,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [sourceId]
-    properties:
-      sourceId: { type: string }
+    properties: { sourceId: { type: string } }
 with:
   - kind: SQLite.Connection
     metadata: { name: agentDb }
@@ -278,7 +264,7 @@ outputs:
   keysWithoutTurns: !cel "distinct(steps.answers.result.map(a, a.status))"
 ---
 # One turn through the chat library, to its end.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: libraryTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -286,9 +272,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: start
     invoke: !ref Chat.chatStart
@@ -311,7 +295,7 @@ steps:
 # A ten-turn branch beside a retention sweep run forty times over, every run
 # with a window that ended a minute ago: the branch being assembled is not
 # idle, and nothing of it is taken.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: branchBesideSweeps }
 steps:
   - name: source
@@ -379,7 +363,7 @@ outputs:
   messageCount: !cel "steps.race.result[0].messageCount"
   turns: !cel "steps.branchRecords.result.turns.map(t, [t.status, t.records[0].data.content])"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -400,7 +384,7 @@ steps:
       recursive: true
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -411,8 +395,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18526/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         # ── finished, failed and aborted ────────────────────────────────────
@@ -577,9 +560,7 @@ steps:
               fits: !cel >-
                 [steps.renameFits.result.status,
                  steps.fitsBranch.result.body.title == steps.longTitles.result.fits + ' (branch)']
-            expected:
-              full: [ 200, 200, true, 200, true ]
-              fits: [ 200, true ]
+            expected: { full: [200, 200, true, 200, true], fits: [200, true] }
   - name: besideSweeps
     invoke: !ref branchBesideSweeps
   - name: wholeDespiteSweeps

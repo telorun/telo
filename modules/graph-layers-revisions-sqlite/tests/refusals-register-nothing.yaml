@@ -14,7 +14,6 @@ imports:
   Graph: ../../graph
   GraphLayers: ../../graph-layers
   Layers: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -76,7 +75,7 @@ kind: Sql.Query
 metadata: { name: layers }
 connection: !ref db
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refusalsRegisterNothing }
 steps:
   - name: label

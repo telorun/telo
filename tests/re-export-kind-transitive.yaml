@@ -3,22 +3,14 @@
 # kind it imports. The app imports ONLY gateway yet instantiates `Gw.Equals`, which
 # must resolve to the owning `Assert.Equals` controller. See plans/transitive-re-export.md.
 kind: Telo.Application
-metadata:
-  name: ReExportKindTransitive
-  version: 1.0.0
-imports:
-  Gw: ./__fixtures__/re-export-kind/gateway
-  Run: ../modules/run
+metadata: { name: ReExportKindTransitive, version: 1.0.0 }
+imports: { Gw: ./__fixtures__/re-export-kind/gateway }
 targets:
   - !ref check
 ---
-kind: Run.Sequence
-metadata:
-  name: check
+kind: Telo.Sequence
+metadata: { name: check }
 steps:
   - name: assert
-    inputs:
-      actual: 42
-      expected: 42
-    invoke:
-      kind: Gw.Equals
+    inputs: { actual: 42, expected: 42 }
+    invoke: { kind: Gw.Equals }

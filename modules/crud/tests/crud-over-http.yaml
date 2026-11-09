@@ -14,7 +14,6 @@ imports:
   SQLite: ../../sqlite
   Http: ../../http-server
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref migrate
@@ -80,11 +79,11 @@ metadata: { name: docs }
 ---
 # Server is scoped to the test sequence so it is torn down (and the port freed)
 # when the run completes — the kernel can then exit cleanly.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8971 }
     openapi: { info: { title: Todos API, version: 1.0.0 } }
     mounts:
@@ -93,7 +92,7 @@ with:
       - path: /reference
         mount: !ref docs
 targets:
-  - !ref Server
+  - !ref server
 steps:
   # The collection/name config drives the OpenAPI doc: the collection is `/todos`,
   # each item lives at the renamed `/todos/{todoId}` (idParam default), and the

@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: TextMessageContentPartsTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testContentParts
 ---
@@ -15,7 +11,7 @@ kind: Ai.Text
 metadata: { name: texter }
 model: !ref echo
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testContentParts }
 steps:
   # A multimodal user message: a text part plus an image part (base64 bytes). The

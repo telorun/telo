@@ -7,11 +7,7 @@ metadata:
     INSERT/UPDATE/DELETE (no RETURNING). The bun:sqlite driver previously
     hardcoded statements as readers, so Kysely never collected numAffectedRows
     and rowCount was always 0 even though the mutation ran.
-imports:
-  Sql: ../../sql
-  SQLite: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Sql: ../../sql, SQLite: ../, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -19,7 +15,7 @@ kind: SQLite.Connection
 metadata: { name: db }
 file: ":memory:"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: create

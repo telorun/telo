@@ -23,7 +23,6 @@ imports:
   Sql: ../../../sql
   Postgres: ../../../postgres
   Layers: ../..
-  Run: ../../../run
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
 secrets:
@@ -49,7 +48,7 @@ access:
 ---
 # The suite must start empty — the ledger included, which lives in the same
 # namespace, or a previous run's declaration would decide what this one plans.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop

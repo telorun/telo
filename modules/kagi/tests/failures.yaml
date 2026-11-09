@@ -7,10 +7,10 @@
 kind: Telo.Application
 metadata: { name: KagiFailuresTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Kagi: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref failures
@@ -44,11 +44,11 @@ value:
   badRequest: { status: 400, code: search.invalid_filter, message: Invalid filter. }
   broken: { status: 500, code: general.internal, message: Internal error. }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: failures }
 with:
   - kind: Server.Api
-    metadata: { name: FakeKagi }
+    metadata: { name: fakeKagi }
     routes:
       - request:
           path: /api/v1/search
@@ -95,13 +95,13 @@ with:
                 schema: { type: object, additionalProperties: true }
                 body: { meta: { id: test } }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18856 }
     mounts:
       - path: /
-        mount: !ref FakeKagi
+        mount: !ref fakeKagi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: outcomes
     invoke:

@@ -19,7 +19,6 @@ imports:
   HttpClient: ../../../../modules/http-client
   Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
   Stream: ../../../../modules/stream
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -39,7 +38,7 @@ metadata: { name: call }
 client: !ref client
 ---
 # One turn to its end: started, then its event stream drained.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turn }
 inputType:
   kind: Telo.JsonSchema
@@ -47,9 +46,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: start
     invoke: !ref call
@@ -79,19 +76,17 @@ outputs:
   kinds: !cel >-
     steps.all.result.items.map(r, r.event == 'error' ? parseJson(r.data).code : parseJson(r.data).data.type)
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: create }
 steps:
   - name: post
     invoke: !ref call
-    inputs:
-      url: http://127.0.0.1:18521/conversations
-      method: POST
+    inputs: { url: http://127.0.0.1:18521/conversations, method: POST }
 outputs:
   status: !cel "steps.post.result.status"
   conversation: !cel "steps.post.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: read }
 inputType:
   kind: Telo.JsonSchema
@@ -99,8 +94,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [path]
-    properties:
-      path: { type: string }
+    properties: { path: { type: string } }
 steps:
   - name: get
     invoke: !ref call
@@ -110,7 +104,7 @@ outputs:
   status: !cel "steps.get.result.status"
   body: !cel "steps.get.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: patch }
 inputType:
   kind: Telo.JsonSchema
@@ -118,9 +112,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, body]
-    properties:
-      conversationId: { type: string }
-      body: {}
+    properties: { conversationId: { type: string }, body: {} }
 steps:
   - name: send
     invoke: !ref call
@@ -132,7 +124,7 @@ outputs:
   status: !cel "steps.send.result.status"
   body: !cel "steps.send.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -153,7 +145,7 @@ steps:
       recursive: true
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -164,8 +156,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18520/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         # ── one conversation's life ─────────────────────────────────────────

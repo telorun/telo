@@ -38,7 +38,7 @@ kind: Fs.FileRemoval
 metadata: { name: remove }
 cwd: !cel "variables.fixturesDir"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: reset

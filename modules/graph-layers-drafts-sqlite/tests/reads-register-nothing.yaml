@@ -15,7 +15,6 @@ imports:
   Graph: ../../graph
   GraphLayers: ../../graph-layers
   Layers: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -77,7 +76,7 @@ metadata: { name: findPeople }
 store: !ref top
 node: !ref person
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readsRegisterNothing }
 steps:
   - name: found

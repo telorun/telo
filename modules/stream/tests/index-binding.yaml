@@ -14,7 +14,7 @@ targets:
   - !ref scanIndex
   - !ref flatMapIndex
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: mapIndex }
 steps:
   - { name: source, invoke: { kind: Stream.Of, items: [a, b, c, d] } }
@@ -40,7 +40,7 @@ steps:
         - { even: false, position: 4 }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: scanIndex }
 steps:
   - { name: source, invoke: { kind: Stream.Of, items: [a, b, c, d] } }
@@ -63,7 +63,7 @@ steps:
       expected: [e1, eo2, eoe3, eoeo4]
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: flatMapIndex }
 steps:
   - { name: source, invoke: { kind: Stream.Of, items: [a, b, c, d] } }

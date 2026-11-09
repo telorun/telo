@@ -5,56 +5,40 @@ metadata:
   description: >-
     Test fixture: a kind whose body is more than one dispatch, reading the
     call's own arguments and an iteration's element.
-imports:
-  Run: ../../../modules/run
-  Sql: ../../../modules/sql
-exports:
-  kinds: [Resources]
+imports: { Run: ../../../modules/run, Sql: ../../../modules/sql }
+exports: { kinds: [Resources] }
 ---
 kind: Telo.Definition
-metadata:
-  name: Resources
+metadata: { name: Resources }
 capability: Telo.Invocable
 schema:
   type: object
   properties:
-    connection:
-      x-telo-ref: { kind: Sql.Connection, use: dependency }
-    table:
-      type: string
+    connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
+    table: { type: string }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      q: { type: string }
-    required: [q]
+  schema: { type: object, properties: { q: { type: string } }, required: [q] }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      labels: { type: array, items: { type: string } }
+    properties: { labels: { type: array, items: { type: string } } }
     required: [labels]
 resources:
   - kind: Sql.Query
     metadata: { name: fuse }
     connection: !cel "self.connection"
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: body }
     inputType:
       kind: Telo.JsonSchema
-      schema:
-        type: object
-        properties:
-          q: { type: string }
-        required: [q]
+      schema: { type: object, properties: { q: { type: string } }, required: [q] }
     outputType:
       kind: Telo.JsonSchema
       schema:
         type: object
-        properties:
-          labels: { type: array, items: { type: string } }
+        properties: { labels: { type: array, items: { type: string } } }
         required: [labels]
     steps:
       - name: rows

@@ -15,12 +15,12 @@ metadata:
     Also covers the input guard: an empty key is rejected by the declared
     inputType rather than fabricating an `in-flight` no caller could act on.
 imports:
+  Run: ../../run
   Idempotency: ../
   KvStoreMemory: ../../kv-store-memory
   Cache: ../../cache
   CacheMemory: ../../cache-memory
   Timer: ../../timer
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testInFlight
@@ -42,7 +42,7 @@ metadata: { name: get }
 store: !ref counters
 ---
 # A body slow enough that the second call lands while its claim is still held.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: slowBody }
 steps:
   - name: read
@@ -70,7 +70,7 @@ kind: Run.Detach
 metadata: { name: startDetached }
 invoke: !ref slowOnce
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInFlight }
 steps:
   - name: first
@@ -110,7 +110,7 @@ steps:
       expected: "1"
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testEmptyKey }
 steps:
   - name: attempt

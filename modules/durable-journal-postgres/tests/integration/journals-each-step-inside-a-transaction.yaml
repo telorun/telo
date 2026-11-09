@@ -30,7 +30,6 @@ imports:
   FileJournal: ../../../durable-journal-file
   Postgres: ../../../postgres
   Sql: ../../../sql
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -70,7 +69,7 @@ connection: !ref db
 # The body inside the transaction. A read rather than a write, deliberately:
 # what is under test is which JOURNALING MODE the region resolves to, and that
 # turns on the zone and the connection, not on what the statements do.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: insideTransaction }
 steps:
   - name: first
@@ -111,7 +110,7 @@ metadata: { name: fileOutcome }
 journal: !ref fileJournal
 wait: 15s
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # One token per process: the journal tables outlive this run, so a fixed id

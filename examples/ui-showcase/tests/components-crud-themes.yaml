@@ -13,7 +13,6 @@ metadata:
     running, worded in the caller's language and naming it.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 variables:
@@ -32,7 +31,7 @@ metadata: { name: page }
 baseUrl: http://127.0.0.1:8156
 followRedirects: false
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

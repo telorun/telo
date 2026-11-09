@@ -20,7 +20,6 @@ imports:
   DataModel: ../../data-model
   Probe: ./__fixtures__/probe
   Rooms: ./__fixtures__/room-plan
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -208,7 +207,7 @@ layout:
   props:
     title: !cel "row.guest"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: board

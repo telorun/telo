@@ -21,7 +21,7 @@ outputs:
   value: !cel "steps.double.result.doubled"
   at: !cel "index"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyProjection }
 steps:
   - name: project
@@ -61,7 +61,7 @@ outputs:
   ordinal: !cel "steps.label.result.ordinal"
   next: !cel "index + 1"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyIndexIsInteger }
 steps:
   - name: project

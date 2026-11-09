@@ -50,6 +50,7 @@ metadata:
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -58,7 +59,6 @@ imports:
   Postgres: ../../../postgres
   Layers: ../..
   Graph: ../../../graph
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -180,7 +180,7 @@ metadata: { name: write }
 connection: !ref db
 ---
 # What this transaction has read from the two tables so far.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readCounters }
 steps:
   - name: read
@@ -196,7 +196,7 @@ outputs:
   rows: !cel "steps.read.result.rows"
 ---
 # What was read between two readings, per table.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readBetween }
 inputType:
   kind: Telo.JsonSchema
@@ -216,7 +216,7 @@ outputs:
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -228,7 +228,7 @@ steps:
 # and a002 stated by `base`, a003's by `middle`, a004's and a005's by `top`,
 # whose end nodes only `top` states. `middle` restates the link a001 → a111,
 # `top` hides the link a002 → a121 and the node a113.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: populate }
 steps:
   - name: noAutovacuumOnPeople
@@ -268,7 +268,7 @@ steps:
 ---
 # People p000001… in all three layers, and relationships among them that the
 # measured walks never reach, a tenth of them stated by each upper layer.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: addUnrelated }
 inputType:
   kind: Telo.JsonSchema
@@ -327,7 +327,7 @@ kind: Sql.Transaction
 metadata: { name: findPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -354,7 +354,7 @@ kind: Sql.Transaction
 metadata: { name: knowsPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -378,7 +378,7 @@ inputs:
   cursor: !cel "inputs.cursor"
 ---
 # Five pages of 1,000 reach 5,000 pairs into the relationship listing.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: knowsFiveThousandIn }
 steps:
   - name: page
@@ -406,7 +406,7 @@ kind: Sql.Transaction
 metadata: { name: twoHopsFirstPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps:
     - name: before
       invoke: !ref readCounters
@@ -428,7 +428,7 @@ kind: Sql.Transaction
 metadata: { name: twoHopsNextPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -455,7 +455,7 @@ kind: Sql.Transaction
 metadata: { name: withinTwoFirstPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps:
     - name: before
       invoke: !ref readCounters
@@ -477,7 +477,7 @@ kind: Sql.Transaction
 metadata: { name: withinTwoNextPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -519,7 +519,7 @@ value:
   sequential: !cel "inputs.sequential"
   laterWithinFirst: !cel "inputs.laterWithinFirst"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drainTwoHops }
 steps:
   - name: first
@@ -557,7 +557,7 @@ outputs:
     knows: !cel "steps.first.result.read.knows.fetched"
     people: !cel "steps.first.result.read.people.fetched"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drainWithinTwo }
 steps:
   - name: first
@@ -595,7 +595,7 @@ outputs:
     knows: !cel "steps.first.result.read.knows.fetched"
     people: !cel "steps.first.result.read.people.fetched"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cost }
 steps:
   # Ten pages of 1,000 reach 10,000 keys into the listing.

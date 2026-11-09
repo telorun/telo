@@ -8,11 +8,7 @@ metadata:
     children in the same trace. A refused request's span is `rejected` with the
     guard's code and a 401, and holds no handler span. A request carrying a W3C
     `traceparent` lands in the upstream trace, under the upstream span.
-imports:
-  App: ../../app
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -27,7 +23,7 @@ client: !ref client
 ---
 # Every exported span as { name, trace, span, parent, start, attrs }, attributes
 # flattened to `key=value` — once all four request spans are in.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: exported }
 steps:
   - name: get
@@ -53,7 +49,7 @@ steps:
 outputs:
   spans: !cel "steps.spans.result"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

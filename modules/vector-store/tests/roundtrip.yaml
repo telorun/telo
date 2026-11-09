@@ -9,7 +9,6 @@ metadata:
 imports:
   VectorStore: ../
   VectorStoreMemory: ../../vector-store-memory
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -32,7 +31,7 @@ kind: VectorStore.Removal
 metadata: { name: drop }
 store: !ref index
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: write

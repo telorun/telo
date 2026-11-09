@@ -3,26 +3,20 @@
 # `${{ variables.dbFile }}` resolves — regression for the import controller
 # silently dropping library defaults (the var reached the template as `{}`).
 kind: Telo.Application
-metadata:
-  name: ImportLibraryDefault
-  version: 1.0.0
+metadata: { name: ImportLibraryDefault, version: 1.0.0 }
 imports:
-  Lib:
-    source: ./__fixtures__/import-default/lib
+  Lib: { source: ./__fixtures__/import-default/lib }
   Sql: ../modules/sql
   Assert: ../modules/assert
-  Run: ../modules/run
 targets:
   - !ref Lib.migrate
   - !ref verify
 ---
-kind: Run.Sequence
-metadata:
-  name: verify
+kind: Telo.Sequence
+metadata: { name: verify }
 steps:
   - name: select
-    inputs:
-      sql: "SELECT name FROM marker WHERE id = 1"
+    inputs: { sql: "SELECT name FROM marker WHERE id = 1" }
     invoke:
       kind: Sql.Query
       connection: !ref Lib.db
@@ -30,5 +24,4 @@ steps:
     inputs:
       actual: !cel "steps.select.result.rows[0].name"
       expected: "seeded"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

@@ -25,6 +25,7 @@ metadata:
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL. Kept out of `tests/` proper for exactly that reason.
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -34,7 +35,6 @@ imports:
   Journal: ../../
   Postgres: ../../../postgres
   Sql: ../../../sql
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -95,7 +95,7 @@ expect:
   # single dispatch would mean the resume re-executed what was already recorded.
   - { event: charge.Invoked, times: 0 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # A fresh run id per process, so a previous run of this test leaves nothing

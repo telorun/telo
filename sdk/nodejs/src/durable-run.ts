@@ -105,7 +105,8 @@ export type DurableDecisionKind =
  * The three operations a backend implements, and the middle one is the whole
  * design.
  *
- * A fourth member is a **question, not an operation** ({@link writesInside}).
+ * A fourth member is a **question, not an operation** ({@link writesInside}), and
+ * so, at heart, is the optional {@link baseline}.
  */
 export interface DurableRunHandle {
   /** This run's identity, as the backend minted or accepted it. */
@@ -213,6 +214,42 @@ export interface DurableRunHandle {
    * is decided invisibly has to say which way it resolved.
    */
   noteZoneMode?(info: ZoneJournalingMode): void;
+
+  /**
+   * Offered at each step boundary of a durable body's own engine where the run
+   * could resume from a baseline (spec §5.2) — the question "compact now?".
+   *
+   * Answers `undefined`, without calling `capture`, when no baseline is due.
+   * Otherwise it calls `capture` once, synchronously, and returns a promise that
+   * settles once the baseline and the removal of every entry it replaces are
+   * written. `completed` is the path of the step that just finished, so the
+   * handle can treat everything beneath it as passed. Optional: a handle without
+   * it never compacts.
+   */
+  baseline?(capture: () => DurableBaseline, completed: string): Promise<void> | undefined;
+}
+
+/**
+ * One level of the position a baseline records, outermost first: the step of
+ * that level's list, by its journal path, and — for every level but the last —
+ * the branch of it the run is inside. The last frame names the step the run had
+ * just completed.
+ */
+export type DurableBaselineFrame =
+  | { readonly step: string; readonly branch?: undefined }
+  | { readonly step: string; readonly branch: "then" | "else" | "default" | "try" }
+  | { readonly step: string; readonly branch: "elseif"; readonly index: number }
+  | { readonly step: string; readonly branch: "do"; readonly turn: number }
+  | { readonly step: string; readonly branch: "cases"; readonly case: string };
+
+/**
+ * A run's replay-closed state at a step boundary: where it is, and the `steps`
+ * map in scope there. Replaces every body entry recorded before it, so a resume
+ * starts here instead of at the top.
+ */
+export interface DurableBaseline {
+  readonly position: readonly DurableBaselineFrame[];
+  readonly steps: Readonly<Record<string, unknown>>;
 }
 
 /**

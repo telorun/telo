@@ -29,7 +29,6 @@ imports:
   VectorStore: ../../../vector-store
   VectorStorePgvector: ../..
   VectorStoreMemory: ../../../vector-store-memory
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -73,7 +72,7 @@ metric: cosine
 ---
 # The index is dropped for the load and rebuilt once, by the store in
 # `filteredMatch`'s scope — maintaining it row by row makes the load minutes long.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: seed }
 steps:
   - name: dropIndex
@@ -99,7 +98,7 @@ steps:
                '{"kind":"wanted"}'::jsonb
         FROM generate_series(1, 150000) AS i
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: filteredMatch }
 with:
   - kind: VectorStorePgvector.Store
@@ -167,7 +166,7 @@ steps:
            w0041, w0042, w0043, w0044, w0045, w0046, w0047, w0048, w0049, w0050]
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: noLeak }
 steps:
   - name: match
@@ -183,7 +182,7 @@ steps:
       kind: Sql.Transaction
       connection: !ref singleDb
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         steps:
           - name: match
             invoke: { kind: VectorStore.Match, store: !ref singleIndex, topK: 5 }

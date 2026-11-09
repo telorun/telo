@@ -9,7 +9,7 @@ targets:
   - !ref staticMatching
   - !ref baseCarried
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: matchesInOrder }
 steps:
   - name: parse
@@ -31,7 +31,7 @@ steps:
 ---
 # No doctype puts the page in quirks mode, and class matching stays
 # case-sensitive anyway; a state pseudo-class matches nothing in a static tree.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: staticMatching }
 steps:
   - name: parse
@@ -57,7 +57,7 @@ steps:
 ---
 # A `<base>` read at the parse travels with the selected part into the kinds
 # that resolve URLs.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: baseCarried }
 steps:
   - name: parse

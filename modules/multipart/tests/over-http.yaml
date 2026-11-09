@@ -17,7 +17,6 @@ imports:
   Server: ../../http-server
   Http: ../../http-client
   Multipart: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -29,11 +28,11 @@ targets:
 kind: Multipart.Decoder
 metadata: { name: serverDecoder }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: TestApi }
+    metadata: { name: testApi }
     routes:
       - request:
           path: /upload
@@ -79,7 +78,7 @@ with:
               application/json:
                 body: { limit: !cel "error.data.limit" }
   - kind: Server.Server
-    metadata: { name: TestServer }
+    metadata: { name: testServer }
     listen: { port: 8873 }
     # No `contentTypeParsers` entry: the server accepts a multipart body out of
     # the box, as raw bytes. Declaring one would still work and would take
@@ -88,9 +87,9 @@ with:
     openapi: { info: { title: Multipart Over HTTP, version: 1.0.0 } }
     mounts:
       - path: /api
-        mount: !ref TestApi
+        mount: !ref testApi
 targets:
-  - !ref TestServer
+  - !ref testServer
 steps:
   - name: encode
     inputs:

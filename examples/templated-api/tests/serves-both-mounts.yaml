@@ -9,20 +9,18 @@ metadata:
     looks for.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8846
+    ports: { http: 8846 }
 targets:
   - !ref app
 steps:
@@ -46,10 +44,6 @@ steps:
         v2Body: !cel "steps.v2.result.body"
       expected:
         v1Status: 200
-        v1Body:
-          greeting: "Hello World!!"
-          nice: WOW
+        v1Body: { greeting: "Hello World!!", nice: WOW }
         v2Status: 200
-        v2Body:
-          greeting: "Hello World!!"
-          nice: WOW
+        v2Body: { greeting: "Hello World!!", nice: WOW }

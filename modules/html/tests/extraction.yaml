@@ -11,7 +11,7 @@ targets:
   - !ref htmlNotSerializable
   - !ref inheritedAttributeName
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: everyMode }
 steps:
   - name: parse
@@ -60,7 +60,7 @@ steps:
       actual: !cel "steps.extract.result.fields.cards[1].stock + 1"
       expected: -2
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: missingField }
 steps:
   - name: parse
@@ -87,7 +87,7 @@ steps:
           actual: !cel "error.message"
           pattern: "field 'page\\.title'"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: conversionFailure }
 steps:
   - name: parse
@@ -109,7 +109,7 @@ steps:
 ---
 # An `html` field over a subtree no markup expresses is refused, naming the
 # field and the node — here a void element given a child.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: htmlNotSerializable }
 steps:
   - name: extract
@@ -143,7 +143,7 @@ steps:
 ---
 # An attribute is read from the element's own attributes only: a name the
 # attribute map inherits from its prototype is as absent as any other.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: inheritedAttributeName }
 steps:
   - { name: parse, invoke: { kind: Html.JsonTree }, inputs: { html: <p>text</p> } }

@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: AgentToolMappingTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testMapping
 ---
@@ -43,7 +39,7 @@ model: !ref echo
 toolProviders:
   - provider: !ref greetTools
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testMapping }
 steps:
   - name: invoke

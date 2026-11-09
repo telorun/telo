@@ -8,20 +8,18 @@ metadata:
     declaring a workflow is enough to serve it.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../example/telo.yaml
-    ports:
-      http: 8849
+    ports: { http: 8849 }
 targets:
   - !ref app
 steps:
@@ -40,9 +38,7 @@ steps:
       actual:
         status: !cel "steps.quote.result.status"
         body: !cel "steps.quote.result.body"
-      expected:
-        status: 200
-        body: { subtotal: 29, shipping: 7, total: 36 }
+      expected: { status: 200, body: { subtotal: 29, shipping: 7, total: 36 } }
 
   - name: greet
     invoke:
@@ -56,9 +52,7 @@ steps:
       actual:
         status: !cel "steps.greet.result.status"
         body: !cel "steps.greet.result.body"
-      expected:
-        status: 200
-        body: { greeting: "Hello, Ada!" }
+      expected: { status: 200, body: { greeting: "Hello, Ada!" } }
 
   - name: badQuote
     invoke:

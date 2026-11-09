@@ -9,8 +9,8 @@ metadata:
     tools reach their tables, that each conversation keeps its own history, and
     that an empty message is refused.
 imports:
-  App: ../../../../modules/app
   Run: ../../../../modules/run
+  App: ../../../../modules/app
   Http: ../../../../modules/http-server
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
@@ -25,11 +25,9 @@ targets:
 ---
 kind: HttpClient.Request
 metadata: { name: call }
-client:
-  kind: HttpClient.Client
-  baseUrl: http://127.0.0.1:8113
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8113 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   # What the model would be: it reads the last message it was sent.
@@ -39,11 +37,8 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
-        handler:
-          kind: Run.Value
-          value: {}
+          schema: { body: { type: object, additionalProperties: true } }
+        handler: { kind: Run.Value, value: {} }
         returns:
           # A tool has just answered: reply from what it said.
           - status: 200
@@ -89,9 +84,7 @@ with:
                         tool_calls:
                           - id: call-1
                             type: function
-                            function:
-                              name: order_status
-                              arguments: '{"orderId":"A-1001"}'
+                            function: { name: order_status, arguments: '{"orderId":"A-1001"}' }
                       finish_reason: tool_calls
                   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
           - status: 200
@@ -110,33 +103,27 @@ with:
                   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
   - kind: Http.Server
     metadata: { name: provider }
-    listen:
-      port: 8069
+    listen: { port: 8069 }
     mounts:
       - path: /v1
         mount: !ref fakeOpenAi
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8113
+    ports: { http: 8113 }
     variables:
       model: test-model
       openaiBaseUrl: http://127.0.0.1:8069/v1
       history: !cel "variables.scratchDir.joinPath('ai-agent-service-test-' + string(nowMillis()) + '.sqlite')"
       shopFile: !cel "variables.scratchDir.joinPath('ai-agent-service-test-shop-' + string(nowMillis()) + '.db')"
-    secrets:
-      openaiApiKey: not-a-real-key
+    secrets: { openaiApiKey: not-a-real-key }
 targets:
   - !ref provider
   - !ref app
 steps:
   - name: hello
     invoke: !ref call
-    inputs:
-      url: /conversations/ada/messages
-      method: POST
-      body: { message: hello }
+    inputs: { url: /conversations/ada/messages, method: POST, body: { message: hello } }
   - name: whereIsIt
     invoke: !ref call
     inputs:
@@ -151,21 +138,13 @@ steps:
       body: { message: it arrived broken }
   - name: other
     invoke: !ref call
-    inputs:
-      url: /conversations/bob/messages
-      method: POST
-      body: { message: hi }
+    inputs: { url: /conversations/bob/messages, method: POST, body: { message: hi } }
   - name: history
     invoke: !ref call
-    inputs:
-      url: /conversations/ada/messages
-      method: GET
+    inputs: { url: /conversations/ada/messages, method: GET }
   - name: empty
     invoke: !ref call
-    inputs:
-      url: /conversations/ada/messages
-      method: POST
-      body: { message: "" }
+    inputs: { url: /conversations/ada/messages, method: POST, body: { message: "" } }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:

@@ -10,11 +10,7 @@ metadata:
     Asserted through `Ai.Text`, not by invoking the adapter directly: what has to
     hold is that it is accepted wherever an `Ai.Model` is, and that the folded
     answer is the one the stream carried.
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -72,7 +68,7 @@ model: !ref foldedWithTool
 toolProviders:
   - provider: !ref localTools
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: ask

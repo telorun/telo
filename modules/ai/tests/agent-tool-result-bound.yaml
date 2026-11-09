@@ -8,10 +8,10 @@ metadata:
     while the tool-result part's `output` keeps what the tool returned whole. The
     echo model answers with what it was fed, so its text is the model-facing result.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref boundedResult
@@ -24,7 +24,7 @@ tools:
     parameters: { type: object }
     result: !cel "result.note"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: boundedResult }
 steps:
   - name: run

@@ -8,11 +8,7 @@ metadata:
     same key does NOT run (reports the holder) — shown deterministically by the
     body re-entering the same lock; and once released the key can be acquired
     again.
-imports:
-  Lease: ../
-  KvStoreMemory: ../../kv-store-memory
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Lease: ../, KvStoreMemory: ../../kv-store-memory, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -27,7 +23,7 @@ invoke: !ref body
 ---
 # The body of the held lease re-enters the SAME lock with the same key. Because
 # the outer holder still owns it, the re-entry is refused and reports the holder.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: body }
 steps:
   - name: reenter
@@ -47,7 +43,7 @@ kind: Run.Value
 metadata: { name: constant }
 value: { ok: 1 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: conflict

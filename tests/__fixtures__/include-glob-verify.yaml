@@ -1,20 +1,13 @@
-kind: Run.Sequence
-metadata:
-  name: testIncludeGlob
+kind: Telo.Sequence
+metadata: { name: testIncludeGlob }
 steps:
   - name: multiply
-    inputs:
-      x: 7
-      y: 6
+    inputs: { x: 7, y: 6 }
     invoke:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            x: { type: number }
-            y: { type: number }
+        schema: { type: object, properties: { x: { type: number }, y: { type: number } } }
       value:
         product: !cel "inputs.x * inputs.y"
   - name: verifyProduct
@@ -24,9 +17,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          product:
-            type: number
-            const: 42
-        required:
-          - product
+        properties: { product: { type: number, const: 42 } }
+        required: [product]

@@ -22,10 +22,10 @@ metadata:
     Offline: a local server answers every call with the request it received,
     encoded as the model's own answer text.
 imports:
+  Run: ../../run
   OpenAI: ../
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -55,11 +55,11 @@ kind: Run.Value
 metadata: { name: noop }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: EchoApi }
+    metadata: { name: echoApi }
     routes:
       - request:
           path: /responses
@@ -89,14 +89,14 @@ with:
                           text: !cel "json(request.body)"
                   usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 }
   - kind: Server.Server
-    metadata: { name: EchoServer }
+    metadata: { name: echoServer }
     listen: { port: 8877 }
     openapi: { info: { title: Fake Responses API, version: 1.0.0 } }
     mounts:
       - path: /v1
-        mount: !ref EchoApi
+        mount: !ref echoApi
 targets:
-  - !ref EchoServer
+  - !ref echoServer
 steps:
   - name: call
     inputs:

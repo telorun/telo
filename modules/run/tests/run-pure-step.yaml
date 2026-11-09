@@ -25,7 +25,7 @@ value:
 ---
 # `total` derives from the step before it with no resource, no span, no
 # topology node — and the step after it reads it like any other step result.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testSequencePureStep }
 steps:
   - name: cart
@@ -56,7 +56,7 @@ outputs:
   id: !cel "item.id"
   kg: !cel "steps.kilos.result"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testProjectionPureStep }
 steps:
   - name: label

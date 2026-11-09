@@ -46,6 +46,14 @@ The second half is not optional. Appending onto a partial line *fuses* the two r
 
 A bad record anywhere *else* stays a hard failure, for the same reason: replaying past it would silently skip work.
 
+## Retiring finished runs
+
+`finishedRuns` lists a workflow's terminal runs finished before a cutoff, and `deleteFinishedRun` removes a finished run by deleting its file — record and entries are lines of that one file, so the delete is all-or-nothing. `finishedRuns` reads every run file on each sweep, so a large retained set costs a full scan per sweep — fine for this store's one-machine scope. Both are directory scans / reads like the other queries here, and the usual rule about two processes working one run applies: the claim, not the file system, keeps them apart. The finish time and workflow name are fields of the run line.
+
+## Compacting a long run
+
+`replaceWithBaseline` writes a run's baseline in place of the records it replaces by rewriting the file whole: the current run line, every record it keeps, then the baseline, staged in `<run>.ndjson.compacting`, flushed, renamed over the run's file, and the directory flushed. A crash before the rename leaves the old file as it was; the staging file is never read — no listing picks up a name that does not end in `.ndjson` — and the next compaction overwrites it, and a purge removes it with the run. That rename is the only rewrite this store makes.
+
 ## What it does not do
 
 - **Cross-process claiming.** The claim here is advisory and single-machine. A store whose claiming is real answers that with a database's own primitives rather than with a lock file this module would have to invent.

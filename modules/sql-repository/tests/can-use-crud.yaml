@@ -4,7 +4,6 @@ imports:
   Sql: ../../sql
   SQLite: ../../sqlite
   SqlRepository: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -42,7 +41,7 @@ metadata: { name: deleteUser }
 connection: !ref db
 table: !ref users
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testCrud }
 steps:
   - name: insert

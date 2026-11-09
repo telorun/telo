@@ -8,12 +8,11 @@ metadata:
     and `robots.txt`, compared as one table.
 imports:
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref cacheControl_MatchesPolicy
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cacheControl_MatchesPolicy }
 steps:
   - name: page
@@ -37,10 +36,7 @@ steps:
       url: http://localhost:8050/sitemaps/modules-0.xml
       method: GET
   - name: robots
-    invoke:
-      kind: HttpClient.Request
-      url: http://localhost:8050/robots.txt
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://localhost:8050/robots.txt, method: GET }
   - name: assert
     inputs:
       actual: !cel >-
@@ -57,5 +53,4 @@ steps:
         sitemapIndex: [200, no-cache]
         sitemapShard: [200, no-cache]
         robots: [200, "public, max-age=3600"]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

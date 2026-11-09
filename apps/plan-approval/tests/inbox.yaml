@@ -12,7 +12,6 @@ imports:
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Timer: ../../../modules/timer
   Assert: ../../../modules/assert
 variables:
@@ -28,17 +27,14 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18744, throwOnHttpError: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: submit }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [product, repo, loop]
-    properties:
-      product: { type: string }
-      repo: { type: string }
-      loop: { type: string }
+    properties: { product: { type: string }, repo: { type: string }, loop: { type: string } }
 steps:
   - name: post
     invoke: !ref call
@@ -51,15 +47,11 @@ outputs:
   hash: !cel "string(steps.post.result.body.hash)"
 ---
 # The inbox for a query string, as [loop, overdue] pairs.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: inbox }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [query]
-    properties:
-      query: { type: string }
+  schema: { type: object, required: [query], properties: { query: { type: string } } }
 steps:
   - name: get
     invoke: !ref call
@@ -67,7 +59,7 @@ steps:
 outputs:
   plans: !cel "steps.get.result.body.plans.map(p, [p.loop, p.overdue])"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -81,7 +73,7 @@ steps:
     inputs: { path: !cel "string(variables.scratch)", createParents: true }
   - name: run
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: server }
@@ -122,9 +114,7 @@ steps:
         - name: fresh
           invoke: !ref inbox
           inputs: { query: "" }
-        - name: age
-          invoke: { kind: Timer.Delay }
-          inputs: { duration: 2200ms }
+        - { name: age, invoke: { kind: Timer.Delay }, inputs: { duration: 2200ms } }
         - name: p4
           invoke: !ref submit
           inputs: { product: acme, repo: api, loop: p4 }

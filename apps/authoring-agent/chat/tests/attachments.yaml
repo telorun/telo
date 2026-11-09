@@ -22,8 +22,7 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: stub-key
+    secrets: { anthropicApiKey: stub-key }
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -34,7 +33,6 @@ imports:
       maxConversationAttachments: 2
   App: oci://ghcr.io/telorun/app@0.6.1#sha256-QOZpQy2T4dEx3Vay9_sillyRW8lemNxiauvWSyk-oLg
   Stream: ../../../../modules/stream
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
   HttpClient: ../../../../modules/http-client
   Multipart: oci://ghcr.io/telorun/multipart@0.5.0#sha256-HYqZbfzXOf-YAU7TMyZEFFDBDxeMdyRAoNf4_lAj-Zo
@@ -73,7 +71,7 @@ metadata: { name: removeBytes }
 store: !ref stored
 ---
 # One upload, as a client sends it: a multipart body holding one `file` part.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: upload }
 inputType:
   kind: Telo.JsonSchema
@@ -105,7 +103,7 @@ outputs:
   attachment: !cel "steps.stored.result.attachment"
 ---
 # An upload's bytes as the library serves them, as base64.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: download }
 inputType:
   kind: Telo.JsonSchema
@@ -113,9 +111,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, attachmentId]
-    properties:
-      conversationId: { type: string }
-      attachmentId: { type: string }
+    properties: { conversationId: { type: string }, attachmentId: { type: string } }
 steps:
   - name: read
     invoke: !ref Chat.readAttachment
@@ -131,7 +127,7 @@ outputs:
   mediaType: !cel "steps.read.result.mediaType"
   name: !cel "steps.read.result.name"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -247,8 +243,7 @@ steps:
       input: !cel "steps.read.result.output"
   - name: sent
     invoke: { kind: HttpClient.Request }
-    inputs:
-      url: http://127.0.0.1:18555/requests
+    inputs: { url: http://127.0.0.1:18555/requests }
   # The turn's own model call: the last request that is not a naming call.
   - name: request
     value: !cel >-
@@ -288,8 +283,7 @@ steps:
       input: !cel "steps.readFilesOnly.result.output"
   - name: sentFilesOnly
     invoke: { kind: HttpClient.Request }
-    inputs:
-      url: http://127.0.0.1:18555/requests
+    inputs: { url: http://127.0.0.1:18555/requests }
   # That turn's two calls: the naming call, then its own.
   - name: filesOnlyRequests
     value: !cel >-
@@ -347,8 +341,7 @@ steps:
       input: !cel "steps.readAfterGone.result.output"
   - name: sentAfterGone
     invoke: { kind: HttpClient.Request }
-    inputs:
-      url: http://127.0.0.1:18555/requests
+    inputs: { url: http://127.0.0.1:18555/requests }
   - name: afterGoneRequest
     value: !cel >-
       cel.bind(all, steps.sentAfterGone.result.body.requests, json(all[size(all) - 1]))
@@ -422,12 +415,7 @@ steps:
       expected:
         image: [shot.png, image/png, "70"]
         notes: [notes.txt, text/plain]
-        refusals:
-          - ERR_ATTACHMENT_LIMIT
-          - ERR_ATTACHMENT_MISLABELLED
-          - ERR_ATTACHMENT_TYPE_NOT_ACCEPTED
-          - ERR_BLOB_TOO_LARGE
-          - ERR_ATTACHMENT_NOT_FOUND
+        refusals: [ERR_ATTACHMENT_LIMIT, ERR_ATTACHMENT_MISLABELLED, ERR_ATTACHMENT_TYPE_NOT_ACCEPTED, ERR_BLOB_TOO_LARGE, ERR_ATTACHMENT_NOT_FOUND]
         lead: !cel >-
           ['user-message', 'look at these',
            steps.image.result.attachment.id + ' shot.png image/png',

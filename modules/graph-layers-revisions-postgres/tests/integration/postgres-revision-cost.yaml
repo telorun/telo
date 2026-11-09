@@ -54,7 +54,6 @@ imports:
   Layers: ../..
   Graph: ../../../graph
   GraphLayers: ../../../graph-layers
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -179,7 +178,7 @@ connection: !ref db
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -187,7 +186,7 @@ steps:
     inputs: { sql: DROP SCHEMA IF EXISTS graph_revisions_cost CASCADE }
 ---
 # What this transaction has read from the two typed tables so far.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readCounters }
 steps:
   - name: read
@@ -202,7 +201,7 @@ outputs:
   sequential: !cel "int(steps.read.result.rows[0].sequential)"
   fetched: !cel "int(steps.read.result.rows[0].fetched)"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: analyze }
 steps:
   - name: people
@@ -214,7 +213,7 @@ steps:
 ---
 # People p000001… and the relationship from each to the next, published by
 # `top` at revision 1, as rows of the seed changeset.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: addPublished }
 inputType:
   kind: Telo.JsonSchema
@@ -251,7 +250,7 @@ steps:
 # hubs — sorting after every person — with ten relationships each, five out and
 # five in; and one person, sorting last, for revisions that touch nothing a
 # page reads.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: addFixed }
 steps:
   - name: changeset
@@ -299,7 +298,7 @@ steps:
 # relationships at `covered` of the retracted people retracted with them (two
 # each), `restated` relationships restated, 10 new. `covered` and `restated`
 # always make 50 rows. Each row stands over the layer's row as it is now.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: addDraft }
 inputType:
   kind: Telo.JsonSchema
@@ -368,7 +367,7 @@ steps:
 # Thirteen revisions of `top` outside any draft, through the store: five of the
 # people the draft restates are renamed, three more are given exactly what the
 # draft gives them, and five of the relationships it restates are changed.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: moveBeneath }
 inputType:
   kind: Telo.JsonSchema
@@ -403,7 +402,7 @@ steps:
     invoke: !ref analyze
 ---
 # One hundred revisions of `top` that touch one key no page here reads.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hundredRevisions }
 steps:
   - name: n
@@ -423,7 +422,7 @@ steps:
 # p010000 — mid-layer, so that both ranges the page reads have far more than a
 # page left at either layer size: 40 people restated and 20 retracted inside
 # the page, 20 new ones among them, and 20 restated beyond it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: addPageDraft }
 inputType:
   kind: Telo.JsonSchema
@@ -457,7 +456,7 @@ steps:
 # 19,900 more people rows in that draft, every one before that cursor: 9,900
 # people restated and 10,000 new among them — 10,000 more visible keys before
 # the cursor — and the 9,900 relationships between the restated people.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: growPageDraft }
 inputType:
   kind: Telo.JsonSchema
@@ -500,7 +499,7 @@ steps:
 ---
 # 20,000 keys of a draft's own, 200 after each of the 100 keys the measured
 # page returns.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: addDraftOnlyKeys }
 inputType:
   kind: Telo.JsonSchema
@@ -522,7 +521,7 @@ steps:
 ---
 # Outside a session: ten pages of 1,000 from the start bring a cursor to
 # p010000. The cursor stays on the revision its first page was read at.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: headCursor }
 steps:
   - name: page
@@ -547,7 +546,7 @@ kind: Sql.Transaction
 metadata: { name: measureHeadPageAfter }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -569,7 +568,7 @@ inputs:
   cursor: !cel "inputs.cursor"
 ---
 # A page of 100 read mid-layer at the layer's head, as a new listing.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measureHeadPage }
 steps:
   - name: cursor
@@ -587,7 +586,7 @@ outputs:
 # Inside one session: `pages` pages of 1,000 bring the cursor to p010000, then
 # the page of 100 after it is read in a transaction with the counters taken
 # either side of it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measureSessionPage }
 inputType:
   kind: Telo.JsonSchema
@@ -623,7 +622,7 @@ steps:
             connection: !ref db
             inputs: { cursor: !cel "inputs.cursor" }
             steps:
-              kind: Run.Sequence
+              kind: Telo.Sequence
               inputType:
                 kind: Telo.JsonSchema
                 schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -652,7 +651,7 @@ kind: Sql.Transaction
 metadata: { name: nearbyFirstPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps:
     - name: before
       invoke: !ref readCounters
@@ -671,7 +670,7 @@ kind: Sql.Transaction
 metadata: { name: nearbyNextPage }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -692,7 +691,7 @@ inputs:
   cursor: !cel "inputs.cursor"
 ---
 # The traversal followed to its end inside one session.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measureSessionWalk }
 inputType:
   kind: Telo.JsonSchema
@@ -733,7 +732,7 @@ outputs:
 ---
 # A node delete inside a session, in a transaction with the counters taken
 # either side of it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measureDelete }
 inputType:
   kind: Telo.JsonSchema
@@ -756,7 +755,7 @@ steps:
             connection: !ref db
             inputs: { key: !cel "inputs.key" }
             steps:
-              kind: Run.Sequence
+              kind: Telo.Sequence
               inputType:
                 kind: Telo.JsonSchema
                 schema: { type: object, required: [key], properties: { key: { type: string } } }
@@ -787,7 +786,7 @@ kind: Sql.Transaction
 metadata: { name: measureRebase }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [draft], properties: { draft: { type: string } } }
@@ -811,7 +810,7 @@ kind: Sql.Transaction
 metadata: { name: measureDiscard }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [draft], properties: { draft: { type: string } } }
@@ -833,7 +832,7 @@ kind: Sql.Transaction
 metadata: { name: measurePublish }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [draft], properties: { draft: { type: string } } }
@@ -854,7 +853,7 @@ inputs:
 ---
 # One page of each conflict listing, each in a transaction of its own inside
 # the session, with the counters taken either side of it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measureConflicts }
 inputType:
   kind: Telo.JsonSchema
@@ -872,7 +871,7 @@ steps:
             kind: Sql.Transaction
             connection: !ref db
             steps:
-              kind: Run.Sequence
+              kind: Telo.Sequence
               steps:
                 - name: before
                   invoke: !ref readCounters
@@ -890,7 +889,7 @@ steps:
             kind: Sql.Transaction
             connection: !ref db
             steps:
-              kind: Run.Sequence
+              kind: Telo.Sequence
               steps:
                 - name: before
                   invoke: !ref readCounters
@@ -916,7 +915,7 @@ outputs:
 ---
 # Line 5 at one layer size: the rebase of a draft the layer moved under, its
 # conflict pages and its discard, then the publish of a like draft that stands.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measureDraftWide }
 inputType:
   kind: Telo.JsonSchema
@@ -959,7 +958,7 @@ outputs:
 # Lines 1 to 4 at one layer size. A sibling draft, empty and then holding
 # 20,000 keys inside the measured page; the reader's own draft, of 100 rows and
 # then of 20,000; and 100 revisions in between that touch another key.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measureReaders }
 steps:
   - name: sibling
@@ -1053,7 +1052,7 @@ outputs:
     inLargeDraft: !cel "steps.deleteInLargeDraft.result"
   walk: !cel "steps.walk.result"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cost }
 steps:
   # A layer is registered by its first write; a draft opened and discarded

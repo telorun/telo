@@ -13,7 +13,6 @@ imports:
   SQLite: ../../sqlite
   Graph: ../../graph
   GraphSql: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -40,7 +39,7 @@ expect:
     payload: { outcome: failed }
     times: 0
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: link

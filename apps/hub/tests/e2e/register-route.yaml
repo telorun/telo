@@ -20,11 +20,11 @@ metadata:
     honestly claim. `GET /register/status?ref=` is what says when the module is
     actually searchable.
 imports:
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   McpClient: oci://ghcr.io/telorun/mcp-client@0.18.0#sha256-4Kt7hdp8rXPewhAMWQN1w5b05iQB3KnWhzXMF52lQLM
   Yaml: oci://ghcr.io/telorun/yaml@0.11.1#sha256-s7o7ypsk5oWGomn3BQpnfbfH_j61uOwn3ZqkPNU24yg
   Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref register_ValidRefSucceeds
@@ -37,7 +37,7 @@ targets:
 # A reachable Telo module (the seeded console module) validates and registers.
 # Re-registering an already-tracked ref is idempotent (INSERT ... ON CONFLICT
 # DO NOTHING), so this stays green regardless of prior runs.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: register_ValidRefSucceeds }
 steps:
   - name: hit
@@ -83,7 +83,7 @@ steps:
 # ready — and a test whose only assertion did not run is a green test. The loop
 # returns the last body it saw and the sequence asserts on that, so exhaustion
 # fails on the status it actually observed.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: register_StatusReachesReady }
 steps:
   - name: poll
@@ -134,7 +134,7 @@ outputs:
 ---
 # An unresolvable ref fails validation → 400 with an inline reason, never
 # inserted for tracking.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: register_InvalidRefReturns400 }
 steps:
   - name: hit
@@ -169,7 +169,7 @@ steps:
 # local manifest read off disk, so without the gate this endpoint would be a
 # filesystem existence oracle. An existing and a non-existing path must be
 # indistinguishable in the response.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: register_LocalPathRejected }
 steps:
   - name: existing
@@ -207,7 +207,7 @@ steps:
 # origin read cannot name a version of it. This is the CLI's refusal, reached
 # before the hub's own root-kind check, which only a file whose first document is
 # not a module doc while a later one is would reach.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: register_NonModuleRefused }
 steps:
   - name: hit
@@ -236,7 +236,7 @@ steps:
 # An application registers like a library and is indexed by what it asks of
 # whoever runs it. Search offers it only to a caller that asks for applications,
 # and the ref completions — which offer refs to import — never do.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: register_ApplicationAccepted }
 steps:
   - name: register

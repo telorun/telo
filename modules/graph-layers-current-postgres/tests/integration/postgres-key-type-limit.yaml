@@ -24,7 +24,6 @@ imports:
   Postgres: ../../../postgres
   Graph: ../../../graph
   Layers: ../..
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -58,7 +57,7 @@ connection: !ref db
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -114,7 +113,7 @@ nodes: [!ref day, !ref count, !ref price]
 relationships: []
 ---
 # Rows are written beside the store, since no operation returns a `date` key.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: dayRefused }
 steps:
   - name: one
@@ -156,7 +155,7 @@ steps:
         findNodesAtAPageBoundary: ERR_TYPED_FRAME_UNENCODABLE
 ---
 # Rows are written beside the store, since no operation returns a `bigint` key.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: countRefused }
 steps:
   - name: one
@@ -196,7 +195,7 @@ steps:
       expected: { getNode: ERR_OUTPUT_INVALID, findNodesAtAPageBoundary: ERR_OUTPUT_INVALID }
 ---
 # Rows are written beside the store, since no operation returns a `numeric` key.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: priceRefused }
 steps:
   - name: one

@@ -12,7 +12,6 @@ imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
   Fs: ../../fs
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testGenerateThenSave
@@ -49,7 +48,7 @@ kind: Fs.FileRemoval
 metadata: { name: remove }
 cwd: !cel "variables.fixturesDir"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testGenerateThenSave }
 steps:
   - name: generate

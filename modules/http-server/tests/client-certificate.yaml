@@ -8,11 +8,7 @@ metadata:
     one and unverified for a certificate clientCa did not sign. A certificate the
     listener verified wins over a forwarded one. Certificates are test fixtures
     in __fixtures__/tls.
-imports:
-  Http: ../
-  Client: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Http: ../, Client: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -49,7 +45,7 @@ routes:
             body:
               certificate: !cel "request.clientCertificate"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

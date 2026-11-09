@@ -11,7 +11,6 @@ imports:
   SQLite: ../../sqlite
   Graph: ../../graph
   GraphSql: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -46,7 +45,7 @@ nodes: [!ref person]
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: create

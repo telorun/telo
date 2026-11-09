@@ -8,9 +8,7 @@ metadata:
     duration as its plain encoding, bytes as UTF-8, a number and a bool as CEL
     writes them. A hole may hold a map literal or a string containing a brace,
     and a hole yielding the opening delimiter writes it literally.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Run: ../modules/run, Assert: ../modules/assert }
 variables:
   window:
     env: INTERPOLATE_TEST_WINDOW
@@ -20,9 +18,8 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
-metadata:
-  name: test
+kind: Telo.Sequence
+metadata: { name: test }
 steps:
   - name: render
     invoke:
@@ -32,18 +29,14 @@ steps:
         schema:
           type: object
           required: [at, bytes]
-          properties:
-            at: { x-telo-type: Telo.Timestamp }
-            bytes: { x-telo-type: Telo.Bytes }
+          properties: { at: { x-telo-type: Telo.Timestamp }, bytes: { x-telo-type: Telo.Bytes } }
       value:
         instant: !interpolate "at ${{ inputs.at }}"
         duration: !interpolate "every ${{ variables.window }}"
         bytes: !interpolate "said ${{ inputs.bytes }}"
         scalars: !interpolate "${{ 7 }}/${{ 2.5 }}/${{ 3u }}/${{ true }}"
         braces: !interpolate "${{ {'k': '}'}['k'] }} and ${{ '${{' }}"
-    inputs:
-      at: "2026-01-02T03:04:05Z"
-      bytes: aGk
+    inputs: { at: "2026-01-02T03:04:05Z", bytes: aGk }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:

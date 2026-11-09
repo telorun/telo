@@ -7,10 +7,10 @@
 kind: Telo.Application
 metadata: { name: TavilyRequestMappingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Tavily: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref requestMapping
@@ -32,11 +32,11 @@ kind: Run.Value
 metadata: { name: echo }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: requestMapping }
 with:
   - kind: Server.Api
-    metadata: { name: FakeTavily }
+    metadata: { name: fakeTavily }
     routes:
       - request:
           path: /search
@@ -54,13 +54,13 @@ with:
                       url: https://echo.example/
                       content: echo
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18858 }
     mounts:
       - path: /
-        mount: !ref FakeTavily
+        mount: !ref fakeTavily
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: allHints
     invoke: !ref safe

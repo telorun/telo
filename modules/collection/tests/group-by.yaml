@@ -24,7 +24,7 @@ orderBy:
   - by: !cel "row.user"
   - by: !cel "row.project"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testGroupBy }
 steps:
   - name: report

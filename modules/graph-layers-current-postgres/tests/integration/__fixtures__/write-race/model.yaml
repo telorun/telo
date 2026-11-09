@@ -40,8 +40,7 @@ nodes: [!ref person]
 ---
 # This strategy reads the layers beneath as they are now: nothing to bring up
 # to date.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refreshStacks }
 steps:
-  - name: live
-    value: true
+  - { name: live, value: true }

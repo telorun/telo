@@ -158,7 +158,7 @@ team does not have to build or remember, each described in detail below:
 
 ### Durable execution
 
-- **Crash recovery.** Durable runs record each step and decision; a restart resumes where the work stopped.
+- **Crash recovery.** Durable runs record each step and decision; a restart resumes where the work stopped. A long run stays bounded: once its body holds `compactAfter` records the workflow keeps one baseline instead and a resume starts there, for loops written in the workflow's own steps. Finished runs are deleted after `retainFinished`.
 - **Durability that can't break silently.** Swallowed suspensions are detected, a replay reaching a different step is refused, and `now()` / `uuidv4()` inside a replayed region are refused before the app runs.
 - **Waiting for days.** `Durable.Sleep` / `Durable.Await` hold no process, connection or timer; a delivery is checked against its type.
 - **Timing that survives restarts.** Long backoffs park with their attempt count, deadlines are fixed on the first pass, and missed schedules are found due.

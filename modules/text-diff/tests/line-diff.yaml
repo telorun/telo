@@ -16,7 +16,7 @@ kind: TextDiff.LineDiff
 metadata: { name: tiny }
 maxInputBytes: 16
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: texts

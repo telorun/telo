@@ -112,7 +112,7 @@ extends: Run.Value
 ---
 kind: Telo.Definition
 metadata: { name: Steps, description: A sequence of steps run in order. }
-extends: Run.Sequence
+extends: Telo.Sequence
 ---
 # A route's `inputs:` — a call site that is not a step, named by the handler
 # slot's own `x-telo-ref` pointer.
@@ -152,7 +152,7 @@ resources:
 invoke: !ref inner
 inputs: { at: "2026-01-15T09:30:00Z" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyLiterals }
 with:
   - kind: Http.Server

@@ -308,6 +308,10 @@ replicas creating them at once; set `createTable: false` where your migrations
 own them or the runtime user holds no DDL grant. Two journals on one database
 need different `table:` prefixes, or each recovers the other's work.
 
+A long run stays bounded on either journal: once its body holds `compactAfter`
+records (`1000` by default) the workflow replaces them, in one atomic write, with
+a baseline it resumes from instead of replaying from the top.
+
 ## 7. What `telo check` catches
 
 The static half reads the same call graph everything else does, so these are
@@ -317,6 +321,7 @@ reported before a run is ever started:
 | --- | --- |
 | `DURABLE_DETACH_FORBIDDEN` | A detached dispatch inside the body. Progress is recorded on completion, so detached work would be recorded as done while still running. Start a nested run instead. |
 | `DURABLE_UNJOURNALABLE_RESULT` | A step whose target returns a stream. A live value cannot be written down; collect what you need into a plain value inside the step. |
+| `DURABLE_CONTRACT_REQUIRED` | A warning: a step whose target declares no `outputType`, so its recorded result cannot be checked statically. Idempotent regions and targets whose result is typed from their own `outputs:` (a `Telo.Sequence`) are exempt. A kind that takes no `outputType` keeps the warning; a value that cannot be recorded fails at runtime with `ERR_DURABLE_UNJOURNALABLE_VALUE`. |
 | `DURABLE_NONDETERMINISM` | An impure call inside a region that re-runs whole. Pin it with `Durable.Value`. |
 | `ZONE_ATTRIBUTE_VIOLATED` | A wait, or a retry long enough to park, inside a region that promises nothing inside it waits. |
 

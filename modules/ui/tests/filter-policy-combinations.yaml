@@ -10,7 +10,6 @@ imports:
   Ui: ../
   DataModel: ../../data-model
   Probe: ./__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -135,7 +134,7 @@ content:
     - { type: composite, ref: { kind: Ui.Filters, presentation: !ref todos, content: { type: text, text: Todos }, policy: { apply: button, placement: { kind: Ui.CollapsiblePlacement, show: chosen, controls: chips, summary: chips } } } }
     - { type: composite, ref: { kind: Ui.Filters, presentation: !ref todos, content: { type: text, text: Todos }, policy: { apply: button, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover }, show: chosen, controls: chips, summary: chips } } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: read

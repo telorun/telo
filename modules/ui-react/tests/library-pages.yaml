@@ -7,15 +7,11 @@ metadata:
     application with nothing else written for it: the application document
     routes to it and names it in a group by its own title, and its page
     document holds the nodes the library wrote.
-imports:
-  App: ../../app
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

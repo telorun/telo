@@ -21,7 +21,6 @@ imports:
     secrets: { engineToken: !cel "secrets.engineToken" }
   Postgres: ../..
   Sql: ../../../sql
-  Run: ../../../run
   Assert: ../../../assert
   Test: ../../../test
 variables:
@@ -37,7 +36,7 @@ kind: Postgres.Connection
 metadata: { name: db }
 access: !ref Pg.databaseAccess
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: connects }
 steps:
   - name: whoAndWhere
@@ -52,7 +51,7 @@ steps:
 ---
 # The role is created first, so the connection signing in as it is scoped to the
 # step that needs it rather than started with the application.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: escapedPassword }
 steps:
   - name: createRole
@@ -60,7 +59,7 @@ steps:
     inputs: { sql: "CREATE ROLE telo_escape LOGIN PASSWORD 'p@ss/w:rd'" }
   - name: signIn
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: Postgres.Connection
           metadata: { name: asRole }

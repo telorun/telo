@@ -18,7 +18,7 @@ order:
   - by: !cel "item.age"
     descending: true
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testSort }
 steps:
   - name: sort
