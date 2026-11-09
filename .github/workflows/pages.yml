@@ -16,7 +16,9 @@ name: Deploy GitHub Pages
 #
 # BOOTSTRAP. `workflow_dispatch` with a `tag` builds that release's site from the
 # tag's checkout with THIS file's steps (run it from main) and attaches the
-# tarball, deploying nothing. It exists for the first cut: v0.84.2 predates these
+# tarball, deploying nothing unless `deploy` is set, which composes and deploys it
+# as a release's own run would (the recovery for a release whose deploy failed).
+# It exists for the first cut: v0.84.2 predates these
 # workflows and carries no `site-root.tar.gz`, so one dispatch at `v0.84.2` gives
 # the first candidate's deploy a `/` to compose. The tag's tree may predate the
 # `TELO_SITE_*` variables, so `BASE_URL` is set as well.
@@ -35,9 +37,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build and attach the site of (bootstrap: v0.84.2). Deploys nothing.'
+        description: 'Release tag to build and attach the site of (bootstrap: v0.84.2).'
         type: string
         required: true
+      deploy:
+        description: 'Deploy the composed site after attaching the build (recovers a release whose deploy failed).'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -152,6 +158,11 @@ jobs:
         with:
           name: site
           path: own
+
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
 
       - name: Compose / and /next/
         env:
