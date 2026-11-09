@@ -23,32 +23,23 @@ targets:
   - !ref verifyIntegersCrossJson
 ---
 kind: Run.Sequence
-metadata:
-  name: verifyIntegersCrossJson
+metadata: { name: verifyIntegersCrossJson }
 with:
   - kind: Run.Value
-    metadata:
-      name: CountItems
+    metadata: { name: CountItems }
     inputType:
       kind: Telo.JsonSchema
-      schema:
-        type: object
-        properties:
-          items: { type: array }
+      schema: { type: object, properties: { items: { type: array } } }
     value:
       count: !cel "size(inputs.items)"
       # Beyond 2^53 — a double cannot represent this, so a cast would silently
       # change it. Serializing it is what the route below has to survive.
       big: !cel "9007199254740993"
   - kind: Http.Api
-    metadata:
-      name: CountApi
+    metadata: { name: CountApi }
     routes:
-      - request:
-          path: /count
-          method: GET
-        inputs:
-          items: [ a, b, c ]
+      - request: { path: /count, method: GET }
+        inputs: { items: [a, b, c] }
         handler: !ref CountItems
         returns:
           - status: 200
@@ -58,18 +49,14 @@ with:
                 # not as a number it was coerced into.
                 schema:
                   type: object
-                  properties:
-                    count: { type: integer }
-                    big: { type: integer }
+                  properties: { count: { type: integer }, big: { type: integer } }
                   required: [ count, big ]
                 body:
                   count: !cel "result.count"
                   big: !cel "result.big"
   - kind: Http.Server
-    metadata:
-      name: CountServer
-    listen:
-      port: 8846
+    metadata: { name: CountServer }
+    listen: { port: 8846 }
     mounts:
       - path: /
         mount: !ref CountApi
@@ -78,8 +65,7 @@ targets:
 steps:
   - name: local
     invoke: !ref CountItems
-    inputs:
-      items: [ a, b, c ]
+    inputs: { items: [a, b, c] }
   # An integer result compares equal to an integer literal: YAML has no way to
   # write an int64, so requiring an exact type match would make every
   # integer-valued expression unassertable without a cast.
@@ -100,10 +86,7 @@ steps:
   # succeeding at all, since neither door would let it through before.
   - name: fetch
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://localhost:8846/count
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8846/count, method: GET }
   - name: assertWire
     invoke: { kind: Assert.Equals }
     inputs:

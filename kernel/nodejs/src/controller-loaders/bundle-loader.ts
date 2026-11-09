@@ -11,6 +11,7 @@ import {
   ArchiveFetchError,
   describeStagingFailure,
   ensureStagedEntry,
+  type ArchiveReader,
   type EnsuredEntryState,
 } from "../bundle/source-staging.js";
 import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
@@ -216,6 +217,8 @@ export class BundleControllerLoader {
     /** The load's preparations, shared by every kind's loader; this loader's own
      *  when none is given. */
     private readonly preparations: BundlePreparations = new BundlePreparations(),
+    /** The kernel's archive reader for staging an addon; none means one per staging. */
+    private readonly archives?: ArchiveReader,
   ) {}
 
   /** A current build of `source`, once per load for each externals set. */
@@ -601,7 +604,7 @@ export class BundleControllerLoader {
       const key = path.resolve(dir, relPath);
       let check = this.stagedAddons.get(key);
       if (!check) {
-        check = assertStagedAddon(purl, dir, relPath, sources, this.log);
+        check = assertStagedAddon(purl, dir, relPath, sources, this.log, this.archives);
         this.stagedAddons.set(key, check);
         check.then(
           (reason) => reason !== undefined && this.stagedAddons.delete(key),
@@ -672,6 +675,7 @@ async function assertStagedAddon(
   relPath: string,
   sources: ModuleSources | undefined,
   log: Logger | undefined,
+  archives: ArchiveReader | undefined,
 ): Promise<string | undefined> {
   const verdict = normalizeNativePath(relPath.trim());
   if (!("path" in verdict) || !sources) return undefined;
@@ -681,7 +685,7 @@ async function assertStagedAddon(
     const by = `pkg:telo controller "${purl}": the addon '${verdict.path}' is staged by source '${source.name}'`;
     let state: EnsuredEntryState;
     try {
-      state = await ensureStagedEntry(moduleDir, source, entry, { log });
+      state = await ensureStagedEntry(moduleDir, source, entry, { archives, log });
     } catch (err) {
       if (err instanceof ArchiveFetchError) return `it is staged by source '${source.name}': ${err.message}`;
       throw new RuntimeError(

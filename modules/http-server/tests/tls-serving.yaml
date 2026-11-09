@@ -17,13 +17,13 @@ targets:
 ---
 kind: Client.Client
 metadata: { name: plain }
-baseUrl: https://localhost:8951
+baseUrl: https://127.0.0.1:8951
 tls:
   ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
 ---
 kind: Client.Client
 metadata: { name: withCert }
-baseUrl: https://localhost:8952
+baseUrl: https://127.0.0.1:8952
 tls:
   ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
   cert: { file: !module-path ./__fixtures__/tls/client.pem }
@@ -31,13 +31,13 @@ tls:
 ---
 kind: Client.Client
 metadata: { name: noCert }
-baseUrl: https://localhost:8952
+baseUrl: https://127.0.0.1:8952
 tls:
   ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
 ---
 kind: Client.Client
 metadata: { name: rogueCert }
-baseUrl: https://localhost:8952
+baseUrl: https://127.0.0.1:8952
 tls:
   ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
   cert: { file: !module-path ./__fixtures__/tls/rogue-client.pem }
@@ -45,13 +45,13 @@ tls:
 ---
 kind: Client.Client
 metadata: { name: tls13 }
-baseUrl: https://localhost:8948
+baseUrl: https://127.0.0.1:8948
 tls:
   ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
 ---
 kind: Client.Client
 metadata: { name: plainHttp }
-baseUrl: http://localhost:8949
+baseUrl: http://127.0.0.1:8949
 ---
 kind: Http.Api
 metadata: { name: api }

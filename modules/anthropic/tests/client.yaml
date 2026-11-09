@@ -24,7 +24,7 @@ credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: test-key }
 ---
 kind: Anthropic.Client
 metadata: { name: local }
-baseUrl: http://localhost:8976/v1
+baseUrl: http://127.0.0.1:8976/v1
 timeout: 1234
 headers: { x-extra: yes }
 credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: test-key }
@@ -101,7 +101,7 @@ steps:
           timeout: 600000
           followRedirects: true
         local:
-          baseUrl: http://localhost:8976/v1
+          baseUrl: http://127.0.0.1:8976/v1
           headers: { x-extra: "yes" }
           timeout: 1234
           followRedirects: true

@@ -88,7 +88,7 @@ targets:
 steps:
   - name: truncated
     inputs:
-      url: http://localhost:8884/api/small
+      url: http://127.0.0.1:8884/api/small
       method: POST
       headers: { content-type: multipart/form-data; boundary=b }
       body: "--b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nhel"
@@ -103,7 +103,7 @@ steps:
 
   - name: oversizedPart
     inputs:
-      url: http://localhost:8884/api/small
+      url: http://127.0.0.1:8884/api/small
       method: POST
       headers: { content-type: multipart/form-data; boundary=b }
       body: "--b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nhello\r\n--b\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\n0123456789\r\n--b--\r\n"
@@ -122,7 +122,7 @@ steps:
     value: !cel "range(100).map(i, '0123456789').join('')"
   - name: large
     inputs:
-      url: http://localhost:8884/api/large
+      url: http://127.0.0.1:8884/api/large
       method: POST
       headers: { content-type: multipart/form-data; boundary=b }
       body: !cel "'--b\\r\\nContent-Disposition: form-data; name=\"file\"\\r\\n\\r\\n' + range(9216).map(i, steps.kilobyte.result).join('') + '\\r\\n--b--\\r\\n'"

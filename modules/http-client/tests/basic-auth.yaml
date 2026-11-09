@@ -34,17 +34,17 @@ password: ""
 ---
 kind: Http.Client
 metadata: { name: asciiClient }
-baseUrl: http://localhost:8944
+baseUrl: http://127.0.0.1:8944
 credential: !ref ascii
 ---
 kind: Http.Client
 metadata: { name: unicodeClient }
-baseUrl: http://localhost:8944
+baseUrl: http://127.0.0.1:8944
 credential: !ref unicode
 ---
 kind: Http.Client
 metadata: { name: emptyPasswordClient }
-baseUrl: http://localhost:8944
+baseUrl: http://127.0.0.1:8944
 credential: !ref emptyPassword
 ---
 kind: Run.Sequence

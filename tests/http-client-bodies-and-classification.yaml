@@ -33,19 +33,13 @@ kind: JS.Script
 metadata: { name: echoBody }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [body]
-    properties:
-      body: { type: string }
+  schema: { type: object, required: [body], properties: { body: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [echoed, length]
-    properties:
-      echoed: { type: string }
-      length: { type: integer }
+    properties: { echoed: { type: string }, length: { type: integer } }
 code: |
   function main({ body }) {
     return { echoed: body, length: body.length };
@@ -60,8 +54,7 @@ outputType:
   schema:
     type: object
     required: [attempt]
-    properties:
-      attempt: { type: integer }
+    properties: { attempt: { type: integer } }
 code: |
   function main() {
     globalThis.__attempts = (globalThis.__attempts ?? 0) + 1;
@@ -74,12 +67,7 @@ with:
   - kind: Server.Api
     metadata: { name: TestApi }
     routes:
-      - request:
-          path: /echo
-          method: POST
-          schema:
-            body:
-              type: string
+      - request: { path: /echo, method: POST, schema: { body: { type: string } } }
         inputs:
           body: !cel "request.body"
         handler: !ref echoBody
@@ -90,33 +78,24 @@ with:
                 schema:
                   type: object
                   required: [echoed, length]
-                  properties:
-                    echoed: { type: string }
-                    length: { type: integer }
+                  properties: { echoed: { type: string }, length: { type: integer } }
                 body:
                   echoed: !cel "result.echoed"
                   length: !cel "result.length"
       # 308 is a SUCCESS signal for a resumable upload, and a 3xx that the client
       # must not chase. Only 301/302 are followed, so what this really proves is
       # that `success` governs `throwOnHttpError` rather than the old `>= 400`.
-      - request:
-          path: /resume
-          method: PUT
+      - request: { path: /resume, method: PUT }
         handler: !ref echoBody
         inputs:
           body: !cel "'ignored'"
         returns:
           - status: 308
-            content:
-              application/json:
-                schema: { type: object }
-                body: { resume: true }
+            content: { application/json: { schema: { type: object }, body: { resume: true } } }
       # Always 503, reporting how many requests have reached it. That counter is
       # what makes the retry assertion exact: three requests means one attempt
       # plus two re-attempts, rather than "it did not raise".
-      - request:
-          path: /flaky
-          method: GET
+      - request: { path: /flaky, method: GET }
         handler: !ref flakyCounter
         returns:
           - status: 503
@@ -125,16 +104,13 @@ with:
                 schema:
                   type: object
                   required: [attempt]
-                  properties:
-                    attempt: { type: integer }
+                  properties: { attempt: { type: integer } }
                 body:
                   attempt: !cel "result.attempt"
   - kind: Server.Server
     metadata: { name: TestServer }
-    listen:
-      port: 8871
-    openapi:
-      info: { title: Bodies And Classification, version: 1.0.0 }
+    listen: { port: 8871 }
+    openapi: { info: { title: Bodies And Classification, version: 1.0.0 } }
     mounts:
       - path: /api
         mount: !ref TestApi
@@ -146,80 +122,65 @@ steps:
   # be bytes.
   - name: postBytes
     inputs:
-      url: http://localhost:8871/api/echo
+      url: http://127.0.0.1:8871/api/echo
       method: POST
       headers: { content-type: application/json }
       body: !cel "bytesFromBase64('ImhlbGxvIGJ5dGVzIg==')"
-    invoke:
-      kind: Http.Request
-      throwOnHttpError: true
+    invoke: { kind: Http.Request, throwOnHttpError: true }
   - name: assertBytesRoundTrip
     inputs:
       actual: !cel "steps.postBytes.result.body.echoed"
       expected: "hello bytes"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # The same call read as raw bytes rather than parsed. `bytesToBase64` proves the
   # value really is a byte buffer and survived unmangled.
   - name: readAsBytes
     inputs:
-      url: http://localhost:8871/api/echo
+      url: http://127.0.0.1:8871/api/echo
       method: POST
       headers: { content-type: application/json }
       body: '"abc"'
       responseType: bytes
-    invoke:
-      kind: Http.Request
-      throwOnHttpError: true
+    invoke: { kind: Http.Request, throwOnHttpError: true }
   - name: assertBytesResponse
     inputs:
       actual: !cel "bytesToBase64(slice(steps.readAsBytes.result.body, 0, 1))"
       expected: "ew=="
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # 308 declared successful: it neither raises under throwOnHttpError nor is
   # followed as a redirect.
   - name: resume
-    inputs:
-      url: http://localhost:8871/api/resume
-      method: PUT
-    invoke:
-      kind: Http.Request
-      throwOnHttpError: true
-      success: [200, 201, 308]
+    inputs: { url: http://127.0.0.1:8871/api/resume, method: PUT }
+    invoke: { kind: Http.Request, throwOnHttpError: true, success: [200, 201, 308] }
   - name: assertResume
     inputs:
       actual: !cel "steps.resume.result.status"
       expected: 308
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # A 200 that `success` does NOT name is a failure, which is what makes the
   # field a narrowing rather than a widening.
   - name: unexpectedStatus
     inputs:
-      url: http://localhost:8871/api/echo
+      url: http://127.0.0.1:8871/api/echo
       method: POST
       headers: { content-type: application/json }
       body: '"x"'
-    invoke:
-      kind: Http.Request
-      success: [201]
+    invoke: { kind: Http.Request, success: [201] }
   - name: assertUnexpectedNotThrown
     inputs:
       actual: !cel "steps.unexpectedStatus.result.status"
       expected: 200
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # The PREDICATE spelling of `success`, over the same scope as the list form.
   # A whole-field CEL leaf at a union-typed slot is what the placeholder fix made
   # writable at all.
   - name: predicateSuccess
     inputs:
-      url: http://localhost:8871/api/echo
+      url: http://127.0.0.1:8871/api/echo
       method: POST
       headers: { content-type: application/json }
       body: '"p"'
@@ -231,40 +192,33 @@ steps:
     inputs:
       actual: !cel "steps.predicateSuccess.result.status"
       expected: 200
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # A streamed response arrives in `body`, the same slot every other response
   # type fills — one output shape, so `status` and `headers` stay typed.
   - name: streamed
     inputs:
-      url: http://localhost:8871/api/echo
+      url: http://127.0.0.1:8871/api/echo
       method: POST
       headers: { content-type: application/json }
       body: '"streamed"'
       responseType: stream
-    invoke:
-      kind: Http.Request
-      throwOnHttpError: true
+    invoke: { kind: Http.Request, throwOnHttpError: true }
   - name: drainStream
     inputs:
       input: !cel "steps.streamed.result.body"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertStreamed
     inputs:
       actual: !cel "steps.drainStream.result.items.map(c, string(c)).join('')"
       expected: '{"echoed":"streamed","length":8}'
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # A retryable status is re-attempted and the loop terminates by returning the
   # last response. The endpoint counts requests, so `attempt == 3` is the exact
   # statement that one attempt and two re-attempts were issued.
   - name: flaky
-    inputs:
-      url: http://localhost:8871/api/flaky
-      method: GET
+    inputs: { url: http://127.0.0.1:8871/api/flaky, method: GET }
     invoke:
       kind: Http.Request
       retryOn: [503]
@@ -278,19 +232,14 @@ steps:
       actual:
         status: !cel "steps.flaky.result.status"
         requests: !cel "steps.flaky.result.body.attempt"
-      expected:
-        status: 503
-        requests: 3
-    invoke:
-      kind: Assert.Equals
+      expected: { status: 503, requests: 3 }
+    invoke: { kind: Assert.Equals }
 
   # The policy's own backoff is an hour, so this returns only because
   # `retryAfter` read the failure — a retried response is `ERR_HTTP_STATUS` with
   # its status in `data` — and waited what it yielded instead. Two requests.
   - name: waitAsAsked
-    inputs:
-      url: http://localhost:8871/api/flaky
-      method: GET
+    inputs: { url: http://127.0.0.1:8871/api/flaky, method: GET }
     invoke:
       kind: Http.Request
       retryOn: [503]
@@ -302,27 +251,20 @@ steps:
         retryAfter: !cel "error.code == 'ERR_HTTP_STATUS' && error.data.status == 503 ? duration('5ms') : dyn(null)"
   # The same response's code named non-retryable: one request, whatever the budget.
   - name: notRetried
-    inputs:
-      url: http://localhost:8871/api/flaky
-      method: GET
+    inputs: { url: http://127.0.0.1:8871/api/flaky, method: GET }
     invoke:
       kind: Http.Request
       retryOn: [503]
-      retry:
-        attempts: 3
-        initialDelay: 1
-        nonRetryable: [ERR_HTTP_STATUS]
+      retry: { attempts: 3, initialDelay: 1, nonRetryable: [ERR_HTTP_STATUS] }
   # A client's `retryAfter` is resolved when the client is created, so it reads
   # no failure: a fixed wait every request through it inherits.
   - name: clientWait
-    inputs:
-      url: /api/flaky
-      method: GET
+    inputs: { url: /api/flaky, method: GET }
     invoke:
       kind: Http.Request
       client:
         kind: Http.Client
-        baseUrl: http://localhost:8871
+        baseUrl: http://127.0.0.1:8871
         retry:
           attempts: 1
           initialDelay: 1h
@@ -336,9 +278,5 @@ steps:
         waited: !cel "steps.waitAsAsked.result.body.attempt"
         notRetried: !cel "steps.notRetried.result.body.attempt"
         clientWaited: !cel "steps.clientWait.result.body.attempt"
-      expected:
-        waited: 5
-        notRetried: 6
-        clientWaited: 8
-    invoke:
-      kind: Assert.Equals
+      expected: { waited: 5, notRetried: 6, clientWaited: 8 }
+    invoke: { kind: Assert.Equals }

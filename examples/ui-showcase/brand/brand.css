@@ -556,6 +556,15 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="chat-tool-data"] { padding: var(--telo-space-sm); border-radius: var(--telo-radius-sm); background: var(--telo-color-surface); font-family: var(--telo-font-mono), "Courier New", monospace; font-size: var(--telo-font-size-sm); }
 [data-telo-part="chat-approval-title"] { font-weight: 700; }
 [data-telo-part="chat-approval-decision"] { color: var(--telo-color-muted); font-style: italic; }
+[data-telo-part="chat-tool-block"] { position: relative; }
+[data-telo-part="chat-tool-preview"] { position: absolute; top: var(--telo-space-xs); right: var(--telo-space-sm); display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; padding: 0; border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-sm); background: var(--telo-color-surface); color: var(--telo-color-muted); cursor: pointer; }
+[data-telo-part="chat-tool-preview"]:hover { color: var(--telo-color-accent); }
+[data-telo-part="chat-approval-header"] { min-height: 1.5rem; }
+[data-telo-part="chat-approval-toggle"] { gap: var(--telo-space-xs); padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+[data-telo-part="chat-approval-toggle"] > [data-telo-part="icon"] { flex: none; width: 0.875rem; height: 0.875rem; color: var(--telo-color-muted); }
+[data-telo-part="chat-approval"][data-status="pending"] [data-telo-part="chat-approval-state"] { color: var(--telo-color-accent); }
+[data-telo-part="chat-approval"][data-status="approved"] [data-telo-part="chat-approval-state"] { color: var(--telo-color-success); }
+[data-telo-part="chat-approval"][data-status="rejected"] [data-telo-part="chat-approval-state"] { color: var(--telo-color-danger); }
 [data-telo-part="chat-sources-title"] { margin: 0; font-size: var(--telo-font-size-sm); font-variant: small-caps; }
 [data-telo-part="chat-source-list"] { margin: 0; padding-inline-start: var(--telo-space-xl); }
 [data-telo-part="chat-source"] { margin-block: var(--telo-space-xs); }

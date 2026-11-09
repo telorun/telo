@@ -74,6 +74,7 @@ import {
   describeModuleSource,
 } from "@telorun/analyzer";
 import {
+  createArchiveReader,
   ensureStagedEntry,
   type ArchiveReader,
   type EnsuredEntryState,
@@ -484,6 +485,10 @@ export class Kernel implements IKernel {
   /** What this load has prepared for its controller bundles; cleared with the
    *  rest of the load's artifact state. */
   readonly bundlePreparations = new BundlePreparations();
+  /** The one archive reader of every on-demand staging this kernel runs, so the
+   *  files a module stages from one archive fetch it once; it drops an archive
+   *  idle for a minute. */
+  readonly archiveReader: ArchiveReader = createArchiveReader({ idleReleaseMs: 60_000 });
   private _loadedGraph?: LoadedGraph;
   /** Declaration signatures of the installed set, taken at load time — see
    *  `ManifestDiffOptions.previousSignatures` for why they cannot be taken
@@ -2889,12 +2894,11 @@ export class Kernel implements IKernel {
     dir: string,
     source: ModuleSource,
     entry: SourceEntry,
-    archives?: ArchiveReader,
   ): Promise<EnsuredEntryState> {
     const key = `${dir}\0${entry.path}`;
     let pending = this.stagedEntryMatches.get(key);
     if (!pending) {
-      pending = ensureStagedEntry(dir, source, entry, { archives, log: this.logging.kernelLogger() }).then(
+      pending = ensureStagedEntry(dir, source, entry, { archives: this.archiveReader, log: this.logging.kernelLogger() }).then(
         (verdict) => {
           if (verdict.state !== "match") this.stagedEntryMatches.delete(key);
           return verdict;

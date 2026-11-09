@@ -18,7 +18,7 @@ targets:
 ---
 kind: Client.Client
 metadata: { name: requiredWithCert }
-baseUrl: https://localhost:8932
+baseUrl: https://127.0.0.1:8932
 tls:
   ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
   cert: { file: !module-path ./__fixtures__/tls/client.pem }
@@ -26,13 +26,13 @@ tls:
 ---
 kind: Client.Client
 metadata: { name: optionalNoCert }
-baseUrl: https://localhost:8933
+baseUrl: https://127.0.0.1:8933
 tls:
   ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
 ---
 kind: Client.Client
 metadata: { name: optionalRogue }
-baseUrl: https://localhost:8933
+baseUrl: https://127.0.0.1:8933
 tls:
   ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
   cert: { file: !module-path ./__fixtures__/tls/rogue-client.pem }

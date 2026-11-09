@@ -1,6 +1,7 @@
 import type { ModuleSources } from "@telorun/analyzer";
 import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
 import { BundleControllerLoader } from "./controller-loaders/bundle-loader.js";
+import type { ArchiveReader } from "./bundle/source-staging.js";
 import type { BundlePreparations } from "./controller-loaders/bundle-preparations.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
 import {
@@ -136,6 +137,8 @@ export interface ControllerLoaderOptions {
   /** The load's bundle preparations, shared by every kind's loader so a
    *  module's bundle is prepared once per load rather than once per kind. */
   bundlePreparations?: BundlePreparations;
+  /** The kernel's archive reader, so a staged addon shares its fetches. */
+  archives?: ArchiveReader;
 }
 
 /**
@@ -173,7 +176,7 @@ export class ControllerLoader {
     });
     if (options.log) this.npmLoader.setLogger(options.log);
     this.napiLoader = new NapiControllerLoader(options.cacheRoot);
-    this.bundleLoader = new BundleControllerLoader(options.cacheRoot, options.log, options.bundlePreparations);
+    this.bundleLoader = new BundleControllerLoader(options.cacheRoot, options.log, options.bundlePreparations, options.archives);
   }
 
   async load(

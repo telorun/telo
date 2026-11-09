@@ -36,7 +36,7 @@ key: test-key
 ---
 kind: Http.Client
 metadata: { name: echoClient }
-baseUrl: http://localhost:8960/echo/v1
+baseUrl: http://127.0.0.1:8960/echo/v1
 credential: !ref goodKey
 ---
 kind: Http.Request
@@ -47,14 +47,14 @@ kind: Http.Request
 metadata: { name: wrongKeyRequest }
 client:
   kind: Http.Client
-  baseUrl: http://localhost:8960/echo/v1
+  baseUrl: http://127.0.0.1:8960/echo/v1
   credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: wrong-key }
 ---
 kind: Http.Request
 metadata: { name: scriptedRequest }
 client:
   kind: Http.Client
-  baseUrl: http://localhost:8960/v1
+  baseUrl: http://127.0.0.1:8960/v1
   credential: !ref goodKey
 ---
 kind: Http.Request

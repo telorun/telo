@@ -28,7 +28,7 @@ baseUrl: http://127.0.0.1:8922
 ---
 kind: Client.Client
 metadata: { name: rogueCert }
-baseUrl: https://localhost:8923
+baseUrl: https://127.0.0.1:8923
 tls:
   ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
   cert: { file: !module-path ./__fixtures__/tls/rogue-client.pem }

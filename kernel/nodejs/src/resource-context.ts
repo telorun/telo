@@ -100,6 +100,7 @@ import { pathToFileURL } from "url";
 import { bigIntView } from "./bigint-schema-view.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
 import type { SiblingLibraryMap } from "./controller-loaders/sibling-libraries.js";
+import type { ArchiveReader } from "./bundle/source-staging.js";
 import type { BundlePreparations } from "./controller-loaders/bundle-preparations.js";
 import { resolveModuleFileUri, type NativeFileModule } from "./module-file-resolution.js";
 import { hostEnv } from "./host-env.js";
@@ -1349,6 +1350,11 @@ export class ResourceContextImpl implements ResourceContext {
    *  per kernel, so every kind of a module shares its bundle's preparation. */
   getBundlePreparations(): BundlePreparations {
     return this.kernel.bundlePreparations;
+  }
+
+  /** The kernel's one archive reader, shared by every on-demand staging. */
+  getArchiveReader(): ArchiveReader {
+    return this.kernel.archiveReader;
   }
 
   /** The artifact of the module whose manifest resolved from `source`. Kernel-only

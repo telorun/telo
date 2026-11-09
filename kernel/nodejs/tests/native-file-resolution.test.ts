@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { computeFilesIntegrity, type PayloadFile } from "../src/bundle/files-integrity.js";
 import { ModuleArtifact } from "../src/bundle/module-artifact.js";
-import { ensureStagedEntry } from "../src/bundle/source-staging.js";
+import { createArchiveReader, ensureStagedEntry } from "../src/bundle/source-staging.js";
 import {
   resolveNativeFileUri,
   type ModuleFileLookup,
@@ -40,11 +40,12 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+const archives = createArchiveReader({ retryDelaysMs: [0, 0] });
+
 const noArtifact: ModuleFileLookup = {
   getModuleArtifact: () => undefined,
   getDeclaringModule: () => undefined,
-  ensureStagedEntry: (moduleDir, source, entry, archives) =>
-    ensureStagedEntry(moduleDir, source, entry, { archives }),
+  ensureStagedEntry: (moduleDir, source, entry) => ensureStagedEntry(moduleDir, source, entry, { archives }),
 };
 
 function checkout(native: unknown[], sources?: unknown): NativeFileModule {

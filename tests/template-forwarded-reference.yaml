@@ -19,34 +19,25 @@ targets:
   - !ref verifyForwardedRoutes
 ---
 kind: Run.Sequence
-metadata:
-  name: verifyForwardedRoutes
+metadata: { name: verifyForwardedRoutes }
 with:
   - kind: Http.Server
-    metadata:
-      name: ForwardedServer
-    listen:
-      port: 8847
+    metadata: { name: ForwardedServer }
+    listen: { port: 8847 }
     mounts:
       - path: /
         mount:
           kind: Lib.Routes
           routes:
             - request: { path: /place-order, method: POST }
-              handler:
-                kind: Run.Value
-                value:
-                  placed: true
+              handler: { kind: Run.Value, value: { placed: true } }
               returns:
                 - status: 200
                   content:
                     application/json:
                       body: !cel "result"
             - request: { path: /cancel-order, method: POST }
-              handler:
-                kind: Run.Value
-                value:
-                  cancelled: true
+              handler: { kind: Run.Value, value: { cancelled: true } }
               returns:
                 - status: 200
                   content:
@@ -59,7 +50,7 @@ steps:
     inputs: {}
     invoke:
       kind: HttpClient.Request
-      url: http://localhost:8847/place-order
+      url: http://127.0.0.1:8847/place-order
       method: POST
   - name: assertPlaced
     invoke: { kind: Assert.Equals }
@@ -70,7 +61,7 @@ steps:
     inputs: {}
     invoke:
       kind: HttpClient.Request
-      url: http://localhost:8847/cancel-order
+      url: http://127.0.0.1:8847/cancel-order
       method: POST
   - name: assertCancelled
     invoke: { kind: Assert.Equals }

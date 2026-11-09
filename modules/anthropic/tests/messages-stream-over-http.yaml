@@ -40,14 +40,14 @@ kind: Http.Request
 metadata: { name: goodRequest }
 client:
   kind: Http.Client
-  baseUrl: http://localhost:8921/v1
+  baseUrl: http://127.0.0.1:8921/v1
   credential: !ref goodKey
 ---
 kind: Http.Request
 metadata: { name: wrongKeyRequest }
 client:
   kind: Http.Client
-  baseUrl: http://localhost:8921/v1
+  baseUrl: http://127.0.0.1:8921/v1
   credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: wrong-key }
 ---
 kind: Http.Request

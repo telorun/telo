@@ -1,0 +1,21 @@
+name: Save staged module files
+description: >-
+  Saves what restore-staged-files found missing. Call it with `if: always() &&
+  steps.<restore id>.outputs.key != '' && steps.<restore id>.outputs.cache-hit != 'true'`
+  so a failing run still saves.
+
+inputs:
+  key:
+    description: The key output of restore-staged-files.
+    required: true
+  paths:
+    description: The paths output of restore-staged-files.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/save@v4
+      with:
+        path: ${{ inputs.paths }}
+        key: ${{ inputs.key }}

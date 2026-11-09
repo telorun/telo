@@ -18,7 +18,7 @@ targets:
 ---
 kind: Http.Client
 metadata: { name: client }
-baseUrl: "http://localhost:8993"
+baseUrl: "http://127.0.0.1:8993"
 ---
 kind: Run.Sequence
 metadata: { name: test }

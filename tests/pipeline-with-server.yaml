@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: PipelineWithServer
-  version: 1.0.0
+metadata: { name: PipelineWithServer, version: 1.0.0 }
 imports:
   Http: ../modules/http-server
   HttpClient: ../modules/http-client
@@ -9,34 +7,23 @@ imports:
   Assert: ../modules/assert
 ---
 kind: Run.Sequence
-metadata:
-  name: testServerWithLifecycle
+metadata: { name: testServerWithLifecycle }
 with:
   - kind: Run.Value
-    metadata:
-      name: GreetingHandler
+    metadata: { name: GreetingHandler }
     inputType:
       kind: Telo.JsonSchema
-      schema:
-        type: object
-        properties:
-          name: { type: string }
+      schema: { type: object, properties: { name: { type: string } } }
     value:
       greeting: !cel "'Hello ' + inputs.name + '!'"
   - kind: Http.Api
-    metadata:
-      name: TestApi
+    metadata: { name: TestApi }
     routes:
       - request:
           path: /hello
           method: GET
           schema:
-            query:
-              type: object
-              properties:
-                name:
-                  type: string
-              required: [ "name" ]
+            query: { type: object, properties: { name: { type: string } }, required: ["name"] }
         inputs:
           name: !cel "request.query.name"
         handler: !ref GreetingHandler
@@ -44,22 +31,13 @@ with:
           - status: 200
             content:
               application/json:
-                schema:
-                  type: object
-                  properties:
-                    message: { type: string }
-                  required: [ message ]
+                schema: { type: object, properties: { message: { type: string } }, required: [message] }
                 body:
                   message: !cel "result.greeting"
   - kind: Http.Server
-    metadata:
-      name: TestServer
-    listen:
-      port: 8845
-    openapi:
-      info:
-        title: Test Server
-        version: 1.0.0
+    metadata: { name: TestServer }
+    listen: { port: 8845 }
+    openapi: { info: { title: Test Server, version: 1.0.0 } }
     mounts:
       - path: /api
         mount: !ref TestApi
@@ -68,7 +46,7 @@ steps:
     inputs: {}
     invoke:
       kind: HttpClient.Request
-      url: http://localhost:8845/api/hello?name=World
+      url: http://127.0.0.1:8845/api/hello?name=World
       method: GET
 
   - name: verifyResponse
@@ -78,9 +56,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          message:
-            type: string
-            const: "Hello World!"
-        required:
-          - message
+        properties: { message: { type: string, const: "Hello World!" } }
+        required: [message]

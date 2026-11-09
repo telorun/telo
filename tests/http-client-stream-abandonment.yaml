@@ -54,12 +54,11 @@ metadata: { name: sseEncoder }
 ---
 kind: Run.Value
 metadata: { name: pong }
-value:
-  ok: true
+value: { ok: true }
 ---
 kind: Http.Client
 metadata: { name: client }
-baseUrl: http://localhost:8883
+baseUrl: http://127.0.0.1:8883
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -67,9 +66,7 @@ with:
   - kind: Server.Api
     metadata: { name: testApi }
     routes:
-      - request:
-          path: /stream
-          method: GET
+      - request: { path: /stream, method: GET }
         handler: !ref records
         inputs: {}
         returns:
@@ -78,27 +75,19 @@ with:
             content:
               text/event-stream:
                 encoder: !ref sseEncoder
-      - request:
-          path: /ping
-          method: GET
+      - request: { path: /ping, method: GET }
         handler: !ref pong
         returns:
           - status: 200
             content:
               application/json:
-                schema:
-                  type: object
-                  required: [ok]
-                  properties:
-                    ok: { type: boolean }
+                schema: { type: object, required: [ok], properties: { ok: { type: boolean } } }
                 body:
                   ok: !cel "result.ok"
   - kind: Server.Server
     metadata: { name: testServer }
-    listen:
-      port: 8883
-    openapi:
-      info: { title: Stream Abandonment, version: 1.0.0 }
+    listen: { port: 8883 }
+    openapi: { info: { title: Stream Abandonment, version: 1.0.0 } }
     mounts:
       - path: /api
         mount: !ref testApi
@@ -112,10 +101,7 @@ steps:
   - name: abandon
     try:
       - name: fetch
-        inputs:
-          url: /api/stream
-          method: GET
-          responseType: stream
+        inputs: { url: /api/stream, method: GET, responseType: stream }
         invoke:
           kind: Http.Request
           client: !ref client
@@ -123,8 +109,7 @@ steps:
       - name: decode
         inputs:
           input: !cel "steps.fetch.result.body"
-        invoke:
-          kind: Sse.Decoder
+        invoke: { kind: Sse.Decoder }
       - name: stop
         inputs:
           input: !cel "steps.decode.result.records"
@@ -135,8 +120,7 @@ steps:
       - name: drain
         inputs:
           input: !cel "steps.stop.result.output"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
     catch:
       # The failure that stopped the drain reaches the caller rather than being
       # swallowed by the teardown running underneath it.
@@ -151,9 +135,7 @@ steps:
   # nothing shared with it — and reaching this step at all is what proves the
   # abandonment path did not hang.
   - name: stillWorks
-    inputs:
-      url: /api/ping
-      method: GET
+    inputs: { url: /api/ping, method: GET }
     invoke:
       kind: Http.Request
       client: !ref client
@@ -169,10 +151,7 @@ steps:
   - name: abandonAgain
     try:
       - name: fetch2
-        inputs:
-          url: /api/stream
-          method: GET
-          responseType: stream
+        inputs: { url: /api/stream, method: GET, responseType: stream }
         invoke:
           kind: Http.Request
           client: !ref client
@@ -180,8 +159,7 @@ steps:
       - name: decode2
         inputs:
           input: !cel "steps.fetch2.result.body"
-        invoke:
-          kind: Sse.Decoder
+        invoke: { kind: Sse.Decoder }
       - name: stop2
         inputs:
           input: !cel "steps.decode2.result.records"
@@ -191,8 +169,7 @@ steps:
       - name: drain2
         inputs:
           input: !cel "steps.stop2.result.output"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
     catch:
       - name: assertPropagatedAgain
         inputs:
