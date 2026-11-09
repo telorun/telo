@@ -28,7 +28,7 @@ requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   telo: ">=0.121.0"
 imports:
-  AgentApp: oci://ghcr.io/telorun/blueprints/agent-app@0.4.6#sha256-Lvfdk5vSrHfyPH7329eJpqBO3KqKS1pegCvbTQ9aFU0
+  AgentApp: oci://ghcr.io/telorun/blueprints/agent-app@0.4.7#sha256-CiB7Z6foOUPGMcSyclEEa9yvQXm4zlEUEg0S_q7i2Y8
   # The same versions the blueprint itself imports.
   Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   OpenAI: oci://ghcr.io/telorun/openai@0.20.1#sha256-kSqphJdaw9ZPpRbo1DiX5BKJ_uuWqj5TqOL1d7QjwqQ
