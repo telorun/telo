@@ -105,7 +105,7 @@ beforeEach(() => {
 
 const stage = (text: string, pin = false) => {
   fs.writeFileSync(target.manifestPath, text);
-  return stageModule(target, { pin, archives: createArchiveReader() });
+  return stageModule(target, { pin, archives: createArchiveReader({ retryDelaysMs: [0, 0] }) });
 };
 
 const at = (relative: string) => path.join(target.dir, relative);
@@ -196,7 +196,7 @@ describe("telo release stage", () => {
     expect(result.failures).toEqual([]);
     expect(fs.readFileSync(target.manifestPath, "utf8")).toBe(manifest(pinned));
 
-    const verify = await stageModule(target, { pin: false, archives: createArchiveReader() });
+    const verify = await stageModule(target, { pin: false, archives: createArchiveReader({ retryDelaysMs: [0, 0] }) });
     expect(verify.failures).toEqual([]);
     expect(verify.outcomes.every((o) => o.action === "verified")).toBe(true);
   });
@@ -267,7 +267,7 @@ describe("telo release stage — nested libraries", () => {
     const targets = stageTargetsOf({ key: "app", dir: path.dirname(appManifest), manifestPath: appManifest });
     expect(targets.map((t) => t.key)).toEqual(["app", "app/lib/telo.yaml"]);
     for (const t of targets) {
-      const result = await stageModule(t, { pin: true, archives: createArchiveReader() });
+      const result = await stageModule(t, { pin: true, archives: createArchiveReader({ retryDelaysMs: [0, 0] }) });
       expect(result.failures).toEqual([]);
     }
     expect(fs.readFileSync(libManifest, "utf8")).toContain(`sha256: ${sha(LICENSE)}`);

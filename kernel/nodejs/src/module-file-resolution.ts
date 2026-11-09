@@ -17,9 +17,7 @@ import {
 } from "@telorun/analyzer";
 import { RuntimeError } from "@telorun/sdk";
 import {
-  createArchiveReader,
   describeStagingFailure,
-  type ArchiveReader,
   type EnsuredEntryState,
 } from "./bundle/source-staging.js";
 import { hostPlatformTarget, type ModuleArtifact } from "./bundle/module-artifact.js";
@@ -43,7 +41,6 @@ export interface ModuleFileLookup extends ModuleArtifactLookup {
     dir: string,
     source: ModuleSource,
     entry: SourceEntry,
-    archives?: ArchiveReader,
   ): Promise<EnsuredEntryState>;
 }
 
@@ -166,14 +163,11 @@ async function assertStagedFilesAt(
     sources: module.sources.sources,
   });
   const covered = new Set(relative === "" ? moduleFiles : pathsAtOrBeneath(moduleFiles, relative));
-  let archives: ArchiveReader | undefined;
   for (const source of module.sources.sources) {
     for (const entry of source.entries) {
       if (!covered.has(entry.path)) continue;
-      archives ??= createArchiveReader();
-      const reader = archives;
       const problem = await stagedEntryProblem(`'${entry.path}' is staged by source '${source.name}'`, () =>
-        lookup.ensureStagedEntry(dir, source, entry, reader),
+        lookup.ensureStagedEntry(dir, source, entry),
       );
       if (problem) throw unavailable(problem);
     }

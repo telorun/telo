@@ -3,9 +3,7 @@
 # read reaches the handler's contract at the dispatch the request makes. The app
 # asks for the instant it expects, and fails with the kernel's own refusal.
 kind: Telo.Application
-metadata:
-  name: RefusedRouteApp
-  version: 1.0.0
+metadata: { name: RefusedRouteApp, version: 1.0.0 }
 imports:
   Run: ../../../modules/run
   Http: ../../../modules/http-server
@@ -16,14 +14,11 @@ targets:
   - !ref callRoute
 ---
 kind: Run.Sequence
-metadata:
-  name: callRoute
+metadata: { name: callRoute }
 with:
   - kind: Http.Server
-    metadata:
-      name: stampServer
-    listen:
-      port: 8851
+    metadata: { name: stampServer }
+    listen: { port: 8851 }
     mounts:
       - path: /
         mount: !ref Derived.stampApi
@@ -32,14 +27,9 @@ targets:
 steps:
   - name: fetch
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://localhost:8851/stamp
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8851/stamp, method: GET }
   - name: expectStamp
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "steps.fetch.result.body"
-      expected:
-        at: "2026-01-15T09:30:00.000Z"
+      expected: { at: "2026-01-15T09:30:00.000Z" }

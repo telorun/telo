@@ -32,15 +32,15 @@ expect: { errors: [], runFails: "ERR_HTTP_FORWARDED_CERTIFICATE_UNTRUSTED" }
 ---
 kind: Client.Client
 metadata: { name: viaEnvoy }
-baseUrl: http://localhost:8934
+baseUrl: http://127.0.0.1:8934
 ---
 kind: Client.Client
 metadata: { name: viaNginx }
-baseUrl: http://localhost:8935
+baseUrl: http://127.0.0.1:8935
 ---
 kind: Client.Client
 metadata: { name: viaTraefik }
-baseUrl: http://localhost:8936
+baseUrl: http://127.0.0.1:8936
 ---
 kind: Http.Api
 metadata: { name: api }

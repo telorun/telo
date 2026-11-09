@@ -36,7 +36,7 @@ token: sk-test-token
 ---
 kind: Http.Client
 metadata: { name: fakeOpenAi }
-baseUrl: http://localhost:8874/v1
+baseUrl: http://127.0.0.1:8874/v1
 credential: !ref fakeKey
 ---
 kind: Http.Request

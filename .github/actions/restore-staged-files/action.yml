@@ -1,0 +1,52 @@
+name: Restore staged module files
+description: >-
+  Restores the files the kernel stages from `sources:` blocks, so a job does not
+  download them again. Pair with save-staged-files.
+
+inputs:
+  scope:
+    description: Names the cache entry per job (`github.job`), so each job saves the files it staged itself.
+    required: true
+
+outputs:
+  cache-hit:
+    description: "`true` on an exact key match."
+    value: ${{ steps.restore.outputs.cache-hit }}
+  key:
+    description: The exact key to save under.
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+  paths:
+    description: The cached paths, to pass to save-staged-files.
+    value: ${{ steps.paths.outputs.list }}
+
+runs:
+  using: composite
+  steps:
+    # Mirrors the staged paths in the .gitignore of modules/http-server,
+    # tesseract, tesseract-lang, pdf, sqlite and ui-lucide.
+    - id: paths
+      shell: bash
+      run: |
+        {
+          echo 'list<<STAGED_PATHS_EOF'
+          echo 'modules/http-server/assets/scalar/'
+          echo 'modules/http-server/notices/scalar.LICENSE'
+          echo 'modules/tesseract/engine/'
+          echo 'modules/tesseract/tessdata/'
+          echo 'modules/tesseract/notices/tesseract.js-core.LICENSE'
+          echo 'modules/tesseract-lang/*/tessdata/'
+          echo 'modules/pdf/native/'
+          echo 'modules/pdf/assets/'
+          echo 'modules/pdf/notices/'
+          echo 'modules/sqlite/native/'
+          echo 'modules/ui-lucide/icons/'
+          echo 'modules/ui-lucide/notices/'
+          echo 'STAGED_PATHS_EOF'
+        } >> "$GITHUB_OUTPUT"
+    - id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.paths.outputs.list }}
+        key: staged-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('modules/http-server/telo.yaml', 'modules/tesseract/telo.yaml', 'modules/tesseract-lang/*/telo.yaml', 'modules/pdf/telo.yaml', 'modules/sqlite/telo.yaml', 'modules/ui-lucide/telo.yaml') }}
+        restore-keys: |
+          staged-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-

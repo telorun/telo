@@ -20,7 +20,7 @@ targets:
 # A client that trusts the private CA.
 kind: Http.Client
 metadata: { name: trusting }
-baseUrl: https://localhost:8941
+baseUrl: https://127.0.0.1:8941
 tls:
   ca:
     - file: !module-path ./__fixtures__/tls/ca.pem
@@ -28,19 +28,19 @@ tls:
 # Default trust: the system roots do not know the private CA.
 kind: Http.Client
 metadata: { name: defaultTrust }
-baseUrl: https://localhost:8941
+baseUrl: https://127.0.0.1:8941
 ---
 # Trusts a different CA, in the same application as `trusting`.
 kind: Http.Client
 metadata: { name: otherCa }
-baseUrl: https://localhost:8941
+baseUrl: https://127.0.0.1:8941
 tls:
   ca:
     - file: !module-path ./__fixtures__/tls/other-ca.pem
 ---
 kind: Http.Client
 metadata: { name: mutual }
-baseUrl: https://localhost:8942
+baseUrl: https://127.0.0.1:8942
 tls:
   ca:
     - file: !module-path ./__fixtures__/tls/ca.pem
@@ -51,7 +51,7 @@ tls:
 ---
 kind: Http.Client
 metadata: { name: noClientCert }
-baseUrl: https://localhost:8942
+baseUrl: https://127.0.0.1:8942
 tls:
   ca:
     - file: !module-path ./__fixtures__/tls/ca.pem
@@ -59,7 +59,7 @@ tls:
 # A certificate signed by a CA the server does not trust.
 kind: Http.Client
 metadata: { name: rogueClientCert }
-baseUrl: https://localhost:8942
+baseUrl: https://127.0.0.1:8942
 tls:
   ca:
     - file: !module-path ./__fixtures__/tls/ca.pem
@@ -87,7 +87,7 @@ tls:
 # A derived kind: its own fields reach the inherited tls through base:.
 kind: Private.PrivateApiClient
 metadata: { name: derived }
-host: localhost:8942
+host: 127.0.0.1:8942
 caPem: !include-text ./__fixtures__/tls/ca.pem
 clientCertPem: !include-text ./__fixtures__/tls/client.pem
 clientKeyPem: !include-text ./__fixtures__/tls/client.key

@@ -460,6 +460,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       - name: Run tests (bun)
         if: needs.select.outputs.platform_mode != 'none'
         shell: bash
@@ -500,6 +508,13 @@ jobs:
       - name: Run the plan-approval runner test suite (bun)
         if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo ./apps/plan-approval-runner/test-suite.yaml
+
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
 
   integration:
     name: "Linux: integration tests (Postgres)"
@@ -547,6 +562,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       # Anonymous pulls are limited per IP, and a hosted runner shares its IP
       # with everyone else's jobs. The tests pull through the engine API, which
       # carries no credentials, so the image they all run is pulled here as the
@@ -576,6 +599,13 @@ jobs:
         run: |
           left=$(docker ps -aq --filter label=run.telo.container.expires)
           if [ -n "$left" ]; then docker ps -a --filter label=run.telo.container.expires; exit 1; fi
+
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
 
   unit:
     name: "Linux: package unit tests"
@@ -618,6 +648,14 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
 
       # The kernel's napi-loader test and several module tests run a real
       # `cargo build` of fixture crates. Persist the Rust target/ across runs
@@ -663,11 +701,18 @@ jobs:
           args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS")
           pnpm -r "${args[@]}" test
 
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
+
   node:
     name: "Linux: manifest tests (Node)"
     runs-on: ubuntu-latest
     needs: select
-    if: needs.select.outputs.mode != 'none'
+    if: needs.select.outputs.mode != 'none' || needs.select.outputs.suites == 'true'
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -706,10 +751,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       - name: Build for Node.js
         run: pnpm -r run build
 
       - name: Run tests (node)
+        if: needs.select.outputs.mode != 'none'
         shell: bash
         env:
           SUITE_ARGS: ${{ needs.select.outputs.args }}
@@ -724,6 +778,7 @@ jobs:
       # imports the console module from ghcr.io, so this also verifies the OCI
       # round-trip on top of HTTP-rooted controller installs.
       - name: Run remote manifest over raw.githubusercontent.com
+        if: needs.select.outputs.mode != 'none'
         run: |
           set -euo pipefail
           URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/examples/hello-world/telo.yaml"
@@ -746,6 +801,28 @@ jobs:
             exit "$status"
           fi
           echo "$output" | grep -q "Hello from Telo!"
+
+      # Example, starter and blueprint tests import published modules, so a red
+      # run here can also mean the release sequence is behind. An example importing a
+      # module by relative path shows a breaking module change in the PR that caused it.
+      - name: Run the example test suites (Node)
+        if: needs.select.outputs.suites == 'true'
+        run: pnpm run telo:node ./examples/test-suite.yaml
+
+      - name: Run the starter test suites (Node)
+        if: needs.select.outputs.suites == 'true'
+        run: pnpm run telo:node ./starters/test-suite.yaml
+
+      - name: Run the blueprint test suites (Node)
+        if: needs.select.outputs.suites == 'true'
+        run: pnpm run telo:node ./blueprints/test-suite.yaml
+
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
 
   docker:
     name: "Linux: manifest tests (Docker)"
@@ -791,6 +868,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       # Test setup (not a runtime-image concern): build the module controllers
       # and their compile deps so the mounted suite's local_path controllers
       # resolve to built dist/. The image stays a pure runtime.
@@ -820,6 +905,13 @@ jobs:
           # user, with a home and a writable (memory-backed) cache the checkout never sees. The cache
           # holds cargo's target dir, whose build scripts run from it, so it must not be `noexec`.
           docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp --tmpfs /workspace/.telo:mode=1777,exec -v "$PWD":/workspace -w /workspace telo:ci ./test-suite.yaml "${args[@]}"
+
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
 
   # Tests whose subject is several telo installations over ONE workspace cache —
   # a host process and two containers, glibc and musl. They live outside the
@@ -871,6 +963,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       # The HOST runner in these tests is `cli/nodejs/bin/telo.mjs`, which
       # imports `dist/` — the container runners build their own copy inside the
       # image, but this one needs the workspace built first.
@@ -889,6 +989,13 @@ jobs:
 
       - name: Run package integration tests
         run: pnpm -r test:integration
+
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
 
   # No step is marked `continue-on-error`: a red step fails the job, and a
   # failure logged by a step that still reports success is the one outcome this
@@ -953,6 +1060,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       # The same selection as the Linux unit job — see the note there for why
       # modules are built. The excluded packages are browser bundles and the
       # docs site: nothing here reads their output, they have no
@@ -973,6 +1088,13 @@ jobs:
         run: |
           args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS" | tr -d '\r')
           pnpm -r "${args[@]}" --no-bail test
+
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
 
   windows-manifest:
     name: "Windows: manifest tests (Node)"
@@ -1026,6 +1148,14 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
 
       # Everything below reads from dist/, so a failure here makes the rest of
       # the run meaningless rather than merely red. Modules are included: the
@@ -1092,6 +1222,13 @@ jobs:
           args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$SUITE_ARGS" | tr -d '\r')
           node ./cli/nodejs/bin/telo.mjs ./test-suite-windows.yaml "${args[@]}"
 
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
+
   # macOS is POSIX, so unlike the Windows jobs these are not covering a separate
   # code path — they cover the platform axes that differ underneath one: an
   # arm64 runner (native prebuilds for esbuild, sqlite's staged better-sqlite3
@@ -1153,6 +1290,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       # The same selection as the Linux unit job — see the note there for why
       # modules are built. The excluded packages are browser bundles and the
       # docs site: nothing here reads their output, they have no
@@ -1173,6 +1318,13 @@ jobs:
         run: |
           args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS" | tr -d '\r')
           pnpm -r "${args[@]}" --no-bail test
+
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
 
   macos-manifest:
     name: "macOS: manifest tests (Node)"
@@ -1227,6 +1379,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       # Everything below reads from dist/, so a failure here makes the rest of
       # the run meaningless rather than merely red. Modules are included: the
       # three `pkg:npm` ones stage a dist/ their controller entry is resolved
@@ -1274,6 +1434,13 @@ jobs:
         if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo:node ./blueprints/test-suite.yaml
 
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
+
   macos-core:
     name: "macOS: core unit tests"
     runs-on: macos-latest
@@ -1319,6 +1486,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       - name: Build the core packages
         shell: bash
         env:
@@ -1334,6 +1509,13 @@ jobs:
         run: |
           args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS")
           pnpm -r "${args[@]}" --no-bail test
+
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
 
   windows-core:
     name: "Windows: core unit tests"
@@ -1380,6 +1562,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Staged files are fetched from third parties on first use; cache them so a
+      # flaky download fails one job at most once per key.
+      - name: Restore staged module files
+        id: staged
+        uses: ./.github/actions/restore-staged-files
+        with:
+          scope: ${{ github.job }}
+
       - name: Build the core packages
         shell: bash
         env:
@@ -1395,6 +1585,13 @@ jobs:
         run: |
           args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS" | tr -d '\r')
           pnpm -r "${args[@]}" --no-bail test
+
+      - name: Save staged module files
+        if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-staged-files
+        with:
+          key: ${{ steps.staged.outputs.key }}
+          paths: ${{ steps.staged.outputs.paths }}
 
   rust:
     name: "Linux: Rust tests"

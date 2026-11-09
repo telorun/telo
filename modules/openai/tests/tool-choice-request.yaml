@@ -21,7 +21,7 @@ targets:
 ---
 kind: Http.Client
 metadata: { name: echoClient }
-baseUrl: http://localhost:8876/v1
+baseUrl: http://127.0.0.1:8876/v1
 ---
 kind: Http.Request
 metadata: { name: echoRequest }
@@ -29,7 +29,7 @@ client: !ref echoClient
 ---
 kind: Http.Client
 metadata: { name: streamClient }
-baseUrl: http://localhost:8876/stream/v1
+baseUrl: http://127.0.0.1:8876/stream/v1
 ---
 kind: Http.Request
 metadata: { name: streamRequest }

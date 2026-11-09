@@ -52,6 +52,8 @@ const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_REDIRECTS = 10;
 
+const RETRY_DELAYS_MS = [1_000, 3_000];
+
 function fetchFailure(url: string, err: unknown, timeoutMs: number): ArchiveFetchError {
   if ((err as { name?: unknown }).name === "TimeoutError") {
     return new ArchiveFetchError(
@@ -60,14 +62,17 @@ function fetchFailure(url: string, err: unknown, timeoutMs: number): ArchiveFetc
   }
   const cause = (err as { cause?: unknown }).cause;
   const detail = cause instanceof Error ? cause.message : err instanceof Error ? err.message : String(err);
-  return new ArchiveFetchError(`could not fetch the archive ${url}: ${detail}`);
+  return new TransientFetchFailure(`could not fetch the archive ${url}: ${detail}`);
 }
 
 /**
- * One fetch per URL for the life of the reader; the caller decides that life. A
- * request is bounded in time, in response size and in decompressed size, may not
- * end at a URL a source could not name, and follows the kernel's egress policy
- * (`TELO_EGRESS`) at every hop.
+ * One fetch per URL while the reader holds the archive; the caller decides its
+ * life. A request is bounded in time, in response size and in decompressed size,
+ * may not end at a URL a source could not name, and follows the kernel's egress
+ * policy (`TELO_EGRESS`) at every hop. A transient failure is retried
+ * ({@link fetchArchive}); a failed read is never cached, so the next lookup
+ * tries again. With `idleReleaseMs` a decoded archive nobody has looked up for
+ * that long is dropped, on an unref'd timer that never keeps the process alive.
  */
 export function createArchiveReader(
   options: {
@@ -75,19 +80,34 @@ export function createArchiveReader(
     timeoutMs?: number;
     maxBytes?: number;
     maxExtractedBytes?: number;
+    idleReleaseMs?: number;
+    /** Waits before the second and third attempt. */
+    retryDelaysMs?: readonly number[];
   } = {},
 ): ArchiveReader {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
   const maxBytes = options.maxBytes ?? MAX_ARCHIVE_BYTES;
   const maxExtractedBytes = options.maxExtractedBytes ?? MAX_EXTRACTED_BYTES;
-  const cache = new Map<string, Promise<BundleEntry[]>>();
+  const retryDelaysMs = options.retryDelaysMs ?? RETRY_DELAYS_MS;
+  type Held = { entries: Promise<BundleEntry[]>; resolved: boolean; timer?: NodeJS.Timeout };
+  const cache = new Map<string, Held>();
+  // The idle clock runs only once the archive is decoded, never during a fetch.
+  const arm = (key: string, held: Held): void => {
+    const idleReleaseMs = options.idleReleaseMs;
+    if (idleReleaseMs === undefined || !held.resolved) return;
+    clearTimeout(held.timer);
+    held.timer = setTimeout(() => {
+      if (cache.get(key) === held) cache.delete(key);
+    }, idleReleaseMs);
+    held.timer.unref();
+  };
   return (url, format) => {
     const key = `${format}\0${url}`;
-    let entries = cache.get(key);
-    if (!entries) {
-      entries = (async () => {
-        const bytes = await fetchArchive(url, fetchImpl, timeoutMs, maxBytes);
+    let held = cache.get(key);
+    if (!held) {
+      const entries = (async () => {
+        const bytes = await fetchArchive(url, fetchImpl, timeoutMs, maxBytes, retryDelaysMs);
         try {
           return await readTarGz(bytes, { maxBytes: maxExtractedBytes });
         } catch (err) {
@@ -96,13 +116,49 @@ export function createArchiveReader(
           );
         }
       })();
-      cache.set(key, entries);
+      const created: Held = { entries, resolved: false };
+      held = created;
+      cache.set(key, created);
+      entries.then(
+        () => {
+          created.resolved = true;
+          if (cache.get(key) === created) arm(key, created);
+        },
+        () => {
+          if (cache.get(key) === created) cache.delete(key);
+        },
+      );
     }
-    return entries;
+    arm(key, held);
+    return held.entries;
   };
 }
 
+/** Whether a failed attempt is worth another: a network error, a 5xx or a 429. */
+class TransientFetchFailure extends ArchiveFetchError {}
+
 async function fetchArchive(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  maxBytes: number,
+  retryDelaysMs: readonly number[],
+): Promise<Buffer> {
+  const attempts = retryDelaysMs.length + 1;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fetchArchiveOnce(url, fetchImpl, timeoutMs, maxBytes);
+    } catch (err) {
+      if (!(err instanceof TransientFetchFailure)) throw err;
+      if (attempt === attempts) {
+        throw new ArchiveFetchError(`${err.message} (${attempts} attempts)`, { cause: err });
+      }
+      await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt - 1]));
+    }
+  }
+}
+
+async function fetchArchiveOnce(
   url: string,
   fetchImpl: typeof fetch,
   timeoutMs: number,
@@ -143,7 +199,10 @@ async function fetchArchive(
   }
   if (!response.ok) {
     await response.body?.cancel();
-    throw new ArchiveFetchError(`the archive request ${url} answered ${response.status} ${response.statusText}`);
+    const message = `the archive request ${url} answered ${response.status} ${response.statusText}`;
+    throw response.status >= 500 || response.status === 429
+      ? new TransientFetchFailure(message)
+      : new ArchiveFetchError(message);
   }
   if (Number(response.headers.get("content-length") ?? 0) > maxBytes) {
     await response.body?.cancel();

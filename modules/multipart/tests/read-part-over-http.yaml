@@ -77,7 +77,7 @@ steps:
   - name: sent
     invoke: { kind: Http.Request }
     inputs:
-      url: http://localhost:18874/upload
+      url: http://127.0.0.1:18874/upload
       method: POST
       headers: { content-type: !cel "steps.withFile.result.contentType" }
       body: !cel "steps.withFile.result.output"
@@ -89,7 +89,7 @@ steps:
   - name: missing
     invoke: { kind: Http.Request, throwOnHttpError: false }
     inputs:
-      url: http://localhost:18874/upload
+      url: http://127.0.0.1:18874/upload
       method: POST
       headers: { content-type: !cel "steps.withoutFile.result.contentType" }
       body: !cel "steps.withoutFile.result.output"

@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: ApplicationPorts
-  version: 1.0.0
+metadata: { name: ApplicationPorts, version: 1.0.0 }
 imports:
   Http: ../modules/http-server
   HttpClient: ../modules/http-client
@@ -10,34 +8,21 @@ imports:
 # Declared inbound port. `PORT` is unset under the test runner, so the
 # `default` applies. `${{ ports.http }}` must resolve to this integer at
 # runtime and feed the HTTP server.
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8858
+ports: { http: { env: PORT, protocol: tcp, default: 8858 } }
 ---
 kind: Run.Sequence
-metadata:
-  name: testPorts
+metadata: { name: testPorts }
 with:
   - kind: Http.Api
-    metadata:
-      name: TestApi
+    metadata: { name: TestApi }
     routes:
-      - request:
-          path: /ping
-          method: GET
+      - request: { path: /ping, method: GET }
         returns:
-          - status: 200
-            content:
-              application/json:
-                body:
-                  pong: true
+          - { status: 200, content: { application/json: { body: { pong: true } } } }
   - kind: Http.Server
-    metadata:
-      name: TestServer
+    metadata: { name: TestServer }
     listen:
-      address: !cel "'localhost'"
+      address: !cel "'127.0.0.1'"
       port: !cel "ports.http"
     mounts:
       - path: /api
@@ -46,10 +31,7 @@ targets:
   - !ref TestServer
 steps:
   - name: ping
-    invoke:
-      kind: HttpClient.Request
-      url: http://localhost:8858/api/ping
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8858/api/ping, method: GET }
 
   - name: assertPong
     inputs:
@@ -58,9 +40,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          pong:
-            type: boolean
-            const: true
-        required:
-          - pong
+        properties: { pong: { type: boolean, const: true } }
+        required: [pong]

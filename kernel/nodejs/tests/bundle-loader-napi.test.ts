@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { computeFilesIntegrity, type PayloadFile } from "../src/bundle/files-integrity.js";
 import { hostPlatformTarget, ModuleArtifact } from "../src/bundle/module-artifact.js";
 import { makeTarGz } from "../src/bundle/tar.js";
+import { createArchiveReader } from "../src/bundle/source-staging.js";
 import { BundleControllerLoader } from "../src/controller-loaders/bundle-loader.js";
 import { ControllerEnvMissingError } from "../src/controller-loaders/napi-loader.js";
 import type { TransportRegistry } from "../src/transports/transport-registry.js";
@@ -93,7 +94,7 @@ describe("BundleControllerLoader napi candidates", () => {
     });
 
   const resolveIn = (moduleDir: string, sources: ReturnType<typeof stagedBlock>) =>
-    new BundleControllerLoader().resolve(
+    new BundleControllerLoader(undefined, undefined, undefined, createArchiveReader({ retryDelaysMs: [0, 0] })).resolve(
       PURL,
       pathToFileURL(path.join(moduleDir, "telo.yaml")).href,
       undefined,

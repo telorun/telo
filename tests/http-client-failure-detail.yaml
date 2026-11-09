@@ -37,9 +37,7 @@ outputType:
       error:
         type: object
         required: [message, type]
-        properties:
-          message: { type: string }
-          type: { type: string }
+        properties: { message: { type: string }, type: { type: string } }
 code: |
   function main() {
     return {
@@ -56,9 +54,7 @@ with:
   - kind: Server.Api
     metadata: { name: TestApi }
     routes:
-      - request:
-          path: /deny
-          method: POST
+      - request: { path: /deny, method: POST }
         handler: !ref denial
         returns:
           - status: 400
@@ -71,19 +67,15 @@ with:
                     error:
                       type: object
                       required: [message, type]
-                      properties:
-                        message: { type: string }
-                        type: { type: string }
+                      properties: { message: { type: string }, type: { type: string } }
                 body:
                   error:
                     message: !cel "result.error.message"
                     type: !cel "result.error.type"
   - kind: Server.Server
     metadata: { name: TestServer }
-    listen:
-      port: 8879
-    openapi:
-      info: { title: Failure Detail, version: 1.0.0 }
+    listen: { port: 8879 }
+    openapi: { info: { title: Failure Detail, version: 1.0.0 } }
     mounts:
       - path: /api
         mount: !ref TestApi
@@ -96,13 +88,11 @@ steps:
     try:
       - name: call
         inputs:
-          url: http://localhost:8879/api/deny
+          url: http://127.0.0.1:8879/api/deny
           method: POST
           headers: { content-type: application/json }
           body: '"x"'
-        invoke:
-          kind: Http.Request
-          throwOnHttpError: true
+        invoke: { kind: Http.Request, throwOnHttpError: true }
     catch:
       - name: assertBufferedCode
         inputs:
@@ -128,14 +118,12 @@ steps:
     try:
       - name: call
         inputs:
-          url: http://localhost:8879/api/deny
+          url: http://127.0.0.1:8879/api/deny
           method: POST
           headers: { content-type: application/json }
           body: '"x"'
           responseType: stream
-        invoke:
-          kind: Http.Request
-          throwOnHttpError: true
+        invoke: { kind: Http.Request, throwOnHttpError: true }
     catch:
       - name: assertStreamedCode
         inputs:

@@ -23,7 +23,7 @@ metadata: { name: defaulted }
 ---
 kind: OpenAI.Client
 metadata: { name: local }
-baseUrl: http://localhost:8977/v1
+baseUrl: http://127.0.0.1:8977/v1
 timeout: 1234
 headers: { OpenAI-Organization: org-test }
 credential: { kind: Http.BearerToken, token: test-key }
@@ -96,7 +96,7 @@ steps:
           timeout: 600000
           followRedirects: true
         local:
-          baseUrl: http://localhost:8977/v1
+          baseUrl: http://127.0.0.1:8977/v1
           headers: { OpenAI-Organization: org-test }
           timeout: 1234
           followRedirects: true

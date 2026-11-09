@@ -29,8 +29,7 @@ targets:
   # before it expands them.
   - name: bootStamp
     invoke: !ref stamp
-    inputs:
-      at: "2026-01-15T09:30:00Z"
+    inputs: { at: "2026-01-15T09:30:00Z" }
   - name: assertBootStamp
     invoke: !ref assertEquals
     inputs:
@@ -41,20 +40,17 @@ targets:
 # Renders whatever instant it is handed. `string(timestamp)` has no string
 # overload, so a row that reached it as text fails at dispatch.
 kind: Run.Value
-metadata:
-  name: stamp
+metadata: { name: stamp }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [at]
-    properties:
-      at: { x-telo-type: Telo.Timestamp }
+    properties: { at: { x-telo-type: Telo.Timestamp } }
 value: !cel "string(inputs.at)"
 ---
 kind: Assert.Equals
-metadata:
-  name: assertEquals
+metadata: { name: assertEquals }
 ---
 # A window read back as its closing instant and key length: the config slots of
 # a resource's own kind.
@@ -82,16 +78,14 @@ metadata:
   name: Carrier
   description: Declares the payload shape a holder's `payload:` is typed against.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nowhere.mjs#Never
+controllers: [pkg:telo/local/js?path=./nowhere.mjs#Never]
 schema:
   type: object
   $defs:
     Payload:
       type: object
       required: [at]
-      properties:
-        at: { x-telo-type: Telo.Timestamp }
+      properties: { at: { x-telo-type: Telo.Timestamp } }
 ---
 # `payload:` is typed by another kind's schema, so the literal in it is decoded
 # against that schema and nothing else.
@@ -103,10 +97,7 @@ extends: Run.Value
 schema:
   type: object
   required: [payload]
-  properties:
-    payload:
-      type: object
-      x-telo-schema-from: "Self.Carrier/$defs/Payload"
+  properties: { payload: { type: object, x-telo-schema-from: "Self.Carrier/$defs/Payload" } }
 base:
   value: !cel "string(self.payload.at)"
 ---
@@ -120,22 +111,16 @@ metadata:
 extends: Run.Value
 ---
 kind: Telo.Definition
-metadata:
-  name: Steps
-  description: A sequence of steps run in order.
+metadata: { name: Steps, description: A sequence of steps run in order. }
 extends: Run.Sequence
 ---
 # A route's `inputs:` — a call site that is not a step, named by the handler
 # slot's own `x-telo-ref` pointer.
 kind: Http.Api
-metadata:
-  name: stampApi
+metadata: { name: stampApi }
 routes:
-  - request:
-      path: /stamp
-      method: GET
-    inputs:
-      at: "2026-01-15T09:30:00Z"
+  - request: { path: /stamp, method: GET }
+    inputs: { at: "2026-01-15T09:30:00Z" }
     handler: !ref stamp
     returns:
       - status: 200
@@ -153,33 +138,26 @@ metadata:
   name: FixedStamp
   description: Renders one fixed instant, written as the argument of its body's call.
 capability: Telo.Invocable
-schema:
-  type: object
+schema: { type: object }
 resources:
   - kind: Run.Value
-    metadata:
-      name: inner
+    metadata: { name: inner }
     inputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [at]
-        properties:
-          at: { x-telo-type: Telo.Timestamp }
+        properties: { at: { x-telo-type: Telo.Timestamp } }
     value: !cel "string(inputs.at)"
 invoke: !ref inner
-inputs:
-  at: "2026-01-15T09:30:00Z"
+inputs: { at: "2026-01-15T09:30:00Z" }
 ---
 kind: Run.Sequence
-metadata:
-  name: verifyLiterals
+metadata: { name: verifyLiterals }
 with:
   - kind: Http.Server
-    metadata:
-      name: stampServer
-    listen:
-      port: 8849
+    metadata: { name: stampServer }
+    listen: { port: 8849 }
     mounts:
       - path: /
         mount: !ref stampApi
@@ -196,10 +174,7 @@ steps:
     invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.readWindow.result"
-      expected:
-        closes: "2026-01-15T09:00:00Z"
-        lastsSeconds: 5400
-        keyLength: 3
+      expected: { closes: "2026-01-15T09:00:00Z", lastsSeconds: 5400, keyLength: 3 }
   # A CEL expression at the same slots: it is never decoded, and the value it
   # produces IS the instance.
   - name: readComputedWindow
@@ -212,10 +187,7 @@ steps:
     invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.readComputedWindow.result"
-      expected:
-        closes: "2026-01-15T09:00:00Z"
-        lastsSeconds: 5400
-        keyLength: 3
+      expected: { closes: "2026-01-15T09:00:00Z", lastsSeconds: 5400, keyLength: 3 }
   # An embedded file is never decoded either: the slot receives the file's own
   # bytes, so a file whose text IS base64url stays its four characters rather
   # than becoming the three bytes they encode.
@@ -229,15 +201,11 @@ steps:
     invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.readEmbeddedWindow.result"
-      expected:
-        closes: "2026-01-15T09:00:00Z"
-        lastsSeconds: 5400
-        keyLength: 4
+      expected: { closes: "2026-01-15T09:00:00Z", lastsSeconds: 5400, keyLength: 4 }
   # A step's `inputs:`, against the target's declared inputType.
   - name: fromStep
     invoke: !ref stamp
-    inputs:
-      at: "2026-01-15T11:30:00+02:00"
+    inputs: { at: "2026-01-15T11:30:00+02:00" }
   - name: checkStep
     invoke: !ref assertEquals
     inputs:
@@ -245,10 +213,7 @@ steps:
       expected: "2026-01-15T09:30:00Z"
   # An `x-telo-schema-from` slot.
   - name: fromSchemaFrom
-    invoke:
-      kind: Self.Holder
-      payload:
-        at: "2026-01-15T09:30:00Z"
+    invoke: { kind: Self.Holder, payload: { at: "2026-01-15T09:30:00Z" } }
   - name: checkSchemaFrom
     invoke: !ref assertEquals
     inputs:
@@ -267,18 +232,14 @@ steps:
           properties:
             opens: { x-telo-type: Telo.Timestamp }
             quota: { type: integer, x-telo-type: Telo.Uint64 }
-      value:
-        opens: "2026-01-15T09:30:00Z"
-        quota: 7
+      value: { opens: "2026-01-15T09:30:00Z", quota: 7 }
   - name: checkValueRow
     invoke: !ref assertEquals
     inputs:
       actual:
         opens: !cel "string(steps.fromValueRow.result.opens)"
         quotaPlusOne: !cel "steps.fromValueRow.result.quota + 1u == 8u"
-      expected:
-        opens: "2026-01-15T09:30:00Z"
-        quotaPlusOne: true
+      expected: { opens: "2026-01-15T09:30:00Z", quotaPlusOne: true }
   # The largest uint, written the one way it stays exact — as a CEL uint — passes
   # the same declared output and arrives as itself.
   - name: widestQuota
@@ -289,8 +250,7 @@ steps:
         schema:
           type: object
           required: [quota]
-          properties:
-            quota: { type: integer, x-telo-type: Telo.Uint64 }
+          properties: { quota: { type: integer, x-telo-type: Telo.Uint64 } }
       value:
         quota: !cel "18446744073709551615u"
   - name: checkWidestQuota
@@ -305,8 +265,7 @@ steps:
       steps:
         - name: stamped
           invoke: !ref stamp
-          inputs:
-            at: "2026-01-15T11:30:00+02:00"
+          inputs: { at: "2026-01-15T11:30:00+02:00" }
         - name: row
           invoke:
             kind: Self.Row
@@ -315,24 +274,19 @@ steps:
               schema:
                 type: object
                 required: [opens]
-                properties:
-                  opens: { x-telo-type: Telo.Timestamp }
-            value:
-              opens: "2026-01-15T09:30:00Z"
+                properties: { opens: { x-telo-type: Telo.Timestamp } }
+            value: { opens: "2026-01-15T09:30:00Z" }
         - name: check
           invoke: !ref assertEquals
           inputs:
             actual:
               stamped: !cel "steps.stamped.result"
               opens: !cel "string(steps.row.result.opens)"
-            expected:
-              stamped: "2026-01-15T09:30:00Z"
-              opens: "2026-01-15T09:30:00Z"
+            expected: { stamped: "2026-01-15T09:30:00Z", opens: "2026-01-15T09:30:00Z" }
   # A template definition's top-level `inputs:`, dispatched to the entry its own
   # body names.
   - name: fromTemplate
-    invoke:
-      kind: Self.FixedStamp
+    invoke: { kind: Self.FixedStamp }
   - name: checkTemplate
     invoke: !ref assertEquals
     inputs:
@@ -341,10 +295,7 @@ steps:
   # A route's `inputs:`, decoded when the API is created rather than per request.
   - name: fetch
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://localhost:8849/stamp
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8849/stamp, method: GET }
   - name: checkRoute
     invoke: !ref assertEquals
     inputs:
@@ -364,8 +315,7 @@ steps:
     invoke:
       kind: Assert.Manifest
       source: ./__fixtures__/value-type-literals/refused-app.yaml
-      expect:
-        runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)"
+      expect: { runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)" }
   # The same two halves at a slot typed from elsewhere: a step's `inputs:`
   # against the target's inputType, and a uint outside the range JSON Schema
   # cannot state. `telo check` reports both at the library, on the leaf.
@@ -422,8 +372,7 @@ steps:
     invoke:
       kind: Assert.Manifest
       source: ./__fixtures__/value-type-literals/refused-route-app.yaml
-      expect:
-        runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)"
+      expect: { runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)" }
   # A boot target's inline step and a template definition's own `inputs:`. No
   # consumer can run either past the refusal: an inline boot step lives in the
   # entry file, and a definition's body is checked wherever its kind is read —

@@ -147,12 +147,12 @@ with:
   - kind: App.Instance
     metadata: { name: anthropicApp }
     source: ./__fixtures__/swap-stream/anthropic-app.yaml
-    variables: { endpoint: http://localhost:8918/anthropic/v1 }
+    variables: { endpoint: http://127.0.0.1:8918/anthropic/v1 }
     ports: { http: 8919 }
   - kind: App.Instance
     metadata: { name: openaiApp }
     source: ./__fixtures__/swap-stream/openai-app.yaml
-    variables: { endpoint: http://localhost:8918/openai/v1 }
+    variables: { endpoint: http://127.0.0.1:8918/openai/v1 }
     ports: { http: 8920 }
 targets:
   - !ref Vendors

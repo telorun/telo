@@ -109,7 +109,7 @@ steps:
   # letting a caller compose one.
   - name: post
     inputs:
-      url: http://localhost:8873/api/upload
+      url: http://127.0.0.1:8873/api/upload
       method: POST
       headers:
         content-type: !cel "steps.encode.result.contentType"

@@ -8,7 +8,7 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { ensureStagedEntry } from "../src/bundle/source-staging.js";
+import { createArchiveReader, ensureStagedEntry } from "../src/bundle/source-staging.js";
 import { makeTarGz } from "../src/bundle/tar.js";
 import {
   resolveModuleFileUri,
@@ -83,11 +83,11 @@ function lookupFor(sources: unknown, native: unknown[] = []): ModuleFileLookup {
     sources: readModuleSources({ sources }),
     assetPatterns: ["./assets/"],
   };
+  const kernelReader = createArchiveReader({ retryDelaysMs: [0, 0] });
   return {
     getModuleArtifact: () => undefined,
     getDeclaringModule: () => module,
-    ensureStagedEntry: (moduleDir, source, entry, archives) =>
-      ensureStagedEntry(moduleDir, source, entry, { archives }),
+    ensureStagedEntry: (moduleDir, source, entry) => ensureStagedEntry(moduleDir, source, entry, { archives: kernelReader }),
   };
 }
 
@@ -130,6 +130,17 @@ describe("resolveModuleFileUri from a source checkout with staged files", () => 
     await resolveModuleFileUri("./assets/", manifest, lookupFor(sources));
     expect(fs.readFileSync(path.join(dir, ASSET), "utf8")).toBe(BYTES);
     expect(fs.readFileSync(path.join(dir, STYLE), "utf8")).toBe(BYTES);
+    expect(requests).toEqual(["/ui-1.0.0.tar.gz"]);
+  });
+
+  it("fetches a shared archive once across separate resolutions through one reader", async () => {
+    const sources = stagedBy();
+    const ui = sources.ui as { entries: Record<string, unknown> };
+    ui.entries[STYLE] = pinned("app.css");
+    const lookup = lookupFor(sources);
+    await resolveModuleFileUri(ASSET, manifest, lookup);
+    await resolveModuleFileUri(STYLE, manifest, lookup);
+    expect(fs.existsSync(path.join(dir, STYLE))).toBe(true);
     expect(requests).toEqual(["/ui-1.0.0.tar.gz"]);
   });
 
