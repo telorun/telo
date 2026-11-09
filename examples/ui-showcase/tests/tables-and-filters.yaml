@@ -13,7 +13,6 @@ metadata:
     their assignee and project, paged by its own cursor.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 variables:
@@ -30,7 +29,7 @@ kind: HttpClient.Client
 metadata: { name: grid }
 baseUrl: http://127.0.0.1:8153
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -38,8 +37,7 @@ with:
     source: ../telo.yaml
     variables:
       dbFile: !cel "variables.dbFile.joinPath('ui-showcase-tables-' + uuidv4() + '.db')"
-    ports:
-      http: 8153
+    ports: { http: 8153 }
 targets:
   - !ref app
 steps:
@@ -188,8 +186,7 @@ steps:
       body: { title: Prepare the demo, projectCode: TEL-42, assigneeEmail: liam@northwind.example, dueOn: "2026-11-30", label: chore }
   - name: refusedCreate
     invoke: { kind: HttpClient.Request, client: !ref grid, url: /api/tasks, method: POST }
-    inputs:
-      body: { title: Broken, projectCode: tel-42 }
+    inputs: { body: { title: Broken, projectCode: tel-42 } }
   - name: replace
     invoke: { kind: HttpClient.Request, client: !ref grid, method: PUT }
     inputs:

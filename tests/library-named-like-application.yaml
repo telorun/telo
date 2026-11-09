@@ -10,21 +10,19 @@ metadata:
     application's place, the endpoint found no definition, nothing was
     injected, and it failed with ERR_MCP_BUNDLE_NOT_FOUND.
 imports:
+  Run: ../modules/run
   Lib: ./__fixtures__/library-named-like-application
   Mcp: ../modules/mcp-server
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref check
 ---
 kind: Run.Value
-metadata:
-  name: echo
+metadata: { name: echo }
 value: pong
 ---
 kind: Mcp.Tools
-metadata:
-  name: PingTools
+metadata: { name: PingTools }
 entries:
   - name: ping
     description: Answers pong.
@@ -37,17 +35,13 @@ entries:
           text: !cel "result"
 ---
 kind: Mcp.HttpEndpoint
-metadata:
-  name: mcpEndpoint
-serverInfo:
-  name: same-name
-  version: 1.0.0
+metadata: { name: mcpEndpoint }
+serverInfo: { name: same-name, version: 1.0.0 }
 tools:
   - !ref PingTools
 ---
-kind: Run.Sequence
-metadata:
-  name: check
+kind: Telo.Sequence
+metadata: { name: check }
 steps:
   - name: echo
     invoke: !ref echo

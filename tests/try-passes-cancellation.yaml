@@ -8,14 +8,11 @@ metadata:
     on a target that guards its own work with `try:` still fails the caller
     with ERR_STEP_TIMEOUT, rather than with whatever the target's `catch:`
     would have turned the cancellation into.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
-  Timer: ../modules/timer
+imports: { Assert: ../modules/assert, Timer: ../modules/timer }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: bounded
@@ -24,13 +21,11 @@ steps:
       # would replace the cancellation with its own code.
       - name: call
         invoke:
-          kind: Run.Sequence
+          kind: Telo.Sequence
           steps:
             - name: guard
               try:
-                - name: wait
-                  invoke: { kind: Timer.Delay }
-                  inputs: { duration: 5s }
+                - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 5s } }
               catch:
                 - name: catchRan
                   throw: { code: ERR_CATCH_RAN, message: the catch branch ran }

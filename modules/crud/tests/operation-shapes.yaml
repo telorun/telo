@@ -15,7 +15,6 @@ imports:
   SQLite: ../../sqlite
   Http: ../../http-server
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref migrate
@@ -92,7 +91,7 @@ collection:
 kind: Http.Reference
 metadata: { name: docs }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

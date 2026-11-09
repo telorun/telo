@@ -23,7 +23,6 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
   RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # This test's own workspace, emptied before each run.
@@ -37,7 +36,7 @@ targets:
 ---
 # One turn's event stream, every frame decoded: a record frame's id and data,
 # or an error frame's code and message.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readEvents }
 inputType:
   kind: Telo.JsonSchema
@@ -69,7 +68,7 @@ outputs:
       ? {'event': 'error', 'error': parseJson(r.data)}
       : {'event': r.event, 'id': int(r.id), 'data': parseJson(r.data).data})
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: newConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -77,8 +76,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [port]
-    properties:
-      port: { type: integer }
+    properties: { port: { type: integer } }
 steps:
   - name: post
     invoke: { kind: HttpClient.Request }
@@ -88,7 +86,7 @@ steps:
 outputs:
   id: !cel "steps.post.result.body.id"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: startTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -112,7 +110,7 @@ steps:
 outputs:
   turnId: !cel "steps.post.result.body.turnId"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -134,7 +132,7 @@ steps:
       recursive: true
   - name: sameModel
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -145,8 +143,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18450/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -247,14 +244,12 @@ steps:
             url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.plain.result.turnId }}/events?lastEventId=0"
             headers: { last-event-id: "4" }
         - name: badCursor
-          invoke:
-            kind: HttpClient.Request
+          invoke: { kind: HttpClient.Request }
           inputs:
             url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.plain.result.turnId }}/events?lastEventId=abc"
         - name: unknownTurn
           invoke: { kind: HttpClient.Request }
-          inputs:
-            url: http://127.0.0.1:18451/chat/01a0deb2-0000-7000-8000-000000000000/events
+          inputs: { url: http://127.0.0.1:18451/chat/01a0deb2-0000-7000-8000-000000000000/events }
         - name: unknownPage
           invoke: { kind: HttpClient.Request }
           inputs:
@@ -275,7 +270,7 @@ steps:
         # Removed through the same journal, from outside the agent.
         - name: remove
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             with:
               - kind: SQLite.Connection
                 metadata: { name: agentDb }
@@ -311,7 +306,7 @@ steps:
   # under the first one.
   - name: otherModel
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -323,8 +318,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18450/v1
             model: another-model
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: switched
@@ -339,8 +333,7 @@ steps:
       conversationId: !cel "steps.sameModel.result.conversationId"
   - name: sent
     invoke: { kind: HttpClient.Request }
-    inputs:
-      url: http://127.0.0.1:18450/requests
+    inputs: { url: http://127.0.0.1:18450/requests }
   # Requests in order: the first turn's naming call and its own, the tool
   # turn's two model calls, the refused turn, the switched turn.
   - name: reasoningReplayedToItsModelOnly

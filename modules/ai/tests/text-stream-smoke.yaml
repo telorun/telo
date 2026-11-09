@@ -14,7 +14,6 @@ imports:
   AiEcho: ./__fixtures__/ai-echo.yaml
   Ndjson: ../../ndjson-codec
   PlainText: ../../plain-text-codec
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testNdjson
@@ -32,7 +31,7 @@ metadata: { name: ndjsonEnc }
 kind: PlainText.Decoder
 metadata: { name: textDec }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNdjson }
 steps:
   - name: textStream

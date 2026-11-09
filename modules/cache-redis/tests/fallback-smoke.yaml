@@ -10,7 +10,6 @@ imports:
   Cache: ../../cache
   CacheMemory: ../../cache-memory
   CacheRedis: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -33,7 +32,7 @@ kind: Cache.Lookup
 metadata: { name: get }
 store: !ref redis
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: write

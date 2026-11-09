@@ -6,7 +6,7 @@
  * in prose and the backend provides the methods. A shared TypeScript interface
  * reached through the module-library seam would be the nominal alternative, and
  * it buys nothing here — there is one consumer (this module) and the surface is
- * six methods.
+ * a handful of methods.
  *
  * The operations are chosen by what is HARD, not by what a store happens to
  * offer. Claiming due runs without two resumers taking the same one, and waking
@@ -20,12 +20,16 @@ import type { ZoneEntry } from "@telorun/sdk";
 
 /** One recorded fact about a run. Written on COMPLETION, never on dispatch —
  *  the rule the whole format rests on, and what makes an interrupted step
- *  re-executable rather than skipped. */
+ *  re-executable rather than skipped.
+ *
+ *  A `baseline` entry is the run's state at a step boundary, replacing every
+ *  body entry before it (spec §5.2); its `path` is the step it was taken after,
+ *  and a run holds at most one, written only by {@link DurableJournal.replaceWithBaseline}. */
 export interface JournalEntry {
   /** The step path this records. Deterministic under concurrency, which is why
    *  journaling lives in the step engine at all. */
   path: string;
-  kind: "step" | "decision";
+  kind: "step" | "decision" | "baseline";
   /** For a decision, which kind of decision it was. */
   decision?: string;
   /** Declaration-site identity of a step's target, so a replay that reaches a
@@ -141,6 +145,14 @@ export interface RunRecord {
    * handed rather than did.
    */
   replayedSteps?: number;
+  /** The declared name of the workflow that admitted this run. Lets a sweep apply
+   *  the retention window of the run's OWN workflow; absent on a run admitted
+   *  before it was recorded, which retention therefore leaves alone. */
+  workflow?: string;
+  /** Epoch milliseconds at which the run reached a terminal status, stamped by the
+   *  journal when it settles the run. Absent until then, and on a run settled
+   *  before it was recorded. */
+  finishedAt?: number;
 }
 
 /**
@@ -192,6 +204,7 @@ export interface DurableJournal {
       inputs?: unknown;
       inputsCodecVersion?: number;
       claim?: RunClaim;
+      workflow?: string;
     },
   ): Promise<{ admitted: boolean; existing?: RunRecord }>;
   /** This run's current record, or undefined if it was never admitted. */
@@ -206,7 +219,14 @@ export interface DurableJournal {
    * than assume its own was kept.
    */
   append(run: string, entry: JournalEntry): Promise<JournalEntry>;
-  /** Settle a run. */
+  /**
+   * Write the run's baseline and delete the entries at `replaced` — the previous
+   * baseline among them — as ONE atomic write: after a crash the journal holds
+   * either every replaced entry or the baseline, never both and never neither.
+   * Entries not listed are kept. Optional: a journal without it never compacts.
+   */
+  replaceWithBaseline?(run: string, baseline: JournalEntry, replaced: readonly string[]): Promise<void>;
+  /** Settle a run. The journal stamps {@link RunRecord.finishedAt}. */
   completeRun(run: string, outcome: Omit<RunRecord, "run">): Promise<void>;
   /**
    * Record that a run suspended, and where.
@@ -260,6 +280,21 @@ export interface DurableJournal {
    * against one store do not both resume it. False means someone else has it.
    */
   claimRun(run: string, holder: string, ttlMs: number): Promise<boolean>;
+  /**
+   * Finished runs of one workflow whose `finishedAt` is at or before the cutoff,
+   * oldest first — the candidates a retention sweep purges. A run that is not
+   * terminal, or that has no `workflow` / `finishedAt` recorded, is never listed.
+   * Optional with {@link deleteFinishedRun}: a journal without them is never purged.
+   */
+  finishedRuns?(workflow: string, finishedBefore: number, limit: number): Promise<string[]>;
+  /**
+   * Delete a run's record and every one of its entries, but only if the run is
+   * still terminal and finished at or before `finishedBefore`; answers whether it
+   * deleted. The condition is part of the operation, so a run that was resumed or
+   * re-settled between listing and deleting is left alone, and the record and its
+   * entries go together or not at all.
+   */
+  deleteFinishedRun?(run: string, finishedBefore: number): Promise<boolean>;
   /**
    * Do this journal's own writes land inside the given zone's atomicity?
    *

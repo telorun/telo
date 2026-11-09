@@ -9,10 +9,10 @@ metadata:
     Nothing is asserted about the connection: whether it is closed afterwards
     depends on the host.
 imports:
+  Run: ../../run
   Http: ../
   HttpClient: ../../http-client
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -30,11 +30,11 @@ routes:
       - status: 200
         content: { application/json: { body: { ok: true, note: answered without reading the body } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8973 }
     contentTypeParsers:
       - { contentType: application/octet-stream, stream: true }
@@ -42,7 +42,7 @@ with:
       - path: /api
         mount: !ref api
 targets:
-  - !ref Server
+  - !ref server
 steps:
   # 4,000 bytes in ten chunks: a byte stream has no declared length, so it is
   # sent chunked and nothing refuses it up front.

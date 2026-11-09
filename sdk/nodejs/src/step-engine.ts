@@ -24,7 +24,15 @@
 import type { Invocable } from "./capabilities/invokable.js";
 import { isCancellationError, type InvokeContext } from "./cancellation.js";
 import type { CompiledValue } from "./compiled-value.js";
-import { decideValue, stepPath, type DurableDecisionKind } from "./durable-run.js";
+import {
+  decideValue,
+  durableHandleOf,
+  journalingSuppressed,
+  stepPath,
+  type DurableBaseline,
+  type DurableBaselineFrame,
+  type DurableDecisionKind,
+} from "./durable-run.js";
 import { isSuspension } from "./durable-suspension.js";
 import { fileStepResult, stepJournalPath, stepLabel } from "./emitted-step.js";
 import { attachRaisedAt } from "./failure-trace.js";
@@ -117,6 +125,98 @@ export type Step =
   | ThrowStep
   | RethrowStep
   | ValueStep;
+
+/** What the kind owning a durable run hands {@link StepEngine.executeSteps} for
+ *  the run's body. */
+export interface DurableBody {
+  /** The baseline the run resumes from; omitted, the body starts at the top. */
+  readonly resume?: DurableBaseline;
+}
+
+/** Where a list sits inside a durable body: the frames above it and, while
+ *  resuming, the frames still to descend — the first naming a step of this list.
+ *  Absent outside a durable body and inside `catch:` / `finally:`. */
+interface BodyCursor {
+  readonly enclosing: readonly DurableBaselineFrame[];
+  readonly resume?: readonly DurableBaselineFrame[];
+}
+
+function within(cursor: BodyCursor | undefined, frame: DurableBaselineFrame): BodyCursor | undefined {
+  return cursor && { enclosing: [...cursor.enclosing, frame] };
+}
+
+const BRANCH_FIELDS: Record<string, readonly string[]> = {
+  then: [],
+  else: [],
+  default: [],
+  try: [],
+  elseif: ["index"],
+  do: ["turn"],
+  cases: ["case"],
+};
+
+/** A restored baseline's position, refused unless every frame is one this
+ *  runtime writes: a later writer may mean something else by a frame it adds. */
+function restoredPosition(baseline: DurableBaseline, run: string): readonly DurableBaselineFrame[] {
+  const refuse = (why: string) =>
+    new InvokeError(
+      "ERR_DURABLE_ENTRY_UNDECODABLE",
+      `Run '${run}': its baseline cannot be read by this runtime (${why}), so the run cannot resume from it.`,
+      { run },
+    );
+  const extra = Object.keys(baseline).find((key) => key !== "position" && key !== "steps");
+  if (extra !== undefined) throw refuse(`it holds an unknown member '${extra}'`);
+  const { position, steps } = baseline as { position?: unknown; steps?: unknown };
+  if (!steps || typeof steps !== "object" || Array.isArray(steps)) throw refuse("`steps` is not a map");
+  if (!Array.isArray(position) || position.length === 0) {
+    throw refuse("`position` is not a non-empty list");
+  }
+  position.forEach((frame: unknown, index) => {
+    const last = index === position.length - 1;
+    const f = frame as Record<string, unknown> | null;
+    if (!f || typeof f !== "object" || typeof f.step !== "string") {
+      throw refuse(`frame ${index} names no step`);
+    }
+    // The last frame is the completed step and carries no branch; every other
+    // frame carries exactly its branch's fields.
+    const fields =
+      f.branch === undefined
+        ? last ? [] : undefined
+        : !last && typeof f.branch === "string" && Object.hasOwn(BRANCH_FIELDS, f.branch)
+          ? BRANCH_FIELDS[f.branch]
+          : undefined;
+    const keys = Object.keys(f).filter((key) => key !== "step" && key !== "branch");
+    const fits =
+      fields !== undefined &&
+      keys.length === fields.length &&
+      fields.every((field) =>
+        field === "case" ? typeof f[field] === "string" : Number.isInteger(f[field]) && (f[field] as number) >= 0,
+      );
+    if (!fits) throw refuse(`frame ${index} is not a position this runtime writes`);
+  });
+  return position as DurableBaselineFrame[];
+}
+
+function positionMismatch(invokeCtx: InvokeContext | undefined, frame: DurableBaselineFrame): InvokeError {
+  const run = durableHandleOf(invokeCtx)?.runId ?? "";
+  const branch =
+    frame.branch === undefined
+      ? ""
+      : frame.branch === "elseif"
+        ? ` (elseif ${frame.index})`
+        : frame.branch === "do"
+          ? ` (turn ${frame.turn})`
+          : frame.branch === "cases"
+            ? ` (case '${frame.case}')`
+            : ` (${frame.branch})`;
+  return new InvokeError(
+    "ERR_JOURNAL_ENTRY_MISMATCH",
+    `Run '${run}': its baseline records the run at '${frame.step}'${branch}, which this body no ` +
+      `longer has. The body changed under a live run; resuming would continue from a position no ` +
+      `execution of this body reached.`,
+    { run, position: frame },
+  );
+}
 
 /** Code assigned to any caught failure that is not a structured `InvokeError`.
  *  Guarantees `error.code` is always a non-empty string inside a `catch`, so a
@@ -301,6 +401,11 @@ export class StepEngine {
    *   dispatch carries where its `inputs:` are written (`inputsAt`); omitted,
    *   none does — so a caller whose list is not its resource's own written field
    *   omits it rather than guess.
+   * @param durableBody Given only by the kind that owns a durable run, for the
+   *   run's body: its step boundaries — through `if` / `elseif` / `else` /
+   *   `switch` / `try` / `while` branches, never into a dispatched body or a
+   *   `catch:` / `finally:` — are where the handle may take a baseline, and
+   *   `resume` starts the body at one (spec §5.2).
    */
   async executeSteps(
     stepList: Step[],
@@ -310,12 +415,73 @@ export class StepEngine {
     invokeCtx?: InvokeContext,
     path?: string,
     pointer?: string,
+    durableBody?: DurableBody,
   ): Promise<void> {
     if (pointer !== undefined) this.registerWrittenPointers(stepList, pointer);
     const base = path ?? baseStepPath(invokeCtx);
-    for (const step of stepList) {
-      await this.executeStep(step, steps, scope, extraCtx, invokeCtx, base);
+    let cursor: BodyCursor | undefined;
+    if (durableBody?.resume) {
+      const run = durableHandleOf(invokeCtx)?.runId ?? "";
+      cursor = { enclosing: [], resume: restoredPosition(durableBody.resume, run) };
+      Object.assign(steps, durableBody.resume.steps);
+    } else if (durableBody) {
+      cursor = { enclosing: [] };
     }
+    await this.runList(stepList, steps, scope, extraCtx, invokeCtx, base, cursor);
+  }
+
+  /**
+   * Run one list. Under a {@link BodyCursor} it first descends to where a
+   * resumed run stood, then offers the handle a baseline after every step.
+   */
+  private async runList(
+    stepList: Step[],
+    steps: Record<string, unknown>,
+    scope: ScopeContext | undefined,
+    extraCtx: Record<string, unknown>,
+    invokeCtx: InvokeContext | undefined,
+    base: string,
+    cursor: BodyCursor | undefined,
+  ): Promise<void> {
+    let next = 0;
+    if (cursor?.resume) {
+      const [head, ...rest] = cursor.resume;
+      const index = stepList.findIndex((step) => this.pathOf(base, step) === head!.step);
+      if (index < 0) throw positionMismatch(invokeCtx, head!);
+      const step = stepList[index]!;
+      if (rest.length > 0) {
+        await this.executeStep(step, steps, scope, extraCtx, invokeCtx, head!.step, cursor);
+        await this.offerBaseline(invokeCtx, steps, cursor.enclosing, head!.step);
+      }
+      next = index + 1;
+    }
+    const here = cursor && { enclosing: cursor.enclosing };
+    for (let index = next; index < stepList.length; index++) {
+      const step = stepList[index]!;
+      const path = this.pathOf(base, step);
+      await this.executeStep(step, steps, scope, extraCtx, invokeCtx, path, here);
+      if (here) await this.offerBaseline(invokeCtx, steps, here.enclosing, path);
+    }
+  }
+
+  /** Ask the run handle whether a baseline is due after the step at `completed`,
+   *  and hand it the position and `steps` map when one is. */
+  private async offerBaseline(
+    invokeCtx: InvokeContext | undefined,
+    steps: Record<string, unknown>,
+    enclosing: readonly DurableBaselineFrame[],
+    completed: string,
+  ): Promise<void> {
+    const handle = durableHandleOf(invokeCtx);
+    if (!handle?.baseline || journalingSuppressed(this.ctx, invokeCtx, handle)) return;
+    const written = handle.baseline(
+      () => ({
+        position: [...enclosing, { step: completed }],
+        steps,
+      }),
+      completed,
+    );
+    if (written) await written;
   }
 
   /**
@@ -370,15 +536,20 @@ export class StepEngine {
     return decideValue(this.ctx, invokeCtx, path, kind, compute);
   }
 
+  /** @param cursor Present inside a durable body; while resuming, its first
+   *   frame is this step's own. */
   private async executeStep(
     step: Step,
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
-    invokeCtx?: InvokeContext,
-    path = "steps",
+    invokeCtx: InvokeContext | undefined,
+    here: string,
+    cursor: BodyCursor | undefined,
   ): Promise<void> {
-    const here = this.pathOf(path, step);
+    if (cursor?.resume && !(isIfStep(step) || isWhileStep(step) || isSwitchStep(step) || isTryStep(step))) {
+      throw positionMismatch(invokeCtx, cursor.resume[0]!);
+    }
     if (isInvokeStep(step)) {
       const written = this.writtenPointers.get(step);
       await executeInvokeStep(step, this.ctx, {
@@ -390,13 +561,14 @@ export class StepEngine {
         ...(written === undefined ? {} : { inputsAt: `${written}/inputs`, calledAt: written }),
       });
     }
-    else if (isIfStep(step)) await this.executeIfStep(step, steps, scope, extraCtx, invokeCtx, here);
+    else if (isIfStep(step))
+      await this.executeIfStep(step, steps, scope, extraCtx, invokeCtx, here, cursor);
     else if (isWhileStep(step))
-      await this.executeWhileStep(step, steps, scope, extraCtx, invokeCtx, here);
+      await this.executeWhileStep(step, steps, scope, extraCtx, invokeCtx, here, cursor);
     else if (isSwitchStep(step))
-      await this.executeSwitchStep(step, steps, scope, extraCtx, invokeCtx, here);
+      await this.executeSwitchStep(step, steps, scope, extraCtx, invokeCtx, here, cursor);
     else if (isTryStep(step))
-      await this.executeTryStep(step, steps, scope, extraCtx, invokeCtx, here);
+      await this.executeTryStep(step, steps, scope, extraCtx, invokeCtx, here, cursor);
     else if (isThrowStep(step)) this.executeThrowStep(step, steps, extraCtx, this.writtenPointers.get(step));
     else if (isRethrowStep(step)) this.executeRethrowStep(step, extraCtx);
     else if (isValueStep(step)) await this.executeValueStep(step, steps, extraCtx, invokeCtx, here);
@@ -408,15 +580,44 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
-    invokeCtx?: InvokeContext,
-    path = "steps",
+    invokeCtx: InvokeContext | undefined,
+    path: string,
+    cursor: BodyCursor | undefined,
   ): Promise<void> {
+    const own = cursor?.resume?.[0];
+    if (own) {
+      // Resuming inside a branch: the predicate that chose it was replaced by
+      // the baseline, which is the record that the run took it.
+      const rest = cursor!.resume!.slice(1);
+      const inside = { enclosing: [...cursor!.enclosing, own], resume: rest };
+      if (own.branch === "then") {
+        return this.runList(step.then, steps, scope, extraCtx, invokeCtx, stepPath(path, "then"), inside);
+      }
+      const branch = own.branch === "elseif" ? step.elseif?.[own.index] : undefined;
+      if (own.branch === "elseif" && branch) {
+        const branchPath = stepPath(path, "elseif", own.index, "then");
+        return this.runList(branch.then, steps, scope, extraCtx, invokeCtx, branchPath, inside);
+      }
+      if (own.branch === "else" && step.else) {
+        return this.runList(step.else, steps, scope, extraCtx, invokeCtx, stepPath(path, "else"), inside);
+      }
+      throw positionMismatch(invokeCtx, own);
+    }
+
     // Each predicate is journaled under its own key, so replay takes the branch
     // the RUN took rather than the branch the predicate would evaluate to now.
     if (await this.decide(invokeCtx, stepPath(path, "if"), "predicate", () =>
       predicateResult(this.ctx.expandValue(step.if, { steps, ...extraCtx }), stepPath(path, "if")),
     )) {
-      await this.executeSteps(step.then, steps, scope, extraCtx, invokeCtx, stepPath(path, "then"));
+      await this.runList(
+        step.then,
+        steps,
+        scope,
+        extraCtx,
+        invokeCtx,
+        stepPath(path, "then"),
+        within(cursor, { step: path, branch: "then" }),
+      );
       return;
     }
 
@@ -428,13 +629,14 @@ export class StepEngine {
             stepPath(path, "elseif", index, "if"),
           ),
         )) {
-          await this.executeSteps(
+          await this.runList(
             branch.then,
             steps,
             scope,
             extraCtx,
             invokeCtx,
             stepPath(path, "elseif", index, "then"),
+            within(cursor, { step: path, branch: "elseif", index }),
           );
           return;
         }
@@ -442,7 +644,15 @@ export class StepEngine {
     }
 
     if (step.else) {
-      await this.executeSteps(step.else, steps, scope, extraCtx, invokeCtx, stepPath(path, "else"));
+      await this.runList(
+        step.else,
+        steps,
+        scope,
+        extraCtx,
+        invokeCtx,
+        stepPath(path, "else"),
+        within(cursor, { step: path, branch: "else" }),
+      );
     }
   }
 
@@ -451,24 +661,38 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
-    invokeCtx?: InvokeContext,
-    path = "steps",
+    invokeCtx: InvokeContext | undefined,
+    path: string,
+    cursor: BodyCursor | undefined,
   ): Promise<void> {
+    let turn = 0;
+    const own = cursor?.resume?.[0];
+    if (own) {
+      // Resuming inside a turn: finish it, then test the condition for the next
+      // one as the run would have.
+      if (own.branch !== "do") throw positionMismatch(invokeCtx, own);
+      await this.runList(step.do, steps, scope, extraCtx, invokeCtx, stepPath(path, "do", own.turn), {
+        enclosing: [...cursor!.enclosing, own],
+        resume: cursor!.resume!.slice(1),
+      });
+      turn = own.turn + 1;
+    }
     // The turn index qualifies both the condition's key and the body's, so each
     // turn is an independently resumable subtree and a resume re-enters the turn
     // it stopped in rather than restarting the loop.
-    for (let turn = 0; ; turn++) {
+    for (; ; turn++) {
       const go = await this.decide(invokeCtx, stepPath(path, "while", turn), "condition", () =>
         predicateResult(this.ctx.expandValue(step.while, { steps, ...extraCtx }), stepPath(path, "while")),
       );
       if (!go) return;
-      await this.executeSteps(
+      await this.runList(
         step.do,
         steps,
         scope,
         extraCtx,
         invokeCtx,
         stepPath(path, "do", turn),
+        within(cursor, { step: path, branch: "do", turn }),
       );
     }
   }
@@ -478,31 +702,47 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
-    invokeCtx?: InvokeContext,
-    path = "steps",
+    invokeCtx: InvokeContext | undefined,
+    path: string,
+    cursor: BodyCursor | undefined,
   ): Promise<void> {
+    const own = cursor?.resume?.[0];
+    if (own) {
+      const inside = { enclosing: [...cursor!.enclosing, own], resume: cursor!.resume!.slice(1) };
+      if (own.branch === "cases" && Object.prototype.hasOwnProperty.call(step.cases, own.case)) {
+        const branchPath = stepPath(path, "cases", own.case);
+        return this.runList(step.cases[own.case]!, steps, scope, extraCtx, invokeCtx, branchPath, inside);
+      }
+      if (own.branch === "default" && step.default) {
+        const branchPath = stepPath(path, "default");
+        return this.runList(step.default, steps, scope, extraCtx, invokeCtx, branchPath, inside);
+      }
+      throw positionMismatch(invokeCtx, own);
+    }
     const key = String(
       await this.decide(invokeCtx, stepPath(path, "switch"), "switch", () =>
         this.ctx.expandValue(step.switch, { steps, ...extraCtx }),
       ),
     );
     if (Object.prototype.hasOwnProperty.call(step.cases, key)) {
-      await this.executeSteps(
-        step.cases[key],
+      await this.runList(
+        step.cases[key]!,
         steps,
         scope,
         extraCtx,
         invokeCtx,
         stepPath(path, "cases", key),
+        within(cursor, { step: path, branch: "cases", case: key }),
       );
     } else if (step.default) {
-      await this.executeSteps(
+      await this.runList(
         step.default,
         steps,
         scope,
         extraCtx,
         invokeCtx,
         stepPath(path, "default"),
+        within(cursor, { step: path, branch: "default" }),
       );
     } else {
       throw new Error(`Switch step "${stepLabel(step)}": no matching case for "${key}" and no default`);
@@ -616,10 +856,17 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
-    invokeCtx?: InvokeContext,
-    path = "steps",
+    invokeCtx: InvokeContext | undefined,
+    path: string,
+    cursor: BodyCursor | undefined,
   ): Promise<void> {
+    // Resuming inside `try:` skips the guard the run already passed, and keeps
+    // `catch:` / `finally:` around the rest of the branch. Neither of those two
+    // carries a cursor: a baseline is never taken inside them.
+    const own = cursor?.resume?.[0];
+    if (own && own.branch !== "try") throw positionMismatch(invokeCtx, own);
     if (
+      !own &&
       step.when !== undefined &&
       !(await this.decide(invokeCtx, stepPath(path, "when"), "predicate", () =>
         predicateResult(this.ctx.expandValue(step.when, { steps, ...extraCtx }), stepPath(path, "when")),
@@ -632,7 +879,17 @@ export class StepEngine {
     let tryError: unknown;
 
     try {
-      await this.executeSteps(step.try, steps, scope, extraCtx, invokeCtx, stepPath(path, "try"));
+      await this.runList(
+        step.try,
+        steps,
+        scope,
+        extraCtx,
+        invokeCtx,
+        stepPath(path, "try"),
+        own
+          ? { enclosing: [...cursor!.enclosing, own], resume: cursor!.resume!.slice(1) }
+          : within(cursor, { step: path, branch: "try" }),
+      );
     } catch (err) {
       // A suspension, and a cancellation of THIS invocation, unwind past `try:`
       // untouched, running neither `catch:` nor `finally:`. A suspension belongs

@@ -10,12 +10,11 @@ metadata:
 imports:
   Brand: ../brand
   Conformance: ../../../modules/ui-react-conformance
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
 targets:
   - !ref checkBrandTheme
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checkBrandTheme }
 steps:
   - name: check

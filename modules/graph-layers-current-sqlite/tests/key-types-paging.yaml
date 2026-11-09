@@ -9,12 +9,12 @@ metadata:
     traversal over a pair of binary keys. A tail carries a key in the value
     domain's own encoding, so the key comes back as the value it was read as.
 imports:
+  Run: ../../run
   Sql: ../../sql
   SQLite: ../../sqlite
   Graph: ../../graph
   GraphLayers: ../../graph-layers
   Layers: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -150,7 +150,7 @@ hops:
   - { relationship: !ref joins, direction: out }
 ---
 # Written out of key order, so an ordered drain is the listing's doing.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: populate }
 steps:
   - name: counted0
@@ -212,7 +212,7 @@ steps:
       target: !cel "bytes('c1')"
 ---
 # Keyed by integer.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: countedDrain }
 steps:
   - name: page
@@ -239,7 +239,7 @@ steps:
       expected: [-1, 2, 10]
 ---
 # Keyed by real.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measuredDrain }
 steps:
   - name: page
@@ -266,7 +266,7 @@ steps:
       expected: [-0.25, 1.5, 10.75]
 ---
 # Keyed by text.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: namedDrain }
 steps:
   - name: page
@@ -293,7 +293,7 @@ steps:
       expected: [a, b, c]
 ---
 # Keyed by blob.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: packedDrain }
 steps:
   - name: page
@@ -320,7 +320,7 @@ steps:
       expected: [a1, b1, c1]
 ---
 # Relationships between binary keys: the tail holds both.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: joinsDrain }
 steps:
   - name: page
@@ -347,7 +347,7 @@ steps:
       expected: [[a1, b1], [a1, c1], [b1, c1]]
 ---
 # A traversal ending on binary keys.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reachedDrain }
 steps:
   - name: page

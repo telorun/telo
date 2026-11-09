@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: AgentMediaToolResultTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testMediaToolResult
 ---
@@ -29,7 +25,7 @@ tools:
 ---
 # The value is recognised as a content part, and the second model call — whose
 # contract holds every message to the declared part shape — accepts it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testMediaToolResult }
 steps:
   - name: invoke

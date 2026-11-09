@@ -14,8 +14,8 @@ metadata:
     instant, which is a race about starting a SQLite-backed application twice
     over rather than about the lease this test is for.
 imports:
-  App: ../../../../modules/app
   Run: ../../../../modules/run
+  App: ../../../../modules/app
   Timer: ../../../../modules/timer
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
@@ -34,7 +34,7 @@ kind: HttpClient.Request
 metadata: { name: replicaA }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8105 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: enqueue }
 inputType:
   kind: Telo.JsonSchema
@@ -56,7 +56,7 @@ outputs:
   # The answer carries the queue, newest first: the job just made leads it.
   leads: !cel "steps.post.result.body.jobs[0].id == steps.post.result.body.id"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -75,7 +75,7 @@ steps:
   - name: withSecondReplica
     invoke: !ref secondReplica
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: secondReplica }
 with:
   - kind: App.Instance

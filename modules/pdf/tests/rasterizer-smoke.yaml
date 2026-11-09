@@ -13,7 +13,6 @@ imports:
   Pdf: ../
   Fixture: ./__fixtures__/sample-form.yaml
   JS: ../../javascript
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testRenderPage
@@ -36,7 +35,7 @@ code: |
     return { magic: png ? "png" : jpeg ? "jpeg" : "other" };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRenderPage }
 steps:
   - name: fixture
@@ -75,7 +74,7 @@ steps:
       kind: Assert.Schema
       schema: { type: object, properties: { magic: { const: png } }, required: [magic] }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testJpegFormat }
 steps:
   - name: fixture
@@ -102,7 +101,7 @@ steps:
         properties: { mediaType: { const: image/jpeg }, magic: { const: jpeg } }
         required: [ mediaType, magic ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPageOutOfRange }
 steps:
   - name: fixture
@@ -125,7 +124,7 @@ steps:
             properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPageBelowOne }
 steps:
   - name: fixture
@@ -153,7 +152,7 @@ steps:
 # A value that is not bytes is refused by the input contract, before the
 # controller runs. `dyn(...)` hides its type from `telo check`, which refuses a
 # map at a byte slot.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNonBytesData }
 steps:
   - name: tryNonBytes

@@ -12,10 +12,10 @@ metadata:
     The model answers with the conversation it was given, so each assertion reads
     what the call actually sent.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -71,7 +71,7 @@ value:
   system:
     - { type: text, text: Speak plainly., cacheBreakpoint: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: marks

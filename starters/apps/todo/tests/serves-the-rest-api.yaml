@@ -12,20 +12,18 @@ metadata:
     page's presets, pinned filter and plain openers, reach the browser as declared.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8087
+    ports: { http: 8087 }
 targets:
   - !ref app
 steps:
@@ -37,10 +35,7 @@ steps:
       text: !cel "'write the tests ' + uuidv4()"
 
   - name: create
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8087/api/todos
-      method: POST
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8087/api/todos, method: POST }
     inputs:
       body:
         text: !cel "steps.subject.result.text"
@@ -66,9 +61,7 @@ steps:
   # and a cursor for the next page. Filtering by the text — `contains`, the one
   # filter the collection declares for it — finds exactly this row.
   - name: list
-    invoke:
-      kind: HttpClient.Request
-      method: GET
+    invoke: { kind: HttpClient.Request, method: GET }
     inputs:
       url: http://127.0.0.1:8087/api/todos
       query:
@@ -80,10 +73,7 @@ steps:
         status: !cel "steps.list.result.status"
         total: !cel "steps.list.result.body.total"
         found: !cel "size(steps.list.result.body.rows)"
-      expected:
-        status: 200
-        total: 1
-        found: 1
+      expected: { status: 200, total: 1, found: 1 }
 
   # The listing finds the row under the id the create answered with.
   - name: created
@@ -98,19 +88,13 @@ steps:
   # A create takes the title alone. `createdAt` is read, never written, and
   # `isDone` is an update's to set: the create shape declares neither.
   - name: backdated
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8087/api/todos
-      method: POST
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8087/api/todos, method: POST }
     inputs:
       body:
         text: !cel "steps.subject.result.text"
         createdAt: "1999-01-01 00:00:00"
   - name: bornDone
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8087/api/todos
-      method: POST
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8087/api/todos, method: POST }
     inputs:
       body:
         text: !cel "steps.subject.result.text"
@@ -136,13 +120,8 @@ steps:
   # `text` is required and may not be empty, so an empty one is refused before the
   # database is touched — and the refusal names the field.
   - name: emptyText
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8087/api/todos
-      method: POST
-    inputs:
-      body:
-        text: ""
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8087/api/todos, method: POST }
+    inputs: { body: { text: "" } }
   - name: verifyRefused
     invoke: { kind: Assert.Equals }
     inputs:
@@ -163,9 +142,7 @@ steps:
   # PUT replaces what a todo's update shape declares, so the body holds both
   # of its properties.
   - name: complete
-    invoke:
-      kind: HttpClient.Request
-      method: PUT
+    invoke: { kind: HttpClient.Request, method: PUT }
     inputs:
       url: !cel "'http://127.0.0.1:8087/api/todos/' + string(steps.created.result.id)"
       body:
@@ -177,9 +154,7 @@ steps:
   # another. Both ends are inclusive, and a range that ends before the day
   # finds nothing.
   - name: dueInRange
-    invoke:
-      kind: HttpClient.Request
-      method: GET
+    invoke: { kind: HttpClient.Request, method: GET }
     inputs:
       url: http://127.0.0.1:8087/api/todos
       query:
@@ -187,9 +162,7 @@ steps:
         dueOn.gte: "2026-10-15"
         dueOn.lte: "2026-10-15"
   - name: dueEarlier
-    invoke:
-      kind: HttpClient.Request
-      method: GET
+    invoke: { kind: HttpClient.Request, method: GET }
     inputs:
       url: http://127.0.0.1:8087/api/todos
       query:
@@ -208,15 +181,11 @@ steps:
         inRange: [!cel "steps.created.result.id"]
         earlier: 0
   - name: remove
-    invoke:
-      kind: HttpClient.Request
-      method: DELETE
+    invoke: { kind: HttpClient.Request, method: DELETE }
     inputs:
       url: !cel "'http://127.0.0.1:8087/api/todos/' + string(steps.created.result.id)"
   - name: gone
-    invoke:
-      kind: HttpClient.Request
-      method: GET
+    invoke: { kind: HttpClient.Request, method: GET }
     inputs:
       url: !cel "'http://127.0.0.1:8087/api/todos/' + string(steps.created.result.id)"
   - name: verifyLifecycle
@@ -226,10 +195,7 @@ steps:
         completed: !cel "steps.complete.result.status"
         deleted: !cel "steps.remove.result.status"
         afterDelete: !cel "steps.gone.result.status"
-      expected:
-        completed: 200
-        deleted: 204
-        afterDelete: 404
+      expected: { completed: 200, deleted: 204, afterDelete: 404 }
 
   # The frontend is declared, not written: the shell at `/` and the page document
   # it renders both come from the UiReact.App in the same manifest.
@@ -240,21 +206,11 @@ steps:
       method: GET
       responseType: text
   - name: page
-    invoke:
-      kind: HttpClient.Request
-      method: GET
-    inputs:
-      url: http://127.0.0.1:8087/_telo/ui/page
-      query:
-        path: /
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs: { url: http://127.0.0.1:8087/_telo/ui/page, query: { path: / } }
   - name: statusPage
-    invoke:
-      kind: HttpClient.Request
-      method: GET
-    inputs:
-      url: http://127.0.0.1:8087/_telo/ui/page
-      query:
-        path: /status
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs: { url: http://127.0.0.1:8087/_telo/ui/page, query: { path: /status } }
   - name: verifyUi
     invoke: { kind: Assert.Equals }
     inputs:

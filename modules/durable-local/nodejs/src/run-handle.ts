@@ -9,6 +9,7 @@
 import {
   DurableSuspension,
   InvokeError,
+  type DurableBaseline,
   type DurableDecisionKind,
   type DurableRunHandle,
   type DurableTarget,
@@ -39,12 +40,30 @@ export interface RunObservations {
   collapseReasons: string[];
 }
 
+/** How a run compacts: after how many body entries, and which paths are the
+ *  body's — the entries a baseline replaces. Anything outside it (the workflow's
+ *  own `inputs` decision) is never replaced. */
+export interface CompactionOptions {
+  compactAfter: number;
+  body: string;
+}
+
 export class LocalRunHandle implements DurableRunHandle {
   /** Entries already on disk when this execution started, by path. A resume
    *  reads them ONCE rather than per step: the journal is append-only within a
    *  run, and re-reading per lookup would turn an N-step replay into N reads.
    *  Decoded once here too, for the same reason. */
   readonly #recorded = new Map<string, ReplayedEntry>();
+  /** The baseline this execution resumes from, decoded. */
+  #restored: DurableBaseline | undefined;
+  /** Where the run's current baseline is stored, so the next one replaces it. */
+  #baselinePath: string | undefined;
+  /** Body entries the journal holds for this run — what a baseline replaces. */
+  readonly #held = new Set<string>();
+  /** Body entries read at open that replay has not yet passed. A baseline is due
+   *  only once this is empty: removing one would drop a record replay still needs. */
+  readonly #unanswered = new Set<string>();
+  #compaction: CompactionOptions | undefined;
   readonly observations: RunObservations = {
     replayedSteps: 0,
     collapsedRegions: 0,
@@ -60,13 +79,30 @@ export class LocalRunHandle implements DurableRunHandle {
     private readonly log: Logger,
   ) {}
 
+  /** @param compaction Omitted, the run never takes a baseline. */
   static async open(
     runId: string,
     journal: DurableJournal,
     log: Logger,
+    compaction?: CompactionOptions,
   ): Promise<LocalRunHandle> {
     const handle = new LocalRunHandle(runId, journal, log);
+    handle.#compaction = compaction;
     for (const entry of await journal.readEntries(runId)) {
+      if (entry.kind === "baseline") {
+        if (handle.#baselinePath !== undefined) {
+          throw new InvokeError(
+            "ERR_DURABLE_JOURNAL_CORRUPT",
+            `Run '${runId}': the journal holds two baselines ('${handle.#baselinePath}' and ` +
+              `'${entry.path}'), and a run has at most one. Resuming from either would ` +
+              `ignore what the other records.`,
+            { run: runId },
+          );
+        }
+        handle.#baselinePath = entry.path;
+        handle.#restored = recordedValue(runId, entry).value as DurableBaseline;
+        continue;
+      }
       // First write wins here too, mirroring the store's own rule — so a journal
       // that somehow holds two entries at one path replays the same one the
       // store would return.
@@ -78,8 +114,17 @@ export class LocalRunHandle implements DurableRunHandle {
         ...(entry.target === undefined ? {} : { target: entry.target }),
         ...recordedValue(runId, entry),
       });
+      if (handle.#inBody(entry.path)) {
+        handle.#held.add(entry.path);
+        handle.#unanswered.add(entry.path);
+      }
     }
     return handle;
+  }
+
+  /** The baseline a resume starts the body at, when the run has one. */
+  get restored(): DurableBaseline | undefined {
+    return this.#restored;
   }
 
   async step(
@@ -105,6 +150,9 @@ export class LocalRunHandle implements DurableRunHandle {
         );
       }
       this.observations.replayedSteps++;
+      // Answered from the record, the step's own body never runs again, so what
+      // that body recorded is passed with it.
+      this.#passed(path, true);
       return recorded.value;
     }
 
@@ -136,8 +184,58 @@ export class LocalRunHandle implements DurableRunHandle {
 
   async decide<T>(path: string, kind: DurableDecisionKind, compute: () => T): Promise<T> {
     const recorded = this.#recorded.get(path);
-    if (recorded) return recorded.value as T;
+    if (recorded) {
+      this.#passed(path, false);
+      return recorded.value as T;
+    }
     return (await this.#write({ path, kind: "decision", decision: kind }, compute())) as T;
+  }
+
+  /**
+   * Take a baseline when one is due: the body holds `compactAfter` entries or
+   * more, and replay has passed every entry it was opened with. The baseline and
+   * the removal of every body entry it replaces are one journal write.
+   */
+  baseline(capture: () => DurableBaseline, completed: string): Promise<void> | undefined {
+    // The step finished, so whatever its body recorded beneath it is behind
+    // replay — including entries a resumed execution took another branch past.
+    this.#passed(completed, true);
+    const compaction = this.#compaction;
+    const replace = this.journal.replaceWithBaseline?.bind(this.journal);
+    if (
+      !compaction ||
+      !replace ||
+      this.#held.size < compaction.compactAfter ||
+      this.#unanswered.size > 0
+    ) {
+      return undefined;
+    }
+    const { position, steps } = capture();
+    const path = position[position.length - 1]!.step;
+    // The step's own entry is among those replaced, so the baseline takes its path.
+    const frame = writeRecordedValue({ position, steps }, { run: this.runId, path });
+    const replaced = [...this.#held, ...(this.#baselinePath === undefined ? [] : [this.#baselinePath])];
+    return replace(this.runId, recordEntry({ path, kind: "baseline" }, frame), replaced).then(() => {
+        for (const held of this.#held) this.#recorded.delete(held);
+        this.#held.clear();
+        this.#baselinePath = path;
+      });
+  }
+
+  #inBody(path: string): boolean {
+    const body = this.#compaction?.body;
+    return body !== undefined && isWithin(path, body);
+  }
+
+  /** Replay has passed `path` — and, for a step answered from the record, every
+   *  entry its own body recorded beneath it. */
+  #passed(path: string, nested: boolean): void {
+    if (this.#unanswered.size === 0) return;
+    this.#unanswered.delete(path);
+    if (!nested) return;
+    for (const entry of this.#unanswered) {
+      if (isWithin(entry, path)) this.#unanswered.delete(entry);
+    }
   }
 
   /**
@@ -233,8 +331,20 @@ export class LocalRunHandle implements DurableRunHandle {
       ...recordedValue(this.runId, stored),
     };
     this.#recorded.set(entry.path, recorded);
+    if (this.#inBody(stored.path)) this.#held.add(stored.path);
     return recorded.value;
   }
+}
+
+/** Is `path` beneath `ancestor`? A nested body hangs its paths under the step
+ *  that dispatched it, either as `/`-joined segments or as a qualifier on the
+ *  step's own segment (a composer's turn, `steps/each[2]/…`) — spec §5.1. */
+function isWithin(path: string, ancestor: string): boolean {
+  return (
+    path.length > ancestor.length &&
+    path.startsWith(ancestor) &&
+    (path[ancestor.length] === "/" || path[ancestor.length] === "[")
+  );
 }
 
 /** Do a recorded target and a reached one name the same declaration site?

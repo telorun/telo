@@ -10,11 +10,7 @@ metadata:
     next boot because that is what declaring it means, and one it does not is
     the operator's. The upsert is idempotent, so nothing is read back and a row
     deleted by hand simply comes back.
-imports:
-  Sql: ../../sql
-  SQLite: ../
-  Assert: ../../assert
-  Run: ../../run
+imports: { Sql: ../../sql, SQLite: ../, Assert: ../../assert }
 targets:
   - !ref appSchema
   - !ref test
@@ -44,7 +40,7 @@ connection: !ref db
 version: !cel "module.version"
 tables: [!ref roles]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: readSeeded

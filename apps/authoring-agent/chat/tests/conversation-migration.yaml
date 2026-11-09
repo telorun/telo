@@ -22,7 +22,6 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
   RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -33,7 +32,7 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -55,7 +54,7 @@ steps:
   # conversations in its `turns` table, their records in the journal.
   - name: legacy
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: SQLite.Connection
           metadata: { name: legacyDb }
@@ -108,8 +107,7 @@ steps:
                   provider_state TEXT,
                   provider_model TEXT
                 )
-            projection_4_aborted_at:
-              statement: ALTER TABLE turns ADD COLUMN aborted_at TEXT
+            projection_4_aborted_at: { statement: ALTER TABLE turns ADD COLUMN aborted_at TEXT }
         - kind: Sql.Command
           metadata: { name: seedCommand }
           connection: !ref legacyDb
@@ -208,7 +206,7 @@ steps:
               bindings: [ 0190a000-0000-7000-8000-00000000b003, 0190a000-0000-7000-8000-00000000a002, "2026-01-03T00:00:00.000Z", "2026-01-03T00:02:00.000Z" ]
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -222,8 +220,7 @@ steps:
             modelEndpoint: http://127.0.0.1:9/v1
             # The seeded activity is months old; retention must not take it.
             retentionDays: 3650
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: list

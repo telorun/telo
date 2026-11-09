@@ -8,9 +8,9 @@ metadata:
     the one a shutdown imposed. That distinction is why closing input is an
     operation instead of a side effect of tearing the program down.
 imports:
+  Run: ../../run
   App: ../../app
   Channel: ../
-  Run: ../../run
   Timer: ../../timer
   Assert: ../../assert
 targets:
@@ -39,7 +39,7 @@ maxIterations: 200
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: firstPrompt

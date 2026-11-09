@@ -25,11 +25,11 @@ metadata:
     Offline: a local server scripted by model id, and under a second mount one
     that answers with the request body it received as the answer text.
 imports:
+  Run: ../../run
   OpenAI: ../
   Ai: ../../ai
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Stream: ../../stream
   Assert: ../../assert
 targets:
@@ -143,11 +143,11 @@ value:
         - { type: text, text: describe this, cacheBreakpoint: true }
         - { type: image, mediaType: image/png, data: aGk=, cacheBreakpoint: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: FakeApi }
+    metadata: { name: fakeApi }
     routes:
       - request:
           path: /chat/completions
@@ -205,7 +205,7 @@ with:
   # answer of one status with one schema, so an object body cannot share a route
   # with the text bodies above.
   - kind: Server.Api
-    metadata: { name: EchoApi }
+    metadata: { name: echoApi }
     routes:
       - request:
           path: /chat/completions
@@ -241,16 +241,16 @@ with:
                           text: !cel "json(request.body)"
                   usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 8914 }
     openapi: { info: { title: Fake OpenAI API, version: 1.0.0 } }
     mounts:
       - path: /v1
-        mount: !ref FakeApi
+        mount: !ref fakeApi
       - path: /echo/v1
-        mount: !ref EchoApi
+        mount: !ref echoApi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: rateLimited
     try:

@@ -28,7 +28,6 @@ imports:
   JS: ../../javascript
   Fs: ../../fs
   Timer: ../../timer
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testLogEvents
@@ -107,33 +106,33 @@ code: |
     };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testLogEvents }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8913 }
     mounts:
       - path: /api
         mount: !ref api
-  - { kind: HttpClient.Request, metadata: { name: Call } }
-  - { kind: Fs.File, metadata: { name: ReadLog } }
+  - { kind: HttpClient.Request, metadata: { name: call } }
+  - { kind: Fs.File, metadata: { name: readLog } }
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: matched
-    invoke: !ref Call
+    invoke: !ref call
     inputs: { url: "http://127.0.0.1:8913/api/things/42" }
   # Deliberately high-cardinality: this is what a 404 scan looks like, and what
   # must NOT reach `http.route`.
   - name: unmatched
-    invoke: !ref Call
+    invoke: !ref call
     inputs: { url: "http://127.0.0.1:8913/api/nope-8f3a1c9e-2b7d" }
   - name: settle
     invoke: { kind: Timer.Delay }
     inputs: { duration: "250ms", value: {} }
   - name: read
-    invoke: !ref ReadLog
+    invoke: !ref readLog
     inputs: { path: /tmp/telo-http-log-events.jsonl }
   - name: summary
     invoke: !ref summarize

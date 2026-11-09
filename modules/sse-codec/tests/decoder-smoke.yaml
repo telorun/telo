@@ -12,15 +12,11 @@ metadata:
     A round-trip through this module's own encoder is asserted separately, and
     proves something weaker — that the two agree — so it cannot stand in for the
     cases above.
-imports:
-  Sse: ../
-  Stream: ../../stream
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Sse: ../, Stream: ../../stream, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # The bytes arrive split at points chosen to break a naive parser: mid-field

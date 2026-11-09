@@ -8,16 +8,14 @@ metadata:
     every-match replace, $1 backrefs, the i/s flags, inline (?s) dotall, capture
     groups, and the empty results for no-match. Each expression is evaluated with
     !cel and deep-equality-checked via Assert.Equals.
-imports:
-  Assert: ../modules/assert
-  Run: ../modules/run
+imports: { Assert: ../modules/assert }
 targets:
   - !ref testReplace
   - !ref testExtract
   - !ref testExtractAll
   - !ref testGroups
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testReplace }
 steps:
   - name: replacesEveryMatch
@@ -46,7 +44,7 @@ steps:
       actual: !cel "regexReplace('a\\nb', 'a.b', 'Z', 's')"
       expected: "Z"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testExtract }
 steps:
   - name: firstMatch
@@ -60,7 +58,7 @@ steps:
       actual: !cel "regexExtract('none', '[0-9]+')"
       expected: ""
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testExtractAll }
 steps:
   - name: everyMatchInOrder
@@ -74,7 +72,7 @@ steps:
       actual: !cel "regexExtractAll('abc', '[0-9]')"
       expected: []
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testGroups }
 steps:
   - name: captureGroups

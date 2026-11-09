@@ -19,8 +19,7 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: stub-key
+    secrets: { anthropicApiKey: stub-key }
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -31,7 +30,6 @@ imports:
       maxContextTokens: 10
   App: oci://ghcr.io/telorun/app@0.6.1#sha256-QOZpQy2T4dEx3Vay9_sillyRW8lemNxiauvWSyk-oLg
   Stream: ../../../../modules/stream
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -52,7 +50,7 @@ clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 ---
 # A turn's journal drained to its end: its record types, or the code it failed
 # with.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drain }
 inputType:
   kind: Telo.JsonSchema
@@ -60,8 +58,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: read
     invoke: !ref Chat.journalSource
@@ -82,7 +79,7 @@ outputs:
   types: !cel "has(steps.all) ? steps.all.result.items.map(r, r.data.type) : []"
   failure: !cel "has(steps.failure) ? dyn(steps.failure.result) : null"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: start }
 inputType:
   kind: Telo.JsonSchema
@@ -90,9 +87,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: admit
     invoke: !ref Chat.chatStart
@@ -109,7 +104,7 @@ outputs:
   types: !cel "steps.drained.result.types"
   failure: !cel "steps.drained.result.failure"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

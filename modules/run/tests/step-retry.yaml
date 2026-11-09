@@ -51,7 +51,7 @@ code: |
     return { calls: globalThis.__always ?? 0 };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # Two re-attempts are exactly enough. `attempt: 3` is the assertion that the

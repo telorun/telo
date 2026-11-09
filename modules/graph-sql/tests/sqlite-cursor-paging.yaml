@@ -10,11 +10,11 @@ metadata:
     the default, and a cursor is refused anywhere but the listing that issued
     it — another store of the same types included — as is one whose envelope version this runtime does not read.
 imports:
+  Run: ../../run
   Sql: ../../sql
   SQLite: ../../sqlite
   Graph: ../../graph
   GraphSql: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -154,7 +154,7 @@ inputType:
 value:
   items: !cel "inputs.items"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: populate }
 steps:
   - name: people
@@ -167,7 +167,7 @@ steps:
     invoke: !ref write
     inputs: { sql: "INSERT INTO knows (source, target) SELECT 'p00001', id FROM people" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drainNodes }
 steps:
   - name: page
@@ -201,7 +201,7 @@ steps:
       actual: !cel "size(steps.seen.result.items)"
       expected: 5000
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drainRelationships }
 steps:
   - name: page
@@ -244,7 +244,7 @@ steps:
       actual: !cel "steps.toFirst.result"
       expected: { relationships: [{ source: p00001, target: p00042, properties: {} }] }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drainTraversal }
 steps:
   - name: page
@@ -296,7 +296,7 @@ steps:
         more: !cel "has(steps.filteredRest.result.next)"
       expected: { first: [p00001, p00010], rest: [p00100, p01000], more: false }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: defaultLimit }
 steps:
   - name: unbounded
@@ -309,7 +309,7 @@ steps:
         more: !cel "has(steps.unbounded.result.next)"
       expected: { returned: 100, more: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refusedCursors }
 steps:
   - name: people

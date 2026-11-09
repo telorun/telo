@@ -10,7 +10,6 @@ imports:
   Deu: ../../tesseract-lang/deu
   PdfMake: ../../pdfmake
   Pdf: ../../pdf
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref readGerman
@@ -19,7 +18,7 @@ kind: Tesseract.Recognizer
 metadata: { name: recognizer }
 languages: [!ref Deu.deu]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readGerman }
 steps:
   - name: render

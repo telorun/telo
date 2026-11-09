@@ -31,7 +31,7 @@ kind: Run.Detach
 metadata: { name: putDetached }
 invoke: !ref put
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: detach

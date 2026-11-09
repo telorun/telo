@@ -25,17 +25,13 @@ metadata:
 
     Visual ANSI rendering on a real TTY is not automated either; verify
     by running examples/chat-console.yaml interactively.
-imports:
-  Console: ../
-  Stream: ../../stream
-  Run: ../../run
-  Assert: ../../assert
+imports: { Console: ../, Stream: ../../stream, Assert: ../../assert }
 targets:
   - !ref testWriteLine
   - !ref testWriteStream
   - !ref testUnknownStyleFallback
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testWriteLine }
 steps:
   - name: soloStyle
@@ -69,7 +65,7 @@ items:
   - "{cyan hello} "
   - "{magenta.bold world}\n"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testWriteStream }
 steps:
   - name: streamSrc
@@ -87,7 +83,7 @@ steps:
 # exact bytes (no ANSI leak, inner known styles inside unknown wrappers
 # stay literal); see the file-level KNOWN GAP for why this isn't
 # programmatically asserted.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testUnknownStyleFallback }
 steps:
   - name: unknownStyle

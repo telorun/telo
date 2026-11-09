@@ -6,10 +6,10 @@
 kind: Telo.Application
 metadata: { name: KagiRequestMappingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Kagi: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref requestMapping
@@ -31,11 +31,11 @@ kind: Run.Value
 metadata: { name: echo }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: requestMapping }
 with:
   - kind: Server.Api
-    metadata: { name: FakeKagi }
+    metadata: { name: fakeKagi }
     routes:
       - request:
           path: /api/v1/search
@@ -60,13 +60,13 @@ with:
                 schema: { type: object, additionalProperties: true }
                 body: { data: { search: [] } }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18852 }
     mounts:
       - path: /
-        mount: !ref FakeKagi
+        mount: !ref fakeKagi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   # A week is 168 hours; the filter starts the day before. The date is taken
   # before the call and again at the assertion, and either is accepted, so a run

@@ -4,7 +4,7 @@ imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testWhenGuard
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testWhenGuard }
 steps:
   # Step with when:false is skipped. If it ran, its Assert.Schema would fail (const: 0 vs. 999).

@@ -28,10 +28,10 @@ metadata:
     wait starts, so a body that hands its own address out needs the address to be a
     property of its inputs.
 imports:
+  Run: ../../run
   Durable: ../../durable
   Local: ../
   Journal: ../../durable-journal-file
-  Run: ../../run
   Assert: ../../assert
 variables:
   journalDir:
@@ -127,7 +127,7 @@ expect:
   - { event: before.Invoked, times: 1 }
   - { event: after.Invoked, times: 1 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # One ticket per process, so a journal directory left behind by an earlier run

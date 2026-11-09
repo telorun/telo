@@ -6,10 +6,10 @@ metadata:
     An MCP server is not Telo, so a CEL value in a tool call's arguments leaves in
     its plain encoding — a duration as seconds — never as an empty object.
 imports:
+  Run: ../../run
   Mcp: ../../mcp-server
   McpClient: ../
   Http: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets: [ !ref testRun ]
 ---
@@ -29,15 +29,15 @@ tools:
             - { type: text, text: echoed }
           structuredContent: !cel "request.arguments"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRun }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8964 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
-targets: [ !ref Server ]
+targets: [ !ref server ]
 steps:
   - name: called
     inputs:

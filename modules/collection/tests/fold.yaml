@@ -59,7 +59,7 @@ initial: ""
 accumulate: !cel "size(item) > size(acc) ? item : acc"
 value: !cel "acc"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testAllocate }
 steps:
   - name: allocate
@@ -80,7 +80,7 @@ steps:
         - { invoice: b, applied: 15.0 }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRunningTotal }
 steps:
   - name: total
@@ -92,7 +92,7 @@ steps:
       expected: 10.0
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNoProjection }
 steps:
   - name: longest

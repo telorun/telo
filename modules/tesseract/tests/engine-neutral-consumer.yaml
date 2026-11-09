@@ -11,7 +11,6 @@ imports:
   Tesseract: ../
   PdfMake: ../../pdfmake
   Pdf: ../../pdf
-  Run: ../../run
   Assert: ../../assert
   Consumer:
     source: ./__fixtures__/engine-neutral-consumer.yaml
@@ -24,7 +23,7 @@ kind: Tesseract.Recognizer
 metadata: { name: recognizer }
 languages: [!ref Tesseract.eng]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readsThroughTheContract }
 steps:
   - name: render

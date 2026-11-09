@@ -10,15 +10,11 @@ metadata:
     action's form to is answered with the files its result is drawn from, a
     record the shared input shape refuses is the 400 envelope naming the
     property, and the record a row action binds is accepted by its route.
-imports:
-  App: ../../app
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

@@ -33,7 +33,6 @@ imports:
   Postgres: ../../../postgres
   GraphSql: ../..
   Graph: ../../../graph
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -69,7 +68,7 @@ access:
 # The suite reads what it writes, so it must start from nothing — including the
 # ledger, which lives in the same namespace, or a previous run's declaration
 # would decide what this one plans.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -174,7 +173,7 @@ relationships: [!ref knows, !ref authored]
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nullKey }
 steps:
   - name: nullKey

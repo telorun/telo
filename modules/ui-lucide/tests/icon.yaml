@@ -6,11 +6,7 @@ metadata:
     A Lucide glyph named in a navigation entry is served by the application
     under its content digest, as the SVG file the module stages for that name;
     a name the set does not hold is refused where it is written.
-imports:
-  App: ../../app
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref unknownName
   - !ref served
@@ -23,7 +19,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "UiLucide.Icon/home: /name must be one of 1943 allowed values; did you mean 'house'?"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: served }
 with:
   - kind: App.Instance

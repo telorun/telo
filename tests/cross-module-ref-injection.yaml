@@ -10,27 +10,19 @@ metadata:
     works if injection resolves the library resource's kind through the library's own
     alias scope and injects the model. Before the fix this failed with
     ERR_INVALID_REFERENCE ('model' is not a live instance). Hermetic — no provider.
-imports:
-  XMod: ./__fixtures__/xmod-agent
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { XMod: ./__fixtures__/xmod-agent, Assert: ../modules/assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: ask
     invoke: !ref XMod.ask
-    inputs:
-      prompt: "hello"
+    inputs: { prompt: "hello" }
   - name: assertText
     inputs:
       text: !cel "steps.ask.result.text"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          text: { const: "hello" }
-        required: [ text ]
+      schema: { type: object, properties: { text: { const: "hello" } }, required: [text] }

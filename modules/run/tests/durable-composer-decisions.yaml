@@ -189,7 +189,7 @@ expect:
   - { event: projected.Invoked, times: 1 }
   - { event: done.Invoked, times: 1 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: ticket

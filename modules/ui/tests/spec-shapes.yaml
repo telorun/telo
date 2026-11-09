@@ -13,7 +13,6 @@ metadata:
 imports:
   Echo: ./__fixtures__/spec-echo
   Probe: ./__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref written
@@ -39,7 +38,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Echo.TypedNode/filtersStore: /node matches no alternative"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: provided }
 steps:
   - name: overlayCompact

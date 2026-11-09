@@ -16,7 +16,6 @@ imports:
   Sql: ../../sql
   SQLite: ../
   SqlRepository: ../../sql-repository
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -61,7 +60,7 @@ table: !ref documents
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: created }
 steps:
   - name: columns

@@ -8,11 +8,7 @@
 # involved at all.
 kind: Telo.Application
 metadata: { name: HttpServerRequestBindingTest, version: 1.0.0 }
-imports:
-  Server: ../
-  Http: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Server: ../, Http: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -20,11 +16,11 @@ kind: Http.Client
 metadata: { name: client }
 baseUrl: "http://127.0.0.1:8993"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: Api }
+    metadata: { name: api }
     routes:
       - request:
           path: /echo/{tenant}
@@ -52,13 +48,13 @@ with:
                   # container the value domain holds it in.
                   computed: !cel "{'echo': request.query.page}"
   - kind: Server.Server
-    metadata: { name: Srv }
+    metadata: { name: srv }
     listen: { port: 8993 }
     mounts:
       - path: /
-        mount: !ref Api
+        mount: !ref api
 targets:
-  - !ref Srv
+  - !ref srv
 steps:
   - name: call
     invoke:

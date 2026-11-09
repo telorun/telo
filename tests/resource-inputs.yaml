@@ -4,13 +4,10 @@
 # both. The read only succeeds because the writer and the reader are on the same
 # connection — the exact failure ("no such table") the block exists to remove.
 kind: Telo.Application
-metadata:
-  name: ResourceInputs
-  version: 1.0.0
+metadata: { name: ResourceInputs, version: 1.0.0 }
 imports:
   SQLite: ../modules/sqlite
   Assert: ../modules/assert
-  Run: ../modules/run
   Writer:
     source: ./__fixtures__/resource-inputs/writer
     resources:
@@ -24,13 +21,11 @@ targets:
   - !ref verify
 ---
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: ":memory:"
 ---
-kind: Run.Sequence
-metadata:
-  name: verify
+kind: Telo.Sequence
+metadata: { name: verify }
 steps:
   - name: read
     invoke: !ref Reader.readNotes
@@ -39,4 +34,4 @@ steps:
     inputs:
       actual: !cel "steps.read.result.rows"
       expected:
-        - body: from the writer
+        - { body: from the writer }

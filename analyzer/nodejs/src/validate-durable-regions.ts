@@ -26,6 +26,8 @@ import { renderChain, type CallableFlags } from "./callable-flags.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { liveValueIn } from "./serializable-slot.js";
+import { effectiveAuthorSchema, effectiveContractField } from "./extends-resolution.js";
+import { valueDerivedContract } from "./value-derived-contract.js";
 import {
   findZoneRegions,
   type DefinitionLookup,
@@ -299,6 +301,86 @@ function checkUnjournalableResults(
   }
 }
 
+/**
+ * `DURABLE_CONTRACT_REQUIRED` — a journaled step whose target declares no
+ * `outputType`.
+ *
+ * A target whose kind types its result from the resource's own value slot (a
+ * sequence's `outputs:` keys, `valueDerivedContract` — the reader that types
+ * `steps.<step>.result`) has a contract and is not reported.
+ *
+ * What the step records is only as checkable as the contract it was declared
+ * against, so a target with none leaves `DURABLE_UNJOURNALABLE_RESULT` blind.
+ * The contract is the instance's own, else the nearest along `extends`.
+ *
+ * A WARNING: a declared open object would satisfy it while proving nothing, and
+ * a recommended shape (a transaction) declares none. The runtime refusal
+ * (`ERR_DURABLE_UNJOURNALABLE_VALUE`) is the gate. A step inside an idempotent
+ * region is exempt — that region collapses, so the step has no entry of its own.
+ */
+function checkMissingContracts(
+  region: ZoneRegion,
+  collapsed: ReadonlySet<string>,
+  resolveDef: DefinitionLookup,
+  graph: CallGraph,
+  reportModules: ReadonlySet<string>,
+  diagnostics: AnalysisDiagnostic[],
+): void {
+  for (const { node } of region.contents.values()) {
+    if (node.type !== "step" || collapsed.has(node.id)) continue;
+    for (const edge of graph.edgesFrom(node.id)) {
+      const target = edge.to ? graph.nodes.get(edge.to) : undefined;
+      if (!target || target.type !== "resource") continue;
+      const def = resolveDef(
+        target.kind,
+        (target.manifest.metadata as { module?: string } | undefined)?.module,
+      );
+      if (!def) continue;
+      const own = (target.manifest as Record<string, unknown>).outputType;
+      if (own !== undefined && own !== null) continue;
+      const declared = effectiveContractField(
+        def,
+        (kind, from) =>
+          resolveDef(kind, (from?.metadata as { module?: string } | undefined)?.module),
+        "outputType",
+      );
+      if (declared !== undefined && declared !== null) continue;
+      const resolveKind = (kind: string, from?: ResourceDefinition) =>
+        resolveDef(kind, (from?.metadata as { module?: string } | undefined)?.module);
+      const authorSchema = effectiveAuthorSchema(def, resolveKind);
+      if (valueDerivedContract(target.manifest, authorSchema, "outputType")) continue;
+      const owner = graph.nodes.get((node as StepGraphNode).owner);
+      const manifest = owner?.type === "resource" ? owner.manifest : target.manifest;
+      if (!owned(manifest, reportModules)) continue;
+      const takesOutputType = Boolean(
+        (authorSchema.properties as Record<string, unknown> | undefined)?.outputType,
+      );
+      const remedy = takesOutputType
+        ? `Declare an outputType on the target or its kind; a value that cannot be recorded ` +
+          `still fails at runtime with ERR_DURABLE_UNJOURNALABLE_VALUE.`
+        : `${target.kind} does not take an outputType, so the value is checked at runtime: ` +
+          `a value that cannot be recorded fails with ERR_DURABLE_UNJOURNALABLE_VALUE at ` +
+          `the step that produced it.`;
+      diagnostics.push({
+        severity: DiagnosticSeverity.Warning,
+        code: "DURABLE_CONTRACT_REQUIRED",
+        source: SOURCE,
+        message:
+          `Step '${(node as StepGraphNode).name ?? (node as StepGraphNode).path}' invokes ` +
+          `${target.kind} '${target.name}', which declares no outputType, inside a durable ` +
+          `region (${region.provider.kind} '${region.provider.name}'). The step's result is ` +
+          `recorded and replayed, and without a declared output nothing can check statically ` +
+          `that it is a value that can be written down. ${remedy}`,
+        data: {
+          resource: { kind: manifest.kind, name: manifest.metadata?.name as string },
+          filePath: (manifest.metadata as { source?: string } | undefined)?.source,
+          path: (node as StepGraphNode).path,
+        },
+      });
+    }
+  }
+}
+
 /** Does this declared type hold a live value — at its root or at any depth —
  *  read through the one walk `x-telo-serializable` uses. A type field's inline
  *  `{ kind, schema }` form is read as its schema. */
@@ -359,8 +441,19 @@ export interface DurableRegionArgs {
 export function validateDurableRegions(args: DurableRegionArgs): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
 
+  const idempotent = findZoneRegions(args.graph, args.resolveDef, "idempotent");
+  const collapsed = new Set(idempotent.flatMap((r) => [...r.contents.keys()]));
+
   for (const region of findZoneRegions(args.graph, args.resolveDef, "replayed")) {
     checkDetach(region, args.reportModules, diagnostics);
+    checkMissingContracts(
+      region,
+      collapsed,
+      args.resolveDef,
+      args.graph,
+      args.reportModules,
+      diagnostics,
+    );
     checkUnjournalableResults(
       region,
       args.resolveDef,
@@ -369,7 +462,7 @@ export function validateDurableRegions(args: DurableRegionArgs): AnalysisDiagnos
       diagnostics,
     );
   }
-  for (const region of findZoneRegions(args.graph, args.resolveDef, "idempotent")) {
+  for (const region of idempotent) {
     checkNondeterminism(
       region,
       args.graph,

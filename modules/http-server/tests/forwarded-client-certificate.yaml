@@ -7,11 +7,7 @@ metadata:
     forwards — Envoy's XFCC, URL-escaped PEM or base64 DER — into
     request.clientCertificate as verified: false, via: proxy; an unreadable
     header yields null, and declaring the field without trustProxy is refused.
-imports:
-  Http: ../
-  Client: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Http: ../, Client: ../../http-client, Assert: ../../assert }
 targets:
   - !ref untrusted
   - !ref untrustedAtRuntime
@@ -53,7 +49,7 @@ routes:
             body:
               certificate: !cel "request.clientCertificate"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

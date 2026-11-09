@@ -1,11 +1,11 @@
 kind: Telo.Application
 metadata: { name: AiMcpMixedToolsTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Ai: ../../ai
   AiMcp: ../
   AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
   Stub: ./__fixtures__/stub-mcp.yaml
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testMixed
@@ -54,7 +54,7 @@ toolProviders:
   - provider: !ref localTools
   - provider: !ref serverTools
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testMixed }
 steps:
   - name: invoke

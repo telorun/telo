@@ -45,6 +45,7 @@ metadata:
     and the file untouched, and once the directory can be listed the next boot
     confirms it into the turn's summary.
 imports:
+  Run: ../../../../modules/run
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
@@ -52,7 +53,6 @@ imports:
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
   Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # This test's own workspace, emptied before each run.
@@ -80,7 +80,7 @@ host:
   kind: Shell.LocalHost
   cwd: !cel "variables.scratch.joinPath('workspace')"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: push }
 inputType:
   kind: Telo.JsonSchema
@@ -88,10 +88,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [write]
-    properties:
-      write:
-        type: array
-        items: { type: object, additionalProperties: true }
+    properties: { write: { type: array, items: { type: object, additionalProperties: true } } }
 steps:
   - name: post
     invoke: !ref call
@@ -104,7 +101,7 @@ outputs:
   status: !cel "steps.post.result.status"
 ---
 # Starts a turn in a conversation of its own.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: begin }
 inputType:
   kind: Telo.JsonSchema
@@ -112,8 +109,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [message]
-    properties:
-      message: { type: string }
+    properties: { message: { type: string } }
 steps:
   - name: conversation
     invoke: !ref call
@@ -131,7 +127,7 @@ outputs:
   turnId: !cel "string(steps.start.result.body.turnId)"
 ---
 # Waits for a turn to end: its event stream read to its last frame.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: ended }
 inputType:
   kind: Telo.JsonSchema
@@ -139,8 +135,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: get
     timeout: 60000
@@ -155,7 +150,7 @@ steps:
       input: !cel "steps.get.result.body"
 ---
 # One turn of scripted tool calls, run to its end.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turn }
 inputType:
   kind: Telo.JsonSchema
@@ -165,9 +160,7 @@ inputType:
     required: [directive, calls]
     properties:
       directive: { type: string }
-      calls:
-        type: array
-        items: { type: object, additionalProperties: true }
+      calls: { type: array, items: { type: object, additionalProperties: true } }
 steps:
   - name: started
     invoke: !ref begin
@@ -180,7 +173,7 @@ outputs:
   conversationId: !cel "steps.started.result.conversationId"
   turnId: !cel "steps.started.result.turnId"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: revert }
 inputType:
   kind: Telo.JsonSchema
@@ -188,8 +181,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: post
     invoke: !ref call
@@ -204,7 +196,7 @@ outputs:
     steps.post.result.status == 200
       ? steps.post.result.body.revert.files.map(f, f.path + ' ' + f.status + ' ' + f.outcome) : []
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: changes }
 inputType:
   kind: Telo.JsonSchema
@@ -212,8 +204,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: get
     invoke: !ref call
@@ -224,7 +215,7 @@ outputs:
   body: !cel "steps.get.result.body"
 ---
 # Fails until the stub has received `count` agent requests carrying `text`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stubReceived }
 inputType:
   kind: Telo.JsonSchema
@@ -232,9 +223,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [text, count]
-    properties:
-      text: { type: string }
-      count: { type: integer }
+    properties: { text: { type: string }, count: { type: integer } }
 steps:
   - name: sent
     invoke: !ref call
@@ -250,7 +239,7 @@ steps:
           message: The stub has not received the request yet.
 ---
 # What the workspace holds at the paths the test writes: each file's content.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: disk }
 inputType:
   kind: Telo.JsonSchema
@@ -258,10 +247,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [paths]
-    properties:
-      paths:
-        type: array
-        items: { type: string }
+    properties: { paths: { type: array, items: { type: string } } }
 steps:
   - name: files
     invoke:
@@ -281,7 +267,7 @@ outputs:
 ---
 # A turn made a turn from before checkpoints existed, in the agent's database,
 # reached from outside it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: markLegacy }
 inputType:
   kind: Telo.JsonSchema
@@ -289,8 +275,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 with:
   - kind: SQLite.Connection
     metadata: { name: legacyDb }
@@ -308,7 +293,7 @@ steps:
 # What a process killed mid-turn leaves in the database, written while the
 # agent is stopped: the turns' entries unconfirmed, and their projection as it
 # was before their ending — not `ended`, no usage, no changes.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: crashResidue }
 inputType:
   kind: Telo.JsonSchema
@@ -316,10 +301,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnIds]
-    properties:
-      turnIds:
-        type: array
-        items: { type: string }
+    properties: { turnIds: { type: array, items: { type: string } } }
 with:
   - kind: SQLite.Connection
     metadata: { name: stoppedDb }
@@ -347,7 +329,7 @@ steps:
       sql: "DELETE FROM turn_changes WHERE turn_id IN (SELECT value FROM json_each(?))"
       bindings: [ !cel "json(inputs.turnIds)" ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -365,8 +347,7 @@ steps:
   # A run cut short may have left the directory unlistable.
   - name: unlockLeftover
     invoke: !ref inWorkspace
-    inputs:
-      args: [sh, -c, "chmod 755 sealed 2>/dev/null; true"]
+    inputs: { args: [sh, -c, "chmod 755 sealed 2>/dev/null; true"] }
   - name: reset
     invoke: { kind: Fs.FileRemoval }
     inputs:
@@ -374,7 +355,7 @@ steps:
       recursive: true
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -386,8 +367,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18542/v1
             teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         # ── changes, revert, repeat ──────────────────────────────────────────
@@ -627,8 +607,7 @@ steps:
           inputs:
             url: http://127.0.0.1:18543/workspace
             method: POST
-            body:
-              delete: [ blocked/dir ]
+            body: { delete: [blocked/dir] }
         - name: blockedInTheWay
           invoke: !ref push
           inputs:
@@ -655,8 +634,7 @@ steps:
           inputs:
             url: http://127.0.0.1:18543/workspace
             method: POST
-            body:
-              delete: [ hand.txt, . ]
+            body: { delete: [hand.txt, .] }
         - name: afterWholeRoot
           invoke: !ref disk
           inputs: { paths: [hand.txt, blocked/a.txt] }
@@ -684,15 +662,14 @@ steps:
           inputs: { text: STUB_SLOW seal it, count: 2 }
         - name: sealedUnconfirm
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             inputType:
               kind: Telo.JsonSchema
               schema:
                 type: object
                 additionalProperties: false
                 required: [turnId]
-                properties:
-                  turnId: { type: string }
+                properties: { turnId: { type: string } }
             with:
               - kind: SQLite.Connection
                 metadata: { name: sealedDb }
@@ -709,8 +686,7 @@ steps:
           inputs: { turnId: !cel "steps.sealed.result.turnId" }
         - name: sealedLock
           invoke: !ref inWorkspace
-          inputs:
-            args: [sh, -c, "chmod 311 sealed && ! ls sealed > /dev/null 2>&1"]
+          inputs: { args: [sh, -c, "chmod 311 sealed && ! ls sealed > /dev/null 2>&1"] }
         - name: sealedBefore
           invoke: !ref call
           inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.sealed.result.conversationId }}" }
@@ -728,15 +704,14 @@ steps:
           inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.sealed.result.conversationId }}/records" }
         - name: sealedEntries
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             inputType:
               kind: Telo.JsonSchema
               schema:
                 type: object
                 additionalProperties: false
                 required: [turnId]
-                properties:
-                  turnId: { type: string }
+                properties: { turnId: { type: string } }
             with:
               - kind: SQLite.Connection
                 metadata: { name: endedDb }
@@ -755,8 +730,7 @@ steps:
           inputs: { turnId: !cel "steps.sealed.result.turnId" }
         - name: sealedUnlock
           invoke: !ref inWorkspace
-          inputs:
-            args: [sh, -c, "cat sealed/y.txt; chmod 755 sealed"]
+          inputs: { args: [sh, -c, "cat sealed/y.txt; chmod 755 sealed"] }
         # ── the turns a crash will be staged on ──────────────────────────────
         # `held` wrote a file that still holds what it wrote; `lost` wrote one
         # the user has put back since; `partial` deleted a tree of which one
@@ -934,21 +908,11 @@ steps:
                 digests: [ true, true, [ "removed old two", "added new two" ] ]
               first:
                 status: 200
-                outcome:
-                  - f1.txt created restored
-                  - f2.txt modified restored
-                  - f3.txt created skipped
-                  - f4.txt created restored
-                  - f5.txt deleted restored
+                outcome: [f1.txt created restored, f2.txt modified restored, f3.txt created skipped, f4.txt created restored, f5.txt deleted restored]
                 revisionMoved: true
                 disk: [ null, "old two\n", "user three\n", null, "five\n" ]
               second:
-                outcome:
-                  - f1.txt created restored
-                  - f2.txt modified restored
-                  - f3.txt created skipped
-                  - f4.txt created restored
-                  - f5.txt deleted restored
+                outcome: [f1.txt created restored, f2.txt modified restored, f3.txt created skipped, f4.txt created restored, f5.txt deleted restored]
                 same: true
                 disk: [ null, "old two\n", "user three\n", null, "five\n" ]
               recorded:
@@ -964,12 +928,7 @@ steps:
               running:
                 changes: [ 200, [ h.txt created ] ]
                 revert: [ 409, ERR_TURN_IN_PROGRESS, true ]
-                elsewhere:
-                  - f1.txt created restored
-                  - f2.txt modified restored
-                  - f3.txt created restored
-                  - f4.txt created restored
-                  - f5.txt deleted restored
+                elsewhere: [f1.txt created restored, f2.txt modified restored, f3.txt created restored, f4.txt created restored, f5.txt deleted restored]
                 elsewhereMoved: true
                 elsewhereDisk: [ null, "user two\n", null, null, "five\n" ]
               aborted: [ h.txt created restored ]
@@ -1021,7 +980,7 @@ steps:
       turnIds: !cel "steps.agent.result.turns.map(t, t.turnId)"
   - name: rebooted
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -1033,8 +992,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18542/v1
             teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: turns
@@ -1075,15 +1033,14 @@ steps:
           inputs: { url: !interpolate "http://127.0.0.1:18549/conversations/${{ inputs.sealed.conversationId }}/records" }
         - name: sealedEntries
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             inputType:
               kind: Telo.JsonSchema
               schema:
                 type: object
                 additionalProperties: false
                 required: [turnId]
-                properties:
-                  turnId: { type: string }
+                properties: { turnId: { type: string } }
             with:
               - kind: SQLite.Connection
                 metadata: { name: rebootedDb }
@@ -1130,9 +1087,7 @@ steps:
         disk: !cel "steps.rebooted.result.disk"
         sealed: !cel "steps.rebooted.result.sealed"
       expected:
-        sealed:
-          entries: [ sealed/y.txt 1 ]
-          files: [ sealed/y.txt created ]
+        sealed: { entries: [sealed/y.txt 1], files: [sealed/y.txt created] }
         held:
           sameSummary: true
           files: [ m.txt created ]

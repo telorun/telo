@@ -12,14 +12,13 @@ imports:
   Image: ../
   Pdf: ../../pdf
   Fixture: ../../pdf/tests/__fixtures__/sample-form.yaml
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
 ---
 # The fit resource lives in this sequence's scope, so its controller — and the
 # canvas it loads — first exists after the page below has been rendered.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: fitCorrupt }
 with:
   - { kind: Image.Fit, metadata: { name: fit } }
@@ -41,7 +40,7 @@ steps:
           expected: ERR_UNSUPPORTED_IMAGE
         invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: document

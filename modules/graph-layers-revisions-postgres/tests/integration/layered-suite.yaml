@@ -37,7 +37,6 @@ imports:
   Layers: ../..
   Graph: ../../../graph
   GraphLayers: ../../../graph-layers
-  Run: ../../../run
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
 secrets:
@@ -60,7 +59,7 @@ targets:
 # and discards it — a write that leaves nothing behind; then each upper layer
 # is pinned at the head of its bases, bottom-up. A pin that is already at the
 # head changes nothing and makes no revision.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refreshStacks }
 steps:
   - name: registerBase
@@ -93,7 +92,7 @@ steps:
 ---
 # The suite must start empty — the ledger included, which lives in the same
 # namespace, or a previous run's declaration would decide what this one plans.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop

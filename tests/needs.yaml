@@ -7,16 +7,13 @@ metadata:
     or field by field, or leaves it to bubble up. Each import of an isolated
     library is a module instance of its own, with fulfilments of its own.
 imports:
-  Run: ../modules/run
   Assert: ../modules/assert
   Fx: ./__fixtures__/needs/types
   # Field by field, with literals.
   Orders:
     source: ./__fixtures__/needs/orders
     needs:
-      databaseAccess:
-        url: postgres://app:secret@db.internal:5432/orders
-        schema: sales
+      databaseAccess: { url: postgres://app:secret@db.internal:5432/orders, schema: sales }
   # Whole, by `!ref` to a fulfilment this application declares — for the
   # optional need too.
   Archive:
@@ -45,7 +42,7 @@ metadata: { name: archiveDatabase }
 fields:
   url: !cel "'postgres://archive.internal:5432/' + 'archive'"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: suppliedFieldByField }
 steps:
   - name: describe
@@ -59,7 +56,7 @@ steps:
         schema: sales
         cache: none
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: suppliedWhole }
 steps:
   - name: describe
@@ -73,7 +70,7 @@ steps:
         schema: public
         cache: postgres://archive.internal:5432/archive
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: forwardedWhole }
 steps:
   - name: describe
@@ -87,15 +84,14 @@ steps:
         schema: public
         cache: none
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: selfSuppliedReads }
 steps:
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "resources.archiveDatabase"
-      expected:
-        url: postgres://archive.internal:5432/archive
+      expected: { url: postgres://archive.internal:5432/archive }
 ---
 # A required need nothing supplies is refused at load, by its need path — the
 # need's name beneath each importer's alias — naming every environment variable
@@ -112,6 +108,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: unmetShared }
 source: ./__fixtures__/needs/unmet/shared.yaml
-expect:
-  errors: []
-  runFails: "Need 'Sessions.signingKey'"
+expect: { errors: [], runFails: "Need 'Sessions.signingKey'" }

@@ -10,11 +10,7 @@ metadata:
     refused it with "SQLite3 can only bind numbers, strings, bigints, buffers,
     and null". The same manifest wrote the row under Bun and failed under Node —
     which is also how the todo-app example's PUT answered 500 there.
-imports:
-  Sql: ../../sql
-  SQLite: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Sql: ../../sql, SQLite: ../, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -26,7 +22,7 @@ kind: Sql.Query
 metadata: { name: query }
 connection: !ref db
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: create

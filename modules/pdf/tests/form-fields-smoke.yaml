@@ -12,11 +12,7 @@ metadata:
     document. Further sequences assert the out-of-bounds-box,
     negative-coordinate, and page-out-of-range diagnostics, and that `data`
     that is not bytes is refused with ERR_INPUT_INVALID.
-imports:
-  Pdf: ../
-  Fixture: ./__fixtures__/sample-form.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Pdf: ../, Fixture: ./__fixtures__/sample-form.yaml, Assert: ../../assert }
 targets:
   - !ref testAddFields
   - !ref testBoxOutOfBounds
@@ -32,7 +28,7 @@ kind: Pdf.FormFields
 metadata: { name: addFields }
 scale: 2
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testAddFields }
 steps:
   - name: fixture
@@ -84,7 +80,7 @@ steps:
             properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testBoxOutOfBounds }
 steps:
   - name: fixture
@@ -109,7 +105,7 @@ steps:
             properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNegativeCoordinates }
 steps:
   - name: fixture
@@ -134,7 +130,7 @@ steps:
             properties: { code: { const: ERR_INPUT_INVALID } }
             required: [ code ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPageOutOfRange }
 steps:
   - name: fixture
@@ -161,7 +157,7 @@ steps:
 # A value that is not bytes is refused by the input contract, before the
 # controller runs. `dyn(...)` hides its type from `telo check`, which refuses a
 # map at a byte slot.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNonBytesData }
 steps:
   - name: tryNonBytes

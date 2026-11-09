@@ -1,11 +1,8 @@
 kind: Telo.Application
-metadata:
-  name: InheritedHttpClientMergeTest
-  version: 1.0.0
+metadata: { name: InheritedHttpClientMergeTest, version: 1.0.0 }
 imports:
   Ph: ./__fixtures__/inherited-client/telo.yaml
   Http: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref testMergeClient
@@ -13,14 +10,12 @@ targets:
 # TaggedClient extends Http.Client with NO base: — additive merge. The author sets
 # the parent's baseUrl directly (inherited field) plus its own `label`.
 kind: Ph.TaggedClient
-metadata:
-  name: tagged
+metadata: { name: tagged }
 baseUrl: https://jsonplaceholder.typicode.com
 label: demo
 ---
-kind: Run.Sequence
-metadata:
-  name: testMergeClient
+kind: Telo.Sequence
+metadata: { name: testMergeClient }
 steps:
   - name: fetchUser
     inputs: {}
@@ -37,9 +32,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          status: { type: integer, const: 200 }
-          id: { type: integer, const: 2 }
+        properties: { status: { type: integer, const: 200 }, id: { type: integer, const: 2 } }
         required: [status, id]
 
   # The child's own declared field publishes beside the parent's reading: the
@@ -51,9 +44,5 @@ steps:
         label: !cel "resources.tagged.label"
         baseUrl: !cel "resources.tagged.baseUrl"
         timeout: !cel "resources.tagged.timeout"
-      expected:
-        label: demo
-        baseUrl: https://jsonplaceholder.typicode.com
-        timeout: 10000
-    invoke:
-      kind: Assert.Equals
+      expected: { label: demo, baseUrl: https://jsonplaceholder.typicode.com, timeout: 10000 }
+    invoke: { kind: Assert.Equals }

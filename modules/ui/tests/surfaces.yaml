@@ -13,7 +13,6 @@ imports:
   Ui: ../
   DataModel: ../../data-model
   Probe: ./__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -80,7 +79,7 @@ edit:
   surface: { kind: Ui.Drawer, side: start }
   afterSubmit: keep
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: wide

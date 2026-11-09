@@ -15,15 +15,11 @@ metadata:
     replaced by an error node — a style that names none the renderer
     knows, whichever the request chooses — with the nodes beside it intact; an
     app-relative image is served from a mount beneath the application's.
-imports:
-  App: ../../app
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

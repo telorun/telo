@@ -4,21 +4,17 @@
 # reached the SAME instance: two instantiations would be two in-memory
 # databases, and the reader would fail with `no such table`.
 kind: Telo.Application
-metadata:
-  name: SharedLibrary
-  version: 1.0.0
+metadata: { name: SharedLibrary, version: 1.0.0 }
 imports:
   Left: ./__fixtures__/shared-library/left
   Right: ./__fixtures__/shared-library/right
   Assert: ../modules/assert
-  Run: ../modules/run
 targets:
   - !ref Left.seed
   - !ref verify
 ---
-kind: Run.Sequence
-metadata:
-  name: verify
+kind: Telo.Sequence
+metadata: { name: verify }
 steps:
   - name: read
     invoke: !ref Right.readMarks
@@ -27,4 +23,4 @@ steps:
     inputs:
       actual: !cel "steps.read.result.rows"
       expected:
-        - body: left was here
+        - { body: left was here }

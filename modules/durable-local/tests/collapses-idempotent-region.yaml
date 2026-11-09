@@ -16,10 +16,10 @@ metadata:
     nothing collapses a body because nothing wrapped it. Collapse is a visible
     resource carrying a written justification, not a key buried in a step.
 imports:
+  Run: ../../run
   Durable: ../../durable
   Local: ../
   Journal: ../../durable-journal-file
-  Run: ../../run
   Assert: ../../assert
 variables:
   journalDir:
@@ -73,7 +73,7 @@ metadata: { name: outcome }
 journal: !ref journal
 wait: 10s
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # One token per process, computed at RUNTIME, so a journal left behind by an

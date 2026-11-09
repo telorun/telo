@@ -9,20 +9,18 @@ metadata:
     cannot produce rather than sending the wrong one.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8080
+    ports: { http: 8080 }
 targets:
   - !ref app
 steps:
@@ -31,22 +29,19 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8080/export
       method: GET
-      headers:
-        accept: application/x-ndjson
+      headers: { accept: application/x-ndjson }
   - name: sse
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8080/export
       method: GET
-      headers:
-        accept: text/event-stream
+      headers: { accept: text/event-stream }
   - name: unsupported
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8080/export
       method: GET
-      headers:
-        accept: image/png
+      headers: { accept: image/png }
 
   - name: verifyNegotiation
     invoke: { kind: Assert.Equals }

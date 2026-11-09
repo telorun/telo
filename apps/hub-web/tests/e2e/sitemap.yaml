@@ -10,7 +10,6 @@ metadata:
 imports:
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
   Html: oci://ghcr.io/telorun/html@0.3.1#sha256-G81fLbqXcpYtcnNCYNd51ZlFbgQM4MMXh5DoGUpeIqs
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref sitemapIndex_ListsShardZero
@@ -19,7 +18,7 @@ targets:
 ---
 # The pages sitemap comes first; every module a fresh stack holds has a `seq`
 # inside shard 0.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: sitemapIndex_ListsShardZero }
 steps:
   - name: hit
@@ -34,8 +33,7 @@ steps:
   - name: read
     invoke:
       kind: Html.Extraction
-      fields:
-        locs: { selector: loc, type: text, many: true }
+      fields: { locs: { selector: loc, type: text, many: true } }
     inputs:
       document: !cel "steps.parse.result"
   - name: assert
@@ -43,15 +41,12 @@ steps:
       actual: !cel "{'status': steps.hit.result.status, 'locs': steps.read.result.fields.locs}"
       expected:
         status: 200
-        locs:
-          - http://hub.telo.localhost:8060/sitemaps/pages.xml
-          - http://hub.telo.localhost:8060/sitemaps/modules-0.xml
-    invoke:
-      kind: Assert.Equals
+        locs: [http://hub.telo.localhost:8060/sitemaps/pages.xml, http://hub.telo.localhost:8060/sitemaps/modules-0.xml]
+    invoke: { kind: Assert.Equals }
 ---
 # Containment rather than equality: a module another test registers joins the
 # shard too. Skipping refs without a page is covered by hub-web's unit tests.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: sitemapShard_ListsSeededOciRefs }
 steps:
   - name: hit
@@ -66,8 +61,7 @@ steps:
   - name: read
     invoke:
       kind: Html.Extraction
-      fields:
-        locs: { selector: loc, type: text, many: true }
+      fields: { locs: { selector: loc, type: text, many: true } }
     inputs:
       document: !cel "steps.parse.result"
   - name: assert
@@ -80,25 +74,18 @@ steps:
           ].map(name, 'http://hub.telo.localhost:8060/module/oci/ghcr.io/telorun/' + name + '/')
             .filter(url, !(url in steps.read.result.fields.locs))
         }
-      expected:
-        status: 200
-        seededMissing: []
-    invoke:
-      kind: Assert.Equals
+      expected: { status: 200, seededMissing: [] }
+    invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: robots_NamesSitemap }
 steps:
   - name: hit
-    invoke:
-      kind: HttpClient.Request
-      url: http://localhost:8050/robots.txt
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://localhost:8050/robots.txt, method: GET }
   - name: assert
     inputs:
       actual: !cel "{'status': steps.hit.result.status, 'body': steps.hit.result.body}"
       expected:
         status: 200
         body: "User-agent: *\nAllow: /\nSitemap: http://hub.telo.localhost:8060/sitemap.xml\n"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

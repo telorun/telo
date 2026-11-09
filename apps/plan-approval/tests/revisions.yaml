@@ -13,10 +13,10 @@ metadata:
     it and returns the plan to `revised`, and a decision on an older revision is
     ERR_REVISION_SUPERSEDED.
 imports:
+  Run: ../../../modules/run
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
 variables:
   scratch:
@@ -31,7 +31,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18742, throwOnHttpError: false }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -61,7 +61,7 @@ steps:
   - name: run
     inputs: !cel "steps.bodies.result"
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
         schema:
@@ -140,8 +140,7 @@ steps:
               schema:
                 type: object
                 required: [bodies]
-                properties:
-                  bodies: { type: array, items: { type: string } }
+                properties: { bodies: { type: array, items: { type: string } } }
             collection: !cel "inputs.bodies"
             steps:
               - name: submit

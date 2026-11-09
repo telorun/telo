@@ -13,10 +13,10 @@ metadata:
     approved, telling the model it was denied when it is not — and the model is
     given every result in the order the calls were asked for.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref streamEndsAsking
@@ -75,7 +75,7 @@ maxParallelTools: 1
 toolProviders:
   - provider: !ref bankTools
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: streamEndsAsking }
 steps:
   - name: run
@@ -136,7 +136,7 @@ steps:
 # conversation — the input followed by that record — and the approval: it runs
 # the transfer, appends its result after its siblings', and the model receives
 # the three results in call order.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: resumeRunsApprovedCall }
 steps:
   - name: first
@@ -183,7 +183,7 @@ steps:
         appended: [tool, assistant]
 ---
 # Refused, the transfer is never made: the model is told it was denied, and why.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: resumeDeniesRefusedCall }
 steps:
   - name: first

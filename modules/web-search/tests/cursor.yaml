@@ -7,7 +7,7 @@ imports: { WebSearch: .., Run: ../../run, Assert: ../../assert }
 targets:
   - !ref cursor
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cursor }
 steps:
   - name: sealed

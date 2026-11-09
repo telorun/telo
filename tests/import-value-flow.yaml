@@ -6,17 +6,15 @@
 # the bug is exercised. `Mid.db`/`Mid.migrate` are re-exported from data, proving
 # the value reached the single owning instance.
 kind: Telo.Application
-metadata:
-  name: ImportValueFlow
-  version: 1.0.0
+metadata: { name: ImportValueFlow, version: 1.0.0 }
 variables:
   # In-memory, or a database file resolved against the working directory.
   db:
     env: IMPORT_VALUE_FLOW_DB
     type: string
     anyOf:
-      - const: ":memory:"
-      - x-telo-type: Telo.HostPath
+      - { const: ":memory:" }
+      - { x-telo-type: Telo.HostPath }
     default: ":memory:"
 imports:
   Mid:
@@ -25,18 +23,15 @@ imports:
       dbFile: !cel "variables.db"
   Sql: ../modules/sql
   Assert: ../modules/assert
-  Run: ../modules/run
 targets:
   - !ref Mid.migrate
   - !ref verify
 ---
-kind: Run.Sequence
-metadata:
-  name: verify
+kind: Telo.Sequence
+metadata: { name: verify }
 steps:
   - name: select
-    inputs:
-      sql: "SELECT name FROM marker WHERE id = 1"
+    inputs: { sql: "SELECT name FROM marker WHERE id = 1" }
     invoke:
       kind: Sql.Query
       connection: !ref Mid.db
@@ -44,5 +39,4 @@ steps:
     inputs:
       actual: !cel "steps.select.result.rows[0].name"
       expected: "flowed"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

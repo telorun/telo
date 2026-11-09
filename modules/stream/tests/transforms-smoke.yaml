@@ -25,7 +25,7 @@ items:
   - { kind: delta, text: "wor" }
   - { kind: delta, text: "ld" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: src

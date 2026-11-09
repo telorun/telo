@@ -14,32 +14,26 @@ metadata:
     target cannot throw is a warning, an `error.data` field its codes do not
     declare is an error, and a negative delay or a zero timeout is refused by
     the bounds the policy's duration slots declare.
-imports:
-  Run: ../
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref test
   - !ref attempts
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: limited }
 steps:
   - name: refuse
-    throw:
-      code: ERR_RATE_LIMITED
-      message: slow down
-      data: { waitMs: 5 }
+    throw: { code: ERR_RATE_LIMITED, message: slow down, data: { waitMs: 5 } }
 ---
 kind: Assert.Events
 metadata: { name: attempts }
 filter:
-  - type: "limited.InvokeRejected"
+  - { type: "limited.InvokeRejected" }
 expect:
   # The first attempt and the one re-attempt the budget allows.
-  - event: limited.InvokeRejected
-    times: 2
+  - { event: limited.InvokeRejected, times: 2 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: waitAsAsked
@@ -67,8 +61,7 @@ steps:
           - code: NON_RETRYABLE_CODE_NOT_THROWN
             message: "retry.nonRetryable names 'ERR_NEVER_THROWN'"
         errors:
-          - code: CEL_UNKNOWN_FIELD
-            message: "error.data.'wait' is not defined"
+          - { code: CEL_UNKNOWN_FIELD, message: "error.data.'wait' is not defined" }
           - code: SCHEMA_VIOLATION
             message: "timeout must be a Telo.Duration greater than 0s, not 0s"
           - code: SCHEMA_VIOLATION

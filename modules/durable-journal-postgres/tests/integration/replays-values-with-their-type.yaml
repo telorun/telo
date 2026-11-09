@@ -24,6 +24,7 @@ metadata:
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL. Kept out of `tests/` proper for exactly that reason.
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -33,7 +34,6 @@ imports:
   Journal: ../../
   Postgres: ../../../postgres
   Values: ../../../durable-local/tests/__fixtures__/durable-values
-  Run: ../../../run
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
@@ -156,7 +156,7 @@ expect:
   # and the entry is still what says it completed, so the resume replays it.
   - { event: noop.Invoked, times: 1 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: ticket

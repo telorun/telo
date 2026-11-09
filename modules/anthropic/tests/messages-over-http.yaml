@@ -20,11 +20,11 @@ metadata:
 
     Offline: a local server scripted by model id.
 imports:
+  Run: ../../run
   Anthropic: ../
   Ai: ../../ai
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -124,11 +124,11 @@ value:
         - { type: text, text: describe this, cacheBreakpoint: true }
         - { type: image, mediaType: image/png, data: aGk= }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: EchoApi }
+    metadata: { name: echoApi }
     routes:
       - request:
           path: /messages
@@ -174,7 +174,7 @@ with:
   # answer of one status with one schema, so the cut text body cannot share a
   # route with the echoing object one.
   - kind: Server.Api
-    metadata: { name: ScriptedApi }
+    metadata: { name: scriptedApi }
     routes:
       - request:
           path: /messages
@@ -199,16 +199,16 @@ with:
             content:
               text/plain: { schema: { type: string }, body: '{"type": "message", "content": [{"ty' }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 8960 }
     openapi: { info: { title: Fake Messages API, version: 1.0.0 } }
     mounts:
       - path: /echo/v1
-        mount: !ref EchoApi
+        mount: !ref echoApi
       - path: /v1
-        mount: !ref ScriptedApi
+        mount: !ref scriptedApi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: marks
     invoke: !ref marked

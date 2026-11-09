@@ -19,7 +19,7 @@ targets:
 kind: Console.WriteLine
 metadata: { name: greet }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: printAndCheck }
 steps:
   - name: print

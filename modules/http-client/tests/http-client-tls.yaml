@@ -9,9 +9,9 @@ metadata:
     override, two clients with different CAs side by side, and a kind that
     extends Http.Client and maps its own fields onto the TLS settings.
 imports:
+  Run: ../../run
   Http: ../
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
   Private: ./__fixtures__/tls-client/telo.yaml
 targets:
@@ -105,7 +105,7 @@ kind: Run.Value
 metadata: { name: pong }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Server

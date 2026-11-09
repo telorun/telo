@@ -31,7 +31,7 @@ kind: Run.Value
 metadata: { name: once }
 value: { ok: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: emit }
 steps:
   - name: a

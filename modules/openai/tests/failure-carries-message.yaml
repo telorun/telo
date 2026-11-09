@@ -15,10 +15,10 @@ metadata:
 
     Offline: a local server answers 400 with a provider-shaped body.
 imports:
+  Run: ../../run
   OpenAI: ../
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Stream: ../../stream
   Assert: ../../assert
 targets:
@@ -56,11 +56,11 @@ metadata: { name: refusal }
 value:
   error: { message: "The model `gpt-test` does not exist.", code: model_not_found }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: FakeChatApi }
+    metadata: { name: fakeChatApi }
     routes:
       - request: { path: /chat/completions, method: POST }
         handler: !ref refusal
@@ -73,14 +73,14 @@ with:
                 schema: { type: object, additionalProperties: true }
                 body: !cel "result"
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 8875 }
     openapi: { info: { title: Fake Chat API, version: 1.0.0 } }
     mounts:
       - path: /v1
-        mount: !ref FakeChatApi
+        mount: !ref fakeChatApi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: streamed
     try:

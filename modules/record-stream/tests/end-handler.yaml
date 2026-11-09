@@ -13,7 +13,6 @@ imports:
   RecordStream: ../
   Stream: ../../stream
   Timer: ../../timer
-  Run: ../../run
   Sql: ../../sql
   SQLite: ../../sqlite
   Assert: ../../assert
@@ -50,7 +49,7 @@ kind: Stream.Collect
 metadata: { name: collect }
 ---
 # The handler: one row per ending, with the text the stream carried up to it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: recordEnding }
 inputType:
   kind: Telo.JsonSchema
@@ -84,7 +83,7 @@ kind: Sql.Query
 metadata: { name: endingOf }
 connection: !ref db
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: completed }
 steps:
   - name: source
@@ -111,7 +110,7 @@ steps:
 ---
 # The input stalls after its first item; the step's bound cancels the read. The
 # handler runs on a context without that cancellation, so its insert lands.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cancelledByInvocation }
 steps:
   - name: bounded
@@ -119,7 +118,7 @@ steps:
       - name: read
         timeout: 300
         invoke:
-          kind: Run.Sequence
+          kind: Telo.Sequence
           steps:
             - name: source
               invoke: !ref items
@@ -155,7 +154,7 @@ steps:
       expected: [{ state: cancelled, code: ERR_INVOKE_CANCELLED, content: he }]
 ---
 # The input raises after its first item.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: failedByInput }
 steps:
   - name: bounded
@@ -168,7 +167,7 @@ steps:
           kind: Stream.Tap
           when: !cel "item == 'llo'"
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             steps:
               - { name: boom, throw: { code: ERR_TEST_BOOM, message: the producer failed } }
         inputs: { input: !cel "steps.source.result.output" }
@@ -196,7 +195,7 @@ steps:
       expected: [{ state: failed, code: ERR_TEST_BOOM, content: he }]
 ---
 # The consumer fails on the first item and stops reading.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stoppedByConsumer }
 steps:
   - name: bounded
@@ -214,7 +213,7 @@ steps:
           kind: Stream.Tap
           when: !cel "item == 'he'"
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             steps:
               - name: refuse
                 throw: { code: ERR_TEST_STOPPED, message: the consumer gave up }
@@ -238,7 +237,7 @@ steps:
       expected: [{ state: cancelled, code: null, content: he }]
 ---
 # A handler requiring `context` to be an object, behind a caller that passes none.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: recordContext }
 inputType:
   kind: Telo.JsonSchema
@@ -257,7 +256,7 @@ handler: !ref recordContext
 inputs:
   context: !cel "context"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: contextDefaulted }
 steps:
   - name: source

@@ -15,10 +15,10 @@ metadata:
     the exposure — read from an in-test OTLP collector — and a token-guarded
     agent emits none.
 imports:
+  Run: ../../../../modules/run
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -51,9 +51,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [base]
-    properties:
-      base: { type: string }
-      authorization: { type: string }
+    properties: { base: { type: string }, authorization: { type: string } }
 collection:
   - { method: POST, path: /chat }
   - { method: GET, path: /chat/t/events }
@@ -88,7 +86,7 @@ outputs:
   code: !cel "has(steps.send.result.body.code) ? steps.send.result.body.code : null"
   challenge: !cel "'www-authenticate' in steps.send.result.headers ? steps.send.result.headers['www-authenticate'] : null"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -123,7 +121,7 @@ steps:
       createParents: true
   - name: agents
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         # Token-guarded, origins narrowed to one.
         - kind: App.Instance
@@ -138,9 +136,7 @@ steps:
             allowedOrigins: "https://studio.example, "
             otlpEndpoint: http://127.0.0.1:18510
             allowManifestRuns: true
-          secrets:
-            anthropicApiKey: stub-key
-            agentToken: test-token-2b7f
+          secrets: { anthropicApiKey: stub-key, agentToken: test-token-2b7f }
         # Open, and with no model key.
         - kind: App.Instance
           metadata: { name: open }
@@ -152,8 +148,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('open').joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18519/v1
             otlpEndpoint: http://127.0.0.1:18510
-          secrets:
-            anthropicApiKey: ""
+          secrets: { anthropicApiKey: "" }
       targets: [ !ref guarded, !ref open ]
       steps:
         - name: refused
@@ -176,16 +171,12 @@ steps:
           invoke: !ref call
           inputs:
             url: http://127.0.0.1:18501/workspace
-            headers:
-              authorization: Bearer test-token-2b7f
-              origin: https://evil.example
+            headers: { authorization: Bearer test-token-2b7f, origin: https://evil.example }
         - name: listedOrigin
           invoke: !ref call
           inputs:
             url: http://127.0.0.1:18501/workspace
-            headers:
-              authorization: Bearer test-token-2b7f
-              origin: https://studio.example
+            headers: { authorization: Bearer test-token-2b7f, origin: https://studio.example }
         - name: preflight
           invoke: !ref call
           inputs:
@@ -220,7 +211,7 @@ steps:
         - name: logs
           retry: { attempts: 60, initialDelay: 250, factor: 1, jitter: none }
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             steps:
               - name: get
                 invoke: !ref call

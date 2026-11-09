@@ -8,15 +8,11 @@ metadata:
     id — and the value the controller validates at that point is a compiled CEL
     object, not a string. Typing it as a string refused the route at boot, with a
     message about the header rather than about CEL.
-imports:
-  Http: ../
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

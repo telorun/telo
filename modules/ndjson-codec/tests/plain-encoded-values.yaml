@@ -10,12 +10,11 @@ imports:
   Ndjson: ../
   PlainText: ../../plain-text-codec
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testPlainLine
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPlainLine }
 steps:
   - name: source

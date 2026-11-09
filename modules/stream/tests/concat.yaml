@@ -17,7 +17,7 @@ targets:
   - !ref sourceOutputChecked
   - !ref undeclaredOutputRefusedAtRun
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: joinsInOrder }
 steps:
   - name: joined

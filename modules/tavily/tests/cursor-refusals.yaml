@@ -5,10 +5,10 @@
 kind: Telo.Application
 metadata: { name: TavilyCursorRefusalsTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Tavily: ..
   WebSearch: ../../web-search
   Http: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref cursorRefusals
@@ -20,7 +20,7 @@ request:
   kind: Http.Request
   client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18861" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cursorRefusals }
 steps:
   - name: refusals

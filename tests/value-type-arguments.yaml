@@ -13,9 +13,7 @@ metadata:
     Covers the mismatch, the gradual case (an omitted argument is *any*, so an
     unmigrated producer or consumer keeps checking exactly as it did), and the
     diagnostic reported for a name that is not a value type at all.
-imports:
-  Assert: ../modules/assert
-  Run: ../modules/run
+imports: { Assert: ../modules/assert }
 targets:
   - !ref testValueTypeArguments
 ---
@@ -24,22 +22,21 @@ metadata: { name: rejectsArgumentMismatch }
 source: ./__fixtures__/stream-argument-mismatch.yaml
 expect:
   errors:
-    - code: CEL_TYPE_ARGUMENT_MISMATCH
+    - { code: CEL_TYPE_ARGUMENT_MISMATCH }
 ---
 kind: Assert.Manifest
 metadata: { name: acceptsMatchingAndOmittedArguments }
 source: ./__fixtures__/stream-argument-gradual.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: rejectsUnknownValueType }
 source: ./__fixtures__/value-type-unknown.yaml
 expect:
   errors:
-    - code: X_TELO_TYPE_UNKNOWN
+    - { code: X_TELO_TYPE_UNKNOWN }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testValueTypeArguments }
 steps:
   - name: mismatch

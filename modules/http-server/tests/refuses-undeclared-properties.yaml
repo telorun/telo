@@ -8,15 +8,11 @@ metadata:
     behaviour answered 201 while discarding what the client sent — a misspelled
     field is the common case, and it was indistinguishable from success until
     someone read the row back. A schema that leaves the object open still accepts.
-imports:
-  Http: ../
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

@@ -10,12 +10,11 @@ imports:
   Sse: ../
   PlainText: ../../plain-text-codec
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testPlainFrame
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPlainFrame }
 steps:
   - name: source

@@ -10,11 +10,7 @@ metadata:
       - absolute from X-Forwarded-Proto / X-Forwarded-Host when
         `trustForwardedHeaders` is on.
     Also asserts the documented path carries the mount prefix (`/v1/ping`).
-imports:
-  Http: ../
-  JS: ../../javascript
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, JS: ../../javascript, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -79,11 +75,11 @@ routes:
 kind: Http.Reference
 metadata: { name: docs }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: RelativeServer }
+    metadata: { name: relativeServer }
     listen: { address: 127.0.0.1, port: 8961 }
     openapi: { info: { title: RelativeServer, version: 1.0.0 } }
     mounts:
@@ -92,7 +88,7 @@ with:
       - path: /reference
         mount: !ref docs
   - kind: Http.Server
-    metadata: { name: ForwardedServer }
+    metadata: { name: forwardedServer }
     listen: { address: 127.0.0.1, port: 8962 }
     trustForwardedHeaders: true
     openapi: { info: { title: ForwardedServer, version: 1.0.0 } }
@@ -102,8 +98,8 @@ with:
       - path: /reference
         mount: !ref docs
 targets:
-  - !ref RelativeServer
-  - !ref ForwardedServer
+  - !ref relativeServer
+  - !ref forwardedServer
 steps:
   - name: hitRelative
     inputs: { url: http://127.0.0.1:8961/reference/openapi.json }

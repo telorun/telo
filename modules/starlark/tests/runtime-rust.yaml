@@ -3,10 +3,7 @@ metadata:
   name: StarlarkRuntimeRust
   version: 1.0.0
   description: Verifies that runtime:rust on the starlark Telo.Import resolves to the pkg:cargo controller and the rust controller's marker payload appears in the invoke output.
-imports:
-  Starlark: { source: ../, runtime: rust }
-  Run: ../../run
-  Assert: ../../assert
+imports: { Starlark: { source: ../, runtime: rust }, Assert: ../../assert }
 targets:
   - !ref runScript
   - !ref verifyRustMarker
@@ -17,7 +14,7 @@ code: |
   def run(input):
     return {"result": input["value"] * 2}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: runScript }
 steps:
   - name: invoke

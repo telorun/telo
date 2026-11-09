@@ -34,10 +34,10 @@ metadata:
     and DB_NAME, never a developer's database. Run only by the hub's own suite
     through that command.
 imports:
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Http: ../../../../modules/http-server
   Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
   Postgres: oci://ghcr.io/telorun/postgres@0.12.1#sha256-VNaEhwdFO0EmZR7ips4zvp1U7d1ohi72O_uTi-7E3AQ
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
   Embedding: oci://ghcr.io/telorun/embedding@0.12.2#sha256-XHN0qwYwQm_Lk2OaYZEiqRzEyvIHdhd6u29bfYkvT64
@@ -258,7 +258,7 @@ connection: !ref db
 # One version through the ingest run, to completion: a claim minted from the
 # clock (a durable run id is never reused, so a rerun of the test must not start
 # from an attempt an earlier run burnt), the run, and its recorded outcome.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: ingestOne }
 inputType:
   kind: Telo.JsonSchema
@@ -331,11 +331,11 @@ outputs:
   completed: !cel "steps.await.result.completed"
   lastError: !cel "steps.await.result.lastError"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: StandIns }
+    metadata: { name: standIns }
     listen: { address: 127.0.0.1, port: 8979 }
     contentTypeParsers:
       - { contentType: text/yaml, stream: true }
@@ -343,7 +343,7 @@ with:
       - path: /
         mount: !ref standInApi
 targets:
-  - !ref StandIns
+  - !ref standIns
 steps:
   - name: reset
     invoke: !ref exec

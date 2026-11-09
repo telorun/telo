@@ -11,7 +11,6 @@ imports:
   AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
   AiMcp: ../
   Stub: ./__fixtures__/stub-mcp.yaml
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testToolErrorMessage
@@ -23,7 +22,7 @@ onToolError: throw
 toolProviders:
   - { provider: { kind: AiMcp.ToolProvider, client: { kind: Stub.StubClient } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testToolErrorMessage }
 steps:
   - name: call

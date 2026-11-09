@@ -19,7 +19,7 @@ items: [ "placeholder" ]
 kind: Stream.Collect
 metadata: { name: collect }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: emit

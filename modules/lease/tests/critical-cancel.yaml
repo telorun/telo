@@ -11,7 +11,6 @@ metadata:
 imports:
   Lease: ../
   KvStoreMemory: ../../kv-store-memory
-  Run: ../../run
   Timer: ../../timer
   Assert: ../../assert
 targets:
@@ -28,7 +27,7 @@ detach: true
 invoke: !ref slow
 ---
 # Long enough that the body can only end via cancellation within the test run.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: slow }
 steps:
   - name: wait
@@ -38,7 +37,7 @@ steps:
 kind: Timer.Delay
 metadata: { name: pause }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: start

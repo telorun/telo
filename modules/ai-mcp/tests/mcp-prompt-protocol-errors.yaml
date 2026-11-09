@@ -13,12 +13,11 @@ imports:
   AiMcp: ../
   AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
   Stub: ./__fixtures__/stub-mcp.yaml
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: promptsMissing

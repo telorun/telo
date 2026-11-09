@@ -58,7 +58,7 @@ changesetBases: !ref graphChangesetBases
 # A revisioned layer is built on pinned revisions, so `top` takes what `base`
 # now holds by pinning its head. Only a registered layer can be pinned, and
 # `base` is registered by the write this follows.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refreshStacks }
 steps:
   - name: top

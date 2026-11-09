@@ -11,6 +11,7 @@ metadata:
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -20,7 +21,6 @@ imports:
   Graph: ../../../graph
   GraphLayers: ../../../graph-layers
   Layers: ../..
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -53,7 +53,7 @@ access:
       path: /postgres
       query: { options: "-c search_path=public" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -214,7 +214,7 @@ hops:
   - { relationship: !ref joins, direction: out }
 ---
 # Written out of key order, so an ordered drain is the listing's doing.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: populate }
 steps:
   - name: identified0
@@ -291,7 +291,7 @@ steps:
       target: !cel "bytes('c1')"
 ---
 # Keyed by uuid.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: identifiedDrain }
 steps:
   - name: page
@@ -318,7 +318,7 @@ steps:
       expected: [0b6f0cc9-0a52-4c5e-9d0e-3f3b6f1a0001, 2b6f0cc9-0a52-4c5e-9d0e-3f3b6f1a0002, 9b6f0cc9-0a52-4c5e-9d0e-3f3b6f1a0003]
 ---
 # Keyed by boolean.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: flaggedDrain }
 steps:
   - name: page
@@ -345,7 +345,7 @@ steps:
       expected: [false, true]
 ---
 # Keyed by bytea.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: packedDrain }
 steps:
   - name: page
@@ -372,7 +372,7 @@ steps:
       expected: [a1, b1, c1]
 ---
 # Keyed by doublePrecision.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measuredDrain }
 steps:
   - name: page
@@ -399,7 +399,7 @@ steps:
       expected: [-0.25, 1.5, 10.75]
 ---
 # Keyed by jsonb.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: shapedDrain }
 steps:
   - name: page
@@ -426,7 +426,7 @@ steps:
       expected: [{ a: 1 }, { a: 2 }, { b: 0 }]
 ---
 # Keyed by integer array.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listedDrain }
 steps:
   - name: page
@@ -453,7 +453,7 @@ steps:
       expected: [[1, 2], [1, 3], [2, 0]]
 ---
 # Relationships between binary keys: the tail holds both.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: joinsDrain }
 steps:
   - name: page
@@ -480,7 +480,7 @@ steps:
       expected: [[a1, b1], [a1, c1], [b1, c1]]
 ---
 # A traversal ending on binary keys.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reachedDrain }
 steps:
   - name: page

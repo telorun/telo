@@ -6,11 +6,11 @@
 kind: Telo.Application
 metadata: { name: KagiPagingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Kagi: ..
   WebSearch: ../../web-search
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref paging
@@ -31,11 +31,11 @@ value:
   "10": [z1]
   "11": [y1]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: paging }
 with:
   - kind: Server.Api
-    metadata: { name: FakeKagi }
+    metadata: { name: fakeKagi }
     routes:
       - request:
           path: /api/v1/search
@@ -54,13 +54,13 @@ with:
                       ? result[string(int(request.body.page))].map(t, {'title': t, 'url': 'https://example.com/' + t, 'snippet': t})
                       : []}}
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18854 }
     mounts:
       - path: /
-        mount: !ref FakeKagi
+        mount: !ref fakeKagi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: first
     invoke: !ref engine

@@ -11,7 +11,6 @@ imports:
   AiMcp: ../
   AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
   Stub: ./__fixtures__/stub-mcp.yaml
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -29,7 +28,7 @@ toolProviders:
       kind: AiMcp.PromptToolProvider
       client: !ref mcpServer
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: ask

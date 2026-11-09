@@ -12,12 +12,11 @@ imports:
   Radix: ../
   Derived: ./__fixtures__/derived
   Conformance: ../../ui-react-conformance
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref checkRadix
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checkRadix }
 steps:
   - name: theme

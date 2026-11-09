@@ -12,7 +12,6 @@ imports:
   Gzip: ../../gzip
   Tar: ../
   PlainText: ../../plain-text-codec
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testRoundtrip
@@ -33,7 +32,7 @@ metadata: { name: pick }
 kind: PlainText.Decoder
 metadata: { name: toText }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRoundtrip }
 steps:
   - name: pack
@@ -68,7 +67,7 @@ steps:
         properties: { text: { const: "name: hello" } }
         required: [ text ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNotFound }
 steps:
   - name: pack

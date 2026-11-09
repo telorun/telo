@@ -21,7 +21,6 @@ imports:
   DataModel: ../../data-model
   Widgets: ./__fixtures__/widgets
   Probe: ./__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -141,7 +140,7 @@ layout:
           done: !cel "row.isDone"
           label: Done
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: derived

@@ -15,7 +15,7 @@ kind: AiEcho.EchoModel
 metadata: { name: echo }
 echoRequest: true
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: toolChoiceReachesTheModel }
 steps:
   - name: call

@@ -8,14 +8,11 @@ metadata:
     nothing, and every place the application itself still names the old
     property — a column of a layout written at the admin, a hand-written
     listing's column, a filter field — is reported, each once.
-imports:
-  Probe: ../../ui/tests/__fixtures__/probe
-  Run: ../../run
-  Assert: ../../assert
+imports: { Probe: ../../ui/tests/__fixtures__/probe, Assert: ../../assert }
 targets:
   - !ref main
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: renamed

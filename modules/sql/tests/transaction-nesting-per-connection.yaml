@@ -10,11 +10,7 @@
 # own, on whatever connection happened to be ambient.
 kind: Telo.Application
 metadata: { name: TransactionNestingPerConnection, version: 1.0.0 }
-imports:
-  Sql: ../
-  SQLite: ../../sqlite
-  Run: ../../run
-  Assert: ../../assert
+imports: { Sql: ../, SQLite: ../../sqlite, Assert: ../../assert }
 targets:
   - !ref testNesting
 ---
@@ -33,7 +29,7 @@ metadata: { name: outerTx }
 connection: !ref dbA
 steps: !ref outerBody
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: outerBody }
 steps:
   - name: writeA
@@ -59,7 +55,7 @@ metadata: { name: innerTxA }
 connection: !ref dbA
 steps: !ref innerBodyA
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: innerBodyA }
 steps:
   - name: writeNestedA
@@ -73,7 +69,7 @@ metadata: { name: innerTxB }
 connection: !ref dbB
 steps: !ref innerBodyB
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: innerBodyB }
 steps:
   - name: writeNestedB
@@ -82,7 +78,7 @@ steps:
       connection: !ref dbB
     inputs: { sql: "INSERT INTO b (v) VALUES ('inner-other')" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNesting }
 steps:
   - name: createA

@@ -9,7 +9,6 @@ metadata:
 imports:
   App: ../../../modules/app
   Channel: ../../../modules/channel
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
 targets:
   - !ref app
@@ -25,7 +24,7 @@ variables:
   greeting: Hi
   shout: true
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: printed

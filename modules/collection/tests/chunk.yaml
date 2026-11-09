@@ -15,7 +15,7 @@ metadata: { name: chunkNumbers }
 collection: !cel "inputs.numbers"
 size: !cel "inputs.size"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testChunk }
 steps:
   - name: chunk

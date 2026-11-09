@@ -14,9 +14,9 @@ metadata:
     late process records the key and runs its work: one write, the late one's.
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
-include:
-  - ./__fixtures__/key-race/model.yaml
+include: [./__fixtures__/key-race/model.yaml]
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -25,7 +25,6 @@ imports:
   Sql: ../../../sql
   Postgres: ../../../postgres
   App: ../../../app
-  Run: ../../../run
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
@@ -65,9 +64,7 @@ condition: !cel "resources.commitHolder.status.exitCode == null"
 # 60s for a child kernel to boot, record and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: commitLate }
@@ -86,9 +83,7 @@ condition: !cel "resources.commitLate.status.exitCode == null"
 # 60s for a child kernel to boot, record and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: rollbackHolder }
@@ -107,9 +102,7 @@ condition: !cel "resources.rollbackHolder.status.exitCode == null"
 # 60s for a child kernel to boot, record and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: rollbackLate }
@@ -128,11 +121,9 @@ condition: !cel "resources.rollbackLate.status.exitCode == null"
 # 60s for a child kernel to boot, record and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: commitRace }
 steps:
   - name: awaitHolder
@@ -146,8 +137,7 @@ steps:
       expected: [0, 0]
   - name: writes
     invoke: { kind: Sql.Query, connection: !ref db }
-    inputs:
-      sql: SELECT writer FROM race_effects WHERE effect_key = 'race-commit'
+    inputs: { sql: SELECT writer FROM race_effects WHERE effect_key = 'race-commit' }
   - name: onlyHolderWrote
     invoke: !ref check
     inputs:
@@ -163,7 +153,7 @@ steps:
       actual: !cel "steps.recorded.result.rows"
       expected: [{ n: 1 }]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: rollbackRace }
 steps:
   - name: awaitHolder
@@ -177,8 +167,7 @@ steps:
       expected: [true, 0]
   - name: writes
     invoke: { kind: Sql.Query, connection: !ref db }
-    inputs:
-      sql: SELECT writer FROM race_effects WHERE effect_key = 'race-rollback'
+    inputs: { sql: SELECT writer FROM race_effects WHERE effect_key = 'race-rollback' }
   - name: onlyLateWrote
     invoke: !ref check
     inputs:

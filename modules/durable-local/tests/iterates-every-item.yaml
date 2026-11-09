@@ -73,7 +73,7 @@ filter:
 expect:
   - { event: handleItem.Invoked, times: 3 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # One batch id per process, so a journal directory left behind by an earlier

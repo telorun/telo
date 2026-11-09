@@ -1,8 +1,9 @@
 ---
-status: approved
+status: in-progress
 priority: high
 depends-on: []
 packages: [analyzer, modules/durable-local]
+tracking: feat/durable-remainder
 ---
 
 # Durable execution — what `durable-local` and the analyzer still owe
@@ -69,7 +70,15 @@ limit, and every resume replays all of it from the first entry.
 - The baseline's format joins spec §5.2 as normative, written here because this plan is the
   first to read one back after a restart. Both journals implement the replace-with-baseline
   operation as one atomic write: a single transaction on Postgres, a rename on the file journal.
-- A baseline is taken only at a step boundary, never inside a collapsed region.
+- A baseline is taken only at a step boundary of the workflow body's own step list, including the
+  branches of its `if`, `switch`, `try` and `while` (a `while` baseline sits at the end of a turn).
+  It is never taken inside a nested dispatched body, a `Run.Iteration` / `Run.Loop` /
+  `Run.Projection` body, a concurrent region, a `catch:` / `finally:` branch or a collapsed region:
+  a run there does not compact until it leaves. A long loop inside a composer therefore stays
+  unbounded.
+- A baseline is due once the run holds `compactAfter` entries and replay has passed every entry it
+  read at open. The baseline names each enclosing step and branch by journal path, so it describes
+  one resumable position; a step or branch the body no longer has is refused on resume.
 
 **Verify.**
 

@@ -12,7 +12,6 @@ imports:
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
 variables:
   scratch:
@@ -27,7 +26,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18750, throwOnHttpError: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -41,7 +40,7 @@ steps:
     inputs: { path: !cel "string(variables.scratch)", createParents: true }
   - name: run
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: server }
@@ -55,17 +54,15 @@ steps:
         # One-shot: starting it waits for its seed to finish.
         - name: seed
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             with:
               - kind: App.Instance
                 metadata: { name: demo }
                 source: ../demo/telo.yaml
-                variables:
-                  serverUrl: http://127.0.0.1:18750
+                variables: { serverUrl: http://127.0.0.1:18750 }
             targets: [ !ref demo ]
             steps:
-              - name: seeded
-                value: true
+              - { name: seeded, value: true }
         - name: products
           invoke: !ref call
           inputs: { url: /api/review/products }

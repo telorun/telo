@@ -17,7 +17,7 @@ targets:
   - !ref mutationXss
   - !ref readbackCorpus
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: plainText }
 steps:
   - name: parse
@@ -35,7 +35,7 @@ steps:
       expected: "Title\n\nOne two\nthree\n\na\tb"
 ---
 # A GFM table and task list, and relative links made absolute against the base.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: markdown }
 steps:
   - name: parse
@@ -65,7 +65,7 @@ steps:
         | - | - |
         | 1 | 2 |
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: markdownStyles }
 steps:
   - name: parse
@@ -107,7 +107,7 @@ steps:
 # Trees no parser builds, whose markup reads back as another tree: each is
 # refused, naming the first differing node — including a namespace the parser
 # would not give the node where it stands.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: markupRefusals }
 steps:
   - name: cases
@@ -181,7 +181,7 @@ steps:
 ---
 # The names only a hand-built tree holds, computed so `telo check` cannot see
 # them, are refused by the input contract before the controller runs.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nodeNameCase }
 steps:
   - name: cases
@@ -214,7 +214,7 @@ steps:
 ---
 # A legacy script hiding its markup in `<!-- … -->` holds an end tag the parser
 # reads as text; it serializes, and reads back as the same tree.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: legacyScript }
 steps:
   - name: parse
@@ -240,7 +240,7 @@ steps:
 ---
 # Every parse satisfies the node shape (the kind's output contract checks it),
 # serializes, reads back as the same tree, and — sanitized — serializes too.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: serializationCorpus }
 steps:
   - name: cases
@@ -281,7 +281,7 @@ steps:
 ---
 # A parsed page that does not round trip: the nested-form mutation XSS payload,
 # whose markup reads back with a live `<img onerror>`. Markup refuses it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: mutationXss }
 steps:
   - name: parse
@@ -311,7 +311,7 @@ steps:
 # parenting, foreign content and its breakouts, templates, nested forms,
 # fragments in table and select context. Each either reads back as the same
 # tree or is refused; sanitized with `richContent`, each renders.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readbackCorpus }
 steps:
   - name: cases

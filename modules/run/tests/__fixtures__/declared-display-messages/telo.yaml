@@ -2,52 +2,36 @@
 # three ways, chosen by `mode`: with no display message of its own (`declared`),
 # with one of its own (`own`), and with data the declaration does not admit (`bad`).
 kind: Telo.Library
-metadata:
-  name: DisplayMessageLookup
-  version: 1.0.0
+metadata: { name: DisplayMessageLookup, version: 1.0.0 }
 lang: en
-imports:
-  Run: ../../..
-exports:
-  kinds: [Lookup]
+exports: { kinds: [Lookup] }
 ---
 kind: Telo.Definition
-metadata:
-  name: Lookup
+metadata: { name: Lookup }
 capability: Telo.Invocable
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [id, mode]
-    properties:
-      id: { type: string }
-      mode: { type: string, enum: [declared, own, bad] }
+    properties: { id: { type: string }, mode: { type: string, enum: [declared, own, bad] } }
     additionalProperties: false
 throws:
   codes:
     ITEM_MISSING:
       description: No item has the id.
       displayMessage: "Item {$id} does not exist."
-      data:
-        type: object
-        required: [id]
-        properties:
-          id: { type: string }
+      data: { type: object, required: [id], properties: { id: { type: string } } }
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: body }
     inputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [id, mode]
-        properties:
-          id: { type: string }
-          mode: { type: string }
+        properties: { id: { type: string }, mode: { type: string } }
     steps:
       - name: choose
         if: !cel "inputs.mode == 'declared'"

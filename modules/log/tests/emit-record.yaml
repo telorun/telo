@@ -20,12 +20,11 @@ imports:
   Log: ../
   Fs: ../../fs
   Timer: ../../timer
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - { kind: Fs.File, metadata: { name: readLog } }

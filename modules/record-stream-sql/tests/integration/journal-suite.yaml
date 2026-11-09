@@ -18,7 +18,6 @@ imports:
   RecordStreamSql: ../../
   Postgres: ../../../postgres
   Sql: ../../../sql
-  Run: ../../../run
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
 secrets:
@@ -59,7 +58,7 @@ metadata: { name: store }
 connection: !ref db
 table: record_stream_journal_suite_test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: clear }
 steps:
   - name: entries

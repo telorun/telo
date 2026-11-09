@@ -12,7 +12,6 @@ imports:
   SQLite: ../../sqlite
   Graph: ../../graph
   Layers: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -26,7 +25,7 @@ metadata: { name: createPerson }
 store: !ref team
 node: !ref person
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: create

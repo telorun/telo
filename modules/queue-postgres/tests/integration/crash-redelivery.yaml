@@ -27,7 +27,6 @@ imports:
   Sql: ../../../sql
   Postgres: ../../../postgres
   Shell: ../../../shell
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -58,7 +57,7 @@ kind: Sql.Query
 metadata: { name: read }
 connection: !ref db
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: enqueue

@@ -12,10 +12,10 @@ metadata:
     call's argument deltas are forwarded ahead of it under the call's own id, and
     a concluding call's are withheld with the call.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref partOrder
@@ -46,7 +46,7 @@ tools:
 kind: Stream.Collect
 metadata: { name: collect }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: partOrder }
 steps:
   - name: run
@@ -101,7 +101,7 @@ steps:
 ---
 # Each call opens with a provider-state part naming the state it was given: the
 # first the run's input, the second the state the first emitted.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: providerStateFlow }
 steps:
   - name: run
@@ -127,7 +127,7 @@ steps:
 ---
 # The deltas of a call join to its argument JSON, and carry the id the call and
 # its result carry.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: argumentDeltas }
 steps:
   - name: run
@@ -160,7 +160,7 @@ steps:
 ---
 # The concluding call may not use a tool: the call the model returns anyway is
 # withheld, and so are the deltas that led to it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: concludingCallDeltas }
 steps:
   - name: run

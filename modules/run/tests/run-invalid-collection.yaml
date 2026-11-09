@@ -22,7 +22,7 @@ collection: !cel "inputs.thing"
 steps:
   - { name: noop, invoke: { kind: Run.Value, value: { ok: true } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verify }
 steps:
   - name: iterationFails

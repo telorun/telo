@@ -16,7 +16,6 @@ metadata:
     `/radix`, `/brand` and `/sidebar` mounts, which have no brand switch.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 variables:
@@ -35,7 +34,7 @@ metadata: { name: visitor }
 baseUrl: http://127.0.0.1:8152
 followRedirects: false
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

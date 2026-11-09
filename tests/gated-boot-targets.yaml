@@ -11,21 +11,11 @@
 # A target that must NOT run asserts a contradiction, so running it fails the
 # suite rather than passing silently.
 kind: Telo.Application
-metadata:
-  name: GatedBootTargets
-  version: 1.0.0
-imports:
-  Assert: ../modules/assert
-  Run: ../modules/run
+metadata: { name: GatedBootTargets, version: 1.0.0 }
+imports: { Assert: ../modules/assert }
 variables:
-  enabled:
-    env: GATED_TARGETS_ENABLED
-    type: boolean
-    default: true
-  disabled:
-    env: GATED_TARGETS_DISABLED
-    type: boolean
-    default: false
+  enabled: { env: GATED_TARGETS_ENABLED, type: boolean, default: true }
+  disabled: { env: GATED_TARGETS_DISABLED, type: boolean, default: false }
 targets:
   - ref: !ref ranWhenTrue
     when: !cel "variables.enabled"
@@ -39,22 +29,17 @@ targets:
     when: !cel "variables.enabled"
   - name: inlineWhenFalse
     invoke: !ref assertUnreachable
-    inputs:
-      actual: "gate open"
-      expected: "gate closed"
+    inputs: { actual: "gate open", expected: "gate closed" }
     when: !cel "variables.disabled"
 ---
 kind: Assert.Equals
-metadata:
-  name: assertTrue
+metadata: { name: assertTrue }
 ---
 kind: Assert.Equals
-metadata:
-  name: assertUnreachable
+metadata: { name: assertUnreachable }
 ---
-kind: Run.Sequence
-metadata:
-  name: ranWhenTrue
+kind: Telo.Sequence
+metadata: { name: ranWhenTrue }
 steps:
   - name: check
     invoke: { kind: Assert.Equals }
@@ -62,12 +47,9 @@ steps:
       actual: !cel "variables.enabled"
       expected: true
 ---
-kind: Run.Sequence
-metadata:
-  name: mustNotRun
+kind: Telo.Sequence
+metadata: { name: mustNotRun }
 steps:
   - name: unreachable
     invoke: { kind: Assert.Equals }
-    inputs:
-      actual: "gate open"
-      expected: "gate closed"
+    inputs: { actual: "gate open", expected: "gate closed" }

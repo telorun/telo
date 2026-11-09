@@ -16,7 +16,7 @@ collection: !cel "inputs.events"
 key:
   user: !cel "item.userId"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testDistinct }
 steps:
   - name: distinct

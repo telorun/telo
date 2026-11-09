@@ -14,22 +14,14 @@ requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.131.0" }
     reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0); also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
+  - requires: { telo: ">=unreleased" }
+    reason: "Compacts a long run through the step engine's durable-body baselines, which an older runtime's engine ignores: it would never compact, and would replay a run another runtime compacted from the top."
 imports: { Durable: ../durable }
 exports:
   kinds: [Workflow, Journal, Resumer, Deliver, Status, Result, Cancel, Schedule, Resume]
 ---
-# DurableLocal.Workflow — the single body-dispatch site of this backend.
-#
-# Whatever the engine, exactly one kind holds the body, carries the providing
-# annotation, installs the run handle and drives replay. Everything else in a
-# backend's module addresses runs from OUTSIDE: start, status, result, cancel.
-#
-# It carries `steps:` natively rather than pointing an `invoke:` at a separate
-# sequence, and that is a SAFETY property rather than a convenience. A named body
-# is a body anything can invoke directly — running journal-free steps up to its
-# first parking point, through an edge no static check can see. With the grammar
-# built in there is no second resource to misuse: the shape is unreachable rather
-# than merely diagnosed.
+# The one kind that holds a body and drives replay; `steps:` is native so no
+# second resource can run the body unjournaled (docs/design.md).
 kind: Telo.Definition
 metadata:
   name: Workflow
@@ -41,20 +33,9 @@ metadata:
 capability: Telo.Invocable
 extends: Durable.Run
 controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#workflow]
-# NO `status:` block, and the reason is a kernel limitation rather than a
-# choice. Observed state is illegal before a resource has started, and the kernel
-# marks a Telo.Invocable started only when it is a pure Runnable reached through
-# an invoke slot — so an Invocable cannot report observed state at all today. The
-# run's own observations therefore ride the RUN RECORD, and `DurableLocal.Result`
-# is what reads them back — not this kind's result, which is a START
-# ACKNOWLEDGEMENT and nothing more.
-#
-# That distinction is what `outputType:` below exists to make unmissable. The body
-# is dispatched detached, so a caller gets a run id back before any step has run
-# and CANNOT observe the run's outcome here whatever it reads. Leaving the
-# contract undeclared typed every such read as an open object, so a manifest could
-# ask this for `replayed` — a field only the resumer's own return value carries —
-# and be told nothing until it failed at runtime.
+# No `status:` block: an Invocable cannot report observed state, so a run's
+# observations ride the run record (`Result`). The output is a start
+# acknowledgement, declared closed so nothing reads an outcome off it.
 outputType:
   type: object
   additionalProperties: false
@@ -99,32 +80,46 @@ schema:
     runId:
       title: Run id
       description: >-
-        CEL over the call's inputs, producing this run's identity. Submitting the same id
-        again attaches to the live or completed run instead of starting a second one —
-        which is how an idempotent start is expressed. Omit it and one is minted.
+        CEL over the call's inputs, producing this run's identity; submitting the same id
+        again attaches to the existing run. Omitted, one is minted.
       type: string
       x-telo-eval: runtime
       x-telo-context: { type: object, properties: { inputs: {} } }
     onConflict:
       title: On conflict
       description: >-
-        What to do when the run id is already taken. `attach` returns the existing run's
-        id; `reject` fails. Spelled in this backend's own words — each engine's policy
-        has its own states, and a shared three-value enum was a lossy translation of all
-        of them.
+        What to do when the run id is already taken: `attach` returns the existing run's
+        id, `reject` fails.
       type: string
       enum: [attach, reject]
       default: attach
+    retainFinished:
+      title: Retain finished
+      description: >-
+        How long a completed, failed or cancelled run stays in the journal after it
+        finishes; `30d` when omitted. A `DurableLocal.Resumer` of this workflow then deletes
+        the run and its records, and `Status` / `Result` read it as `unknown`. Running,
+        parked and scheduled runs are never purged.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+      x-telo-eval: compile
+    compactAfter:
+      title: Compact after
+      description: >-
+        How many records a run's body may hold before it compacts them into one baseline it
+        resumes from; `1000` when omitted. Bounds a long run's journal and the replay a resume
+        does.
+      type: integer
+      minimum: 1
+      default: 1000
+      x-telo-eval: compile
     steps:
       title: Steps
       description: The body. Every step's outcome is recorded as it completes.
       x-telo-topology-role: steps
       type: array
       items: { $ref: "telo://manifest#/$defs/Step" }
-      # `replayed` — and nothing else — is what marks this zone durable to the
-      # static checks. Keying them on the bare providing annotation would apply
-      # them inside every transaction in the ecosystem; keying them on a KIND
-      # would put this module into the analyzer's surface.
+      # `replayed` alone marks this zone durable to the static checks, never a
+      # kind name.
       x-telo-provides-zone:
         replayed: >-
           every step's outcome and every decision the body reaches is recorded, and a
@@ -137,38 +132,20 @@ schema:
       description: Values forwarded into the body, read there as `inputs.<field>`.
       x-telo-context: { type: object, properties: { inputs: {} } }
 ---
-# DurableLocal.Journal — this backend's storage seam, and NOT everyone's.
-#
-# It sits inside this module rather than standing alone for two reasons. A
-# standalone `journal` module would collide with `record-stream`'s existing
-# `Journal` kinds on name, alias and hub search. And more importantly it is one
-# backend's mechanism: a hosted engine has no journal to configure, so an abstract
-# at the shared level would be a contract two of three backends implement by
-# leaving it empty.
-#
-# The operations that matter are NOT "a table with rows in it": they are claiming
-# due runs without two resumers taking the same one, and waking promptly. That is
-# why a backend implements this rather than a generic key/value store being reused
-# — `KvStore.Store` is deliberately point-access only, and widening it to answer a
-# range query would weaken a contract four modules already depend on.
+# This backend's storage seam, not a shared one; why it lives here and is not a
+# key/value store: docs/design.md.
 kind: Telo.Abstract
 metadata:
   name: Journal
   description: >-
     Durable storage for runs and their progress: appends a record per completed step and
-    per decision, reads a run's records back in order, and finds runs that stopped
-    mid-flight so a poller can continue them. First writer wins at a given key, so two
-    processes racing on the same step cannot both record it.
+    per decision, reads a run's records back in order, replaces a long run's records with
+    one baseline in a single atomic write, and finds runs that stopped mid-flight so a
+    poller can continue them. First writer wins at a given key.
 capability: Telo.Provider
 ---
-# DurableLocal.Resumer — the recovery and wake path, and NOT the scheduler.
-#
-# A start does its own first execution in the process that received it (see the
-# workflow's `admit before executing`), so this does not balance starts across
-# workers; it picks up runs whose process died. The trade is recorded rather than
-# hidden: routing every start through this poll interval would put seconds of
-# latency on a request-triggered run for no gain in recovery, since admitting
-# before dispatch already makes an in-between crash recoverable.
+# Recovery and wake, not scheduling: a start executes in the process that
+# received it (README, "The resumer is recovery, not scheduling").
 kind: Telo.Definition
 metadata:
   name: Resumer
@@ -194,16 +171,8 @@ schema:
       x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
 ---
-# DurableLocal.Deliver — the wake side of Durable.Await, in this backend's words.
-#
-# It takes the JOURNAL rather than the workflow, and that is what makes a
-# delivery a separate application's operation: a webhook receiver has the store
-# and nothing else, and requiring it to declare the workflow would make it depend
-# on the body it is waking and on every resource that body reaches.
-#
-# It does not continue the run — the resumer does, on its next pass. That is what
-# lets a delivery arrive in a different process from the one that will execute
-# the rest of the body, days later.
+# Takes the journal, not the workflow, and does not continue the run — so a
+# delivery is another application's operation (README, "Waking work").
 kind: Telo.Definition
 metadata:
   name: Deliver
@@ -218,11 +187,8 @@ throws:
   codes:
     ERR_DURABLE_PAYLOAD_INVALID:
       description: >-
-        The payload does not match the shape declared by the wait named in `await:`.
-        Raised here because a delivered value enters the record without being dispatched
-        — a replay hands it back as the wait's result rather than re-entering the wait —
-        so this is the only moment anything looks at it. A delivery that names no wait
-        has nothing to check against and is not validated.
+        The payload does not match the shape declared by the wait named in `await:`. A
+        delivery that names no wait is not validated.
 inputType: { type: object, additionalProperties: true }
 outputType:
   type: object
@@ -243,10 +209,8 @@ schema:
     await:
       title: Await
       description: >-
-        The wait this delivers to. Optional: naming it is what checks `payload:` against
-        the shape that await declares — statically where the payload is a literal, and at
-        runtime for the value actually sent. A delivery addressed by a token from outside
-        the manifest names nothing, has no declaration to check against, and is unchecked.
+        The wait this delivers to. Naming it checks `payload:` against the shape it
+        declares; omitted, the payload is unchecked.
       x-telo-ref: { kind: Durable.Await, use: schema }
     token:
       title: Token
@@ -257,18 +221,12 @@ schema:
     payload:
       title: Payload
       description: >-
-        What to hand the waiting work. Checked against the shape the named await declares
-        — statically where it is written as a literal, and at runtime for the value
-        actually sent.
+        What to hand the waiting work, checked against the shape the named await declares.
       x-telo-eval: runtime
       x-telo-schema-from: await/outputType
       x-telo-context: { type: object, properties: { inputs: {} } }
 ---
-# DurableLocal.Status — a live reading, kept separate from Result.
-#
-# Two kinds rather than one because the questions differ in cost as well as in
-# answer: a status is polled, a result may be worth waiting for. One kind
-# answering both would have to decide which it was on every call.
+# Separate from Result: a status is polled, a result may be waited for.
 kind: Telo.Definition
 metadata:
   name: Status
@@ -305,18 +263,14 @@ schema:
     run:
       title: Run
       description: >-
-        Which run to report on. Omit it to take the id from the call's `inputs.run`, which
-        is what lets ONE of these serve every run rather than one per id.
+        Which run to report on; omitted, the call's `inputs.run`, so one of these serves
+        every run.
       type: string
       x-telo-eval: runtime
       x-telo-context: { type: object, properties: { inputs: {} } }
 ---
-# DurableLocal.Result — the terminal value, optionally waited for.
-#
-# `wait:` is what makes a detached start usable from a caller that genuinely
-# wants the outcome — a test, a script, a request that can afford to block —
-# without putting that choice on the START, where it would have to hold a
-# connection open across a wait measured in days.
+# `wait:` is here rather than on the start, which must never block a caller
+# across a wait measured in days.
 kind: Telo.Definition
 metadata:
   name: Result
@@ -326,20 +280,12 @@ metadata:
     outcome can ask for it without the work itself having to block anyone.
 capability: Telo.Invocable
 controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#result]
-# OPEN, and for a stated reason: a resource may configure `run:` as an expression
-# over the call's own inputs (`!cel "inputs.orderId"`), which is what lets ONE
-# addressing resource serve every run rather than one per id. Closing this would
-# reject the very inputs that expression reads. `Status` and `Cancel` are open
-# here for the same reason.
+# Open: `run:` may be CEL over the call's own inputs (also on `Status`, `Cancel`).
 inputType:
   type: object
   additionalProperties: true
   properties: { run: { type: string } }
-# CLOSED, like `Status`'s. This is the kind a start points every caller at, so
-# what it answers with is the one contract a manifest reads the outcome through —
-# left open, a typo below `result` was told nothing until it produced a blank at
-# runtime, which is the failure `Workflow`'s own declared contract exists to end
-# one step earlier.
+# Closed: the one contract a run's outcome is read through, so a typo is caught.
 outputType:
   type: object
   additionalProperties: false
@@ -368,9 +314,8 @@ outputType:
     replayed:
       type: boolean
       description: >-
-        Whether the attempt that finished this work continued an interrupted one, rather
-        than running it from the top. Absent for work settled by a runtime too old to
-        record it — which is not the same as false.
+        Whether the attempt that finished this work continued an interrupted one. Absent,
+        not false, for work settled by a runtime too old to record it.
     replayedSteps:
       type: integer
       description: >-
@@ -399,12 +344,8 @@ schema:
       x-telo-type: { name: Telo.Duration, minimum: 0s }
       x-telo-eval: compile
 ---
-# DurableLocal.Cancel — call a run off.
-#
-# `cancelled` is a state of its own and not a synonym for `failed`: a failed run
-# earned a verdict, a cancelled one was stopped. Collapsing them would make every
-# cancelled run indistinguishable from a broken one in the report an operator
-# reads to find out which happened.
+# `cancelled` is not `failed`: a failed run earned a verdict, a cancelled one
+# was stopped.
 kind: Telo.Definition
 metadata:
   name: Cancel
@@ -445,16 +386,8 @@ schema:
       x-telo-eval: runtime
       x-telo-context: { type: object, properties: { inputs: {} } }
 ---
-# DurableLocal.Schedule — admit now, execute later.
-#
-# The one operation that must NOT dispatch. A start admits and executes here; a
-# schedule admits and stops, leaving the resumer to pick the run up when its time
-# comes — which is why a scheduled run stores its inputs, there being no caller
-# at the moment it starts.
-#
-# Distinct from `Scheduler.Cron`, and the difference is the point: a cron firing
-# missed while the process is down is simply missed, while this is a durable
-# record a restart still finds due.
+# Admits and stops; the resumer starts the run when due, from its stored inputs
+# — a durable record a restart still finds, unlike a missed cron firing.
 kind: Telo.Definition
 metadata:
   name: Schedule
@@ -486,14 +419,13 @@ schema:
     workflow:
       title: Workflow
       description: >-
-        The work to start later. A dependency rather than a call: this kind records and
-        returns, and the resumer is what eventually transfers control.
+        The work to start later; this records it, and the resumer starts it.
       x-telo-ref: { kind: Self.Workflow, use: dependency }
     runId:
       title: Run id
       description: >-
-        The identity to schedule under. Reusing one that is taken schedules nothing, which
-        is how "do this once" is expressed. Omit it and one is minted.
+        The identity to schedule under; one already taken schedules nothing. Omitted, one
+        is minted.
       type: string
       x-telo-eval: runtime
       x-telo-context: { type: object, properties: { inputs: {} } }
@@ -517,15 +449,8 @@ schema:
       x-telo-eval: runtime
       x-telo-context: { type: object, properties: { inputs: {} } }
 ---
-# DurableLocal.Resume — the operator's override, and it is RECORDED.
-#
-# For one situation: a run held because the code moved under it, where the
-# alternatives are to strand it or abandon it. Parking is a hold, not a grave.
-#
-# The override is written as an ordinary journal entry, which is what makes it
-# usable at all — a run continued against changed code may diverge, and a
-# divergent run has to be identifiable afterwards rather than indistinguishable
-# from a clean one.
+# The operator's override for a run held because its code changed, recorded as
+# a journal entry so a run that may diverge stays identifiable.
 kind: Telo.Definition
 metadata:
   name: Resume
@@ -552,8 +477,7 @@ schema:
     workflow:
       title: Workflow
       description: >-
-        The work this releases. A dependency: this clears the hold and the resumer is what
-        transfers control, so that every wake follows one path.
+        The work this releases; this clears the hold, and the resumer continues it.
       x-telo-ref: { kind: Self.Workflow, use: dependency }
     run:
       title: Run

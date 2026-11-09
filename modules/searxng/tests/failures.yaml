@@ -7,10 +7,10 @@
 kind: Telo.Application
 metadata: { name: SearxngFailuresTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   SearXNG: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref failures
@@ -38,11 +38,11 @@ kind: Run.Value
 metadata: { name: noop }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: failures }
 with:
   - kind: Server.Api
-    metadata: { name: FakeSearxng }
+    metadata: { name: fakeSearxng }
     routes:
       - request:
           path: /search
@@ -69,13 +69,13 @@ with:
             content:
               application/json: { schema: { type: object, additionalProperties: true }, body: { query: other } }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18844 }
     mounts:
       - path: /
-        mount: !ref FakeSearxng
+        mount: !ref fakeSearxng
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: outcomes
     invoke:

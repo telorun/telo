@@ -7,11 +7,7 @@ metadata:
     program printed instead, rather than hanging. That failure is the reason reads
     are bounded: a conversation that has gone wrong has to say so while the text it
     did see is still in hand.
-imports:
-  App: ../../app
-  Channel: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { App: ../../app, Channel: ../, Assert: ../../assert }
 targets:
   - !ref quiz
   - !ref test
@@ -36,7 +32,7 @@ kind: Channel.SendLine
 metadata: { name: send }
 channel: !ref quiz
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # Reach the conversation first. What a read has seen is only worth asserting on

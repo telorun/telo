@@ -7,11 +7,8 @@ metadata:
     type whose base is one, a port — satisfies a slot declared `number`, as a
     call-site argument and as a resource's own field. `telo check` accepts the
     wiring the kernel accepts.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
-variables:
-  count: { env: INTEGER_INTO_NUMBER_COUNT, type: integer, default: 3 }
+imports: { Run: ../modules/run, Assert: ../modules/assert }
+variables: { count: { env: INTEGER_INTO_NUMBER_COUNT, type: integer, default: 3 } }
 targets:
   - !ref test
 ---
@@ -22,12 +19,8 @@ outputType:
   schema:
     type: object
     required: [count, port]
-    properties:
-      count: { type: integer }
-      port: { x-telo-type: Telo.TcpPort }
-value:
-  count: 4
-  port: 8080
+    properties: { count: { type: integer }, port: { x-telo-type: Telo.TcpPort } }
+value: { count: 4, port: 8080 }
 ---
 kind: Run.Value
 metadata: { name: halve }
@@ -37,20 +30,16 @@ inputType:
     type: object
     additionalProperties: false
     required: [n]
-    properties:
-      n: { type: number }
+    properties: { n: { type: number } }
 value: !cel "inputs.n / 2.0"
 ---
 kind: Telo.Definition
-metadata:
-  name: Scaled
-  description: Returns the factor it is configured with.
+metadata: { name: Scaled, description: Returns the factor it is configured with. }
 capability: Telo.Invocable
 schema:
   type: object
   additionalProperties: false
-  properties:
-    factor: { type: number, x-telo-eval: compile }
+  properties: { factor: { type: number, x-telo-eval: compile } }
 resources:
   - kind: Run.Value
     metadata: { name: echo }
@@ -61,7 +50,7 @@ kind: Self.Scaled
 metadata: { name: scaled }
 factor: !cel "variables.count"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: measured
@@ -82,9 +71,5 @@ steps:
         halfCount: !cel "steps.halfCount.result"
         halfPort: !cel "steps.halfPort.result"
         factor: !cel "steps.factor.result"
-      expected:
-        halfCount: 2.0
-        halfPort: 4040.0
-        factor: 3
-    invoke:
-      kind: Assert.Equals
+      expected: { halfCount: 2.0, halfPort: 4040.0, factor: 3 }
+    invoke: { kind: Assert.Equals }

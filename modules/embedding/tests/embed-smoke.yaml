@@ -9,7 +9,6 @@ metadata:
 imports:
   Embedding: ../
   FakeEmbedding: ./__fixtures__/fake-embedding
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -26,7 +25,7 @@ kind: Embedding.Passage
 metadata: { name: passageVector }
 model: !ref model
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: query

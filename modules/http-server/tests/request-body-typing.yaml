@@ -7,11 +7,7 @@ metadata:
     it: a body is whatever the client sent, so an undeclared one wires into a
     slot of any type and its members stay readable. Declaring it types the same
     expression, and `request.headers` is a map whatever the route declares.
-imports:
-  Http: ../
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
   - !ref testDeclaredBodyIsTyped
@@ -64,7 +60,7 @@ routes:
           application/json:
             body: !cel "result"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

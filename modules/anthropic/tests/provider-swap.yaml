@@ -16,8 +16,8 @@ metadata:
     `Retry-After: 7` reaches the route as `ERR_MODEL_RATE_LIMITED` with
     `retryAfterSeconds` 7 under either.
 imports:
-  App: ../../app
   Run: ../../run
+  App: ../../app
   HttpClient: ../../http-client
   Server: ../../http-server
   Assert: ../../assert
@@ -58,11 +58,11 @@ client:
   baseUrl: http://127.0.0.1:8917
   throwOnHttpError: false
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: AnthropicApi }
+    metadata: { name: anthropicApi }
     routes:
       - request:
           path: /messages
@@ -88,7 +88,7 @@ with:
                   stop_reason: end_turn
                   usage: { input_tokens: 7, output_tokens: 3 }
   - kind: Server.Api
-    metadata: { name: OpenaiApi }
+    metadata: { name: openaiApi }
     routes:
       - request:
           path: /chat/completions
@@ -113,14 +113,14 @@ with:
                     - { message: { content: pong }, finish_reason: stop }
                   usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 }
   - kind: Server.Server
-    metadata: { name: Vendors }
+    metadata: { name: vendors }
     listen: { port: 8915 }
     openapi: { info: { title: Fake vendor endpoints, version: 1.0.0 } }
     mounts:
       - path: /anthropic/v1
-        mount: !ref AnthropicApi
+        mount: !ref anthropicApi
       - path: /openai/v1
-        mount: !ref OpenaiApi
+        mount: !ref openaiApi
   - kind: App.Instance
     metadata: { name: anthropicApp }
     source: ./__fixtures__/swap/anthropic-app.yaml
@@ -132,7 +132,7 @@ with:
     variables: { endpoint: http://127.0.0.1:8915/openai/v1 }
     ports: { http: 8917 }
 targets:
-  - !ref Vendors
+  - !ref vendors
   - !ref anthropicApp
   - !ref openaiApp
 steps:

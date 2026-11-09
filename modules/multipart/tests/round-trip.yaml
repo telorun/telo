@@ -11,9 +11,9 @@ metadata:
     framing differs per part (Content-Disposition is present only when a part is
     named) and a single-part test would exercise none of that.
 imports:
+  Run: ../../run
   Multipart: ../
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
   JS: ../../javascript
 targets:
@@ -23,7 +23,7 @@ targets:
   - !ref minimalParts
   - !ref readerPreservesBytes
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: encode
@@ -82,7 +82,7 @@ steps:
 # content arrives in pieces and is written through as it is consumed, so a part
 # larger than memory costs no more than one chunk. The round trip proves the
 # framing survives being interleaved with a producer.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: streamedPart }
 steps:
   - name: source
@@ -123,7 +123,7 @@ steps:
 # The second is the design's whole claim: the first part's body is never read, and
 # the second part still decodes correctly, because advancing discards the
 # remainder rather than leaving the cursor mid-part.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readerSkipsSafely }
 steps:
   - name: encode
@@ -227,7 +227,7 @@ code: |
 # ABSENT — an unanchored `name=` match reads it out of `filename=` and reports the
 # file name as the field name, which is worse than missing because it is wrong and
 # `has(p.name)` answers yes.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: minimalParts }
 steps:
   - name: encode
@@ -268,7 +268,7 @@ steps:
 # holds back almost everything and the part leaves whole. The first part is also
 # headerless, which exercises the reader's zero-header path against the same
 # payload.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readerPreservesBytes }
 steps:
   - name: source

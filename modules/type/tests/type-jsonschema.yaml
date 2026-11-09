@@ -9,11 +9,7 @@ variables:
     env: TEST_TYPE_WITHOUT_TIMESTAMP
     type: object
     default: { id: x-2, label: Oops }
-imports:
-  Type: ..
-  Run: ../../run
-  JavaScript: ../../javascript
-  Assert: ../../assert
+imports: { Type: .., JavaScript: ../../javascript, Assert: ../../assert }
 targets:
   - !ref testTypeValidation
   - !ref testTypeRejection
@@ -83,7 +79,7 @@ code: |
 ---
 # ─── Test 1: valid input passes through ───────────────────────────────────────
 
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testTypeValidation }
 steps:
   - name: add
@@ -98,7 +94,7 @@ steps:
 ---
 # ─── Test 2: invalid input is rejected ────────────────────────────────────────
 
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testTypeRejection }
 steps:
   - name: badInput
@@ -121,7 +117,7 @@ steps:
 ---
 # ─── Test 3: type inheritance via extends ─────────────────────────────────────
 
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testTypeInheritance }
 steps:
   # NamedEntity extends Entity — requires both id and name
@@ -158,7 +154,7 @@ steps:
 ---
 # ─── Test 4: CEL rules ───────────────────────────────────────────────────────
 
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testCelRules }
 steps:
   # Valid: positive amount passes both schema and rule
@@ -238,7 +234,7 @@ code: |
 ---
 # ─── Test 5: outputType validation — wrong return shape ──────────────────────
 
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testOutputTypeRejection }
 steps:
   - name: badReturn
@@ -255,7 +251,7 @@ steps:
 ---
 # ─── Test 6: multiple CEL rules — first passes, second fails ─────────────────
 
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testMultipleRules }
 steps:
   # Valid: 500 passes both rules (>= 0 and <= 1000)
@@ -301,7 +297,7 @@ steps:
 ---
 # ─── Test 7: multiple extends ────────────────────────────────────────────────
 
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testMultipleExtends }
 steps:
   # FullEntity extends [Entity, Timestamped] — requires id, updatedAt, label
@@ -353,7 +349,7 @@ inputType: !ref Scored
 code: |
   function main(input) { return input }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testExtendsComposition }
 steps:
   # Valid: id (inherited) present, score satisfies the allOf minimum.

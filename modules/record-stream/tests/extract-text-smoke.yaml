@@ -12,7 +12,6 @@ imports:
   RecordStream: ../
   JS: ../../javascript
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testEmitAndDrop
@@ -50,7 +49,7 @@ records:
   finish: { do: drop }
   error: { do: throw, field: error }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testEmitAndDrop }
 steps:
   - name: source
@@ -87,7 +86,7 @@ code: |
     return { output: new Stream(gen()) };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testThrow }
 steps:
   - name: errorSource
@@ -120,7 +119,7 @@ metadata: { name: unknownSource }
 items:
   - { type: "tool-call-delta", id: "abc", arguments: "{}" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testUnknownRecord }
 steps:
   - name: unknownSource

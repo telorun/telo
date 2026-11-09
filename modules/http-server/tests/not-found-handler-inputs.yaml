@@ -9,10 +9,10 @@ metadata:
     shape to the canonical sibling form would break (the handler would see
     only request.* and not the manifest-computed inputs).
 imports:
+  Run: ../../run
   Http: ../
   JS: ../../javascript
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -56,11 +56,11 @@ outputType:
       body: { type: object, additionalProperties: true }
     required: [ status, body ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8947 }
     openapi: { info: { title: NotFoundHandlerInputsTest, version: 1.0.0 } }
     mounts: []
@@ -77,7 +77,7 @@ with:
                 receivedPath: !cel "result.path"
                 receivedMethod: !cel "result.method"
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: hitMissing
     inputs: { url: http://127.0.0.1:8947/no-such-route }

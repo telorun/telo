@@ -73,6 +73,38 @@ A start does its own first execution in the process that received it, so the res
 
 It claims each run before continuing it, so several pollers against one store do not both take the same one. Resuming calls the workflow's own execution path: continuing an interrupted run and starting a fresh one are the **same** operation, because replay is what a resume is.
 
+## A long run compacts
+
+A polling `while` or a long iteration would otherwise grow its record without limit, and every resume would replay all of it from the first step. Once a run's body holds `compactAfter` records — `1000` when omitted, a positive integer on `Local.Workflow` — the next step boundary writes one **baseline** in their place: where the run stands (the step it just completed, with the branch and loop turn around it) and the `steps` map in scope there. A resume starts at the baseline instead of at the top, so a 50-turn loop interrupted at turn 37 continues at 37, its earlier turns neither re-run nor replayed.
+
+```yaml
+kind: Local.Workflow
+compactAfter: 200
+```
+
+- **Taken only at a step boundary of the workflow's own body** — its steps and its `if` / `switch` / `try` branches and `while` turns, at any depth. A run inside a body a step dispatches, a composer's body (`Run.Iteration`, `Run.Loop`, `Run.Projection`), a concurrent region, a `catch:` / `finally:` branch or a `Durable.Idempotent` region takes none until it is back at such a boundary; a long loop meant to stay bounded belongs in the workflow's own steps.
+- **Never while a resume is still replaying**: a baseline waits until the resume has passed every record it read, so nothing a replay still needs is removed.
+- **Crash-safe**: the baseline and the removal of the records it replaces are one atomic write, so a crash leaves the old records or the baseline, never both and never neither. The workflow's own `inputs` record is kept beside it.
+- A resumed run whose body no longer has the step or branch its baseline names is refused with `ERR_JOURNAL_ENTRY_MISMATCH`, as a replay reaching a different target is.
+
+See [What is recorded](./docs/what-is-recorded.md#a-baseline-instead-of-the-whole-history) for the format and the journal operation behind it.
+
+## Finished runs are purged
+
+A completed, failed or cancelled run stays in the journal for `retainFinished` after it finishes — `30d` when omitted, a duration on `Local.Workflow`. The resumer's sweep then deletes the run's record and every one of its entries in one operation, and `Local.Status` and `Local.Result` read it as `unknown`, as they do an id that never existed.
+
+```yaml
+kind: Local.Workflow
+retainFinished: 7d
+```
+
+- **A run that has not finished is never purged**, however old: running, parked and scheduled runs are left alone.
+- **Each run is held to its own workflow's window.** A run records the name of the workflow that admitted it, and a resumer purges only the runs recorded under its workflow's name; with no resumer for a workflow, its finished runs are kept. Give workflows sharing a journal distinct names.
+- **A run recorded before retention existed is left alone**: it has no recorded workflow or finish time, so no window is guessed for it.
+- The window is read when the sweep runs, so changing `retainFinished` applies to runs already finished. A purge is logged as `Purged a finished run`.
+
+Journal implementations provide two operations for this, `finishedRuns` and `deleteFinishedRun` (compaction likewise needs `replaceWithBaseline`; a journal without these operations still runs workflows, it just never compacts or purges); see [What is recorded](./docs/what-is-recorded.md#finished-runs-and-the-journal-operations-that-retire-them).
+
 ## A start does not wait, and reading the outcome is a separate ask
 
 `Local.Workflow` returns as soon as the run is recorded:
@@ -138,6 +170,7 @@ A token that matches nothing answers `{ "delivered": false }` rather than failin
 
 ## Limits, stated plainly
 
+- **Finished runs are only purged by a running resumer** of their workflow.
 - **A resumer holds the process open** for as long as it polls, which is right for an app whose job is recovery and wrong for a one-shot script. Work is also continued by submitting the same run id again, which attaches, takes the lapsed claim and replays — the identical path.
 - **A detached dispatch inside a body is rejected** by `telo check`. Progress is recorded when a step *completes*, so detaching would record work as done while it was still running — a resume would skip it and a crash would lose it.
 - **A live value cannot be recorded.** A stream is produced by consuming it, so there is nothing to write down; collect what you need into a plain value inside the step.
@@ -145,6 +178,7 @@ A token that matches nothing answers `{ "delivered": false }` rather than failin
 ## Further reading
 
 - [What is recorded, and why it is more than the results](./docs/what-is-recorded.md) — the closure property, and the silent failure it closes.
+- [Why it is shaped this way](./docs/design.md) — the workflow carrying its steps, the journal living here, and the run record holding a run's observations.
 - [Durable execution](https://telo.run/learn/durable-execution) — the normative contract, including what a backend must guarantee.
 - [durable](https://hub.telo.run/module/oci/ghcr.io/telorun/durable/) — `Durable.Idempotent` and the marker every backend extends.
 - [durable-journal-file](https://hub.telo.run/module/oci/ghcr.io/telorun/durable-journal-file/) — a store on disk, for one machine.

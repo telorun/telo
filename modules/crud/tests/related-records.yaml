@@ -17,7 +17,6 @@ imports:
   SQLite: ../../sqlite
   Http: ../../http-server
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref migrate
@@ -147,7 +146,7 @@ query:
 relations:
   managerId: { collection: !ref employees }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

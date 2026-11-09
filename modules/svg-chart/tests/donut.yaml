@@ -13,7 +13,6 @@ metadata:
 imports:
   SvgChart: ../
   Font: ../../font
-  Run: ../../run
   Assert: ../../assert
   JavaScript: ../../javascript
 targets:
@@ -118,7 +117,7 @@ code: |
     };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testDonut }
 steps:
   - name: chart

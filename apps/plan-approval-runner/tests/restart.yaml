@@ -11,10 +11,10 @@ metadata:
     fewer repositories, it ends the wake for a session in the repository it no
     longer serves `failed` ERR_REPO_NOT_SERVED.
 imports:
+  Run: ../../../modules/run
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Shell: ../../../modules/shell
   Timer: ../../../modules/timer
   Assert: ../../../modules/assert
@@ -35,27 +35,17 @@ kind: Run.Loop
 metadata: { name: awaitCommand }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seq]
-    properties:
-      seq: { type: integer }
+  schema: { type: object, required: [seq], properties: { seq: { type: integer } } }
 condition: !cel "previous == null || previous.read.result.command.state == 'pending'"
 maxIterations: 100
 steps:
-  - name: pause
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 100ms }
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 100ms } }
   - name: read
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [seq]
-          properties:
-            seq: { type: integer }
+        schema: { type: object, required: [seq], properties: { seq: { type: integer } } }
       steps:
         - name: get
           invoke: !ref call
@@ -66,16 +56,14 @@ steps:
 outputs:
   command: !cel "steps.read.result.command"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: queue }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [repo, prompt]
-    properties:
-      repo: { type: string }
-      prompt: { type: string }
+    properties: { repo: { type: string }, prompt: { type: string } }
 steps:
   - name: post
     invoke: !ref call
@@ -86,7 +74,7 @@ steps:
 outputs:
   seq: !cel "int(steps.post.result.body.seq)"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -112,15 +100,13 @@ steps:
   - name: run
     inputs: { alpha: !cel "string(steps.dirs.result.alpha)", claude: !cel "string(steps.dirs.result.claude)" }
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
         schema:
           type: object
           required: [alpha, claude]
-          properties:
-            alpha: { type: string }
-            claude: { type: string }
+          properties: { alpha: { type: string }, claude: { type: string } }
       with:
         - kind: App.Instance
           metadata: { name: server }
@@ -143,7 +129,7 @@ steps:
           inputs: { url: /api/review/repos, method: POST, body: { slug: beta, url: "git@example.com:acme/beta.git", products: [acme] } }
         - name: firstRunner
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             with:
               - kind: App.Instance
                 metadata: { name: runner }
@@ -165,9 +151,7 @@ steps:
                   condition: !cel "previous == null || size(previous.get.result.body.runners) == 0"
                   maxIterations: 100
                   steps:
-                    - name: pause
-                      invoke: { kind: Timer.Delay }
-                      inputs: { duration: 100ms }
+                    - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 100ms } }
                     - name: get
                       invoke: !ref call
                       inputs: { url: /api/review/runners }
@@ -222,7 +206,7 @@ steps:
             cwd: !cel "inputs.alpha"
         - name: secondRunner
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             with:
               - kind: App.Instance
                 metadata: { name: runner }

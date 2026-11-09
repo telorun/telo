@@ -7,27 +7,19 @@ metadata:
     `examples/local-modules` and checks that both find the same nonce and hash,
     against a value computed outside either. Timings vary by machine, so they
     are not compared.
-imports:
-  PowTs: ../pow-ts
-  PowRust: ../pow-rust
-  Run: ../../../modules/run
-  Assert: ../../../modules/assert
+imports: { PowTs: ../pow-ts, PowRust: ../pow-rust, Assert: ../../../modules/assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: typescript
     invoke: { kind: PowTs.Mine }
-    inputs:
-      text: "Hello, Telo!"
-      difficulty: 12
+    inputs: { text: "Hello, Telo!", difficulty: 12 }
   - name: rust
     invoke: { kind: PowRust.Mine }
-    inputs:
-      text: "Hello, Telo!"
-      difficulty: 12
+    inputs: { text: "Hello, Telo!", difficulty: 12 }
   - name: assertResults
     invoke: { kind: Assert.Equals }
     inputs:

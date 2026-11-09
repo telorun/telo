@@ -80,7 +80,7 @@ choices:
   - when: !cel "inputs.n > 0"
     value: positive
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testFirstMatch }
 steps:
   # Matches BOTH rows; row order decides, so `free` wins over `freight`.
@@ -93,7 +93,7 @@ steps:
       expected: { tier: free, cost: 0.0 }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testSecondRow }
 steps:
   # Fails row 1, matches row 2 — and the row's `!cel` leaf is evaluated.
@@ -106,7 +106,7 @@ steps:
       expected: { tier: freight, cost: 60.0 }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testDefault }
 steps:
   - name: tier
@@ -118,7 +118,7 @@ steps:
       expected: { tier: standard, cost: 10.0 }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNoMatch }
 steps:
   - name: attempt
@@ -133,7 +133,7 @@ steps:
           expected: ERR_NO_MATCH
         invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testOutputInvalid }
 steps:
   - name: attempt
@@ -148,7 +148,7 @@ steps:
           expected: ERR_OUTPUT_INVALID
         invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInvalidPredicate }
 steps:
   - name: attempt

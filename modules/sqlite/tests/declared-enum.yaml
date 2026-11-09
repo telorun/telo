@@ -11,11 +11,7 @@ metadata:
     same declaration on PostgreSQL creates a first-class type — the split between
     declaration and rendering is the point, and the projected row contract is the
     same on either side of it.
-imports:
-  Sql: ../../sql
-  SQLite: ../
-  Assert: ../../assert
-  Run: ../../run
+imports: { Sql: ../../sql, SQLite: ../, Assert: ../../assert }
 targets:
   - !ref appSchema
   - !ref test
@@ -49,7 +45,7 @@ version: !cel "module.version"
 enums: [!ref messageRole]
 tables: [!ref messages]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # The rendered constraint, read back from the engine's own stored DDL — which

@@ -15,11 +15,7 @@ metadata:
 # string) is all `telo check` knows of it, so the value meets the RUNTIME
 # contract boundary this test is about.
 variables: { badFormat: { env: TEST_IMAGE_BAD_FORMAT, type: string, default: tiff } }
-imports:
-  Image: ../
-  JS: ../../javascript
-  Run: ../../run
-  Assert: ../../assert
+imports: { Image: ../, JS: ../../javascript, Assert: ../../assert }
 targets:
   - !ref testBlank
   - !ref testJpegFormat
@@ -42,7 +38,7 @@ code: |
     return { magic: png ? "png" : jpeg ? "jpeg" : "other" };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testBlank }
 steps:
   - name: blank
@@ -69,7 +65,7 @@ steps:
           magic: { const: png }
         required: [ width, height, mediaType, magic ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testJpegFormat }
 steps:
   - name: blank
@@ -91,7 +87,7 @@ steps:
         required: [ mediaType, magic ]
 ---
 # A `!cel` integer is a 64-bit integer, not the number a YAML literal is.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testComputedInputs }
 steps:
   - name: blank
@@ -106,7 +102,7 @@ steps:
         mediaType: !cel "steps.blank.result.mediaType"
       expected: { width: 120, height: 80, mediaType: image/jpeg }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testZeroWidth }
 steps:
   - name: tryBlank
@@ -129,7 +125,7 @@ steps:
             properties: { code: { const: ERR_INPUT_INVALID } }
             required: [ code ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testBadColor }
 steps:
   - name: tryBlank
@@ -148,7 +144,7 @@ steps:
             properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testBadFormat }
 steps:
   - name: tryBlank
@@ -171,7 +167,7 @@ steps:
             properties: { code: { const: ERR_INPUT_INVALID } }
             required: [ code ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testBadQuality }
 steps:
   - name: tryBlank

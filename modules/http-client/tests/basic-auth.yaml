@@ -6,11 +6,7 @@ metadata:
     Http.BasicAuth renders `Authorization: Basic base64(user:password)` in UTF-8.
     An empty or colon-bearing username is refused before the app runs, and a
     computed one when the credential is created.
-imports:
-  Http: ../
-  Server: ../../http-server
-  Run: ../../run
-  Assert: ../../assert
+imports: { Http: ../, Server: ../../http-server, Assert: ../../assert }
 targets:
   - !ref test
   - !ref emptyUsername
@@ -47,11 +43,11 @@ metadata: { name: emptyPasswordClient }
 baseUrl: http://127.0.0.1:8944
 credential: !ref emptyPassword
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: Api }
+    metadata: { name: api }
     routes:
       - request:
           path: /echo
@@ -65,13 +61,13 @@ with:
                 body:
                   authorization: !cel "request.headers['authorization']"
   - kind: Server.Server
-    metadata: { name: Srv }
+    metadata: { name: srv }
     listen: { port: 8944 }
     mounts:
       - path: /
-        mount: !ref Api
+        mount: !ref api
 targets:
-  - !ref Srv
+  - !ref srv
 steps:
   - name: ascii
     invoke: { kind: Http.Request, client: !ref asciiClient, url: /echo }

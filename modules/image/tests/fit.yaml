@@ -20,7 +20,7 @@ metadata: { name: canvas }
 kind: Image.Fit
 metadata: { name: fit }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testFit }
 steps:
   - name: photo
@@ -100,7 +100,7 @@ steps:
         png: { width: !cel "10", height: !cel "20" }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRefusals }
 steps:
   - name: tryHuge

@@ -41,7 +41,6 @@ imports:
   Layers: ../..
   Graph: ../../../graph
   GraphLayers: ../../../graph-layers
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -133,7 +132,7 @@ connection: !ref db
 kind: Assert.Equals
 metadata: { name: check }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -141,7 +140,7 @@ steps:
     inputs: { sql: DROP SCHEMA IF EXISTS graph_drafts_cost CASCADE }
 ---
 # What this transaction has read from the node table so far.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readCounters }
 steps:
   - name: read
@@ -158,7 +157,7 @@ outputs:
 # People p000001… written straight into the drafted table: every one published
 # by `base`, every 20th by `middle`, every 25th by `top`; and in the open draft
 # of `top` every 30th restated, every 60th removed, every 150th retracted.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: addPeople }
 inputType:
   kind: Telo.JsonSchema
@@ -199,7 +198,7 @@ steps:
 # Inside one session: ten pages of 1,000 reach 10,000 keys into the listing,
 # then the page of 100 after them is read in a transaction with the counters
 # taken either side of it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: measure }
 inputType:
   kind: Telo.JsonSchema
@@ -232,7 +231,7 @@ steps:
             connection: !ref db
             inputs: { cursor: !cel "inputs.cursor" }
             steps:
-              kind: Run.Sequence
+              kind: Telo.Sequence
               inputType:
                 kind: Telo.JsonSchema
                 schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
@@ -256,7 +255,7 @@ outputs:
   sequential: !cel "int(steps.session.result.measured.result.sequential)"
   fetched: !cel "int(steps.session.result.measured.result.fetched)"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cost }
 steps:
   # A layer is registered by its first write — for `base` a draft opened and

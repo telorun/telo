@@ -9,7 +9,6 @@ metadata:
     itself.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   Timer: ../../../../modules/timer
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
@@ -26,16 +25,14 @@ targets:
 ---
 # Polls a request until it reaches `status`. The run is started detached, so a
 # submission answers before the request has settled anywhere.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: waitFor }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [id, status]
-    properties:
-      id: { type: string }
-      status: { type: string }
+    properties: { id: { type: string }, status: { type: string } }
 steps:
   - name: read
     invoke: !ref readRequest
@@ -52,15 +49,11 @@ steps:
 outputs:
   body: !cel "steps.read.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readRequest }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [id]
-    properties:
-      id: { type: string }
+  schema: { type: object, required: [id], properties: { id: { type: string } } }
 steps:
   - name: get
     invoke: { kind: HttpClient.Request }
@@ -71,7 +64,7 @@ outputs:
   body: !cel "steps.get.result.body"
 ---
 # A decision as the page sends it: the request named in the body.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: decide }
 inputType:
   kind: Telo.JsonSchema
@@ -83,10 +76,7 @@ inputType:
       body:
         type: object
         required: [id]
-        properties:
-          id: { type: string }
-          decidedBy: { type: string }
-          note: { type: string }
+        properties: { id: { type: string }, decidedBy: { type: string }, note: { type: string } }
 steps:
   - name: post
     invoke: { kind: HttpClient.Request }
@@ -97,14 +87,13 @@ steps:
 outputs:
   status: !cel "steps.post.result.status"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8112
+    ports: { http: 8112 }
     variables:
       journal: !cel "variables.scratchDir.joinPath('approval-flow-test-' + string(nowMillis()))"
       # The ledger file outlives the test; its rows are picked out by request id.
@@ -261,10 +250,7 @@ steps:
   # The file outlives the test, so this run's rows are picked out by id.
   - name: first
     invoke: { kind: HttpClient.Request }
-    inputs:
-      url: http://127.0.0.1:8112/api/requests
-      method: GET
-      query: { limit: "2" }
+    inputs: { url: http://127.0.0.1:8112/api/requests, method: GET, query: { limit: "2" } }
   - name: second
     invoke: { kind: HttpClient.Request }
     inputs:
@@ -311,10 +297,7 @@ steps:
     inputs: { url: "http://127.0.0.1:8112/", method: GET }
   - name: page
     invoke: { kind: HttpClient.Request }
-    inputs:
-      url: http://127.0.0.1:8112/_telo/ui/page
-      method: GET
-      query: { path: / }
+    inputs: { url: http://127.0.0.1:8112/_telo/ui/page, method: GET, query: { path: / } }
   - name: listings
     value: !cel "steps.page.result.body.children.filter(c, c.type == 'listing')"
   - name: verifyPage

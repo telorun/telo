@@ -12,7 +12,7 @@ targets:
   - !ref assembledTree
   - !ref readbackSettles
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: presets }
 steps:
   - name: parse
@@ -57,7 +57,7 @@ steps:
 # Tag-specific constraints over `"*"`, exact values and prefixes, `setAttributes`
 # over the element's own value, comments kept on request, and a dropped
 # element taking its content with it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: customPolicy }
 steps:
   - name: parse
@@ -87,7 +87,7 @@ steps:
       actual: !cel "steps.markup.result.html"
       expected: <!-- kept --><div class="note warn" dir="rtl"><span>a</span></div><a href="/rel" target="_blank" rel="noopener">b</a>
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: xssCorpus }
 steps:
   - name: parse
@@ -125,7 +125,7 @@ steps:
 # `idPrefix` moves an id and everything pointing at it together: a fragment link
 # whose target is kept, and every token of an id-reference attribute. A link
 # with no kept target, an empty fragment and a forced value are left alone.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: idPrefix }
 steps:
   - name: parse
@@ -181,7 +181,7 @@ steps:
 # A tree no parser built: a comment that would end early is dropped even with
 # `comments: true`, a kept void element's children follow it, and a kept
 # `title` keeps only the text inside it — so the output always serializes.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: assembledTree }
 steps:
   - name: clean
@@ -211,7 +211,7 @@ steps:
 # Output whose markup would read back as another tree is replaced by what it
 # reads back as: nested anchors come apart, and a hand-built table gains the
 # `tbody` the parser implies, though the policy does not list it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readbackSettles }
 steps:
   - name: parse

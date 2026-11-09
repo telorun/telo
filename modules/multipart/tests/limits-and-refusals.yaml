@@ -14,10 +14,10 @@ metadata:
     a tap in front of the source counts the chunks pulled, and an end handler
     behind it says how the source's stream ended.
 imports:
+  Run: ../../run
   Multipart: ../
   Stream: ../../stream
   RecordStream: ../../record-stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref decoderLimits
@@ -39,7 +39,7 @@ items:
   - "--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"f.bin\"\r\n\r\n0123456789\r\n"
   - "--b--\r\n"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: decoderLimits }
 steps:
   # A part of exactly the limit passes: the line break before the next delimiter
@@ -125,7 +125,7 @@ steps:
         invoke: !ref Assert.equals
 ---
 # One reason per way a payload can be wrong.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: decoderMalformed }
 steps:
   - name: cases
@@ -197,7 +197,7 @@ kind: Run.Value
 metadata: { name: decoderSourceEnded }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: decoderStopsReading }
 steps:
   - name: source
@@ -241,7 +241,7 @@ kind: Run.Value
 metadata: { name: readerPull }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readerStopsReading }
 steps:
   - name: source
@@ -278,7 +278,7 @@ steps:
         invoke: !ref Assert.equals
 ---
 # The one failure the reader raises from the call itself.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readerRejectsMissingBoundary }
 steps:
   - name: source
@@ -348,7 +348,7 @@ steps:
             data: { limit: maxPartBytes, max: !cel "9", part: !cel "1", name: file }
         invoke: !ref Assert.equals
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readerFailsWhileDrained }
 steps:
   - name: source
@@ -391,14 +391,14 @@ steps:
         invoke: !ref Assert.equals
 ---
 # A failure of the source is not this module's to reword: it arrives as raised.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: sourceBreaks }
 throws:
   - { code: SOURCE_BROKE }
 steps:
   - { name: cutOff, throw: { code: SOURCE_BROKE, message: the upload was cut off } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: sourceFailureIsRethrown }
 steps:
   - name: decoderSource
@@ -474,7 +474,7 @@ kind: Run.Value
 metadata: { name: unboundReaderSourceEnded }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: missingBoundaryReleasesInput }
 steps:
   - name: unboundDecoderSource
@@ -552,7 +552,7 @@ kind: Run.Value
 metadata: { name: unpulledPartsSourceEnded }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: unpulledPartsReleaseInput }
 steps:
   - name: unpulledPartsSource
@@ -584,7 +584,7 @@ steps:
         inputs:
           payload: !cel "steps.read.result.parts"
         invoke:
-          kind: Run.Sequence
+          kind: Telo.Sequence
           steps:
             - name: refuse
               inputs:

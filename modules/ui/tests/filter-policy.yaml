@@ -18,7 +18,6 @@ imports:
   Ui: ../
   DataModel: ../../data-model
   Probe: ./__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -144,7 +143,7 @@ presets:
       - { property: rank, operator: absent, value: true }
 content: { type: text, text: Todos }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: above

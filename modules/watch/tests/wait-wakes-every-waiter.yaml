@@ -6,11 +6,7 @@ metadata:
     Three calls wait on one topic while a fourth publishes a version above their
     cursor. Every waiter is woken by the one publish and returns the new
     version, long before its own timeout.
-imports:
-  Watch: ../
-  Run: ../../run
-  Timer: ../../timer
-  Assert: ../../assert
+imports: { Run: ../../run, Watch: ../, Timer: ../../timer, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -45,7 +41,7 @@ outputs:
   role: !cel "item"
   signal: !cel "item == 'wait' ? steps.waited.result : null"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: run

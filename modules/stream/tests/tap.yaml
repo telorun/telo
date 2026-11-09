@@ -19,7 +19,7 @@ targets:
   - !ref downstreamFailureDispatches
 ---
 # The output is the source, in order — every kind of value, untouched.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: passesThrough }
 steps:
   - name: source
@@ -46,7 +46,7 @@ kind: Run.Value
 metadata: { name: observeGated }
 value: true
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: gated }
 steps:
   - { name: source, invoke: { kind: Stream.Of, items: [a, b, c, d] } }
@@ -82,7 +82,7 @@ expect:
 # The handler refuses `c`. The drain rejects with the handler's own code, the tap
 # downstream saw `a` and `b` and never `c`, and nothing after `c` was dispatched.
 # The two taps' dispatches interleave, so neither holds a value.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refuseC }
 inputType:
   kind: Telo.JsonSchema
@@ -95,7 +95,7 @@ steps:
   - name: refuse
     when: !cel "inputs.item == 'c'"
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       steps:
         - name: refuse
           throw: { code: TAP_HANDLER_FAILED, message: the handler refused this value }
@@ -104,7 +104,7 @@ kind: Run.Value
 metadata: { name: observeAfterFailure }
 value: true
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: handlerFails }
 steps:
   - name: attempt
@@ -162,7 +162,7 @@ kind: Run.Value
 metadata: { name: observeBeforeFlatMap }
 value: true
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: downstreamFails }
 steps:
   - name: attempt
@@ -204,7 +204,7 @@ steps:
 ---
 # `when` must be a boolean for every value. `item` is untyped, so this passes
 # `telo check` and the drain rejects at the first value.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: whenNotBoolean }
 steps:
   - name: attempt

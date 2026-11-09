@@ -15,12 +15,12 @@ metadata:
     catches the rejection and frames it. That is what keeps a streaming client
     working: without it the client sees 200, some frames, and then silence.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
   Http: ../../http-server
   Ndjson: ../../ndjson-codec
   JS: ../../javascript
-  Run: ../../run
   Stream: ../../stream
   Assert: ../../assert
 targets:
@@ -119,18 +119,18 @@ inputType:
     required: [ url, prompt ]
 outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: true } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testToolError }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8952 }
     openapi: { info: { title: AgentStream tool-error test, version: 1.0.0 } }
     mounts:
       - path: /
         mount: !ref api
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: hit
     inputs: { url: http://127.0.0.1:8952/chat, prompt: "call the ghost" }

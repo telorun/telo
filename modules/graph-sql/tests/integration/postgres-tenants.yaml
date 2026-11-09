@@ -19,7 +19,6 @@ imports:
   Postgres: ../../../postgres
   Graph: ../../../graph
   GraphSql: ../..
-  Run: ../../../run
   Assert: ../../../assert
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -36,7 +35,7 @@ kind: Postgres.Connection
 metadata: { name: db }
 access: !ref Pg.databaseAccess
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -108,7 +107,7 @@ schema: !ref tenantBSchema
 nodes: [!ref person]
 relationships: [!ref knows]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: isolation }
 steps:
   - name: createInA
@@ -136,7 +135,7 @@ steps:
 ---
 # A cursor resumes a listing through the store that issued it and no other,
 # though both stores list the same node type.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cursorsStayWithTheirStore }
 steps:
   - name: second

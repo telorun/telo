@@ -10,11 +10,7 @@ metadata:
     by what it provides, carrying the style of the node that placed it. A view
     whose own content is switched off provides no node, and is left out of its
     parent like any node that is off.
-imports:
-  Ui: ../
-  Probe: ./__fixtures__/probe
-  Run: ../../run
-  Assert: ../../assert
+imports: { Ui: ../, Probe: ./__fixtures__/probe, Assert: ../../assert }
 targets:
   - !ref main
 ---
@@ -61,7 +57,7 @@ content:
             kind: Ui.View
             content: { type: text, text: !cel "'v' + module.version" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: read

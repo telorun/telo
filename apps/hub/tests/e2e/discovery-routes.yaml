@@ -12,8 +12,8 @@ metadata:
     hub registers itself on boot), /module/versions including its 404 path, and
     the /modules catalogue listing and its paging.
 imports:
-  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
   Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref health
@@ -54,7 +54,7 @@ targets:
   - !ref moduleManifest_ServesTheManifestText
   - !ref moduleManifest_UntrackedReturns404
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: health }
 steps:
   - name: hit
@@ -80,7 +80,7 @@ steps:
 # The seeded timer module defines Timer.Delay; an intent-shaped lexical
 # query on "delay" must surface it as a kind hit carrying the exact location
 # ref + version (the shape search_resources / the editor build on).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_FindsSeededKind }
 steps:
   - name: hit
@@ -137,7 +137,7 @@ steps:
 ---
 # The module-first projection groups the same hits and lists every exported
 # kind, so a module card needs no second manifest fetch.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchModules_GroupsByModule }
 steps:
   - name: hit
@@ -225,7 +225,7 @@ steps:
 ---
 # Lexical typeahead: a partial (even typo-adjacent) token must complete to the
 # registered ref, deduped to the latest tracked version.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refs_FuzzyMatchesSeededRef }
 steps:
   - name: hit
@@ -264,7 +264,7 @@ steps:
 ---
 # The built-in vocabulary's ref is registered by the hub itself on boot, though
 # SEED_REFS does not name it — and whether or not a version of it is published.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refs_ListsTheBuiltinVocabulary }
 steps:
   - name: hit
@@ -280,7 +280,7 @@ steps:
       expected: { status: 200, registered: true }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: moduleVersions_ListsSeededVersions }
 steps:
   - name: hit
@@ -332,7 +332,7 @@ steps:
             required: [ref, versions]
         required: [status, body]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: moduleVersions_UntrackedReturns404 }
 steps:
   - name: hit
@@ -362,7 +362,7 @@ steps:
 # lexical overlap with the kind ("delay") must still surface Timer.Delay via
 # the vector arm. This can only pass if ingest embedded the seeded kinds and the
 # RRF query fuses the vector hits — it fails on lexical-only ranking.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_SemanticMatch }
 steps:
   - name: hit
@@ -404,7 +404,7 @@ steps:
 # modules declare, and the seed set is deliberately small — what must hold is
 # that the facet query, the array-containment filter, and the contract join all
 # execute and project the documented shape.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: categories_ListsDeclaredFacet }
 steps:
   - name: hit
@@ -444,7 +444,7 @@ steps:
 # Browse is the same endpoint with a facet filter and no query: the response
 # must carry the pagination contract (`total`) so a caller can tell a complete
 # listing from a truncated one.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchModules_FiltersByCategory }
 steps:
   - name: hit
@@ -494,7 +494,7 @@ steps:
             required: [query, category, total, hits]
         required: [status, body]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: implementations_ListsBackendsOfContract }
 steps:
   - name: hit
@@ -553,7 +553,7 @@ steps:
 # description) are asserted as shape; what is pinned is the contract — the ref
 # echoes back, and the kind list is non-empty and carries the per-kind fields a
 # page needs.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: module_ReturnsDetailForSeededRef }
 steps:
   - name: hit
@@ -622,7 +622,7 @@ steps:
 ---
 # One 404 covers both "never registered" and "no such version": the caller's
 # next move is identical, and separating them would leak which refs are tracked.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: module_UntrackedReturns404 }
 steps:
   - name: hit
@@ -640,7 +640,7 @@ steps:
 # A tracked ref at a version that was never published takes the same 404 path,
 # rather than falling back to the latest version and quietly answering a
 # question the caller did not ask.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: module_UnknownVersionReturns404 }
 steps:
   - name: hit
@@ -660,7 +660,7 @@ steps:
 # portable kinds, which reads as "no such module" — and `nodejs` vs a guessed
 # `node` is exactly the mistake a caller makes, since `nodejs` is what an
 # `imports:` entry's `runtime:` field uses.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_RejectsUnknownRuntime }
 steps:
   - name: hit
@@ -679,7 +679,7 @@ steps:
 # non-empty hits: the hub container tracks with the `telo` its base image ships,
 # which predates the runtime block, so every seeded row has an empty runtime set
 # until a CLI release lands (same bootstrap as `integrity` above).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_AcceptsKnownRuntime }
 steps:
   - name: hit
@@ -708,7 +708,7 @@ steps:
 # An application's runtime reach depends on its whole import closure, which the
 # hub does not index — so a runtime filter over applications is refused rather
 # than answered with a guess.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_RefusesRuntimeForApplications }
 steps:
   - name: hit
@@ -733,7 +733,7 @@ steps:
 # `runtime` is — the guard is a lookup against the declared slugs instead. It has
 # to be a 400: left to the filter, an unknown category selects nothing, and an
 # empty hit list reads as "Telo has no such kind" rather than "bad argument".
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_RejectsUnknownCategory }
 steps:
   - name: hit
@@ -758,7 +758,7 @@ steps:
 # `console` matches the seeded console kinds strongly enough that the unfiltered
 # arm is reliably non-empty, while terminal I/O is far enough from key/value
 # storage — lexically and semantically — that the filtered arm is reliably empty.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_BroadensWhenCategoryExcludesEverything }
 steps:
   - name: hit
@@ -779,7 +779,7 @@ steps:
 # The facet rides on EVERY response, not just /categories: it is what makes an
 # open vocabulary learnable from inside a search, and a caller who has to fetch
 # it separately guesses instead.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_CarriesCategoryFacet }
 steps:
   - name: hit
@@ -820,7 +820,7 @@ steps:
 # /search/modules is guarded through the same vocabulary. Leaving it unguarded
 # would just relocate the defect: an agent that falls back from kinds to modules
 # would hit the silent empty set again.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchModules_RejectsUnknownCategory }
 steps:
   - name: hit
@@ -838,7 +838,7 @@ steps:
 # GET /modules lists exactly the refs GET /module answers 200 for — local refs
 # and tesseract-lang packs included, since both routes read one predicate. Only
 # the seeded refs are compared, never a ref registered by hand into the stack.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: modules_ListsExactlyTheRefsModuleAnswers }
 steps:
   - name: seeded
@@ -895,7 +895,7 @@ steps:
 # Walking /modules two at a time yields the full listing page by page: each page
 # is the next two entries past the cursor, `next` is the page's last seq while
 # pages are full, and the walk ends on the page whose `next` is null.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: modules_PagesChainByNext }
 steps:
   - name: full
@@ -942,7 +942,7 @@ steps:
 ---
 # `limit` is bounded by the route's query schema, so an out-of-range page size is
 # the caller's mistake rather than an empty or unbounded page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: modules_RejectsInvalidLimit }
 steps:
   - name: hit
@@ -959,7 +959,7 @@ steps:
 # The publisher facet is derived from refs: every seeded `oci://ghcr.io/telorun/*`
 # module sits under one publisher, and the checkout's own `./modules/*` under
 # `local`. Counts move with the seed, so only the two names are pinned.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: publishers_ListsTheSeededPublishers }
 steps:
   - name: hit
@@ -976,7 +976,7 @@ steps:
 # The filter selects exactly the modules reporting that publisher, and the
 # response echoes it — what tells a caller the filter was applied rather than
 # ignored.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchModules_FiltersByPublisher }
 steps:
   - name: hit
@@ -997,7 +997,7 @@ steps:
 # `sort=name` orders by the declared module name, case-insensitively, and is
 # echoed. Every adjacent pair is compared, so the assertion holds for whichever
 # modules are seeded and fails for any one out of place.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchModules_SortsByName }
 steps:
   - name: hit
@@ -1020,7 +1020,7 @@ steps:
 ---
 # `sort=recent` lists the module the hub tracked last first. `trackedAt` is one
 # fixed-width UTC format, so comparing it as text compares the instants.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchModules_SortsByRecent }
 steps:
   - name: hit
@@ -1045,7 +1045,7 @@ steps:
 # contract-only `kv-store` is gone from the hits AND from `total`, `hidden` says
 # how many were left out, and the two add up to the unfiltered total. Echoed, so
 # a caller can tell a hub that applied it from one that ignored it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchModules_LeavesOutContractOnlyModules }
 steps:
   - name: all
@@ -1084,7 +1084,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 # A page past the last row has no hits and still reports how many are listed.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchModules_CountsAPagePastTheEnd }
 steps:
   - name: first
@@ -1109,7 +1109,7 @@ steps:
 ---
 # The publisher filter on the kind-first route: every hit is that publisher's,
 # and the response echoes it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchResources_FiltersByPublisher }
 steps:
   - name: hit
@@ -1134,7 +1134,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 # An order outside the enum is a bad argument, not relevance in disguise.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchModules_RejectsUnknownSort }
 steps:
   - name: hit
@@ -1151,7 +1151,7 @@ steps:
 ---
 # The reverse of `imports:`: the seeded redis and memory backends both import
 # `kv-store`, and neither is named by `kv-store` itself.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: dependents_ListsImporters }
 steps:
   - name: hit
@@ -1177,7 +1177,7 @@ steps:
 ---
 # The list is paged: `limit` cuts it, `total` is the count before the cut, and a
 # page past the end is empty with the same total.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: dependents_Pages }
 steps:
   - name: one
@@ -1214,7 +1214,7 @@ steps:
 ---
 # `/module` carries both directions: what the version imports, pin cut off and
 # its version kept, and how many modules import it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: module_ListsItsImports }
 steps:
   - name: importer
@@ -1237,7 +1237,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 # The cached manifest as text — the HTTP twin of `get_module_manifest`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: moduleManifest_ServesTheManifestText }
 steps:
   - name: hit
@@ -1255,7 +1255,7 @@ steps:
       expected: { status: 200, yaml: true, library: true, definesStore: true }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: moduleManifest_UntrackedReturns404 }
 steps:
   - name: hit

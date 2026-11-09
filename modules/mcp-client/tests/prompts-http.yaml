@@ -6,10 +6,10 @@ metadata:
     An HTTP client lists the prompts a server offers and renders one from the
     arguments it sends, invoked directly with `prompts/list` and `prompts/get`.
 imports:
+  Run: ../../run
   Mcp: ../../mcp-server
   McpClient: ../
   Http: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets: [ !ref testRun ]
 ---
@@ -45,15 +45,15 @@ metadata: { name: clientUnderTest }
 url: http://127.0.0.1:8975/mcp
 clientInfo: { name: telo-test, version: 1.0.0 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRun }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8975 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
-targets: [ !ref Server ]
+targets: [ !ref server ]
 steps:
   - name: list
     invoke: !ref clientUnderTest

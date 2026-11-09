@@ -7,7 +7,7 @@ imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref readsMetadata
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readsMetadata }
 steps:
   - name: parse

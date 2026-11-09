@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: TextSystemManifestAndRuntimeTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testManifestSystemPrepends
   - !ref testRuntimeSystemOverridesManifest
@@ -23,7 +19,7 @@ system: "manifest-system"
 # the messages array has no inline system message. Echo returns the last message's
 # content, so if prepending shifts the user message to position 1 (not 0), the echoed
 # last message is still the user message → text equals the user content.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testManifestSystemPrepends }
 steps:
   - name: invoke
@@ -42,7 +38,7 @@ steps:
 # Case 2: runtime `inputs.system` wins over manifest `system`. Same echo behaviour
 # on the last message. This test just asserts the call succeeds with the override;
 # deeper observation of the system prompt requires a non-echo model.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRuntimeSystemOverridesManifest }
 steps:
   - name: invoke

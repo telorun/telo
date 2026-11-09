@@ -8,10 +8,10 @@ metadata:
     reads it and exits non-zero unless it holds the same bytes, size and media
     type. Neither knows of the other — the directory is all they share.
 imports:
+  Run: ../../run
   App: ../../app
   Fs: ../../fs
   Timer: ../../timer
-  Run: ../../run
   Assert: ../../assert
 # Named as the children name theirs: inside an `App.Instance`, `variables.<name>`
 # is checked against the names the child declares.
@@ -32,7 +32,7 @@ targets:
 kind: Fs.FileRemoval
 metadata: { name: remove }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: clear
@@ -75,7 +75,7 @@ maxIterations: 6000
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verdict }
 steps:
   - name: assertBothSucceeded

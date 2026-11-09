@@ -9,22 +9,18 @@ metadata:
     carries a `source` field naming the rung that produced it, so a precedence
     mistake shows up as a wrong string rather than as a coincidentally equal
     status code.
-imports:
-  Http: ../
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
 # Union {NOT_FOUND}. Its route declares no `catches:`, so the ROUTER renders it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: throwsNotFound }
 steps:
   - { name: raise, throw: { code: NOT_FOUND, message: "no such order" } }
 ---
 # Union {NOT_FOUND}. Its route declares an entry for that code, which wins.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: throwsNotFoundOverridden }
 steps:
   - { name: raise, throw: { code: NOT_FOUND, message: "gone for good" } }
@@ -32,7 +28,7 @@ steps:
 # Union {NOT_FOUND}, behind a route whose own entry matches POST only. A GET
 # therefore falls PAST a route list that exists and declines — the case that
 # proves fall-through is decided per entry, not per list.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: throwsNotFoundOnGet }
 steps:
   - name: raise
@@ -130,7 +126,7 @@ kind: HttpClient.Request
 metadata: { name: fetchJson }
 client: !ref client
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

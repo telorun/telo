@@ -9,33 +9,25 @@ metadata:
     `steps.x.result * 2` used to fail at dispatch with
     `no overload of "*" takes (double, int)`. A number a `!cel` member computes
     is left as computed.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Assert: ../modules/assert }
 targets:
   - !ref verifyLiteralValues
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyLiteralValues }
 steps:
-  - name: whole
-    value: 3
-  - name: wholeAsFloat
-    value: 3.0
-  - name: exponent
-    value: 1e3
-  - name: fraction
-    value: 3.5
+  - { name: whole, value: 3 }
+  - { name: wholeAsFloat, value: 3.0 }
+  - { name: exponent, value: 1e+3 }
+  - { name: fraction, value: 3.5 }
   - name: nested
     value:
       count: 3
       list: [1, 2]
       rows: [{ size: 4 }, { size: 5 }]
       computed: !cel "1.0 + 1.0"
-  - name: flags
-    value: { exchanged: false, issuerMissing: true }
-  - name: fallback
-    value: { refused: true }
+  - { name: flags, value: { exchanged: false, issuerMissing: true } }
+  - { name: fallback, value: { refused: true } }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:

@@ -9,11 +9,11 @@ metadata:
 
     Offline: a local server that answers only the client's key.
 imports:
+  Run: ../../run
   OpenAI: ../
   Ai: ../../ai
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -37,11 +37,11 @@ kind: Run.Value
 metadata: { name: noop }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: ChatApi }
+    metadata: { name: chatApi }
     routes:
       - request:
           path: /chat/completions
@@ -71,13 +71,13 @@ with:
                 body:
                   error: { type: invalid_request_error, code: invalid_api_key, message: Incorrect API key }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 8977 }
     mounts:
       - path: /v1
-        mount: !ref ChatApi
+        mount: !ref chatApi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: call
     inputs: { messages: [{ role: user, content: hi }] }

@@ -18,7 +18,7 @@ aggregate:
   total: !cel "sum(group.map(o, o.amount))"
   average: !cel "avg(group.map(o, o.amount))"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testSummarize }
 steps:
   - name: summarize

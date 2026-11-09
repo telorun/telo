@@ -10,19 +10,19 @@ metadata:
     the kernel for the handler's `{kind, name}` and the kernel knew only the
     reference spellings, not an instance.
 imports:
+  Run: ../modules/run
   Lib: ./__fixtures__/template-forwarded-reference
   Http: ../modules/http-server
   HttpClient: ../modules/http-client
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref verifyForwardedRoutes
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyForwardedRoutes }
 with:
   - kind: Http.Server
-    metadata: { name: ForwardedServer }
+    metadata: { name: forwardedServer }
     listen: { port: 8847 }
     mounts:
       - path: /
@@ -44,7 +44,7 @@ with:
                     application/json:
                       body: !cel "result"
 targets:
-  - !ref ForwardedServer
+  - !ref forwardedServer
 steps:
   - name: place
     inputs: {}

@@ -13,11 +13,7 @@ metadata:
     of the wrong type satisfies.
 
     The resumer is `with:`-scoped, so the kernel hold it takes ends with the sequence.
-imports:
-  Local: ../
-  Journal: ../../durable-journal-file
-  Run: ../../run
-  Assert: ../../assert
+imports: { Local: ../, Journal: ../../durable-journal-file, Assert: ../../assert }
 variables:
   journalDir:
     env: DURABLE_SCHEDULED_VALUES_TEST_DIR
@@ -43,7 +39,7 @@ steps:
       shifted: !cel "inputs.at + duration('1h') == timestamp('2026-01-15T10:30:00Z')"
       intExact: !cel "inputs.big == 9007199254740993"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Local.Resumer

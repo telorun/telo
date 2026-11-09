@@ -14,7 +14,6 @@ imports:
   Ui: ../
   DataModel: ../../data-model
   Probe: ./__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -108,7 +107,7 @@ enabled:
   matches: { type: string, minLength: 3 }
   disabledText: Enter a recipient first.
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: account

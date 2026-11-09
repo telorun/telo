@@ -9,7 +9,6 @@ metadata:
     its `!ref` does, and a reading republished after a member runs is seen on the
     next read.
 imports:
-  Run: ../modules/run
   Assert: ../modules/assert
   Kinds: ./__fixtures__/check-run-agreement/scope-members/kinds
 targets:
@@ -25,20 +24,14 @@ capability: Telo.Invocable
 schema:
   type: object
   required: [jobs]
-  properties:
-    jobs:
-      type: object
-      additionalProperties:
-        type: object
+  properties: { jobs: { type: object, additionalProperties: { type: object } } }
 resources:
   - !for-each
     metadata: { name: counters }
     in: !cel "self.jobs"
-    emit:
-      kind: Kinds.Counter
-  - kind: Kinds.Counter
-    metadata: { name: tally }
-  - kind: Run.Sequence
+    emit: { kind: Kinds.Counter }
+  - { kind: Kinds.Counter, metadata: { name: tally } }
+  - kind: Telo.Sequence
     metadata: { name: pipeline }
     steps:
       - !for-each
@@ -69,17 +62,13 @@ capability: Telo.Invocable
 schema:
   type: object
   required: [names]
-  properties:
-    names:
-      type: array
-      items: { type: string }
+  properties: { names: { type: array, items: { type: string } } }
 resources:
   - !for-each
     metadata: { name: slots }
     in: !cel "self.names"
-    emit:
-      kind: Kinds.Counter
-  - kind: Run.Sequence
+    emit: { kind: Kinds.Counter }
+  - kind: Telo.Sequence
     metadata: { name: listing }
     steps:
       - !for-each
@@ -95,15 +84,13 @@ invoke: !ref listing
 ---
 kind: Self.Pipeline
 metadata: { name: pipeline }
-jobs:
-  alpha: {}
-  beta: {}
+jobs: { alpha: {}, beta: {} }
 ---
 kind: Self.Listing
 metadata: { name: listing }
 names: [x, y]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: run
@@ -122,6 +109,4 @@ steps:
       expected:
         afterOne: 1
         afterTwo: 2
-        seen:
-          alpha: { result: 1 }
-          beta: { result: 1 }
+        seen: { alpha: { result: 1 }, beta: { result: 1 } }

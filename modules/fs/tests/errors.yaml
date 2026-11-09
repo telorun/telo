@@ -30,7 +30,7 @@ kind: Fs.FileRemoval
 metadata: { name: remove }
 cwd: !module-path ./__fixtures__
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: reset

@@ -9,7 +9,6 @@ metadata:
     does not exist.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   Timer: ../../../modules/timer
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
@@ -26,16 +25,14 @@ targets:
 ---
 # Polls a request until it reaches `status`. The run is started detached, so a
 # submission answers before the request has settled anywhere.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: waitFor }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [id, status]
-    properties:
-      id: { type: string }
-      status: { type: string }
+    properties: { id: { type: string }, status: { type: string } }
 steps:
   - name: read
     invoke: !ref readRequest
@@ -52,15 +49,11 @@ steps:
 outputs:
   body: !cel "steps.read.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readRequest }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [id]
-    properties:
-      id: { type: string }
+  schema: { type: object, required: [id], properties: { id: { type: string } } }
 steps:
   - name: get
     invoke: { kind: HttpClient.Request }
@@ -70,14 +63,13 @@ steps:
 outputs:
   body: !cel "steps.get.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../example/telo.yaml
-    ports:
-      http: 8851
+    ports: { http: 8851 }
     variables:
       journal: !cel "variables.scratchDir.joinPath('approval-app-test-' + string(nowMillis()))"
       # Short enough to watch one lapse, long enough for the reviewed paths.
@@ -126,9 +118,7 @@ steps:
       actual:
         approve: !cel "steps.approve.result.status"
         decision: !cel "steps.largeDone.result.body.decision"
-      expected:
-        approve: 202
-        decision: { approved: true, decidedBy: grace, note: ok }
+      expected: { approve: 202, decision: { approved: true, decidedBy: grace, note: ok } }
 
   # Deciding again: nothing is waiting any more.
   - name: approveAgain

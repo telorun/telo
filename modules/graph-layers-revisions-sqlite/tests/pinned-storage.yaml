@@ -21,7 +21,6 @@ imports:
   Graph: ../../graph
   GraphLayers: ../../graph-layers
   Layers: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -73,7 +72,7 @@ store: !ref team
 ---
 # How many base-list rows the tables hold, and how many changesets point at
 # each stored list.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: countBases }
 steps:
   - name: rows
@@ -90,7 +89,7 @@ outputs:
   lists: !cel "int(steps.rows.result.rows[0].lists)"
   revisions: !cel "int(steps.rows.result.rows[0].revisions)"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: baseListStoredOncePerChange }
 steps:
   - name: registerArchive
@@ -156,7 +155,7 @@ steps:
         listed: [[archive, pages, plain], [archive, pages, plain]]
 ---
 # The rows a key's history leaves in `team`, oldest first.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: versionsOf }
 inputType:
   kind: Telo.JsonSchema
@@ -180,7 +179,7 @@ steps:
 outputs:
   rows: !cel "steps.rows.result.rows"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: removedRows }
 steps:
   - name: archiveR1
@@ -270,7 +269,7 @@ kind: Sql.Transaction
 metadata: { name: publishThenLabel }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema:
@@ -290,7 +289,7 @@ inputs:
   draft: !cel "inputs.draft"
   label: !cel "inputs.label"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: labelJoinsATransaction }
 steps:
   - name: head

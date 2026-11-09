@@ -7,10 +7,7 @@ metadata:
     shape it names. The instance is declared above the shape, and the shape
     inherits `id` from a parent declared after it: the forward reads the
     inherited property whatever the creation order.
-imports:
-  Lib: ./__fixtures__/template-shape-forward
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Lib: ./__fixtures__/template-shape-forward, Assert: ../modules/assert }
 targets:
   - !ref verifyInheritedProperty
 ---
@@ -21,19 +18,13 @@ model: !ref Child
 kind: Telo.JsonSchema
 metadata: { name: Child }
 extends: Base
-schema:
-  type: object
-  properties:
-    label: { type: string }
+schema: { type: object, properties: { label: { type: string } } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Base }
-schema:
-  type: object
-  properties:
-    id: { type: string }
+schema: { type: object, properties: { id: { type: string } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyInheritedProperty }
 steps:
   - name: idType

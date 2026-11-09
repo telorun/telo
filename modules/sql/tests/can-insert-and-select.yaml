@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: CanInsertAndSelect, version: 1.0.0 }
-imports:
-  Sql: ../
-  SQLite: ../../sqlite
-  Run: ../../run
-  Assert: ../../assert
+imports: { Sql: ../, SQLite: ../../sqlite, Assert: ../../assert }
 targets:
   - !ref testInsertAndSelect
 ---
@@ -12,7 +8,7 @@ kind: SQLite.Connection
 metadata: { name: db }
 file: ":memory:"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInsertAndSelect }
 steps:
   - name: createTable

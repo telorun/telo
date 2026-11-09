@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: TextOptionsMergeTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testOptionsMergeReachesModel
 ---
@@ -22,7 +18,7 @@ metadata: { name: c }
 model: !ref echo
 options: { temperature: 0.2, maxTokens: 100 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testOptionsMergeReachesModel }
 steps:
   - name: invoke

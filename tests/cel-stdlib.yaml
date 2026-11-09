@@ -8,9 +8,7 @@ metadata:
     Int-returning expressions are wrapped in json()/string() because CEL ints are
     BigInt (Assert serializes to JSON); strings, lists, bools and doubles assert
     directly. Non-deterministic time/uuid functions assert format/validity.
-imports:
-  Assert: ../modules/assert
-  Run: ../modules/run
+imports: { Assert: ../modules/assert }
 targets:
   - !ref strings
   - !ref collections
@@ -22,7 +20,7 @@ targets:
   - !ref nullHandling
   - !ref nonDeterministic
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: strings }
 steps:
   - name: lower
@@ -50,7 +48,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs: { actual: !cel "trimSuffix('line.', '.')", expected: "line" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: collections }
 steps:
   - name: join
@@ -98,7 +96,7 @@ steps:
       actual: !cel "merge({'a':'1'},{})"
       expected: { a: "1" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: indexing }
 steps:
   - name: range
@@ -118,7 +116,7 @@ steps:
       actual: !cel "range(size(['a','b','c'])).map(i, string(i + 1) + ': ' + ['a','b','c'][i])"
       expected: ["1: a", "2: b", "3: c"]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: math }
 steps:
   - name: abs
@@ -140,7 +138,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs: { actual: !cel "string(max([3, 1, 2]))", expected: "3" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: json }
 steps:
   - name: serialize
@@ -150,7 +148,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs: { actual: !cel "json(parseJson('{\"n\":42}'))", expected: '{"n":42}' }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: encoding }
 steps:
   - name: base64Encode
@@ -166,7 +164,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs: { actual: !cel "urlDecode('a%20b')", expected: "a b" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hashing }
 steps:
   - name: sha256
@@ -191,7 +189,7 @@ steps:
       actual: !cel "hmac('sha256', 'key', 'hello')"
       expected: "9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nullHandling }
 steps:
   - name: defaultUsesFallbackOnNull
@@ -206,7 +204,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs: { actual: !cel "coalesce([dyn(null), dyn(null), dyn('first')])", expected: "first" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nonDeterministic }
 steps:
   - name: uuidValidateTrue

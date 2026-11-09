@@ -8,7 +8,6 @@ metadata:
     other's messages.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 # Resolved against the working directory, so the history path built from it is
@@ -22,14 +21,13 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ./__fixtures__/echo-assistant.yaml
-    ports:
-      http: 8855
+    ports: { http: 8855 }
     variables:
       history: !cel "variables.scratchDir.joinPath('agent-app-test-' + string(nowMillis()) + '.sqlite')"
 targets:

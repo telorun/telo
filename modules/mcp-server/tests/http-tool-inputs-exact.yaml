@@ -50,11 +50,11 @@ kind: Telo.Sequence
 metadata: { name: testRun }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8986 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
-targets: [ !ref Server ]
+targets: [ !ref server ]
 steps:
   - name: empty
     inputs: { name: empty, arguments: { city: Atlantis } }

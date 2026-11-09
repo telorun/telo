@@ -17,10 +17,10 @@ metadata:
     is a CONTROL through `OpenAI.ChatModel` itself, so a failure says which half
     is at fault instead of blaming the alias for a broken fixture.
 imports:
+  Run: ../../run
   OpenAI: ../
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Stream: ../../stream
   Assert: ../../assert
 targets:
@@ -53,11 +53,11 @@ kind: Run.Value
 metadata: { name: noop }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: FakeApi }
+    metadata: { name: fakeApi }
     routes:
       - request:
           path: /chat/completions
@@ -88,14 +88,14 @@ with:
 
                   data: [DONE]
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 8879 }
     openapi: { info: { title: Fake Chat API, version: 1.0.0 } }
     mounts:
       - path: /v1
-        mount: !ref FakeApi
+        mount: !ref fakeApi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: control
     inputs:

@@ -6,10 +6,10 @@
 kind: Telo.Application
 metadata: { name: ExaRequestMappingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Exa: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref requestMapping
@@ -31,11 +31,11 @@ kind: Run.Value
 metadata: { name: echo }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: requestMapping }
 with:
   - kind: Server.Api
-    metadata: { name: FakeExa }
+    metadata: { name: fakeExa }
     routes:
       - request:
           path: /search
@@ -52,13 +52,13 @@ with:
                     - title: !cel "json(request.body)"
                       url: https://echo.example/
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18864 }
     mounts:
       - path: /
-        mount: !ref FakeExa
+        mount: !ref fakeExa
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: allHints
     invoke: !ref moderated

@@ -7,11 +7,7 @@ metadata:
     the index file at the mount root, a sibling asset with its inferred MIME type,
     and the SPA fallback (an unmatched deep path returns the index, not a 404), so
     client-side routing survives a refresh.
-imports:
-  Http: ../
-  JS: ../../javascript
-  Run: ../../run
-  Assert: ../../assert
+imports: { Http: ../, JS: ../../javascript, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -46,17 +42,17 @@ root: !module-path ./__fixtures__/static-site
 spaFallback: true
 maxAge: 3600
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8971 }
     mounts:
       - path: /
         mount: !ref site
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: hitIndex
     inputs: { url: http://127.0.0.1:8971/ }

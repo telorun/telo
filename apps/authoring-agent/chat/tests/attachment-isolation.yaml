@@ -21,7 +21,6 @@ imports:
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
   Blob: oci://ghcr.io/telorun/blob@0.2.1#sha256-K6p6T1WxnjqZ5dPxEhb4ADSj3rkYTICEon5FuAXq76o
   BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.2#sha256-j_7SCdfh-B-FrmdvBz2rHLF3EGJjeTQWUjkdyJowt1s
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -32,7 +31,7 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -54,7 +53,7 @@ steps:
   # The agent's own boot creates its database; nothing runs.
   - name: schema
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -65,14 +64,13 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18586/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps: []
   # A's upload, row and blob; B's forged turn naming A's id.
   - name: seed
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: SQLite.Connection
           metadata: { name: seedDb }
@@ -152,7 +150,7 @@ steps:
             bindings: [ 0190a000-0000-7000-8000-00000000d101, 0190a000-0000-7000-8000-00000000c102 ]
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -163,19 +161,13 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18586/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: intruder
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18589/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18589/chat, method: POST }
           inputs:
-            body:
-              conversationId: 0190a000-0000-7000-8000-00000000c102
-              message: and now?
+            body: { conversationId: 0190a000-0000-7000-8000-00000000c102, message: and now? }
         - name: intruderEvents
           timeout: 30000
           invoke: { kind: HttpClient.Request }
@@ -186,10 +178,7 @@ steps:
           invoke: { kind: HttpClient.Request }
           inputs: { url: http://127.0.0.1:18586/requests }
         - name: holder
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18589/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18589/chat, method: POST }
           inputs:
             body:
               conversationId: 0190a000-0000-7000-8000-00000000c101
@@ -218,6 +207,4 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "steps.agent.result"
-      expected:
-        intruder: [true, true, false]
-        holder: [true, true]
+      expected: { intruder: [true, true, false], holder: [true, true] }

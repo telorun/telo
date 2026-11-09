@@ -10,36 +10,28 @@ metadata:
     work and nothing else.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8044
-    variables:
-      reportCron: "0 3 1 1 *"
+    ports: { http: 8044 }
+    variables: { reportCron: "0 3 1 1 *" }
 targets:
   - !ref app
 steps:
   - name: report
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8044/report
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8044/report, method: GET }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         status: !cel "steps.report.result.status"
         rows: !cel "size(steps.report.result.body) > 0"
-      expected:
-        status: 200
-        rows: true
+      expected: { status: 200, rows: true }

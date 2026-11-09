@@ -1,0 +1,157 @@
+kind: Telo.Application
+metadata:
+  name: DurableLocalRetentionTest
+  version: 1.0.0
+  description: |
+    A finished run is purged once it has been finished for `retainFinished`, and a run
+    that has not finished is never purged, however old.
+
+    `quick` keeps its runs for one second. The test reads its completed run, waits for the
+    resumer's sweep to pass the window, and reads it again: `unknown`, which is what a
+    purged run answers. `waiting` keeps finished runs for one millisecond, yet its parked
+    run is still parked once the sweep has passed over it many times.
+
+    Each workflow has a journal of its own, so one resumer never executes the other's runs.
+imports:
+  Durable: ../../durable
+  Local: ../
+  Journal: ../../durable-journal-file
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  quickDir:
+    env: DURABLE_RETENTION_QUICK_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/durable-retention-quick
+  waitingDir:
+    env: DURABLE_RETENTION_WAITING_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/durable-retention-waiting
+targets: [!ref test]
+---
+kind: Journal.Journal
+metadata: { name: quickJournal }
+directory: !cel "variables.quickDir"
+---
+kind: Journal.Journal
+metadata: { name: waitingJournal }
+directory: !cel "variables.waitingDir"
+---
+kind: Run.Value
+metadata: { name: work }
+value: { done: true }
+---
+kind: Durable.Await
+metadata: { name: approval }
+token: !cel "'approve:' + inputs.ticket"
+timeout: 30d
+outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: true } }
+---
+kind: Local.Workflow
+metadata: { name: quick }
+journal: !ref quickJournal
+retainFinished: 1s
+runId: !cel "'quick:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - { name: did, invoke: !ref work }
+---
+kind: Local.Workflow
+metadata: { name: waiting }
+journal: !ref waitingJournal
+retainFinished: 1ms
+runId: !cel "'waiting:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - name: hold
+    invoke: !ref approval
+    inputs:
+      ticket: !cel "inputs.ticket"
+---
+kind: Local.Status
+metadata: { name: quickStatus }
+journal: !ref quickJournal
+---
+kind: Local.Status
+metadata: { name: waitingStatus }
+journal: !ref waitingJournal
+---
+kind: Local.Result
+metadata: { name: quickResult }
+journal: !ref quickJournal
+wait: 15s
+---
+kind: Local.Result
+metadata: { name: quickResultNow }
+journal: !ref quickJournal
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Local.Resumer
+    metadata: { name: quickResumer }
+    workflow: !ref quick
+    interval: 100ms
+  - kind: Local.Resumer
+    metadata: { name: waitingResumer }
+    workflow: !ref waiting
+    interval: 100ms
+targets:
+  - !ref quickResumer
+  - !ref waitingResumer
+steps:
+  - name: ticket
+    value: !cel "'t' + string(nowMillis())"
+  - name: startQuick
+    invoke: !ref quick
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: startWaiting
+    invoke: !ref waiting
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: completed
+    invoke: !ref quickResult
+    inputs:
+      run: !cel "steps.startQuick.result.runId"
+  - name: assertCompleted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.completed.result.status"
+      expected: completed
+
+  # Past the one-second window and a sweep: the run is gone, and reads as unknown.
+  - name: reading
+    invoke: !ref quickStatus
+    inputs:
+      run: !cel "steps.startQuick.result.runId"
+  - name: untilPurged
+    while: !cel "steps.reading.result.status != 'unknown'"
+    maxIterations: 100
+    do:
+      - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 200ms } }
+      - name: reading
+        invoke: !ref quickStatus
+        inputs:
+          run: !cel "steps.startQuick.result.runId"
+  - name: purged
+    invoke: !ref quickResultNow
+    inputs:
+      run: !cel "steps.startQuick.result.runId"
+  - name: parked
+    invoke: !ref waitingStatus
+    inputs:
+      run: !cel "steps.startWaiting.result.runId"
+  - name: assertRetention
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.reading.result.status"
+        result: !cel "steps.purged.result.status"
+        waiting: !cel "steps.parked.result.status"
+      expected: { status: unknown, result: unknown, waiting: parked }

@@ -5,15 +5,11 @@ metadata:
   description: |
     One application mounted on two servers answers a page on each: a request
     is evaluated in the scope of the server it reached, whichever mounted last.
-imports:
-  App: ../../app
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

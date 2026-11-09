@@ -4,7 +4,7 @@ imports: { Run: ../, JavaScript: ../../javascript, Assert: ../../assert }
 targets:
   - !ref testTryBlocks
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testTryBlocks }
 steps:
   # --- try/catch: error is thrown, caught, swallowed; sequence continues ---

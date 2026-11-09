@@ -22,11 +22,11 @@ metadata:
 
     Offline: a local server scripted by model id.
 imports:
+  Run: ../../run
   Anthropic: ../
   Http: ../../http-client
   Server: ../../http-server
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -91,11 +91,11 @@ kind: Run.Value
 metadata: { name: noop }
 value: {}
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Server.Api
-    metadata: { name: MessagesApi }
+    metadata: { name: messagesApi }
     routes:
       - request:
           path: /messages
@@ -200,14 +200,14 @@ with:
                   event: message_stop
                   data: {"type":"message_stop"}
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 8921 }
     openapi: { info: { title: Fake Messages API event streams, version: 1.0.0 } }
     mounts:
       - path: /v1
-        mount: !ref MessagesApi
+        mount: !ref messagesApi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: open
     inputs: { messages: [{ role: user, content: weather in Paris? }] }

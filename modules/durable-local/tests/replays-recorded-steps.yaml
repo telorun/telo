@@ -32,10 +32,10 @@ metadata:
     `nodejs/tests/replay.test.ts`, where the handle is stepped directly and the
     decision case is asserted properly.
 imports:
+  Run: ../../run
   Durable: ../../durable
   Local: ../
   Journal: ../../durable-journal-file
-  Run: ../../run
   Assert: ../../assert
 variables:
   journalDir:
@@ -124,7 +124,7 @@ metadata: { name: outcome }
 journal: !ref journal
 wait: 10s
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # One token per process, computed at RUNTIME and reused by every submission

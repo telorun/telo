@@ -8,15 +8,11 @@ metadata:
     condition carried as written, the page's declared query parameters beside
     its children, and no `when` key anywhere — a node whose `when` holds for
     the request is delivered without it, one whose `when` does not is left out.
-imports:
-  App: ../../app
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

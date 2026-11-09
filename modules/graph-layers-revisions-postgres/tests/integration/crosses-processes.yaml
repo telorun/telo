@@ -18,6 +18,7 @@ metadata:
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 include: [./__fixtures__/cross-process/model.yaml]
 imports:
+  Run: ../../../run
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
     variables: { engineUrl: !cel "variables.engineUrl" }
@@ -28,7 +29,6 @@ imports:
   Graph: ../../../graph
   GraphLayers: ../../../graph-layers
   App: ../../../app
-  Run: ../../../run
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
@@ -92,7 +92,7 @@ kind: GraphLayers.OpenDraft
 metadata: { name: topOpenDraft }
 store: !ref top
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: drop
@@ -102,7 +102,7 @@ steps:
 # Both layers are registered before any child starts, so the children race on
 # revisions rather than on a layer's first write. A draft opened and discarded
 # registers a layer and leaves nothing.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: register }
 steps:
   - name: seed
@@ -116,7 +116,7 @@ steps:
     inputs: { draft: !cel "steps.notes.result.draft.id" }
 ---
 # Two drafts on one parent, each holding one write of its own.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: twoDrafts }
 steps:
   - name: a
@@ -186,7 +186,7 @@ steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 # Whichever published first, the other was refused: one revision, one refusal.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: oneRevision }
 steps:
   - name: awaitA
@@ -261,7 +261,7 @@ store: !ref top
 ---
 # One hundred writes from two processes are one hundred revisions, numbered
 # without a gap or a repeat.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hundredRevisions }
 steps:
   - name: awaitA
@@ -299,7 +299,7 @@ steps:
 ---
 # The other process, started by the session's own body and gone when this
 # sequence ends: starting it waits for its work, so the publish has happened.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: publishElsewhere }
 with:
   - kind: App.Instance
@@ -314,7 +314,7 @@ targets:
 steps:
   - { name: done, value: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: closedFromElsewhere }
 steps:
   - name: open

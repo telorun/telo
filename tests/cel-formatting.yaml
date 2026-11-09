@@ -21,9 +21,7 @@ metadata:
     fail at evaluation, so it is caught with `try:`/`catch:` and then followed by
     a post-condition: a `catch:` that never runs leaves its step's result unset,
     and asserting on that result is what stops the case passing vacuously.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Assert: ../modules/assert }
 targets:
   - !ref numbers
   - !ref durations
@@ -35,9 +33,8 @@ targets:
 # The number surface is the d3-format specifier grammar in full. Rounding is the
 # double's, not the decimal's: 1.005 is not representable and the nearest double
 # sits below the half, so `.2f` of it is "1.00".
-kind: Run.Sequence
-metadata:
-  name: numbers
+kind: Telo.Sequence
+metadata: { name: numbers }
 steps:
   - name: check
     inputs:
@@ -83,14 +80,12 @@ steps:
         rounded: 8.16
         formatted: "8.16"
         roundedWhole: 2.0
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The day length is an argument because it is a policy, not arithmetic — the same
 # minute count is `1d 30m` on an 8-hour day and `8h 30m` on a 24-hour one.
-kind: Run.Sequence
-metadata:
-  name: durations
+kind: Telo.Sequence
+metadata: { name: durations }
 steps:
   - name: check
     inputs:
@@ -110,14 +105,12 @@ steps:
         negative: "-1d 30m"
         calendarDay: "8h 30m"
         fractionalMinutes: "1h 30m"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # An instant is only a date once a zone is chosen, so every calendar function
 # takes one, defaulting to UTC.
-kind: Run.Sequence
-metadata:
-  name: dates
+kind: Telo.Sequence
+metadata: { name: dates }
 steps:
   - name: check
     inputs:
@@ -144,33 +137,28 @@ steps:
         clamped: "2026-02-28T00:00:00Z"
         backwards: "2026-01-15T00:00:00Z"
         acrossYear: "2027-02-28T00:00:00Z"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
-metadata:
-  name: collections
+kind: Telo.Sequence
+metadata: { name: collections }
 steps:
   - name: checkMap
     inputs:
       actual: !cel "compact({'a': 'x', 'b': '', 'c': null})"
       expected: { a: "x" }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
   - name: checkList
     inputs:
       actual: !cel "compact(['x', '', null])"
       expected: ["x"]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
   # Only null and the empty string. An empty list or map is a value someone
   # deliberately built, and a zero or a false is data.
   - name: checkKeeps
     inputs:
       actual: !cel "compact({'a': [], 'b': {}, 'c': 0, 'd': false, 'e': ''})"
       expected: { a: [], b: {}, c: 0, d: false }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # LAYER 1 — a bad argument written as a literal is a static error.
 #
@@ -180,8 +168,7 @@ steps:
 # error. The discriminator is the manifest's own text echoed back, never the
 # prose of the message.
 kind: Assert.Manifest
-metadata:
-  name: literalRefusals
+metadata: { name: literalRefusals }
 source: ./__fixtures__/cel-formatting-bad-literals.yaml
 expect:
   errors:
@@ -203,58 +190,48 @@ expect:
 # `catch:` actually ran: without it a guard that stopped throwing would leave the
 # catch unexecuted and the step would simply succeed, so the suite would be
 # green for an engine implementing none of these refusals.
-kind: Run.Sequence
-metadata:
-  name: computedRefusals
+kind: Telo.Sequence
+metadata: { name: computedRefusals }
 steps:
-  - name: badSpec
-    value: ".2q"
-  - name: badZone
-    value: "Mars/Olympus"
-  - name: badDay
-    value: 0
+  - { name: badSpec, value: ".2q" }
+  - { name: badZone, value: "Mars/Olympus" }
+  - { name: badDay, value: 0 }
 
   - name: guardSpec
     try:
       - name: callSpec
         value: !cel "format(1.0, steps.badSpec.result)"
     catch:
-      - name: caughtSpec
-        value: refused
+      - { name: caughtSpec, value: refused }
   - name: assertSpecRefused
     inputs:
       actual: !cel "steps.caughtSpec.result"
       expected: refused
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   - name: guardZone
     try:
       - name: callZone
         value: !cel "dateIn(timestamp(0), steps.badZone.result)"
     catch:
-      - name: caughtZone
-        value: refused
+      - { name: caughtZone, value: refused }
   - name: assertZoneRefused
     inputs:
       actual: !cel "steps.caughtZone.result"
       expected: refused
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   - name: guardDay
     try:
       - name: callDay
         value: !cel "formatDuration(510, steps.badDay.result)"
     catch:
-      - name: caughtDay
-        value: refused
+      - { name: caughtDay, value: refused }
   - name: assertDayRefused
     inputs:
       actual: !cel "steps.caughtDay.result"
       expected: refused
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # A value that is not a number reaches the formatter only when its type is
   # not known statically; a literal, in the expression or in a `value:` step, is
@@ -266,11 +243,9 @@ steps:
       - name: callNaN
         value: !cel "format(steps.notANumber.result, '.2f')"
     catch:
-      - name: caughtNaN
-        value: refused
+      - { name: caughtNaN, value: refused }
   - name: assertNaNRefused
     inputs:
       actual: !cel "steps.caughtNaN.result"
       expected: refused
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

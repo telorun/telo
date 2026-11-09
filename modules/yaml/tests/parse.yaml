@@ -11,7 +11,7 @@ targets:
   - !ref whitespaceOnly
   - !ref malformedInput
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: singleDoc }
 steps:
   - name: parse
@@ -43,7 +43,7 @@ steps:
       actual: !cel "steps.parse.result.docs[0].metadata.description"
       expected: A single document.
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: multiDoc }
 steps:
   - name: parse
@@ -79,7 +79,7 @@ steps:
       actual: !cel "steps.parse.result.docs[2].metadata.name"
       expected: Bar
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: emptyInput }
 steps:
   - { name: parse, invoke: { kind: Yaml.Parse }, inputs: { text: "" } }
@@ -89,7 +89,7 @@ steps:
       actual: !cel "string(size(steps.parse.result.docs))"
       expected: "0"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: whitespaceOnly }
 steps:
   - name: parse
@@ -103,7 +103,7 @@ steps:
       expected: "0"
 ---
 # Malformed YAML must raise ERR_PARSE_FAILED — assert via try/catch.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: malformedInput }
 steps:
   - name: parseShouldThrow

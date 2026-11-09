@@ -13,10 +13,10 @@ metadata:
     lists fails ERR_SESSION_NOT_FOUND, for a wake and for a stop. A stop ends a
     running session and needs no call for a stopped one.
 imports:
+  Run: ../../../modules/run
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Shell: ../../../modules/shell
   Timer: ../../../modules/timer
   Assert: ../../../modules/assert
@@ -37,32 +37,22 @@ kind: Run.Loop
 metadata: { name: awaitCommand }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seq]
-    properties:
-      seq: { type: integer }
+  schema: { type: object, required: [seq], properties: { seq: { type: integer } } }
 condition: !cel "previous == null || previous.read.result.command.state == 'pending'"
 maxIterations: 100
 steps:
-  - name: pause
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 100ms }
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 100ms } }
   - name: read
     invoke: !ref command
     inputs: { seq: !cel "inputs.seq" }
 outputs:
   command: !cel "steps.read.result.command"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: command }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seq]
-    properties:
-      seq: { type: integer }
+  schema: { type: object, required: [seq], properties: { seq: { type: integer } } }
 steps:
   - name: get
     invoke: !ref call
@@ -71,15 +61,11 @@ outputs:
   command: !cel "steps.get.result.body.commands.filter(c, int(c.seq) == inputs.seq)[0]"
 ---
 # A reviewer's start or stop, awaited to its outcome.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: order }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [body]
-    properties:
-      body: { type: object }
+  schema: { type: object, required: [body], properties: { body: { type: object } } }
 steps:
   - name: post
     invoke: !ref call
@@ -92,16 +78,14 @@ outputs:
 ---
 # A session started from the review API, a plan submitted from it, a comment
 # and an approval: answers the session, the plan and the wake's seq.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: decided }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [prompt, loop]
-    properties:
-      prompt: { type: string }
-      loop: { type: string }
+    properties: { prompt: { type: string }, loop: { type: string } }
 steps:
   - name: started
     invoke: !ref order
@@ -132,7 +116,7 @@ outputs:
   plan: !cel "string(steps.plan.result.body.planId)"
   wake: !cel "int(steps.history.result.body.commands.filter(c, c.type == 'wake' && c.plan == steps.plan.result.body.planId)[0].seq)"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -157,14 +141,10 @@ steps:
   - name: run
     inputs: { claude: !cel "string(steps.dirs.result.claude)" }
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [claude]
-          properties:
-            claude: { type: string }
+        schema: { type: object, required: [claude], properties: { claude: { type: string } } }
       with:
         - kind: App.Instance
           metadata: { name: server }
@@ -185,14 +165,10 @@ steps:
         - name: withRunner
           inputs: { claude: !cel "inputs.claude" }
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             inputType:
               kind: Telo.JsonSchema
-              schema:
-                type: object
-                required: [claude]
-                properties:
-                  claude: { type: string }
+              schema: { type: object, required: [claude], properties: { claude: { type: string } } }
             with:
             - kind: App.Instance
               metadata: { name: runner }
@@ -213,9 +189,7 @@ steps:
                   condition: !cel "previous == null || size(previous.get.result.body.runners) == 0"
                   maxIterations: 100
                   steps:
-                    - name: pause
-                      invoke: { kind: Timer.Delay }
-                      inputs: { duration: 100ms }
+                    - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 100ms } }
                     - name: get
                       invoke: !ref call
                       inputs: { url: /api/review/runners }
@@ -234,9 +208,7 @@ steps:
               - name: interactive
                 invoke: !ref decided
                 inputs: { prompt: open INTERACTIVE too, loop: L-3 }
-              - name: cycles
-                invoke: { kind: Timer.Delay }
-                inputs: { duration: 1500ms }
+              - { name: cycles, invoke: { kind: Timer.Delay }, inputs: { duration: 1500ms } }
               - name: waiting
                 invoke: !ref command
                 inputs: { seq: !cel "steps.working.result.wake" }

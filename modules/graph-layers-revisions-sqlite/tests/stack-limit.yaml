@@ -11,7 +11,6 @@ imports:
   Graph: ../../graph
   GraphLayers: ../../graph-layers
   Layers: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -386,7 +385,7 @@ layers: !ref graphLayers
 changesets: !ref graphChangesets
 changesetBases: !ref graphChangesetBases
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: limit }
 steps:
   # A layer is registered by its first write; a draft opened and discarded

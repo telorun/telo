@@ -12,6 +12,7 @@ metadata:
     of another conversation is 404 ERR_TURN_NOT_FOUND, and while the latest turn
     is held by the stub the truncation is 409 ERR_TURN_IN_PROGRESS.
 imports:
+  Run: ../../../../modules/run
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
@@ -19,7 +20,6 @@ imports:
   Stream: ../../../../modules/stream
   Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -38,18 +38,16 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: !ref client
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: create }
 steps:
   - name: post
     invoke: !ref call
-    inputs:
-      url: http://127.0.0.1:18525/conversations
-      method: POST
+    inputs: { url: http://127.0.0.1:18525/conversations, method: POST }
 outputs:
   id: !cel "steps.post.result.body.id"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: startTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -57,9 +55,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: post
     invoke: !ref call
@@ -72,7 +68,7 @@ steps:
 outputs:
   turnId: !cel "steps.post.result.body.turnId"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drain }
 inputType:
   kind: Telo.JsonSchema
@@ -80,8 +76,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: get
     timeout: 30000
@@ -102,7 +97,7 @@ outputs:
   count: !cel "size(steps.all.result.items)"
 ---
 # One turn to its end.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turn }
 inputType:
   kind: Telo.JsonSchema
@@ -110,9 +105,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: start
     invoke: !ref startTurn
@@ -125,7 +118,7 @@ steps:
 outputs:
   turnId: !cel "steps.start.result.turnId"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: truncate }
 inputType:
   kind: Telo.JsonSchema
@@ -147,7 +140,7 @@ outputs:
   status: !cel "steps.send.result.status"
   body: !cel "steps.send.result.body"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: read }
 inputType:
   kind: Telo.JsonSchema
@@ -155,8 +148,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [path]
-    properties:
-      path: { type: string }
+    properties: { path: { type: string } }
 steps:
   - name: get
     invoke: !ref call
@@ -167,7 +159,7 @@ outputs:
   body: !cel "steps.get.result.body"
 ---
 # Fails until the stub holds an agent call (not a naming call) carrying `text`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stubHolds }
 inputType:
   kind: Telo.JsonSchema
@@ -175,13 +167,11 @@ inputType:
     type: object
     additionalProperties: false
     required: [text]
-    properties:
-      text: { type: string }
+    properties: { text: { type: string } }
 steps:
   - name: sent
     invoke: !ref call
-    inputs:
-      url: http://127.0.0.1:18524/requests
+    inputs: { url: http://127.0.0.1:18524/requests }
   - name: notYet
     if: !cel >-
       !steps.sent.result.body.requests.exists(r, json(r).contains(inputs.text)
@@ -192,7 +182,7 @@ steps:
           code: ERR_TEST_NOT_RECEIVED_YET
           message: !cel "'The stub holds no agent call carrying ' + inputs.text + ' yet.'"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turnRows }
 inputType:
   kind: Telo.JsonSchema
@@ -200,8 +190,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 with:
   - kind: SQLite.Connection
     metadata: { name: agentDb }
@@ -218,7 +207,7 @@ steps:
 outputs:
   turnIds: !cel "steps.rows.result.rows.map(r, string(r.turn_id))"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -239,7 +228,7 @@ steps:
       recursive: true
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -250,8 +239,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18524/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -356,9 +344,7 @@ steps:
             revision: !cel "int(steps.current.result.body.revision)"
         - name: release
           invoke: !ref call
-          inputs:
-            url: http://127.0.0.1:18524/release
-            method: POST
+          inputs: { url: http://127.0.0.1:18524/release, method: POST }
         - name: heldDrained
           invoke: !ref drain
           inputs: { turnId: !cel "steps.held.result.turnId" }

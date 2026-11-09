@@ -32,6 +32,8 @@ describe("DurableLocal.Resumer", () => {
     const errors: unknown[] = [];
     const workflow = {
       journal: () => journal,
+      name: "workflow",
+      retainFinishedMs: 1000,
       async execute(run: string) {
         executed.push(run);
         await LocalRunHandle.open(run, journal, {} as never);

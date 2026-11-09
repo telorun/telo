@@ -27,7 +27,7 @@ targets:
 # Always fails with a code an author would classify as terminal — re-presenting a
 # declined card changes nothing, which is a fact about the domain the retry loop
 # has no way to see.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: declines }
 steps:
   - { name: boom, throw: { code: ERR_PAYMENT_DECLINED, message: declined } }
@@ -39,7 +39,7 @@ steps:
 # counting dispatches, so there is no need for a target that fails N times and
 # then recovers — which could only be built by having it remember its own call
 # count.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: flaky }
 steps:
   - name: boom
@@ -66,7 +66,7 @@ expect:
   - event: flaky.InvokeRejected
     times: 4
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   # A declared non-retryable code ends the loop at its first failure, and

@@ -16,7 +16,6 @@ imports:
   Sse: ../../sse-codec
   Stream: ../../stream
   PlainText: ../../plain-text-codec
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testNdjson
@@ -42,7 +41,7 @@ metadata: { name: plainEnc }
 kind: PlainText.Decoder
 metadata: { name: textDec }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNdjson }
 steps:
   - name: ndjsonStream
@@ -71,7 +70,7 @@ steps:
               {"type":"finish","usage":{"promptTokens":0,"completionTokens":0,"totalTokens":0,"unit":"tokens","total":0},"finishReason":"stop"}
         required: [ text ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testSse }
 steps:
   - name: sseStream
@@ -101,7 +100,7 @@ steps:
             const: "event: text-delta\ndata: {\"type\":\"text-delta\",\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"type\":\"text-delta\",\"delta\":\"i\"}\n\nevent: finish\ndata: {\"type\":\"finish\",\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0,\"unit\":\"tokens\",\"total\":0},\"finishReason\":\"stop\"}\n\n"
         required: [ text ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPlain }
 steps:
   - name: plainStream

@@ -11,7 +11,6 @@ imports:
   Tesseract: ../
   PdfMake: ../../pdfmake
   Pdf: ../../pdf
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref roundTrip
@@ -20,7 +19,7 @@ kind: Tesseract.Recognizer
 metadata: { name: recognizer }
 languages: [!ref Tesseract.eng]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: roundTrip }
 steps:
   - name: render

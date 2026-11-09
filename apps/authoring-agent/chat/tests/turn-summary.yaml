@@ -36,8 +36,7 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: stub-key
+    secrets: { anthropicApiKey: stub-key }
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -52,7 +51,6 @@ imports:
   Stream: ../../../../modules/stream
   Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref reset
@@ -68,7 +66,7 @@ clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 ---
 # The workspace is emptied; the state directory is not — the conversation
 # database is already open by the time a target runs.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: prepare
@@ -91,7 +89,7 @@ metadata: { name: libraryDb }
 file: !cel "variables.scratch.joinPath('state').joinPath('agent.sqlite')"
 ---
 # Starts a turn in a conversation of its own.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: begin }
 inputType:
   kind: Telo.JsonSchema
@@ -101,9 +99,7 @@ inputType:
     required: [message]
     properties:
       message: { type: string }
-      calls:
-        type: array
-        items: { type: object, additionalProperties: true }
+      calls: { type: array, items: { type: object, additionalProperties: true } }
 steps:
   - name: conversation
     invoke: !ref Chat.createConversation
@@ -121,7 +117,7 @@ outputs:
 ---
 # Waits for a turn's attempt to end, however it ends, and reads its turn object
 # from the records route.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: ended }
 inputType:
   kind: Telo.JsonSchema
@@ -129,9 +125,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, turnId]
-    properties:
-      conversationId: { type: string }
-      turnId: { type: string }
+    properties: { conversationId: { type: string }, turnId: { type: string } }
 steps:
   - name: read
     invoke: !ref Chat.journalSource
@@ -164,7 +158,7 @@ outputs:
     join(steps.records.result.turns[0].records.filter(r, r.data.type == 'text-delta').map(r, r.data.delta), '')
 ---
 # Fails until the stub has received `count` agent requests carrying `text`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: stubReceived }
 inputType:
   kind: Telo.JsonSchema
@@ -172,9 +166,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [text, count]
-    properties:
-      text: { type: string }
-      count: { type: integer }
+    properties: { text: { type: string }, count: { type: integer } }
 steps:
   - name: sent
     invoke: !ref call
@@ -189,7 +181,7 @@ steps:
           code: ERR_TEST_NOT_RECEIVED_YET
           message: The stub has not received the request yet.
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -381,10 +373,7 @@ steps:
           check: failing
           runs: [ [ good.yaml, true ] ]
           usage: { promptTokens: 30, completionTokens: 15, totalTokens: 45 }
-        clean:
-          files: [ clean.yaml created ]
-          check: clean
-          runs: []
+        clean: { files: [clean.yaml created], check: clean, runs: [] }
         wide:
           - [ beside.yaml, created, 3, 0, 1 ]
           - [ wide.txt, modified, null, null, null ]

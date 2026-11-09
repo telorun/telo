@@ -12,8 +12,8 @@ metadata:
     for itself: each form must be built from the shape its route validates, and
     post to that route.
 imports:
-  App: ../../../../modules/app
   Run: ../../../../modules/run
+  App: ../../../../modules/app
   Http: ../../../../modules/http-server
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
@@ -24,7 +24,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8114 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Api

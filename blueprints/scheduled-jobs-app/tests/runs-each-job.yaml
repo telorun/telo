@@ -11,7 +11,6 @@ imports:
   Cache: ../../../modules/cache
   CacheMemory: ../../../modules/cache-memory
   Timer: ../../../modules/timer
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
 targets:
   - !ref test
@@ -28,21 +27,21 @@ kind: Cache.Lookup
 metadata: { name: get }
 store: !ref counters
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: markReport }
 steps:
   - name: write
     invoke: !ref put
     inputs: { key: report, value: ran }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: markCleanup }
 steps:
   - name: write
     invoke: !ref put
     inputs: { key: cleanup, value: ran }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: ScheduledJobs.App
@@ -60,9 +59,7 @@ targets:
 steps:
   - name: wait
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: "2500ms"
-      value: {}
+    inputs: { duration: "2500ms", value: {} }
   - name: readReport
     invoke: !ref get
     inputs: { key: report }

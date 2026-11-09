@@ -8,13 +8,13 @@ metadata:
     poll intervals of its creation. After the writer's process has ended, a fresh
     process replays the record from the file with every value's type intact.
 imports:
+  Run: ../../run
   RecordStream: ../../record-stream
   RecordStreamSql: ../
   SQLite: ../../sqlite
   Sql: ../../sql
   Stream: ../../stream
   App: ../../app
-  Run: ../../run
   Timer: ../../timer
   Assert: ../../assert
 # Resolved against the working directory here, so every process receives the same
@@ -43,7 +43,7 @@ store:
   pollInterval: "500ms"
 retention: "1h"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: clear }
 steps:
   - name: entries
@@ -55,7 +55,7 @@ steps:
 ---
 # The reader opens the key before the writer has claimed it; each record is
 # stamped with when it arrived here.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: follow }
 with:
   - kind: App.Instance
@@ -103,7 +103,7 @@ maxIterations: 1500
 steps:
   - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: replayInFreshProcess }
 steps:
   - name: awaitExit

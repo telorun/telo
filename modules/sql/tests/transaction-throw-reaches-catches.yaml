@@ -9,7 +9,6 @@ imports:
   SQLite: ../../sqlite
   Http: ../../http-server
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -26,7 +25,7 @@ routes:
       kind: Sql.Transaction
       connection: !ref db
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         steps:
           - name: insert
             inputs: { sql: "INSERT INTO accounts (email) VALUES ('ada@example.com')" }
@@ -45,7 +44,7 @@ routes:
             body:
               code: !cel "error.code"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

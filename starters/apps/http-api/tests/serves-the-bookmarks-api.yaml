@@ -9,7 +9,6 @@ metadata:
     guard, the 429, the 404, the open probe — is asserted from the outside.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 targets:
@@ -18,33 +17,26 @@ targets:
 kind: HttpClient.Client
 metadata: { name: api }
 baseUrl: http://127.0.0.1:8847
-credential:
-  kind: HttpClient.BearerToken
-  token: local-dev-token
+credential: { kind: HttpClient.BearerToken, token: local-dev-token }
 ---
 kind: HttpClient.Request
 metadata: { name: call }
 client: !ref api
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8847
+    ports: { http: 8847 }
     # Two writes a minute, so the third one this test sends is the refused one.
-    variables:
-      writeLimit: 2
+    variables: { writeLimit: 2 }
 targets:
   - !ref app
 steps:
   - name: health
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8847/healthz
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8847/healthz, method: GET }
   - name: anonymous
     invoke:
       kind: HttpClient.Request
@@ -132,12 +124,7 @@ steps:
   # rate limit — is reached.
   - name: notAUrl
     invoke: !ref call
-    inputs:
-      url: /v1/bookmarks
-      method: POST
-      body:
-        url: telo.run
-        title: Telo
+    inputs: { url: /v1/bookmarks, method: POST, body: { url: telo.run, title: Telo } }
   - name: second
     invoke: !ref call
     inputs:

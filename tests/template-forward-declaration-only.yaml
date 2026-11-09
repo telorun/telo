@@ -9,7 +9,6 @@ metadata:
     the child's own fields.
 imports:
   Lib: ./__fixtures__/template-forward-declaration-only
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref verifyDeclarationOnly
@@ -23,7 +22,7 @@ kind: Lib.Labeled
 metadata: { name: labeled }
 title: declared title
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyDeclarationOnly }
 steps:
   - name: read

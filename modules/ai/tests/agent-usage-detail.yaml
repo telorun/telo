@@ -9,10 +9,10 @@ metadata:
     A model that reports none leaves them absent — agent-stream-parts.yaml
     compares that usage whole.
 imports:
+  Run: ../../run
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref streamed
@@ -29,7 +29,7 @@ tools:
     name: work
     parameters: { type: object, additionalProperties: false, properties: {} }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: streamed }
 steps:
   - name: run
@@ -57,7 +57,7 @@ steps:
         - type: finish
           usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30, cachedPromptTokens: 8, cacheWritePromptTokens: 4, reasoningTokens: 6, unit: tokens, total: 30 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: buffered }
 steps:
   - name: run

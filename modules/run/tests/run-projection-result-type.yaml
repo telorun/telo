@@ -39,7 +39,7 @@ steps:
 outputs:
   label: !cel "item + '!'"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyTypedElementRead }
 steps:
   - name: project

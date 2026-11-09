@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: SqliteImperativeMigrations, version: 1.0.0 }
-imports:
-  Sql: ../../sql
-  SQLite: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Sql: ../../sql, SQLite: ../, Assert: ../../assert }
 targets:
   - !ref migrate
   - !ref verifyMigrations
@@ -25,7 +21,7 @@ migrations:
   20260402_seed_more: { statement: "INSERT INTO users (id, name) VALUES (2, 'Bob')" }
   20260403_noop: { statement: "UPDATE users SET name = name" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyMigrations }
 steps:
   - name: selectSeeded

@@ -9,20 +9,18 @@ metadata:
     shared-secret check is the other half of the contract.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8099
+    ports: { http: 8099 }
 targets:
   - !ref app
 steps:
@@ -40,8 +38,7 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8099/webhooks/orders
       method: POST
-      headers:
-        authorization: Bearer local-dev-token
+      headers: { authorization: Bearer local-dev-token }
     inputs:
       body:
         deliveryId: !cel "steps.delivery.result.id"
@@ -65,8 +62,7 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8099/webhooks/orders
       method: POST
-      headers:
-        authorization: Bearer local-dev-token
+      headers: { authorization: Bearer local-dev-token }
     inputs:
       body:
         deliveryId: !cel "steps.delivery.result.id"
@@ -90,8 +86,7 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8099/webhooks/orders
       method: POST
-      headers:
-        authorization: Bearer wrong-token
+      headers: { authorization: Bearer wrong-token }
     inputs:
       body:
         deliveryId: !cel "'delivery-' + uuidv4()"

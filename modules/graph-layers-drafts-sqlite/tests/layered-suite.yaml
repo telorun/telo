@@ -25,7 +25,6 @@ imports:
       refreshStacks: !ref refreshStacks
   SQLite: ../../sqlite
   Layers: ../
-  Run: ../../run
 targets:
   - !ref appSchema
   - !ref Suite.overlay
@@ -39,7 +38,7 @@ targets:
   - !ref Suite.defaults
 ---
 # A drafted store reads its bases live, so there is nothing to bring up to date.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refreshStacks }
 steps:
   - name: nothing

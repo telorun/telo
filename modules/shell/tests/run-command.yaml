@@ -15,7 +15,7 @@ kind: Shell.LocalHost
 metadata: { name: local }
 env: { GREETING: hi }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: echo

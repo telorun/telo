@@ -25,7 +25,7 @@ outputs:
   text: !cel "steps.tag.result.text"
   at: !cel "index"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyProjection }
 steps:
   - name: project

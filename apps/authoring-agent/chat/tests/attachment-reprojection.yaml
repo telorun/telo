@@ -21,7 +21,6 @@ imports:
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
   Blob: oci://ghcr.io/telorun/blob@0.2.1#sha256-K6p6T1WxnjqZ5dPxEhb4ADSj3rkYTICEon5FuAXq76o
   BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.2#sha256-j_7SCdfh-B-FrmdvBz2rHLF3EGJjeTQWUjkdyJowt1s
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
@@ -32,7 +31,7 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -55,7 +54,7 @@ steps:
   # projected in the old shape and marked as projected whole.
   - name: legacy
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: SQLite.Connection
           metadata: { name: legacyDb }
@@ -108,8 +107,7 @@ steps:
                   provider_state TEXT,
                   provider_model TEXT
                 )
-            projection_4_aborted_at:
-              statement: ALTER TABLE turns ADD COLUMN aborted_at TEXT
+            projection_4_aborted_at: { statement: ALTER TABLE turns ADD COLUMN aborted_at TEXT }
             projection_5_conversations:
               statements:
                 - |
@@ -296,7 +294,7 @@ steps:
             bindings: [ 0190a000-0000-7000-8000-00000000d001, 0190a000-0000-7000-8000-00000000c001 ]
   - name: agent
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: stub }
@@ -313,8 +311,7 @@ steps:
             modelEndpoint: http://127.0.0.1:18580/v1
             # The seeded turn has no recent activity; retention must not take it.
             retentionDays: 3650
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
         - kind: SQLite.Connection
           metadata: { name: agentDb }
           file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
@@ -330,14 +327,9 @@ steps:
             sql: "SELECT content FROM messages WHERE turn_id = ? AND seq = 0"
             bindings: [ 0190a000-0000-7000-8000-00000000d001 ]
         - name: start
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18581/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18581/chat, method: POST }
           inputs:
-            body:
-              conversationId: 0190a000-0000-7000-8000-00000000c001
-              message: and now?
+            body: { conversationId: 0190a000-0000-7000-8000-00000000c001, message: and now? }
         - name: events
           timeout: 30000
           invoke: { kind: HttpClient.Request }

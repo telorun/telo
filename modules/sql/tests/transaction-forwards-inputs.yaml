@@ -4,11 +4,7 @@
 # schema spelled the slot `bindings:` while the controller read `inputs`.
 kind: Telo.Application
 metadata: { name: TransactionForwardsInputs, version: 1.0.0 }
-imports:
-  Sql: ../
-  SQLite: ../../sqlite
-  Run: ../../run
-  Assert: ../../assert
+imports: { Sql: ../, SQLite: ../../sqlite, Assert: ../../assert }
 targets:
   - !ref testTransactionForwardsInputs
 ---
@@ -33,7 +29,7 @@ kind: Sql.Command
 metadata: { name: insertUser }
 connection: !ref db
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testTransactionForwardsInputs }
 steps:
   - name: createTable

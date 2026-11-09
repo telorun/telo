@@ -23,22 +23,21 @@ imports:
   Http: ../
   Lib: ./__fixtures__/internal-handler-lib
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8957 }
     mounts:
       - path: /
         mount: !ref Lib.api
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: hit
     inputs: {}

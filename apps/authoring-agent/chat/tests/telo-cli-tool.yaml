@@ -44,7 +44,6 @@ imports:
       workspaceDir: !cel "variables.scratch.joinPath('identity/workspace')"
       teloProgram: [bun, ../../../../../../../../cli/nodejs/bin/telo.ts]
       teloVerbs: [check]
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # Where this case's workspace and agent state live — the library takes both
@@ -73,7 +72,7 @@ clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 # `teloProgram + args` — exactly. Pinning the whole line is what catches a
 # regression in the program PREFIX: an earlier version derived it as a single
 # element and silently dropped everything after it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testAllowedVerb }
 steps:
   - name: run
@@ -90,7 +89,7 @@ steps:
 # `["--version"]` alone reaches the CLI with no listed verb, and answers the telo
 # it is (`X`, `X-rc.N` for a candidate, either with `+unreleased` for a working
 # copy) — which identity exactly is the CLI's own test.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testIdentityQuery }
 steps:
   - name: run
@@ -109,7 +108,7 @@ steps:
 # it, because the CLI's default command turns `telo ./x.yaml` into
 # `run ./x.yaml`, so a guard that only inspected a `run` literal would let a
 # path straight through.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testDeniedVerbs }
 steps:
   # The refusal names every verb the default list allows.

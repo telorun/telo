@@ -16,10 +16,10 @@ metadata:
     this directory; CI: secret on the workflow).
 secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" } }
 imports:
+  Run: ../../../run
   OpenAI: ../../
   Http: ../../../http-client
   Ai: ../../../ai
-  Run: ../../../run
   Stream: ../../../stream
   Assert: ../../../assert
 targets:
@@ -80,7 +80,7 @@ model: !ref liveStream
 toolProviders:
   - provider: !ref tools
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: liveResponses }
 steps:
   - name: guardEnv

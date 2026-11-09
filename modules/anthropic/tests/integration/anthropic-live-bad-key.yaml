@@ -13,7 +13,6 @@ imports:
   Anthropic: ../../
   Http: ../../../http-client
   Stream: ../../../stream
-  Run: ../../../run
   Assert: ../../../assert
 targets:
   - !ref liveBadKey
@@ -38,7 +37,7 @@ model: claude-haiku-4-5
 request: !ref badKeyRequest
 maxTokens: 16
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: liveBadKey }
 steps:
   - name: guardEnv

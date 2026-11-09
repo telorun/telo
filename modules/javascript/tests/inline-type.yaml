@@ -21,7 +21,7 @@ code: |
     return { message: `Hello ${name}!` }
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInlineInputOutputType }
 steps:
   - name: call

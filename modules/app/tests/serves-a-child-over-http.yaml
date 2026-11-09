@@ -9,15 +9,11 @@ metadata:
     handed it. The first request needs no retry — starting a child means its own
     targets have been dispatched, so the socket is listening by the time a step
     runs.
-imports:
-  App: ../
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

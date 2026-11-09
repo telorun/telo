@@ -7,11 +7,7 @@ metadata:
     `!cel` integer is a 64-bit integer, not the number a YAML literal is: the
     proxy hop count, a static mount's cache lifetime, the CORS preflight status
     and cache lifetime, and the status a not-found handler's result answers with.
-imports:
-  Http: ../
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -26,7 +22,7 @@ routes:
       - status: 200
         content: { application/json: { body: !cel "result" } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

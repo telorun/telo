@@ -11,7 +11,6 @@ imports:
   Anthropic: ../../
   Http: ../../../http-client
   Ai: ../../../ai
-  Run: ../../../run
   Assert: ../../../assert
 targets:
   - !ref liveText
@@ -41,7 +40,7 @@ kind: Ai.Text
 metadata: { name: text }
 model: !ref live
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: liveText }
 steps:
   - name: guardEnv

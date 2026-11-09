@@ -9,11 +9,7 @@
 # an init-order cycle, so `transaction:` threw on every path.
 kind: Telo.Application
 metadata: { name: BoundStatementInTransaction, version: 1.0.0 }
-imports:
-  Sql: ../
-  SQLite: ../../sqlite
-  Run: ../../run
-  Assert: ../../assert
+imports: { Sql: ../, SQLite: ../../sqlite, Assert: ../../assert }
 targets:
   - !ref testBoundStatement
 ---
@@ -31,7 +27,7 @@ steps: !ref accountWrites
 inputs:
   email: !cel "inputs.email"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: accountWrites }
 steps:
   - name: insert
@@ -49,7 +45,7 @@ kind: Sql.Command
 metadata: { name: insertAccount }
 transaction: !ref accountTx
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testBoundStatement }
 steps:
   - name: createTable
@@ -112,7 +108,7 @@ steps: !ref rollbackWrites
 inputs:
   email: !cel "inputs.email"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: rollbackWrites }
 steps:
   - name: insert

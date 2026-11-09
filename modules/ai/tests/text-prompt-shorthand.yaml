@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: TextPromptShorthandTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testPromptShorthand
 ---
@@ -17,7 +13,7 @@ model: !ref echo
 ---
 # `inputs.prompt` is shorthand for `messages: [{role: "user", content: prompt}]`.
 # Echo returns the content of the last message verbatim → result.text === prompt.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPromptShorthand }
 steps:
   - name: invoke

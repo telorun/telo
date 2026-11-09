@@ -2,12 +2,8 @@
 # value — or the `default:` standing in for an unset one — resolves against the
 # working directory, so the manifest holds an absolute path everywhere after.
 kind: Telo.Application
-metadata:
-  name: HostPathVariables
-  version: 1.0.0
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+metadata: { name: HostPathVariables, version: 1.0.0 }
+imports: { Assert: ../modules/assert }
 variables:
   dataDir:
     env: TELO_TEST_HOST_PATH_DATA_DIR
@@ -17,7 +13,7 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: anchored
@@ -29,7 +25,4 @@ steps:
         keepsTheRelativePart: !cel "string(variables.dataDir).contains('reports') && string(variables.dataDir).endsWith('out')"
         # `.joinPath` extends it with the host's separator and keeps it a host path.
         joined: !cel "string(variables.dataDir.joinPath('daily/today')).endsWith('today') && string(variables.dataDir.joinPath('daily/today')).startsWith(string(variables.dataDir))"
-      expected:
-        resolved: true
-        keepsTheRelativePart: true
-        joined: true
+      expected: { resolved: true, keepsTheRelativePart: true, joined: true }

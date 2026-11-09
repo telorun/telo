@@ -19,7 +19,6 @@ imports:
   HttpClient: ../../http-client
   Http: ../../http-server
   Ndjson: ../../ndjson-codec
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref uncoveredWithoutCatchAll
@@ -158,7 +157,7 @@ kind: HttpClient.Request
 metadata: { name: post }
 client: !ref client
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

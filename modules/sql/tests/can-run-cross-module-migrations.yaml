@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: CanRunCrossModuleMigrations, version: 1.0.0 }
-imports:
-  Sql: ../
-  Lib: ./__fixtures__/migration-lib
-  Run: ../../run
-  Assert: ../../assert
+imports: { Sql: ../, Lib: ./__fixtures__/migration-lib, Assert: ../../assert }
 targets:
   - !ref Lib.migrate
   - !ref verifyCrossModule
@@ -15,7 +11,7 @@ targets:
 # migration's controller receives a raw ref sentinel and throws
 # "Sql: invalid connection reference". Verifying through the exported connection
 # also exercises the cross-module `!ref Lib.db` value resolution.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: verifyCrossModule }
 steps:
   - name: selectSeeded

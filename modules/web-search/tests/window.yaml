@@ -7,7 +7,7 @@ imports: { WebSearch: .., Run: ../../run, Assert: ../../assert }
 targets:
   - !ref window
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: window }
 steps:
   - name: requested

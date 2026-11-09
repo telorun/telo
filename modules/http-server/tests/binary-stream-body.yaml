@@ -13,7 +13,6 @@ imports:
   Http: ../
   HttpClient: ../../http-client
   Octet: ../../octet-codec
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testUpload
@@ -37,11 +36,11 @@ routes:
               length: !cel "size(result.bytes)"
               text: !cel "string(result.bytes)"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testUpload }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8958 }
     contentTypeParsers:
       - { contentType: application/gzip, stream: true }
@@ -49,7 +48,7 @@ with:
       - path: /
         mount: !ref api
 targets:
-  - !ref Server
+  - !ref server
 steps:
   # The stream parser passes the bytes through undecoded.
   - name: upload

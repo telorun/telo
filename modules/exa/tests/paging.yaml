@@ -5,11 +5,11 @@
 kind: Telo.Application
 metadata: { name: ExaPagingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Exa: ..
   WebSearch: ../../web-search
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref paging
@@ -28,11 +28,11 @@ value:
   paging: [a1, a2, a3, a4, a5, a6, a7]
   deep: !cel "range(105).map(i, 'd' + string(i + 1))"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: paging }
 with:
   - kind: Server.Api
-    metadata: { name: FakeExa }
+    metadata: { name: fakeExa }
     routes:
       - request:
           path: /search
@@ -51,13 +51,13 @@ with:
                           .map(t, {'title': t, 'url': 'https://example.com/' + t, 'highlights': [t]}))
                     : []}
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18866 }
     mounts:
       - path: /
-        mount: !ref FakeExa
+        mount: !ref fakeExa
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: first
     invoke: !ref engine

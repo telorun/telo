@@ -16,8 +16,7 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: stub-key
+    secrets: { anthropicApiKey: stub-key }
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -28,7 +27,6 @@ imports:
   Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
   SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
   Stream: ../../../../modules/stream
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # The agent's state is a file that outlives the run; each run gets a fresh one.
@@ -61,7 +59,7 @@ metadata: { name: stateQuery }
 connection: !ref stateDb
 ---
 # One turn to its end: started, then its journal drained.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turn }
 inputType:
   kind: Telo.JsonSchema
@@ -69,9 +67,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, message]
-    properties:
-      conversationId: { type: string }
-      message: { type: string }
+    properties: { conversationId: { type: string }, message: { type: string } }
 steps:
   - name: start
     invoke: !ref Chat.chatStart
@@ -92,7 +88,7 @@ steps:
       input: !cel "steps.read.result.output"
 ---
 # Every projected row of the conversation, in order.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: projectedRows }
 inputType:
   kind: Telo.JsonSchema
@@ -100,8 +96,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: messages
     invoke: !ref stateQuery
@@ -122,7 +117,7 @@ outputs:
   messages: !cel "steps.messages.result.rows"
   projections: !cel "steps.projections.result.rows"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

@@ -15,7 +15,6 @@ imports:
   KvStoreMemory: ../../kv-store-memory
   Cache: ../../cache
   CacheMemory: ../../cache-memory
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testFreshThenReplay
@@ -39,7 +38,7 @@ kind: Cache.Lookup
 metadata: { name: getCount }
 store: !ref counters
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: charge }
 inputType:
   kind: Telo.JsonSchema
@@ -64,7 +63,7 @@ ttl: "60s"
 invoke: !ref charge
 ---
 # A body that always fails, to prove a failure releases the key.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: alwaysFails }
 steps:
   - { name: boom, throw: { code: ERR_PAYMENT_DECLINED, message: declined } }
@@ -76,7 +75,7 @@ claimTtl: "30s"
 ttl: "60s"
 invoke: !ref alwaysFails
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testFreshThenReplay }
 steps:
   - name: first
@@ -107,7 +106,7 @@ steps:
       expected: "1"
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testDistinctKey }
 steps:
   - name: other
@@ -119,7 +118,7 @@ steps:
       expected: fresh
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testFailureIsRetryable }
 steps:
   - name: firstAttempt

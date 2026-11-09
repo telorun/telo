@@ -14,7 +14,6 @@ imports:
   SQLite: ../../sqlite
   Graph: ../../graph
   Layers: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -92,7 +91,7 @@ metadata: { name: sharedCreateKnows }
 store: !ref shared
 relationship: !ref knows
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hidingWritesNoRelationshipRow }
 steps:
   - name: alice
@@ -129,7 +128,7 @@ steps:
         - { tbl: people, layer: shared, effect: stated, n: 1 }
         - { tbl: people, layer: team, effect: removed, n: 1 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: noBasesDeleteThenCreate }
 steps:
   - name: carol

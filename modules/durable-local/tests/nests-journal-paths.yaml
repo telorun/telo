@@ -16,11 +16,7 @@ metadata:
     a nested engine hangs its keys under it: `steps/one/work` and
     `steps/two/work`. That is also what makes "a crash inside a nested body
     resumes inside it" true rather than aspirational.
-imports:
-  Local: ../
-  Journal: ../../durable-journal-file
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Local: ../, Journal: ../../durable-journal-file, Assert: ../../assert }
 variables:
   journalDir:
     env: PROBE_DIR
@@ -43,7 +39,7 @@ metadata: { name: beta }
 value: { from: beta }
 ---
 # Two nested bodies, each with a step called `work`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: firstBody }
 steps:
   - name: work
@@ -51,7 +47,7 @@ steps:
 outputs:
   from: !cel "steps.work.result.from"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: secondBody }
 steps:
   - name: work
@@ -76,7 +72,7 @@ metadata: { name: outcome }
 journal: !ref journal
 wait: 10s
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: token

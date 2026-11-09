@@ -56,7 +56,7 @@ choices:
     value: { tier: parcel, kg: !cel "weight" }
 default: { value: { tier: letter, kg: 0.0 } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testValueBindings }
 steps:
   - name: price
@@ -68,7 +68,7 @@ steps:
       expected: { gross: 20.0, net: 18.0, tax: 9.0 }
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testChoiceBindings }
 steps:
   - name: tier

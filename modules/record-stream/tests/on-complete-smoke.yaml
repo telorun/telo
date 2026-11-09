@@ -12,7 +12,6 @@ imports:
   RecordStream: ../
   Stream: ../../stream
   JS: ../../javascript
-  Run: ../../run
   Sql: ../../sql
   SQLite: ../../sqlite
   Assert: ../../assert
@@ -67,7 +66,7 @@ code: |
 ---
 # The completion handler: project the buffered records to the assistant text and
 # persist a row. This is the record→store projection the OnComplete kind delegates.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: persistTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -87,7 +86,7 @@ kind: RecordStream.OnComplete
 metadata: { name: persist }
 handler: !ref persistTurn
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testPersistOnComplete }
 steps:
   - name: src
@@ -125,7 +124,7 @@ steps:
 ---
 # The consumer breaks after two items — completion never happens, so the handler
 # must not fire and no row is written for tag t2.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testEarlyCancelSuppressesHandler }
 steps:
   - name: src

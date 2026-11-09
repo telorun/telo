@@ -5,7 +5,6 @@ imports:
   AiMcp: ../
   AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
   Stub: ./__fixtures__/stub-mcp.yaml
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testMcpAgent
@@ -30,7 +29,7 @@ model: !ref echo
 toolProviders:
   - provider: !ref serverTools
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testMcpAgent }
 steps:
   - name: invoke

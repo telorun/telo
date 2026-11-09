@@ -11,12 +11,11 @@ imports:
   UiReact: ../../ui-react
   Conformance: ../
   Fixture: ./__fixtures__/controls
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref checkThemeControls
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checkThemeControls }
 steps:
   - name: check

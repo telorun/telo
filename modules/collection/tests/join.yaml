@@ -23,7 +23,7 @@ select:
   orderId: !cel "left.id"
   customer: !cel "right != null ? right.name : 'unknown'"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testJoin }
 steps:
   - name: join

@@ -10,20 +10,18 @@ metadata:
     what this catches.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8066
+    ports: { http: 8066 }
 targets:
   - !ref app
 steps:
@@ -48,13 +46,8 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8066/mcp
       method: POST
-      headers:
-        accept: application/json, text/event-stream
-    inputs:
-      body:
-        jsonrpc: "2.0"
-        id: 1
-        method: tools/list
+      headers: { accept: "application/json, text/event-stream" }
+    inputs: { body: { jsonrpc: "2.0", id: 1, method: tools/list } }
   - name: verifyToolsListed
     invoke: { kind: Assert.Equals }
     inputs:

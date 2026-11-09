@@ -12,7 +12,6 @@ metadata:
     Every route but the sign-in ones answers 401 without a session.
 imports:
   App: ../../../modules/app
-  Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
 targets:
@@ -29,7 +28,7 @@ metadata: { name: signedIn }
 baseUrl: http://127.0.0.1:8142
 headers: { cookie: report_session=signed-in }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

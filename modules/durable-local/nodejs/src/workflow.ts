@@ -6,6 +6,9 @@
  * backend's module addresses runs from OUTSIDE.
  */
 import {
+  baseStepPath,
+  durationMs,
+  integerInput,
   InvokeError,
   StepEngine,
   assertNotSwallowed,
@@ -28,7 +31,15 @@ interface WorkflowManifest extends ResourceManifest {
   onConflict?: "attach" | "reject";
   steps: Step[];
   inputs?: Record<string, unknown>;
+  retainFinished?: unknown;
+  compactAfter?: unknown;
 }
+
+/** How long a finished run is kept when `retainFinished` is omitted. */
+const DEFAULT_RETAIN_FINISHED_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** How many body entries a run holds before it compacts, when `compactAfter` is omitted. */
+const DEFAULT_COMPACT_AFTER = 1000;
 
 /** How long this instance owns a run it is working. Bounded for the reason every
  *  claim in this repo is: a process that dies must free the run rather than wedge
@@ -48,14 +59,41 @@ export class WorkflowController {
   /** Identifies this instance as a claim holder, so re-entering a run it already
    *  owns renews rather than collides. */
   readonly #holder = crypto.randomUUID();
+  /** The name every run this workflow admits is recorded under. */
+  readonly name: string;
+  /** How long a run stays in the journal after it finishes. */
+  readonly retainFinishedMs: number;
+  /** How many body entries a run holds before it writes a baseline. */
+  readonly compactAfter: number;
 
   constructor(
     private readonly resource: WorkflowManifest,
     private readonly ctx: ResourceContext,
   ) {
+    this.name = String(resource.metadata.name);
+    const retain =
+      resource.retainFinished === undefined
+        ? DEFAULT_RETAIN_FINISHED_MS
+        : durationMs(resource.retainFinished);
+    if (retain === undefined) {
+      throw new Error(
+        `DurableLocal.Workflow "${this.name}": 'retainFinished' must be a duration`,
+      );
+    }
+    this.retainFinishedMs = retain;
+    const compactAfter =
+      resource.compactAfter === undefined
+        ? DEFAULT_COMPACT_AFTER
+        : integerInput(resource.compactAfter);
+    if (compactAfter === undefined || compactAfter < 1) {
+      throw new Error(
+        `DurableLocal.Workflow "${this.name}": 'compactAfter' must be a positive integer`,
+      );
+    }
+    this.compactAfter = compactAfter;
     this.engine = new StepEngine(ctx, {
       kind: "Workflow",
-      resourceName: String(resource.metadata.name),
+      resourceName: this.name,
     });
   }
 
@@ -74,6 +112,7 @@ export class WorkflowController {
     // with no progress and replay it.
     const admission = await journal.admitRun(runId, {
       claim: { holder: this.#holder, ttlMs: CLAIM_TTL_MS },
+      workflow: this.name,
     });
     if (!admission.admitted) {
       const existing = admission.existing;
@@ -203,7 +242,10 @@ export class WorkflowController {
      *  under it mid-body. */
     holder: string = this.#holder,
   ): Promise<unknown> {
-    const handle = await LocalRunHandle.open(runId, journal, this.ctx.log);
+    const handle = await LocalRunHandle.open(runId, journal, this.ctx.log, {
+      compactAfter: this.compactAfter,
+      body: baseStepPath(),
+    });
     // The claim is held for as long as the body runs, and a body may run far
     // longer than one TTL. Unref'd, so a renewal timer never keeps the process
     // alive on its own — the kernel hold is what does that, and it is released
@@ -254,7 +296,18 @@ export class WorkflowController {
       await this.ctx.withZone(
         "steps",
         (zoneCtx) =>
-          this.engine.executeSteps(this.resource.steps, steps, undefined, { inputs }, zoneCtx),
+          this.engine.executeSteps(
+            this.resource.steps,
+            steps,
+            undefined,
+            { inputs },
+            zoneCtx,
+            undefined,
+            undefined,
+            // The body's own engine: where the run takes its baselines, and
+            // where a compacted run resumes from its latest one.
+            { resume: handle.restored },
+          ),
         durable,
       );
     } catch (err) {

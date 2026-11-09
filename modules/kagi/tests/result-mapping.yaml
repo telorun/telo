@@ -6,10 +6,10 @@
 kind: Telo.Application
 metadata: { name: KagiResultMappingTest, version: 1.0.0 }
 imports:
+  Run: ../../run
   Kagi: ..
   Http: ../../http-client
   Server: ../../http-server
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref resultMapping
@@ -37,11 +37,11 @@ value:
       - { title: Space, url: "https://example.com/a b", snippet: space }
       - { title: No URL, snippet: dropped }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: resultMapping }
 with:
   - kind: Server.Api
-    metadata: { name: FakeKagi }
+    metadata: { name: fakeKagi }
     routes:
       - request:
           path: /api/v1/search
@@ -61,13 +61,13 @@ with:
                 schema: { type: object, additionalProperties: true }
                 body: { meta: { id: test }, data: {} }
   - kind: Server.Server
-    metadata: { name: FakeServer }
+    metadata: { name: fakeServer }
     listen: { port: 18853 }
     mounts:
       - path: /
-        mount: !ref FakeKagi
+        mount: !ref fakeKagi
 targets:
-  - !ref FakeServer
+  - !ref fakeServer
 steps:
   - name: dates
     invoke: !ref engine

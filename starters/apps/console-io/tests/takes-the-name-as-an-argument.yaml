@@ -8,7 +8,6 @@ metadata:
 imports:
   App: ../../../../modules/app
   Channel: ../../../../modules/channel
-  Run: ../../../../modules/run
   Assert: ../../../../modules/assert
 targets:
   - !ref app
@@ -17,9 +16,7 @@ targets:
 kind: App.Instance
 metadata: { name: app }
 source: ../telo.yaml
-variables:
-  name: Grace
-  greeting: Welcome
+variables: { name: Grace, greeting: Welcome }
 awaitStart: false
 ---
 kind: Channel.ReadUntil
@@ -31,7 +28,7 @@ kind: Channel.SendLine
 metadata: { name: send }
 channel: !ref app
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: greeting

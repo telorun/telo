@@ -6,11 +6,7 @@ metadata:
     Smoke test for plain-text-codec. Roundtrips a small AsyncIterable of delta
     records through PlainText.Encoder → PlainText.Decoder and asserts the final
     UTF-8 string. Self-contained: depends only on this codec module + Stream/Run/Assert.
-imports:
-  PlainText: ../
-  Stream: ../../stream
-  Run: ../../run
-  Assert: ../../assert
+imports: { PlainText: ../, Stream: ../../stream, Assert: ../../assert }
 targets:
   - !ref testRoundtrip
 ---
@@ -26,7 +22,7 @@ metadata: { name: encoder }
 kind: PlainText.Decoder
 metadata: { name: decoder }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRoundtrip }
 steps:
   - name: source

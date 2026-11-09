@@ -21,10 +21,7 @@ metadata:
     ERR_SECRET_IN_MANIFEST naming its line, and so is an edit whose result would
     hold one; neither file changes; an OCI integrity pin passes.
 secrets:
-  anthropicApiKey:
-    env: CHAT_TEST_WORKSPACE_TOOLS_KEY
-    type: string
-    default: stub-key
+  anthropicApiKey: { env: CHAT_TEST_WORKSPACE_TOOLS_KEY, type: string, default: stub-key }
 variables:
   scratch:
     env: CHAT_TEST_WORKSPACE_TOOLS_SCRATCH
@@ -50,7 +47,6 @@ imports:
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref reset
@@ -67,7 +63,7 @@ clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 # The workspaces are emptied; the state directory is not — the conversation
 # database is already open by the time a target runs, and every turn here opens
 # a conversation of its own.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reset }
 steps:
   - name: prepare
@@ -100,7 +96,7 @@ metadata: { name: call }
 client: !ref client
 ---
 # One turn driven to its end: the stub is told which tool calls to ask for.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turn }
 inputType:
   kind: Telo.JsonSchema
@@ -108,10 +104,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [calls]
-    properties:
-      calls:
-        type: array
-        items: { type: object, additionalProperties: true }
+    properties: { calls: { type: array, items: { type: object, additionalProperties: true } } }
 steps:
   - name: conversation
     invoke: !ref Chat.createConversation
@@ -136,7 +129,7 @@ outputs:
 ---
 # The content every tool result carried to the model, in call order, from the
 # requests the stub received.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: modelSaw }
 steps:
   - name: requests
@@ -149,7 +142,7 @@ outputs:
         ? m.content.filter(c, has(c.type) && c.type == 'tool_result').map(c, c.content)
         : []))))
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -166,8 +159,7 @@ with:
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('routes').joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18504/v1
-    secrets:
-      anthropicApiKey: stub-key
+    secrets: { anthropicApiKey: stub-key }
 targets: [ !ref stub, !ref agent ]
 steps:
   - name: samples
@@ -214,7 +206,7 @@ steps:
     invoke: !ref modelSaw
   - name: onDisk
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       steps:
         - name: manifest
           invoke: { kind: Fs.File }
@@ -225,8 +217,7 @@ steps:
               invoke: { kind: Fs.File }
               inputs: { path: !cel "string(variables.scratch.joinPath('workspace/apps/demo/secret.yaml'))" }
           catch:
-            - name: secretAbsent
-              value: true
+            - { name: secretAbsent, value: true }
       outputs:
         manifest: !cel "steps.manifest.result.content"
         secretWritten: !cel "!has(steps.secretAbsent)"

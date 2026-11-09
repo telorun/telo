@@ -10,7 +10,6 @@ metadata:
 imports:
   Schedule: ../modules/scheduler
   Timer: ../modules/timer
-  Run: ../modules/run
   Assert: ../modules/assert
 targets:
   - !ref test
@@ -47,25 +46,22 @@ targets:
     in: !cel "self.jobs"
     emit: !ref crons[each.key]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: buildReport }
 steps:
-  - name: report
-    value: 1
+  - { name: report, value: 1 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: purgeExpired }
 steps:
-  - name: purge
-    value: 1
+  - { name: purge, value: 1 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: rotateLogs }
 steps:
-  - name: rotate
-    value: 1
+  - { name: rotate, value: 1 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Self.ScheduledJobs
@@ -83,43 +79,37 @@ with:
 targets:
   - !ref jobs
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: "1500ms"
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: "1500ms" } }
 ---
 kind: Assert.Events
 metadata: { name: membersStarted }
 filter:
-  - type: "*.Run"
+  - { type: "*.Run" }
 expect:
-  - event: "crons['nightlyReport'].Run"
-    times: 1
-  - event: "crons['hourlyCleanup'].Run"
-    times: 1
-  - event: "crons['rotate'].Run"
-    times: 1
-  - event: "crons['nightlyReport'].Run"
-  - event: "crons['hourlyCleanup'].Run"
-  - event: "crons['rotate'].Run"
+  - { event: "crons['nightlyReport'].Run", times: 1 }
+  - { event: "crons['hourlyCleanup'].Run", times: 1 }
+  - { event: "crons['rotate'].Run", times: 1 }
+  - { event: "crons['nightlyReport'].Run" }
+  - { event: "crons['hourlyCleanup'].Run" }
+  - { event: "crons['rotate'].Run" }
 ---
 kind: Assert.Events
 metadata: { name: reportFired }
 filter:
-  - type: "*.Invoked"
+  - { type: "*.Invoked" }
 expect:
-  - event: "buildReport.Invoked"
+  - { event: "buildReport.Invoked" }
 ---
 kind: Assert.Events
 metadata: { name: cleanupFired }
 filter:
-  - type: "*.Invoked"
+  - { type: "*.Invoked" }
 expect:
-  - event: "purgeExpired.Invoked"
+  - { event: "purgeExpired.Invoked" }
 ---
 kind: Assert.Events
 metadata: { name: rotateFired }
 filter:
-  - type: "*.Invoked"
+  - { type: "*.Invoked" }
 expect:
-  - event: "rotateLogs.Invoked"
+  - { event: "rotateLogs.Invoked" }

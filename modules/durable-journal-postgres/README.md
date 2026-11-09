@@ -49,6 +49,14 @@ A recorded value arrives already written down, under the codec version beside it
 
 Creation tolerates a race. `CREATE TABLE IF NOT EXISTS` is **not** concurrency-safe — Postgres checks and then creates, so two instances booting together both pass the check and the loser fails on the catalogue's own unique index (`duplicate key value violates unique constraint "pg_type_typname_nsp_index"`, which reads like corruption and is nothing of the kind). A duplicate-object error *is* the object existing, which is what the statement asked for, so those SQLSTATEs are read as success. Everything else — a missing grant, an unreachable server — still fails the boot.
 
+## Retiring finished runs
+
+The runs table also holds `workflow` and `finished_at` (added on boot where missing, nullable, so a run written before them is simply never purged). `finished_at` is stamped when a run is settled. `finishedRuns` reads one workflow's terminal runs by an index over `(workflow, finished_at)`, and `deleteFinishedRun` removes a run and its entries in **one statement** — a data-modifying CTE deleting the entries of exactly the row the first delete removed, conditional on the run still being terminal and old enough — so a crash leaves either both or neither.
+
+## Compacting a long run
+
+`replaceWithBaseline` deletes the replaced entry rows and inserts the run's baseline row (`entry_kind = 'baseline'`) in **one transaction of its own** — not the caller's, since a baseline records the run rather than any step's work — so a crash leaves the old rows or the baseline, never both and never neither.
+
 ## Two journals on one database need different prefixes
 
 Each journal treats every run in its own tables as its own, so a shared prefix would make each recover the other's work. Give each its own `table:`.

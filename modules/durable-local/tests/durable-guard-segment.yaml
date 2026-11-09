@@ -11,11 +11,7 @@ metadata:
 
     The guard is keyed in a segment no step name can spell, so the nested step runs and
     the run replays nothing.
-imports:
-  Local: ../
-  Journal: ../../durable-journal-file
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Local: ../, Journal: ../../durable-journal-file, Assert: ../../assert }
 variables:
   journalDir:
     env: DURABLE_GUARD_SEGMENT_TEST_DIR
@@ -29,7 +25,7 @@ kind: Journal.Journal
 metadata: { name: journal }
 directory: !cel "variables.journalDir"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: ticket
@@ -45,7 +41,7 @@ steps:
         - name: outer
           when: !cel "true"
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             steps:
               - { name: when, invoke: { kind: Run.Value, value: { said: hello } } }
             outputs:

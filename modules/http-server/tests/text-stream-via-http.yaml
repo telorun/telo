@@ -18,7 +18,6 @@ imports:
   Codec: ../../codec
   PlainText: ../../plain-text-codec
   JS: ../../javascript
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testAllFormats
@@ -204,18 +203,18 @@ routes:
             body:
               error: !cel "error.code"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testAllFormats }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8946 }
     openapi: { info: { title: TextStream via HTTP test, version: 1.0.0 } }
     mounts:
       - path: /
         mount: !ref api
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: hitNdjson
     inputs: { url: http://127.0.0.1:8946/ndjson, prompt: "hi" }

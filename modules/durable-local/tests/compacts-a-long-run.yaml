@@ -1,0 +1,136 @@
+kind: Telo.Application
+metadata:
+  name: DurableLocalCompactionTest
+  version: 1.0.0
+  description: |
+    A long run's journal stays bounded, and a resume starts at the baseline rather than at the
+    top. With `compactAfter: 10` a 50-turn `while` parks at turn 37 and is resumed: every turn's
+    `work` is dispatched exactly once, the resume replays only the three steps recorded after the
+    last baseline, and the finished journal holds one baseline plus two body entries.
+imports:
+  Durable: ../../durable
+  Local: ../
+  Journal: ../../durable-journal-file
+  Fs: ../../fs
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_COMPACTION_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/durable-compaction-test
+targets:
+  - !ref test
+  - !ref dispatches
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+kind: Run.Value
+metadata: { name: work }
+outputType: { kind: Telo.JsonSchema, schema: { type: object, required: [done], properties: { done: { type: boolean } } } }
+value: { done: true }
+---
+kind: Durable.Await
+metadata: { name: approval }
+token: !cel "'compact:' + inputs.ticket"
+timeout: 30d
+outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: true } }
+---
+kind: Local.Workflow
+metadata: { name: long }
+journal: !ref journal
+compactAfter: 10
+runId: !cel "'compact-' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - { name: turn, value: 0 }
+  - name: rounds
+    while: !cel "steps.turn.result < 50"
+    do:
+      - name: work
+        invoke: !ref work
+      - name: hold
+        if: !cel "steps.turn.result == 37"
+        then:
+          - name: wait
+            invoke: !ref approval
+            inputs:
+              ticket: !cel "inputs.ticket"
+      - name: turn
+        value: !cel "steps.turn.result + 1"
+---
+kind: Local.Status
+metadata: { name: status }
+journal: !ref journal
+---
+kind: Local.Deliver
+metadata: { name: approve }
+journal: !ref journal
+await: !ref approval
+token: !cel "'compact:' + inputs.ticket"
+payload: { approved: true }
+---
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 30s
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter: [{ type: "work.Invoked" }]
+expect: [{ event: work.Invoked, times: 50 }]
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: ticket
+    value: !cel "'t' + string(nowMillis())"
+  - name: start
+    invoke: !ref long
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: parked
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParked
+    while: !cel "steps.parked.result.status != 'parked'"
+    maxIterations: 400
+    do:
+      - name: parked
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+  - name: deliver
+    invoke: !ref approve
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  # Submitting the same id again takes the released claim and continues the run.
+  - name: resume
+    invoke: !ref long
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: finished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: journalFile
+    invoke: { kind: Fs.File }
+    inputs:
+      path: !cel "string(variables.journalDir.joinPath(steps.start.result.runId + '.ndjson'))"
+  - name: assertCompacted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        turns: !cel "steps.finished.result.result.steps.turn.result"
+        replayedSteps: !cel "steps.finished.result.replayedSteps"
+        baselines: !cel |-
+          steps.journalFile.result.content.split("\n").filter(l, l.contains("\"kind\":\"baseline\"")).size()
+        bodyEntries: !cel |-
+          steps.journalFile.result.content.split("\n").filter(l, l.contains("\"path\":\"steps") && !l.contains("\"kind\":\"baseline\"")).size()
+      expected: { status: completed, turns: 50, replayedSteps: 3, baselines: 1, bodyEntries: 2 }

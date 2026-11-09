@@ -6,11 +6,7 @@ metadata:
     A declared foreign key is enforced by the connection on every host driver: a
     child row naming a missing parent is refused, and deleting a parent runs the
     key's `onDelete: cascade`.
-imports:
-  Sql: ../../sql
-  SQLite: ../
-  Assert: ../../assert
-  Run: ../../run
+imports: { Sql: ../../sql, SQLite: ../, Assert: ../../assert }
 targets:
   - !ref appSchema
   - !ref test
@@ -42,7 +38,7 @@ connection: !ref db
 version: !cel "module.version"
 tables: [!ref authors, !ref posts]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: orphanInsert

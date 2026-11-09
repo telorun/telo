@@ -13,7 +13,6 @@ imports:
   SQLite: ../../sqlite
   Ui: ../../ui
   Probe: ../../ui/tests/__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -82,7 +81,7 @@ metadata: { name: plainAdmin }
 source: !ref plainSource
 filters: { placement: { kind: Ui.SearchBoxPlacement } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: searchable

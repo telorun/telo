@@ -1,20 +1,13 @@
-kind: Run.Sequence
-metadata:
-  name: testIncludeBasic
+kind: Telo.Sequence
+metadata: { name: testIncludeBasic }
 steps:
   - name: addNumbers
-    inputs:
-      a: 10
-      b: 20
+    inputs: { a: 10, b: 20 }
     invoke:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            a: { type: number }
-            b: { type: number }
+        schema: { type: object, properties: { a: { type: number }, b: { type: number } } }
       value:
         sum: !cel "inputs.a + inputs.b"
   - name: verifySum
@@ -24,9 +17,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          sum:
-            type: number
-            const: 30
-        required:
-          - sum
+        properties: { sum: { type: number, const: 30 } }
+        required: [sum]

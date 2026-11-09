@@ -16,7 +16,6 @@ imports:
   SQLite: ../../sqlite
   Cache: ../../cache
   CacheMemory: ../../cache-memory
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testReplay
@@ -43,7 +42,7 @@ kind: Cache.Lookup
 metadata: { name: get }
 store: !ref counters
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: body }
 steps:
   - name: read
@@ -68,7 +67,7 @@ claimTtl: "30s"
 ttl: "60s"
 invoke: !ref body
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: alwaysFails }
 steps:
   - { name: boom, throw: { code: ERR_UPSTREAM, message: upstream refused } }
@@ -80,7 +79,7 @@ claimTtl: "30s"
 ttl: "60s"
 invoke: !ref alwaysFails
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testReplay }
 steps:
   - name: first
@@ -117,7 +116,7 @@ steps:
       expected: "1"
     invoke: { kind: Assert.Equals }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testFailureReleases }
 steps:
   - name: attempt

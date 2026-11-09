@@ -6,7 +6,9 @@
  * everything already finished survives an abrupt exit, and an append of one line
  * followed by an fsync is the smallest operation with that property. A format
  * that rewrote the file (a JSON array, a keyed object) would put every earlier
- * record at risk on every write — the opposite of what is wanted.
+ * record at risk on every write — the opposite of what is wanted. The one
+ * rewrite, a baseline replacing a long run's entries, stages a whole new file
+ * and renames it into place, so no earlier record is ever at risk.
  *
  * **First writer wins, enforced on read-back rather than by locking.** Within a
  * run the file is append-only and records are keyed by step path, so a duplicate
@@ -15,7 +17,7 @@
  * claim is for, and a directory of files cannot make it safe anyway. Saying so
  * is better than a lock file that looks like a guarantee.
  */
-import { appendFile, mkdir, open, readFile, readdir, truncate } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, readdir, rename, truncate, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { InvokeError, type ResourceContext, type ResourceManifest } from "@telorun/sdk";
 
@@ -39,7 +41,7 @@ interface JournalManifest extends ResourceManifest {
  */
 interface JournalEntry {
   path: string;
-  kind: "step" | "decision";
+  kind: "step" | "decision" | "baseline";
   decision?: string;
   target?: { kind: string; name: string; module?: string };
   v?: number;
@@ -83,7 +85,12 @@ interface RunRecord {
    *  record rather than executing. Absent — never zero — for a run settled
    *  before it was recorded. */
   replayedSteps?: number;
+  /** The workflow that admitted the run, and when it reached a terminal status. */
+  workflow?: string;
+  finishedAt?: number;
 }
+
+const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 
 /** A run id is a caller-chosen string (`onboard:ada@example.com`), and it becomes
  *  a file name. Encoded rather than sanitized: sanitizing is lossy, so two
@@ -91,6 +98,11 @@ interface RunRecord {
  *  which is the worst outcome this store can produce. */
 function fileFor(directory: string, run: string): string {
   return join(directory, `${encodeURIComponent(run)}.ndjson`);
+}
+
+/** Where a compaction stages the run's next file before renaming it over it. */
+function stagingFor(file: string): string {
+  return `${file}.compacting`;
 }
 
 function runOf(fileName: string): string {
@@ -185,6 +197,7 @@ class FileJournalController {
       inputs?: unknown;
       inputsCodecVersion?: number;
       claim?: { holder: string; ttlMs: number };
+      workflow?: string;
     },
   ): Promise<{ admitted: boolean; existing?: RunRecord }> {
     const file = fileFor(this.resource.directory, run);
@@ -196,6 +209,7 @@ class FileJournalController {
       ...(init?.inputsCodecVersion === undefined
         ? {}
         : { inputsCodecVersion: init.inputsCodecVersion }),
+      ...(init?.workflow === undefined ? {} : { workflow: init.workflow }),
     };
     try {
       // `wx` is the whole admission: an exclusive create either wins or reports
@@ -252,9 +266,127 @@ class FileJournalController {
     return entry;
   }
 
+  /**
+   * Rewrite the run's file as its current record, every entry not replaced, and
+   * the baseline — staged beside it and renamed over it, so a crash leaves the old
+   * file or the new one and nothing between. A staging file a crash left behind
+   * ends in `.compacting`, which no reader lists; the next compaction overwrites
+   * it and a purge removes it.
+   */
+  async replaceWithBaseline(
+    run: string,
+    baseline: JournalEntry,
+    replaced: readonly string[],
+  ): Promise<void> {
+    const lines = await this.readLines(run);
+    const record = recordOf(lines);
+    if (!record) {
+      throw new InvokeError(
+        "ERR_DURABLE_JOURNAL_CORRUPT",
+        `Run '${run}': cannot write a baseline for a run this journal holds no record of.`,
+        { run },
+      );
+    }
+    const gone = new Set(replaced);
+    const kept = new Set<string>();
+    const out = [JSON.stringify(record)];
+    for (const line of lines) {
+      if (line.type !== "entry") continue;
+      const path = (line as unknown as { entry: JournalEntry }).entry.path;
+      // First occurrence only, so the rewrite keeps the entry readers already took.
+      if (gone.has(path) || kept.has(path)) continue;
+      kept.add(path);
+      out.push(JSON.stringify(line));
+    }
+    out.push(JSON.stringify({ type: "entry", entry: baseline }));
+
+    const file = fileFor(this.resource.directory, run);
+    const staging = stagingFor(file);
+    const handle = await open(staging, "w");
+    try {
+      await handle.writeFile(`${out.join("\n")}\n`);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await rename(staging, file);
+    // The rename is durable only once the directory is: a machine losing power
+    // before that could lose entries appended to the new file after it.
+    await this.syncDirectory();
+    this.#repaired.add(run);
+  }
+
   async completeRun(run: string, outcome: Omit<RunRecord, "run">): Promise<void> {
-    await this.appendLine(run, { type: "run", run, ...outcome });
+    // The workflow is carried over from the header, since a settlement line
+    // replaces the run's state wholesale and would otherwise drop it.
+    const workflow = (await this.readRun(run))?.workflow;
+    await this.appendLine(run, {
+      type: "run",
+      run,
+      ...(workflow === undefined ? {} : { workflow }),
+      ...outcome,
+      finishedAt: Date.now(),
+    });
     this.#claims.delete(run);
+  }
+
+  /**
+   * Terminal runs of one workflow finished at or before the cutoff, oldest first.
+   * A directory scan, like `dueRuns`, for the same reason: there is no index.
+   */
+  async finishedRuns(workflow: string, finishedBefore: number, limit: number): Promise<string[]> {
+    await this.#ready;
+    const found: { run: string; finishedAt: number }[] = [];
+    for (const file of await readdir(this.resource.directory)) {
+      if (!file.endsWith(".ndjson")) continue;
+      const run = runOf(file);
+      const record = await this.readRun(run);
+      if (
+        record?.workflow !== workflow ||
+        !TERMINAL.has(record.status) ||
+        record.finishedAt === undefined ||
+        record.finishedAt > finishedBefore
+      ) {
+        continue;
+      }
+      found.push({ run, finishedAt: record.finishedAt });
+    }
+    return found
+      .sort((a, b) => a.finishedAt - b.finishedAt)
+      .slice(0, limit)
+      .map((f) => f.run);
+  }
+
+  /**
+   * Remove the run's file — record and entries are lines of the one file, so the
+   * unlink is what makes the delete all-or-nothing. The condition is checked just
+   * before it; as everywhere in this store, two processes racing on one run are
+   * kept apart by the claim, not by the file system.
+   */
+  async deleteFinishedRun(run: string, finishedBefore: number): Promise<boolean> {
+    const record = await this.readRun(run);
+    if (
+      !record ||
+      !TERMINAL.has(record.status) ||
+      record.finishedAt === undefined ||
+      record.finishedAt > finishedBefore
+    ) {
+      return false;
+    }
+    const file = fileFor(this.resource.directory, run);
+    // A concurrent purge of the same run got here first: already gone.
+    try {
+      await unlink(file);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw err;
+    }
+    await unlink(stagingFor(file)).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== "ENOENT") throw err;
+    });
+    this.#claims.delete(run);
+    this.#repaired.delete(run);
+    return true;
   }
 
   /**
@@ -358,6 +490,18 @@ class FileJournalController {
 
   async readRun(run: string): Promise<RunRecord | undefined> {
     return recordOf(await this.readLines(run));
+  }
+
+  /** Flush the directory's own entries — a rename is recorded there. Windows
+   *  opens no directory for flushing, and commits a rename as part of it. */
+  private async syncDirectory(): Promise<void> {
+    if (process.platform === "win32") return;
+    const handle = await open(this.resource.directory, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
   }
 
   private async readLines(run: string): Promise<{ type?: string }[]> {

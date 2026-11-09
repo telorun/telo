@@ -6,11 +6,7 @@ metadata:
     Cache.View read-through: first lookup misses and loads from the wrapped
     target (state=miss), the second is served from cache (state=fresh) with the
     same value.
-imports:
-  Cache: ../
-  CacheMemory: ../../cache-memory
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Cache: ../, CacheMemory: ../../cache-memory, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -33,7 +29,7 @@ invoke: !ref loader
 ttl: "60s"
 revalidate: sync
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: first

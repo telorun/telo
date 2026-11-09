@@ -20,8 +20,7 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: dummy-key-never-used
+    secrets: { anthropicApiKey: dummy-key-never-used }
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state-off')" }
     variables:
@@ -34,15 +33,13 @@ imports:
     source: ../
     resources:
       hub: !ref hub
-    secrets:
-      anthropicApiKey: dummy-key-never-used
+    secrets: { anthropicApiKey: dummy-key-never-used }
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state-on')" }
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
       teloProgram: [echo]
       allowManifestRuns: true
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # Where this case's workspace and agent state live — the library takes both
@@ -67,15 +64,14 @@ clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 ---
 # Off is the default, and it must refuse BEFORE anything is spawned — an error
 # the agent can read and act on, not a silent no-op.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRefusedWhenOff }
 steps:
   - name: attempt
     try:
       - name: run
         invoke: !ref ChatOff.runManifest
-        inputs:
-          path: apps/todo/tests/telo.yaml
+        inputs: { path: apps/todo/tests/telo.yaml }
       # Reaching here means the guard did NOT fire and the program was spawned.
       # Without this the case passes green having asserted nothing: `echo`
       # succeeds, no error is raised, and `catch:` never runs — so the one thing
@@ -95,19 +91,16 @@ steps:
 # Pinning the whole line is what catches the two ways this could go wrong: a
 # dropped program prefix, and a path that reached the shell as anything but a
 # single argument.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRunsWhenOn }
 steps:
   - name: run
     invoke: !ref ChatOn.runManifest
-    inputs:
-      path: apps/todo/tests/telo.yaml
+    inputs: { path: apps/todo/tests/telo.yaml }
   - name: assertArgv
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         exitCode: !cel "steps.run.result.exitCode"
         argv: !cel "trim(steps.run.result.output)"
-      expected:
-        exitCode: 0
-        argv: "run apps/todo/tests/telo.yaml"
+      expected: { exitCode: 0, argv: "run apps/todo/tests/telo.yaml" }

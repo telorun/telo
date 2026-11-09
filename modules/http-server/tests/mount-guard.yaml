@@ -8,11 +8,7 @@ metadata:
     a throw is rendered by `guard.catches`, and a throw nothing claims is the
     built-in 500 envelope. CORS preflight, a sibling mount without a guard and a
     request matching no route never reach it.
-imports:
-  Http: ../
-  HttpClient: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+imports: { Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -45,7 +41,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: !ref client
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
@@ -60,7 +56,7 @@ with:
         mount: !ref guardedApi
         guard:
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             inputType:
               kind: Telo.JsonSchema
               schema:

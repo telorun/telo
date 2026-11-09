@@ -8,7 +8,6 @@ metadata:
     only ever reached through an importer, so that is what is run.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 variables:
@@ -22,18 +21,15 @@ targets:
 ---
 kind: HttpClient.Request
 metadata: { name: call }
-client:
-  kind: HttpClient.Client
-  baseUrl: http://127.0.0.1:8201
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8201 }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ./__fixtures__/notes-app.yaml
-    ports:
-      http: 8201
+    ports: { http: 8201 }
     variables:
       dbFile: !cel "variables.scratchDir.joinPath('repository-library-test-' + string(nowMillis()) + '.db')"
 targets:
@@ -41,40 +37,22 @@ targets:
 steps:
   - name: create
     invoke: !ref call
-    inputs:
-      url: /notes
-      method: POST
-      body: { title: groceries, body: milk and bread }
+    inputs: { url: /notes, method: POST, body: { title: groceries, body: milk and bread } }
   - name: found
     invoke: !ref call
-    inputs:
-      url: /notes
-      method: GET
-      query: { title: groceries }
+    inputs: { url: /notes, method: GET, query: { title: groceries } }
   - name: pin
     invoke: !ref call
-    inputs:
-      url: /notes/pin
-      method: POST
-      body: { title: groceries }
+    inputs: { url: /notes/pin, method: POST, body: { title: groceries } }
   - name: pinned
     invoke: !ref call
-    inputs:
-      url: /notes
-      method: GET
-      query: { title: groceries }
+    inputs: { url: /notes, method: GET, query: { title: groceries } }
   - name: remove
     invoke: !ref call
-    inputs:
-      url: /notes
-      method: DELETE
-      query: { title: groceries }
+    inputs: { url: /notes, method: DELETE, query: { title: groceries } }
   - name: gone
     invoke: !ref call
-    inputs:
-      url: /notes
-      method: GET
-      query: { title: groceries }
+    inputs: { url: /notes, method: GET, query: { title: groceries } }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:

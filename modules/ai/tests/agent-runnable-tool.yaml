@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: AgentRunnableToolTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testRunnableTool
 ---
@@ -23,7 +19,7 @@ value:
 # A Run.Sequence (Telo.Runnable with callable inputs/outputs) wrapped as a tool —
 # the composite-tool case the widened Ai.Tools `tool` slot enables. The whole
 # pipeline is dispatched as a single tool the model can call.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: computePipeline }
 inputType:
   kind: Telo.JsonSchema
@@ -55,7 +51,7 @@ model: !ref echo
 toolProviders:
   - provider: !ref pipelineTools
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRunnableTool }
 steps:
   - name: invoke

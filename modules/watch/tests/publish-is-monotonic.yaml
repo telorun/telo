@@ -17,7 +17,7 @@ kind: Watch.Publish
 metadata: { name: publish }
 store: !ref store
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: raised

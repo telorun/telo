@@ -4,7 +4,7 @@ imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testSwitch
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testSwitch }
 steps:
   # --- switch: matching case executes, others do not ---

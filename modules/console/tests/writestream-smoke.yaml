@@ -9,7 +9,6 @@ imports:
   Console: ../
   JS: ../../javascript
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testStringStream
@@ -42,7 +41,7 @@ items: [42]
 kind: Console.WriteStream
 metadata: { name: stdout }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testStringStream }
 steps:
   - name: stringSrc
@@ -57,7 +56,7 @@ steps:
       kind: Assert.Schema
       schema: { type: object, properties: { reached: { const: true } }, required: [reached] }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testBytesStream }
 steps:
   - name: bytesSrc
@@ -72,7 +71,7 @@ steps:
       kind: Assert.Schema
       schema: { type: object, properties: { reached: { const: true } }, required: [reached] }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testInvalidInput }
 steps:
   - name: badSrc

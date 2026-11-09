@@ -14,7 +14,7 @@ targets:
 kind: Watch.MemoryStore
 metadata: { name: store }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: publish

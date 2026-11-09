@@ -13,7 +13,6 @@ imports:
   App: ../../../modules/app
   Fs: ../../../modules/fs
   HttpClient: ../../../modules/http-client
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
 variables:
   scratch:
@@ -28,7 +27,7 @@ kind: HttpClient.Request
 metadata: { name: call }
 client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18748, throwOnHttpError: false }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: prepare
@@ -42,7 +41,7 @@ steps:
     inputs: { path: !cel "string(variables.scratch)", createParents: true }
   - name: before
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: server }
@@ -112,14 +111,10 @@ steps:
   - name: after
     inputs: { plan: !cel "steps.before.result.plan" }
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [plan]
-          properties:
-            plan: { type: string }
+        schema: { type: object, required: [plan], properties: { plan: { type: string } } }
       with:
         - kind: App.Instance
           metadata: { name: server }

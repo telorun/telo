@@ -9,7 +9,6 @@ metadata:
     shows a failed run is recorded and reported rather than lost.
 imports:
   App: ../../../../modules/app
-  Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 variables:
@@ -28,7 +27,7 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -93,7 +92,7 @@ steps:
   - name: withBrokenJob
     invoke: !ref brokenJob
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: brokenJob }
 with:
   - kind: App.Instance

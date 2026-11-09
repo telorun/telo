@@ -10,10 +10,10 @@ metadata:
     with -32002, maps a thrown code through `catches:`, and advertises the
     resources capability without the prompts one.
 imports:
+  Run: ../../run
   Mcp: ../
   Http: ../../http-server
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets: [ !ref testRun ]
 ---
@@ -48,7 +48,7 @@ metadata: { name: readLogo }
 value:
   data: !cel "b'hello'"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readLocked }
 throws:
   - { code: locked }
@@ -122,15 +122,15 @@ metadata: { name: mcpHttp }
 serverInfo: { name: telo-test-resources, version: 1.0.0 }
 resources: [ !ref AppResources ]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testRun }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8966 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
-targets: [ !ref Server ]
+targets: [ !ref server ]
 steps:
   - name: initialize
     invoke: !ref rpc

@@ -9,11 +9,7 @@ metadata:
     `/admin/links`), and the OpenAPI document must document them at those distinct
     full paths under a single `/` server — not flatten both to `/links` with the
     mount prefixes hoisted into `servers`.
-imports:
-  Http: ../
-  JS: ../../javascript
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Http: ../, JS: ../../javascript, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -97,11 +93,11 @@ outputType:
 kind: Http.Reference
 metadata: { name: docs }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
-    metadata: { name: Server }
+    metadata: { name: server }
     listen: { address: 127.0.0.1, port: 8963 }
     openapi: { info: { title: MountPrefix, version: 1.0.0 } }
     mounts:
@@ -112,7 +108,7 @@ with:
       - path: /reference
         mount: !ref docs
 targets:
-  - !ref Server
+  - !ref server
 steps:
   - name: hitRoot
     inputs: { url: http://127.0.0.1:8963/links }

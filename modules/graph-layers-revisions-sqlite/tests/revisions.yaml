@@ -27,7 +27,6 @@ imports:
   Graph: ../../graph
   GraphLayers: ../../graph-layers
   Layers: ../
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref appSchema
@@ -275,7 +274,7 @@ relationship: !ref knows
 # over its published head. The view rule holds — a relationship is in the view
 # only while both endpoints are — and a node delete withdraws the layer's own
 # relationships at it, for good.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: oneGraph }
 steps:
   - name: ada
@@ -450,7 +449,7 @@ steps:
 # other, and a session keeps reading the layer at its draft's parent revision
 # after the sibling publishes. The first to publish wins; the second is stale,
 # rebases, and is conflicted only on the key both changed.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: parallelDrafts }
 steps:
   - name: seedOne
@@ -638,7 +637,7 @@ steps:
 # differently — one conflict naming `name` alone, with the ancestor listed —
 # while the age only the published side changed merges into whichever side is
 # taken. The decision is recorded on the row with who made it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: threeWayMerge }
 steps:
   - name: seedOne
@@ -747,7 +746,7 @@ steps:
 # refused, while the conflict relisted carries another.
 #   k1 changed-both, k2 changed-removed, k3 removed-changed, k4 added-both,
 #   e1→e2 endpoint-missing (a relationship published at a node the draft deletes).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: staleTokens }
 steps:
   - name: seedK1
@@ -935,7 +934,7 @@ steps:
 # table holds four rows for it, their ranges contiguous. The history lists in
 # both orders, after a number, a page at a time; a draft with no change adds
 # nothing to it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: history }
 steps:
   - name: one
@@ -1037,7 +1036,7 @@ steps:
 # paged across other callers' writes it returns no key twice, misses none that
 # the revision held, and shows each as that revision had it. A new read starts
 # at the head.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: pinnedReads }
 steps:
   - name: seedG1
@@ -1091,7 +1090,7 @@ steps:
 # session is refused inside one and the reverse; one read in a draft is refused
 # in a sibling draft; and one read before a rebase that moved the draft is
 # refused after it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cursors }
 steps:
   - name: a
@@ -1202,7 +1201,7 @@ steps:
 # itself states at the node: one retraction for each relationship the layer
 # publishes there, and the draft's own unpublished one is simply dropped. Once
 # published, the replaced rows are ended, not removed.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nodeDeleteInDraft }
 steps:
   - name: seedD0
@@ -1294,7 +1293,7 @@ kind: Sql.Transaction
 metadata: { name: writeThenFail }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps:
     - name: write
       invoke: !ref archiveCreatePerson
@@ -1302,7 +1301,7 @@ steps:
     - name: abort
       throw: { code: ERR_TEST_ABORT, message: "the caller's transaction fails after the write" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: writeJoinsATransaction }
 steps:
   - name: before

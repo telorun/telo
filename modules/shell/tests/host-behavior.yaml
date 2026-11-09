@@ -17,7 +17,7 @@ cwd: /
 kind: Shell.LocalHost
 metadata: { name: local }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: cwd

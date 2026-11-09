@@ -17,7 +17,7 @@ kind: Stream.Of
 metadata: { name: source }
 items: ["he", "llo world!", "s!"]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: src

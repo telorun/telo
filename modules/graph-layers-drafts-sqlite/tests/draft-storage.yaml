@@ -26,7 +26,6 @@ imports:
   Graph: ../../graph
   GraphLayers: ../../graph-layers
   Layers: ../
-  Run: ../../run
   Timer: ../../timer
   Assert: ../../assert
 targets:
@@ -147,7 +146,7 @@ metadata: { name: teamListDrafts }
 store: !ref team
 ---
 # A layer keeps one open draft: opening again returns it. The database decides.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: oneDraft }
 steps:
   - name: first
@@ -199,7 +198,7 @@ steps:
 ---
 # A draft is its own layer's alone: what `shared` stages is in no view of
 # `team`, inside a session of `team`'s own or outside one.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: baseDraftIsPrivate }
 steps:
   - name: openShared
@@ -263,7 +262,7 @@ steps:
 # leaves a statement to publish records itself, and who made it, on that row
 # through publish: `mine`, and a side with `set` on top (`merged`). Plain
 # `theirs` leaves no statement, so no row.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: rowAgainstRow }
 steps:
   - name: seed
@@ -401,7 +400,7 @@ node: !ref person
 # written again outside the draft, it no longer names the conflict. Taking
 # `theirs` leaves a statement to publish — the relationship's retraction — so
 # the decision is on that row.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: standingRelationship }
 steps:
   - name: seedSource
@@ -531,7 +530,7 @@ steps:
 # A write in a BASE moves no revision of this layer, so it never makes the draft
 # stale. When it removes an endpoint of a relationship the draft states, the
 # draft is conflicted — `endpoint-missing` — until the relationship is decided.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: baseOrphansAnEndpoint }
 steps:
   - name: seedBase
@@ -599,7 +598,7 @@ steps:
 # A node delete in a draft withdraws the layer's own relationships touching the
 # node and states nothing about those a base holds: the relationship table gains
 # no row, however many the base states for the node.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: hubDelete }
 steps:
   - name: hub
@@ -661,7 +660,7 @@ steps:
 # Outside a session a write changes the published row in place and advances the
 # layer's revision by one; it records no draft. An operation that changes
 # nothing leaves the revision where it was.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: counter }
 steps:
   - name: before
@@ -699,7 +698,7 @@ steps:
 # Who opened, published and discarded, and when by the database's clock. Rows
 # written through the engine's current-instant expression sort in the order
 # they were written under a plain ORDER BY.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: audit }
 steps:
   - name: open
@@ -776,7 +775,7 @@ kind: Sql.Transaction
 metadata: { name: publishThenFail }
 connection: !ref db
 steps:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType:
     kind: Telo.JsonSchema
     schema: { type: object, required: [draft], properties: { draft: { type: string } } }
@@ -789,7 +788,7 @@ steps:
 inputs:
   draft: !cel "inputs.draft"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: publishJoinsATransaction }
 steps:
   - name: open

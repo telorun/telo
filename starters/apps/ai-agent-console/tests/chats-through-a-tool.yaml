@@ -9,9 +9,9 @@ metadata:
     is what shows the tool loop, the stored history and the three commands all
     work end to end — and that a provider failure leaves the chat running.
 imports:
+  Run: ../../../../modules/run
   App: ../../../../modules/app
   Channel: ../../../../modules/channel
-  Run: ../../../../modules/run
   Http: ../../../../modules/http-server
   Assert: ../../../../modules/assert
 variables:
@@ -34,8 +34,7 @@ routes:
   - request:
       path: /chat/completions
       method: POST
-      schema:
-        body: { type: object, additionalProperties: true }
+      schema: { body: { type: object, additionalProperties: true } }
     handler: !ref noop
     returns:
       - status: 500
@@ -43,8 +42,7 @@ routes:
         content:
           application/json:
             schema: { type: object, additionalProperties: true }
-            body:
-              error: { message: the provider is down, type: server_error }
+            body: { error: { message: the provider is down, type: server_error } }
       # A tool has just answered: reply from what it said.
       - status: 200
         when: !cel "request.body.messages[size(request.body.messages) - 1].role == 'tool'"
@@ -71,9 +69,7 @@ routes:
                     tool_calls:
                       - id: call-1
                         type: function
-                        function:
-                          name: get_weather
-                          arguments: '{"latitude":52.2,"longitude":21.0}'
+                        function: { name: get_weather, arguments: '{"latitude":52.2,"longitude":21.0}' }
                   finish_reason: tool_calls
               usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
       - status: 200
@@ -93,25 +89,21 @@ routes:
 kind: Http.Api
 metadata: { name: fakeWeather }
 routes:
-  - request:
-      path: /v1/forecast
-      method: GET
+  - request: { path: /v1/forecast, method: GET }
     handler: !ref noop
     returns:
       - status: 200
         content:
           application/json:
             schema: { type: object, additionalProperties: true }
-            body:
-              current_weather: { temperature: 17 }
+            body: { current_weather: { temperature: 17 } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: provider }
-    listen:
-      port: 8068
+    listen: { port: 8068 }
     mounts:
       - path: /openai/v1
         mount: !ref fakeOpenAi
@@ -125,8 +117,7 @@ with:
       openaiBaseUrl: http://127.0.0.1:8068/openai/v1
       weatherBaseUrl: http://127.0.0.1:8068/weather
       historyFile: !cel "variables.scratchDir.joinPath('ai-agent-console-test-' + string(nowMillis()) + '.sqlite')"
-    secrets:
-      openaiApiKey: not-a-real-key
+    secrets: { openaiApiKey: not-a-real-key }
     # It blocks on its first prompt, so its targets never all finish dispatching.
     awaitStart: false
   - kind: Channel.ReadUntil

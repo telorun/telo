@@ -17,7 +17,6 @@ imports:
   Ndjson: ../../../ndjson-codec
   PlainText: ../../../plain-text-codec
   JS: ../../../javascript
-  Run: ../../../run
   Assert: ../../../assert
 targets:
   - !ref liveTextStream
@@ -84,7 +83,7 @@ code: |
     };
   }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: liveTextStream }
 steps:
   - name: guardEnv

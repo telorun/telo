@@ -12,7 +12,7 @@ metadata:
     results per query, sliced with an opaque cursor. Authenticated with an API key
     on a configurable HTTP client.
 requires: { telo: ">=0.128.0" }
-imports: { WebSearch: ../web-search, Http: ../http-client, Run: ../run }
+imports: { WebSearch: ../web-search, Http: ../http-client }
 exports: { kinds: [WebSearchEngine] }
 ---
 # A templated engine over `POST /search`. Tavily returns one ranked list of at
@@ -62,7 +62,7 @@ schema:
       type: boolean
       default: false
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: search }
     inputType: !ref WebSearch.Query
     outputType: !ref WebSearch.Results
@@ -281,7 +281,7 @@ resources:
     outputs: !cel "steps.shaped.result"
   # One request, mapped onto the contract's result shape; every failure is raised
   # here as a contract code.
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: page }
     inputType:
       kind: Telo.JsonSchema

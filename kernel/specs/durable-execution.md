@@ -65,6 +65,9 @@ kind and not a kernel type:
   running with nothing executing it, and its wake token lost. (§7.)
 - **`writesInside(zone)`** — a *question*: does this handle's own recording land
   inside the given zone's atomicity? (§8.)
+- **`baseline(capture)`** — optional, and also a question: offered at each step
+  boundary where a baseline may be taken (§5.2), it answers whether one is due,
+  and only then reads the position and `steps` map from `capture`.
 
 **Why `step` and not lookup-plus-record.** The obvious factoring — *have you a
 result at this key* / *record this one* — is a leaky decomposition: two halves of
@@ -289,7 +292,7 @@ path-keyed backend to re-run what it can no longer find.
 
 ### 5.2 Entries
 
-Three entry shapes. A backend MAY store them however it likes; what is normative
+Four entry shapes. A backend MAY store them however it likes; what is normative
 is that these fields exist and mean this.
 
 **A step entry** — written on COMPLETION, never on dispatch:
@@ -342,6 +345,61 @@ the step on every resume; and absence belongs to the ENTRY rather than to a
 value, because `undefined` is not a CEL value and a frame that gave it a form
 would stop being one-to-one (§6.1 refuses a bare `undefined` by design). Such an
 entry replays as the absent value, which is what the target returned.
+
+**A baseline entry** — a long run's state at a step boundary, replacing every
+body entry recorded before it, so the journal stays bounded and a resume starts
+here rather than at the top:
+
+```yaml
+path: steps/poll/do[36]/fetch    # the step the run had just completed
+kind: baseline
+v: 2
+value:                           # a typed frame (§6.1) of exactly these two members
+  position:                      # outermost first
+    - { step: steps/poll, branch: do, turn: 36 }
+    - { step: steps/poll/do[36]/fetch }
+  steps: { fetch: { result: … } }   # the `steps` map in scope there
+```
+
+- `position` is a non-empty list of frames. Each names a step of its level's
+  list by that step's journal path (§5.1). Every frame but the last also names
+  the branch of that step the run is inside: `then`, `else`, `default` or `try`
+  alone; `elseif` with `index` (an integer); `do` with `turn` (an integer); or
+  `cases` with `case` (a string). The last frame carries no branch: it is the
+  step that completed, and its path is the entry's `path`.
+- `steps` is the `steps` map at that boundary, recorded as one value under the
+  entry's `v`, by the same codec and the same version rules as any entry's
+  value. A member holding no value is left out.
+- Nothing else is recorded and nothing else is needed: every value the replay
+  would have handed back up to that point is either in `steps` or was a
+  decision that the position now stands for — the branch taken, the loop turn
+  reached. That is what makes compaction well-defined (§4).
+- A reader refuses a baseline whose frames carry a branch or a field it does not
+  know (`ERR_DURABLE_ENTRY_UNDECODABLE`), and a position naming a step or a
+  branch the body no longer has (`ERR_JOURNAL_ENTRY_MISMATCH`).
+
+A resume reads the baseline and the entries recorded after it. The engine
+restores `steps`, descends the position — entering each recorded branch without
+re-deciding it — and continues with the step after the last frame; a `while`
+that finishes the recorded turn tests its condition for the next.
+
+**Where one may be taken.** Only at a step boundary of the durable body's own
+engine: after a step of the body's list, or of an `if` / `elseif` / `else` /
+`switch` / `try` branch or `while` turn of it, at any depth. Never inside a body
+a step dispatches, a composer's body (an iteration, a loop, a projection), a
+concurrent region, a `catch:` or `finally:` branch (the caught failure is not a
+recordable value), or a collapsed region (§8). A run standing in one of those
+places takes none until it is back at such a boundary.
+
+**When.** A backend decides when one is due; it MUST NOT take one while replay
+has not yet passed every entry it read, since removing one would drop a record
+the replay still needs. An entry beneath a step that replay answered from the
+record has been passed with it — that step's own body never runs again.
+
+**It is one atomic write.** The baseline and the removal of every entry it
+replaces — the previous baseline among them — land together or not at all: after
+a crash the journal holds the old entries or the baseline, never both and never
+neither. A run holds at most one baseline.
 
 **A run record**:
 
@@ -919,7 +977,7 @@ of this run re-run whole, and a hot loop inside one transaction is one region.
 | Code | Raised when |
 | --- | --- |
 | `ERR_DURABLE_UNJOURNALABLE_VALUE` | a step result or decision cannot be serialized, at the step path that produced it |
-| `ERR_JOURNAL_ENTRY_MISMATCH` | replay reaches a different target than the entry at that key records |
+| `ERR_JOURNAL_ENTRY_MISMATCH` | replay reaches a different target than the entry at that key records, or a baseline's position names a step or branch the body no longer has (§5.2) |
 | `ERR_DURABLE_MANIFEST_CHANGED` | a resume would replay against changed code (backend-specific; see the backend's own docs) |
 | `ERR_DURABLE_NO_RUN` | a kind requiring a durable run was dispatched with no handle ambient |
 | `ERR_DURABLE_SUSPENDED` | not an error — the suspension SIGNAL, carried on an `Error` so it unwinds. It MUST reach the workflow that owns the run |
@@ -927,7 +985,7 @@ of this run re-run whole, and a hot loop inside one transaction is one region.
 | `ERR_DURABLE_SUSPEND_FORBIDDEN` | a park was attempted inside a zone declaring `noSuspend`, quoting that zone's own reason |
 | `ERR_DURABLE_TARGET_UNENCODABLE` | a step target could not be written down completely enough to cross a process boundary (§5.3) |
 | `ERR_DURABLE_TARGET_UNDECODABLE` | a step target arrived malformed, or in an encoding version this runtime does not read (§5.3) |
-| `ERR_DURABLE_ENTRY_UNDECODABLE` | a journal entry records its value under a codec version this runtime does not read (§5.2) |
+| `ERR_DURABLE_ENTRY_UNDECODABLE` | a journal entry records its value under a codec version this runtime does not read, or a baseline carries a position frame this runtime does not write (§5.2) |
 | `ERR_TYPED_FRAME_UNENCODABLE` | a value outside the CEL value domain was given to a typed frame writer, at its path inside the value (§6.1) |
 | `ERR_TYPED_FRAME_UNDECODABLE` | a typed frame is malformed, carries an unknown tag or a non-canonical payload, at its path inside the frame (§6.2) |
 

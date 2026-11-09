@@ -7,13 +7,10 @@ metadata:
     also when the application reaches that module as several instances — here
     `Shapes`, imported by `Lib` and by `Lib`'s `Middle`. The kernel used to find
     neither copy and refused the function's `returns` as naming no shape.
-imports:
-  Assert: ../modules/assert
-  Run: ../modules/run
-  Lib: ./__fixtures__/library-instance-targets/lib
+imports: { Assert: ../modules/assert, Lib: ./__fixtures__/library-instance-targets/lib }
 targets: [!ref check]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: check }
 steps:
   - { name: described, invoke: !ref Lib.describe }

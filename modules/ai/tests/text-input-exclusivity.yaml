@@ -1,10 +1,6 @@
 kind: Telo.Application
 metadata: { name: TextInputExclusivityTest, version: 1.0.0 }
-imports:
-  Ai: ../
-  AiEcho: ./__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+imports: { Ai: ../, AiEcho: ./__fixtures__/ai-echo.yaml, Assert: ../../assert }
 targets:
   - !ref testBothPromptAndMessagesRejected
   - !ref testNeitherPromptNorMessagesRejected
@@ -17,7 +13,7 @@ metadata: { name: c }
 model: !ref echo
 ---
 # Both prompt AND messages → throws.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testBothPromptAndMessagesRejected }
 steps:
   - name: try
@@ -45,7 +41,7 @@ steps:
             required: [ code ]
 ---
 # Neither prompt NOR messages → throws.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: testNeitherPromptNorMessagesRejected }
 steps:
   - name: try

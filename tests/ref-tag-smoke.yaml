@@ -1,10 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: RefTagSmoke
-  version: 1.0.0
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+metadata: { name: RefTagSmoke, version: 1.0.0 }
+imports: { Run: ../modules/run, Assert: ../modules/assert }
 targets:
   # `!ref` works in `Telo.Application.targets` (which is itself an
   # `x-telo-ref: Telo.Runnable` slot) just as in any other ref slot.
@@ -15,21 +11,15 @@ targets:
 # bare resource name carries the reference, no kind/name object form
 # needed at the slot.
 kind: Run.Value
-metadata:
-  name: computeSum
+metadata: { name: computeSum }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      a: { type: number }
-      b: { type: number }
+  schema: { type: object, properties: { a: { type: number }, b: { type: number } } }
 value:
   value: !cel "inputs.a + inputs.b"
 ---
-kind: Run.Sequence
-metadata:
-  name: testRefTag
+kind: Telo.Sequence
+metadata: { name: testRefTag }
 steps:
   - name: callByRef
     inputs:
@@ -43,8 +33,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          value:
-            type: number
-            const: 12
+        properties: { value: { type: number, const: 12 } }
         required: [ value ]

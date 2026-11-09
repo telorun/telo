@@ -8,15 +8,11 @@ metadata:
     member — the query parameter that names the conversation and the requests read again included — a button drawn from a file of its own is served by its digest, and
     the application document carries the chat's own texts in the
     language the request asked for.
-imports:
-  App: ../../app
-  Run: ../../run
-  HttpClient: ../../http-client
-  Assert: ../../assert
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance

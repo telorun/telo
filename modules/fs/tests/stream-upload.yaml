@@ -12,7 +12,6 @@ imports:
   Fs: ../
   Http: ../../http-server
   HttpClient: ../../http-client
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref test
@@ -52,7 +51,7 @@ routes:
           application/json:
             body: { code: !cel "error.code", maxBytes: !cel "error.data.maxBytes" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server

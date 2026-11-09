@@ -14,7 +14,6 @@ imports:
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
-  Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # This test's own directory, emptied before each run, holding the agent's
@@ -28,7 +27,7 @@ variables:
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -51,7 +50,7 @@ steps:
       recursive: true
   - name: firstBoot
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -62,8 +61,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18430/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -72,10 +70,7 @@ steps:
             url: http://127.0.0.1:18431/conversations
             method: POST
         - name: start
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18431/chat
-            method: POST
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18431/chat, method: POST }
           inputs:
             body:
               conversationId: !cel "steps.conversation.result.body.id"
@@ -97,7 +92,7 @@ steps:
         page: !cel "steps.page.result.body"
   - name: secondBoot
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       with:
         - kind: App.Instance
           metadata: { name: agent }
@@ -108,8 +103,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18430/v1
-          secrets:
-            anthropicApiKey: stub-key
+          secrets: { anthropicApiKey: stub-key }
       targets: [ !ref agent ]
       steps:
         - name: page
@@ -119,10 +113,7 @@ steps:
         # The state directory is not workspace content: the agent's own tree
         # listing never shows it.
         - name: tree
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18432/workspace
-            method: GET
+          invoke: { kind: HttpClient.Request, url: http://127.0.0.1:18432/workspace, method: GET }
       outputs:
         page: !cel "steps.page.result.body"
         files: !cel "steps.tree.result.body.files"
@@ -143,8 +134,7 @@ steps:
     invoke:
       kind: Fs.DirectoryListing
       cwd: !cel "variables.scratch"
-    inputs:
-      recursive: true
+    inputs: { recursive: true }
   - name: onlyTheDatabase
     invoke: { kind: Assert.Equals }
     inputs:

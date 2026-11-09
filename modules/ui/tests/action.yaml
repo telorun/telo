@@ -22,7 +22,6 @@ imports:
   Ui: ../
   DataModel: ../../data-model
   Probe: ./__fixtures__/probe
-  Run: ../../run
   Assert: ../../assert
 targets:
   - !ref main
@@ -219,7 +218,7 @@ rowActions:
       id: !cel "row.id"
     prompt: true
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: generate
