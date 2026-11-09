@@ -331,6 +331,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
+
       # The gate this whole workflow exists to hold: the release becomes visible
       # only now, with every archive and installer attached and verified. Until
       # this step runs it is a draft, which `releases/latest` does not serve.
@@ -358,6 +363,11 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
 
       - name: Does the redirect move forward
         id: pointers

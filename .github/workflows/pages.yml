@@ -60,6 +60,12 @@ jobs:
         with:
           path: tooling
 
+      - name: Install the release scripts' dependencies
+        working-directory: tooling
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
+
       - name: Plan the build
         id: plan
         working-directory: tooling
