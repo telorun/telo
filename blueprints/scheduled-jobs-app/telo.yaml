@@ -18,7 +18,7 @@ requires:
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
-  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.2#sha256-srEbSaSpIx-tmlS1Soe5rASQV5GdUPKUDudNST-jQSA
 exports:
   kinds: [App]
 ---

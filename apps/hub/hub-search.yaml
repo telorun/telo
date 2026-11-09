@@ -33,7 +33,7 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
+  Sql: oci://ghcr.io/telorun/sql@0.31.3#sha256-jfVldKM5qF_ezYfqsbuf3sZQl-3mEk61PrWTUSLs_qI
   Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Embedding: oci://ghcr.io/telorun/embedding@0.12.2#sha256-XHN0qwYwQm_Lk2OaYZEiqRzEyvIHdhd6u29bfYkvT64
   VectorStore: oci://ghcr.io/telorun/vector-store@0.11.2#sha256-X_V4hFmjTZsOvGlvV9N7kIdpQ-vsnduMukV8jNXpt8A

@@ -22,25 +22,25 @@ lang: en
 # The chat modules come from this repository while their changes are unreleased;
 # `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Ai: oci://ghcr.io/telorun/ai@0.34.1#sha256-H9oIwMDlFy576XVNJEz-PtGflGC38-iGwz3_TYysYtE
-  Anthropic: oci://ghcr.io/telorun/anthropic@0.9.1#sha256-YnUVjQxv3OMWbCNfsKqMvNrMnt_qvpBHvNOMgD58tZo
-  AiConversationSql: oci://ghcr.io/telorun/ai-conversation-sql@0.2.1#sha256-4UusV5VvC-R5pz5qhRx9Bmv9U1XMx_Qj63JpLs9f_yo
+  Ai: oci://ghcr.io/telorun/ai@0.35.0#sha256-gig6UlfoWjTsdpnPCl2n2lGuU8Sae6K74dtF7ORujxs
+  Anthropic: oci://ghcr.io/telorun/anthropic@0.10.0#sha256-E1YXrgmZSN-RAbxIxH4fWL2IUl6uo4DzS3UCOlo-kOA
+  AiConversationSql: oci://ghcr.io/telorun/ai-conversation-sql@0.3.1#sha256-F_5D5t_8I78y4_NIHqGE0B9vpt_C6YMrWEAwLexCFhg
   # Not `AiChat`: an alias equal to the module's own name makes its private kinds
   # unreachable until that analyzer defect is fixed.
-  Chat: ../../modules/ai-chat
-  Conversation: ../../modules/conversation
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
-  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
-  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.2#sha256-j_7SCdfh-B-FrmdvBz2rHLF3EGJjeTQWUjkdyJowt1s
-  MediaType: oci://ghcr.io/telorun/media-type@0.3.0#sha256-BccdaTyPvW5_0t9kQuT4JOd1jTRdjdw_6vD8Xr-SbYM
-  Fs: oci://ghcr.io/telorun/fs@0.15.1#sha256-DB68pWLeWJ3An4QhSocN4KhUEB-14j0jzLheGTATKkM
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Ui: ../../modules/ui
-  UiLucide: ../../modules/ui-lucide
-  UiReact: ../../modules/ui-react
+  Chat: oci://ghcr.io/telorun/ai-chat@0.3.0#sha256-7q1B9amqCpYUFm2Jv-i-lXPtsNUX5Zj0IuW3sv_sZSQ
+  Conversation: oci://ghcr.io/telorun/conversation@0.3.0#sha256-_V9Lo86u4Wrh_Eiwl6ndmPBnQ8fY6bE-uVlFuL_7LO0
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.1#sha256-xVX2OlLHL9AhE3Q2C5c2BxnDutWOM4ReNLu2TUJdo04
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.3#sha256-YqE7mPkNtbD5938_lBhPvBisX4R2hXBgxdY9gsHgtjU
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.2#sha256-srEbSaSpIx-tmlS1Soe5rASQV5GdUPKUDudNST-jQSA
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.3#sha256-OPq2Dm4qX_Usehcs3gtwRe7sm9-arog58Ev_dUOdmdQ
+  MediaType: oci://ghcr.io/telorun/media-type@0.3.1#sha256-DvbExYG8Gf6tmaZfLfaSziKcEAY2bQiDZeqXut3ihhs
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.3#sha256-h4TGKGEVnv1vYLJwDGWfeAGtf2-oC43TxLKbDEpzUoY
+  Ui: oci://ghcr.io/telorun/ui@0.11.0#sha256-rkVNXO_R91lAVJx6pWdMdQte8anMu5Tt5OqV-j2waOw
+  UiLucide: oci://ghcr.io/telorun/ui-lucide@0.8.0#sha256-pYo9POHgBe6eyIHL38DPcqJXc8ZlPWxcYKTge2zZfpQ
+  UiReact: oci://ghcr.io/telorun/ui-react@0.12.0#sha256-Dphqlm8IM4qBXSOt7YinRYiBdI4h3OHW0OuFAqQrP5I
 targets: [!ref server, !ref journalExpiry, !ref attachmentExpiry]
 ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
 variables:

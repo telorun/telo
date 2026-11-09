@@ -14,7 +14,7 @@ metadata:
 requires: { telo: ">=0.128.0" }
 imports:
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
 variables:
   serverUrl:
     env: PLAN_APPROVAL_URL

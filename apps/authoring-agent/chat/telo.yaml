@@ -42,33 +42,33 @@ metadata:
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.34.1#sha256-H9oIwMDlFy576XVNJEz-PtGflGC38-iGwz3_TYysYtE
-  Anthropic: oci://ghcr.io/telorun/anthropic@0.9.1#sha256-YnUVjQxv3OMWbCNfsKqMvNrMnt_qvpBHvNOMgD58tZo
+  Ai: oci://ghcr.io/telorun/ai@0.35.0#sha256-gig6UlfoWjTsdpnPCl2n2lGuU8Sae6K74dtF7ORujxs
+  Anthropic: oci://ghcr.io/telorun/anthropic@0.10.0#sha256-E1YXrgmZSN-RAbxIxH4fWL2IUl6uo4DzS3UCOlo-kOA
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.30.1#sha256-RX2QJpqkpfLNYJzY5-H3CwDTd4aqnKEvxvM36lIMkRw
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.0#sha256-4Kt7hdp8rXPewhAMWQN1w5b05iQB3KnWhzXMF52lQLM
-  Fs: oci://ghcr.io/telorun/fs@0.15.1#sha256-DB68pWLeWJ3An4QhSocN4KhUEB-14j0jzLheGTATKkM
-  TextDiff: oci://ghcr.io/telorun/text-diff@0.3.1#sha256-xY_C117ecbNIMX8-PY2f2wNbK0RoNIcQYMBEit6WsYk
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.31.0#sha256-etcW9qIFFe78ktwjUZyO-8MR4fKmnJQfM8HCu-yJ3Y8
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  TextDiff: oci://ghcr.io/telorun/text-diff@0.4.0#sha256-UsX0jWC_nz8VXvfw7l_xL9CAMeB5jXZAxxigu9XaBH0
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
-  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
+  Sql: oci://ghcr.io/telorun/sql@0.31.3#sha256-jfVldKM5qF_ezYfqsbuf3sZQl-3mEk61PrWTUSLs_qI
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.3#sha256-h4TGKGEVnv1vYLJwDGWfeAGtf2-oC43TxLKbDEpzUoY
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.1#sha256-xVX2OlLHL9AhE3Q2C5c2BxnDutWOM4ReNLu2TUJdo04
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.3#sha256-YqE7mPkNtbD5938_lBhPvBisX4R2hXBgxdY9gsHgtjU
   Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
   Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
-  Lease: oci://ghcr.io/telorun/lease@0.15.1#sha256-XPvMwI4GSicpkrOQzYlGlX-FovdGyHFfw5xS8MJdO98
+  Lease: oci://ghcr.io/telorun/lease@0.15.3#sha256-1Aacq8dyTGxxzSj1s2_w8hCwvzopcI4x35zz17d9kL0
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.2#sha256-6rdybdNY4ZhJ8BpoZa-LkcCb5yjOt8ptBygzURK8PWA
-  Cache: oci://ghcr.io/telorun/cache@0.14.0#sha256-UKUrpep1RYOcIrqJDmwkUBF0bWiJ1ENqhK9Amkws4BY
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.1#sha256-t7sQFquKZBO4mQ1eblT_D3m7ytIzx5FYr_QAm7wef1Y
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.1#sha256-KNKZRcIImlr9IWZkQVDgwIGzWIKrCh2pGWD8MN853vY
-  Idempotency: oci://ghcr.io/telorun/idempotency@0.12.0#sha256-77z669e9vVJXfvkHxae0K69YB6jGTh4xhkai65wt7ms
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.1#sha256-_-8pOAB_oDaGWjGGKeTJ3iTQ7t74H7Lvao6TYd3RMgE
+  Cache: oci://ghcr.io/telorun/cache@0.14.2#sha256-UYb8QOjmgICxlvA6aiXK934Jv3EYvJIMXM-7x520FmM
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.3#sha256-YbiiPoeNoXFVhPrYZo3xTfYTLIk7s-syRwDP-j6Epeg
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.3#sha256-TsNcB015_cKUQPyKyiWOOk1m7Y-hHbnesQI-bgsW6yE
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.12.2#sha256-LYNoG1xm0XjJ6dboZXiCK2WwzJmNkbam2LQ77ueUBkQ
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.3#sha256-G2CVMQcDlnFxeyBKtreyVl40yfqeR_qp8lYxEQ4p7uU
   SecretScan: oci://ghcr.io/telorun/secret-scan@0.3.1#sha256-TfSJDbWQ629YoFDVGffeOtC_TVrcM0gN2HAF0XrJBoQ
   Log: oci://ghcr.io/telorun/log@0.3.1#sha256-FJAHRqUCHHlXRJJxwojW1u6E7z8o-jOuvKJ0rbTlaxs
   Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
-  Blob: oci://ghcr.io/telorun/blob@0.2.1#sha256-K6p6T1WxnjqZ5dPxEhb4ADSj3rkYTICEon5FuAXq76o
-  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.2#sha256-j_7SCdfh-B-FrmdvBz2rHLF3EGJjeTQWUjkdyJowt1s
-  MediaType: oci://ghcr.io/telorun/media-type@0.3.0#sha256-BccdaTyPvW5_0t9kQuT4JOd1jTRdjdw_6vD8Xr-SbYM
+  Blob: oci://ghcr.io/telorun/blob@0.2.2#sha256-lJvbxbd_NbxN0Ye3CYsT_FI6yCAAaohHcJuzOgf079c
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.3#sha256-OPq2Dm4qX_Usehcs3gtwRe7sm9-arog58Ev_dUOdmdQ
+  MediaType: oci://ghcr.io/telorun/media-type@0.3.1#sha256-DvbExYG8Gf6tmaZfLfaSziKcEAY2bQiDZeqXut3ihhs
   Multipart: oci://ghcr.io/telorun/multipart@0.5.0#sha256-HYqZbfzXOf-YAU7TMyZEFFDBDxeMdyRAoNf4_lAj-Zo
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
 resources:

@@ -26,7 +26,7 @@ imports:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18560/v1
       hubPublisher: example.test
-  App: oci://ghcr.io/telorun/app@0.6.1#sha256-QOZpQy2T4dEx3Vay9_sillyRW8lemNxiauvWSyk-oLg
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
   Stream: ../../../../modules/stream
   Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client

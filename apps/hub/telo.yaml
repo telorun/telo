@@ -53,24 +53,24 @@ requires:
   # and rejects the routes' catches (verified by execution).
   telo: ">=0.131.0"
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
-  Postgres: oci://ghcr.io/telorun/postgres@0.12.1#sha256-VNaEhwdFO0EmZR7ips4zvp1U7d1ohi72O_uTi-7E3AQ
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Sql: oci://ghcr.io/telorun/sql@0.31.3#sha256-jfVldKM5qF_ezYfqsbuf3sZQl-3mEk61PrWTUSLs_qI
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.3#sha256-6rdzWD7JZ18HjzsO2gvOrqWB5NU5aMt7eWsggoUYSDA
   Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Mcp: oci://ghcr.io/telorun/mcp-server@0.21.1#sha256-viBLO7OWci_gt8sPZuW_ABTqdPw-z7ifWRRBu2KeMaY
-  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
+  Mcp: oci://ghcr.io/telorun/mcp-server@0.22.1#sha256-KCqD7ZB3IMQgaqNYgaF0FM4wFJOujuapSb0qzaCvgwE
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
   Embedding: oci://ghcr.io/telorun/embedding@0.12.2#sha256-XHN0qwYwQm_Lk2OaYZEiqRzEyvIHdhd6u29bfYkvT64
-  OpenAI: oci://ghcr.io/telorun/openai@0.20.1#sha256-kSqphJdaw9ZPpRbo1DiX5BKJ_uuWqj5TqOL1d7QjwqQ
+  OpenAI: oci://ghcr.io/telorun/openai@0.21.0#sha256-1QunhR8HAYpoCZ6rf0_ENpvCHcsghciYBb9_A4WCSHs
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.1#sha256-t7sQFquKZBO4mQ1eblT_D3m7ytIzx5FYr_QAm7wef1Y
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.1#sha256-KNKZRcIImlr9IWZkQVDgwIGzWIKrCh2pGWD8MN853vY
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.3#sha256-YbiiPoeNoXFVhPrYZo3xTfYTLIk7s-syRwDP-j6Epeg
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.3#sha256-TsNcB015_cKUQPyKyiWOOk1m7Y-hHbnesQI-bgsW6yE
   VectorStore: oci://ghcr.io/telorun/vector-store@0.11.2#sha256-X_V4hFmjTZsOvGlvV9N7kIdpQ-vsnduMukV8jNXpt8A
-  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.1#sha256-BG_pTt2PgZ6U_lhfHqg_y7bd0HjgunDZX7kZjDnB0vQ
-  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
-  Durable: oci://ghcr.io/telorun/durable-local@0.6.1#sha256-dtKR-c8y_WdDUJqnYRRbYs5cCMq6zXbY8ZMDpPfe7tM
-  ApiKey: oci://ghcr.io/telorun/api-key@0.2.0#sha256-743LoVZkoEbwWDRImNVFgjFlREB1vMpo5ozSmOeV2C4
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.3#sha256-2LYb2Zz2daGdD9U-WvYjHBn7pZb0iJYRxxCmtxhe8xg
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.2#sha256-srEbSaSpIx-tmlS1Soe5rASQV5GdUPKUDudNST-jQSA
+  Durable: oci://ghcr.io/telorun/durable-local@0.6.3#sha256-MFUcTlHlgKQOfGwd48OIsYCP6EfFFjI7nshEoWszdOY
+  ApiKey: oci://ghcr.io/telorun/api-key@0.2.1#sha256-3Xy6gcshcHngbQYTqjLq3chOoERJVzA8jW6V335HP_4
   # ── The hub's own libraries ────────────────────────────────────────────────
   # Each is handed the instances declared below. `hub-schema` and `hub-origin`
   # declare `lifecycle: shared`, so the imports of them here and inside

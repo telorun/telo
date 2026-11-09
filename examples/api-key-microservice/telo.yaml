@@ -21,14 +21,14 @@ requires:
   # 0.130.0: `request.principal` typed per route and the mount `authentication:`.
   telo: ">=0.130.0"
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Jose: oci://ghcr.io/telorun/jose@0.3.0#sha256-85TaHa75ThAUCZBBNWgmmV1me3ampylNfJCahzqkzZM
-  AuthBearer: oci://ghcr.io/telorun/auth-bearer@0.2.0#sha256-rS7R9DjC_GuaefMyS3SCwQfH-gd0pjBPrFTNXC3_PCM
-  Authz: oci://ghcr.io/telorun/authz@0.2.0#sha256-_hL0XdJ2vWy5c1N3JhGt4jqlke8k9iNrhqZ_L_R6LYQ
-  ApiKey: oci://ghcr.io/telorun/api-key@0.2.0#sha256-743LoVZkoEbwWDRImNVFgjFlREB1vMpo5ozSmOeV2C4
-  Keys: oci://ghcr.io/telorun/api-key-sqlite@0.2.1#sha256-qV8HM3xwVSopV2WjrOTmhrOy-9tN7APuv7ISimxYSBs
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.1#sha256-_-8pOAB_oDaGWjGGKeTJ3iTQ7t74H7Lvao6TYd3RMgE
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Jose: oci://ghcr.io/telorun/jose@0.3.1#sha256-kood2LsQsX4SIXmLwShBEm8P0x5Q-AwXq72UWq6uTHo
+  AuthBearer: oci://ghcr.io/telorun/auth-bearer@0.2.2#sha256-DiLvCSFzzYq-0L5XX_5AXxoWS8QiSrQgL5z1EEyi7V8
+  Authz: oci://ghcr.io/telorun/authz@0.2.1#sha256-_i3lmD7IiXTFl3VLHGV2_iymR1vzJJaOVTNefPmS9z4
+  ApiKey: oci://ghcr.io/telorun/api-key@0.2.1#sha256-3Xy6gcshcHngbQYTqjLq3chOoERJVzA8jW6V335HP_4
+  Keys: oci://ghcr.io/telorun/api-key-sqlite@0.2.3#sha256-WYylwbY1EYNVCNbI4aJ45qdnFcz9Uy_Oh-oWgWH0-aw
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.3#sha256-h4TGKGEVnv1vYLJwDGWfeAGtf2-oC43TxLKbDEpzUoY
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.3#sha256-G2CVMQcDlnFxeyBKtreyVl40yfqeR_qp8lYxEQ4p7uU
 variables:
   jwksUrl:
     env: JWKS_URL
