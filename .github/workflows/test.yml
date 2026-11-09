@@ -47,7 +47,9 @@ jobs:
       # Wraps `changeset status`: private `-build` packages are versionable, and a
       # module-owned package's version is the MODULE's now (moved by `telo release
       # apply`, never by changesets), so both are filtered out. Only a changed
-      # published, non-module package with no changeset fails here.
+      # published, non-module package with no changeset fails here. On main a
+      # changeset the live release branch carries covers nothing; the release
+      # machinery's own PRs skip coverage only.
       - name: Check changeset status
         if: github.event_name == 'pull_request'
         run: node scripts/check-changeset-status.mjs origin/${{ github.base_ref }}
@@ -81,10 +83,18 @@ jobs:
       # not build — it is the static-check job, and a full workspace build to run
       # one gate would be minutes of it. `bun` is a workspace devDependency, so
       # `pnpm exec` has it on PATH with no toolchain setup.
+      # `base` is HEAD for a push and for the release machinery's own pull request
+      # (its diff is the release); `carried-by` names the live release branch when
+      # the tree checked is main's, so a fragment it already carries plans nothing.
+      - name: Read the release gate refs
+        id: gates
+        run: node scripts/release-branch.mjs gate-refs
+
       - name: Check the release plan
-        run: >
-          pnpm exec bun ./cli/nodejs/bin/telo.ts release check
-          --base ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD' }}
+        env:
+          BASE: ${{ steps.gates.outputs.base }}
+          CARRIED_BY: ${{ steps.gates.outputs.carried-by }}
+        run: pnpm exec bun ./cli/nodejs/bin/telo.ts release check --base "$BASE" ${CARRIED_BY:+--carried-by "$CARRIED_BY"}
 
       # A doc that hardcodes a version for a ref this repo publishes goes stale
       # silently and reads as current to whoever copies it. The `<version>` marker
@@ -120,7 +130,7 @@ jobs:
       - name: Check links
         run: pnpm run check:links
 
-      # The release scripts (cut, finish, publish, the gate, pointers) are exercised
+      # The release scripts (cut, finish, publish, the record, the gate, pointers) are exercised
       # against scratch git repositories.
       - name: Test the release scripts
         run: node --test scripts/tests/*.test.mjs

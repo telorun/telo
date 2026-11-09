@@ -63,6 +63,7 @@ import { planWorkspace } from "../release/workspace-plan.js";
 interface CommonArgv {
   registry?: string;
   base: string;
+  carriedBy?: string;
 }
 
 function registryRungs(argv: CommonArgv): { flag?: string; env?: string } {
@@ -81,6 +82,7 @@ async function buildPlan(argv: CommonArgv, log: Logger): Promise<{
   const { targets, plan } = await planWorkspace(workspace, {
     rungs: registryRungs(argv),
     baseRef: argv.base,
+    ...(argv.carriedBy ? { carriedBy: argv.carriedBy } : {}),
     // A ticker, not a diagnostic: sixty-one of these are what a human watching a
     // two-minute build wants and what a CI log or a `-o json` consumer does not.
     onModule: (module, index, total) =>
@@ -583,6 +585,11 @@ export function releaseCommand(yargs: Argv): Argv {
           default: "origin/main",
           describe:
             "Git ref the changed-files reading diffs against. Decides only whether a changelog entry is requested.",
+        })
+        .option("carried-by", {
+          type: "string",
+          describe:
+            "Git ref whose fragments are already carried: a pending fragment of the same path and content at its merge base with HEAD, or written on it since, is dropped from the plan (status, check, apply).",
         })
         .command(
           "add",

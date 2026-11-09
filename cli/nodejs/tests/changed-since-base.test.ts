@@ -32,22 +32,11 @@ afterEach(() => {
 });
 
 describe("changedFilesSinceBase", () => {
-  it("lists every file changed since the base when no release tag is in range", () => {
+  it("lists every file changed since the base, a release tag in range included", () => {
     const root = repo();
     commit(root, "a/one.txt");
+    git(root, "tag", "v1.0.0");
     commit(root, "b/two.txt");
     expect(changedFilesSinceBase(root, "base").sort()).toEqual(["a/one.txt", "b/two.txt"]);
-  });
-
-  it("leaves out files introduced by commits a v*, modules-* or packages-* tag contains", () => {
-    const root = repo();
-    commit(root, "released.txt");
-    git(root, "tag", "v1.0.0");
-    commit(root, "modules.txt");
-    git(root, "tag", "modules-2026-11-06");
-    commit(root, "packages.txt");
-    git(root, "tag", "packages-0.85-1");
-    commit(root, "new.txt");
-    expect(changedFilesSinceBase(root, "base")).toEqual(["new.txt"]);
   });
 });

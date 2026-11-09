@@ -5,12 +5,15 @@
 // A branch's FIRST Version PR enters changesets prerelease mode (tag `rc`) before
 // versioning, so the PR writes `.changeset/pre.json` and publishes `-rc.N`. Later
 // ones keep counting candidates. Prerelease mode ends only inside the final Version
-// PR: Finish release builds it with `--final` (exit, then version), and the open
+// PR: Publish final release builds it with `--final` (exit, then version), and the open
 // PR's head having no `.changeset/pre.json` records that the branch is going final,
 // so every later rebuild of it exits again. Closing that PR goes back to candidates.
-// After the final is tagged the branch takes patches.
+// A branch Publish final release cut from main never enters candidates: `--final`, and
+// later its open PR's head, keep it out of prerelease mode, and the closed PR's next
+// rebuild enters them. After the final is tagged the branch takes patches.
 //
-// Usage: node scripts/release-version.mjs [--final]   (branch from GITHUB_REF_NAME)
+// Usage: node scripts/release-version.mjs [--final] [--branch <release/x.y>]
+//        (the branch defaults to GITHUB_REF_NAME)
 
 import { spawnSync } from "node:child_process";
 import { execFileSync } from "node:child_process";
@@ -42,14 +45,17 @@ export function versionPrHeadLacksPre({ cwd = ROOT, branch }) {
 
 /**
  * What the version step does to prerelease mode before `changeset version`:
- * `enter` (the branch's first Version PR), `exit` (the final Version PR) or `none`.
- * `openPr` is whether a Version PR is open; `headLacksPre` is read only then.
+ * `enter` (the branch's first rc Version PR), `exit` (the final Version PR over
+ * candidates) or `none`. A branch going final — `final`, or an open Version PR whose
+ * head has no `.changeset/pre.json` — never enters. `openPr` is whether a Version PR
+ * is open; `headLacksPre` is read only then.
  */
 export function prereleaseAction({ cwd = ROOT, branch, final = false, openPr = false, headLacksPre = () => false }) {
-  if (needsCandidateEntry({ cwd, branch })) return "enter";
+  const goingFinal = final || (openPr && headLacksPre());
+  if (!goingFinal && needsCandidateEntry({ cwd, branch })) return "enter";
   const file = join(cwd, ".changeset", "pre.json");
   if (!existsSync(file) || JSON.parse(readFileSync(file, "utf8")).mode !== "pre") return "none";
-  return final || (openPr && headLacksPre()) ? "exit" : "none";
+  return goingFinal ? "exit" : "none";
 }
 
 function openVersionPr(branch) {
@@ -70,8 +76,9 @@ function run(command, args) {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
-    const branch = process.env.GITHUB_REF_NAME;
-    if (!branch) throw new Error("GITHUB_REF_NAME is not set.");
+    const at = process.argv.indexOf("--branch");
+    const branch = at === -1 ? process.env.GITHUB_REF_NAME : process.argv[at + 1];
+    if (!branch) throw new Error(at === -1 ? "GITHUB_REF_NAME is not set." : "--branch needs a value.");
     const final = process.argv.includes("--final");
     const action = prereleaseAction({
       branch,

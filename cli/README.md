@@ -366,6 +366,7 @@ Plan and apply module version bumps across a workspace. Full guide: [Releasing m
 
 - `--registry <oci://host/org>` - Publish destination base for modules whose workspace entry declares none. Outranked by an authored `release.registry`; falls back to `TELO_OCI_REGISTRY`, then each module's own recorded base.
 - `--base <ref>` - Git ref the changed-files reading diffs against (default `origin/main`). It decides only whether a changelog entry is requested.
+- `--carried-by <ref>` - Git ref whose fragments are already carried (`status`, `check`, `apply`): a pending fragment of the same path and content at its merge base with `HEAD`, or written on it since, is dropped from the plan. Without it nothing is dropped.
 
 ```bash
 telo release add --module modules/sql --kind Fixed --body "Closes the pool on shutdown"

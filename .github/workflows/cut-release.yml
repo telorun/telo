@@ -1,9 +1,12 @@
-name: Cut release
+name: Start release candidates
 
 # Creates `release/<major>.<minor>` at the main commit it is dispatched on and
 # dispatches the branch's Publish, which opens the first Version PR. Main is not
-# changed: the branch carries the pending changesets and module fragments, and they
-# leave main through the merge-backs.
+# changed: the branch carries the pending changesets and module fragments, and main
+# learns what shipped only through the record PR of each release (record-release.yml).
+# The cut refuses while main does not record the live branch's newest release tag.
+# Publish final release dispatched at main (finish-release.yml) makes the same checks
+# and the same branch, but versions it straight to the final.
 #
 # This file lives on main only: GitHub dispatches a workflow present on the default
 # branch, and the branch it creates carries its own Publish.
@@ -21,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,15 +37,30 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Under bun: whether main records the live branch's newest tag is the record's
+      # own check, which reads the analyzer from source (no build).
       - name: Check
         id: check
-        run: node scripts/release-branch.mjs cut-check --ref "$GITHUB_REF_NAME"
+        run: pnpm exec bun scripts/release-branch.mjs cut-check --ref "$GITHUB_REF_NAME"
+
+      # A run still in progress may yet tag a release the check above could not see.
+      - name: Refuse while a Publish run of the live branch is in progress
+        if: steps.check.outputs.live != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIVE: ${{ steps.check.outputs.live }}
+        run: |
+          n=$(gh run list --workflow publish.yml --branch "$LIVE" --json status --jq '[.[]|select(.status!="completed")]|length')
+          if [ "$n" != "0" ]; then
+            echo "::error::a Publish run of $LIVE is in progress; dispatch Start release candidates after it completes."
+            exit 1
+          fi
 
       # TELO_BOT_TOKEN creates the ref and dispatches: both made with the default token
       # would trigger nothing, and the rulesets let only the release workflows create
@@ -51,18 +70,7 @@ jobs:
           GH_TOKEN: ${{ secrets.TELO_BOT_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RELEASE: ${{ steps.check.outputs.release }}
-        run: |
-          BRANCH="release/$RELEASE"
-          if have=$(gh api "repos/$GH_REPO/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null); then
-            if [ "$have" != "$GITHUB_SHA" ]; then
-              echo "::error::Error: $BRANCH already exists at $have, not at $GITHUB_SHA."
-              exit 1
-            fi
-            echo "$BRANCH already exists at $GITHUB_SHA."
-          else
-            gh api -X POST "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$BRANCH" -f "sha=$GITHUB_SHA"
-            echo "Created $BRANCH at $GITHUB_SHA."
-          fi
+        run: node scripts/release-branch.mjs create-branch --branch "release/$RELEASE" --sha "$GITHUB_SHA"
 
       # The new branch's own Publish opens its first Version PR.
       - name: Dispatch Publish on the branch

@@ -1,20 +1,23 @@
 # Releasing
 
-Main is where work lands and publishes nothing. A release is cut from main into a `release/<major>.<minor>` branch, published as release candidates (`-rc.N`) from that branch, finished into a final, and then patched from the same branch until the next cut. Every publish runs from a release branch, with that branch's own workflow files.
+Main is where work lands and publishes nothing. A release is cut from main into a `release/<major>.<minor>` branch, published as release candidates (`-rc.N`) from that branch, finished into a final, and then patched from the same branch until the next cut. A release may also be cut straight to its final, with no candidates. Every publish runs from a release branch, with that branch's own workflow files.
 
 The examples follow one timeline: `0.84.2` is the newest final, `release/0.85` is in candidates, and main is working towards `0.86.0`.
 
-Module releases (`telo release`) have their own guide: [Releasing modules](docs/extend/releasing-modules.md). This file covers when they publish and how they reach main.
+Module releases (`telo release`) have their own guide: [Releasing modules](docs/extend/releasing-modules.md). This file covers when they publish and how main records them.
 
 ## The cycle
 
 ```
 main ── cut ──► release/0.85 ── rc.0 ── rc.1 ── finish ── 0.85.0 ── modules ── 0.85.1 ── …
-   ▲   (no PR)                  (rc Version PRs)
-   │                            (no merge-back)           (final Version PR)
+   ▲   (no PR)                  (rc Version PRs)          (final Version PR)
+   │                            (no record)                    │         │         │
+   │                                                    dispatch Record release (main's copy)
    │                                                           │         │         │
-   └──────────────── merge-back PRs: v0.85.0, modules-0.85-1, v0.85.1 ────────────┘
+   └──────── one record PR, rebuilt each time: chore(release): record <newest tag> on main
 ```
+
+Branch history never merges into main. Main learns what shipped from a generated **record** of the branch's newest release tag, one standing PR per line, landed by squash. Nothing is a merge commit.
 
 ### Cut
 
@@ -22,14 +25,15 @@ main ── cut ──► release/0.85 ── rc.0 ── rc.1 ── finish ─
 gh workflow run cut-release.yml --ref main
 ```
 
-`Cut release` takes no input and opens no PR. It creates `release/0.85` at the main commit it was dispatched on and dispatches the new branch's Publish, which opens the rc Version PR. The minor is the one main's changesets plan reaches. Main is not changed: the branch carries the pending changesets and `.changes/pending/*` fragments, and they leave main through the merge-backs. The final's merge-back deletes the changesets the final consumed, the Module Release PR's deletes the fragments, and the same merge brings the version step's `>=unreleased` → `>=0.85.0` floor rewrite, so main's identity and floors become `0.85.0` in one commit. Until then main keeps them pending and reports `0.85.0+unreleased`, so modules at `>=unreleased` keep loading on it, and nothing acts on them because `Cut release` refuses the next release until main contains the branch's final, `modules-*` and `packages-*` tags. A file edited on main in that window conflicts at the merge-back: keep the deletion of a released changeset or fragment, keep main's edit of a manifest and take the branch's number only for a floor the release carries; a `>=unreleased` written on main after the cut stays.
+`Start release candidates` takes no input and opens no PR. It creates `release/0.85` at the main commit it was dispatched on and dispatches the new branch's Publish, which opens the rc Version PR. The minor is the one main's changesets plan reaches. Main is not changed: the branch carries the pending changesets and `.changes/pending/*` fragments, and main drops them only when it records the release that consumed them. Until then main keeps them and reports `0.85.0+unreleased`, so modules at `>=unreleased` keep loading on it. Meanwhile neither gate counts them: on main a changeset or fragment the live branch carries (the same file at the cut, or picked onto the branch since) covers nothing, so a main PR cannot rely on one to cover its own change.
 
 It refuses, naming the cause, when:
 
 - it is not run on main;
 - the live branch is in candidates (`release/0.85 is in candidates (0.85.0-rc.1). Finish it before cutting 0.86.`);
 - the live branch holds a pending changeset or fragment not yet published (`release/0.85 holds unreleased changes (…)`), since the branch would freeze with it stranded;
-- main does not contain the live branch's newest `v*`, `modules-*` or `packages-*` tag (`Merge "chore(release): merge v0.85.0 into main" first.`);
+- main does not record the live branch's newest non-rc release tag (`Error: main does not record v0.85.1. Merge "chore(release): record v0.85.1 on main" first.`): the record's own check, run against main's tip, would still change a file;
+- a Publish run of the live branch is still in progress, since it may yet tag a release; dispatch the cut after it completes;
 - main's changesets plan only a patch, or no release;
 - `release/<x.y>` already exists.
 
@@ -39,7 +43,7 @@ With no `release/*` branch yet, the live-branch checks pass.
 
 ### Candidates
 
-The branch's first Version PR (`changeset-release/release/0.85`, `chore(release): version packages`) enters changesets prerelease mode with tag `rc` and writes `.changeset/pre.json`. Every package with a changeset releases as `-rc.N`, line and non-line packages alike; private changeset-versioned packages (Studio, the Docker runner) carry rc versions and publish nothing until the final. The release job checks out with `TELO_BOT_TOKEN`, so the Version PR is pushed by the bot and its required checks start without a re-run; the changeset gate exempts a PR from a `changeset-release/*` or `module-release/*` branch, since it consumes the changesets.
+The branch's first Version PR (`changeset-release/release/0.85`, `chore(release): version packages`) enters changesets prerelease mode with tag `rc` and writes `.changeset/pre.json`. Every package with a changeset releases as `-rc.N`, line and non-line packages alike; private changeset-versioned packages (Studio, the Docker runner) carry rc versions and publish nothing until the final. The release job checks out with `TELO_BOT_TOKEN`, so the Version PR is pushed by the bot and its required checks start without a re-run; the changeset gate does not check coverage on a PR from a `changeset-release/*`, `module-release/*` or `release-record/*` branch, since it consumes the changesets.
 
 Merging a Version PR publishes the candidate `0.85.0-rc.N` and tags it `v0.85.0-rc.N`:
 
@@ -58,7 +62,7 @@ A fix PR into the branch leads to the next candidate. The branch's full CI (macO
 gh workflow run finish-release.yml --ref release/0.85
 ```
 
-Builds the final Version PR itself, pushed with `TELO_BOT_TOKEN`: it leaves prerelease mode, runs the branch's version step and opens `chore(release): version packages` from `changeset-release/release/0.85`, writing `0.85.0` and deleting `.changeset/pre.json` in that one PR. An open rc Version PR (rc.1 or later; the first candidate must have published) becomes the final: its changesets ship in `0.85.0` and that rc is never published. A second dispatch rebuilds the same PR. While the PR is open, a fix merged into the branch rebuilds it as the final, because the version step leaves prerelease mode whenever the open Version PR's head has no `.changeset/pre.json`; closing the PR goes back to candidates (the next rebuild is an rc). It refuses on a ref that is not a `release/*` branch and on a branch holding no `.changeset/pre.json`, so the first candidate must have published first. It also refuses while a Publish run of the branch is still in progress; dispatch it after that run completes.
+Builds the final Version PR itself, pushed with `TELO_BOT_TOKEN`: it leaves prerelease mode, runs the branch's version step and opens `chore(release): version packages` from `changeset-release/release/0.85`, writing `0.85.0` and deleting `.changeset/pre.json` in that one PR. An open rc Version PR (rc.1 or later; the first candidate must have published) becomes the final: its changesets ship in `0.85.0` and that rc is never published. A second dispatch rebuilds the same PR. While the PR is open, a fix merged into the branch rebuilds it as the final, because the version step leaves prerelease mode whenever the open Version PR's head has no `.changeset/pre.json`; closing the PR goes back to candidates (the next rebuild is an rc). It refuses on a ref that is neither main (below) nor a `release/*` branch (`Error: Publish final release runs on main or on a release/* branch in candidates; feat/x is neither.`), on a branch holding no `.changeset/pre.json`, so the first candidate must have published first, and on a branch that has published its final (`Error: release/0.85 has published 0.85.0 and takes patches only.`). It also refuses while a Publish run of the branch is still in progress; dispatch it after that run completes.
 
 Merging that Version PR publishes the final `0.85.0`, tagged `v0.85.0`:
 
@@ -69,9 +73,25 @@ Merging that Version PR publishes the final `0.85.0`, tagged `v0.85.0`:
 - the VS Code Marketplace, forward only;
 - the standalone CLI, the telo.sh redirect (forward only), and the GitHub Release `v0.85.0` marked latest unless a higher one is;
 - `site-root.tar.gz` on the release, and the docs deploy;
-- the import sync pull request (below).
+- the import sync pull request and the Record release dispatch (below).
 
 The branch's modules publish after that run.
+
+### Straight to the final
+
+```
+gh workflow run finish-release.yml --ref main
+```
+
+Dispatched at main, `Publish final release` cuts the next release with no candidates. It makes every check `Start release candidates` makes, with the same refusals and messages (above): the live branch must not be in candidates, hold unreleased changes, be unrecorded on main or have a Publish run in progress, main's changesets must plan a minor, and `release/<x.y>` must not exist. Then, once `0.85.0` has shipped and main records it, it creates `release/0.86` at the main commit it was dispatched on, versions that commit from its pending changesets and opens `chore(release): version packages` from `changeset-release/release/0.86` into it, writing `0.86.0`. No `.changeset/pre.json` is written on this path.
+
+Merging the PR publishes the final `0.86.0` exactly as a finish over candidates does (the list above), and the branch then takes patches. Until then:
+
+- a Publish run of the new branch waits while the PR is being opened, and a Publish run rebuilds the open PR as the final, a fix merged into the branch included;
+- closing the PR goes back to candidates: the branch's next Publish run opens an rc Version PR, and the release continues from Candidates;
+- a second dispatch at main refuses, because `release/0.86` is now the live branch and holds the changesets the PR versions (`Error: release/0.86 holds unreleased changes (…). Publish them before cutting 0.87.`); dispatch it at the branch only once it is in candidates.
+
+The cost is that no candidate exercises what is published before the pointers move: the npm packages, the kernel and app images, the standalone CLI, the `.vsix`, Studio and the docs site are first built from this branch by the very run that moves `latest`, the Marketplace and `/`, and no `/next/` preview is served. What still gates them is the branch's full CI on the Version PR.
 
 ### Patches
 
@@ -87,28 +107,44 @@ Only the newest `release/*` branch publishes: candidates, then its final, then p
 
 No module publishes during candidates. The Module Release PR (`module-release/release/0.85`, `chore(release): version modules`) does not open on a branch holding `.changeset/pre.json`, nor while the branch's changesets still plan a release, so every module version publishes after the `0.85.0` its floor names. A module adopting grammar of the release in candidates holds `requires: telo: ">=unreleased"` (written by `telo release floor`, never by hand) and is tried through relative imports in the checkout; `version-packages` rewrites every `>=unreleased` in the workspace's module manifests, `restrictions:` entries included, to the line version it assigns, and `telo publish` refuses one still present.
 
-After the final, module releases run from the branch as they did from main: the Module Release PR opens, and merging it publishes the changed modules in the Publish run's module job. A run that moved module versions tags its commit `modules-<major>.<minor>-<n>` (`modules-0.85-1`), `n` counting that branch's module releases, and opens a merge-back.
+After the final, module releases run from the branch as they did from main: the Module Release PR opens, and merging it publishes the changed modules in the Publish run's module job. A run that publishes, for the first time, module versions its commit moved tags its commit `modules-<major>.<minor>-<n>` (`modules-0.85-1`), `n` counting that branch's module releases, and dispatches Record release.
 
 Main publishes no image; a release branch's Publish run moves an image module's `:latest` only forward, on finals, patches and module releases. Each app image's `latest` follows the image's own version: it moves unless a release tag holds a higher one.
 
-## Merge-back
+## Record
 
-Main's changeset and module ledgers must hold what shipped, because the next cut plans versions from them. After every final, patch, packages-only and module release, Publish opens `chore(release): merge v0.85.1 into main` (or `chore(release): merge modules-0.85-3 into main`, `chore(release): merge packages-0.85-2 into main`) from `merge-back/<tag>`, with `TELO_BOT_TOKEN` so the PR starts checks.
+Main's changeset and module ledgers must hold what shipped, because the next cut plans versions from them and main's own checks (floors judged against published CLIs, changeset coverage, example and starter pins) read main's files. After every final, patch, packages-only and module release, Publish dispatches **Record release** (`record-release.yml`, main's own copy) with the new tag. It runs main's scripts on main's tip and rebuilds one PR per line, `chore(release): record v0.85.1 on main` from `release-record/release/0.85`, pushed with `TELO_BOT_TOKEN` so it starts checks:
 
-- It merges the **tag**, not the branch tip, so a fix landed after the publish does not reach main with its changeset and release twice.
-- **Land it with a merge commit**: not a squash, not a rebase. Main must contain the tag's commits, which `Cut release` checks.
-- A conflict is resolved by hand in the merge-back PR, keeping the tag's versions and main's other edits.
-- A publish that released npm packages but did not move the CLI, outside candidates, is tagged `packages-<major>.<minor>-<n>` (`n` counted like `modules-*`), and its merge-back merges that tag. `Cut release` checks it like the others. The tag is also the one the published tarballs' links name.
-- Commits contained in a `v*`, `modules-*` or `packages-*` tag count as released for the changeset gate and for `telo release check`'s changed-files rule, so the merge-back passes without a changeset or fragment of its own.
-- A second PR for a tag is never opened, and nothing is opened when main already contains it.
-- Nothing merges after a candidate, and nothing flows from main to a branch.
+- It always records the branch's **newest non-rc tag** — `v<x.y.z>`, `packages-<x.y>-<n>` or `modules-<x.y>-<n>`, newest by the branch's history, and on one commit `modules` over `packages` over `v` — since the branch is linear and that tag holds every earlier release's state. An rc tag is refused, as is a tag the live branch does not reach; an older tag of the line records the newest, and the PR's title names the tag recorded.
+- It **copies** from that tag, for every artifact present on main, each package's `version` (and the Rust twins that follow), each module's version in all its files, each `CHANGELOG.md` and each `.changes/ledger.yaml` entry; it **deletes** each changeset and fragment the tag released — one of the same path and content that was at the cut or was written on the branch since, and that the tag no longer holds. A same-named file with other content is not released and stays.
+- It **computes**, never copies, floors and pins: `telo release floor` and `telo upgrade --pin-local` run on main's tree after the copy, so a `>=unreleased` for grammar the release shipped becomes its number, while one for main-only grammar and a relative import of unshipped work stay.
+- **Land it with a squash.** Merge it after the line's last module tag so one record covers them; every later tag rebuilds the same PR. While it is open main is stale, and `Start release candidates` refuses, as does `Publish final release` at main.
+- A main edit that conflicts with an open record PR is fixed by dispatching Record release again, never by hand.
 
-The import sync (`chore(imports): sync imports with published modules`) is a job of the branch's Publish run after module publishing, on finals, patches and module releases. It opens `imports/release/0.85` into the branch, and reaches main through the next merge-back. It has no schedule and never runs on main.
+Main records a tag when running the record's copy-and-delete half against main's tip finds nothing to change; no marker file is kept, and the same test makes a re-dispatch idempotent.
+
+**Transition.** `release/0.133`, cut before Record release existed, keeps its old Publish until this change is cherry-picked into it, and that Publish dispatches no record. Until then, after each of its releases dispatch the record by hand: `gh workflow run record-release.yml --ref main -f tag=<tag>`.
+
+A publish that released npm packages but did not move the CLI, outside candidates, is tagged `packages-<major>.<minor>-<n>` (`n` counted like `modules-*`), and is recorded like the others. The tag is also the one the published tarballs' links name.
+
+### Fixes land on main first
+
+Every fix lands on main first, pipeline repairs included. When a release needs it, open a PR into `release/0.85` made with `git cherry-pick -x <main commit>`, carrying the main PR's changeset or fragment file unchanged so it counts once: the record deletes it from main when the release that consumed it is recorded. After the final the branch takes only patch changesets, so a main `minor` changeset is rewritten as a patch in the pick; main's original is then released again by the next line, one duplicate changelog line.
+
+```
+git switch -c pick/fix-retry release/0.85
+git cherry-pick -x 3f9a1c2
+gh pr create --base release/0.85
+```
+
+The single exception: a change lands on the branch alone when main's code already differs so that the fix does not apply. That PR names the main commit that superseded it. Branch content never reaches main.
+
+The import sync (`chore(imports): sync imports with published modules`) is a job of the branch's Publish run after module publishing, on finals, patches and module releases. It opens `imports/release/0.85` into the branch; main's pins come from its record. It has no schedule and never runs on main.
 
 ## Where workflows live
 
-- A run triggered on `release/*`, by a push or by a dispatch at that ref, uses **that branch's files**: its workflows, scripts and CLI. A change the live branch needs, a pipeline fix included, is a PR into that branch. A fix main needs sooner may also land on main as its own PR; the merge-back reconciles the two.
-- `cut-release.yml` and `finish-release.yml` keep their files on main because GitHub dispatches only workflows present on the default branch. `finish-release.yml` is dispatched at the release ref, and runs the branch's copy of its scripts.
+- A run triggered on `release/*`, by a push or by a dispatch at that ref, uses **that branch's files**: its workflows, scripts and CLI. A change the live branch needs, a pipeline fix included, lands on main first and reaches the branch as a cherry-pick PR (above).
+- `cut-release.yml`, `finish-release.yml` and `record-release.yml` keep their files on main because GitHub dispatches only workflows present on the default branch. `finish-release.yml` is dispatched at the release ref, and runs the branch's copy of its scripts, or at main for a release straight to its final, and runs main's; `record-release.yml` is dispatched at main and runs main's.
 - `retry-publish.yml` (read from main) re-runs the failed jobs of a failed `Publish` or `Publish Docker Images` run on `main` or `release/*`, at the run's own commit, up to three attempts in total.
 - `pages.yml`, `publish-docker.yml`, `cli-standalone-release.yml`, `vscode-release.yml`, `studio-release.yml` and `studio-pages.yml` are called by `publish.yml`, so they are the branch's own copies too.
 
@@ -138,13 +174,13 @@ $ git switch release/0.85 && pnpm install && pnpm run telo --version    # one fi
 0.85.0-rc.2+unreleased
 $ git switch changeset-release/release/0.85 && pnpm install && pnpm run telo --version    # the final Version PR's head
 0.85.0
-$ git switch main && pnpm install && pnpm run telo --version            # after the cut, before the 0.85.0 merge-back (main is unchanged)
+$ git switch main && pnpm install && pnpm run telo --version            # after the cut, before 0.85.0 is recorded (main is unchanged)
 0.85.0+unreleased
 ```
 
 The changeset gate drops every id listed in `.changeset/pre.json` from what covers a changed package, so a released candidate's changeset never covers a later change. Floor verification (`telo release check`, `telo publish`) skips candidates when it names the latest published telo.
 
-Known limits: two candidates of one release both report surface `0.85.0`, so a module adopting grammar added in rc.1 passes the floor check on the rc.0 CLI and then fails with errors that blame the module; and main reports the cut release's surface until the `0.85.0` merge-back, so a module adopting main-only grammar in that window measures `>=unreleased` and the number is written by the next Version PR.
+Known limits: two candidates of one release both report surface `0.85.0`, so a module adopting grammar added in rc.1 passes the floor check on the rc.0 CLI and then fails with errors that blame the module; and main reports the cut release's surface until `0.85.0` is recorded, so a module adopting main-only grammar in that window measures `>=unreleased` and the number is written by the next Version PR.
 
 ## The first cut
 
@@ -152,24 +188,25 @@ Known limits: two candidates of one release both report surface `0.85.0`, so a m
 
 1. The CI selection, the link rewrite and `pnpm run check:links` land on main.
 2. Bootstrap the docs site: `gh workflow run pages.yml --ref main -f tag=<newest v* final tag>` attaches `site-root.tar.gz` to that release (it deploys nothing), so the first candidate's deploy has a `/` to compose.
-3. The release workflows land on main, the maintainer setup below is done, and the first `Cut release` runs.
+3. The release workflows land on main, the maintainer setup below is done, and the first `Start release candidates` runs.
 
 ## Recovery
 
 - **A Publish run failed.** `retry-publish.yml` re-runs its failed jobs up to three times. Otherwise re-run the failed run from the Actions page: it runs at its own commit and every step derives its work from what is already published.
-- **Tags or merge-backs are missing after a publish.** Dispatch Publish at the branch (`gh workflow run publish.yml --ref release/0.85`). Tagging, the GitHub Release and the merge-back are idempotent. This classifies the branch tip, so it heals a release only while the tip is the release commit; after later commits, create the tag by hand at the release commit (`GH_TOKEN=<bot token> GITHUB_REPOSITORY=telorun/telo node scripts/release-tag.mjs <tag> <sha>`) and run `node scripts/release-merge-back.mjs <tag>`.
+- **Tags are missing after a publish.** Dispatch Publish at the branch (`gh workflow run publish.yml --ref release/0.85`). Tagging, the GitHub Release and the record dispatch are idempotent. This classifies the branch tip, so it heals a release only while the tip is the release commit; after later commits, create the tag by hand at the release commit (`GH_TOKEN=<bot token> GITHUB_REPOSITORY=telorun/telo node scripts/release-tag.mjs <tag> <sha>`) and dispatch Record release with it.
+- **The record PR is missing, stale or conflicts.** Dispatch Record release again: `gh workflow run record-release.yml --ref main -f tag=modules-0.85-2`. It rebuilds the PR from main's tip; nothing is edited by hand.
 - **A cut opened no Version PR.** Dispatch Publish at the branch: `gh workflow run publish.yml --ref release/<x.y>`.
-- **A module or packages release published with no tag.** Tag the commit by hand as above (`modules-<x.y>-<n>` or `packages-<x.y>-<n>`, the next unused `n`) and run `node scripts/release-merge-back.mjs <that tag>`.
-- **A merge-back conflicts.** Resolve it in the PR, keeping the tag's versions and main's other edits; do not squash.
+- **A release straight to its final created the branch but opened no Version PR.** The branch exists, so the dispatch at main is not repeated: dispatch Publish at the branch as above. It opens an rc Version PR, and the release continues through candidates.
+- **A module or packages release published with no tag.** Tag the commit by hand as above (`modules-<x.y>-<n>` or `packages-<x.y>-<n>`, the next unused `n`) and dispatch Record release with it.
 - **A Docker image of a published version is missing.** Dispatch `publish-docker.yml` at the branch or the release tag; it rebuilds the release tag set of an already-published CLI version.
 
 ## Maintainer setup, by hand
 
 - Required checks for `main` and `release/*`, including `macOS: core unit tests` and `Windows: core unit tests`. The full macOS and Windows unit and manifest jobs, Bun and the Docker-image manifests run and gate only on a PR or push to a `release/*` branch; on main they are skipped, which a required check accepts. Nothing runs on a schedule.
-- The rulesets allow merge commits, and let the release workflows create `release/*` refs and `v*`, `modules-*` and `packages-*` tags. No other bypass: every change to `main` or a `release/*` branch lands through a PR.
-- Secrets `TELO_BOT_TOKEN` (the Version PR, pushed by Publish's release job and by Finish release, the Module Release PR, `release/*` refs, tags, merge-backs and import sync PRs, so they start checks) and, optionally, `VSCE_PAT` (the Marketplace; without it the final's `.vsix` is only attached to its GitHub Release and is uploaded to the Marketplace by hand), beside the existing registry, npm and Cloudflare ones.
+- The rulesets let the release workflows create `release/*` refs and `v*`, `modules-*` and `packages-*` tags; no merge commit is ever needed, so `main` may require linear history. No other bypass: every change to `main` or a `release/*` branch lands through a PR.
+- Secrets `TELO_BOT_TOKEN` (the Version PR, pushed by Publish's release job and by Publish final release, the Module Release PR, `release/*` refs, tags, the Record release dispatch and its PR, and import sync PRs, so they start checks) and, optionally, `VSCE_PAT` (the Marketplace; without it the final's `.vsix` is only attached to its GitHub Release and is uploaded to the Marketplace by hand), beside the existing registry, npm and Cloudflare ones.
 - The `github-pages` environment allows deployments from `release/*`.
-- The Version PR and the Module Release PR are opened by the bot, so the required checks run on them; the changeset gate exempts their head branches (`changeset-release/*`, `module-release/*`).
+- The Version PR, the Module Release PR and the record PR are opened by the bot, so the required checks run on them; the changeset gate and `telo release check` skip coverage for their head branches (`changeset-release/*`, `module-release/*`, `release-record/*`).
 
 ## Links
 

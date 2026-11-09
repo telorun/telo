@@ -1,0 +1,90 @@
+name: Record release
+
+# Brings a published release's state to main as one generated commit, never as a
+# merge of the branch. Run at main's tip with main's own scripts: copies from the
+# live branch's newest release tag every package version, module version, changelog
+# and ledger entry of what main holds, deletes the changesets and fragments the tag
+# released, then measures floors (`telo release floor`) and repins imports
+# (`--pin-local`) on main's tree. Its one PR per line, `release-record/release/<x.y>`
+# ("chore(release): record <tag> on main"), is rebuilt by every dispatch and lands
+# by squash.
+#
+# Dispatched by a release branch's Publish after every final, patch, packages-only
+# and module release, and by hand to refresh it (a missed dispatch, a conflicting
+# edit on main): `gh workflow run record-release.yml --ref main -f tag=<tag>`.
+# A candidate tag is refused; any other tag of the live branch records its newest.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: A release tag of the live branch (v<x.y.z>, packages-<x.y>-<n> or modules-<x.y>-<n>)
+        required: true
+
+concurrency:
+  group: record-release
+  cancel-in-progress: false
+
+jobs:
+  record:
+    name: Record
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Under bun: the copy goes through the analyzer's own stamps, read from source.
+      - name: Copy the release and delete what it released
+        id: record
+        env:
+          TAG: ${{ inputs.tag }}
+        run: pnpm exec bun scripts/release-record.mjs write --tag "$TAG"
+
+      # The copied versions are the tree's identity from here on: regenerate it,
+      # then build the CLI the floor and pin steps run.
+      - name: Install and build at the recorded versions
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm -r --if-present build
+
+      # Computed, never copied: a floor for grammar the release shipped becomes its
+      # number, one for main-only grammar stays `>=unreleased`.
+      - name: Measure floors
+        run: node ./cli/nodejs/bin/telo.mjs release floor
+
+      # A relative import of a module whose change has shipped is pinned again; one
+      # of unshipped work stays relative.
+      - name: Repin imports
+        env:
+          TELO_CLI: node ./cli/nodejs/bin/telo.mjs
+        run: node scripts/upgrade-imports.mjs --pin-local
+
+      - name: Open or rebuild the record PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.TELO_BOT_TOKEN }}
+          branch: ${{ steps.record.outputs.branch }}
+          base: main
+          title: ${{ steps.record.outputs.title }}
+          commit-message: ${{ steps.record.outputs.title }}
+          body: |
+            Records the published `${{ steps.record.outputs.tag }}` on main: its package and module versions, changelogs and ledger entries, with the changesets and fragments it released deleted, then floors measured and imports repinned on main's tree.
+
+            **Land it with a squash.** A later dispatch of Record release rebuilds this PR from the branch's newest release tag; a conflicting edit on main is fixed by dispatching again, never by hand.

@@ -5,7 +5,9 @@
 //   final      the release's first publish — `0.85.0`
 //   patch      any later publish of the branch — `0.85.1`
 //   none       packages published without the CLI (no `v<version>` to name it); a
-//              branch release of them is tagged `packages-<major>.<minor>-<n>`
+//              branch release of them is tagged `packages-<major>.<minor>-<n>`. A
+//              commit moving the CLI to a version `v<version>` already tags elsewhere
+//              (main's record of a release) releases no CLI either.
 //
 // The channel is read from the tree the run publishes, not from the Version PR that
 // produced it, so a re-run of an old publish classifies the same way.
@@ -49,39 +51,51 @@ function cliMovedIn(cwd) {
 }
 
 /**
+ * Did the run's commit release the CLI: it moved the version, and `v<version>` names
+ * no other commit. A record on main moves the version to one already released, so a
+ * branch cut at that commit releases nothing by it.
+ */
+function cliReleasedIn(cwd) {
+  if (!cliMovedIn(cwd)) return false;
+  const tag = `v${JSON.parse(readFileSync(join(cwd, CLI_MANIFEST), "utf8")).version}`;
+  if (!git(cwd, "tag", "--list", tag)) return true;
+  return git(cwd, "rev-list", "-n", "1", tag) === git(cwd, "rev-parse", "HEAD");
+}
+
+/**
  * The tag a Publish run at `cwd`'s HEAD names its release by, known before anything
- * publishes: `v<cli version>` when the commit moved the CLI, else (outside
+ * publishes: `v<cli version>` when the commit released the CLI, else (outside
  * candidates, on a `release/<major>.<minor>` branch) the numbered
  * `packages-<major>.<minor>-<n>`; empty otherwise.
  */
 export function plannedTag({ cwd = ROOT, branch }) {
-  if (cliMovedIn(cwd)) return `v${JSON.parse(readFileSync(join(cwd, CLI_MANIFEST), "utf8")).version}`;
+  if (cliReleasedIn(cwd)) return `v${JSON.parse(readFileSync(join(cwd, CLI_MANIFEST), "utf8")).version}`;
   if (existsSync(join(cwd, ".changeset", "pre.json")) || !RELEASE_BRANCH.test(branch ?? "")) return "";
   return numberedTag({ cwd, branch, kind: "packages" }).tag;
 }
 
 /**
  * The release a Publish run at `cwd`'s HEAD made:
- * `{ channel, version, tag, releaseTag, candidates, mergeRef }`. `tag` is the CLI's
+ * `{ channel, version, tag, releaseTag, candidates, recordTag }`. `tag` is the CLI's
  * `v<version>`; `releaseTag` is what the run tags (that, or `packages-*` for
- * packages published without the CLI); `mergeRef` is what main takes back — the
+ * packages published without the CLI); `recordTag` is what main records — the
  * release tag; empty for a candidate and for a run that released nothing.
  */
 export function classifyPublish({ cwd = ROOT, published = [], branch }) {
   const pre = existsSync(join(cwd, ".changeset", "pre.json"))
     ? JSON.parse(readFileSync(join(cwd, ".changeset", "pre.json"), "utf8"))
     : undefined;
-  const none = { channel: "none", version: "", tag: "", releaseTag: "", candidates: pre !== undefined, mergeRef: "" };
-  if (cliMovedIn(cwd)) {
+  const none = { channel: "none", version: "", tag: "", releaseTag: "", candidates: pre !== undefined, recordTag: "" };
+  if (cliReleasedIn(cwd)) {
     const cliVersion = JSON.parse(readFileSync(join(cwd, CLI_MANIFEST), "utf8")).version;
     const channel = channelOf({ preMode: pre?.mode, cliVersion });
     const tag = `v${cliVersion}`;
-    return { channel, version: cliVersion, tag, releaseTag: tag, candidates: pre !== undefined, mergeRef: channel === "candidate" ? "" : tag };
+    return { channel, version: cliVersion, tag, releaseTag: tag, candidates: pre !== undefined, recordTag: channel === "candidate" ? "" : tag };
   }
   const releasedOthers = published.some((pkg) => pkg.name !== CLI);
   if (!releasedOthers || pre !== undefined) return none;
   const releaseTag = plannedTag({ cwd, branch });
-  return { ...none, releaseTag, mergeRef: releaseTag };
+  return { ...none, releaseTag, recordTag: releaseTag };
 }
 
 /** Number of the branch's next `modules-` or `packages-` release tag, and the tag
@@ -135,7 +149,7 @@ async function main() {
       setOutput("tag", release.tag);
       setOutput("release-tag", release.releaseTag);
       setOutput("candidates", release.candidates);
-      setOutput("merge-ref", release.mergeRef);
+      setOutput("record-tag", release.recordTag);
       return;
     }
     case "pack-tag": {
