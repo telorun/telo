@@ -272,6 +272,11 @@ jobs:
           BASE_VERSION: ${{ needs.context.outputs.base-version }}
         run: echo "version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
+
       - name: Does hub latest move forward
         id: latest
         run: node scripts/release-pointers.mjs image --file apps/hub/telo.yaml
@@ -366,6 +371,11 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
+
       - name: Does docker-runner latest move forward
         id: latest
         run: node scripts/release-pointers.mjs image --file apps/docker-runner/package.json
@@ -420,6 +430,11 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
 
       - name: Does hub-web latest move forward
         id: latest
@@ -488,6 +503,11 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
 
       - name: Does k8s-runner latest move forward
         id: latest
@@ -613,6 +633,11 @@ jobs:
           fetch-depth: 0 # HEAD^ for the version bump, tags for the forward-only `latest`
           fetch-tags: true
       - uses: docker/setup-buildx-action@v3
+
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
 
       - name: Does authoring-agent latest move forward
         id: latest
