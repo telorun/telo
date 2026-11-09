@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ui-showcase-components",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "license": "MIT",
   "private": true,
   "description": "Type-check only package for the ui-showcase example's browser components, written against the ui_react-1 ABI. Never published; the kernel builds the browser entry from source.",

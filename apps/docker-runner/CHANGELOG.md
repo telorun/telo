@@ -1,5 +1,11 @@
 # @telorun/docker-runner
 
+## 0.16.2
+
+### Patch Changes
+
+- @telorun/runner-core@0.24.2
+
 ## 0.16.2-rc.0
 
 ### Patch Changes

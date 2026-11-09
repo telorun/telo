@@ -1,5 +1,35 @@
 # @telorun/cli
 
+## 0.133.0
+
+### Minor Changes
+
+- 0c63ff5: An application can open its own page. The built-in `Telo.OpenUrl` takes an `http` or `https` URL, logs `telo.url.open_requested` with `url.full` on every call and hands the URL to the host, returning `null` at once; no outcome of opening a page is an error. `telo run` at a terminal opens it in the browser (`BROWSER` first, else the system opener, the URL passed as one argument), at most once per address in a session, so a `--watch` reload opens no new tab; `--no-input`, runner sessions and every other host only log it. The terminal opener now reports a failed launch on stderr, for the inspector's `--open` too. A literal URL of another scheme, or one holding a user or password, is refused by `telo check` and a computed one when the call runs, so credentials never reach the log; `telo check` no longer refuses every computed value at a URL slot that forbids a member; the Rust kernel refuses the kind with `ERR_UNSUPPORTED_MANIFEST_FEATURE`. A read of observed state before its resource has started is again reported as `ERR_OBSERVED_STATE_UNAVAILABLE` naming the expression, rather than as a bare missing-key failure. A templated kind's `run:` entry is now started through the kernel's run path, as its `targets:` are, so it may report observed state.
+- 0d833e3: A child application — one started by a resource whose kind declares `x-telo-application-source`, such as `App.Instance` — is now packaged with its parent: `telo package` carries its manifest, files, import closure and built local modules, runs the portability check over them, lists them in `telo package inspect`, and the packaged app starts the child offline from the payload's sealed cache. Under a parent with `TELO_HOST_STATE_DIR` the child receives its own state directory, `<state dir>/apps/<module path and name>` (`apps/web`, `apps/Admin.web`), as its `TELO_HOST_STATE_DIR` instead of losing it, and the orphan rule covers `apps/` as it covers `needs/`: a renamed instance leaves its directory behind, which is `ERR_NEED_ORPHANED` when the load would create a fresh one and `NEED_ORPHANED` otherwise. A child never asks for a missing input; the refusal at its start now names the instance and the two repairs, supplying it under the instance or declaring it on the root, which asks.
+- 0d833e3: New kernel-declared need type `Telo.DesktopHost`, the desktop shell an application runs inside. Its fields are the shell's control channel, `endpoint` (a `unix:` or `npipe:` URL) and a sensitive `token`; its parameters are `identifier`, `productName`, an `icon` PNG written `!module-path`, `port` (a `tcp` key of `ports:`), `showInDock` and `callbackPaths`. It is `supply: root` and `unique: true`, read from `TELO_NEED_<NEED>__ENDPOINT` / `__TOKEN` like any root need, and listed by `telo needs report`. A `port` that is not a `tcp` key, a `callbackPaths` entry that is not a literal path starting with `/`, and parameters on a library's need are `NEED_PARAMETERS_INVALID`. `telo run` does not yet act as the host.
+- 93ef2a4: A module's `requires.telo` is now a measured floor and a published version can be restricted after the fact. `requires.telo` is floor-only (`>=<version>` or `>=unreleased`); an upper bound in a module's own source is refused. A new `restrictions:` list on a library or application states what measurement cannot see (a ceiling found after publish, a runtime feature, a Node bound), each entry with a reason, and a later version's entries hold earlier versions back: running above a ceiling is the new `MODULE_REQUIRES_OLDER_RUNTIME`, a malformed entry is `RESTRICTIONS_INVALID` in `telo check` and at load. The load gate now applies to imported libraries too. `telo release floor` measures each workspace module's floor by running published CLIs, `telo release check` verifies it (`REQUIRES_FLOOR_TOO_LOW` / `REQUIRES_FLOOR_TOO_HIGH`), `telo publish` refuses `>=unreleased` and a `requires.telo` upper bound, and `telo upgrade`, the editor's upgrade lenses and Studio's version picker name the restriction that holds a version back.
+- 0d833e3: A `Telo.NeedType` may declare `unique: true`: a module declares at most one need of the type, and a second is `NEED_DUPLICATE` at `telo check` and `ERR_NEED_DUPLICATE` at load, naming both needs. A need's `parameters:` accept `!module-path` at a parameter the type declares a `Telo.HostPath`: it is a module file claim like one on a resource — `telo publish` / `telo package` carry the file, a path naming nothing is `MODULE_PATH_NOT_FOUND` and one naming the other kind of entry than the parameter's `entry` is `HOST_PATH_ENTRY_MISMATCH` (`ERR_HOST_PATH_ENTRY_MISMATCH` at load) — resolved at load against the module declaring the need, so `ctx.resolveNeed` hands over the absolute path, and printed module-root-relative (`"./logo.png"`) by `telo needs report`. Every other tag in `parameters:` (`!cel`, `!interpolate`, `!include-text`, `!ref`), and a `!module-path` at a parameter that is not a host path, is `NEED_PARAMETERS_INVALID`, where an expression used to be judged as the placeholder object it loads as; a `!module-path` there is no longer `MODULE_PATH_OUTSIDE_RESOURCE`.
+
+### Patch Changes
+
+- Updated dependencies [0c63ff5]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0d833e3]
+- Updated dependencies [228d94f]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0d833e3]
+- Updated dependencies [93ef2a4]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0df6d94]
+- Updated dependencies [0d833e3]
+  - @telorun/sdk@0.133.0
+  - @telorun/analyzer@0.133.0
+  - @telorun/kernel@0.133.0
+  - @telorun/templating@0.133.0
+  - @telorun/ide-support@0.133.0
+  - @telorun/runner-core@0.24.2
+
 ## 0.133.0-rc.0
 
 ### Minor Changes
