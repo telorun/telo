@@ -1,6 +1,6 @@
 {
   "name": "@telorun/domain-events-build",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "MIT",
   "private": true,
   "description": "Telo domain-events module build package. Never published: the controllers ship inside the module artifact as a pkg:telo/local/js bundle.",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-11-09
+### Fixed
+* `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.
+
 ## 0.3.0 - 2026-11-06
 ### Added
 * Jose.PublicKeys mounted on a route with no `inputs:` is dispatched `{}` instead of the request; it ignores its inputs, so what it answers is unchanged.

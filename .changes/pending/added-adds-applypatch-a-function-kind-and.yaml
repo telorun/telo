@@ -1,6 +1,0 @@
-modules:
-  modules/text-diff: Added
-body: "Adds ApplyPatch, a function kind, and its ready-made applyPatch instance: applies
-  SEARCH/REPLACE sections to a text in order and returns the patched text, or a refusal
-  naming the code and the failing section; a patch that does not apply is a returned
-  result, never an error."

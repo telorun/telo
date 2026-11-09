@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-11-09
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.3.0 - 2026-11-06
 ### Added
 * Detector recognises MP3, WAV, OGG, FLAC, MP4, M4A, QuickTime and WebM by content; a signature run may now declare a bounded search window (`within`) instead of one offset. Brands not listed (HEIC, AVIF) and Matroska keep the declared type.

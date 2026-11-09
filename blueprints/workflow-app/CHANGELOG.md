@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 - 2026-11-09
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.4.0 - 2026-11-06
 ### Added
 * A workflow's `inputs` declares `default: {}`, so a workflow written without `inputs:` sends `{}` to its handler, and `telo check` refuses one whose handler requires an argument.

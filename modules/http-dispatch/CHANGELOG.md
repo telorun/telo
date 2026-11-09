@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.2 - 2026-11-09
+### Fixed
+* `requires.telo` now holds the measured floor: the lowest published telo that reads this module.
+
 ## 0.19.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

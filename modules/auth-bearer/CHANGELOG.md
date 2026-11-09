@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-11-09
+### Fixed
+* `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.
+
 ## 0.2.0 - 2026-11-06
 ### Added
 * `AuthBearer.Jwt` and `AuthBearer.Introspection` publish `challenges` in their readings: `Bearer`, plus `DPoP` with `algs` when DPoP proofs are verified, for a transport answering a request that presented no token.

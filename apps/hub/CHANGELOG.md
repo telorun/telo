@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.0 - 2026-11-09
+### Added
+* The build-ui guide teaches search in a filter bar: a collection's query.search and the search= request parameter, the bar's search, the Ui.SearchBoxPlacement search box with its typed filter tokens, and show, controls and summary written on the filter placement.
+
 ## 0.23.0 - 2026-11-08
 ### Added
 * A publisher's API key sent as Authorization: Bearer <key> to POST /register skips its per-address rate limit when it grants register:unlimited; a key that is presented and refused is answered 401, never served anonymously. Keys are stored as digests in the hub's own database and issued, listed and revoked with admin.yaml (telo run admin.yaml issue|list|revoke), a separate application the image warms beside the hub so it runs offline in the hub's container.

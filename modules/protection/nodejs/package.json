@@ -1,6 +1,6 @@
 {
   "name": "@telorun/protection",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "private": true,
   "description": "Telo protection module — the password-guessing throttle. Never published: the controllers ship inside the module artifact as a pkg:telo/local/js bundle.",

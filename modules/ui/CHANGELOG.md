@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.0 - 2026-11-09
+### Added
+* A Ui.Page's title is optional: a page without one draws no heading, is left out of an omitted navigation, and a navigation entry naming it must give its own text. The page's reading and document carry no title then, and preparedNavigation refuses such an entry with ERR_UI_NAVIGATION_PAGE_UNTITLED.
+* Adds the chatToolPreview text, the label of the button opening a tool call's long argument or result in a dialog, with its translations in the fourteen languages.
+* Breaking: a filter bar can search. `Ui.Filters` takes `search: { pinned?, default? }` — present when written, or when `fields` and `search` are both left out over a collection declaring `query.search` — kept under `search` in the bar's state and address, set by a preset's `search`, and refused as `UI_FILTER_SEARCH_UNDECLARED` where the collection declares none. `Ui.SearchBoxPlacement` draws the bar as one search box with a `placeholder`, its suggestions and typed tokens (`status:draft,review`, `publishedOn>=2026-11-01`); the texts `searchFilter`, `searchChip` and `searchAndFilter` join `Ui.Translations` in every shipped language. `show`, `controls` and `summary` leave `Ui.FilterPolicy` and are written on `Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement` and `Ui.OverlayPlacement` (a `compact` placement omitting them takes its holder's); the `filters` node carries them on its placement branches and a `search` member when the bar has one.
+### Fixed
+* `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.
+
 ## 0.10.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

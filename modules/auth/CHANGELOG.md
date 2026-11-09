@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-11-09
+### Fixed
+* `requires.telo` now holds the measured floor: the lowest published telo that reads this module.
+
 ## 0.2.0 - 2026-11-06
 ### Added
 * A verifier's reading now publishes `challenges`, the WWW-Authenticate challenges it asks for a credential with when a request presents none; `Auth.TrustedHeader` publishes an empty list. The verifier and policy docs state that a transport answers a thrown failure with its own code.

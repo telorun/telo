@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0 - 2026-11-09
+### Added
+* Under a parent with TELO_HOST_STATE_DIR, a child application gets its own state directory, apps/<module path and name> (apps/web, apps/Admin.web), and a child's missing input is refused at its start naming the instance and the fix; only the root asks.
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.6.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

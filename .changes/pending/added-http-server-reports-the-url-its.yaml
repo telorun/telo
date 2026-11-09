@@ -1,5 +1,0 @@
-modules:
-  modules/http-server: Added
-body: Http.Server reports the URL its socket listens on as status.localUrl (https under
-  tls, a wildcard address written as localhost), and its http.server.started record
-  gains url.full with the same value.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 - 2026-11-09
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.4.2 - 2026-11-08
 ### Fixed
 * The README links to Tesseract's page on the hub instead of a file in the repository, so the module's bytes do not depend on which release publishes it.

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/broadcast",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "private": true,
   "description": "Telo broadcast module — the broadcast channel abstract, the memory channel, the publish operation, the subscription service and the channel interface every backend implements. Never published: the controllers ship inside the module artifact as a pkg:telo/local/js bundle, and a backend reaches the interface through the module's exports.code specifier.",

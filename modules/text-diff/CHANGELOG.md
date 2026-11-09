@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-11-09
+### Added
+* Adds ApplyPatch, a function kind, and its ready-made applyPatch instance: applies SEARCH/REPLACE sections to a text in order and returns the patched text, or a refusal naming the code and the failing section; a patch that does not apply is a returned result, never an error.
+
 ## 0.3.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
