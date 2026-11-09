@@ -12,7 +12,7 @@ metadata:
     can be gated on current state rather than firing blindly.
 requires: { telo: ">=0.133.0" }
 restrictions:
-  - requires: { telo: ">=0.130.0" }
+  - requires: { telo: ">=0.131.0" }
     reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0); also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
 exports: { kinds: [Interval, Cron] }
 ---
