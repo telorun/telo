@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ai-conversation-sql",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "license": "MIT",
   "private": true,
   "description": "Build-only package for the ai-conversation-sql module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package declares the dependencies esbuild inlines and type-checks the source.",

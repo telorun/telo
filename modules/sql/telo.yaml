@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: SQL
-  version: 0.31.2
+  version: 0.31.3
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Storage]
