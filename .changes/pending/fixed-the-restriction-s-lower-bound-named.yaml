@@ -1,0 +1,17 @@
+modules:
+  modules/durable: Fixed
+  modules/broadcast: Fixed
+  modules/cache-redis: Fixed
+  modules/idempotency: Fixed
+  modules/scheduler: Fixed
+  modules/durable-local: Fixed
+  modules/rate-limit: Fixed
+  modules/cache: Fixed
+  modules/mcp-server: Fixed
+  modules/sql: Fixed
+  modules/session: Fixed
+  modules/kv-store-redis: Fixed
+  modules/lease: Fixed
+  modules/oauth-client: Fixed
+body: The restriction's lower bound named telo 0.130.0, which was never published; it
+  now names 0.131.0, the first published release at or above it.

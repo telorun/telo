@@ -13,7 +13,7 @@ metadata:
     the browser, and are capped per user.
 requires: { telo: ">=0.133.0" }
 restrictions:
-  - requires: { telo: ">=0.130.0" }
+  - requires: { telo: ">=0.131.0" }
     reason: "A resource rule's `coReferrers:` is first bound in 0.130.0; an older analyzer evaluates the name rule unbound and reports it as a defect in this module."
 imports: { Auth: ../auth, KvStore: ../kv-store }
 exports:

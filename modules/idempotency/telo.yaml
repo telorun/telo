@@ -13,7 +13,7 @@ metadata:
     wedging it.
 requires: { telo: ">=0.133.0" }
 restrictions:
-  - requires: { telo: ">=0.130.0" }
+  - requires: { telo: ">=0.131.0" }
     reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0)."
 imports: { KvStore: ../kv-store }
 exports: { kinds: [Once] }
