@@ -11,21 +11,33 @@
 // the local ref otherwise: a CI checkout fetches every branch as a remote ref and
 // has only the one it checked out locally.
 //
+// It is also the one reader of the release conventions the gates and the record
+// share: which heads are the release machinery's own pull requests, a line's
+// release tags and the newest of them.
+//
 // Usage:
-//   node scripts/release-branch.mjs cut-check --ref <branch>      Cut release, before anything
-//   node scripts/release-branch.mjs finish-check --ref <branch>   Finish release
-//   node scripts/release-branch.mjs publish-check --ref <branch>  every Publish job
+//   pnpm exec bun scripts/release-branch.mjs cut-check --ref <branch>      Start release candidates, before anything
+//   pnpm exec bun scripts/release-branch.mjs finish-check --ref <branch>   Publish final release
+//   node scripts/release-branch.mjs create-branch --branch <b> --sha <s>   the cut's ref (env GH_TOKEN, GH_REPO)
+//   node scripts/release-branch.mjs publish-check --ref <branch>           every Publish job
+//   node scripts/release-branch.mjs gate-refs                              the PR gates' refs (GITHUB_* env)
+//
+// `cut-check`, and `finish-check` on main (a cut straight to the final), run under
+// bun: they ask the record (`release-record.mjs`), which reads the analyzer from source.
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { refuse, setOutput } from "./release-actions-output.mjs";
-import { ROOT, compareVersions, finalPublished, teloGeneration } from "./version-line.mjs";
+import { ROOT, finalPublished, teloGeneration } from "./version-line.mjs";
 
 export const RELEASE_BRANCH = /^release\/(\d+)\.(\d+)$/;
-const FINAL_TAG = /^v\d+\.\d+\.\d+$/;
 const CLI_MANIFEST = "cli/nodejs/package.json";
+const CANDIDATE_TAG = /^v\d+\.\d+\.\d+-/;
+const MACHINERY_HEAD = /^(changeset-release|module-release|release-record)\//;
+// Tags on one commit order by the run that made them: modules after packages after v.
+const TAG_RANK = { v: 0, packages: 1, modules: 2 };
 
 function git(cwd, ...args) {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -90,40 +102,81 @@ function unreleasedFiles(cwd, ref) {
   return [...changesets, ...fragments];
 }
 
-function isAncestor(cwd, commit, tip) {
-  try {
-    git(cwd, "merge-base", "--is-ancestor", commit, tip);
-    return true;
-  } catch {
-    return false;
-  }
+/** The head branch of a PR the release workflows open, or undefined: its own
+ *  output, so the gates skip only the coverage it consumes. */
+export function releaseMachineryHead(head = process.env.GITHUB_HEAD_REF) {
+  return MACHINERY_HEAD.test(head ?? "") ? head : undefined;
 }
 
-/** The branch's newest final tag, `v<x>.<y>.<z>`; candidates are never merged back. */
-function newestFinalTag(cwd, ref) {
-  const tags = git(cwd, "tag", "--merged", ref, "--list", "v*")
-    .split("\n")
-    .filter((tag) => FINAL_TAG.test(tag));
-  return tags.sort((a, b) => compareVersions(a.slice(1), b.slice(1))).at(-1);
-}
-
-/** The branch's newest numbered release tag of `kind` (`modules` or `packages`). */
-function newestNumberedTag(cwd, branch, kind) {
-  const [, major, minor] = RELEASE_BRANCH.exec(branch.name);
-  const prefix = `${kind}-${major}.${minor}-`;
-  const tags = git(cwd, "tag", "--list", `${prefix}*`)
-    .split("\n")
-    .filter((tag) => new RegExp(`^${kind}-\\d+\\.\\d+-\\d+$`).test(tag));
-  return tags.sort((a, b) => Number(a.slice(prefix.length)) - Number(b.slice(prefix.length))).at(-1);
+/** The ref a branch is read at, short: `origin/<branch>` when fetched, else `<branch>`. */
+export function branchRef(cwd, branch) {
+  return refOf(cwd, branch).replace(/^refs\/(?:remotes\/|heads\/)/, "");
 }
 
 /**
- * Why Cut release must not run now, or undefined. The checks run in the order a
- * maintainer would fix them: the live branch first (finish it, publish it, merge
- * its tags back), then what main would cut.
+ * The live branch's release tags — `v<major>.<minor>.<z>` (no candidate),
+ * `packages-<major>.<minor>-<n>` and `modules-<major>.<minor>-<n>` reachable from
+ * its tip — newest first: by the tip's history, then by the run that made them.
  */
-export async function cutRefusal({ cwd = ROOT, ref, generation = () => teloGeneration() }) {
-  if (ref !== "main") return `Error: Cut release runs on main; ${ref} is not main.`;
+export function releaseTagsOf(cwd, branch) {
+  const ref = refOf(cwd, branch.name);
+  const line = `${branch.major}\\.${branch.minor}`;
+  const shape = new RegExp(`^(?:v${line}\\.\\d+|(packages|modules)-${line}-\\d+)$`);
+  const order = new Map(git(cwd, "rev-list", "--topo-order", ref).split("\n").map((sha, index) => [sha, index]));
+  const number = (tag) => Number(/(\d+)$/.exec(tag)[1]);
+  return git(cwd, "tag", "--merged", ref)
+    .split("\n")
+    .filter((tag) => shape.test(tag))
+    .map((tag) => ({
+      tag,
+      kind: tag.startsWith("v") ? "v" : tag.split("-")[0],
+      position: order.get(git(cwd, "rev-list", "-n", "1", tag)),
+    }))
+    .sort((a, b) => a.position - b.position || TAG_RANK[b.kind] - TAG_RANK[a.kind] || number(b.tag) - number(a.tag))
+    .map(({ tag }) => tag);
+}
+
+/** The live branch's newest non-candidate release tag, or undefined. */
+export function newestReleaseTag(cwd, branch) {
+  return releaseTagsOf(cwd, branch)[0];
+}
+
+/**
+ * The tag a record of `given` takes: the live branch's newest release tag, which
+ * holds every earlier release's state. Refuses a candidate, a tag the live tip
+ * does not reach, and a repository with no live branch or no release on it.
+ */
+export function recordTagFor({ cwd = ROOT, given }) {
+  if (CANDIDATE_TAG.test(given)) {
+    throw new Error(`${given} is a release candidate; a record takes a final, patch, packages or modules release.`);
+  }
+  const live = liveBranch(cwd);
+  if (!live) throw new Error("no release/* branch exists, so there is nothing to record.");
+  if (tryGit(cwd, "rev-parse", "--verify", "--quiet", `refs/tags/${given}`) === undefined) {
+    throw new Error(`${given} is not a tag of this repository.`);
+  }
+  if (tryGit(cwd, "merge-base", "--is-ancestor", given, refOf(cwd, live.name)) === undefined) {
+    throw new Error(`${given} is not reachable from ${live.name}; only the live branch's releases are recorded.`);
+  }
+  const newest = newestReleaseTag(cwd, live);
+  if (!newest) throw new Error(`${live.name} has published no final, patch, packages or modules release yet.`);
+  return { tag: newest, branch: live.name };
+}
+
+/** Whether main's tree already holds `tag`'s record: the record's check mode finds
+ *  nothing to change. Run under bun (the record reads the analyzer from source). */
+async function mainRecords(tag) {
+  const { recordDifference } = await import("./release-record.mjs");
+  return (await recordDifference({ tag })) === undefined;
+}
+
+/**
+ * Why Start release candidates must not run now, or undefined. The checks run in the order a
+ * maintainer would fix them: the live branch first (finish it, publish it, record
+ * its newest release on main), then what main would cut.
+ */
+export async function cutRefusal({ cwd = ROOT, ref, generation = () => teloGeneration(), records = mainRecords }) {
+  if (ref !== "main") return `Error: Start release candidates runs on main; ${ref} is not main.`;
 
   const plan = await generation();
   const live = liveBranch(cwd);
@@ -144,15 +197,9 @@ export async function cutRefusal({ cwd = ROOT, ref, generation = () => teloGener
     if (unreleased) {
       return `Error: ${live.name} holds unreleased changes (${unreleased}). Publish them before cutting ${label}.`;
     }
-    const final = newestFinalTag(cwd, liveRef);
-    if (final && !isAncestor(cwd, final, "HEAD")) {
-      return `Error: main does not contain ${final}. Merge "chore(release): merge ${final} into main" first.`;
-    }
-    for (const kind of ["modules", "packages"]) {
-      const tag = newestNumberedTag(cwd, live, kind);
-      if (tag && !isAncestor(cwd, tag, "HEAD")) {
-        return `Error: main does not contain ${tag}. Merge "chore(release): merge ${tag} into main" first.`;
-      }
+    const newest = newestReleaseTag(cwd, live);
+    if (newest && !(await records(newest))) {
+      return `Error: main does not record ${newest}. Merge "chore(release): record ${newest} on main" first.`;
     }
   }
 
@@ -169,11 +216,19 @@ export async function cutRefusal({ cwd = ROOT, ref, generation = () => teloGener
   return undefined;
 }
 
-/** Why Finish release must not run at `ref`, or undefined. `cwd` is the checkout
- *  of `ref` itself: the file asked about is the branch's own. */
-export function finishRefusal({ cwd = ROOT, ref }) {
+/** The `<major>.<minor>` a cut from main makes: the minor main's changesets plan. */
+async function cutRelease(generation = () => teloGeneration()) {
+  const [, major, minor] = /^(\d+)\.(\d+)\./.exec((await generation()).next);
+  return `${major}.${minor}`;
+}
+
+/** Why Publish final release must not run at `ref`, or undefined. On main it cuts a
+ *  release straight to its final, so it refuses what the cut refuses; elsewhere `cwd`
+ *  is the checkout of `ref` itself, whose own `.changeset/pre.json` is asked about. */
+export async function finishRefusal({ cwd = ROOT, ref, generation, records }) {
+  if (ref === "main") return cutRefusal({ cwd, ref, generation, records });
   if (!RELEASE_BRANCH.test(ref)) {
-    return `Error: Finish release runs on a release/* branch in candidates; ${ref} is not one.`;
+    return `Error: Publish final release runs on main or on a release/* branch in candidates; ${ref} is neither.`;
   }
   const file = join(cwd, ".changeset", "pre.json");
   if (!existsSync(file)) {
@@ -186,6 +241,45 @@ export function finishRefusal({ cwd = ROOT, ref }) {
   return undefined;
 }
 
+function remoteRepository() {
+  const repository = process.env.GH_REPO;
+  if (!repository) throw new Error("GH_REPO is not set.");
+  return repository;
+}
+
+/** The commit `branch` names on the remote, or undefined when it does not exist. */
+function remoteBranchSha(branch) {
+  try {
+    return execFileSync("gh", ["api", `repos/${remoteRepository()}/git/ref/heads/${branch}`, "--jq", ".object.sha"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch (error) {
+    if (/HTTP 404/.test(`${error.stderr ?? ""}`)) return undefined;
+    throw error;
+  }
+}
+
+function createRemoteBranch(branch, sha) {
+  execFileSync("gh", ["api", "-X", "POST", `repos/${remoteRepository()}/git/refs`, "-f", `ref=refs/heads/${branch}`, "-f", `sha=${sha}`], {
+    stdio: "inherit",
+  });
+}
+
+/** Creates the release branch at `sha` on the remote: `created`, or `exists` when a
+ *  re-run finds it there already. A branch at another commit is refused, never moved.
+ *  The token in GH_TOKEN must be one the rulesets let create `release/*` refs. */
+export function ensureBranch({ branch, sha, have = remoteBranchSha, create = createRemoteBranch }) {
+  if (!RELEASE_BRANCH.test(branch)) throw new Error(`${branch} is not a release/<major>.<minor> branch.`);
+  const at = have(branch);
+  if (at === undefined) {
+    create(branch, sha);
+    return "created";
+  }
+  if (at !== sha) throw new Error(`${branch} already exists at ${at}, not at ${sha}.`);
+  return "exists";
+}
+
 /** Why a Publish job must not run at `ref`, or undefined: it is no release
  *  branch, or a newer one was cut and this one is frozen. */
 export function publishRefusal({ cwd = ROOT, ref }) {
@@ -196,6 +290,22 @@ export function publishRefusal({ cwd = ROOT, ref }) {
     return `Error: ${ref} is frozen: ${live.name} was cut from main. Land the fix on ${live.name}.`;
   }
   return undefined;
+}
+
+/**
+ * The refs `telo release check` takes on a PR or push: `base` is HEAD for a push
+ * and for the release machinery's own PR (whose diff is the release), else the
+ * PR's base; `carriedBy` is the live branch when the tree judged is main's, so a
+ * fragment the branch already carries plans nothing there.
+ */
+export function gateRefs({ cwd = ROOT, event, base, head, ref }) {
+  const pullRequest = event === "pull_request";
+  const live = liveBranch(cwd);
+  const onMain = pullRequest ? base === "main" : ref === "main";
+  return {
+    base: pullRequest && !releaseMachineryHead(head) ? `origin/${base}` : "HEAD",
+    carriedBy: onMain && live ? branchRef(cwd, live.name) : "",
+  };
 }
 
 function argument(name) {
@@ -211,21 +321,41 @@ async function main() {
     case "cut-check": {
       const refusal = await cutRefusal({ ref: argument("ref") });
       if (refusal) refuse(refusal);
-      const plan = await teloGeneration();
-      const [, major, minor] = /^(\d+)\.(\d+)\./.exec(plan.next);
-      setOutput("release", `${major}.${minor}`);
+      setOutput("release", await cutRelease());
+      setOutput("live", liveBranch()?.name ?? "");
       return;
     }
     case "finish-check": {
       const ref = argument("ref");
-      const refusal = finishRefusal({ ref });
+      const refusal = await finishRefusal({ ref });
       if (refusal) refuse(refusal);
-      setOutput("release", ref.slice("release/".length));
+      const release = ref === "main" ? await cutRelease() : ref.slice("release/".length);
+      setOutput("release", release);
+      setOutput("branch", `release/${release}`);
+      setOutput("direct", ref === "main");
+      setOutput("live", liveBranch()?.name ?? "");
+      return;
+    }
+    case "create-branch": {
+      const branch = argument("branch");
+      const sha = argument("sha");
+      console.log(`release-branch: ${branch} ${ensureBranch({ branch, sha })} at ${sha}.`);
       return;
     }
     case "publish-check": {
       const refusal = publishRefusal({ ref: argument("ref") });
       if (refusal) refuse(refusal);
+      return;
+    }
+    case "gate-refs": {
+      const refs = gateRefs({
+        event: process.env.GITHUB_EVENT_NAME,
+        base: process.env.GITHUB_BASE_REF,
+        head: process.env.GITHUB_HEAD_REF,
+        ref: process.env.GITHUB_REF_NAME,
+      });
+      setOutput("base", refs.base);
+      setOutput("carried-by", refs.carriedBy);
       return;
     }
     default:

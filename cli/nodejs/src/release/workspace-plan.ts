@@ -21,6 +21,7 @@ import {
 } from "@telorun/analyzer";
 import * as path from "node:path";
 import { ModulePayloadBuilder } from "../bundle/module-payload.js";
+import { carriedBy } from "./carried-changes.js";
 import { collectEvidence, type ModuleTarget } from "./evidence.js";
 import { readFragments, readLedger } from "./ledger-store.js";
 import { readImportGraph, resolveTargets, type RegistryRungs } from "./targets.js";
@@ -30,6 +31,8 @@ export interface WorkspacePlanOptions {
   readonly rungs: RegistryRungs;
   /** Git ref the changed-files reading diffs against. */
   readonly baseRef: string;
+  /** Git ref whose carried fragments are dropped from the plan (`--carried-by`). */
+  readonly carriedBy?: string;
   readonly onModule?: (module: DiscoveredModule, index: number, total: number) => void;
 }
 
@@ -39,12 +42,21 @@ export interface WorkspacePlan {
   readonly plan: ReleasePlan;
 }
 
+/** The pending fragments, less those `ref` carries: the same file at its merge
+ *  base with HEAD, or written on it since. */
+export function pendingFragments(root: string, ref: string | undefined) {
+  const fragments = readFragments(root);
+  if (!ref) return fragments;
+  const carried = carriedBy({ cwd: root, files: fragments.map((fragment) => fragment.source), ref });
+  return fragments.filter((fragment) => !carried.has(fragment.source));
+}
+
 export async function planWorkspace(
   workspace: Workspace,
   options: WorkspacePlanOptions,
 ): Promise<WorkspacePlan> {
   const ledger = readLedger(workspace.root);
-  const fragments = readFragments(workspace.root);
+  const fragments = pendingFragments(workspace.root, options.carriedBy);
   const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
 
   const { targets, diagnostics } = resolveTargets(workspace, ledger, options.rungs);

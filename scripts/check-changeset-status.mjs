@@ -59,20 +59,21 @@
 // module's), and every ignore entry names a package that still exists (changesets
 // rejects an unknown one).
 //
-// Three rules belong to release branches and candidates:
+// Four rules belong to release branches and candidates:
 //
 //   - Changesets listed in `.changeset/pre.json` are already RELEASED as a
 //     candidate: they never cover a later change.
-//   - Commits contained in a `v*`, `modules-*` or `packages-*` tag are released too, so they do
-//     not count as changed files: the merge-back of a published tag into main
-//     passes the gate with the changesets that tag consumed.
+//   - On main, a changeset the live `release/*` branch carries (the same file at
+//     the cut, or picked onto the branch since — `carried-changes.ts`) is released
+//     or about to be, so it covers nothing either.
 //   - A `release/*` branch holding no `pre.json` whose first final (`v<x.y>.0`)
 //     is published accepts only patch changesets, for every package, so it never
 //     plans a version main's next cut will plan. A freshly cut branch carries
 //     its changesets and takes any bump until it enters candidates.
-//   - A PR from a `changeset-release/*` or `module-release/*` branch is the release
-//     machinery's own output (it consumes changesets and moves versions), so it is
-//     exempt; the bot opens it so required checks run.
+//   - A PR from the release machinery (`releaseMachineryHead`: the Version PR, the
+//     Module Release PR, the record) consumes changesets and moves versions, so
+//     its coverage is not checked; every other check still runs. The bot opens
+//     it so required checks run.
 //
 // Usage: node scripts/check-changeset-status.mjs [base-ref]
 //   base-ref defaults to origin/$GITHUB_BASE_REF (the PR's base branch), else
@@ -82,7 +83,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, matchesGlob, normalize, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { carriedBy } from "../cli/nodejs/src/release/carried-changes.ts";
 import { ROOT, loadWorkspace } from "./module-ownership.mjs";
+import { branchRef, liveBranch, releaseMachineryHead } from "./release-branch.mjs";
 import {
   finalPublished,
   readPreState,
@@ -123,24 +126,14 @@ function isPublished(pkg, relative) {
  *  changed path up to the nearest package directory. A change the tarball does not
  *  carry (a package's CLAUDE.md, its tests) releases nothing. */
 function changedFiles() {
-  const git = (...args) =>
-    execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   try {
-    const range = [`${baseRef}...HEAD`];
-    const unreleased = git(
-      "rev-list", "--no-merges", "HEAD", `^${baseRef}`, "--not", "--tags=v*", "--tags=modules-*", "--tags=packages-*",
-    ).split("\n").filter(Boolean);
-    const all = git("rev-list", "--no-merges", "HEAD", `^${baseRef}`).split("\n").filter(Boolean);
-    // Nothing in the range is released: the plain diff, merge commits' resolutions included.
-    if (unreleased.length === all.length) return git("diff", "--name-only", ...range).split("\n").filter(Boolean);
-    // Otherwise only the unreleased commits' own files.
-    return [
-      ...new Set(
-        unreleased.flatMap((sha) =>
-          git("diff-tree", "--no-commit-id", "--name-only", "-r", sha).split("\n").filter(Boolean),
-        ),
-      ),
-    ];
+    return execFileSync("git", ["diff", "--name-only", `${baseRef}...HEAD`], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .split("\n")
+      .filter(Boolean);
   } catch {
     // No merge base (a shallow clone, a fresh repo) — the gate cannot decide what
     // changed, and guessing would fail PRs at random.
@@ -168,17 +161,30 @@ function changedPackages(packages) {
   return [...changed.values()];
 }
 
+/** The live release branch's ref when the tree judged is main's, else undefined. */
+function liveRefOnMain() {
+  if (baseRef.replace(/^origin\//, "") !== "main") return undefined;
+  const live = liveBranch(ROOT);
+  return live ? branchRef(ROOT, live.name) : undefined;
+}
+
 /** Every pending changeset's `{ file, name, bump }` entries, none of those
- *  `.changeset/pre.json` lists: a candidate already released them. The front
- *  matter is a YAML mapping of `"name": bump`, one per line. */
+ *  `.changeset/pre.json` lists (a candidate already released them) nor, on main,
+ *  one the live release branch carries. The front matter is a YAML mapping of
+ *  `"name": bump`, one per line. */
 function pendingChangesetEntries() {
   const entries = [];
   const dir = join(ROOT, ".changeset");
   if (!existsSync(dir)) return entries;
   const released = new Set(readPreState()?.changesets ?? []);
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith(".md") || file === "README.md") continue;
+  const files = readdirSync(dir).filter((file) => file.endsWith(".md") && file !== "README.md");
+  const live = liveRefOnMain();
+  const carried = live
+    ? carriedBy({ cwd: ROOT, files: files.map((file) => `.changeset/${file}`), ref: live })
+    : new Set();
+  for (const file of files) {
     if (released.has(file.slice(0, -".md".length))) continue;
+    if (carried.has(`.changeset/${file}`)) continue;
     const frontMatter = readFileSync(join(dir, file), "utf8").split(/^---$/m)[1];
     if (!frontMatter) continue;
     for (const line of frontMatter.split("\n")) {
@@ -434,16 +440,10 @@ function checkRustTwins() {
   return mismatches.length > 0 ? 1 : 0;
 }
 
-/** The head branch of a PR the release workflows open, or undefined. */
-export function releaseMachineryHead(head = process.env.GITHUB_HEAD_REF) {
-  return /^(changeset-release|module-release)\//.test(head ?? "") ? head : undefined;
-}
-
 async function main() {
-  const exempt = releaseMachineryHead();
-  if (exempt) {
-    console.log(`check-changeset-status: ${exempt} is the release workflow's own pull request — it consumes the changesets and moves versions, so no changeset covers it. Exempt.`);
-    process.exit(0);
+  const machinery = releaseMachineryHead();
+  if (machinery) {
+    console.log(`check-changeset-status: ${machinery} is the release workflow's own pull request — it consumes the changesets and moves versions, so its coverage is exempt.`);
   }
   baseRef =
     process.argv[2] ?? (process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : "origin/main");
@@ -452,7 +452,7 @@ async function main() {
   const entries = pendingChangesetEntries();
   covered = new Set(entries.map((entry) => entry.name));
 
-  const changed = changedPackages(packages);
+  const changed = machinery ? [] : changedPackages(packages);
   const ignoreListFailed = checkIgnoreList();
   const bakedPinsFailed = await checkBakedPins(packages);
   const inlinedFailed = await checkInlined(changed);

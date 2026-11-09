@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CHANGESETS_BIN = join(REPO, "node_modules", "@changesets", "cli", "bin.js");
+const CARRIED = "cli/nodejs/src/release/carried-changes.ts";
 const LINE = {
   "@telorun/analyzer": "analyzer/nodejs",
   "@telorun/cli": "cli/nodejs",
@@ -54,6 +55,8 @@ function workspace(version = "0.84.2") {
     filter: (source) => !source.includes("tests") && !source.includes("db-init"),
   });
   symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+  // The gate reads which changesets a release branch carries through the CLI's file.
+  put(root, CARRIED, readFileSync(join(REPO, CARRIED), "utf8"));
   put(root, "package.json", '{"name":"root","private":true,"version":"1.0.0"}');
   put(root, "pnpm-workspace.yaml", "packages:\n  - cli/*\n  - kernel/*\n  - analyzer/*\n  - cel/*\n  - packages/*\n  - other\n  - debug-ui\n");
   put(root, ".gitignore", "node_modules\nanalyzer/nodejs/src/telo-version.ts\npackages/language-server/src/engine-version.ts\ncel/nodejs/src/engine-version.ts\nkernel/nodejs/src/telo-runtime-version.ts\n");
@@ -218,17 +221,19 @@ describe("changeset gate", () => {
     assert.equal(gate(root, "main").status, 0);
   });
 
-  it("commits contained in a v* tag do not count as changed", () => {
+  it("on main, a changeset the live release branch carries covers nothing", () => {
     const root = workspace();
-    git(root, "switch", "-q", "-c", "release/0.85");
+    changeset(root, "shipped", "patch");
+    commit(root, "changeset before the cut");
+    git(root, "branch", "release/0.85");
+    git(root, "switch", "-q", "-c", "pr");
     put(root, "cli/nodejs/src/index.ts", "export const a = 1;\n");
-    commit(root, "released fix");
-    git(root, "tag", "v0.85.1");
-    git(root, "switch", "-q", "-c", "mergeback", "main");
-    git(root, "merge", "-q", "--no-ff", "-m", "merge", "v0.85.1");
+    commit(root, "change");
+    const refused = gate(root, "main");
+    assert.equal(refused.status, 1);
+    assert.match(refused.stderr, /@telorun\/cli changed a published file but no changeset covers it/);
+    git(root, "branch", "-D", "release/0.85");
     assert.equal(gate(root, "main").status, 0);
-    git(root, "tag", "-d", "v0.85.1");
-    assert.equal(gate(root, "main").status, 1);
   });
 
   it("a release branch past its final accepts only patch changesets", () => {
@@ -259,27 +264,21 @@ describe("changeset gate", () => {
     assert.equal(gate(root, "origin/release/0.85").status, 0);
   });
 
-  it("exempts the pull requests the release workflows open", () => {
+  it("exempts the release machinery's pull requests from coverage only", () => {
     const root = workspace();
     git(root, "switch", "-q", "-c", "pr");
     put(root, "cli/nodejs/src/index.ts", "export const a = 1;\n");
     commit(root, "change");
-    for (const head of ["changeset-release/release/0.85", "module-release/release/0.85"]) {
+    for (const head of ["changeset-release/release/0.85", "module-release/release/0.85", "release-record/release/0.85"]) {
       const result = run(root, process.execPath, ["scripts/check-changeset-status.mjs", "main"], { GITHUB_HEAD_REF: head });
       assert.equal(result.status, 0, result.stderr);
-      assert.match(result.stdout, /Exempt/);
+      assert.match(result.stdout, /coverage is exempt/);
     }
     assert.equal(run(root, process.execPath, ["scripts/check-changeset-status.mjs", "main"], { GITHUB_HEAD_REF: "feat/x" }).status, 1);
-  });
-
-  it("commits contained in a packages-* tag do not count as changed", () => {
-    const root = workspace();
-    git(root, "switch", "-q", "-c", "release/0.85");
-    put(root, "cli/nodejs/src/index.ts", "export const a = 1;\n");
-    commit(root, "released fix");
-    git(root, "tag", "packages-0.85-1");
-    git(root, "switch", "-q", "-c", "mergeback", "main");
-    git(root, "merge", "-q", "--no-ff", "-m", "merge", "packages-0.85-1");
-    assert.equal(gate(root, "main").status, 0);
+    put(root, "cli/rust/Cargo.toml", '[package]\nname = "telorun-cli"\nversion = "0.0.1"\n');
+    commit(root, "twin drifts");
+    const twin = run(root, process.execPath, ["scripts/check-changeset-status.mjs", "main"], { GITHUB_HEAD_REF: "release-record/release/0.85" });
+    assert.equal(twin.status, 1);
+    assert.match(twin.stderr, /cli\/rust\/Cargo\.toml is 0\.0\.1 but its Node twin/);
   });
 });

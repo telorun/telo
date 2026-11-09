@@ -1,28 +1,78 @@
-name: Finish release
+name: Publish final release
 
-# Dispatched at a release branch in candidates. Builds the final Version PR itself:
-# leaves prerelease mode, versions the branch and opens `chore(release): version
-# packages` from `changeset-release/<branch>`, replacing an open rc Version PR (which
-# is then never published). `.changeset/pre.json` is deleted in that same PR.
+# Builds the final Version PR itself, `chore(release): version packages` from
+# `changeset-release/<branch>`. Merging it publishes the final, and that Publish run
+# dispatches Record release (record-release.yml), whose PR brings the release's state
+# to main. Two refs:
 #
-# Run at the branch ref (`gh workflow run finish-release.yml --ref release/0.85`):
-# the branch's own copy of this file and its scripts do the work.
+# - A release branch in candidates (`gh workflow run finish-release.yml --ref
+#   release/0.85`): leaves prerelease mode and versions the branch, replacing an open
+#   rc Version PR (which is then never published); `.changeset/pre.json` is deleted in
+#   that same PR. The branch's own copy of this file and its scripts do the work.
+# - Main (`--ref main`): a cut straight to the final, with no candidates. It refuses
+#   what Start release candidates refuses, creates `release/<major>.<minor>` at the
+#   dispatched commit and versions it from the pending changesets; no
+#   `.changeset/pre.json` is ever written.
 
 on:
   workflow_dispatch:
 
+# On main it shares the cut's group, so a cut and a direct final never race to one branch.
 concurrency:
-  group: finish-release-${{ github.ref }}
+  group: ${{ github.ref == 'refs/heads/main' && 'cut-release' || format('finish-release-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      branch: ${{ steps.check.outputs.branch }}
+      direct: ${{ steps.check.outputs.direct }}
+      live: ${{ steps.check.outputs.live }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Under bun: on main this is the cut's own check, which asks the record and
+      # reads the analyzer from source (no build).
+      - name: Check
+        id: check
+        run: pnpm exec bun scripts/release-branch.mjs finish-check --ref "$GITHUB_REF_NAME"
+
   finish:
     name: Finish
+    needs: check
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
       actions: read
+    # On main, the new branch's Publish group: the Publish run its creation starts
+    # waits until the Version PR is open, then rebuilds it as the final.
+    concurrency:
+      group: ${{ needs.check.outputs.direct == 'true' && format('publish-refs/heads/{0}', needs.check.outputs.branch) || format('finish-release-job-{0}', github.ref) }}
+      cancel-in-progress: false
+    env:
+      BRANCH: ${{ needs.check.outputs.branch }}
+      RELEASE: ${{ needs.check.outputs.release }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,28 +86,57 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check
-        id: check
-        run: node scripts/release-branch.mjs finish-check --ref "$GITHUB_REF_NAME"
-
+      # On main, the live branch's too: a run still in progress may yet tag a release
+      # the check could not see.
       - name: Refuse while a Publish run is in progress
         env:
           GH_TOKEN: ${{ github.token }}
+          DIRECT: ${{ needs.check.outputs.direct }}
+          LIVE: ${{ needs.check.outputs.live }}
         run: |
-          n=$(gh run list --workflow publish.yml --branch "$GITHUB_REF_NAME" --json status --jq '[.[]|select(.status!="completed")]|length')
-          if [ "$n" != "0" ]; then
-            echo "::error::a Publish run of $GITHUB_REF_NAME is in progress; dispatch Finish release after it completes."
-            exit 1
-          fi
+          branches="$BRANCH"
+          if [ "$DIRECT" = "true" ] && [ -n "$LIVE" ]; then branches="$LIVE $BRANCH"; fi
+          for branch in $branches; do
+            n=$(gh run list --workflow publish.yml --branch "$branch" --json status --jq '[.[]|select(.status!="completed")]|length')
+            if [ "$n" != "0" ]; then
+              echo "::error::a Publish run of $branch is in progress; dispatch Publish final release after it completes."
+              exit 1
+            fi
+          done
+
+      # TELO_BOT_TOKEN: the rulesets let only the release workflows create `release/*` refs.
+      - name: Create the branch
+        if: needs.check.outputs.direct == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TELO_BOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          node scripts/release-branch.mjs create-branch --branch "$BRANCH" --sha "$GITHUB_SHA"
+          git fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+          git checkout --quiet -B "$BRANCH" "origin/$BRANCH"
 
       - name: Version the final
-        run: node scripts/release-version.mjs --final
+        run: node scripts/release-version.mjs --final --branch "$BRANCH"
+
+      - name: Describe the Version PR
+        env:
+          DIRECT: ${{ needs.check.outputs.direct }}
+        run: |
+          if [ "$DIRECT" = "true" ]; then
+            echo "Publishes \`$RELEASE.0\` from \`$BRANCH\`, cut from main at $GITHUB_SHA with no release candidates. Merging it publishes and tags the final." > /tmp/finish-body.md
+          else
+            {
+              echo "Publishes \`$RELEASE.0\` from \`$BRANCH\`: leaves prerelease mode and deletes \`.changeset/pre.json\`. Merging it publishes and tags the final."
+              echo
+              echo "An rc Version PR that was open is replaced by this one and its candidate is not published."
+            } > /tmp/finish-body.md
+          fi
 
       # TELO_BOT_TOKEN so the branch's required checks run on the PR. Publish's
       # changesets step rebuilds this same branch and PR.
@@ -66,22 +145,23 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.TELO_BOT_TOKEN }}
-          branch: changeset-release/${{ github.ref_name }}
-          base: ${{ github.ref_name }}
+          branch: changeset-release/${{ needs.check.outputs.branch }}
+          base: ${{ needs.check.outputs.branch }}
           title: "chore(release): version packages"
           commit-message: "chore(release): version packages"
-          body: |
-            Publishes `${{ steps.check.outputs.release }}.0` from `${{ github.ref_name }}`: leaves prerelease mode and deletes `.changeset/pre.json`. Merging it publishes and tags the final.
-
-            An rc Version PR that was open is replaced by this one and its candidate is not published.
+          body-path: /tmp/finish-body.md
 
       - name: Finish
         env:
-          RELEASE: ${{ steps.check.outputs.release }}
           NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+          DIRECT: ${{ needs.check.outputs.direct }}
         run: |
           if [ -z "$NUMBER" ]; then
-            echo "::error::Error: the Version PR was not opened; nothing differs from $GITHUB_REF_NAME."
+            echo "::error::Error: the Version PR was not opened; nothing differs from $BRANCH."
             exit 1
           fi
-          echo "Opened #$NUMBER \"chore(release): version packages\" into $GITHUB_REF_NAME: $RELEASE.0, with .changeset/pre.json deleted."
+          if [ "$DIRECT" = "true" ]; then
+            echo "Opened #$NUMBER \"chore(release): version packages\" into $BRANCH: $RELEASE.0, with no candidates."
+          else
+            echo "Opened #$NUMBER \"chore(release): version packages\" into $BRANCH: $RELEASE.0, with .changeset/pre.json deleted."
+          fi

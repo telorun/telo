@@ -24,18 +24,19 @@
 // bytes moved without a version bump is therefore reported as a pending bump in
 // that PR, not as a failure of an unrelated npm release.
 //
-// A manifest is pushed when EITHER gate fires:
-//   (a) its own metadata.version moved in HEAD^..HEAD — the normal release path, a
-//       local git check that needs no registry round-trip and works even if the
-//       registry read is momentarily unavailable; and
-//   (b) its current metadata.version is not yet published at the OCI repo — a
-//       per-version presence check that catches a newly added module whose version
-//       was seeded outside this commit and re-tries any version a prior run failed
-//       to push. An unchanged, already-published version is never re-pushed, so an
-//       ordinary main push (typo fix, schema edit) republishes nothing.
+// A manifest is pushed when its current metadata.version is not yet published at
+// the OCI repo — a per-version presence check that catches a version moved in this
+// commit, a newly added module whose version was seeded outside it, and any version
+// a prior run failed to push. An already-published version is never re-pushed: an
+// ordinary push (typo fix, schema edit) republishes nothing, and a version a commit
+// merely recorded (a branch cut at main's record of a release made elsewhere) is not
+// this run's release.
 //
-// Both gates are idempotent, which is what makes this safe to run on every push to
-// main rather than only on a release commit: a failed push heals on the next one.
+// `moved` counts the versions moved in HEAD^..HEAD that this run publishes for the
+// first time; the Publish workflow tags a module release only when it is non-zero.
+//
+// The gate is idempotent, which is what makes this safe to run on every push of the
+// branch rather than only on a release commit: a failed push heals on the next one.
 //
 // Manifest-only modules (no controllers, no nodejs/package.json) publish on the same
 // footing as controller modules — versions and PURLs were already written by
@@ -62,8 +63,7 @@ import {
 const execFileAsync = promisify(execFile);
 
 // Presence checks run concurrently, bounded. This gate walks EVERY module on every
-// push to main (it is the repair path — it catches a version seeded out of band and
-// retries a push a previous run failed), so serially it was ~52 process spawns plus
+// push of the branch (it is the release path and the repair path), so serially it was ~52 process spawns plus
 // a registry round-trip each, on a job that already pays a full install and build.
 // Bounded rather than unbounded because the ceiling here is a remote registry, not
 // local CPU: fifty simultaneous anonymous pulls is how a run earns a rate limit,
@@ -167,39 +167,27 @@ const queued = new Set();
 // release model, so a module at any depth is included.
 const importable = importableManifests().filter((abs) => existsSync(abs));
 
-// (a) version-moved gate.
+// The manifests whose metadata.version moved in HEAD^..HEAD.
 let diff = "";
 try {
   diff = run("git diff --name-only HEAD^ HEAD");
 } catch {
-  console.log("No prior commit to diff against — version-move gate skipped (presence gate still runs).");
+  console.log("No prior commit to diff against — no version moved in this commit.");
 }
 const changedFiles = new Set(diff.split("\n").filter(Boolean));
+const moved = new Set();
 for (const f of importable.map((abs) => abs.replace(ROOT + "/", "")).filter((rel) => changedFiles.has(rel))) {
   const before = manifestVersionAt("HEAD^", f);
   const after = manifestVersionAt("HEAD", f);
-  if (!after) {
-    console.log(`  skip ${f}: no metadata.version`);
-    continue;
-  }
-  if (before === after) {
-    console.log(`  skip ${f}: metadata.version unchanged (${after}) — presence gate still applies`);
-    continue;
-  }
-  queued.add(join(ROOT, f));
+  if (after && before !== after) moved.add(join(ROOT, f));
 }
-
-// How many modules this commit's own version bumps queued: the Publish workflow
-// tags a module release only when it is non-zero.
-setOutput("moved", queued.size);
 
 // Presence checks that could not ANSWER — a broken credential, an unreachable
 // registry. Distinct from "no versions published", which is a real answer.
 const unanswered = [];
 
-// (b) version-absent gate, over every importable manifest not already queued by (a).
+// The version-absent gate, over every importable manifest.
 const toCheck = importable
-  .filter((abs) => !queued.has(abs))
   .map((abs) => ({ abs, rel: abs.replace(ROOT + "/", "") }))
   .map((e) => ({ ...e, version: manifestVersionAt("HEAD", e.rel) }))
   .filter((e) => e.version);
@@ -243,8 +231,12 @@ for (const entry of checked) {
       `  queue ${entry.rel}: ${entry.version} not yet published to OCI (have: ${entry.published.join(", ") || "none"})`,
     );
     queued.add(entry.abs);
+  } else if (moved.has(entry.abs)) {
+    console.log(`  skip ${entry.rel}: ${entry.version} moved in this commit but is already published`);
   }
 }
+
+setOutput("moved", [...queued].filter((abs) => moved.has(abs)).length);
 
 // A presence check that could not answer is a failure of this job, not a module
 // that happens to be up to date. Reported before anything else, because it is the
@@ -274,7 +266,7 @@ const publishOrder = orderByDependencies(manifests);
 // One push pass over the ordered manifests. Relative sibling imports canonicalize to
 // the same OCI base and resolve there, so a sibling must be pushed before its
 // dependents. Failures are collected rather than thrown so one module can't abort the
-// rest; a failed push leaves its version absent from OCI, so gate (b) retries it.
+// rest; a failed push leaves its version absent from OCI, so the gate retries it.
 console.log(`\nPushing ${publishOrder.length} module manifest(s):`);
 for (const m of publishOrder) console.log(`  ${m.path.replace(ROOT + "/", "")} → ${m.destination}`);
 console.log("");

@@ -39,8 +39,8 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       # `.changeset/pre.json` exists: the branch is in candidates.
       candidates: ${{ steps.release.outputs.candidates }}
-      # What main takes back (the tag, or the commit): empty for a candidate.
-      merge-ref: ${{ steps.release.outputs.merge-ref }}
+      # The release tag main records: empty for a candidate.
+      record-tag: ${{ steps.release.outputs.record-tag }}
     steps:
       # TELO_BOT_TOKEN: the Version PR is pushed with the checkout's credentials, and
       # a push made with the default token starts no checks.
@@ -89,7 +89,8 @@ jobs:
           # The Version PR is `changeset-release/<this branch>`, based on it. The
           # branch's first one enters prerelease mode (`rc`); inside it, changesets
           # publishes under the `rc` dist-tag. A Version PR whose head has no
-          # `.changeset/pre.json` (Finish release) is the final, and rebuilds as one.
+          # `.changeset/pre.json` (Publish final release) is the final, and rebuilds as one
+          # — on a branch it cut from main too, which then never enters prerelease mode.
           # The bot token pushes the PR branch and opens the PR, so the required
           # checks run on it; the changeset gate exempts its head branch.
           version: pnpm run version-release
@@ -119,8 +120,8 @@ jobs:
         run: node scripts/release-channel.mjs classify
 
       # `changeset publish` tags per package only. The release tag is made here,
-      # before the GitHub Release step and the merge-back that names it, with the
-      # bot token the rulesets let create `v*` tags.
+      # before the GitHub Release step and the record that name it, with the bot
+      # token the rulesets let create `v*` tags.
       - name: Tag the release
         if: steps.release.outputs.tag != ''
         env:
@@ -172,9 +173,9 @@ jobs:
   # it runs after the npm `release` job of the same run only so that every floor a
   # module declares names a published telo. No module publishes in candidates.
   #
-  # Both gates in the script are idempotent (version moved in this commit, or
-  # version absent at the registry), so nothing is republished. A module release
-  # from the branch is tagged `modules-<major>.<minor>-<n>` and merged back.
+  # The script pushes only a version absent at the registry, so nothing is
+  # republished and a version a commit merely recorded is not pushed. A module
+  # release from the branch is tagged `modules-<major>.<minor>-<n>` and recorded on main.
   # `vars.TELO_OCI_REGISTRY` unset skips it entirely.
   publish-modules:
     name: Publish module artifacts
@@ -190,7 +191,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # HEAD^ for the version-moved gate, tags for the numbering
+          fetch-depth: 0 # HEAD^ for the moved versions, tags for the numbering
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -229,7 +230,7 @@ jobs:
           TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
         run: pnpm run publish-modules
 
-      # Only a release that moved module versions in this commit is tagged.
+      # Only a run that published, for the first time, versions this commit moved is tagged.
       - name: Number the module release
         id: number
         if: steps.publish.outputs.moved != '' && steps.publish.outputs.moved != '0'
@@ -518,22 +519,22 @@ jobs:
       deploy: true
     secrets: inherit
 
-  # The release goes back to main: a PR from a branch created AT the tag, landing
-  # with a merge commit, so main's ledgers hold what shipped. After every final,
-  # patch, packages-only and module release, never after a candidate; a second PR for the same tag
-  # is never opened. TELO_BOT_TOKEN so the PR starts checks.
-  merge-back:
-    name: Open merge-back PRs
+  # Main learns what shipped through a generated record, never a merge: Record
+  # release (record-release.yml, main's own copy, run at main's tip) rebuilds the
+  # one record PR of this line from the branch's newest release tag. Dispatched
+  # once per run after a final, patch, packages-only or module release, never after
+  # a candidate; a second dispatch rebuilds the same PR. TELO_BOT_TOKEN, since a
+  # dispatch made with the default token starts nothing.
+  record:
+    name: Record the release on main
     runs-on: ubuntu-latest
     needs: [release, publish-modules]
     if: >-
       ${{ always() && (
-      (needs.release.result == 'success' && needs.release.outputs.merge-ref != '') ||
+      (needs.release.result == 'success' && needs.release.outputs.record-tag != '') ||
       (needs.publish-modules.result == 'success' && needs.publish-modules.outputs.modules-tag != '')) }}
     permissions:
       contents: read
-    env:
-      GH_TOKEN: ${{ secrets.TELO_BOT_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -555,17 +556,16 @@ jobs:
       - name: Check
         run: node scripts/release-branch.mjs publish-check --ref "$GITHUB_REF_NAME"
 
-      - name: Merge the release back
-        if: needs.release.result == 'success' && needs.release.outputs.merge-ref != ''
-        run: node scripts/release-merge-back.mjs "${{ needs.release.outputs.merge-ref }}"
-
-      - name: Merge the module release back
-        if: needs.publish-modules.result == 'success' && needs.publish-modules.outputs.modules-tag != ''
-        run: node scripts/release-merge-back.mjs "${{ needs.publish-modules.outputs.modules-tag }}"
+      - name: Dispatch Record release
+        env:
+          GH_TOKEN: ${{ secrets.TELO_BOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.publish-modules.outputs.modules-tag || needs.release.outputs.record-tag }}
+        run: gh workflow run record-release.yml --ref main -f tag="$TAG"
 
   # Keeps the imports of the in-repo consumers — examples, starters, apps and
-  # blueprints — pointing at what is published, in one pull request per branch,
-  # reaching main through the merge-back. Runs after module publishing, on finals,
+  # blueprints — pointing at what is published, in one pull request into the
+  # branch (main's pins come from its record). Runs after module publishing, on finals,
   # patches and module releases. `telo upgrade --pin-local` rewrites a relative import only when
   # the release plan says the module's published artifact is the working copy's, and
   # leaves the rest relative with the reason, which the PR body lists. It runs no
