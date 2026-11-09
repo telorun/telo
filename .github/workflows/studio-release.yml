@@ -73,6 +73,11 @@ jobs:
             echo "release=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
+
       - name: Does the latest tag move forward
         id: pointers
         run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"
