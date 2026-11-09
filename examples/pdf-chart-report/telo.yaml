@@ -34,13 +34,13 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  SvgChart: oci://ghcr.io/telorun/svg-chart@0.3.1#sha256-UrqjYTtGnP6FXcpS6-LancA3QPEC9MYlJ7j4UUVLq5Q
+  SvgChart: oci://ghcr.io/telorun/svg-chart@0.3.2#sha256-7g4b5VhiUh82pb-5ZTsbfdmxEV8hlGh_MDRr8GqdgH4
   Font: oci://ghcr.io/telorun/font@0.3.1#sha256-fAtk3J3zFm-ViF7O4lOarp-1ZrWwpEfRUFwHa-s7SN0
-  PdfMake: oci://ghcr.io/telorun/pdfmake@0.4.2#sha256-i7SruJ9WbayxIOrBD2uJ3OfcN2ukY6y_7pGNq1qIEhg
+  PdfMake: oci://ghcr.io/telorun/pdfmake@0.4.3#sha256-L3oZq9nHvRRA7AMJtDYc5mOpoPjZASTdNrAebLnFuXc
   Collection: oci://ghcr.io/telorun/collection@0.9.1#sha256-8X1VGM8gx2p61sf1G53hguQL4fzGckKmmd14hYxo-xg
-  Fs: oci://ghcr.io/telorun/fs@0.15.1#sha256-DB68pWLeWJ3An4QhSocN4KhUEB-14j0jzLheGTATKkM
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
   Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
-  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
 variables:
   quarter:
     env: QUARTER

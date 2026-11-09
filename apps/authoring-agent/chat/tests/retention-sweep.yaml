@@ -28,12 +28,12 @@ imports:
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18485/v1
-  App: oci://ghcr.io/telorun/app@0.6.1#sha256-QOZpQy2T4dEx3Vay9_sillyRW8lemNxiauvWSyk-oLg
-  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Sql: oci://ghcr.io/telorun/sql@0.31.3#sha256-jfVldKM5qF_ezYfqsbuf3sZQl-3mEk61PrWTUSLs_qI
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.3#sha256-h4TGKGEVnv1vYLJwDGWfeAGtf2-oC43TxLKbDEpzUoY
   Stream: ../../../../modules/stream
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.1#sha256-xVX2OlLHL9AhE3Q2C5c2BxnDutWOM4ReNLu2TUJdo04
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.3#sha256-YqE7mPkNtbD5938_lBhPvBisX4R2hXBgxdY9gsHgtjU
   Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:

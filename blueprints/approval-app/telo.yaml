@@ -25,10 +25,10 @@ requires:
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Durable: oci://ghcr.io/telorun/durable@0.4.1#sha256-U6o5cEZ10pfN6JXQ6ia0vAg6GK7knlVeo7i8ObRGLbg
-  DurableLocal: oci://ghcr.io/telorun/durable-local@0.6.1#sha256-dtKR-c8y_WdDUJqnYRRbYs5cCMq6zXbY8ZMDpPfe7tM
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.8.1#sha256-2MbA4-Wc3BBNA0UKgPyHIAfrh3xATbTt8ne53S8Z8Ps
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Durable: oci://ghcr.io/telorun/durable@0.4.3#sha256-NmZ6Kd9pYgDje-8epIawWnvda4zZuR5GbjgtggqJGwk
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.6.3#sha256-MFUcTlHlgKQOfGwd48OIsYCP6EfFFjI7nshEoWszdOY
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.8.3#sha256-YprCnPBv_e1ueXbCqd8qGxcjxtdVQfLpCiw6pgLqYyg
 exports: { kinds: [App] }
 ---
 kind: Telo.Definition

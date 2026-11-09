@@ -13,8 +13,8 @@ metadata:
         curl -s localhost:9100/token -H 'content-type: application/json' \
           -d '{"subject":"alice","audience":"http://localhost:8080/api","scope":"orders:read"}'
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Jose: oci://ghcr.io/telorun/jose@0.3.0#sha256-85TaHa75ThAUCZBBNWgmmV1me3ampylNfJCahzqkzZM
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Jose: oci://ghcr.io/telorun/jose@0.3.1#sha256-kood2LsQsX4SIXmLwShBEm8P0x5Q-AwXq72UWq6uTHo
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.2#sha256-6rdybdNY4ZhJ8BpoZa-LkcCb5yjOt8ptBygzURK8PWA
 variables:
   issuer:

@@ -29,7 +29,7 @@ imports:
       budgetLimit: 80
       reservePerTurn: 10
       maxContextTokens: 10
-  App: oci://ghcr.io/telorun/app@0.6.1#sha256-QOZpQy2T4dEx3Vay9_sillyRW8lemNxiauvWSyk-oLg
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
   Stream: ../../../../modules/stream
   Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI

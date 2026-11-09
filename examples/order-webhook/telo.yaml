@@ -30,13 +30,13 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Idempotency: oci://ghcr.io/telorun/idempotency@0.12.0#sha256-77z669e9vVJXfvkHxae0K69YB6jGTh4xhkai65wt7ms
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Sql: oci://ghcr.io/telorun/sql@0.31.3#sha256-jfVldKM5qF_ezYfqsbuf3sZQl-3mEk61PrWTUSLs_qI
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.3#sha256-h4TGKGEVnv1vYLJwDGWfeAGtf2-oC43TxLKbDEpzUoY
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.12.2#sha256-LYNoG1xm0XjJ6dboZXiCK2WwzJmNkbam2LQ77ueUBkQ
   KvStore: oci://ghcr.io/telorun/kv-store-memory@0.8.2#sha256-6rdybdNY4ZhJ8BpoZa-LkcCb5yjOt8ptBygzURK8PWA
-  Schedule: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
-  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
+  Schedule: oci://ghcr.io/telorun/scheduler@0.12.2#sha256-srEbSaSpIx-tmlS1Soe5rASQV5GdUPKUDudNST-jQSA
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
 targets:
   - !ref migrate
   - !ref server

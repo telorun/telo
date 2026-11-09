@@ -32,15 +32,15 @@ metadata:
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
   HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  OpenAI: oci://ghcr.io/telorun/openai@0.20.1#sha256-kSqphJdaw9ZPpRbo1DiX5BKJ_uuWqj5TqOL1d7QjwqQ
-  Ai: oci://ghcr.io/telorun/ai@0.34.1#sha256-H9oIwMDlFy576XVNJEz-PtGflGC38-iGwz3_TYysYtE
+  OpenAI: oci://ghcr.io/telorun/openai@0.21.0#sha256-1QunhR8HAYpoCZ6rf0_ENpvCHcsghciYBb9_A4WCSHs
+  Ai: oci://ghcr.io/telorun/ai@0.35.0#sha256-gig6UlfoWjTsdpnPCl2n2lGuU8Sae6K74dtF7ORujxs
   Embedding: oci://ghcr.io/telorun/embedding@0.12.2#sha256-XHN0qwYwQm_Lk2OaYZEiqRzEyvIHdhd6u29bfYkvT64
   VectorStore: oci://ghcr.io/telorun/vector-store@0.11.2#sha256-X_V4hFmjTZsOvGlvV9N7kIdpQ-vsnduMukV8jNXpt8A
   VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.9.3#sha256-LzuFUrhzUl2JPh7xg9w5D-r_l_xXQu-gYApqwSAV6VM
   Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
-  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
 targets:
   - !ref indexCorpus
   - !ref server

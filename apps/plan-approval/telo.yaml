@@ -24,9 +24,9 @@ imports:
       connection: !ref db
     variables:
       longPollCap: !cel "variables.longPollCap"
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.3#sha256-h4TGKGEVnv1vYLJwDGWfeAGtf2-oC43TxLKbDEpzUoY
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.2#sha256-srEbSaSpIx-tmlS1Soe5rASQV5GdUPKUDudNST-jQSA
 ports: { http: { env: PORT, default: 8080 } }
 variables:
   dbFile:
