@@ -1,6 +1,6 @@
 {
   "name": "@telorun/session",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "license": "MIT",
   "private": true,
   "description": "Telo session module — server-side sessions over KvStore.Store: the session provider, the verifier and the start, rotate, end, end-all and list operations. Never published: the controllers ship inside the module artifact as a pkg:telo/local/js bundle.",

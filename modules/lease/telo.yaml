@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Lease
-  version: 0.15.1
+  version: 0.15.3
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Coordination, Reliability]

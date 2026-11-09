@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 - 2026-11-09
+### Added
+* Breaking: the `filters` policy takes `show`, `controls` and `summary` on its `placement` instead of beside it, following `ui`; a bar over a collection declaring `query.search` gains a search.
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.4.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

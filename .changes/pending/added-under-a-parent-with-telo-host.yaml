@@ -1,6 +1,0 @@
-modules:
-  modules/app: Added
-body: Under a parent with TELO_HOST_STATE_DIR, a child application gets its own state
-  directory, apps/<module path and name> (apps/web, apps/Admin.web), and a child's
-  missing input is refused at its start naming the instance and the fix; only the root
-  asks.

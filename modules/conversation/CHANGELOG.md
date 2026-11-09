@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-11-09
+### Fixed
+* `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.
+
 ## 0.2.0 - 2026-11-06
 ### Added
 * An attachment belongs to one conversation: POST /attachments answers { id, mediaType, size } and the upload is pending, with no address, until the first admitted turn naming it binds it to that turn's conversation; a turn naming one that is unknown, expired, deleted or another conversation's is refused at /body/attachments/<i>, and TurnRequest.attachments holds each id once. A bound file is read at GET /conversations/<id>/attachments/<attachment id> and nowhere else, its url the relative reference conversations/<id>/attachments/<attachment id>; any other read is a 404 ERR_CONVERSATION_ATTACHMENT_NOT_FOUND. The Attachment shape loses url.

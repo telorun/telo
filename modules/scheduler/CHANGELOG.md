@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.2 - 2026-11-09
+### Fixed
+* The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.
+
+## 0.12.1 - 2026-11-09
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.12.0 - 2026-11-06
 ### Added
 * `Scheduler.Interval` and `Scheduler.Cron` declare `inputs` with `default: {}`, so `telo check` judges a body wired without `inputs:` as receiving `{}`, and refuses one whose contract requires an argument.

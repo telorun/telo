@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0 - 2026-11-09
+### Added
+* Holds a control set to the Combobox vectors of ui_react_controls-4, and counts Combobox among the layer controls a set implements as one unit (ten).
+### Fixed
+* `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.
+
 ## 0.7.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

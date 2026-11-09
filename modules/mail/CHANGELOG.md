@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-11-09
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.2.0 - 2026-11-04
 ### Added
 * New module. Mail sends transactional email through one contract, the abstract Mail.Transport: inputs from, to, cc, bcc (each to/cc/bcc one address or a list, an address being a string or { name, address }), replyTo, subject, text and/or html (at least one required, refused by the contract otherwise), headers and attachments ({ filename, content as bytes, contentType }); output { messageId, accepted, rejected }, where some recipients being rejected is a result, not an error; its throws ceiling is ERR_MAIL_REJECTED (message, sender, credentials or every recipient refused) and ERR_MAIL_UNAVAILABLE (unreachable, timed out, failed on its side, or a temporary refusal). Mail.Smtp delivers over SMTP through a nodemailer connection pool opened when the resource starts and closed when it stops, configured with host, port, secure, starttls (require, opportunistic or never), auth { user, pass }, a required default from, pool { maxConnections, maxMessages } and timeout (30s when omitted); a 4xx or 503 reply is ERR_MAIL_UNAVAILABLE, any other 5xx and a refused envelope or sign-in ERR_MAIL_REJECTED, and a message never makes it read a file or fetch a URL. Mail.Capture records every message in memory and answers a fresh message id with every recipient accepted; Mail.CaptureRead (capture: a reference to a Mail.Capture, input { to? }) returns { messages }, oldest first, each as it was sent plus its messageId, optionally only those with an address among their to recipients, compared case-insensitively. Requires telo 0.108.0 or newer.

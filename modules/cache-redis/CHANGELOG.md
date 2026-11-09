@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.3 - 2026-11-09
+### Fixed
+* The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.
+
+## 0.13.2 - 2026-11-09
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.13.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

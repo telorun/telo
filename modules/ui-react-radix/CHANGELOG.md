@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 - 2026-11-09
+### Added
+* Draws Combobox on Radix at ui_react_controls-4, the search box's suggestion list on Radix's popover, and styles the search box, its chips and the suggestion list.
+* Draws the maximize glyph of the controls contract's closed glyph set.
+### Fixed
+* `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.
+
 ## 0.7.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

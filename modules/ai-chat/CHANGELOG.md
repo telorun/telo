@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 - 2026-11-09
+### Added
+* Chat.Conversation takes an optional titles: { model }, an Ai.Model that names untitled conversations: as a turn ends on a conversation with no title, the model writes a three-to-six-word title from the user's message and the reply, before the turn's final event, so a client reading the conversation at the turn's end sees it. A title already set, a rename included, is kept, and a failed title call is logged without failing the turn.
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.2.0 - 2026-11-06
 ### Added
 * An uploaded file belongs to the conversation that first sends it. POST /attachments answers { id, mediaType, size } with no address; the first admitted turn naming the upload binds it to its conversation in the admission's own write, a turn naming one that is unknown, expired, deleted or held by another conversation is refused at /body/attachments/<i>, and one naming an id twice is refused at /body/attachments. A file is read only at GET /conversations/{conversationId}/attachments/{attachmentId}, and an attachment's url in entries and journaled events is the relative reference conversations/<id>/attachments/<attachment id>; reading it under another conversation, pending, deleted or by an unknown id is one 404 ERR_CONVERSATION_ATTACHMENT_NOT_FOUND, and the flat GET /attachments/{id} is gone. Deleting a conversation makes its files unreadable at once and touches no other conversation's. Uploads no message sent within Chat.Conversation attachments.pendingRetention (24h when omitted; zero or less refused as AI_CHAT_PENDING_RETENTION_NOT_POSITIVE) and deleted conversations' files are removed by AiChat.AttachmentExpiry, which the application schedules. A file's name is kept in its record, not as a second blob.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.1 - 2026-11-09
+### Fixed
+* The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.
+
 ## 0.21.0 - 2026-11-06
 ### Added
 * RecordStream.JournalCancel asks a key's writer to stop from any replica through the store alone (requested, ended, unknown or removed); JournalSink sees the request, fails the key with ERR_JOURNAL_CANCELLED and raises it, and readers see that code.

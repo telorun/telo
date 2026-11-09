@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 - 2026-11-09
+### Added
+* Adds Fs.Move, which renames a file or directory and creates missing parents of the destination, and Fs.Copy, which copies a file or directory tree all or nothing. Both refuse an existing destination, a destination inside the source and an absent source, Fs.Move refuses a rename across filesystems, and Fs.Copy refuses a symbolic link or special file in the source.
+
 ## 0.15.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

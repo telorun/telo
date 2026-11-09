@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.36.0 - 2026-11-09
+### Added
+* The list route answers `search=<text>` on a collection that declares `query.search`: a row matches when any declared property contains the text, ignoring case, together with the other filters, and a facet request counts under the search too. A collection that declares none refuses `search` as any undeclared parameter.
+### Fixed
+* `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.
+
 ## 0.35.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

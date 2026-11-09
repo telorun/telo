@@ -1,4 +1,0 @@
-modules:
-  modules/ui: Added
-body: Adds the chatToolPreview text, the label of the button opening a tool call's long
-  argument or result in a dialog, with its translations in the fourteen languages.
