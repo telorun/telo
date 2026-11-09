@@ -62,11 +62,11 @@ requires:
   # `x-telo-catches-for`, which the mount authentication schema uses.
   #
   # unreleased: the `restrictions:` key below, which no published telo reads.
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 restrictions:
-  - requires: { telo: ">=unreleased" }
+  - requires: { telo: ">=0.133.0" }
     reason: "The server reports `status.localUrl` from `run()`, which an older kernel refuses when a templated kind's `run:` starts the server, so that start fails."
-  - requires: { telo: ">=unreleased" }
+  - requires: { telo: ">=0.133.0" }
     reason: Http.Server serves a socket the host process supplies through ctx.claimListener, which kernels before this release lack.
 lang: en
 imports:

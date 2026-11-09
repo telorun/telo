@@ -11,7 +11,7 @@ metadata:
     render one with arguments into messages. Connect over Streamable HTTP with managed
     sessions, or by spawning the server as a child process and speaking JSON-RPC over
     its stdio — the calls are the same either way.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.129.0" }
     reason: "0.129.0 first exports the SDK retry helpers `HttpClient.retry` runs on; 0.128.0 fails at controller load (no `isRetryable`); also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."

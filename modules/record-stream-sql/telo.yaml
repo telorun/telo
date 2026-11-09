@@ -11,7 +11,7 @@ metadata:
     write is a single guarded statement or transaction, so the database settles races
     between processes, and ages are measured on the database clock. Works on any SQL
     backend.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.108.0" }
     reason: "The journal controller reads and builds durations through the value domain (`isCelDuration`, `durationNanos`, `celDurationFromNanos`), which SDKs before 0.108.0 do not export; the resource dies at creation with a TypeError."

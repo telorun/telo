@@ -16,7 +16,7 @@ metadata:
     exposing every workflow as its own endpoint with a generated OpenAPI
     document.
   categories: [Transport]
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.128.0" }
     reason: "Forwarding each workflow's handler reference through `self.workflows` fails at boot on a kernel before 0.128.0, which cannot name an already-injected instance."

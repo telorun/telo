@@ -10,7 +10,7 @@ metadata:
     past the cursor it last read, and a writer raises that version after committing
     a change. Any number of waiters share a topic and all wake together, and running
     out of time is a normal result, so a request re-reads its data and waits again.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.108.0" }
     reason: "The wait controller reads a duration through the value domain (`isCelDuration`, `durationNanos`), which SDKs before 0.108.0 do not export; also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."

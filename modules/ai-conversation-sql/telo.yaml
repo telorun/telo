@@ -11,7 +11,7 @@ metadata:
     tables itself. Appends are fenced by the current turn, renames by a header
     version, a file is bound to one conversation at most, and a branch pages in
     constant work however long the conversation grows. Speaks PostgreSQL and SQLite.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 imports: { AiConversation: ../ai-conversation, Sql: ../sql }
 exports: { kinds: [Store] }
 ---

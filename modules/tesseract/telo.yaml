@@ -11,7 +11,7 @@ metadata:
     Returns the text with confidence scores and word, line and block boxes, detects
     page rotation, and runs recognitions in parallel with queue, size and time limits.
     English is bundled; other languages are importable models.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.108.0" }
     reason: "The recognizer reads its recognition time through the value domain (`isCelDuration`, `durationNanos`), which SDKs before 0.108.0 do not export; also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind, and `!module-path` naming a `sources:`-staged model counts as present only from 0.100.0."

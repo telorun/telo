@@ -10,7 +10,7 @@ metadata:
     retried or redelivered operation's writes happen once per key. A key commits
     or rolls back with the caller's transaction, is remembered for a retention
     window and is removed in the background after it.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.129.0" }
     reason: "Before 0.129.0, the table kind's duplicate-name rule binds `coReferrers:`, which an older analyzer evaluates unbound and reports as a defect in this module."

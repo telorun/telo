@@ -30,10 +30,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.TELO_BOT_TOKEN }}
 
-      - name: Check
-        id: check
-        run: node scripts/release-branch.mjs finish-check --ref "$GITHUB_REF_NAME"
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -45,6 +41,10 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check
+        id: check
+        run: node scripts/release-branch.mjs finish-check --ref "$GITHUB_REF_NAME"
 
       - name: Refuse while a Publish run is in progress
         env:

@@ -11,7 +11,7 @@ metadata:
     tokens, bytes, any metered spend — reserving up front and settling to the actual
     amount. Both return a verdict with what remains and when to retry, rather than
     raising.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.130.0" }
     reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0)."

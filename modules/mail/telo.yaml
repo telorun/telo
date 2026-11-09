@@ -11,7 +11,7 @@ metadata:
     recipients, subject, text and HTML bodies, headers and attachments. Includes
     SMTP delivery with a connection pool and an in-memory capture transport that
     records each message so tests can read it back.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.108.0" }
     reason: "The SMTP controller reads `timeout` through the value domain (`isCelDuration`, `durationNanos`), which SDKs before 0.108.0 do not export; also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."

@@ -11,7 +11,7 @@ metadata:
     retries, concurrent callers and process restarts; later calls replay the stored
     result instead of repeating it, and a caller that dies frees the key rather than
     wedging it.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.130.0" }
     reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0)."

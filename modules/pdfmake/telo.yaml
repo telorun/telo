@@ -11,7 +11,7 @@ metadata:
     backgrounds, headers and footers, and embedded brand fonts. One document
     resource is a report template — invoke it per customer and its content
     expressions fill in that customer's rows.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.82.0" }
     reason: "A kind schema referencing a named shape needs a runtime that can read one: an older kernel's placeholder walk stops at the reference, collapses every expression under `content` to an empty string, and rejects the document for a value the author never wrote."

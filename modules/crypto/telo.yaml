@@ -11,7 +11,7 @@ metadata:
     argon2id, bcrypt, scrypt or PBKDF2 (pepper support, upgrade of weaker stored
     hashes on login, verification of imported hashes), constant-time comparison
     and HKDF key derivation.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.84.0" }
     reason: "0.84.0 is the first release honouring `x-telo-sensitive` on contract properties; an older runtime ignores it and puts passwords and keys on the debug wire."

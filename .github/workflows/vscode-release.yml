@@ -66,6 +66,12 @@ jobs:
             echo "release=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install the release scripts' dependencies
+        if: steps.check.outputs.release == 'true' && inputs.channel != 'candidate'
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
+
       - name: Does the Marketplace move forward
         id: pointers
         if: steps.check.outputs.release == 'true' && inputs.channel != 'candidate'

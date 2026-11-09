@@ -41,6 +41,11 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
+
       - name: Does the deploy move forward
         id: pointers
         run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"

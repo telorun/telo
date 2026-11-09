@@ -130,6 +130,11 @@ jobs:
             [ -n "$CLI_VERSION" ] && echo "release-cli=true" || echo "release-cli=false"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Install the release scripts' dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
+
       # Forward-only: a pointer moves only when no final tag names a higher version
       # in its scope, so re-running an old publish moves nothing.
       - id: pointers

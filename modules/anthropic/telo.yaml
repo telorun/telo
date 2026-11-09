@@ -11,7 +11,7 @@ metadata:
     input, extended thinking that survives a tool loop, and prompt caching at
     declared breakpoints with a five-minute or one-hour lifetime. The API key and
     base URL live on a configurable HTTP client.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.114.0" }
     reason: "Declared by hand: 0.114.0 is the release this module was first checked against, and measurement cannot confirm an older one runs it."

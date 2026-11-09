@@ -13,7 +13,7 @@ metadata:
     Import it and hand its one ready-made model to a recognizer, beside any other
     languages a page mixes. Packaged from the integer-quantized best models of the
     tesseract-ocr project.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.100.0" }
     reason: "`!module-path` naming a `sources:`-staged model counts as present in `telo check` and in release planning from pins only from 0.100.0."

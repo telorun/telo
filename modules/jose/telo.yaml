@@ -14,7 +14,7 @@ metadata:
 requires:
   # 0.84.0 first honours `x-telo-sensitive` on contract properties; 0.129.0
   # (forward-declared) first reads a bounded `Telo.Duration` (`exclusiveMinimum: 0s`).
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 imports: { KvStore: ../kv-store, Crypto: ../crypto }
 exports:
   kinds: [Keys, KeySet, RemoteKeySet, Sign, Verify, Rotate, PublicKeys, Encrypt, Decrypt]

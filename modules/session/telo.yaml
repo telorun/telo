@@ -11,7 +11,7 @@ metadata:
     replace it when privileges change, and log a user out of one device or every
     device. Sessions expire when idle and at an absolute deadline, can outlive
     the browser, and are capped per user.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.130.0" }
     reason: "A resource rule's `coReferrers:` is first bound in 0.130.0; an older analyzer evaluates the name rule unbound and reports it as a defect in this module."

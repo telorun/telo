@@ -14,7 +14,7 @@ metadata:
     challenge.
 requires:
   # 0.129.0 first reads a bounded `Telo.Duration` (`exclusiveMinimum: 0s`).
-  telo: ">=unreleased"
+  telo: ">=0.133.0"
 imports: { Auth: ../auth, Jose: ../jose, KvStore: ../kv-store, Cache: ../cache, Http: ../http-client }
 exports: { kinds: [AccessTokenVerifier, Jwt, Introspection, Revoke] }
 ---
