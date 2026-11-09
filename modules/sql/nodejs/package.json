@@ -1,6 +1,6 @@
 {
   "name": "@telorun/sql",
-  "version": "0.31.2",
+  "version": "0.31.3",
   "private": true,
   "description": "Telo SQL module - SQL database resource kinds for Telo manifests.",
   "keywords": [
