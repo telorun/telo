@@ -356,8 +356,8 @@ function requestMissingChangelogEntries(
  * Dependency order over in-repo imports — a dependency before its dependents.
  *
  * This is also the publish order, and it is not optional there: publishing
- * canonicalizes a relative import and then hard-fails when the derived ref does
- * not already resolve, so a sibling has to be pushed first.
+ * writes a relative import as its target's assigned ref and then hard-fails
+ * when that ref does not already resolve, so a sibling has to be pushed first.
  *
  * A cycle keeps its members in key order rather than throwing. A module graph
  * should not have one, but a release is the wrong moment to discover it, and the

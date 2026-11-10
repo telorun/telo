@@ -424,7 +424,7 @@ These come from the release planner rather than from `telo check`. See
 | `LEDGER_REGISTRY_MISMATCH` | A module's ledger digests were taken against a different registry base than this run built against, so nothing can be compared. Per module, because a workspace may publish its subtrees to different bases. |
 | `NO_DESTINATION_KNOWN` | A module has never published, its `release.modules` entry declares no `registry:` and neither does the block. Declare one, pass `--registry`, or set `TELO_OCI_REGISTRY`. |
 | `DESTINATION_COLLISION` | Two modules resolve to one ref, because a ref is the registry base plus the module's own directory name. Rename a directory, or give one subtree its own `registry:`. |
-| `IMPORT_DESTINATION_CONFLICT` | A relative import between two workspace modules does not agree about where the target publishes. Publishing rewrites the import to the ref the importer's own path yields, so the artifact would name a module nobody pushes. Use a pinned remote import across a publish boundary. |
+| `IMPORT_TARGET_NOT_RELEASED` | A workspace module imports by relative path a manifest outside its own directory that the workspace does not release on its own — a library inside another module's directory, say. Publishing writes such an import as its target's assigned ref, so there is none to write. Import a module the workspace releases, or move the library inside the importing module. |
 | `WORKSPACE_MODULE_NESTED` | A module the workspace lists lies inside the directory of a module that imports it, so it ships inside that module's artifact and is not released on its own. Drop its entry from `telo-workspace.yaml`. |
 
 ### The workspace marker (`telo-workspace.yaml`)

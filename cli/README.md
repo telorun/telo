@@ -201,7 +201,7 @@ telo upgrade ./apps/my-app                       # directory → ./apps/my-app/t
 telo upgrade ./apps/a ./apps/b --dry-run
 telo upgrade ./apps/my-app --recursive           # follow ./relative imports too
 telo upgrade ./manifest.yaml --include-prerelease
-telo upgrade ./examples/todo-app --pin-local     # relative import of a released module → its pin
+telo upgrade ./examples/todo-app --pin-local     # deprecated: telo release imports --as=published
 ```
 
 **Options:**
@@ -209,7 +209,7 @@ telo upgrade ./examples/todo-app --pin-local     # relative import of a released
 - `--include-prerelease` — Consider versions with a SemVer prerelease segment (e.g. `1.0.0-beta.1`) when picking the latest. Off by default — prereleases are ignored unless the flag is set.
 - `--dry-run` — Show the proposed rewrites without touching any files.
 - `--recursive`, `-r` — Follow relative (local) imports and upgrade their manifests too. Cycle-safe, and each file is upgraded at most once even when reached from several manifests. Remote refs (OCI / HTTP) are always upgraded in place; recursion only descends into on-disk siblings.
-- `--pin-local` — Rewrite a relative import of a released module to its published pin (`../../modules/sql` → `oci://host/org/sql@0.27.0#sha256-…`). It is for a repository that holds both modules and their consumers: a consumer imports a module by relative path while a change to it is unreleased, and this turns the import back once the change has shipped. An import is rewritten only when all of these hold: its target is a module of a [release workspace](https://telo.run/extend/releasing-modules); the release plan (`telo release status`) has no pending bump for it, so the published artifact is what the working copy holds; and that version exists at the registry. Otherwise the import stays relative and the reason is printed — `kept local — modules/sql has an unreleased change (0.27.0 → 0.27.1: declared)`. A relative import of anything else (an application's own `./database` library) is left exactly as without the flag, and so is a manifest that sits inside the module it imports. Applies only to the manifests named on the command line, never to one reached through `--recursive`: a released module's own relative imports are what its release is planned along. Building the plan builds every module of the workspace, once per invocation.
+- `--pin-local` — **Deprecated**, kept for one release: runs [`telo release imports --as=published`](#telo-release-imports-paths) on the manifests named on the command line (never on one reached through `--recursive`) before upgrading them, and prints that replacement on stderr. Its rewrites are reported in `upgrade`'s own output; an import left relative is not a failure here. An import it decides is not bumped by `upgrade`.
 - `--registry <oci://host/org>` — With `--pin-local`: the publish destination base for modules whose workspace entry declares none, as for `telo release`.
 
 **Behavior per import:**
@@ -361,6 +361,7 @@ Plan and apply module version bumps across a workspace. Full guide: [Releasing m
 | `apply` | Write versions, changelogs and the ledger, and consume the fragments; `--date YYYY-MM-DD` sets the changelog date (default today) |
 | `verify` | Reconcile the ledger against the registry; `--write` re-records the ledger from what the registry serves |
 | `stage` | Fetch and verify the files each module's `sources:` block declares; `--module <path>` (repeatable) limits it, `--pin` writes their pins into `telo.yaml` |
+| `imports <paths..>` | Write each import of a workspace module in its published or its relative form — see below |
 
 **Options (every subcommand):**
 
@@ -372,6 +373,25 @@ Plan and apply module version bumps across a workspace. Full guide: [Releasing m
 telo release add --module modules/sql --kind Fixed --body "Closes the pool on shutdown"
 telo release status
 ```
+
+#### `telo release imports <paths..>`
+
+Rewrites the imports of release-workspace modules in the manifests named — never in one they reach — between the two forms a consumer in the same repository (an example, a starter, an application, a blueprint) writes them in: the relative path every branch commits, and the published reference a release tag carries.
+
+```bash
+telo release imports examples/todo-app --as=relative          # oci://…/sql@0.27.0#sha256-… → ../../modules/sql
+telo release imports examples/todo-app --as=published         # ../../modules/sql → oci://…/sql@0.27.0#sha256-…
+telo release imports examples/todo-app --as=relative --check  # exit 1 listing every import not in that form
+```
+
+- `--as=published` writes `<destination>@<version>#<pin>`: the module's version in the tree, the pin read from the registry for that version — never derived from the working copy. A module the release plan (`telo release status`) still bumps, and a version the registry does not have, are written relative instead, with the reason printed (`kept relative — modules/sql has an unreleased change (0.27.0 → 0.27.1: declared)`), and the command exits `1` — every import it could decide is still written. Building the plan builds every module of the workspace, once per invocation, and only when an import needs it.
+- `--as=relative` writes the path from the manifest's directory to the module's directory, `../…/<dir>`, with no `telo.yaml` and no trailing slash, for every import whose repository is a workspace module's publish destination. The version in the reference is not consulted.
+- An import of the module the manifest sits inside — the module's own test or fixture, a blueprint's `example/` — is always written relative, under either `--as`.
+- Left alone: imports of modules outside the workspace, an image module, a target below the importing manifest's own directory (a nested library, which ships inside the importer), and a relative import already written relative.
+- `--check` writes nothing and exits `1` listing every import whose form differs from what would be written (and, under `--as=published`, any import that would be left relative); `--dry-run` shows the rewrites, writes nothing and exits as the write would.
+- `--as` is required; a missing or unknown value is a usage error (exit `2`).
+
+The rewrite splices only the `source:` value, keeping its quote style and every other byte, so `--as=published` then `--as=relative` gives back a consumer written in the canonical form. Under `-o json` the payload is `{ ok, as, dryRun, check, rewritten: [{ manifest, alias, source, to }], keptRelative: [{ manifest, alias, source, reason }], errors: [{ manifest, alias?, source?, message }] }`.
 
 ---
 

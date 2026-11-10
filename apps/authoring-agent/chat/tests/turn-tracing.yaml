@@ -17,8 +17,8 @@ imports:
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
-  Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
-  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  Shell: ../../../../modules/shell
+  Assert: ../../../../modules/assert
 variables:
   scratch:
     env: CHAT_TEST_TURN_TRACING_SCRATCH

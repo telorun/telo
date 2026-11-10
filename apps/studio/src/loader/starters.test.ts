@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings } from "../model";
 import {
-  DEFAULT_STARTERS_BASE_URL,
   fetchStarterCatalog,
-  resolveStartersBaseUrl,
+  fixedStartersBaseUrl,
+  StarterCatalogNotFoundError,
   rewriteMetadataName,
   starterManifestUrl,
 } from "./starters";
@@ -33,21 +33,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("resolveStartersBaseUrl", () => {
-  it("falls back to the public default when unset", () => {
-    expect(resolveStartersBaseUrl(settings())).toBe(DEFAULT_STARTERS_BASE_URL);
+describe("fixedStartersBaseUrl", () => {
+  it("is undefined when neither the setting nor the build names one", () => {
+    expect(fixedStartersBaseUrl(settings(), undefined)).toBeUndefined();
+    expect(fixedStartersBaseUrl(settings({ startersBaseUrl: "   " }), undefined)).toBeUndefined();
   });
 
-  it("treats whitespace-only as unset", () => {
-    expect(resolveStartersBaseUrl(settings({ startersBaseUrl: "   " }))).toBe(
-      DEFAULT_STARTERS_BASE_URL,
-    );
+  it("takes the build's URL when the setting is empty", () => {
+    expect(fixedStartersBaseUrl(settings(), "https://b.dev/s")).toBe("https://b.dev/s");
   });
 
-  it("uses the setting and trims trailing slashes", () => {
-    expect(resolveStartersBaseUrl(settings({ startersBaseUrl: "https://x.dev/t//" }))).toBe(
-      "https://x.dev/t",
-    );
+  it("prefers the setting and trims trailing slashes", () => {
+    expect(
+      fixedStartersBaseUrl(settings({ startersBaseUrl: "https://x.dev/t//" }), "https://b.dev/s"),
+    ).toBe("https://x.dev/t");
   });
 });
 
@@ -79,9 +78,16 @@ describe("fetchStarterCatalog", () => {
     expect(catalog.starters[0].id).toBe("a");
   });
 
-  it("throws on a non-OK status", async () => {
+  it("throws a not-found error on 404", async () => {
     stubFetch(() => ({ ok: false, status: 404, statusText: "Not Found" }));
-    await expect(fetchStarterCatalog("https://x.dev")).rejects.toThrow(/HTTP 404/);
+    await expect(fetchStarterCatalog("https://x.dev")).rejects.toBeInstanceOf(
+      StarterCatalogNotFoundError,
+    );
+  });
+
+  it("throws on another non-OK status", async () => {
+    stubFetch(() => ({ ok: false, status: 500, statusText: "Server Error" }));
+    await expect(fetchStarterCatalog("https://x.dev")).rejects.toThrow(/HTTP 500/);
   });
 
   it("throws on a malformed body", async () => {

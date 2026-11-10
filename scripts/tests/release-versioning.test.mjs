@@ -1,6 +1,6 @@
 // The version generator, the Rust-twin stamp and the changeset gate under
 // changesets prerelease mode and on release branches, each run in a scratch
-// workspace holding copies of the scripts. Run: node --test scripts/tests/
+// workspace holding copies of the scripts. Run: node --test scripts/tests/*.test.mjs
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -269,7 +269,7 @@ describe("changeset gate", () => {
     git(root, "switch", "-q", "-c", "pr");
     put(root, "cli/nodejs/src/index.ts", "export const a = 1;\n");
     commit(root, "change");
-    for (const head of ["changeset-release/release/0.85", "module-release/release/0.85", "release-record/release/0.85"]) {
+    for (const head of ["changeset-release/release/0.85", "release-record/release/0.85"]) {
       const result = run(root, process.execPath, ["scripts/check-changeset-status.mjs", "main"], { GITHUB_HEAD_REF: head });
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /coverage is exempt/);

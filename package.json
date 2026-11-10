@@ -24,7 +24,7 @@
   "scripts": {
     "prepare": "node scripts/copy-value-type-entries.mjs && node scripts/copy-zone-attribute-entries.mjs && node scripts/copy-error-code-entries.mjs && node scripts/copy-issue-keyword-entries.mjs && node scripts/copy-migration-entries.mjs && node scripts/copy-format-entries.mjs && node scripts/generate-telo-version.mjs && node scripts/render-builtin-vocabulary.mjs && node scripts/generate-artifact-axes.mjs",
     "telo": "bun ./cli/nodejs/bin/telo.ts",
-    "starters": "bun ./cli/nodejs/bin/telo.ts ./starters/serve.yaml",
+    "starters": "node scripts/serve-starters.mjs",
     "telo:node": "node ./cli/nodejs/bin/telo.mjs",
     "telo:standalone": "pnpm --filter \"@telorun/cli...\" build && pnpm --filter @telorun/cli build:standalone && ./cli/nodejs/dist-standalone/telo",
     "publish": "bun ./cli/nodejs/bin/telo.ts publish",
@@ -43,6 +43,9 @@
     "test:docker": "docker build --target rust-slim -f cli/nodejs/Dockerfile -t telo:ci . && docker run --rm --user 1000 -v \"$PWD\":/workspace -w /workspace telo:ci ./test-suite.yaml",
     "ci": "pnpm run check modules/*/telo.yaml && pnpm run check examples/*/telo.yaml && pnpm run check apps/*/telo.yaml && pnpm run check starters/apps/*/telo.yaml && pnpm run check starters/libs/*/telo.yaml && pnpm run check blueprints/*/telo.yaml && pnpm run check benchmarks/*/comparison.yaml benchmarks/*/telo/telo.yaml && pnpm run test && pnpm -r --if-present build && pnpm -r test && pnpm run test:node && pnpm run test:docker",
     "upgrade:imports": "node scripts/upgrade-imports.mjs",
+    "imports": "node scripts/release-imports.mjs",
+    "check:release-imports": "node scripts/check-release-imports.mjs",
+    "publication-commit": "node scripts/publication-commit.mjs",
     "release": "changeset publish",
     "publish-modules": "node scripts/publish-modules.mjs",
     "register-modules": "node scripts/register-modules.mjs",

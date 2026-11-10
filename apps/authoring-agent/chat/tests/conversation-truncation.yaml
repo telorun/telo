@@ -16,11 +16,11 @@ imports:
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
-  Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
+  Sse: ../../../../modules/sse-codec
   Stream: ../../../../modules/stream
-  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  Sql: ../../../../modules/sql
+  SQLite: ../../../../modules/sqlite
+  Assert: ../../../../modules/assert
 variables:
   scratch:
     env: CHAT_TEST_CONVERSATION_TRUNCATION_SCRATCH

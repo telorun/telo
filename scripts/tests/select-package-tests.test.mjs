@@ -1,4 +1,4 @@
-// Which diffs reach the macOS / Windows core job. Run: node --test scripts/tests/
+// Which diffs reach the macOS / Windows core job. Run: node --test scripts/tests/*.test.mjs
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";

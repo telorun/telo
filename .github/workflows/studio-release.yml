@@ -8,10 +8,11 @@ name: Release Studio
 # Called by the branch's Publish workflow on finals and patches only: a candidate
 # carries an rc version of Studio and publishes none of it. `@telorun/studio` is
 # private so it never lands in `publishedPackages`; the `gate` job instead
-# confirms its `package.json` version moved in the commit Publish ran on (which
-# happens when a Version PR merges, including the automatic
-# `updateInternalDependencies` patch bumps) before spending matrix minutes. A
-# re-run of the Publish run answers as the first did.
+# confirms its `package.json` version moved in the release commit (which happens
+# when a release PR merges, including the automatic `updateInternalDependencies`
+# patch bumps) before spending matrix minutes. Every job builds the release tag's
+# tree, the publication commit, whose first parent is that release commit
+# (`release-commit.mjs`). A re-run of the Publish run answers as the first did.
 
 on:
   workflow_call:
@@ -25,7 +26,7 @@ on:
         type: string
         required: true
       tag:
-        description: 'The release tag (v<version>).'
+        description: 'The release tag (v<version>), checked out.'
         type: string
         required: true
 
@@ -45,11 +46,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag }}
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Find the release commit
+        id: release-commit
+        run: node scripts/release-commit.mjs HEAD
+
       - name: Check studio version
         id: check
+        env:
+          RELEASE_COMMIT: ${{ steps.release-commit.outputs.release-commit }}
         run: |
           set -euo pipefail
           NEW=$(jq -r .version apps/studio/package.json)
@@ -58,13 +66,13 @@ jobs:
           # A path absent at the parent is a move (the editor -> studio rename)
           # or a brand-new app — neither is a version bump, and treating one as
           # a bump republishes whatever version happens to be in the file.
-          if ! git cat-file -e "HEAD^:apps/studio/package.json" 2>/dev/null; then
-            echo "apps/studio/package.json did not exist at HEAD^ -> not a version bump; skipping."
+          if ! git cat-file -e "${RELEASE_COMMIT}^:apps/studio/package.json" 2>/dev/null; then
+            echo "apps/studio/package.json did not exist at ${RELEASE_COMMIT}^ -> not a version bump; skipping."
             echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          OLD=$(git show "HEAD^:apps/studio/package.json" | jq -r .version)
+          OLD=$(git show "${RELEASE_COMMIT}^:apps/studio/package.json" | jq -r .version)
           if [ "$NEW" != "$OLD" ]; then
             echo "Studio version changed: $OLD -> $NEW"
             echo "release=true" >> "$GITHUB_OUTPUT"
@@ -110,6 +118,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       # Tauri 2 system libraries (webkit2gtk + tray/appindicator + packaging).
       # libdbus-1-dev is required from tauri 2.11: its `tao` 0.35 enables the
@@ -179,8 +189,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # A released Studio shows its own release's starters, never main's.
-          VITE_TELO_STARTERS_URL: https://raw.githubusercontent.com/telorun/telo/${{ inputs.tag }}/starters
         with:
           projectPath: apps/studio
           args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
@@ -217,6 +225,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -232,8 +242,6 @@ jobs:
           context: .
           file: apps/studio/Dockerfile
           target: production
-          build-args: |
-            VITE_TELO_STARTERS_URL=https://raw.githubusercontent.com/telorun/telo/${{ inputs.tag }}/starters
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
@@ -254,6 +262,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
       - uses: azure/setup-helm@v4
 
       - name: Verify the chart carries the released version

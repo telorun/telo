@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lastMatchIndex } from "@telorun/glob";
-import {
-  checkDestinationCollisions,
-  checkImportDestinations,
-} from "../src/release/destinations.js";
+import { checkDestinationCollisions } from "../src/release/destinations.js";
 import {
   DEFAULT_ENV_FILES,
   DEFAULT_RELEASE_IGNORE,
@@ -189,25 +186,6 @@ describe("destinations", () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].code).toBe("DESTINATION_COLLISION");
     expect(diagnostics[0].message).toContain("vendor/aws/storage and vendor/google/storage");
-  });
-
-  it("refuses a relative import whose derived ref is not where the target publishes", () => {
-    const diagnostics = checkImportDestinations([
-      {
-        from: "vendor/acme/billing",
-        to: "modules/sql",
-        derived: "oci://registry.acme.internal/sql",
-        assigned: "oci://ghcr.io/telorun/sql",
-      },
-      {
-        from: "modules/ai",
-        to: "modules/sql",
-        derived: "oci://ghcr.io/telorun/sql",
-        assigned: "oci://ghcr.io/telorun/sql",
-      },
-    ]);
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].code).toBe("IMPORT_DESTINATION_CONFLICT");
   });
 });
 

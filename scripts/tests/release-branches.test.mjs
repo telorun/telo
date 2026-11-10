@@ -2,7 +2,7 @@
 // channel classification, the names a release gets and the record of a release on
 // main — each run against a scratch git repository holding copies of the scripts
 // (and links to the analyzer and CLI sources the record reads under bun).
-// Run: node --test scripts/tests/
+// Run: node --test scripts/tests/*.test.mjs
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -255,7 +255,7 @@ describe("Publish final release refusals", () => {
     git(root, "switch", "-q", "release/0.84");
     assert.equal(
       refused(script(root, "release-branch.mjs", ["finish-check", "--ref", "release/0.84"])),
-      'Error: release/0.84 has published no candidate yet. Merge its rc Version PR ("chore(release): version packages") first, then finish.',
+      'Error: release/0.84 has published no candidate yet. Merge its rc Version PR ("chore(release): version") first, then finish.',
     );
     git(root, "tag", "v0.84.0");
     assert.equal(
@@ -383,7 +383,7 @@ describe("release channel", () => {
     assert.match(again.stdout, /^existing=true$/m);
   });
 
-  it("opens no Module Release PR in candidates or while changesets are pending", () => {
+  it("versions no modules in candidates or while changesets are pending", () => {
     const root = workspace("0.85.0");
     assert.match(script(root, "release-channel.mjs", ["modules-ready"]).stdout, /^ready=true$/m);
     changeset(root, "p", "patch");
@@ -478,8 +478,11 @@ describe("release branch versioning and tags", () => {
       base: "origin/main",
       carriedBy: "release/0.85",
     });
-    for (const head of ["changeset-release/release/0.85", "module-release/release/0.85", "release-record/release/0.85"]) {
+    for (const head of ["changeset-release/release/0.85", "release-record/release/0.85"]) {
       assert.equal(gateRefs({ cwd: root, event: "pull_request", base: "main", head }).base, "HEAD");
+    }
+    for (const head of ["module-release/release/0.85", "imports/release/0.85"]) {
+      assert.equal(gateRefs({ cwd: root, event: "pull_request", base: "main", head }).base, "origin/main");
     }
     assert.deepEqual(gateRefs({ cwd: root, event: "pull_request", base: "release/0.85", head: "pick/x" }), {
       base: "origin/release/0.85",
@@ -488,6 +491,242 @@ describe("release branch versioning and tags", () => {
     assert.deepEqual(gateRefs({ cwd: root, event: "push", ref: "main" }), { base: "HEAD", carriedBy: "release/0.85" });
   });
 
+});
+
+// Stands in for `telo release imports --as=published -o json`: it pins every relative
+// import (`A: ../../modules/a` → `A: oci://ghcr.io/telorun/a@1.1.0#sha256-A`) except
+// the alias FAKE_KEEP names, which it keeps relative and exits 1, as the command does.
+const FAKE_CLI = `
+import { readFileSync, writeFileSync } from "node:fs";
+import { basename } from "node:path";
+const args = process.argv.slice(2);
+const result = { ok: true, as: "published", dryRun: args.includes("--dry-run"), check: false, rewritten: [], keptRelative: [], errors: [] };
+for (const manifest of args.filter((arg) => /\\.ya?ml$/.test(arg))) {
+  const text = readFileSync(manifest, "utf8").replace(/^(  (\\w+): )(\\.\\.\\/\\S+)$/gm, (line, key, alias, source) => {
+    if (alias === process.env.FAKE_KEEP) {
+      result.keptRelative.push({ manifest, alias, source, cause: "plan-bumped", reason: "has an unreleased change" });
+      return line;
+    }
+    const to = "oci://ghcr.io/telorun/" + basename(source) + "@1.1.0#sha256-" + alias;
+    result.rewritten.push({ manifest, alias, source, to });
+    return key + to;
+  });
+  if (!result.dryRun) writeFileSync(manifest, text);
+}
+result.ok = result.keptRelative.length === 0;
+process.stdout.write(JSON.stringify(result));
+process.exit(result.ok ? 0 : 1);
+`;
+
+function fakeCli() {
+  const dir = mkdtempSync(join(tmpdir(), "telo-fake-cli-"));
+  made.push(dir);
+  writeFileSync(join(dir, "telo.mjs"), FAKE_CLI);
+  return `${process.execPath} ${join(dir, "telo.mjs")}`;
+}
+
+const outputsOf = (result) =>
+  Object.fromEntries(result.stdout.trim().split("\n").filter((line) => line.includes("=")).map((line) => line.split(/=(.*)/s).slice(0, 2)));
+
+describe("publication commits", () => {
+  const library = (name, version) => `kind: Telo.Library\nmetadata:\n  name: ${name}\n  version: ${version}\n`;
+  const consumer = (source) => `kind: Telo.Application\nmetadata:\n  name: S\nimports:\n  A: ${source}\n`;
+  const cli = fakeCli();
+  // GH_TOKEN / GITHUB_REPOSITORY cleared: a push goes to the scratch repo's origin.
+  const env = (extra = {}) => ({ TELO_CLI: cli, GH_TOKEN: "", GITHUB_REPOSITORY: "", ...extra });
+
+  /** 0.85.0 shipped as a pre-change tag; release/0.85 checked out at its release commit
+   *  `0.85.1`, which moves the CLI and module `a` and is consumed relatively by a starter. */
+  function released() {
+    const root = workspace("0.85.0");
+    put(root, "telo-workspace.yaml", "release:\n  modules:\n    - modules/*\n");
+    put(root, "modules/a/telo.yaml", library("A", "1.0.0"));
+    put(root, "starters/s/telo.yaml", consumer("../../modules/a"));
+    commit(root, "consumers");
+    git(root, "switch", "-q", "-c", "release/0.85");
+    git(root, "tag", "v0.85.0");
+    put(root, "cli/nodejs/package.json", JSON.stringify({ name: "@telorun/cli", version: "0.85.1" }));
+    put(root, "modules/a/telo.yaml", library("A", "1.1.0"));
+    put(root, "modules/a/CHANGELOG.md", "## 1.1.0\n");
+    commit(root, "chore(release): version");
+    return { root, release: git(root, "rev-parse", "HEAD") };
+  }
+
+  const publish = (root, args, extra) => script(root, "publication-commit.mjs", args, env(extra));
+
+  it("makes the same branchless commit twice, touching only import lines, with fixed identity and dates, leaving the checkout alone", async () => {
+    const { isPublicationCommit } = await import(pathToFileURL(join(REPO, "scripts/release-commit.mjs")).href);
+    const { PUBLICATION_IDENTITY } = await import(pathToFileURL(join(REPO, "scripts/publication-commit.mjs")).href);
+    const { root, release } = released();
+    const before = [git(root, "status", "--porcelain"), git(root, "worktree", "list")];
+
+    const first = publish(root, ["--release", release, "--tag", "v0.85.1"]);
+    assert.equal(first.status, 0, first.stdout + first.stderr);
+    const second = publish(root, ["--release", "release/0.85", "--tag", "v0.85.1", "--dry-run"]);
+    assert.equal(second.status, 0, second.stdout + second.stderr);
+    const sha = outputsOf(first).sha;
+    assert.equal(outputsOf(first).publication, "true");
+    assert.equal(outputsOf(second).sha, sha);
+    assert.equal(first.stdout.trim().split("\n").at(-1), sha);
+    assert.match(second.stderr, /would tag v0\.85\.1 at [0-9a-f]{40} \(new\)/);
+    assert.equal(git(root, "tag", "--list", "v0.85.1"), "");
+
+    const { name, email } = PUBLICATION_IDENTITY;
+    assert.equal(
+      git(root, "log", "-1", "--date=raw", "--format=%an|%ae|%ad|%cn|%ce|%cd|%P|%B", sha),
+      `${name}|${email}|${git(root, "log", "-1", "--date=raw", "--format=%cd", release)}|${name}|${email}|` +
+        `${git(root, "log", "-1", "--date=raw", "--format=%cd", release)}|${release}|chore(release): publish v0.85.1`,
+    );
+    assert.equal(git(root, "branch", "--all", "--contains", sha), "");
+    assert.equal(git(root, "diff", "--name-only", release, sha), "starters/s/telo.yaml");
+    assert.equal(git(root, "show", `${sha}:starters/s/telo.yaml`), consumer("oci://ghcr.io/telorun/a@1.1.0#sha256-A").trim());
+    assert.equal(isPublicationCommit({ cwd: root, commit: sha }), true);
+    assert.deepEqual([git(root, "status", "--porcelain"), git(root, "worktree", "list")], before);
+  });
+
+  it("pushes the tag with the branchless commit to the remote once, and finds it there on a re-run", () => {
+    const { root, release } = released();
+    const remote = mkdtempSync(join(tmpdir(), "telo-remote-"));
+    made.push(remote);
+    git(remote, "init", "-q", "--bare");
+    git(root, "remote", "add", "origin", remote);
+    git(root, "push", "-q", "origin", "release/0.85");
+
+    const pushed = publish(root, ["--release", release, "--tag", "v0.85.1", "--tag", "modules-0.85-1", "--push"]);
+    assert.equal(pushed.status, 0, pushed.stdout + pushed.stderr);
+    const sha = outputsOf(pushed).sha;
+    assert.match(pushed.stderr, /v0\.85\.1 created at/);
+    assert.match(pushed.stderr, /modules-0\.85-1 created at/);
+    for (const tag of ["v0.85.1", "modules-0.85-1"]) {
+      assert.equal(git(remote, "rev-parse", `refs/tags/${tag}`), sha);
+      assert.equal(git(root, "rev-parse", `refs/tags/${tag}`), sha);
+    }
+    assert.equal(git(remote, "log", "-1", "--format=%s", sha), "chore(release): publish v0.85.1");
+
+    const again = publish(root, ["--release", release, "--tag", "v0.85.1", "--tag", "modules-0.85-1", "--push"]);
+    assert.equal(again.status, 0, again.stdout + again.stderr);
+    assert.equal(outputsOf(again).sha, sha);
+    assert.match(again.stderr, /v0\.85\.1 exists at/);
+  });
+
+  it("refuses a candidate, and fails naming an import left relative", () => {
+    const { root, release } = released();
+    const candidate = publish(root, ["--release", release, "--tag", "v0.85.1-rc.0", "--push"]);
+    assert.equal(candidate.status, 1);
+    assert.match(candidate.stderr, /v0\.85\.1-rc\.0 is a release candidate, which has no publication commit: its tag stays on the release commit\./);
+
+    const kept = publish(root, ["--release", release, "--tag", "v0.85.1"], { FAKE_KEEP: "A" });
+    assert.equal(kept.status, 1);
+    assert.match(kept.stderr, /1 import\(s\) would not be published:\n {2}starters\/s\/telo\.yaml {2}A: \.\.\/\.\.\/modules\/a {2}has an unreleased change/);
+  });
+
+  it("makes no publication commit when nothing is rewritten: the tag names the release commit", () => {
+    const { root } = released();
+    put(root, "starters/s/telo.yaml", consumer("oci://ghcr.io/telorun/a@1.1.0#sha256-A"));
+    commit(root, "chore(release): version, pinned");
+    const release = git(root, "rev-parse", "HEAD");
+    const result = publish(root, ["--release", release, "--tag", "v0.85.1"]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.deepEqual([outputsOf(result).publication, outputsOf(result).sha], ["false", release]);
+    assert.match(result.stderr, /the rewrite changes nothing/);
+  });
+
+  it("reads a tag's release commit: the parent of a publication commit, else the commit itself", async () => {
+    const { releaseCommitOf, isPublicationCommit, tagsOfReleaseCommit } = await import(
+      pathToFileURL(join(REPO, "scripts/release-commit.mjs")).href
+    );
+    const { root, release } = released();
+    const sha = outputsOf(publish(root, ["--release", release, "--tag", "v0.85.1"])).sha;
+    git(root, "tag", "v0.85.1", sha);
+    git(root, "tag", "modules-0.85-1", sha);
+    assert.equal(releaseCommitOf({ cwd: root, tag: "v0.85.1" }), release);
+    assert.equal(releaseCommitOf({ cwd: root, tag: "v0.85.0" }), git(root, "rev-parse", "v0.85.0"));
+    assert.deepEqual(tagsOfReleaseCommit({ cwd: root, commit: release }), ["modules-0.85-1", "v0.85.1"]);
+    for (const commit_ of [sha, release]) {
+      assert.equal(outputsOf(script(root, "release-commit.mjs", [commit_]))["release-commit"], release);
+    }
+
+    // The right subject over a change that is not an import line respelled.
+    const forged = (edit, subject) => {
+      git(root, "switch", "-q", "--detach", release);
+      edit();
+      commit(root, subject);
+      const at = git(root, "rev-parse", "HEAD");
+      git(root, "switch", "-q", "release/0.85");
+      return at;
+    };
+    const version = forged(() => put(root, "starters/s/telo.yaml", consumer("../../modules/a").replace("name: S", "name: T")), "chore(release): publish v0.85.2");
+    const outside = forged(() => put(root, "modules/a/telo.yaml", library("A", "1.2.0")), "chore(release): publish v0.85.2");
+    const subject = forged(() => put(root, "starters/s/telo.yaml", consumer("oci://ghcr.io/telorun/a@1.1.0#sha256-A")), "fix: pin");
+    for (const commit_ of [version, outside, subject]) assert.equal(isPublicationCommit({ cwd: root, commit: commit_ }), false);
+    git(root, "tag", "v0.85.2", outside);
+    assert.equal(releaseCommitOf({ cwd: root, tag: "v0.85.2" }), outside);
+  });
+
+  it("records a tag on a publication commit from its release commit, and the cut waits for that record", async () => {
+    const { recordTagFor } = await import(pathToFileURL(join(REPO, "scripts/release-branch.mjs")).href);
+    const { root, release } = released();
+    const sha = outputsOf(publish(root, ["--release", release, "--tag", "v0.85.1"])).sha;
+    git(root, "tag", "v0.85.1", sha);
+    git(root, "tag", "modules-0.85-1", sha);
+    git(root, "switch", "-q", "main");
+    changeset(root, "next", "minor");
+    commit(root, "feat on main");
+
+    assert.deepEqual(recordTagFor({ cwd: root, given: "v0.85.1" }), { tag: "modules-0.85-1", branch: "release/0.85" });
+    const cut = () => script(root, "release-branch.mjs", ["cut-check", "--ref", "main"], {}, BUN);
+    assert.equal(
+      refused(cut()),
+      'Error: main does not record modules-0.85-1. Merge "chore(release): record modules-0.85-1 on main" first.',
+    );
+    const plan = recordPlanOf(root, "modules-0.85-1");
+    assert.equal(plan.writes["modules/a/telo.yaml"], library("A", "1.1.0"));
+    assert.equal(Object.values(plan.writes).some((text) => text.includes("oci://")), false);
+    applyRecord(root, "modules-0.85-1");
+    commit(root, "chore(release): record modules-0.85-1 on main");
+    assert.equal(git(root, "show", "HEAD:starters/s/telo.yaml"), consumer("../../modules/a").trim());
+    const result = cut();
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
+  it("classifies a re-run at a release commit whose tags sit on its publication commit as the first run, and numbers on from them", () => {
+    const { root, release } = released();
+    const branchEnv = { GITHUB_REF_NAME: "release/0.85", PUBLISHED_PACKAGES: "[]" };
+    const first = outputsOf(script(root, "release-channel.mjs", ["classify"], branchEnv));
+    const sha = outputsOf(publish(root, ["--release", release, "--tag", "v0.85.1"])).sha;
+    git(root, "tag", "v0.85.1", sha);
+    git(root, "tag", "modules-0.85-1", sha);
+
+    assert.deepEqual(outputsOf(script(root, "release-channel.mjs", ["classify"], branchEnv)), first);
+    assert.equal(first.tag, "v0.85.1");
+    assert.equal(first.channel, "patch");
+    assert.match(script(root, "release-channel.mjs", ["pack-tag"], branchEnv).stdout, /^tag=v0\.85\.1$/m);
+    const again = outputsOf(script(root, "release-channel.mjs", ["modules-tag"], branchEnv));
+    assert.deepEqual([again.tag, again.existing], ["modules-0.85-1", "true"]);
+
+    put(root, "x.txt", "fix");
+    commit(root, "fix");
+    const next = outputsOf(script(root, "release-channel.mjs", ["modules-tag"], branchEnv));
+    assert.deepEqual([next.tag, next.existing], ["modules-0.85-2", "false"]);
+  });
+
+  it("gates the release PR on imports awaiting this release's publish only", async () => {
+    const { releaseImportsVerdict } = await import(pathToFileURL(join(REPO, "scripts/check-release-imports.mjs")).href);
+    const kept = (alias, cause) => ({ manifest: "starters/s/telo.yaml", alias, source: `../../modules/${alias}`, cause, reason: cause });
+    const envelope = (keptRelative, errors = []) => ({ ok: false, keptRelative, errors });
+    assert.deepEqual(releaseImportsVerdict({ status: 0, result: envelope([]) }).failures, []);
+    const awaiting = releaseImportsVerdict({ status: 1, result: envelope([kept("a", "unpublished"), kept("b", "never-released")]) });
+    assert.deepEqual([awaiting.failures, awaiting.awaiting.length], [[], 2]);
+    assert.deepEqual(releaseImportsVerdict({ status: 1, result: envelope([kept("a", "unpublished"), kept("c", "plan-bumped")]) }).failures, [
+      "starters/s/telo.yaml  c: ../../modules/c  plan-bumped",
+    ]);
+    assert.deepEqual(
+      releaseImportsVerdict({ status: 1, result: envelope([], [{ manifest: "apps/x/telo.yaml", message: "registry unreachable" }]) }).failures,
+      ["apps/x/telo.yaml  registry unreachable"],
+    );
+    assert.equal(releaseImportsVerdict({ status: 1, result: { ok: false } }).failures.length, 1);
+    assert.equal(releaseImportsVerdict({ status: 2, result: undefined }).failures.length, 1);
+  });
 });
 
 const CHANGESET = join(REPO, "node_modules", ".bin", "changeset");

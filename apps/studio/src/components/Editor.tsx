@@ -35,7 +35,8 @@ import {
   rebuildManifestFromDocuments,
   reconcileImports,
   removeResourceViaAst,
-  resolveStartersBaseUrl,
+  fixedStartersBaseUrl,
+  galleryVersionOf,
   renameResourceFieldKey,
   moveResourceFieldItem,
   relocateResourceFieldItem,
@@ -2636,7 +2637,12 @@ export function Editor() {
         open={createModuleKind !== null}
         onOpenChange={(open) => !open && setCreateModuleKind(null)}
         kind={createModuleKind ?? "Application"}
-        startersBaseUrl={resolveStartersBaseUrl(settings)}
+        fixedBaseUrl={fixedStartersBaseUrl(settings)}
+        galleryVersion={galleryVersionOf({
+          workspaceOpen: !!state.workspace,
+          hasModule: !!state.activeModulePath,
+          language: teloLanguage,
+        })}
         onCreate={createNewModule}
       />
       <WorkspaceModeDialog

@@ -33,7 +33,9 @@
 // this run's release.
 //
 // `moved` counts the versions moved in HEAD^..HEAD that this run publishes for the
-// first time; the Publish workflow tags a module release only when it is non-zero.
+// first time; `moved-in-commit` counts those moved in it whether or not they were already
+// published. The Publish workflow numbers a module release when the latter is non-zero, so a
+// re-run of a release whose publication failed re-derives the same tag.
 //
 // The gate is idempotent, which is what makes this safe to run on every push of the
 // branch rather than only on a release commit: a failed push heals on the next one.
@@ -51,6 +53,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { promisify } from "node:util";
+import { versionsMovedInHead } from "./module-versions-moved.mjs";
 import { setOutput } from "./release-actions-output.mjs";
 
 import {
@@ -98,25 +101,6 @@ function run(cmd) {
 
 function runLive(cmd) {
   execSync(cmd, { stdio: "inherit", cwd: ROOT });
-}
-
-// metadata.version of the first YAML document, read from the file's content at a git
-// ref. Scoped to everything before the first `---` and to the `metadata:` block so a
-// nested Telo.Definition field named `version` can't match. Returns null when the file
-// is absent at that ref (newly added module) or declares no metadata.version.
-function manifestVersionAt(ref, yamlPath) {
-  let content;
-  try {
-    content = run(`git show ${ref}:${yamlPath}`);
-  } catch {
-    return null;
-  }
-  const docEnd = content.search(/^---\s*$/m);
-  const firstDoc = docEnd === -1 ? content : content.slice(0, docEnd);
-  const metaMatch = firstDoc.match(/^metadata:\s*\n((?:[ \t]+.*\n?)+)/m);
-  if (!metaMatch) return null;
-  const versionMatch = metaMatch[1].match(/^[ \t]+version:[ \t]*["']?(\d+\.\d+\.\d+)["']?[ \t]*$/m);
-  return versionMatch ? versionMatch[1] : null;
 }
 
 // Versions already published at an OCI repo, newest first. A repo that does not
@@ -168,19 +152,11 @@ const queued = new Set();
 const importable = importableManifests().filter((abs) => existsSync(abs));
 
 // The manifests whose metadata.version moved in HEAD^..HEAD.
-let diff = "";
-try {
-  diff = run("git diff --name-only HEAD^ HEAD");
-} catch {
-  console.log("No prior commit to diff against — no version moved in this commit.");
-}
-const changedFiles = new Set(diff.split("\n").filter(Boolean));
-const moved = new Set();
-for (const f of importable.map((abs) => abs.replace(ROOT + "/", "")).filter((rel) => changedFiles.has(rel))) {
-  const before = manifestVersionAt("HEAD^", f);
-  const after = manifestVersionAt("HEAD", f);
-  if (after && before !== after) moved.add(join(ROOT, f));
-}
+const movedRel = versionsMovedInHead(
+  ROOT,
+  importable.map((abs) => abs.replace(ROOT + "/", "")),
+);
+const moved = new Set([...movedRel].map((rel) => join(ROOT, rel)));
 
 // Presence checks that could not ANSWER — a broken credential, an unreachable
 // registry. Distinct from "no versions published", which is a real answer.
@@ -236,6 +212,7 @@ for (const entry of checked) {
   }
 }
 
+setOutput("moved-in-commit", moved.size);
 setOutput("moved", [...queued].filter((abs) => moved.has(abs)).length);
 
 // A presence check that could not answer is a failure of this job, not a module
@@ -263,9 +240,9 @@ if (manifests.length === 0) {
 
 const publishOrder = orderByDependencies(manifests);
 
-// One push pass over the ordered manifests. Relative sibling imports canonicalize to
-// the same OCI base and resolve there, so a sibling must be pushed before its
-// dependents. Failures are collected rather than thrown so one module can't abort the
+// One push pass over the ordered manifests. A relative sibling import is written as
+// the sibling's assigned destination and must resolve there, so a sibling must be
+// pushed before its dependents. Failures are collected rather than thrown so one module can't abort the
 // rest; a failed push leaves its version absent from OCI, so the gate retries it.
 console.log(`\nPushing ${publishOrder.length} module manifest(s):`);
 for (const m of publishOrder) console.log(`  ${m.path.replace(ROOT + "/", "")} → ${m.destination}`);

@@ -64,8 +64,8 @@ export {
   stampPackageVersion,
 } from "./version-stamp.js";
 
-export { checkDestinationCollisions, checkImportDestinations } from "./destinations.js";
-export type { ImportDestination, ModuleDestination } from "./destinations.js";
+export { checkDestinationCollisions } from "./destinations.js";
+export type { ModuleDestination } from "./destinations.js";
 
 export {
   DEFAULT_ENV_FILES,

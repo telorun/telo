@@ -17,9 +17,6 @@ metadata:
 # 0.129.0: the `translations:` block and ui's shipped translations.
 requires: { telo: ">=0.129.0" }
 lang: en
-# `http-server`, `data-model`, `ui` and `ui-react` come from this
-# repository while their changes are unreleased; `telo upgrade --pin-local` pins
-# them again once they ship.
 imports:
   Http: ../../../../../modules/http-server
   HttpDispatch: ../../../../../modules/http-dispatch

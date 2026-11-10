@@ -19,13 +19,12 @@ import { buildRemoteImportPlan, createVirtualWorkspaceAdapter } from "./remote";
 const STARTERS_URL_FROM_ENV = (import.meta.env as Record<string, string | undefined>)
   .VITE_TELO_STARTERS_URL;
 
-/** Base URL the gallery loads from when `settings.startersBaseUrl` is unset:
- *  `VITE_TELO_STARTERS_URL` at build — a release build sets its own release
- *  tag's starters, local development a checkout's own — else main's. */
-export const DEFAULT_STARTERS_BASE_URL =
+/** The gallery a development build is pointed at (`VITE_TELO_STARTERS_URL`),
+ *  used as is — no per-version resolution. Unset in release builds. */
+export const BUILD_STARTERS_BASE_URL: string | undefined =
   STARTERS_URL_FROM_ENV && STARTERS_URL_FROM_ENV.trim() !== ""
-    ? STARTERS_URL_FROM_ENV.trim()
-    : "https://raw.githubusercontent.com/telorun/telo/refs/heads/main/starters";
+    ? STARTERS_URL_FROM_ENV.trim().replace(/\/+$/, "")
+    : undefined;
 
 export type StarterCategory = "app" | "library";
 
@@ -51,16 +50,30 @@ export interface StarterFile {
   isRoot: boolean;
 }
 
-/** Resolves the effective base URL (trimmed of trailing slashes), falling back
- *  to the public default when the setting is empty. */
-export function resolveStartersBaseUrl(settings: AppSettings): string {
+/** The gallery base URL that does not follow the telo version, trimmed of
+ *  trailing slashes: the `startersBaseUrl` setting, else the build's
+ *  `VITE_TELO_STARTERS_URL`; `undefined` when neither is set. */
+export function fixedStartersBaseUrl(
+  settings: AppSettings,
+  buildUrl: string | undefined = BUILD_STARTERS_BASE_URL,
+): string | undefined {
   const raw = settings.startersBaseUrl?.trim();
-  return (raw || DEFAULT_STARTERS_BASE_URL).replace(/\/+$/, "");
+  const url = raw || buildUrl;
+  return url ? url.replace(/\/+$/, "") : undefined;
 }
 
 /** Full URL of a starter's root manifest. */
 export function starterManifestUrl(baseUrl: string, starter: StarterDescriptor): string {
   return `${baseUrl.replace(/\/+$/, "")}/${starter.path.replace(/^\/+/, "")}`;
+}
+
+/** The host answered 404 for the catalog: nothing is published there. The only
+ *  failure a per-version gallery answers by trying an older version. */
+export class StarterCatalogNotFoundError extends Error {
+  constructor(readonly url: string) {
+    super(`No starter catalog at ${url} (HTTP 404).`);
+    this.name = "StarterCatalogNotFoundError";
+  }
 }
 
 /** Fetches and validates the starter catalog. Throws an actionable error on
@@ -76,6 +89,7 @@ export async function fetchStarterCatalog(baseUrl: string): Promise<StarterCatal
       `Could not fetch starter catalog from ${url}: ${reason}. The host must allow cross-origin requests (CORS).`,
     );
   }
+  if (response.status === 404) throw new StarterCatalogNotFoundError(url);
   if (!response.ok) {
     throw new Error(
       `Could not fetch starter catalog from ${url}: HTTP ${response.status} ${response.statusText}.`,

@@ -22,17 +22,14 @@ metadata:
 # read from 0.121.0.
 requires: { telo: ">=0.121.0" }
 lang: en
-# The UI modules, `crud` and `crud-ui` come from this repository while their
-# changes are unreleased, with `http-server`, `sql` and `sqlite`, which `crud`
-# imports from it too; `telo upgrade --pin-local` pins them once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  Crud: oci://ghcr.io/telorun/crud@0.35.1#sha256-7KbRJRoZmDObudnGZ8suYjlyxePZQ_YWTTxBoYlrTlc
-  CrudUi: oci://ghcr.io/telorun/crud-ui@0.4.1#sha256-VL2SK_GLBAL-pEaXeVHMCG_0f9Ranc_eDn8X5nsmtQM
-  Ui: oci://ghcr.io/telorun/ui@0.10.1#sha256-TC91fXfmdXiZXHRIzACaH6gKgHzqipYgHpAJD0ZqsbY
-  UiReact: oci://ghcr.io/telorun/ui-react@0.11.1#sha256-UZSRk4r1Y3y1LVaaK3CeIm3w5W9KFnWQLv2bPa3XImo
+  Http: ../../../modules/http-server
+  Sql: ../../../modules/sql
+  SQLite: ../../../modules/sqlite
+  Crud: ../../../modules/crud
+  CrudUi: ../../../modules/crud-ui
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
 targets:
   - !ref migrate
   - !ref server
@@ -144,8 +141,7 @@ pages:
           # The bar shows only the filters chosen, as chips, kept in the address
           # and the browser.
           filters:
-            show: chosen
-            summary: chips
+            placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
             state: { key: todos, address: true, store: { kind: Ui.LocalStore } }
           create:
             # A drawer, and a full-size dialog on a narrow screen.

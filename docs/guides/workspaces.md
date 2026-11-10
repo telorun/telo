@@ -142,11 +142,11 @@ before it builds anything:
   `vendor/google/storage` inheriting a single base would overwrite one artifact
   (`DESTINATION_COLLISION`). Rename a directory, or give one subtree its own
   `registry:`.
-- **A relative import must agree about where its target publishes.** Publishing
-  rewrites `imports: ../sql` to the ref the importer's own path yields, so a
-  relative import that crosses a registry boundary would name a module nobody
-  pushes (`IMPORT_DESTINATION_CONFLICT`). Across a publish boundary, use a pinned
-  remote import — which is what such a dependency is.
+- **A relative import leaving a module must name a module the workspace
+  releases.** Publishing writes `imports: ../../modules/sql` as the ref the
+  workspace assigns `modules/sql`, whatever base and depth the importer sits at,
+  so a target the workspace does not release — a library inside another
+  module's directory, say — has no ref to write (`IMPORT_TARGET_NOT_RELEASED`).
 
 ## Bounding what a run can read
 

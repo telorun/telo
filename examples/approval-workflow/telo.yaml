@@ -38,19 +38,19 @@ metadata:
     re-derive it differently and hand a recorded result to work it never
     described.
 
-    Imports are relative because the durable modules are not published yet; they
-    become pinned `oci://` refs like every other example once they are.
+    The modules of this workspace are imported by relative path; a release tag
+    pins them to `oci://` refs.
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  Durable: oci://ghcr.io/telorun/durable@0.4.1#sha256-U6o5cEZ10pfN6JXQ6ia0vAg6GK7knlVeo7i8ObRGLbg
-  Local: oci://ghcr.io/telorun/durable-local@0.6.1#sha256-dtKR-c8y_WdDUJqnYRRbYs5cCMq6zXbY8ZMDpPfe7tM
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.8.1#sha256-2MbA4-Wc3BBNA0UKgPyHIAfrh3xATbTt8ne53S8Z8Ps
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
-  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  Durable: ../../modules/durable
+  Local: ../../modules/durable-local
+  Journal: ../../modules/durable-journal-file
+  Http: ../../modules/http-server
+  Console: ../../modules/console
+  Timer: ../../modules/timer
 targets:
   - !ref server
   - !ref resumer

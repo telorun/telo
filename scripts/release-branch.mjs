@@ -30,12 +30,13 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { refuse, setOutput } from "./release-actions-output.mjs";
+import { releaseCommitOf, releaseCommitsOf } from "./release-commit.mjs";
 import { ROOT, finalPublished, teloGeneration } from "./version-line.mjs";
 
 export const RELEASE_BRANCH = /^release\/(\d+)\.(\d+)$/;
 const CLI_MANIFEST = "cli/nodejs/package.json";
 const CANDIDATE_TAG = /^v\d+\.\d+\.\d+-/;
-const MACHINERY_HEAD = /^(changeset-release|module-release|release-record)\//;
+const MACHINERY_HEAD = /^(changeset-release|release-record)\//;
 // Tags on one commit order by the run that made them: modules after packages after v.
 const TAG_RANK = { v: 0, packages: 1, modules: 2 };
 
@@ -115,22 +116,27 @@ export function branchRef(cwd, branch) {
 
 /**
  * The live branch's release tags — `v<major>.<minor>.<z>` (no candidate),
- * `packages-<major>.<minor>-<n>` and `modules-<major>.<minor>-<n>` reachable from
- * its tip — newest first: by the tip's history, then by the run that made them.
+ * `packages-<major>.<minor>-<n>` and `modules-<major>.<minor>-<n>` whose release
+ * commit (`release-commit.mjs`) its tip reaches — newest first: by the tip's history,
+ * then by the run that made them.
  */
 export function releaseTagsOf(cwd, branch) {
   const ref = refOf(cwd, branch.name);
-  const line = `${branch.major}\\.${branch.minor}`;
-  const shape = new RegExp(`^(?:v${line}\\.\\d+|(packages|modules)-${line}-\\d+)$`);
+  const line = `${branch.major}.${branch.minor}`;
+  const escaped = `${branch.major}\\.${branch.minor}`;
+  const shape = new RegExp(`^(?:v${escaped}\\.\\d+|(packages|modules)-${escaped}-\\d+)$`);
   const order = new Map(git(cwd, "rev-list", "--topo-order", ref).split("\n").map((sha, index) => [sha, index]));
   const number = (tag) => Number(/(\d+)$/.exec(tag)[1]);
-  return git(cwd, "tag", "--merged", ref)
-    .split("\n")
-    .filter((tag) => shape.test(tag))
-    .map((tag) => ({
+  const tags = releaseCommitsOf({
+    cwd,
+    patterns: [`refs/tags/v${line}.*`, `refs/tags/packages-${line}-*`, `refs/tags/modules-${line}-*`],
+  });
+  return [...tags]
+    .filter(([tag, release]) => shape.test(tag) && order.has(release))
+    .map(([tag, release]) => ({
       tag,
       kind: tag.startsWith("v") ? "v" : tag.split("-")[0],
-      position: order.get(git(cwd, "rev-list", "-n", "1", tag)),
+      position: order.get(release),
     }))
     .sort((a, b) => a.position - b.position || TAG_RANK[b.kind] - TAG_RANK[a.kind] || number(b.tag) - number(a.tag))
     .map(({ tag }) => tag);
@@ -155,7 +161,7 @@ export function recordTagFor({ cwd = ROOT, given }) {
   if (tryGit(cwd, "rev-parse", "--verify", "--quiet", `refs/tags/${given}`) === undefined) {
     throw new Error(`${given} is not a tag of this repository.`);
   }
-  if (tryGit(cwd, "merge-base", "--is-ancestor", given, refOf(cwd, live.name)) === undefined) {
+  if (tryGit(cwd, "merge-base", "--is-ancestor", releaseCommitOf({ cwd, tag: given }), refOf(cwd, live.name)) === undefined) {
     throw new Error(`${given} is not reachable from ${live.name}; only the live branch's releases are recorded.`);
   }
   const newest = newestReleaseTag(cwd, live);
@@ -236,7 +242,7 @@ export async function finishRefusal({ cwd = ROOT, ref, generation, records }) {
     if (finalPublished({ cwd, branch: ref })) {
       return `Error: ${ref} has published ${major}.${minor}.0 and takes patches only.`;
     }
-    return `Error: ${ref} has published no candidate yet. Merge its rc Version PR ("chore(release): version packages") first, then finish.`;
+    return `Error: ${ref} has published no candidate yet. Merge its rc Version PR ("chore(release): version") first, then finish.`;
   }
   return undefined;
 }

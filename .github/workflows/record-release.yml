@@ -4,8 +4,8 @@ name: Record release
 # merge of the branch. Run at main's tip with main's own scripts: copies from the
 # live branch's newest release tag every package version, module version, changelog
 # and ledger entry of what main holds, deletes the changesets and fragments the tag
-# released, then measures floors (`telo release floor`) and repins imports
-# (`--pin-local`) on main's tree. Its one PR per line, `release-record/release/<x.y>`
+# released, then measures floors (`telo release floor`) on main's tree. Imports stay
+# relative: main never takes a pin. Its one PR per line, `release-record/release/<x.y>`
 # ("chore(release): record <tag> on main"), is rebuilt by every dispatch and lands
 # by squash.
 #
@@ -58,7 +58,7 @@ jobs:
         run: pnpm exec bun scripts/release-record.mjs write --tag "$TAG"
 
       # The copied versions are the tree's identity from here on: regenerate it,
-      # then build the CLI the floor and pin steps run.
+      # then build the CLI the floor step runs.
       - name: Install and build at the recorded versions
         run: |
           pnpm install --frozen-lockfile
@@ -69,13 +69,6 @@ jobs:
       - name: Measure floors
         run: node ./cli/nodejs/bin/telo.mjs release floor
 
-      # A relative import of a module whose change has shipped is pinned again; one
-      # of unshipped work stays relative.
-      - name: Repin imports
-        env:
-          TELO_CLI: node ./cli/nodejs/bin/telo.mjs
-        run: node scripts/upgrade-imports.mjs --pin-local
-
       - name: Open or rebuild the record PR
         uses: peter-evans/create-pull-request@v6
         with:
@@ -85,6 +78,6 @@ jobs:
           title: ${{ steps.record.outputs.title }}
           commit-message: ${{ steps.record.outputs.title }}
           body: |
-            Records the published `${{ steps.record.outputs.tag }}` on main: its package and module versions, changelogs and ledger entries, with the changesets and fragments it released deleted, then floors measured and imports repinned on main's tree.
+            Records the published `${{ steps.record.outputs.tag }}` on main: its package and module versions, changelogs and ledger entries, with the changesets and fragments it released deleted, then floors measured on main's tree.
 
             **Land it with a squash.** A later dispatch of Record release rebuilds this PR from the branch's newest release tag; a conflicting edit on main is fixed by dispatching again, never by hand.

@@ -29,6 +29,7 @@ import { ModulePayloadBuilder } from "../bundle/module-payload.js";
 import { parseCargoToml } from "./cargo-toml.js";
 import { digestPayload, imageDigest, type ModuleTarget } from "./evidence.js";
 import { readLedger } from "./ledger-store.js";
+import { assignedDestinations } from "./targets.js";
 import { loadWorkspace, requireModule, type Workspace } from "./workspace.js";
 
 /** One module's writes, reported so `apply` can list what it touched. */
@@ -221,7 +222,10 @@ export async function recordLedger(
   // Re-read the workspace so discovery sees the versions just written.
   const workspace = loadWorkspace(root);
   const planned = new Set(plan.modules.map((module) => module.key));
-  const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
+  const builder = new ModulePayloadBuilder({
+    cacheRoot: path.join(workspace.root, ".telo"),
+    assigned: assignedDestinations(workspace, targets),
+  });
 
   // A module that is not in the plan keeps whatever the ledger already said —
   // which may be nothing, the correct reading for one that has never published.

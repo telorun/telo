@@ -25,13 +25,13 @@ metadata:
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Ai: oci://ghcr.io/telorun/ai@0.34.1#sha256-H9oIwMDlFy576XVNJEz-PtGflGC38-iGwz3_TYysYtE
-  OpenAI: oci://ghcr.io/telorun/openai@0.20.1#sha256-kSqphJdaw9ZPpRbo1DiX5BKJ_uuWqj5TqOL1d7QjwqQ
-  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Image: oci://ghcr.io/telorun/image@0.10.2#sha256-y7SkfvQjyn3kl-FnLC1uTplFcR4HsdgerPIOm58jHqs
+  Http: ../../modules/http-server
+  Ai: ../../modules/ai
+  OpenAI: ../../modules/openai
+  HttpClient: ../../modules/http-client
+  Image: ../../modules/image
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  Run: ../../modules/run
 targets:
   - !ref server
 ports: { http: { env: PORT, default: 8080 } }

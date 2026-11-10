@@ -3,8 +3,9 @@
  *
  * `add` writes a fragment; `status` explains what would bump and why; `check` is
  * the CI gate; `floor` writes each module's measured `requires.telo`; `apply` produces the Version PR; `verify` reconciles the ledger
- * against the registry; `stage` fetches the files `sources:` declares. `telo
- * publish` still keys off version movement.
+ * against the registry; `stage` fetches the files `sources:` declares; `imports`
+ * writes a consumer's imports of workspace modules in their published or their
+ * relative form. `telo publish` still keys off version movement.
  *
  * It is the only reader of the marker's `release:` block. `telo run` reads its
  * `env:` block and the editor reads the whole file, but `check`, `publish`,
@@ -59,6 +60,7 @@ import { createArchiveReader } from "@telorun/kernel";
 import { stageModule, stageTargetsOf, type StageFailure, type StageOutcome } from "../release/stage.js";
 import { loadWorkspace, requireModule, type Workspace } from "../release/workspace.js";
 import { planWorkspace } from "../release/workspace-plan.js";
+import { IMPORT_FORMS, releaseImportsCommand } from "./release-imports.js";
 
 interface CommonArgv {
   registry?: string;
@@ -344,8 +346,8 @@ async function apply(argv: CommonArgv & { date?: string }): Promise<void> {
  * The workspace's modules in publish order — a dependency before its dependents.
  *
  * Not optional at publish time: canonicalization rewrites a relative import to
- * `<base>/<sibling>@<version>` and publish then hard-fails when that ref does not
- * already resolve, so a sibling has to be pushed first. This replaced a regex
+ * the sibling's assigned `<destination>@<version>` and publish then hard-fails
+ * when that ref does not already resolve, so a sibling has to be pushed first. This replaced a regex
  * that read `imports:` out of the first YAML document by line shape.
  *
  * Reads the import graph only — no payloads are built, so it is cheap enough to
@@ -355,9 +357,8 @@ async function order(argv: CommonArgv): Promise<void> {
   const log = createLogger(false);
   const workspace = loadWorkspace();
   const ledger = readLedger(workspace.root);
-  const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
-
-  const { targets, diagnostics } = resolveTargets(workspace, ledger, registryRungs(argv));
+  const { targets, assigned, diagnostics } = resolveTargets(workspace, ledger, registryRungs(argv));
+  const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo"), assigned });
   const graph = await readImportGraph(workspace, targets, builder);
   if (refuseOnErrors([...workspace.diagnostics, ...diagnostics, ...graph.diagnostics], log)) return;
 
@@ -672,9 +673,39 @@ export function releaseCommand(yargs: Argv): Argv {
               }),
           guarded(stage as any),
         )
+        .command(
+          "imports <paths..>",
+          "Write each import of a workspace module in its published or its relative form",
+          (c) =>
+            c
+              .positional("paths", {
+                describe: "Manifests whose imports are rewritten (a directory means its telo.yaml)",
+                type: "string",
+                array: true,
+                demandOption: true,
+              })
+              .option("as", {
+                type: "string",
+                choices: IMPORT_FORMS,
+                demandOption: true,
+                describe:
+                  "published: the destination, version and registry pin of the module's version in this tree; relative: the path to the module's directory",
+              })
+              .option("check", {
+                type: "boolean",
+                default: false,
+                describe: "Write nothing; exit 1 listing every import whose form differs from what would be written",
+              })
+              .option("dry-run", {
+                type: "boolean",
+                default: false,
+                describe: "Show what would change without writing to disk",
+              }),
+          guarded(releaseImportsCommand as any),
+        )
         .demandCommand(
           1,
-          "Specify a release subcommand (add | status | order | check | floor | apply | verify | stage)",
+          "Specify a release subcommand (add | status | order | check | floor | apply | verify | stage | imports)",
         ),
     () => {},
   );

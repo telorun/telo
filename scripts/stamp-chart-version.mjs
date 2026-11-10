@@ -15,7 +15,7 @@
 // the "one version, several files" move `telo release apply` already makes for a
 // module (`telo.yaml` + `package.json` + `Cargo.toml`). A chart whose version is
 // a module's (`manifest:` below) is stamped the same way right after
-// `telo release apply`, so its bump lands in the Module Release PR.
+// `telo release apply`, so its bump lands in the release PR.
 //
 // `--check` is the PR gate. Without it the two files drift the moment someone
 // edits Chart.yaml by hand, and the drift is invisible until an operator

@@ -12,8 +12,8 @@
 //   testArgs            pnpm `--filter` pairs for `pnpm -r … test`
 //   buildArgs           pnpm `--filter` pairs for `pnpm -r … run build`
 //   packageIntegration  whether a selected package has a `test:integration`
-//   suites              whether the example / starter / blueprint / plan-approval
-//                       suites and the cross-platform manifest checks run
+//   suites              whether the example / starter / blueprint suites and the
+//                       cross-platform manifest checks run
 //   rust                whether the cargo job runs
 //   core                { mode, buildArgs, testArgs } for the analyzer, kernel and
 //                       CLI alone — the macOS and Windows core job. mode is "full"
@@ -43,7 +43,7 @@ const RUNTIME = /^(kernel|analyzer|sdk|templating|cel|cli|modules)\//;
 const SHARED =
   /^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig[^/]*\.json|vitest[^/]*|\.npmrc|\.github\/workflows\/test\.yml|scripts\/select-package-tests\.mjs)$/;
 const INERT = /\.md$|^(docs|\.changeset|\.changes|\.claude|\.github|\.vscode)\//;
-const SUITES = /^(examples|starters|blueprints|apps\/plan-approval[^/]*)\//;
+const SUITES = /^(examples|starters|blueprints)\//;
 const RUST = /(^|\/)rust\/|\.rs$|(^|\/)Cargo\.(toml|lock)$|^rust-toolchain/;
 
 /** The packages the macOS and Windows core job tests. */

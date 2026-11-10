@@ -62,9 +62,8 @@ starters/
 - A starter ships text files only. The editor copies a starter as text, so a
   binary asset (a font, an image) arrives corrupted; a starter that needs one
   is not a starter yet.
-- A starter that builds on a blueprint imports it by its published ref
-  (`oci://ghcr.io/telorun/blueprints/<name>@<version>#<pin>`), and pins the
-  modules it shares with the blueprint at the versions the blueprint imports.
+- A starter that builds on a blueprint imports it by its relative path
+  (`../../../blueprints/<name>`), like every other module of this repository.
 - Anything a starter reaches over the network is an input — a base URL in
   `variables:`, a key in `secrets:` — never a literal. That is what lets its
   test point it at a stand-in, and its user at their own provider.
@@ -85,9 +84,9 @@ outside.
   `awaitStart: false` because it blocks on its first prompt.
 - **A library is reached through an importer**: a small application under
   `tests/__fixtures__/` imports it (`source: ../..`), and the test stands that
-  application up with `App.Instance`. The fixture imports the published modules
-  at the library's own pins — a workspace copy of a module beside the published
-  copy of the same one is refused or runs as two.
+  application up with `App.Instance`. The fixture imports the same checkout
+  modules by relative path as the library does — a published copy of a module
+  beside the workspace copy of the same one is refused or runs as two.
 - **A starter that calls a provider is tested against a stand-in**: an
   `Http.Api` declared in the test's `with:`, started before the starter and
   handed to it as its base URL. No test needs a key or the network.
@@ -99,20 +98,32 @@ outside.
 
 ## Trying starters locally
 
-`starters/serve.yaml` serves this directory with CORS enabled, so a locally
-running Studio can load the gallery from the checkout:
+Studio's gallery follows its telo version: it loads `starters/` from the release
+tag `v<X.Y.Z>` of the telo version the workspace is edited against, where the
+starters' imports are the published, pinned form the release wrote. To preview
+the gallery locally:
 
 ```sh
 pnpm run starters
 ```
 
-Then set Studio's **Starter gallery source** (Settings) to
-`http://localhost:8787`. Files are read per request, so an edit shows the next
-time the gallery opens. `STARTERS_PORT` / `--port` and `STARTERS_DIR` / `--dir`
-change the port and the directory served. The starters' own `imports:` stay the
-published pins they carry.
+This copies `starters/` to the gitignored `starters-published/`, rewrites the
+copy's imports with `telo release imports --as=published` (the built CLI;
+`TELO_CLI` overrides it) and serves the copy with `starters/serve.yaml`, with
+CORS enabled. The copy is rebuilt on each start, so restart to see an edit. An
+import of a module with unreleased changes stays relative and is listed at
+start: Studio refuses that starter, naming the file, until the module is
+released. Then set Studio's **Starter gallery source** (Settings) to
+`http://localhost:8787`. `STARTERS_PORT` / `--port` change the port; with
+`--dir` / `STARTERS_DIR` nothing is copied and that directory is served as it
+is (CI serves the repository root this way).
 
-The local docker compose stack runs the same server as its `starters` service,
-at `http://starters.telo.localhost:8060`, and its Studio loads the gallery from
-there by default (`VITE_TELO_STARTERS_URL`); a source set in Studio's settings
-still wins.
+The local docker compose stack runs the same script as its `starters` service,
+at `http://starters.telo.localhost:8060`: the published-form copy, rebuilt when
+the service starts. It needs the workspace built on the host (the repository is
+bind-mounted) and registry access. Without `cli/nodejs/dist` — for `pnpm run
+starters` too — the script warns and serves the checkout's `starters/` with its
+relative imports, which Studio refuses for every starter importing a workspace
+module; run `pnpm -r --if-present build` and start again. Its Studio loads the
+gallery from there by default (`VITE_TELO_STARTERS_URL`, used as is); a source
+set in Studio's settings still wins.

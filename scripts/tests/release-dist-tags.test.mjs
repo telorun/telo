@@ -1,5 +1,5 @@
 // npm's `rc` pointer follows a final or patch, and only forward.
-// Run: node --test scripts/tests/
+// Run: node --test scripts/tests/*.test.mjs
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";

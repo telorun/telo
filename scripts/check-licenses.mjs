@@ -43,10 +43,6 @@ const MIT_DIRECTORIES = [
   "benchmarks",
   "apps/hub",
   "apps/hub-web",
-  "apps/plan-approval",
-  "apps/plan-approval-runner",
-  "apps/plan-approval-runner-protocol",
-  "apps/plan-approval-web",
 ];
 
 /** The MIT directories whose `telo.yaml` files are module roots. */
@@ -54,9 +50,6 @@ const MANIFEST_DIRECTORIES = [
   "modules",
   "blueprints",
   "apps/hub",
-  "apps/plan-approval",
-  "apps/plan-approval-runner",
-  "apps/plan-approval-runner-protocol",
 ];
 
 const NOT_A_MODULE_ROOT = /(^|\/)(tests|__fixtures__|example)\//;

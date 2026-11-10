@@ -18,7 +18,7 @@ import type { StarterDescriptor, StarterFile } from "./starters";
 /** What a new module is seeded from: an empty skeleton, or a starter. */
 export type NewModuleSelection =
   | { type: "blank" }
-  | { type: "starter"; starter: StarterDescriptor };
+  | { type: "starter"; starter: StarterDescriptor; baseUrl: string };
 
 /** Thrown by `materializeModule` when the target directory already holds files
  *  and the caller has not opted into overwriting them. Carries the workspace-
@@ -37,8 +37,6 @@ export interface MaterializeModuleOptions {
   kind: ModuleKind;
   name: string;
   selection: NewModuleSelection;
-  /** Resolved starters base URL (used only for starter selections). */
-  startersBaseUrl: string;
   manifestSources: ManifestSource[];
   overwrite?: boolean;
 }
@@ -96,7 +94,7 @@ async function buildModuleFiles(
     return [{ relPath: DEFAULT_MANIFEST_FILENAME, text: serializeModuleDocument([doc]), isRoot: true }];
   }
   return fetchStarterFiles(
-    starterManifestUrl(options.startersBaseUrl, options.selection.starter),
+    starterManifestUrl(options.selection.baseUrl, options.selection.starter),
     name,
     options.manifestSources,
   );

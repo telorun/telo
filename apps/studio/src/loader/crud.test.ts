@@ -29,7 +29,7 @@ function memAdapter(existing: Record<string, DirEntry[]> = {}) {
   return { adapter, writes, deleted };
 }
 
-const CTX = { startersBaseUrl: "https://x.dev", manifestSources: [] };
+const CTX = { manifestSources: [] };
 const STARTER: StarterDescriptor = {
   id: "t",
   title: "T",
@@ -113,7 +113,7 @@ describe("materializeModule — atomicity", () => {
       materializeModule(adapter, "/ws", {
         kind: "Application",
         name: "Notes",
-        selection: { type: "starter", starter: STARTER },
+        selection: { type: "starter", starter: STARTER, baseUrl: "https://x.dev" },
         overwrite: true,
         ...CTX,
       }),

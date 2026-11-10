@@ -14,16 +14,13 @@ metadata:
 # 0.129.0: the `translations:` block and ui's shipped translations.
 requires: { telo: ">=0.129.0" }
 lang: en
-# `http-server`, `data-model`, `ui` and `ui-react` come from this
-# repository while their changes are unreleased; `telo upgrade --pin-local` pins
-# them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  HttpDispatch: oci://ghcr.io/telorun/http-dispatch@0.19.1#sha256-DZJONfmmMMo8081d6gPAmr-Jdb3nVz2AAL9jkBf4Fc4
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
-  DataModel: oci://ghcr.io/telorun/data-model@0.2.2#sha256-92o2_aqh19mlkIaiMAlvJbi5tnyGweewLe7M_z60mCM
-  Ui: oci://ghcr.io/telorun/ui@0.10.1#sha256-TC91fXfmdXiZXHRIzACaH6gKgHzqipYgHpAJD0ZqsbY
-  UiReact: oci://ghcr.io/telorun/ui-react@0.11.1#sha256-UZSRk4r1Y3y1LVaaK3CeIm3w5W9KFnWQLv2bPa3XImo
+  Http: ../../modules/http-server
+  HttpDispatch: ../../modules/http-dispatch
+  Run: ../../modules/run
+  DataModel: ../../modules/data-model
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 # The backend the screen calls — stub routes answering fixture data — and the
 # Polish translation, each in a file of its own.
 include: [./stub-api.yaml, ./polish.yaml]

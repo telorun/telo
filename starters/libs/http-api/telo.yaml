@@ -32,14 +32,9 @@ variables:
     minLength: 1
     default: Hello
     description: The word `/hello` greets with.
-# `http-server` comes from this repository while its error responses are
-# unreleased, and `run` with it; `telo upgrade --pin-local` pins them again
-# once they ship.
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
-imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+imports: { Http: ../../../modules/http-server, Run: ../../../modules/run }
 exports: { resources: [api] }
 ---
 kind: Http.Api

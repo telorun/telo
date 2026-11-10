@@ -183,7 +183,7 @@ describe("nested libraries", () => {
       root,
       release: {},
       diagnostics: [],
-      modules: [module("app", "app"), module("app/chat", "app/chat")],
+      modules: [module("app", "app"), module("app/chat", "app/chat"), module("shared", "shared")],
     } as unknown as Workspace;
     const targets = new Map(
       workspace.modules.map((m) => [m.key, { registry: "oci://reg.example.test/org", destination: `oci://reg.example.test/org/${m.key}` }]),

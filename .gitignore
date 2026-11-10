@@ -9,6 +9,9 @@ tmp/
 # root when tests run from there); its output is scratch, never committed.
 /workspace/
 
+# The published-form copy `pnpm run starters` serves (scripts/serve-starters.mjs).
+/starters-published/
+
 # Generated docs (rebuilt on every docusaurus build)
 examples/INDEX.md
 docs/cel-reference.md

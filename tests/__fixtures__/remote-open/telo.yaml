@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: RemoteOpen, version: 1.0.0 }
+requires: { telo: ">=0.128.0" }
+imports:
+  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
+targets:
+  - invoke: !ref Console.writeLine
+    inputs: { output: "Hello from Telo!" }

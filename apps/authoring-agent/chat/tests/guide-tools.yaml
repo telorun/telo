@@ -26,10 +26,10 @@ imports:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18562/v1
       hubPublisher: example.test
-  App: oci://ghcr.io/telorun/app@0.6.1#sha256-QOZpQy2T4dEx3Vay9_sillyRW8lemNxiauvWSyk-oLg
+  App: ../../../../modules/app
   Stream: ../../../../modules/stream
   HttpClient: ../../../../modules/http-client
-  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  Assert: ../../../../modules/assert
 variables:
   scratch:
     env: CHAT_TEST_GUIDE_TOOLS_SCRATCH

@@ -169,6 +169,13 @@ jobs:
       - name: Check starter and blueprint manifests
         run: pnpm run check starters/apps/*/telo.yaml starters/libs/*/telo.yaml blueprints/*/telo.yaml
 
+      # Every branch imports the working copy; the published form exists only in release tags.
+      # The relative form needs no release plan, so the TS entry runs it with no build.
+      - name: Check imports of workspace modules are relative (fix with `pnpm run imports -- --as=relative`)
+        env:
+          TELO_CLI: pnpm exec bun ./cli/nodejs/bin/telo.ts
+        run: pnpm run imports -- --as=relative --check
+
       # The docs and Studio load these by URL, and an HTTP source cannot expand
       # an `include:` glob — which a filesystem check never notices. The repo
       # root is served so relative imports of `modules/` resolve too.
@@ -195,6 +202,20 @@ jobs:
       - name: Check the VS Code extension packages
         run: pnpm --filter "./ide/vscode" vsix
 
+      # The release PR's gate on the publication commit its merge makes: every import
+      # must come out published, or await this release's own publish. The release plan
+      # it reads digests the controller builds, so the workspace is built for it alone.
+      - name: Build the workspace for the release PR's import check
+        if: startsWith(github.head_ref, 'changeset-release/')
+        run: pnpm -r --if-present build
+
+      - name: Check every import of the release PR publishes (a module with changes its version does not carry fails here)
+        if: startsWith(github.head_ref, 'changeset-release/')
+        timeout-minutes: 20
+        env:
+          TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
+        run: pnpm run check:release-imports
+
   # Decides once which manifest tests every platform job runs. A pull request
   # runs only the test manifests its diff reaches — through each manifest's own
   # file, its `__fixtures__/`, its relative imports and the workspace packages
@@ -216,8 +237,8 @@ jobs:
   #   as pnpm `--filter` pairs, empty for a full run;
   # - `integration_mode` / `integration_args`: the Postgres suite's tests;
   # - `package_integration`, `suites`, `rust`: `true` or `false` for the
-  #   package integration tests, the example / starter / blueprint /
-  #   plan-approval suites with the cross-platform manifest checks, and cargo.
+  #   package integration tests, the example / starter / blueprint suites with
+  #   the cross-platform manifest checks, and cargo.
   #
   # Every job keeps STARTING: a job that never starts never reports, and a
   # required check that never reports blocks the merge it was meant to guard.
@@ -499,16 +520,6 @@ jobs:
         if: needs.select.outputs.platform_suites == 'true'
         run: pnpm run telo ./blueprints/test-suite.yaml
 
-      # The plan-approval apps import the workspace by relative path and run
-      # offline, but the root suite excludes `apps/**`, so they run here.
-      - name: Run the plan-approval server test suite (bun)
-        if: needs.select.outputs.platform_suites == 'true'
-        run: pnpm run telo ./apps/plan-approval/test-suite.yaml
-
-      - name: Run the plan-approval runner test suite (bun)
-        if: needs.select.outputs.platform_suites == 'true'
-        run: pnpm run telo ./apps/plan-approval-runner/test-suite.yaml
-
       - name: Save staged module files
         if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
         uses: ./.github/actions/save-staged-files
@@ -772,16 +783,18 @@ jobs:
           pnpm run test:node "${args[@]}"
 
       # Smoke-test loading a manifest from an HTTP URL using the branch's
-      # just-built CLI. Pulls the example over raw.githubusercontent.com at
+      # just-built CLI. Pulls a fixture over raw.githubusercontent.com at
       # the workflow's commit SHA, so the test exercises the https-anchored
-      # install root path (~/.cache/telo/...) end-to-end. The manifest itself
-      # imports the console module from ghcr.io, so this also verifies the OCI
-      # round-trip on top of HTTP-rooted controller installs.
+      # install root path (~/.cache/telo/...) end-to-end. The fixture imports
+      # the console module from ghcr.io by pin, so this also verifies the OCI
+      # round-trip on top of HTTP-rooted controller installs. An example cannot
+      # stand in: it imports the working copy by relative path, which a raw URL
+      # reaches only as source with no built controller.
       - name: Run remote manifest over raw.githubusercontent.com
         if: needs.select.outputs.mode != 'none'
         run: |
           set -euo pipefail
-          URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/examples/hello-world/telo.yaml"
+          URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/tests/__fixtures__/remote-open/telo.yaml"
           # raw.githubusercontent.com's CDN lags behind the pushed commit, so
           # the SHA-pinned URL 404s for a short while. Poll until it serves.
           for attempt in $(seq 1 30); do
@@ -802,9 +815,8 @@ jobs:
           fi
           echo "$output" | grep -q "Hello from Telo!"
 
-      # Example, starter and blueprint tests import published modules, so a red
-      # run here can also mean the release sequence is behind. An example importing a
-      # module by relative path shows a breaking module change in the PR that caused it.
+      # Example, starter and blueprint tests import the working copy's modules by
+      # relative path, so a breaking module change fails the PR that caused it.
       - name: Run the example test suites (Node)
         if: needs.select.outputs.suites == 'true'
         run: pnpm run telo:node ./examples/test-suite.yaml

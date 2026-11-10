@@ -19,7 +19,7 @@ imports:
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
-  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  Assert: ../../../../modules/assert
 variables:
   scratch:
     env: CHAT_TEST_BOUNDARY_AUTH_SCRATCH

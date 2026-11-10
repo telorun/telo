@@ -28,6 +28,7 @@ import { pathToFileURL } from "node:url";
 import { setOutput } from "./release-actions-output.mjs";
 import { ROOT, compareVersions } from "./version-line.mjs";
 import { channelOf } from "./release-channel.mjs";
+import { releaseCommitsOf } from "./release-commit.mjs";
 
 const FINAL_TAG = /^v(\d+\.\d+\.\d+)$/;
 
@@ -72,16 +73,8 @@ export function imageLatestMoves({ version, tagVersions }) {
 }
 
 function releaseTagVersions(file) {
-  const tags = execFileSync(
-    "git",
-    ["for-each-ref", "--format=%(objectname) %(refname:short)", "refs/tags/v*", "refs/tags/modules-*", "refs/tags/packages-*"],
-    { cwd: ROOT, encoding: "utf8" },
-  );
-  const commits = new Set();
-  for (const line of tags.split("\n").filter(Boolean)) {
-    const [object, name] = line.split(" ");
-    commits.add(execFileSync("git", ["rev-list", "-n", "1", name], { cwd: ROOT, encoding: "utf8" }).trim() || object);
-  }
+  const tags = releaseCommitsOf({ cwd: ROOT, patterns: ["refs/tags/v*", "refs/tags/modules-*", "refs/tags/packages-*"] });
+  const commits = new Set(tags.values());
   const versions = new Set();
   for (const commit of commits) {
     try {
