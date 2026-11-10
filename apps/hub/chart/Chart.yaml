@@ -4,7 +4,7 @@ description: Telo Hub API — federated discovery over Telo modules, served over
 type: application
 # BOTH are the hub's own version — `metadata.version` in `apps/hub/telo.yaml`,
 # moved by `telo release apply` — written by `scripts/stamp-chart-version.mjs`
-# in the Module Release PR and checked on every PR: the chart deploys exactly
+# in the release PR and checked on every PR: the chart deploys exactly
 # one image, `telorun/hub`, tagged with that version.
 version: 0.24.0
 appVersion: "0.24.0"

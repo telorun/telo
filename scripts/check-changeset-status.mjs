@@ -70,8 +70,8 @@
 //     is published accepts only patch changesets, for every package, so it never
 //     plans a version main's next cut will plan. A freshly cut branch carries
 //     its changesets and takes any bump until it enters candidates.
-//   - A PR from the release machinery (`releaseMachineryHead`: the Version PR, the
-//     Module Release PR, the record) consumes changesets and moves versions, so
+//   - A PR from the release machinery (`releaseMachineryHead`: the release PR and
+//     the record) consumes changesets and moves versions, so
 //     its coverage is not checked; every other check still runs. The bot opens
 //     it so required checks run.
 //

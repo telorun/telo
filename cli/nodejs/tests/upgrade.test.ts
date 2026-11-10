@@ -526,80 +526,6 @@ describe("upgradeManifest — origin interactions (in-memory)", () => {
 // upgradeManifest suite above.
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// --pin-local — a relative import of a released module
-// ---------------------------------------------------------------------------
-
-describe("upgradeManifest — pinLocal", () => {
-  it("rewrites a relative import to the published pin and stops following it", async () => {
-    const input = buildManifest([{ name: "Run", source: "../../modules/run" }]);
-    const pin = `${ref("telorun/run", "0.2.7")}#sha256-PUBLISHED`;
-
-    const { content, result, relativeImports } = await upgradeManifest({
-      content: input,
-      includePrerelease: false,
-      log,
-      recursive: true,
-      pinLocal: async () => ({ kind: "pinned", pin, version: "0.2.7" }),
-    });
-
-    expect(content).toBe(buildManifest([{ name: "Run", source: pin }]));
-    expect(result.repins).toEqual([
-      { source: "../../modules/run", to: ref("telorun/run", "0.2.7") },
-    ]);
-    expect(result.changed).toBe(true);
-    expect(relativeImports).toEqual([]);
-  });
-
-  it("keeps a relative import whose module has an unreleased change, and says why", async () => {
-    const input = buildManifest([{ name: "Run", source: "../../modules/run" }]);
-
-    const { content, result, relativeImports } = await upgradeManifest({
-      content: input,
-      includePrerelease: false,
-      log,
-      recursive: true,
-      pinLocal: async () => ({ kind: "pending", reason: "modules/run has an unreleased change" }),
-    });
-
-    expect(content).toBe(input);
-    expect(result.pendingLocal).toEqual([
-      { source: "../../modules/run", reason: "modules/run has an unreleased change" },
-    ]);
-    expect(result.changed).toBe(false);
-    expect(relativeImports).toEqual(["../../modules/run"]);
-  });
-
-  it("treats an import of no released module exactly as without the flag", async () => {
-    const input = buildManifest([{ name: "Db", source: "./database" }]);
-
-    const { content, result } = await upgradeManifest({
-      content: input,
-      includePrerelease: false,
-      log,
-      pinLocal: async () => ({ kind: "unmanaged" }),
-    });
-
-    expect(content).toBe(input);
-    expect(result.skipped).toBe(1);
-    expect(result.pendingLocal).toEqual([]);
-  });
-
-  it("counts a verdict that could not be reached as an error", async () => {
-    const input = buildManifest([{ name: "Run", source: "../../modules/run" }]);
-
-    const { content, result } = await upgradeManifest({
-      content: input,
-      includePrerelease: false,
-      log,
-      pinLocal: async () => ({ kind: "error", message: "registry unreachable" }),
-    });
-
-    expect(content).toBe(input);
-    expect(result.errors).toBe(1);
-  });
-});
-
 describe("verdictForModule", () => {
   const module = { key: "modules/run", version: "0.2.7" };
   const destination = `oci://${HOST}/telorun/run`;
@@ -627,6 +553,7 @@ describe("verdictForModule", () => {
 
     expect(verdict).toEqual({
       kind: "pending",
+      cause: "plan-bumped",
       reason: "modules/run has an unreleased change (0.2.7 → 0.2.8: imports modules/sql)",
     });
   });
@@ -637,7 +564,11 @@ describe("verdictForModule", () => {
       defaultTransportRegistry(),
     );
 
-    expect(verdict).toEqual({ kind: "pending", reason: "modules/run has never been released" });
+    expect(verdict).toEqual({
+      kind: "pending",
+      cause: "never-released",
+      reason: "modules/run has never been released",
+    });
   });
 
   it("is pending when the settled version is not at the registry yet", async () => {
@@ -650,6 +581,7 @@ describe("verdictForModule", () => {
 
     expect(verdict).toEqual({
       kind: "pending",
+      cause: "unpublished",
       reason: `modules/run@0.2.7 is not published at ${destination} yet`,
     });
   });
@@ -685,7 +617,7 @@ describe("upgradeOne — filesystem wrapper", () => {
   let workdir: string;
 
   beforeEach(() => {
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), "telo-upgrade-test-"));
+    workdir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "telo-upgrade-test-")));
   });
 
   afterEach(() => {

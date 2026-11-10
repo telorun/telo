@@ -22,8 +22,8 @@ metadata:
     chart and once for the document — the two are separate strings that silently
     disagree, and the only symptom is labels that clip.
 
-    Imports are relative because these modules are not published yet; they become
-    pinned `oci://` refs like every other example once they are.
+    The modules of this workspace are imported by relative path; a release tag
+    pins them to `oci://` refs.
 requires:
   # The chart kinds inherit their CEL slots from the `Chart` / `Cartesian`
   # abstracts they extend. An older analyzer does not follow `extends` when it
@@ -34,13 +34,13 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  SvgChart: oci://ghcr.io/telorun/svg-chart@0.3.1#sha256-UrqjYTtGnP6FXcpS6-LancA3QPEC9MYlJ7j4UUVLq5Q
-  Font: oci://ghcr.io/telorun/font@0.3.1#sha256-fAtk3J3zFm-ViF7O4lOarp-1ZrWwpEfRUFwHa-s7SN0
-  PdfMake: oci://ghcr.io/telorun/pdfmake@0.4.2#sha256-i7SruJ9WbayxIOrBD2uJ3OfcN2ukY6y_7pGNq1qIEhg
-  Collection: oci://ghcr.io/telorun/collection@0.9.1#sha256-8X1VGM8gx2p61sf1G53hguQL4fzGckKmmd14hYxo-xg
-  Fs: oci://ghcr.io/telorun/fs@0.15.1#sha256-DB68pWLeWJ3An4QhSocN4KhUEB-14j0jzLheGTATKkM
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
-  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
+  SvgChart: ../../modules/svg-chart
+  Font: ../../modules/font
+  PdfMake: ../../modules/pdfmake
+  Collection: ../../modules/collection
+  Fs: ../../modules/fs
+  Run: ../../modules/run
+  Console: ../../modules/console
 variables:
   quarter:
     env: QUARTER

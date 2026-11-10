@@ -33,7 +33,8 @@ export interface AppSettings {
   hubUrl?: string;
   /** Base URL the starter gallery loads from. It must serve a `starters.json`
    *  catalog and the referenced manifests over http(s) with CORS.
-   *  Empty/undefined uses `DEFAULT_STARTERS_BASE_URL`. */
+   *  Empty/undefined: the build's `VITE_TELO_STARTERS_URL`, else the
+   *  gallery of the telo version the workspace is edited against. */
   startersBaseUrl?: string;
   /** The user's runners. A run uses the one whose id is
    *  `activeRunnerId` (a single global selection). */

@@ -16,13 +16,14 @@
 //   node scripts/release-channel.mjs pack-tag                  the tag this run's pack links name, before publishing
 //   node scripts/release-channel.mjs classify                  env PUBLISHED_PACKAGES
 //   node scripts/release-channel.mjs modules-tag               tag a module release of this branch
-//   node scripts/release-channel.mjs modules-ready             may the Module Release PR open?
+//   node scripts/release-channel.mjs modules-ready             may the release PR version modules?
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setOutput } from "./release-actions-output.mjs";
+import { releaseCommitOf, tagsOfReleaseCommit } from "./release-commit.mjs";
 import { ROOT, compareVersions, readPreState, readReleasePlan } from "./version-line.mjs";
 
 const CLI = "@telorun/cli";
@@ -52,14 +53,15 @@ function cliMovedIn(cwd) {
 
 /**
  * Did the run's commit release the CLI: it moved the version, and `v<version>` names
- * no other commit. A record on main moves the version to one already released, so a
- * branch cut at that commit releases nothing by it.
+ * no other release commit (`release-commit.mjs`) — a tag on HEAD's publication commit
+ * names HEAD, so a re-run classifies as the first run did. A record on main moves the
+ * version to one already released, so a branch cut at that commit releases nothing by it.
  */
 function cliReleasedIn(cwd) {
   if (!cliMovedIn(cwd)) return false;
   const tag = `v${JSON.parse(readFileSync(join(cwd, CLI_MANIFEST), "utf8")).version}`;
   if (!git(cwd, "tag", "--list", tag)) return true;
-  return git(cwd, "rev-list", "-n", "1", tag) === git(cwd, "rev-parse", "HEAD");
+  return releaseCommitOf({ cwd, tag }) === git(cwd, "rev-parse", "HEAD");
 }
 
 /**
@@ -99,19 +101,20 @@ export function classifyPublish({ cwd = ROOT, published = [], branch }) {
 }
 
 /** Number of the branch's next `modules-` or `packages-` release tag, and the tag
- *  already on HEAD if a re-run finds one. `branch` is `release/<major>.<minor>`. */
+ *  naming HEAD as its release commit if a re-run finds one — on HEAD or on its
+ *  publication commit. `branch` is `release/<major>.<minor>`. */
 export function numberedTag({ cwd = ROOT, branch, kind }) {
   const match = RELEASE_BRANCH.exec(branch);
   if (!match) throw new Error(`${branch} is not a release/<major>.<minor> branch.`);
   const prefix = `${kind}-${match[1]}-`;
   const existing = git(cwd, "tag", "--list", `${prefix}*`).split("\n").filter(Boolean);
-  const onHead = git(cwd, "tag", "--points-at", "HEAD", "--list", `${prefix}*`).split("\n").filter(Boolean);
+  const onHead = tagsOfReleaseCommit({ cwd, commit: "HEAD", patterns: [`refs/tags/${prefix}*`] });
   return { tag: onHead[0] ?? `${prefix}${existing.length + 1}`, existing: onHead.length > 0 };
 }
 
 export const modulesTag = ({ cwd, branch }) => numberedTag({ cwd, branch, kind: "modules" });
 
-/** May the Module Release PR open: no candidates, and no changeset still to publish. */
+/** May the release PR version the modules: no candidates, and no changeset still to publish. */
 export async function modulesReady() {
   if (readPreState()) return { ready: false, reason: ".changeset/pre.json exists: modules publish after the final" };
   const plan = await readReleasePlan();
@@ -164,7 +167,7 @@ async function main() {
     }
     case "modules-ready": {
       const { ready, reason } = await modulesReady();
-      if (!ready) console.log(`Module Release PR: not opening — ${reason}.`);
+      if (!ready) console.log(`Release PR: not versioning modules — ${reason}.`);
       setOutput("ready", ready);
       return;
     }

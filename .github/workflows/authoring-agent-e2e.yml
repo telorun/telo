@@ -1,14 +1,13 @@
 name: Authoring Agent E2E
 
 # The authoring agent drives a real model against the live hub and authors a
-# manifest against PINNED PUBLISHED modules. No stack to bring up — what makes
-# it e2e is the live model and registry — so a red run here can mean "not
-# released and re-pinned yet" rather than "the code is wrong".
+# manifest against the live registry. No stack to bring up — what makes it e2e
+# is the live model and registry.
 #
 # Runs on a pull request touching what the agent runs on: its own app and
 # prompt, and the checkout's `telo` it authors and checks with. The paths are
-# `authoring-agent-test.yml`'s: the agent imports published modules by pin, so
-# a module's checkout source never reaches it. The live cases use the library's
+# `authoring-agent-test.yml`'s: the agent imports the checkout's modules by
+# relative path. The live cases use the library's
 # default model, which is cheap enough to pay for per change. A fork's pull
 # request holds no API key, so the job is skipped there rather than run with
 # every live case skipping itself. Also runnable by hand against any branch.
@@ -24,6 +23,7 @@ on:
       - "templating/**"
       - "cel/**"
       - "sdk/**"
+      - "modules/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/authoring-agent-e2e.yml"
   workflow_dispatch:

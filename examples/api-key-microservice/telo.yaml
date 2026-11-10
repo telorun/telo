@@ -21,14 +21,14 @@ requires:
   # 0.130.0: `request.principal` typed per route and the mount `authentication:`.
   telo: ">=0.130.0"
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Jose: oci://ghcr.io/telorun/jose@0.3.0#sha256-85TaHa75ThAUCZBBNWgmmV1me3ampylNfJCahzqkzZM
-  AuthBearer: oci://ghcr.io/telorun/auth-bearer@0.2.0#sha256-rS7R9DjC_GuaefMyS3SCwQfH-gd0pjBPrFTNXC3_PCM
-  Authz: oci://ghcr.io/telorun/authz@0.2.0#sha256-_hL0XdJ2vWy5c1N3JhGt4jqlke8k9iNrhqZ_L_R6LYQ
-  ApiKey: oci://ghcr.io/telorun/api-key@0.2.0#sha256-743LoVZkoEbwWDRImNVFgjFlREB1vMpo5ozSmOeV2C4
-  Keys: oci://ghcr.io/telorun/api-key-sqlite@0.2.1#sha256-qV8HM3xwVSopV2WjrOTmhrOy-9tN7APuv7ISimxYSBs
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.1#sha256-_-8pOAB_oDaGWjGGKeTJ3iTQ7t74H7Lvao6TYd3RMgE
+  Http: ../../modules/http-server
+  Jose: ../../modules/jose
+  AuthBearer: ../../modules/auth-bearer
+  Authz: ../../modules/authz
+  ApiKey: ../../modules/api-key
+  Keys: ../../modules/api-key-sqlite
+  SQLite: ../../modules/sqlite
+  KvStoreSql: ../../modules/kv-store-sql
 variables:
   jwksUrl:
     env: JWKS_URL

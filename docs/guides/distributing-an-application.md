@@ -100,10 +100,11 @@ A module that was not published reports why:
 | `manifest_invalid` | The manifest does not parse or does not pass analysis. | `diagnostics` |
 | `requires_refuted` | The declared `requires.telo` range does not hold. | |
 | `import_unpinned` | A remote import carries no integrity pin. | `alias`, `ref` |
-| `import_pin_mismatch` | A pinned import's origin now serves other bytes. | `alias`, `ref` |
+| `import_pin_mismatch` | A pinned import's origin now serves other bytes, or a relatively imported sibling is published with other bytes than the working copy builds under the same version. | `alias`, `ref` |
 | `import_unreachable` | A pinned import could not be read to verify it. | `alias`, `ref` |
 | `sibling_not_published` | A relatively imported module outside the published module's directory is not at its published location. | `refs` |
 | `import_nested` | A relative import lands inside another module's directory, where the library ships inside that module's artifact. | `alias`, `target`, `module`, `enclosing` |
+| `destination_mismatch` | The module belongs to a release workspace that assigns it another destination than the one given. | `module`, `given`, `assigned` |
 | `version_content_mismatch` | This `metadata.version` is published with other content. | `version`, `publishedIntegrity`, `builtIntegrity` |
 | `registry_unavailable` | The registry could not be read or written. | |
 | `publish_failed` | Anything else; `message` says what. | |

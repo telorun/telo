@@ -1,9 +1,10 @@
 name: Publish final release
 
-# Builds the final Version PR itself, `chore(release): version packages` from
-# `changeset-release/<branch>`. Merging it publishes the final, and that Publish run
-# dispatches Record release (record-release.yml), whose PR brings the release's state
-# to main. Two refs:
+# Builds the final Version PR itself, `chore(release): version` from
+# `changeset-release/<branch>`: the npm versions and, out of candidates, the modules
+# (`release-pr-version.mjs`). Merging it publishes the final and its modules, and that
+# Publish run dispatches Record release (record-release.yml), whose PR brings the
+# release's state to main. Two refs:
 #
 # - A release branch in candidates (`gh workflow run finish-release.yml --ref
 #   release/0.85`): leaves prerelease mode and versions the branch, replacing an open
@@ -122,7 +123,10 @@ jobs:
           git checkout --quiet -B "$BRANCH" "origin/$BRANCH"
 
       - name: Version the final
-        run: node scripts/release-version.mjs --final --branch "$BRANCH"
+        env:
+          TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
+          RELEASE_PLAN_FILE: ${{ runner.temp }}/release-plan.json
+        run: node scripts/release-pr-version.mjs --final --branch "$BRANCH"
 
       - name: Describe the Version PR
         env:
@@ -137,6 +141,7 @@ jobs:
               echo "An rc Version PR that was open is replaced by this one and its candidate is not published."
             } > /tmp/finish-body.md
           fi
+          node scripts/release-pr-body.mjs /tmp/finish-body.md "$RUNNER_TEMP/release-plan.json" > /tmp/release-body.md
 
       # TELO_BOT_TOKEN so the branch's required checks run on the PR. Publish's
       # changesets step rebuilds this same branch and PR.
@@ -147,9 +152,9 @@ jobs:
           token: ${{ secrets.TELO_BOT_TOKEN }}
           branch: changeset-release/${{ needs.check.outputs.branch }}
           base: ${{ needs.check.outputs.branch }}
-          title: "chore(release): version packages"
-          commit-message: "chore(release): version packages"
-          body-path: /tmp/finish-body.md
+          title: "chore(release): version"
+          commit-message: "chore(release): version"
+          body-path: /tmp/release-body.md
 
       - name: Finish
         env:
@@ -161,7 +166,7 @@ jobs:
             exit 1
           fi
           if [ "$DIRECT" = "true" ]; then
-            echo "Opened #$NUMBER \"chore(release): version packages\" into $BRANCH: $RELEASE.0, with no candidates."
+            echo "Opened #$NUMBER \"chore(release): version\" into $BRANCH: $RELEASE.0, with no candidates."
           else
-            echo "Opened #$NUMBER \"chore(release): version packages\" into $BRANCH: $RELEASE.0, with .changeset/pre.json deleted."
+            echo "Opened #$NUMBER \"chore(release): version\" into $BRANCH: $RELEASE.0, with .changeset/pre.json deleted."
           fi

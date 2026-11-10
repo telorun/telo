@@ -17,24 +17,19 @@ metadata:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
 
-    Imports are repo-relative because image generation is not published yet;
-    swap them for pinned `oci://ghcr.io/telorun/...` refs once ai, openai
-    and fs ship it.
+    The modules of this workspace are imported by relative path; a release tag
+    pins them to `oci://` refs.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.34.1#sha256-H9oIwMDlFy576XVNJEz-PtGflGC38-iGwz3_TYysYtE
-  OpenAI: oci://ghcr.io/telorun/openai@0.20.1#sha256-kSqphJdaw9ZPpRbo1DiX5BKJ_uuWqj5TqOL1d7QjwqQ
-  Http: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Fs: oci://ghcr.io/telorun/fs@0.15.1#sha256-DB68pWLeWJ3An4QhSocN4KhUEB-14j0jzLheGTATKkM
-  Console: oci://ghcr.io/telorun/console@0.19.2#sha256-ZjIsY5rYTAJV3aoJuRkesOvHEjZV900PIgzQZq_91Tg
-secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
-    type: string
+  Ai: ../../modules/ai
+  OpenAI: ../../modules/openai
+  Http: ../../modules/http-client
+  Fs: ../../modules/fs
+  Console: ../../modules/console
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string } }
 targets:
   - name: ask
     invoke: !ref Console.readLine
-    inputs:
-      prompt: "{cyan.bold describe an image} › "
+    inputs: { prompt: "{cyan.bold describe an image} › " }
 
   - name: generate
     invoke: !ref draw
@@ -82,9 +77,7 @@ kind: OpenAI.ImageModel
 metadata: { name: painter }
 model: gpt-image-1
 request: !ref openaiRequest
-options:
-  size: 1024x1024
-  quality: low
+options: { size: 1024x1024, quality: low }
 ---
 kind: Ai.Image
 metadata: { name: draw }

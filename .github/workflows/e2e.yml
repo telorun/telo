@@ -3,11 +3,8 @@ name: E2E Tests
 # End-to-end suites that stand up, or reach out to, something real — a
 # docker-compose stack, a live model, the live hub. Each job is self-contained.
 #
-# They are separate from the module suite for a second reason too: an app's
-# tests pin PUBLISHED module versions, so they also fail while a change has
-# landed in this repo but not yet been released and re-pinned. That is a real
-# signal about the release sequence, and it should not make a module-suite
-# failure ambiguous.
+# They are separate from the module suite because they need infrastructure or
+# credentials the module suite deliberately lacks.
 #
 # PULL REQUESTS ONLY. These are the expensive suites — a compose stack with a
 # model sidecar, and live model conversations — and running them again on the

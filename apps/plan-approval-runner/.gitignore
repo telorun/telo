@@ -1,4 +1,0 @@
-tests/.scratch/
-tests/__fixtures__/repos/*/.claude-stub/
-tests/__fixtures__/machines/*/state/
-tests/__fixtures__/*/machine/state/

@@ -1,9 +1,11 @@
 import { checkName } from "@telorun/analyzer";
 import { useEffect, useState } from "react";
+import { localCatalogCache } from "../language/language-storage";
 import { AlertCircle, Boxes, Check, FileText, Loader2, RotateCw } from "lucide-react";
 import {
-  fetchStarterCatalog,
+  loadStarterGallery,
   ModuleExistsError,
+  type GalleryVersion,
   type NewModuleSelection,
   type StarterCategory,
   type StarterDescriptor,
@@ -23,8 +25,11 @@ interface CreateModuleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   kind: ModuleKind;
-  /** Resolved starters base URL the catalog is fetched from. */
-  startersBaseUrl: string;
+  /** A gallery that does not follow the telo version (the setting, a
+   *  development build); undefined follows `galleryVersion`. */
+  fixedBaseUrl: string | undefined;
+  /** The telo version the gallery is shown for. */
+  galleryVersion: GalleryVersion;
   /** Creates the module; throws `ModuleExistsError` on an un-forced collision. */
   onCreate: (
     kind: ModuleKind,
@@ -44,12 +49,15 @@ export function CreateModuleDialog({
   open,
   onOpenChange,
   kind,
-  startersBaseUrl,
+  fixedBaseUrl,
+  galleryVersion,
   onCreate,
 }: CreateModuleDialogProps) {
   const [name, setName] = useState("");
   const [selectedId, setSelectedId] = useState<string>(BLANK_ID);
   const [starters, setStarters] = useState<StarterDescriptor[] | null>(null);
+  const [galleryLabel, setGalleryLabel] = useState<string | null>(null);
+  const [galleryBaseUrl, setGalleryBaseUrl] = useState<string | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -64,16 +72,31 @@ export function CreateModuleDialog({
   const category = categoryFor(kind);
   const kindLabel = kind === "Application" ? "application" : "library";
 
+  // A string, so a new object for the same version does not reload the gallery.
+  const versionKey = JSON.stringify(galleryVersion);
+
   // Load the catalog whenever the dialog opens (and on explicit retry).
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoadingCatalog(true);
     setCatalogError(null);
-    fetchStarterCatalog(startersBaseUrl)
-      .then((catalog) => {
+    setGalleryLabel(null);
+    setGalleryBaseUrl(null);
+    localCatalogCache()
+      .read()
+      .then((stored) =>
+        loadStarterGallery({
+          fixedBaseUrl,
+          version: JSON.parse(versionKey) as GalleryVersion,
+          catalogVersions: stored?.offered.map((entry) => entry.version) ?? [],
+        }),
+      )
+      .then((gallery) => {
         if (cancelled) return;
-        setStarters(catalog.starters.filter((s) => s.category === category));
+        setStarters(gallery.catalog.starters.filter((s) => s.category === category));
+        setGalleryBaseUrl(gallery.baseUrl);
+        setGalleryLabel(gallery.version ? `telo ${gallery.version}` : "a custom source");
       })
       .catch((err) => {
         if (cancelled) return;
@@ -86,7 +109,7 @@ export function CreateModuleDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, startersBaseUrl, category, reloadKey]);
+  }, [open, fixedBaseUrl, versionKey, category, reloadKey]);
 
   function reset() {
     setName("");
@@ -105,8 +128,8 @@ export function CreateModuleDialog({
   function selectionFor(id: string): NewModuleSelection {
     if (id === BLANK_ID) return { type: "blank" };
     const starter = starters?.find((s) => s.id === id);
-    if (!starter) return { type: "blank" };
-    return { type: "starter", starter };
+    if (!starter || galleryBaseUrl === null) return { type: "blank" };
+    return { type: "starter", starter, baseUrl: galleryBaseUrl };
   }
 
   async function submit(force: boolean) {
@@ -188,6 +211,11 @@ export function CreateModuleDialog({
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
               Start from
+              {galleryLabel && (
+                <span className="ml-1.5 font-normal text-zinc-400 dark:text-zinc-500">
+                  · starters from {galleryLabel}
+                </span>
+              )}
             </span>
             {loadingCatalog && (
               <div className="flex items-center gap-2 px-1 py-2 text-xs text-zinc-500">
@@ -234,6 +262,7 @@ export function CreateModuleDialog({
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                 <div className="flex-1">
                   <p>Couldn't load starters. You can still start blank.</p>
+                  <p className="mt-0.5 break-words">{catalogError}</p>
                   <button
                     className="mt-1 inline-flex items-center gap-1 font-medium underline"
                     onClick={() => setReloadKey((k) => k + 1)}

@@ -1,6 +1,6 @@
 name: Deploy Studio
 
-# Builds the Studio web build from the release's commit, attaches it to the GitHub
+# Builds the Studio web build from the release tag's tree, attaches it to the GitHub
 # Release as `studio-web.tar.gz`, and deploys it to studio.telo.run. Called by the
 # branch's Publish workflow on finals and patches only, so a candidate publishes
 # no Studio. The deploy moves only forward: re-running an old publish attaches its
@@ -18,7 +18,7 @@ on:
         type: string
         required: true
       tag:
-        description: 'The release tag (v<version>), whose release the web build is attached to.'
+        description: 'The release tag (v<version>), checked out, whose release the web build is attached to.'
         type: string
         required: true
 
@@ -38,6 +38,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -64,8 +65,6 @@ jobs:
 
       - name: Build studio
         run: pnpm --filter "@telorun/studio..." build
-        env:
-          VITE_TELO_STARTERS_URL: https://raw.githubusercontent.com/telorun/telo/${{ inputs.tag }}/starters
 
       - name: SPA deep-link fallback
         run: cp apps/studio/dist/index.html apps/studio/dist/404.html

@@ -2,14 +2,16 @@ name: Publish Docker Images
 
 # Release images only: a push to main publishes nothing, and nothing here moves
 # `:latest` on a development commit. Two triggers:
-#  * workflow_call    → called by the branch's Publish workflow after its `release`
-#                       job. `channel` / `version` say what was released:
+#  * workflow_call    → called twice by the branch's Publish workflow. `images: kernel`
+#                       after its `release` job, on the run's commit: the kernel tag
+#                       set. `images: apps` once the artifact check passed, with `ref`
+#                       the publication tag the app jobs check out: the hub, runner,
+#                       k8s-runner, hub-web and authoring-agent images with their
+#                       charts. `channel` / `version` say what was released:
 #                         candidate  kernel images `telorun/node:<v>` (and the slim
 #                                    and rust variants) only — no `latest`, no
 #                                    `<major>` / `<major>.<minor>`, no app image.
-#                         final / patch  the kernel tag set, and the hub, runner,
-#                                    k8s-runner, hub-web and authoring-agent images
-#                                    with their charts.
+#                         final / patch  the kernel tag set, and the app images.
 #                       A pointer (`latest`, `<major>`, `<major>.<minor>`) moves only
 #                       forward: `scripts/release-pointers.mjs` refuses it when a
 #                       final tag names a higher version in its scope.
@@ -19,13 +21,16 @@ name: Publish Docker Images
 #                       images when published packages or a module release call for
 #                       them, on the branch's last released telo.
 #  * workflow_dispatch → rebuild the release tag set of an already-published CLI
-#                       version by hand, from the ref the dispatch runs at (a branch
-#                       or the release tag). The recovery path for a Publish run
-#                       that failed after npm publish.
+#                       version by hand, from the ref the dispatch runs at: the
+#                       release tag, whose tree pins the published modules the app
+#                       images boot on. `images` picks the half (default both). The
+#                       recovery path for a Publish run that failed after npm publish.
 #
-# Published images are those of the Publish run that produced the commit, built
-# from that commit: the image build resolves `@telorun/*` from npm, so it follows
-# the `release` job that published them.
+# Published images are those of the Publish run that produced the release, built
+# from its commit or its tag: the image build resolves `@telorun/*` from npm, so it
+# follows the `release` job that published them. Whether a release moved an app's
+# version is asked of its RELEASE COMMIT (`release-commit.mjs`): a publication
+# commit's first parent, else the commit checked out.
 
 on:
   workflow_dispatch:
@@ -34,8 +39,21 @@ on:
         description: 'Published @telorun/cli version to build the release tag set for (e.g. 0.76.0). Empty → the version in this ref''s cli/nodejs/package.json, if it is published.'
         type: string
         default: ''
+      images:
+        description: 'Which images to build: the kernel tag set, the app images and charts, or both.'
+        type: choice
+        options: [all, kernel, apps]
+        default: all
   workflow_call:
     inputs:
+      images:
+        description: 'kernel (the telorun/node tag set), apps (the app images and charts) or all.'
+        type: string
+        default: all
+      ref:
+        description: 'The ref the app images are built from (the publication tag); empty → the calling run''s commit.'
+        type: string
+        default: ''
       published-packages:
         description: 'JSON array of {name, version} from changesets/action publishedPackages output'
         type: string
@@ -49,10 +67,11 @@ on:
         type: string
         default: ''
       tag:
-        description: 'The git tag naming that release (v0.85.0-rc.1); empty when channel is none. The tag exists before this workflow is called.'
+        description: 'The git tag naming that release (v0.85.0-rc.1); empty when channel is none. A final''s or patch''s may not exist yet when images is kernel.'
         type: string
         default: ''
 
+# A Publish run's two calls share the group, so they run one after the other.
 concurrency:
   group: publish-docker-${{ github.ref }}
   cancel-in-progress: false
@@ -70,7 +89,9 @@ jobs:
       rust-version: ${{ steps.compute.outputs.rust-version }}
       short-sha: ${{ steps.compute.outputs.short-sha }}
       release-cli: ${{ steps.compute.outputs.release-cli }}
-      # App images build outside candidates only.
+      # The kernel tag set is built unless `images` is `apps`.
+      kernel: ${{ steps.compute.outputs.kernel }}
+      # App images build outside candidates only, and unless `images` is `kernel`.
       apps: ${{ steps.compute.outputs.apps }}
       # Which shared pointers this release may move (release-pointers.mjs).
       latest: ${{ steps.pointers.outputs.latest }}
@@ -79,6 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref || github.sha }}
           # Tags are what the pointers are compared against.
           fetch-depth: 0
           fetch-tags: true
@@ -89,7 +111,14 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_CHANNEL: ${{ inputs.channel }}
           DISPATCH_CLI_VERSION: ${{ inputs.cli-version }}
+          IMAGES: ${{ inputs.images }}
         run: |
+          case "${IMAGES:-all}" in
+            all) KERNEL=true; APPS=true ;;
+            kernel) KERNEL=true; APPS=false ;;
+            apps) KERNEL=false; APPS=true ;;
+            *) echo "::error::images is '$IMAGES'; it must be all, kernel or apps."; exit 1 ;;
+          esac
           PUBLISHED="${PUBLISHED:-[]}"
           RUST_VERSION=$(grep -E '^ARG RUST_VERSION=' cli/nodejs/Dockerfile | head -1 | cut -d= -f2)
           SHORT_SHA=$(git rev-parse --short HEAD)
@@ -116,7 +145,6 @@ jobs:
 
           # Candidates build kernel images only; so does a branch still in
           # candidates whatever it published.
-          APPS=true
           case "$BASE_VERSION" in *-*) APPS=false ;; esac
           [ "$INPUT_CHANNEL" = "candidate" ] && APPS=false
           [ -f .changeset/pre.json ] && APPS=false
@@ -126,6 +154,7 @@ jobs:
             echo "base-version=$BASE_VERSION"
             echo "rust-version=$RUST_VERSION"
             echo "short-sha=$SHORT_SHA"
+            echo "kernel=$KERNEL"
             echo "apps=$APPS"
             [ -n "$CLI_VERSION" ] && echo "release-cli=true" || echo "release-cli=false"
           } >> "$GITHUB_OUTPUT"
@@ -144,11 +173,13 @@ jobs:
 
   kernel-release:
     name: Build telorun/node release tags
-    if: needs.context.outputs.release-cli == 'true'
+    if: needs.context.outputs.release-cli == 'true' && needs.context.outputs.kernel == 'true'
     needs: context
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -258,8 +289,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # HEAD^ for the version bump, tags for the forward-only `latest`
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+
+      # The release this checkout publishes: a publication commit's first parent,
+      # else HEAD itself.
+      - name: Find the release commit
+        id: release
+        run: node scripts/release-commit.mjs HEAD
+
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -286,14 +325,14 @@ jobs:
         env:
           SHORT_SHA: ${{ needs.context.outputs.short-sha }}
           MOVE_LATEST: ${{ steps.latest.outputs.latest }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.release-commit }}
         run: |
           # The per-commit :sha-*; :latest only when it moves forward; an immutable
           # :<version> tag only when apps/hub's release-owned metadata.version
-          # actually moved in this commit (the release commit), mirroring how
-          # publish-modules.mjs gates module-manifest pushes on HEAD^..HEAD.
+          # actually moved in the release commit, against its first parent.
           ver() { sed -n 's/^  version: ["'\'']\?\([0-9][0-9.]*\).*/\1/p' | head -1; }
           NOW=$(ver < apps/hub/telo.yaml)
-          PREV=$(git show HEAD^:apps/hub/telo.yaml 2>/dev/null | ver || true)
+          PREV=$(git show "${RELEASE_COMMIT}^:apps/hub/telo.yaml" 2>/dev/null | ver || true)
           {
             echo 'tags<<EOF'
             [ "$MOVE_LATEST" = "true" ] && echo "telorun/hub:latest"
@@ -323,12 +362,11 @@ jobs:
 
   hub-chart:
     name: Publish the hub Helm chart
-    # Gated on the image job's OWN answer to "did this commit release the hub",
+    # Gated on the image job's OWN answer to "did this release move the hub",
     # as the k8s-runner chart is, and ordered after it by `needs`: the chart's
     # appVersion is that image's tag. The hub's version is a module's, moved by
-    # the Module Release PR, whose publish run calls this workflow with no CLI
-    # release. `always()` is load-bearing: a skipped kernel job up the chain would
-    # otherwise skip this one.
+    # the release PR, whose publish run may release no CLI. `always()` is
+    # load-bearing: a skipped kernel job up the chain would otherwise skip this one.
     if: |
       always() &&
       needs.hub.result == 'success' &&
@@ -340,6 +378,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: azure/setup-helm@v4
 
       - name: Verify the chart carries the released version
@@ -363,8 +403,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # HEAD^ for the version bump, tags for the forward-only `latest`
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+
+      # The release this checkout publishes: a publication commit's first parent,
+      # else HEAD itself.
+      - name: Find the release commit
+        id: release
+        run: node scripts/release-commit.mjs HEAD
+
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -385,13 +433,13 @@ jobs:
         env:
           SHORT_SHA: ${{ needs.context.outputs.short-sha }}
           MOVE_LATEST: ${{ steps.latest.outputs.latest }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.release-commit }}
         run: |
           # The per-commit :sha-*; :latest only when it moves forward. Add an immutable
           # :<version> tag only when apps/docker-runner's package.json version
-          # actually moved in this commit (the release commit), mirroring how
-          # publish-modules.mjs gates module-manifest pushes on HEAD^..HEAD.
+          # actually moved in the release commit, against its first parent.
           NOW=$(jq -r .version apps/docker-runner/package.json)
-          PREV=$(git show HEAD^:apps/docker-runner/package.json 2>/dev/null | jq -r .version 2>/dev/null || true)
+          PREV=$(git show "${RELEASE_COMMIT}^:apps/docker-runner/package.json" 2>/dev/null | jq -r .version 2>/dev/null || true)
           {
             echo 'tags<<EOF'
             [ "$MOVE_LATEST" = "true" ] && echo "telorun/docker-runner:latest"
@@ -423,8 +471,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # HEAD^ for the version bump, tags for the forward-only `latest`
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+
+      # The release this checkout publishes: a publication commit's first parent,
+      # else HEAD itself.
+      - name: Find the release commit
+        id: release
+        run: node scripts/release-commit.mjs HEAD
+
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -445,12 +501,13 @@ jobs:
         env:
           SHORT_SHA: ${{ needs.context.outputs.short-sha }}
           MOVE_LATEST: ${{ steps.latest.outputs.latest }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.release-commit }}
         run: |
           # The per-commit :sha-*; :latest only when it moves forward. Add an immutable
           # :<version> tag only when apps/hub-web's package.json version actually
-          # moved in this commit, as the hub job does for its metadata.version.
+          # moved in the release commit, as the hub job does for its metadata.version.
           NOW=$(jq -r .version apps/hub-web/package.json)
-          PREV=$(git show HEAD^:apps/hub-web/package.json 2>/dev/null | jq -r .version 2>/dev/null || true)
+          PREV=$(git show "${RELEASE_COMMIT}^:apps/hub-web/package.json" 2>/dev/null | jq -r .version 2>/dev/null || true)
           {
             echo 'tags<<EOF'
             [ "$MOVE_LATEST" = "true" ] && echo "telorun/hub-web:latest"
@@ -479,7 +536,8 @@ jobs:
     # `kernel-release` would ship `k8s-runner:latest` and `:<version>` with a
     # default pointing at a `telorun/node:<v>-slim` that never gets built.
     # `always()` plus the result test lets a legitimately SKIPPED kernel job (a
-    # run that released no CLI) not block this one.
+    # run that released no CLI, or the `images: apps` call, whose kernel the
+    # `images: kernel` call built and which Publish orders after it) not block this one.
     if: |
       always() &&
       needs.context.result == 'success' &&
@@ -496,8 +554,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # HEAD^ for the version bump, tags for the forward-only `latest`
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+
+      # The release this checkout publishes: a publication commit's first parent,
+      # else HEAD itself.
+      - name: Find the release commit
+        id: release
+        run: node scripts/release-commit.mjs HEAD
+
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -519,11 +585,12 @@ jobs:
           SHORT_SHA: ${{ needs.context.outputs.short-sha }}
           CLI_VERSION: ${{ needs.context.outputs.cli-version }}
           MOVE_LATEST: ${{ steps.latest.outputs.latest }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.release-commit }}
         run: |
           # per-commit sha always, latest when it moves forward; immutable :<version> only when
-          # apps/k8s-runner's package.json version moved this commit (release).
+          # apps/k8s-runner's package.json version moved in the release commit.
           NOW=$(jq -r .version apps/k8s-runner/package.json)
-          PREV=$(git show HEAD^:apps/k8s-runner/package.json 2>/dev/null | jq -r .version 2>/dev/null || true)
+          PREV=$(git show "${RELEASE_COMMIT}^:apps/k8s-runner/package.json" 2>/dev/null | jq -r .version 2>/dev/null || true)
           {
             echo 'tags<<EOF'
             [ "$MOVE_LATEST" = "true" ] && echo "telorun/k8s-runner:latest"
@@ -567,8 +634,8 @@ jobs:
 
   k8s-runner-chart:
     name: Publish the k8s-runner Helm chart
-    # Gated on the image job's OWN answer to "did this commit
-    # release the runner" — the chart's appVersion IS that image's tag, so the
+    # Gated on the image job's OWN answer to "did this release
+    # move the runner" — the chart's appVersion IS that image's tag, so the
     # two must never disagree, and consuming the output rather than re-deriving
     # it is what makes that structural. `needs` then also orders them: the chart
     # is published after the image it points at exists, never beside it. There is
@@ -577,7 +644,8 @@ jobs:
     #
     # `always()` is load-bearing: without a status function GitHub prepends an
     # implicit `success()`, which is false when ANY job up the `needs` chain was
-    # skipped — and `kernel-release` is skipped when no CLI was released. The
+    # skipped — and `kernel-release` is skipped when no CLI was released, and in
+    # the `images: apps` call. The
     # explicit `k8s-runner` result test below is the real gate.
     if: |
       always() &&
@@ -587,12 +655,14 @@ jobs:
     runs-on: ubuntu-latest
     # GHCR is written with GITHUB_TOKEN, so this job needs `packages: write` —
     # and, being a called workflow, it can only get it if the caller's job grants
-    # it too (see the `docker` job in publish.yml).
+    # it too (see the `docker-apps` job in publish.yml).
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: azure/setup-helm@v4
 
       # The same gate every PR runs, not a second reading of Chart.yaml: a chart
@@ -615,7 +685,7 @@ jobs:
   authoring-agent:
     name: Build telorun/authoring-agent
     # Outside candidates: the immutable :<version>-slim when the agent's
-    # release-owned metadata.version moved this commit, :sha-<short>-slim always,
+    # release-owned metadata.version moved in the release, :sha-<short>-slim always,
     # and :latest-slim when it moves forward. Its base is
     # telorun/node:<base-version>-slim — the telo this run released, else the
     # branch's last release; both exist, which a development version would not.
@@ -630,8 +700,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # HEAD^ for the version bump, tags for the forward-only `latest`
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+
+      # The release this checkout publishes: a publication commit's first parent,
+      # else HEAD itself.
+      - name: Find the release commit
+        id: release
+        run: node scripts/release-commit.mjs HEAD
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Install the release scripts' dependencies
@@ -649,10 +727,11 @@ jobs:
           BASE_VERSION: ${{ needs.context.outputs.base-version }}
           SHORT_SHA: ${{ needs.context.outputs.short-sha }}
           MOVE_LATEST: ${{ steps.latest.outputs.latest }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.release-commit }}
         run: |
           ver() { sed -n 's/^  version: ["'\'']\?\([0-9][0-9.]*\).*/\1/p' | head -1; }
           AGENT_NOW=$(ver < apps/authoring-agent/telo.yaml)
-          AGENT_PREV=$(git show HEAD^:apps/authoring-agent/telo.yaml 2>/dev/null | ver || true)
+          AGENT_PREV=$(git show "${RELEASE_COMMIT}^:apps/authoring-agent/telo.yaml" 2>/dev/null | ver || true)
           if [ -z "$AGENT_NOW" ]; then
             echo "Could not read metadata.version from apps/authoring-agent/telo.yaml" >&2
             exit 1
@@ -661,7 +740,7 @@ jobs:
           TELO_V="$BASE_VERSION"
 
           # per-commit sha always, latest when it moves forward; immutable :<version>-slim only when
-          # the release-owned metadata.version moved this commit.
+          # the release-owned metadata.version moved in the release commit.
           {
             echo "telo-version=$TELO_V"
             echo 'tags<<EOF'

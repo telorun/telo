@@ -17,9 +17,16 @@ import semver from "semver";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
-import { outEmit, outErrLine, outLine, outProgress, output } from "../output.js";
-import { LocalImportPinner, type LocalImportVerdict } from "../release/local-import-pins.js";
-import { findModuleDoc, importSourceRefs, type ImportSourceRef } from "./manifest-imports.js";
+import { outEmit, outErrLine, outLine } from "../output.js";
+import type { LocalImportPinner } from "../release/local-import-pins.js";
+import {
+  buildSourceEdit,
+  findModuleDoc,
+  importSourceRefs,
+  resolveManifestPath,
+  type ImportSourceRef,
+} from "./manifest-imports.js";
+import { newImportPinner, rewriteImportForms } from "./release-imports.js";
 
 /** The version-independent label for a versioned `source`, for diagnostics —
  *  the ref with its exact `@<rawVersion>` suffix and any integrity fragment
@@ -209,22 +216,20 @@ interface ImportUpgrade {
   to: string;
 }
 
-/** A relative import of a released module, rewritten to its published pin. */
+/** An import of a workspace module `--pin-local` rewrote (`telo release imports
+ *  --as=published`): to its published pin, or to its relative path. */
 interface LocalRepin {
   manifest?: string;
   source: string;
   to: string;
 }
 
-/** A relative import of a released module that stays relative, and why. */
+/** An import of a workspace module that stays relative, and why. */
 interface PendingLocalImport {
   manifest?: string;
   source: string;
   reason: string;
 }
-
-/** Decides one relative import of the manifest being upgraded. */
-type PinLocalImport = (source: string) => Promise<LocalImportVerdict>;
 
 interface UpgradeResult {
   changed: boolean;
@@ -248,21 +253,6 @@ interface HeldBack {
   lines: string[];
 }
 
-/** Mirror LocalFileSource: a directory path resolves to `<dir>/telo.yaml`. */
-function resolveManifestPath(inputPath: string): { filePath: string; error?: string } {
-  const resolved = path.resolve(process.cwd(), inputPath);
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(resolved);
-  } catch (err) {
-    return { filePath: resolved, error: err instanceof Error ? err.message : String(err) };
-  }
-  if (stat.isDirectory()) {
-    return { filePath: path.join(resolved, "telo.yaml") };
-  }
-  return { filePath: resolved };
-}
-
 /**
  * Pure string-in / string-out core of the upgrade command. No filesystem
  * access — `upgradeOne` is the disk-backed wrapper. Exported so tests can
@@ -280,13 +270,14 @@ export async function upgradeManifest(args: {
   /** When set, local sibling imports are followed by the caller — so they are
    *  neither counted nor reported as skipped here. */
   recursive?: boolean;
-  /** When set, a relative import of a released module is rewritten to its
-   *  published pin once the published artifact is the working copy's. */
-  pinLocal?: PinLocalImport;
+  /** Aliases of imports whose form `telo release imports` decided: a remote
+   *  source among them is not bumped, a relative one is not reported skipped. */
+  formDecided?: ReadonlySet<string>;
   /** The runtime candidates are judged against; this process by default. */
   runtime?: UpgradeRuntime;
 }): Promise<{ content: string; result: UpgradeResult; relativeImports: string[] }> {
-  const { content, includePrerelease, log, displayName, recursive, pinLocal } = args;
+  const { content, includePrerelease, log, displayName, recursive } = args;
+  const formDecided = args.formDecided ?? new Set<string>();
   const runtime = args.runtime ?? currentRuntime();
 
   const result: UpgradeResult = {
@@ -377,35 +368,8 @@ export async function upgradeManifest(args: {
     // here. Under `--recursive` the caller descends into it, so stay silent;
     // otherwise report it skipped and point at the flag.
     if (isLocalPathSource(source)) {
-      const verdict = pinLocal ? await pinLocal(source) : undefined;
-      if (verdict?.kind === "pinned") {
-        const edit = buildSourceEdit(importRef.node, content, verdict.pin);
-        if (!edit) {
-          outErrLine(
-            `  ${log.err.error("✗")}  ${source}  source scalar has no range — skipping`,
-          );
-          result.errors++;
-          continue;
-        }
-        edits.push(edit);
-        result.changed = true;
-        const to = splitIntegrity(verdict.pin).base;
-        result.repins.push({ source, to });
-        outLine(`  ${log.ok("⇢")}  ${source} → ${log.ok(to)}  ${log.dim("(published)")}`);
-        continue;
-      }
       relativeImports.push(source);
-      if (verdict?.kind === "error") {
-        outErrLine(`  ${log.err.error("✗")}  ${source}  ${verdict.message}`);
-        result.errors++;
-        continue;
-      }
-      if (verdict?.kind === "pending") {
-        result.pendingLocal.push({ source, reason: verdict.reason });
-        outLine(`  ${log.dim("·")}  ${source}  ${log.dim(`kept local — ${verdict.reason}`)}`);
-        continue;
-      }
-      if (!recursive) {
+      if (!recursive && !formDecided.has(importRef.alias)) {
         outLine(
           `  ${log.dim("·")}  ${source}  ${log.dim("skipped (local import — use --recursive to follow)")}`,
         );
@@ -413,6 +377,8 @@ export async function upgradeManifest(args: {
       }
       continue;
     }
+
+    if (formDecided.has(importRef.alias)) continue;
 
     // The transport that owns the ref's scheme handles version enumeration,
     // reconstruction, and hashing — `upgrade` never branches on ref shape.
@@ -579,46 +545,6 @@ export async function upgradeManifest(args: {
   return { content: applyTextEdits(content, edits), result, relativeImports };
 }
 
-/**
- * Build a byte-level edit for an import entry's source scalar node.
- * Returns `null` when the parser didn't attach a range to the node — this
- * shouldn't happen for plain `parseAllDocuments` output but we don't want to
- * crash on weird inputs.
- *
- * Quote style is preserved: if the original scalar was written as
- * `Run: "oci://ghcr.io/telorun/run@0.2.4"` we re-emit `"oci://ghcr.io/telorun/run@0.2.7"`; plain stays plain.
- */
-function buildSourceEdit(
-  // A yaml v2 Scalar node — typed as unknown here to avoid leaking the
-  // import into the public signature of this helper.
-  node: unknown,
-  content: string,
-  newPin: string,
-): { start: number; end: number; newText: string } | null {
-  if (!node || typeof node !== "object") return null;
-  const range = (node as { range?: unknown }).range;
-  if (!Array.isArray(range) || range.length < 2) return null;
-  const start = range[0] as number;
-  const end = range[1] as number;
-  if (typeof start !== "number" || typeof end !== "number") return null;
-
-  // Inspect the original byte slice to decide whether to wrap the new value.
-  // The parsed scalar's `range[0..1]` covers the quotes (when quoted), so we
-  // check the first/last char against `"` and `'` rather than relying on
-  // `node.type`, which is fine but adds another yaml-internal dependency.
-  const original = content.slice(start, end);
-  let newText: string;
-  if (original.startsWith('"') && original.endsWith('"')) {
-    newText = `"${newPin}"`;
-  } else if (original.startsWith("'") && original.endsWith("'")) {
-    newText = `'${newPin}'`;
-  } else {
-    newText = newPin;
-  }
-
-  return { start, end, newText };
-}
-
 function emptyResult(errors = 0): UpgradeResult {
   return {
     changed: false,
@@ -647,12 +573,10 @@ function mergeResults(into: UpgradeResult, child: UpgradeResult): void {
 }
 
 /**
- * `--pin-local`, as one invocation holds it.
- *
- * Only the manifests NAMED on the command line are repinned. One reached through
- * `--recursive` is some module's own manifest, and a released module's relative
- * imports are the edges its release is planned along — pinning those would
- * detach it from the siblings it is versioned with.
+ * `--pin-local`, as one invocation holds it: the deprecated alias of `telo
+ * release imports --as=published` over the manifests NAMED on the command line.
+ * One reached through `--recursive` is some module's own manifest, whose relative
+ * imports are the edges its release is planned along.
  */
 export interface LocalImportPins {
   readonly pinner: LocalImportPinner;
@@ -693,16 +617,38 @@ export async function upgradeOne(
     return emptyResult(1);
   }
 
+  const forms = pinLocal?.named.has(filePath)
+    ? await rewriteImportForms({
+        content,
+        manifestDir: path.dirname(filePath),
+        as: "published",
+        pinner: pinLocal.pinner,
+      })
+    : undefined;
   const { content: nextContent, result, relativeImports } = await upgradeManifest({
-    content,
+    content: forms?.content ?? content,
     includePrerelease,
     log,
     displayName: displayPath,
     recursive,
-    ...(pinLocal?.named.has(filePath)
-      ? { pinLocal: (source: string) => pinLocal.pinner.verdictFor(path.dirname(filePath), source) }
-      : {}),
+    ...(forms ? { formDecided: forms.workspaceAliases } : {}),
   });
+  if (forms) {
+    for (const { source, to } of forms.rewritten) {
+      const shown = splitIntegrity(to).base;
+      result.repins.push({ source, to: shown });
+      outLine(`  ${log.ok("⇢")}  ${source} → ${log.ok(shown)}`);
+    }
+    for (const { source, reason } of forms.keptRelative) {
+      result.pendingLocal.push({ source, reason });
+      outLine(`  ${log.dim("·")}  ${source}  ${log.dim(`kept local — ${reason}`)}`);
+    }
+    for (const { source, message } of forms.errors) {
+      outErrLine(`  ${log.err.error("✗")}  ${source ?? ""}  ${message}`);
+      result.errors++;
+    }
+    result.changed ||= forms.rewritten.length > 0;
+  }
   for (const entry of [...result.upgrades, ...result.repins, ...result.pendingLocal, ...result.heldBack]) {
     entry.manifest = displayPath;
   }
@@ -747,16 +693,21 @@ export async function upgrade(argv: {
 }): Promise<void> {
   const log = createLogger(false);
 
+  if (argv.pinLocal) {
+    outErrLine(
+      `${log.err.warn("deprecated")}  --pin-local will be removed: run ` +
+        "`telo release imports --as=published` on the same manifests instead.",
+    );
+  }
   const pinLocal: LocalImportPins | undefined = argv.pinLocal
     ? {
-        pinner: new LocalImportPinner({
-          rungs: {
+        pinner: newImportPinner(
+          {
             ...(argv.registry ? { flag: argv.registry } : {}),
             ...(process.env.TELO_OCI_REGISTRY ? { env: process.env.TELO_OCI_REGISTRY } : {}),
           },
-          onModule: (module, index, total) =>
-            outProgress(log.err.dim(`  [${index + 1}/${total}] ${module.key}`)),
-        }),
+          log,
+        ),
         named: new Set(argv.paths.map((p) => resolveManifestPath(p).filePath)),
       }
     : undefined;
@@ -862,7 +813,7 @@ export function upgradeCommand(yargs: Argv): Argv {
           type: "boolean",
           default: false,
           describe:
-            "Rewrite a relative import of a released workspace module to its published pin, once the published artifact matches the working copy. Applies to the manifests named here, not to ones reached through --recursive.",
+            "Deprecated: use `telo release imports --as=published`, which this runs on the manifests named here (not on ones reached through --recursive).",
         })
         .option("registry", {
           type: "string",

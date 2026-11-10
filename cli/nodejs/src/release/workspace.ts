@@ -119,6 +119,17 @@ export function loadWorkspace(from: string = process.cwd()): Workspace {
   };
 }
 
+/** The release workspace holding `dir`, or `null` when it is in none — no
+ *  marker above it, or a marker that declares no `release:` block. */
+export function releaseWorkspaceAt(dir: string): Workspace | null {
+  const root = findWorkspaceRoot(dir);
+  if (!root) return null;
+  const marker = fs.readFileSync(path.join(root, WORKSPACE_FILENAME), "utf8");
+  return readWorkspaceConfig(marker, WORKSPACE_FILENAME).config.release !== undefined
+    ? loadWorkspace(root)
+    : null;
+}
+
 /** A marker diagnostic in the vocabulary the release plan already reports in, so
  *  one printer renders both. */
 function asReleaseDiagnostic(diagnostic: NormalizedDiagnostic): ReleaseDiagnostic {

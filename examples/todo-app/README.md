@@ -38,9 +38,8 @@ telo ./examples/todo-app
 
 Then open <http://127.0.0.1:8077>. Override the port with the `PORT` env var.
 
-The UI modules are not released yet, so this example imports the modules of
-this workspace by relative path and runs only from a checkout. Its imports
-become pinned `oci://` refs, like every other example's, once they are.
+This example imports the modules of this workspace by relative path, so it
+runs from a checkout; a release tag pins them to `oci://` refs.
 
 ## How it fits together
 

@@ -104,12 +104,19 @@ export type { ImportableLibrary } from "./loader/queries";
 export { buildFileTree } from "./loader/file-tree";
 export type { FileNode } from "./loader/file-tree";
 export {
-  DEFAULT_STARTERS_BASE_URL,
+  BUILD_STARTERS_BASE_URL,
   fetchStarterCatalog,
   fetchStarterFiles,
-  resolveStartersBaseUrl,
+  fixedStartersBaseUrl,
+  StarterCatalogNotFoundError,
   starterManifestUrl,
 } from "./loader/starters";
+export {
+  galleryVersionOf,
+  loadStarterGallery,
+  StarterGalleryUnavailableError,
+} from "./loader/starter-gallery";
+export type { GalleryVersion, StarterGallery } from "./loader/starter-gallery";
 export type {
   StarterCatalog,
   StarterCategory,

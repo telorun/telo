@@ -1,0 +1,9 @@
+modules:
+  apps/hub: Added
+  apps/authoring-agent: Added
+  blueprints/agent-app: Added
+  blueprints/approval-app: Added
+  blueprints/scheduled-jobs-app: Added
+  blueprints/workflow-app: Added
+body: Imports of workspace modules are relative paths in the source tree; the published
+  form is written at release.

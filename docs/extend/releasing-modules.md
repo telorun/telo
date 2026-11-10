@@ -255,8 +255,8 @@ running a manifest needs no `stage`; publish, which reads every tuple, does. See
 
 Modules publish from a release branch (`release/<major>.<minor>`), never from `main`, and only after that branch's final:
 
-- **No module publishes during candidates.** The Module Release PR does not open on a branch holding `.changeset/pre.json`, nor while the branch's changesets still plan a release, so every floor a module declares (`requires: telo:`) names a published telo. A module adopting grammar of the release in candidates holds `>=unreleased` until the final's version step writes the number, and is tried in the checkout through relative imports.
-- **After the final** the Module Release PR opens on the branch as it used to on main; merging it publishes the changed modules. Each such release is tagged `modules-<major>.<minor>-<n>` (`n` counts the branch's module releases) and recorded on `main` by a generated pull request (`chore(release): record <tag> on main`), which copies the published versions, changelogs and ledger entries and deletes the fragments the release consumed, so the ledger on `main` holds every published version and the next cut never plans one twice.
+- **No module publishes during candidates.** A release opens one PR on its branch, `chore(release): version`, and in candidates (the branch holds `.changeset/pre.json`) it versions npm packages only, so every floor a module declares (`requires: telo:`) names a published telo. A module adopting grammar of the release in candidates holds `>=unreleased` until the final's version step writes the number, and is tried in the checkout through relative imports.
+- **From the final on** the same release PR also runs `telo release apply` whenever the branch holds pending changesets, module drift or both; merging it publishes npm and then the changed modules in one run. Each such release is tagged `modules-<major>.<minor>-<n>` (`n` counts the branch's module releases) on the release's publication commit, and recorded on `main` by a generated pull request (`chore(release): record <tag> on main`), which copies the published versions, changelogs and ledger entries and deletes the fragments the release consumed, so the ledger on `main` holds every published version and the next cut never plans one twice.
 - **A fragment a release branch already carries plans nothing on main.** `telo release status`, `check` and `apply` take `--carried-by <ref>`: a pending fragment of the same path and content at that ref's merge base with `HEAD`, or written on it since, is dropped from the plan. CI passes the live `release/*` branch when the tree checked is main's, so a fix picked onto the branch with its fragment does not plan a second release of it on main.
 - **Image modules** build their images in the same Publish run: `:latest` moves only forward and only on a final, patch or module release; a push to `main` publishes no image.
 - **Module docs link only to `https://telo.run/…` pages or another module's hub page** (`https://hub.telo.run/module/oci/ghcr.io/telorun/<name>/`), never into the repository tree, so a module's bytes do not depend on which release publishes it. `pnpm run check:links` refuses the rest.
@@ -291,25 +291,42 @@ See [Declaring runtime requirements](./declaring-runtime-requirements.md#restric
 
 ## Consumers in the same repository
 
-An example, a starter or an application that lives beside the modules it uses
-normally imports them by pin. While a change to a module is unreleased, the
-consumer that needs it imports the module by relative path instead — and should
-name the published artifact again once the change ships.
+An example, a starter, an application or a blueprint that lives beside the
+modules it uses imports each of them in one of two forms: by relative path, which
+loads the working copy, or by the published reference with its integrity pin,
+which loads what the registry serves. `telo release imports <manifests..>
+--as=published|relative` writes every import of a workspace module in the
+manifests you name in one form or the other:
 
-`telo upgrade --pin-local <manifests..>` does that. For each relative import
-whose target is a module of the workspace, it asks the release plan:
-
-- the plan bumps the module — the published artifact is not the working copy, so
-  the import stays relative and the plan's reason is printed
-  (`kept local — modules/sql has an unreleased change (0.27.0 → 0.27.1: declared)`);
-- the plan does not, and that version exists at the registry — the import is
-  rewritten to `<destination>@<version>` with its integrity pin;
-- the version is not at the registry yet — it stays relative until the next run.
+- `--as=relative` writes the path from the manifest's directory to the module's
+  directory (`../../modules/sql`, no `telo.yaml`) for every import whose
+  repository is a workspace module's publish destination, whatever version it
+  names.
+- `--as=published` writes `<destination>@<version>#<pin>` for the module's
+  version in the tree, the pin read from the registry. It asks the release plan
+  first: a module the plan bumps has a published artifact that is not the working
+  copy, so its import is written relative and the plan's reason is printed
+  (`kept relative — modules/sql has an unreleased change (0.27.0 → 0.27.1: declared)`);
+  so is a version the registry does not have yet. Either makes the command exit 1,
+  with every other import still written.
 
 A dependent held back by a sibling says so: `imports modules/sql` in the reason
-names the module that has to ship first. Only the manifests you name are
-rewritten; a released module's own relative imports are what its release is
-planned along, and stay.
+names the module that has to ship first. An import of the module a manifest sits
+inside — the module's own test or fixture, a blueprint's `example/` — is always
+written relative. Imports of modules outside the workspace, image modules and a
+library nested below the importer are left alone, and so are the manifests the
+named ones reach: a released module's own relative imports are what its release
+is planned along. `--check` writes nothing and exits 1 listing every import not in
+the requested form; `--dry-run` shows the rewrites. The edit splices only each
+`source:` value, so the two directions give each other's bytes back.
+
+In this repository every branch holds the relative form, and the static checks
+refuse a pinned import of a workspace module. The published form exists only in a
+release's tags: after its modules publish, the release run commits
+`--as=published` over the consumer roots on a commit no branch holds and tags it.
+
+`telo upgrade --pin-local` is a deprecated alias of `--as=published`, kept for
+one release.
 
 ## Reading your own version
 
@@ -342,6 +359,19 @@ Two of the release system's invariants are enforced at publish:
   working copy is a gitignored build artifact; reading it would digest and ship
   bytes other than the source the manifest names. On this path a host without
   esbuild is a hard failure, not a fallthrough.
+- **A workspace module's imports name where their targets publish.** A relative
+  import of another workspace module is written as that module's assigned
+  destination — `oci://ghcr.io/telorun/sql@<version>#<pin>` from
+  `blueprints/agent-app`'s `../../modules/sql`, though the blueprint publishes
+  under `oci://ghcr.io/telorun/blueprints` and one level deeper — using the
+  registry cascade `telo release` uses. So modules at any depth and under any
+  base import each other relatively. `telo publish` refuses a destination
+  other than the one the workspace assigns the module (`destination_mismatch`),
+  and before a real push refuses a sibling that is not published
+  (`sibling_not_published`) or that the registry serves with other bytes than
+  the pin derived from the working copy (`import_pin_mismatch` — the sibling
+  needs a new version). A manifest outside any release workspace keeps deriving
+  a sibling's ref from its own destination and the import's path.
 
 ## Libraries inside a module's directory
 
@@ -361,15 +391,18 @@ embeds it too — and no new manifest key marks it.
 - A nested directory belongs to its library: the module's `files:` / `assets:`
   patterns do not select files under it.
 - A nested library needs no `metadata.version`.
-- An import leaving the module's directory publishes exactly as before, as a
-  separate artifact at `<destination>/<path>@<version>#<pin>`.
+- An import leaving the module's directory names a separate artifact: the
+  target's assigned destination inside a release workspace, the module's own
+  destination with the import's path applied outside one.
 
-Two refusals follow. `telo publish` refuses (`import_nested`) a module importing a
+Three refusals follow. `telo publish` refuses (`import_nested`) a module importing a
 library that lies inside *another* module's directory — it has no artifact of its
-own; move the library out of that directory to share it. `telo release` refuses a
-workspace module whose directory lies inside another workspace module that imports
-it, naming the workspace entry to drop. Changes to a nested library move the
-enclosing module's digest and version.
+own; move the library out of that directory to share it. `telo release` refuses
+the same import at plan time, and any relative import leaving the module for a
+manifest the workspace does not release (`IMPORT_TARGET_NOT_RELEASED`). And it
+refuses a workspace module whose directory lies inside another workspace module
+that imports it, naming the workspace entry to drop. Changes to a nested library
+move the enclosing module's digest and version.
 
 ## Staged files
 

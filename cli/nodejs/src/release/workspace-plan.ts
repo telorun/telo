@@ -2,9 +2,10 @@
  * The release plan of one workspace: resolve, check the destinations, then
  * collect evidence.
  *
- * Shared by `telo release` and by `telo upgrade --pin-local`, which asks the same
- * question for another reason — a module the plan would bump is one whose
- * published artifact is not what the working copy holds.
+ * Shared by `telo release` and by `telo release imports` (and its deprecated
+ * alias `telo upgrade --pin-local`), which asks the same question for another
+ * reason — a module the plan would bump is one whose published artifact is not
+ * what the working copy holds.
  *
  * The two destination checks run FIRST and short-circuit: both are decidable
  * from the manifests alone, and reporting them after sixty payload builds would
@@ -57,9 +58,8 @@ export async function planWorkspace(
 ): Promise<WorkspacePlan> {
   const ledger = readLedger(workspace.root);
   const fragments = pendingFragments(workspace.root, options.carriedBy);
-  const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
-
-  const { targets, diagnostics } = resolveTargets(workspace, ledger, options.rungs);
+  const { targets, assigned, diagnostics } = resolveTargets(workspace, ledger, options.rungs);
+  const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo"), assigned });
   const graph = await readImportGraph(workspace, targets, builder);
   // The marker's own diagnostics travel with the plan, so an entry that
   // discovers nothing is reported by CI and not only by the editor.
@@ -71,6 +71,7 @@ export async function planWorkspace(
   const modules = await collectEvidence(workspace, {
     targets,
     builder,
+    imports: graph.imports,
     baseRef: options.baseRef,
     ...(options.onModule ? { onModule: options.onModule } : {}),
   });

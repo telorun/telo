@@ -2,13 +2,15 @@
 // The record of a release on main: what main must hold of a published release tag,
 // written as one generated commit instead of merging the branch's history.
 //
-// From the tag it copies, for every artifact present on main, each package's
-// `version`, each module's version (its `telo.yaml`, own npm pins, `nodejs/package.json`,
+// From the tag's release commit (`release-commit.mjs`: the commit it points at, or the
+// parent of the publication commit it points at, so no pinned import is read) it copies,
+// for every artifact present on main, each package's `version`, each module's version
+// (its `telo.yaml`, own npm pins, `nodejs/package.json`,
 // `rust/Cargo.toml` and that crate's entry in the governing `Cargo.lock`), every
 // `CHANGELOG.md` and every `.changes/ledger.yaml` entry; and it deletes each
-// changeset and fragment the tag released (`carried-changes.ts`). Floors and pins
-// are computed afterwards by the workflow (`telo release floor`, `--pin-local`),
-// never copied. Every write goes through the analyzer's own version stamps.
+// changeset and fragment the tag released (`carried-changes.ts`). Floors
+// are computed afterwards by the workflow (`telo release floor`), never copied;
+// imports stay relative on main, so no pin is written. Every write goes through the analyzer's own version stamps.
 //
 // Two modes over one computation: `write` (Record release) writes the files, then
 // the Rust twins and chart versions that follow from them; `check` (Start release candidates)
@@ -41,6 +43,7 @@ import { releasedBy } from "../cli/nodejs/src/release/carried-changes.ts";
 import { WorkspaceNotFoundError, loadWorkspace } from "../cli/nodejs/src/release/workspace.ts";
 import { refuse, setOutput } from "./release-actions-output.mjs";
 import { recordTagFor } from "./release-branch.mjs";
+import { releaseCommitOf } from "./release-commit.mjs";
 import { ROOT, rustTwinMismatches, stampRustTwins, workspacePackages } from "./version-line.mjs";
 
 const posix = (path) => path.split(sep).join("/");
@@ -96,11 +99,13 @@ function sameEntry(a, b) {
  * What recording `tag` changes in main's tree (the checkout): `writes` (each file's
  * new text, only where it differs), `deletions`, and `packages` — every workspace
  * package with the version the record gives it, for the Rust twins that follow.
+ * Everything is read at the tag's release commit.
  */
 export function recordPlan({ tag }) {
   const root = ROOT;
-  const tagged = new Set(treeFiles(root, tag));
-  const textAt = (path) => (tagged.has(path) ? show(root, tag, path) : undefined);
+  const release = releaseCommitOf({ cwd: root, tag });
+  const tagged = new Set(treeFiles(root, release));
+  const textAt = (path) => (tagged.has(path) ? show(root, release, path) : undefined);
   const files = new Map();
   const current = (path) =>
     files.has(path) ? files.get(path).after : existsSync(join(root, path)) ? readFileSync(join(root, path), "utf8") : undefined;
@@ -174,7 +179,7 @@ export function recordPlan({ tag }) {
     if (changed) put(LEDGER_PATH, serializeLedger({ modules: entries }));
   }
 
-  const deletions = [...releasedBy({ cwd: root, files: changeFiles(root), ref: tag })].sort();
+  const deletions = [...releasedBy({ cwd: root, files: changeFiles(root), ref: release })].sort();
   const writes = [...files]
     .filter(([, { before, after }]) => before !== after)
     .map(([path, { after }]) => ({ path, text: after }));

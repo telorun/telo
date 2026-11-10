@@ -8,9 +8,9 @@ metadata:
     the sitemap index, shard 0, and `robots.txt`. Assert only on the seeded refs
     (docker-compose `SEED_REFS`), never on a ref some other test registers.
 imports:
-  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Html: oci://ghcr.io/telorun/html@0.3.1#sha256-G81fLbqXcpYtcnNCYNd51ZlFbgQM4MMXh5DoGUpeIqs
-  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  HttpClient: ../../../../modules/http-client
+  Html: ../../../../modules/html
+  Assert: ../../../../modules/assert
 targets:
   - !ref sitemapIndex_ListsShardZero
   - !ref sitemapShard_ListsSeededOciRefs

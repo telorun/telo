@@ -81,7 +81,7 @@ export function SettingsModal({ open, onOpenChange, settings, onChange }: Settin
           </p>
           <p className="mb-1.5 text-xs text-zinc-500 dark:text-zinc-400">
             Starter gallery source (must serve <code>starters.json</code> and the
-            referenced manifests over CORS). Leave empty for the built-in default.
+            referenced manifests over CORS). Leave empty to use the gallery of the telo version the workspace is edited against.
           </p>
           <input
             type="text"

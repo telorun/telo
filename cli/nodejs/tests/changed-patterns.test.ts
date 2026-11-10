@@ -222,6 +222,22 @@ describe("telo changed — which matched files a diff affects", () => {
     ]);
   });
 
+  it("lists a starter importing a module by relative path when only that module's files change", () => {
+    const root = repo();
+    moduleAt(root, "modules/ui");
+    moduleAt(root, "modules/sql");
+    moduleAt(root, "starters/apps/todo", { Ui: "../../../modules/ui" });
+    moduleAt(root, "starters/apps/jobs", { Sql: "../../../modules/sql" });
+    testAt(root, "starters/apps/todo/tests/serves.yaml", { App: "../" });
+    testAt(root, "starters/apps/jobs/tests/runs.yaml", { App: "../" });
+
+    const scope = scopeOf(root);
+    const entries = scope.expand(["starters/apps/*/tests/*.yaml"], root);
+    expect(
+      entries.filter((entry) => scope.affects(entry, ["modules/ui/nodejs/src/page.ts"])),
+    ).toEqual(["starters/apps/todo/tests/serves.yaml"]);
+  });
+
   it("reaches a module's tests from a workspace package its browser entry inlines", () => {
     const root = repo();
     moduleAt(

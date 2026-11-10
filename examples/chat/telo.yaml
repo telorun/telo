@@ -19,25 +19,23 @@ metadata:
     then open http://localhost:8080.
 requires: { telo: ">=0.129.0" }
 lang: en
-# The chat modules come from this repository while their changes are unreleased;
-# `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Ai: oci://ghcr.io/telorun/ai@0.34.1#sha256-H9oIwMDlFy576XVNJEz-PtGflGC38-iGwz3_TYysYtE
-  Anthropic: oci://ghcr.io/telorun/anthropic@0.9.1#sha256-YnUVjQxv3OMWbCNfsKqMvNrMnt_qvpBHvNOMgD58tZo
-  AiConversationSql: oci://ghcr.io/telorun/ai-conversation-sql@0.2.1#sha256-4UusV5VvC-R5pz5qhRx9Bmv9U1XMx_Qj63JpLs9f_yo
+  Http: ../../modules/http-server
+  HttpClient: ../../modules/http-client
+  Ai: ../../modules/ai
+  Anthropic: ../../modules/anthropic
+  AiConversationSql: ../../modules/ai-conversation-sql
   # Not `AiChat`: an alias equal to the module's own name makes its private kinds
   # unreachable until that analyzer defect is fixed.
   Chat: ../../modules/ai-chat
   Conversation: ../../modules/conversation
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
-  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.0#sha256-gZNTQFel4lDz8_Z4dZdljhEmmne8vDwPCpxmGV9eubE
-  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.2#sha256-j_7SCdfh-B-FrmdvBz2rHLF3EGJjeTQWUjkdyJowt1s
-  MediaType: oci://ghcr.io/telorun/media-type@0.3.0#sha256-BccdaTyPvW5_0t9kQuT4JOd1jTRdjdw_6vD8Xr-SbYM
-  Fs: oci://ghcr.io/telorun/fs@0.15.1#sha256-DB68pWLeWJ3An4QhSocN4KhUEB-14j0jzLheGTATKkM
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
+  RecordStream: ../../modules/record-stream
+  RecordStreamSql: ../../modules/record-stream-sql
+  Scheduler: ../../modules/scheduler
+  BlobFs: ../../modules/blob-fs
+  MediaType: ../../modules/media-type
+  Fs: ../../modules/fs
+  SQLite: ../../modules/sqlite
   Ui: ../../modules/ui
   UiLucide: ../../modules/ui-lucide
   UiReact: ../../modules/ui-react

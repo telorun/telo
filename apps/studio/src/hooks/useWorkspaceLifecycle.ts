@@ -14,7 +14,6 @@ import {
   openWorkspaceDirectory,
   readManifestUrlParam,
   reopenWorkspaceAt,
-  resolveStartersBaseUrl,
   VIRTUAL_WORKSPACE_ROOT,
   writeRemoteImportPlan,
 } from "../loader";
@@ -536,7 +535,6 @@ export function useWorkspaceLifecycle({
       kind,
       name,
       selection,
-      startersBaseUrl: resolveStartersBaseUrl(settings),
       manifestSources,
       overwrite: opts?.overwrite,
     });

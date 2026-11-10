@@ -12,9 +12,9 @@ metadata:
     hub registers itself on boot), /module/versions including its 404 path, and
     the /modules catalogue listing and its paging.
 imports:
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
-  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
 targets:
   - !ref health
   - !ref searchResources_FindsSeededKind

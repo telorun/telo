@@ -32,6 +32,7 @@ import { outEmit, outErrLine, outLine } from "../output.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
 import type { CliRunner } from "../release/floor-measurement.js";
+import { workspaceAssignment, type RegistryRungs, type WorkspaceAssignment } from "../release/targets.js";
 import { publishedTeloVersions, unpublishedRestrictionBound, verifyFloor } from "../release/verify-requires.js";
 
 // The manifest-text transforms moved to `bundle/manifest-text.ts` so `telo
@@ -173,6 +174,116 @@ async function verifyImportPins(payload: ModulePayload, log: Logger): Promise<vo
     }
     stepOk(log, "pin", `${alias} verified`);
   }
+}
+
+/** Exported under a test-only name, as `verifyImportPinsForTest` is. */
+export const verifySiblingPinsForTest = verifySiblingPins;
+
+/**
+ * Every sibling a relative import canonicalized to is published, and serves the
+ * `telo.yaml` its pin was derived from.
+ *
+ * A sibling's pin is a hash of the manifest built from the working copy, so a
+ * sibling republished — or never bumped — with other bytes under the same
+ * version would leave this artifact naming bytes the registry does not serve.
+ * Asked only before a real push: under `--dry-run`, and while a release is
+ * planned, a sibling published earlier in the same batch is not at the registry
+ * yet.
+ */
+async function verifySiblingPins(payload: ModulePayload, log: Logger): Promise<void> {
+  // Every unpublished sibling is named, not only the first: the remedy is to
+  // publish them, and a reader told one at a time publishes one at a time.
+  const unpublished: string[] = [];
+  for (const { alias, ref, integrity } of payload.relativeImports) {
+    let served: string;
+    try {
+      served = await fetchManifestHash(ref);
+    } catch (err) {
+      outErrLine(
+        log.err.error("error") +
+          `  relative import canonicalized to '${ref}', which does not resolve at its published ` +
+          `location — publish the sibling first. Cause: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      unpublished.push(ref);
+      continue;
+    }
+    if (served !== integrity) {
+      throw new PublishFailure(
+        "import_pin_mismatch",
+        `import '${alias}' is pinned to ${integrity}, the manifest the working copy builds for it, ` +
+          `but ${ref} serves ${served}. Its bytes changed under a version already published, so ` +
+          `this artifact would name a manifest the registry does not serve — give the sibling a new ` +
+          `metadata.version (\`telo release status\` / \`apply\` in a release workspace) and publish ` +
+          `it first.`,
+        { alias, ref },
+      );
+    }
+    stepOk(log, "pin", `${alias} verified`);
+  }
+  if (unpublished.length > 0) {
+    throw new PublishFailure(
+      "sibling_not_published",
+      `${unpublished.length} imported sibling${unpublished.length !== 1 ? "s do" : " does"} not resolve at ` +
+        `${unpublished.length !== 1 ? "their" : "its"} published location — publish ${unpublished.length !== 1 ? "them" : "it"} first`,
+      { refs: unpublished },
+    );
+  }
+}
+
+/**
+ * The payload builder a publish reads: staged files from disk, and — for a
+ * module of a release workspace — siblings at their assigned destinations.
+ */
+export function publishPayloadBuilder(
+  filePath: string,
+  assignment: WorkspaceAssignment | null,
+): ModulePayloadBuilder {
+  return new ModulePayloadBuilder({
+    cacheRoot: resolveCacheRoot(filePath) ?? path.join(path.dirname(filePath), ".telo"),
+    // The bytes that ship: every staged file verified against its pin and
+    // framed, so each `blob` and every sibling pin is the registry's.
+    stagedFiles: "disk",
+    ...(assignment ? { assigned: assignment.assigned } : {}),
+  });
+}
+
+/**
+ * Refuse a destination the release workspace does not assign to the module.
+ *
+ * Every import of the module in the workspace is written as its assigned ref,
+ * so pushing it anywhere else publishes an artifact nothing names.
+ */
+function refuseUnassignedDestination(
+  assignment: WorkspaceAssignment,
+  destination: string,
+  log: Logger,
+): PublishOutcome | undefined {
+  const errors = assignment.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (errors.length > 0) {
+    for (const error of errors) outErrLine(`${log.err.error(error.code)}  ${error.message}`);
+    return refused(
+      "publish_failed",
+      `the release workspace's publish destinations cannot be resolved: ${errors[0]!.message}`,
+    );
+  }
+  const assigned = assignment.destination!;
+  if (destination.replace(/\/+$/, "") === assigned) return undefined;
+  const message =
+    `${assignment.module.key} publishes to '${assigned}', the destination telo-workspace.yaml ` +
+    `assigns it, but '${destination}' was given. Every import of it in the workspace is written ` +
+    `as the assigned ref, so an artifact pushed elsewhere is one nothing names — publish to ` +
+    `'${assigned}', or change the module's registry in telo-workspace.yaml.`;
+  outErrLine(log.err.error("error") + `  ${message}`);
+  return refused("destination_mismatch", message, {
+    module: assignment.module.key,
+    given: destination,
+    assigned,
+  });
+}
+
+/** The cascade rungs a publish has: no `--registry` flag, the variable. */
+function publishRegistryRungs(): RegistryRungs {
+  return process.env.TELO_OCI_REGISTRY ? { env: process.env.TELO_OCI_REGISTRY } : {};
 }
 
 
@@ -388,6 +499,14 @@ async function publishOne(
       log,
       beforePush: async () => undefined,
     });
+  }
+
+  // A module of a release workspace publishes where the workspace assigns it,
+  // decided before anything is built or pushed.
+  const assignment = workspaceAssignment(filePath, publishRegistryRungs());
+  if (assignment) {
+    const refusal = refuseUnassignedDestination(assignment, destination, log);
+    if (refusal) return refusal;
   }
 
   const manifestDir = path.dirname(filePath);
@@ -609,12 +728,7 @@ async function publishOne(
   // gitignored artifact that may be stale or absent.
   let payload: ModulePayload;
   try {
-    payload = await new ModulePayloadBuilder({
-      cacheRoot: resolveCacheRoot(filePath) ?? path.join(manifestDir, ".telo"),
-      // The bytes that ship: every staged file verified against its pin and
-      // framed, so each `blob` and every sibling pin is the registry's.
-      stagedFiles: "disk",
-    }).payload(filePath, destination);
+    payload = await publishPayloadBuilder(filePath, assignment).payload(filePath, destination);
   } catch (err) {
     outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
     return { ok: false, error: publishFailureReport(err) };
@@ -623,40 +737,14 @@ async function publishOne(
   const partition = payload.partition;
   const layers = payload.layers;
 
-  // Strict: a published app does not publish its siblings, so every ref derived
-  // from a relative import must already resolve at its published location — a
-  // dangling one is a hard error (publish the sibling first, or earlier in this
-  // invocation). Skipped on --dry-run (nothing is published yet).
+  // Strict: a published app does not publish its siblings, so every sibling a
+  // relative import names must already be published, serving the manifest its
+  // pin names (publish the sibling first, or earlier in this invocation), and
+  // every author-written pin must still describe what the registry serves.
+  // Skipped on --dry-run (nothing is published yet).
   if (!dryRun) {
-    const transports = defaultTransportRegistry();
-    // Every unpublished sibling is named, not only the first: the remedy is to
-    // publish them, and a reader told one at a time publishes one at a time.
-    const unpublished: string[] = [];
-    for (const { ref } of payload.relativeImports) {
-      try {
-        const transport = transports.forRef(ref);
-        if (!transport) throw new Error(`no transport owns '${ref}'`);
-        await transport.source.read(ref);
-      } catch (err) {
-        outErrLine(
-          log.err.error("error") +
-            `  relative import canonicalized to '${ref}', which does not resolve at its published ` +
-            `location — publish the sibling first. Cause: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        unpublished.push(ref);
-      }
-    }
-    if (unpublished.length > 0) {
-      return refused(
-        "sibling_not_published",
-        `${unpublished.length} imported sibling${unpublished.length !== 1 ? "s do" : " does"} not resolve at ` +
-          `${unpublished.length !== 1 ? "their" : "its"} published location — publish ${unpublished.length !== 1 ? "them" : "it"} first`,
-        { refs: unpublished },
-      );
-    }
-
-    // Every author-written pin still describes what the registry serves.
     try {
+      await verifySiblingPins(payload, log);
       await verifyImportPins(payload, log);
     } catch (err) {
       outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);

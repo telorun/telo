@@ -2,9 +2,9 @@
 // (`publish-modules.mjs`, the changed set) and the OCI backfill
 // (`publish-oci-backfill.mjs`, the whole tree).
 //
-// Both need the same guarantee: `telo publish` canonicalizes a relative
-// `imports:` source against the destination and then HARD-FAILS if the derived
-// ref does not already resolve there, so a sibling must be pushed before its
+// Both need the same guarantee: `telo publish` writes a relative
+// `imports:` source as its target's assigned destination and then HARD-FAILS if
+// that ref does not already resolve there, so a sibling must be pushed before its
 // dependents. Ordering is the only thing that makes a multi-module push succeed.
 //
 // The answer now comes from the release model (`telo release order`), which

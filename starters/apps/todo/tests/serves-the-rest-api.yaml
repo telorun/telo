@@ -235,14 +235,11 @@ steps:
   - name: verifyGeneratedPage
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.page.result.body.children.map(c, {'bar': {'show': c.show, 'placement': c.placement, 'controls': c.controls, 'apply': c.apply, 'summary': c.summary, 'state': c.state, 'presets': c.presets}, 'create': {'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
+      actual: !cel "steps.page.result.body.children.map(c, {'bar': {'placement': c.placement, 'apply': c.apply, 'state': c.state, 'presets': c.presets}, 'create': {'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
       expected:
         - bar:
-            show: chosen
-            placement: { type: above }
-            controls: direct
+            placement: { type: above, show: chosen, controls: direct, summary: chips }
             apply: commit
-            summary: chips
             state: { key: todos, address: true, store: { type: local }, fields: [text, isDone, dueOn] }
             presets: []
           create:
@@ -279,17 +276,14 @@ steps:
       actual:
         title: !cel "steps.statusPage.result.body.title"
         nodes: !cel "steps.statusPage.result.body.children.map(c, c.type)"
-        screen: !cel "steps.statusPage.result.body.children.filter(c, c.type == 'filters').map(c, {'bar': {'show': c.show, 'placement': c.placement, 'controls': c.controls, 'apply': c.apply, 'summary': c.summary, 'state': c.state}, 'fields': c.fields.map(f, [f.property, f.operator, f.pinned, f.control]), 'presets': c.presets, 'create': {'fields': c.content.create.form.fields.map(f, f.property), 'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'fields': c.content.edit.form.fields.map(f, f.property), 'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
+        screen: !cel "steps.statusPage.result.body.children.filter(c, c.type == 'filters').map(c, {'bar': {'placement': c.placement, 'apply': c.apply, 'state': c.state}, 'fields': c.fields.map(f, [f.property, f.operator, f.pinned, f.control]), 'presets': c.presets, 'create': {'fields': c.content.create.form.fields.map(f, f.property), 'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'fields': c.content.edit.form.fields.map(f, f.property), 'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
       expected:
         title: { lang: en, message: [By status] }
         nodes: [text, filters]
         screen:
           - bar:
-              show: all
-              placement: { type: collapsible, open: false }
-              controls: direct
+              placement: { type: collapsible, open: false, show: all, controls: direct, summary: none }
               apply: commit
-              summary: none
               state: { address: false, store: { type: memory }, fields: [text, isDone, dueOn] }
             fields:
               - [text, contains, true, auto]

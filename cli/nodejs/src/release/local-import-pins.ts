@@ -1,10 +1,10 @@
 /**
- * Turning a relative import of a released module back into its published pin.
+ * Which release-workspace module an import names, and the published pin of it.
  *
  * A consumer in the same repository — an example, a starter, an application —
- * imports a module by relative path while a change to that module is unreleased,
- * and should name the published artifact again once it ships. `telo upgrade
- * --pin-local` asks this file, per relative import, whether that moment has come.
+ * imports a workspace module either by relative path or by its published,
+ * hash-pinned reference. `telo release imports` asks this file, per import,
+ * which module it names and, for the published form, what pin to write.
  *
  * **The verdict is the release plan's.** A module the plan would bump is one
  * whose published artifact differs from the working copy, so pinning it would
@@ -20,8 +20,9 @@
  */
 
 import {
-  WORKSPACE_FILENAME,
-  readWorkspaceConfig,
+  isLocalPathSource,
+  parseVersionedRef,
+  splitIntegrity,
   type LedgerEntry,
   type PlannedModule,
 } from "@telorun/analyzer";
@@ -30,18 +31,50 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import semver from "semver";
 import { findWorkspaceRoot } from "../workspace-marker.js";
+import { readLedger } from "./ledger-store.js";
 import { describeReason } from "./render.js";
-import type { RegistryRungs } from "./targets.js";
-import { loadWorkspace, type DiscoveredModule, type Workspace } from "./workspace.js";
+import { resolveTargets, type RegistryRungs, type ResolvedTargets } from "./targets.js";
+import { releaseWorkspaceAt, type DiscoveredModule, type Workspace } from "./workspace.js";
 import { planWorkspace, type WorkspacePlan } from "./workspace-plan.js";
+
+/** What a consumer's import of a workspace module is written as under
+ *  `--as=published`. */
+export type PublishedForm =
+  | { readonly kind: "pinned"; readonly pin: string; readonly version: string }
+  /** A released module whose published artifact is not the working copy yet. */
+  | { readonly kind: "pending"; readonly cause: PendingCause; readonly reason: string }
+  | { readonly kind: "error"; readonly message: string };
+
+/** Why an import stays relative under `--as=published`, for machines. */
+export type PendingCause = "plan-bumped" | "never-released" | "unpublished";
 
 export type LocalImportVerdict =
   /** Not a released module of any workspace — an application's own library. */
   | { readonly kind: "unmanaged" }
-  | { readonly kind: "pinned"; readonly pin: string; readonly version: string }
-  /** A released module whose published artifact is not the working copy yet. */
-  | { readonly kind: "pending"; readonly reason: string }
-  | { readonly kind: "error"; readonly message: string };
+  /** The importing manifest sits inside the module it imports. */
+  | { readonly kind: "own" }
+  | PublishedForm;
+
+/**
+ * What an import names, relative to the manifest holding it.
+ *
+ * `unmanaged` is everything the command leaves alone: no workspace module, an
+ * image module, a target below the importer's own directory (a nested library,
+ * which ships inside the importer's artifact and has no pin of its own). `own`
+ * is an import of the module the manifest sits inside — its own test or
+ * fixture, a blueprint's `example/` — which always stays relative. `relative` is
+ * the path from the manifest's directory to the module's, as written.
+ */
+export type ImportTarget =
+  | { readonly kind: "unmanaged" }
+  | { readonly kind: "error"; readonly message: string }
+  | { readonly kind: "own"; readonly module: DiscoveredModule; readonly relative: string }
+  | {
+      readonly kind: "consumer";
+      readonly workspace: Workspace;
+      readonly module: DiscoveredModule;
+      readonly relative: string;
+    };
 
 export interface ModuleReleaseState {
   readonly module: Pick<DiscoveredModule, "key" | "version">;
@@ -57,17 +90,22 @@ export interface ModuleReleaseState {
 export async function verdictForModule(
   state: ModuleReleaseState,
   registry: TransportRegistry,
-): Promise<LocalImportVerdict> {
+): Promise<PublishedForm> {
   const { module, destination, planned, published } = state;
   if (planned) {
     const reasons = [...new Set(planned.reasons.map(describeReason))].join("; ");
     return {
       kind: "pending",
+      cause: "plan-bumped",
       reason: `${module.key} has an unreleased change (${planned.from} → ${planned.to}: ${reasons})`,
     };
   }
   if (!published) {
-    return { kind: "pending", reason: `${module.key} has never been released` };
+    return {
+      kind: "pending",
+      cause: "never-released",
+      reason: `${module.key} has never been released`,
+    };
   }
   if (!destination) {
     return { kind: "error", message: `${module.key} has no publish destination` };
@@ -91,6 +129,7 @@ export async function verdictForModule(
   if (!isPublished) {
     return {
       kind: "pending",
+      cause: "unpublished",
       reason: `${module.key}@${module.version} is not published at ${destination} yet`,
     };
   }
@@ -113,12 +152,14 @@ export interface LocalImportPinnerOptions {
 }
 
 /**
- * Answers per relative import, building each workspace's release plan at most
- * once and only when an import actually names one of its modules — a manifest
- * with no such import pays nothing.
+ * Answers per import, building each workspace's release plan at most once and
+ * only when a published form is actually asked for, and resolving its publish
+ * destinations only when a pinned import could name one of its modules — a
+ * manifest with neither pays nothing.
  */
 export class LocalImportPinner {
   private readonly workspaces = new Map<string, Workspace | null>();
+  private readonly targets = new Map<string, ResolvedTargets>();
   private readonly plans = new Map<string, Promise<WorkspacePlan>>();
   private readonly registry: TransportRegistry;
 
@@ -126,24 +167,43 @@ export class LocalImportPinner {
     this.registry = options.registry ?? defaultTransportRegistry();
   }
 
-  /** `source` is the import as written, relative to `manifestDir`. */
-  async verdictFor(manifestDir: string, source: string): Promise<LocalImportVerdict> {
-    const target = path.resolve(manifestDir, source);
-    const targetDir = isDirectory(target) ? target : path.dirname(target);
-
-    const workspace = this.workspaceAt(targetDir);
-    const module = workspace?.modules.find((candidate) => path.resolve(candidate.dir) === targetDir);
-    // An image module is an application: nothing imports one, so there is no pin
-    // to write for it. A manifest inside the module it imports is that module's
-    // own test or fixture, which exists to exercise the working copy.
-    if (!workspace || !module || module.artifactKind === "image") return { kind: "unmanaged" };
-    if (isWithin(path.resolve(manifestDir), targetDir)) return { kind: "unmanaged" };
-    // A target below the importer's own directory ships inside the importer's
-    // artifact (a nested library): it has no pin of its own to write.
-    if (targetDir !== path.resolve(manifestDir) && isWithin(targetDir, path.resolve(manifestDir))) {
-      return { kind: "unmanaged" };
+  /** `source` is the import as written, in the manifest whose directory is
+   *  `manifestDir`. */
+  targetOf(manifestDir: string, source: string): ImportTarget {
+    const importer = path.resolve(manifestDir);
+    if (isLocalPathSource(source)) {
+      const target = path.resolve(importer, source);
+      const manifestPath = isDirectory(target) ? path.join(target, "telo.yaml") : target;
+      const workspace = this.workspaceAt(path.dirname(manifestPath));
+      const module = workspace?.modules.find(
+        (candidate) => path.resolve(candidate.manifestPath) === manifestPath,
+      );
+      return workspace && module ? relation(workspace, module, importer) : { kind: "unmanaged" };
     }
 
+    const transport = this.registry.forRef(source);
+    if (!transport) return { kind: "unmanaged" };
+    const workspace = this.workspaceAt(importer);
+    if (!workspace) return { kind: "unmanaged" };
+    const repository = (parseVersionedRef(source)?.baseRef ?? splitIntegrity(source).base).replace(
+      /\/+$/,
+      "",
+    );
+    const { targets, diagnostics } = this.targetsOf(workspace);
+    const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+    if (errors.length > 0) {
+      return {
+        kind: "error",
+        message: `the publish destinations of ${workspace.root} cannot be resolved: ${errors[0]!.message}`,
+      };
+    }
+    const key = [...targets].find(([, target]) => target.destination === repository)?.[0];
+    const module = key ? workspace.modules.find((candidate) => candidate.key === key) : undefined;
+    return module ? relation(workspace, module, importer) : { kind: "unmanaged" };
+  }
+
+  /** The published pin of a module a consumer imports, or why there is none. */
+  async publishedForm(workspace: Workspace, module: DiscoveredModule): Promise<PublishedForm> {
     const planned = await this.planOf(workspace);
     const errors = planned.plan.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
     if (errors.length > 0) {
@@ -163,6 +223,14 @@ export class LocalImportPinner {
     );
   }
 
+  /** A relative import's verdict: what `--as=published` would do with it. */
+  async verdictFor(manifestDir: string, source: string): Promise<LocalImportVerdict> {
+    const target = this.targetOf(manifestDir, source);
+    if (target.kind === "consumer") return this.publishedForm(target.workspace, target.module);
+    if (target.kind === "own") return { kind: "own" };
+    return target;
+  }
+
   /** The release workspace holding `dir`, or `null` when it is in none — no
    *  marker above it, or a marker that declares no `release:` block. */
   private workspaceAt(dir: string): Workspace | null {
@@ -170,12 +238,18 @@ export class LocalImportPinner {
     if (!root) return null;
     const known = this.workspaces.get(root);
     if (known !== undefined) return known;
-
-    const marker = fs.readFileSync(path.join(root, WORKSPACE_FILENAME), "utf8");
-    const releases = readWorkspaceConfig(marker, WORKSPACE_FILENAME).config.release !== undefined;
-    const workspace = releases ? loadWorkspace(root) : null;
+    const workspace = releaseWorkspaceAt(root);
     this.workspaces.set(root, workspace);
     return workspace;
+  }
+
+  private targetsOf(workspace: Workspace): ResolvedTargets {
+    let resolved = this.targets.get(workspace.root);
+    if (!resolved) {
+      resolved = resolveTargets(workspace, readLedger(workspace.root), this.options.rungs);
+      this.targets.set(workspace.root, resolved);
+    }
+    return resolved;
   }
 
   private planOf(workspace: Workspace): Promise<WorkspacePlan> {
@@ -192,6 +266,25 @@ export class LocalImportPinner {
     }
     return plan;
   }
+}
+
+/** How the manifest in `importer` stands to `module`. */
+function relation(workspace: Workspace, module: DiscoveredModule, importer: string): ImportTarget {
+  // An image module is an application: nothing imports one.
+  if (module.artifactKind === "image") return { kind: "unmanaged" };
+  const dir = path.resolve(module.dir);
+  const relative = relativeImportPath(importer, dir);
+  if (isWithin(importer, dir)) return { kind: "own", module, relative };
+  if (isWithin(dir, importer)) return { kind: "unmanaged" };
+  return { kind: "consumer", workspace, module, relative };
+}
+
+/** `../…/<dir>` or `./<dir>`, `/`-separated, naming the directory — no
+ *  trailing `telo.yaml` and no trailing slash. */
+function relativeImportPath(from: string, to: string): string {
+  const relative = path.relative(from, to).split(path.sep).join("/");
+  if (relative === "") return ".";
+  return relative === ".." || relative.startsWith("../") ? relative : `./${relative}`;
 }
 
 function isWithin(dir: string, ancestor: string): boolean {

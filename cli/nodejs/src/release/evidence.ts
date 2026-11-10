@@ -29,7 +29,7 @@ import { changedFilesSinceBase } from "./changed-since-base.js";
 import { lastMatchIndex, selectByPatterns } from "@telorun/glob";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
+import type { ModulePayloadBuilder, ModulePayload } from "../bundle/module-payload.js";
 import { dockerignorePatterns } from "./dockerignore-patterns.js";
 import type { DiscoveredModule, Workspace } from "./workspace.js";
 
@@ -47,9 +47,13 @@ export interface EvidenceOptions {
   readonly baseRef: string;
   /** Called before each module is built, so a long batch shows progress. */
   readonly onModule?: (module: DiscoveredModule, index: number, total: number) => void;
-  /** Reused where the caller already read the import graph through one, so the
-   *  manifest transform is not repeated per module. */
-  readonly builder?: ModulePayloadBuilder;
+  /** The builder the caller read the import graph through, which carries the
+   *  workspace's assigned destinations — so the manifest transform is not
+   *  repeated per module, and siblings are written where they publish. */
+  readonly builder: ModulePayloadBuilder;
+  /** The in-repo import edges `readImportGraph` read; an image module takes its
+   *  edges from here, having no payload to read them from. */
+  readonly imports: ReadonlyMap<ModuleKey, readonly ModuleKey[]>;
 }
 
 /**
@@ -94,8 +98,7 @@ export async function collectEvidence(
 ): Promise<ModuleEvidence[]> {
   const byDir = new Map(workspace.modules.map((module) => [path.resolve(module.dir), module]));
   const changed = changedModules(workspace, options.baseRef);
-  const builder =
-    options.builder ?? new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
+  const builder = options.builder;
 
   const evidence: ModuleEvidence[] = [];
   for (const [index, module] of workspace.modules.entries()) {
@@ -104,7 +107,7 @@ export async function collectEvidence(
     if (!target) throw new Error(`no publish destination was resolved for '${module.key}'.`);
     evidence.push(
       module.artifactKind === "image"
-        ? await imageEvidence(module, target, changed)
+        ? await imageEvidence(module, target, changed, options.imports.get(module.key) ?? [])
         : await registryEvidence(workspace, module, byDir, builder, target, changed),
     );
   }
@@ -157,6 +160,7 @@ async function imageEvidence(
   module: DiscoveredModule,
   target: ModuleTarget,
   changed: ReadonlySet<ModuleKey>,
+  imports: readonly ModuleKey[],
 ): Promise<ModuleEvidence> {
   return {
     key: module.key,
@@ -166,7 +170,7 @@ async function imageEvidence(
     registry: target.registry,
     layers: { image: await imageDigest(module) },
     inlines: new Map(),
-    imports: [],
+    imports: [...imports],
     ownFilesChanged: changed.has(module.key),
   };
 }

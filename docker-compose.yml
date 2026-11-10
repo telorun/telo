@@ -127,12 +127,14 @@ services:
       runner:
         condition: service_healthy
 
-  # The checkout's `starters/` directory over HTTP with CORS, for the studio's
-  # starter gallery. Reached through the proxy at
+  # The published-form copy of the checkout's `starters/` over HTTP with CORS,
+  # for the studio's starter gallery (`pnpm run starters`: needs the built
+  # `cli/nodejs/dist` and registry access; without the build it warns and
+  # serves the checkout with relative imports). Reached through the proxy at
   # http://starters.telo.localhost:8060 (see Caddyfile).
   starters:
     image: node:24-slim
-    command: ["/telo/node_modules/.bin/bun", "/telo/cli/nodejs/bin/telo.ts", "./starters/serve.yaml"]
+    command: ["node", "/telo/scripts/serve-starters.mjs"]
     init: true
     # The host user, so the module cache written into the checkout is never
     # root-owned.

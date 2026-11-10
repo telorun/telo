@@ -1131,14 +1131,11 @@ only asks for the agent by name. See the runner READMEs for the `AGENT_*` variab
 ## Tests
 
 `test-suite-e2e.yaml` is separate from the repo suite: it drives a real model
-against the live hub, and imports the standard library at pinned published
-versions once a release is out (by in-repo path while a change to it is being
-built), so it also fails while a change has landed here but is not yet
-released and re-pinned. `Mcp` and `Run` (the application), `Mcp`, `AiMcp`,
+against the live hub, and imports the standard library from the checkout by
+relative path. `Mcp` and `Run` (the application), `Mcp`, `AiMcp`,
 `Ai`, `Anthropic`, `Run`, `Stream` and `HttpClient` (the chat library), and the same
-names in every test that imports the chat library, move together — all pinned
-to one version, or all from the checkout while a change to one of them is
-built — since a module loaded both from the checkout and from a published
+names in every test that imports the chat library, all come from the checkout,
+since a module loaded both from the checkout and from a published
 version is two identities for one kind. The live case skips itself when `ANTHROPIC_API_KEY` is
 unset. CI runs it as the `Authoring Agent E2E` workflow on every pull request
 touching the agent or the checkout's `telo` (never a fork's, which holds no

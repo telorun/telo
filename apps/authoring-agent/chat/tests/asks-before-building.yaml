@@ -67,7 +67,7 @@ imports:
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
   Fs: ../../../../modules/fs
   Stream: ../../../../modules/stream
-  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  Assert: ../../../../modules/assert
 targets:
   # Before ensureWorkspace, which creates the directory this removes.
   - !ref cleanWorkspace

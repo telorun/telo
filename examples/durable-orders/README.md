@@ -103,7 +103,7 @@ You can see it in what the run reports: `collapsedRegions: 1`.
 | [`durable-journal-file`](../../modules/durable-journal-file) | this demo's storage — append-only files, flushed per record |
 | [spec](../../kernel/specs/durable-execution.md) | the normative contract |
 
-Imports here are **relative paths** because these modules are not published yet. They become pinned `oci://` refs like every other example once they are.
+Imports here are **relative paths**; a release tag pins them to `oci://` refs.
 
 ## Not in this version
 

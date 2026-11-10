@@ -26,9 +26,9 @@ imports:
   App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
-  Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
+  Sse: ../../../../modules/sse-codec
   Stream: ../../../../modules/stream
-  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  Assert: ../../../../modules/assert
 variables:
   scratch:
     env: CHAT_TEST_CONTEXT_COMPACTION_SCRATCH

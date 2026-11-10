@@ -6,8 +6,8 @@ metadata:
     An application that calls the library's functions from its own CEL: in a
     route's response, with and without the optional argument.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.43.1#sha256-3NUT-T8q-kzbPTQETA5C6qyjD6ZxV5_Wq9ivS6Hog28
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  Http: ../../../../../modules/http-server
+  Run: ../../../../../modules/run
   Pricing: ../..
 targets:
   - !ref server

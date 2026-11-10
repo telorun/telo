@@ -18,35 +18,35 @@ metadata:
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.35.0#sha256-gig6UlfoWjTsdpnPCl2n2lGuU8Sae6K74dtF7ORujxs
-  Anthropic: oci://ghcr.io/telorun/anthropic@0.10.0#sha256-E1YXrgmZSN-RAbxIxH4fWL2IUl6uo4DzS3UCOlo-kOA
-  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.31.0#sha256-etcW9qIFFe78ktwjUZyO-8MR4fKmnJQfM8HCu-yJ3Y8
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
-  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
-  TextDiff: oci://ghcr.io/telorun/text-diff@0.4.0#sha256-UsX0jWC_nz8VXvfw7l_xL9CAMeB5jXZAxxigu9XaBH0
-  Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
-  Sql: oci://ghcr.io/telorun/sql@0.31.1#sha256-22VA287nKrgIO7f075c_baOM1F_2sN51P0axJ4pQ-rE
-  SQLite: oci://ghcr.io/telorun/sqlite@0.14.1#sha256-dl_UuUeTwqEap_a7QVMzQDgUmrGf4tfeHLurt5l9ycA
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.0#sha256-FnEtzEXB2BLc9lOH0KtQELSNCqSu4UiGuBzI_k_JLVE
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.1#sha256-RZtnI_T7X9fm9aQBTEx9XaxCbtN2om2Rl-vQzqJLla0
-  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
-  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
-  Lease: oci://ghcr.io/telorun/lease@0.15.1#sha256-XPvMwI4GSicpkrOQzYlGlX-FovdGyHFfw5xS8MJdO98
-  KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.2#sha256-6rdybdNY4ZhJ8BpoZa-LkcCb5yjOt8ptBygzURK8PWA
-  Cache: oci://ghcr.io/telorun/cache@0.14.0#sha256-UKUrpep1RYOcIrqJDmwkUBF0bWiJ1ENqhK9Amkws4BY
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.1#sha256-t7sQFquKZBO4mQ1eblT_D3m7ytIzx5FYr_QAm7wef1Y
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.1#sha256-KNKZRcIImlr9IWZkQVDgwIGzWIKrCh2pGWD8MN853vY
-  Idempotency: oci://ghcr.io/telorun/idempotency@0.12.0#sha256-77z669e9vVJXfvkHxae0K69YB6jGTh4xhkai65wt7ms
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.1#sha256-_-8pOAB_oDaGWjGGKeTJ3iTQ7t74H7Lvao6TYd3RMgE
-  SecretScan: oci://ghcr.io/telorun/secret-scan@0.3.1#sha256-TfSJDbWQ629YoFDVGffeOtC_TVrcM0gN2HAF0XrJBoQ
-  Log: oci://ghcr.io/telorun/log@0.3.1#sha256-FJAHRqUCHHlXRJJxwojW1u6E7z8o-jOuvKJ0rbTlaxs
-  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
-  Blob: oci://ghcr.io/telorun/blob@0.2.1#sha256-K6p6T1WxnjqZ5dPxEhb4ADSj3rkYTICEon5FuAXq76o
-  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.2#sha256-j_7SCdfh-B-FrmdvBz2rHLF3EGJjeTQWUjkdyJowt1s
-  MediaType: oci://ghcr.io/telorun/media-type@0.3.0#sha256-BccdaTyPvW5_0t9kQuT4JOd1jTRdjdw_6vD8Xr-SbYM
-  Multipart: oci://ghcr.io/telorun/multipart@0.5.0#sha256-HYqZbfzXOf-YAU7TMyZEFFDBDxeMdyRAoNf4_lAj-Zo
-  Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
+  Ai: ../../../modules/ai
+  Anthropic: ../../../modules/anthropic
+  HttpClient: ../../../modules/http-client
+  AiMcp: ../../../modules/ai-mcp
+  Mcp: ../../../modules/mcp-client
+  Fs: ../../../modules/fs
+  TextDiff: ../../../modules/text-diff
+  Shell: ../../../modules/shell
+  Sql: ../../../modules/sql
+  SQLite: ../../../modules/sqlite
+  RecordStream: ../../../modules/record-stream
+  RecordStreamSql: ../../../modules/record-stream-sql
+  Stream: ../../../modules/stream
+  Run: ../../../modules/run
+  Lease: ../../../modules/lease
+  KvStoreMemory: ../../../modules/kv-store-memory
+  Cache: ../../../modules/cache
+  CacheMemory: ../../../modules/cache-memory
+  RateLimit: ../../../modules/rate-limit
+  Idempotency: ../../../modules/idempotency
+  KvStoreSql: ../../../modules/kv-store-sql
+  SecretScan: ../../../modules/secret-scan
+  Log: ../../../modules/log
+  Timer: ../../../modules/timer
+  Blob: ../../../modules/blob
+  BlobFs: ../../../modules/blob-fs
+  MediaType: ../../../modules/media-type
+  Multipart: ../../../modules/multipart
+  Octet: ../../../modules/octet-codec
 resources:
   # The Telo hub the agent discovers modules through. An input rather than a
   # client declared here, so the application names the hub it uses and a test

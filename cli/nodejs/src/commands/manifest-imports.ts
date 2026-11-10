@@ -1,5 +1,62 @@
 import { isModuleKind } from "@telorun/analyzer";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { type Document, isMap, isScalar } from "yaml";
+
+/** Mirror LocalFileSource: a directory path resolves to `<dir>/telo.yaml`. */
+export function resolveManifestPath(inputPath: string): { filePath: string; error?: string } {
+  const resolved = path.resolve(process.cwd(), inputPath);
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(resolved);
+  } catch (err) {
+    return { filePath: resolved, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (stat.isDirectory()) {
+    return { filePath: path.join(resolved, "telo.yaml") };
+  }
+  return { filePath: resolved };
+}
+
+/**
+ * Build a byte-level edit for an import entry's source scalar node.
+ * Returns `null` when the parser didn't attach a range to the node — this
+ * shouldn't happen for plain `parseAllDocuments` output but we don't want to
+ * crash on weird inputs.
+ *
+ * Quote style is preserved: if the original scalar was written as
+ * `Run: "oci://ghcr.io/telorun/run@0.2.4"` we re-emit `"oci://ghcr.io/telorun/run@0.2.7"`; plain stays plain.
+ */
+export function buildSourceEdit(
+  // A yaml v2 Scalar node — typed as unknown here to avoid leaking the
+  // import into the public signature of this helper.
+  node: unknown,
+  content: string,
+  newPin: string,
+): { start: number; end: number; newText: string } | null {
+  if (!node || typeof node !== "object") return null;
+  const range = (node as { range?: unknown }).range;
+  if (!Array.isArray(range) || range.length < 2) return null;
+  const start = range[0] as number;
+  const end = range[1] as number;
+  if (typeof start !== "number" || typeof end !== "number") return null;
+
+  // Inspect the original byte slice to decide whether to wrap the new value.
+  // The parsed scalar's `range[0..1]` covers the quotes (when quoted), so we
+  // check the first/last char against `"` and `'` rather than relying on
+  // `node.type`, which is fine but adds another yaml-internal dependency.
+  const original = content.slice(start, end);
+  let newText: string;
+  if (original.startsWith('"') && original.endsWith('"')) {
+    newText = `"${newPin}"`;
+  } else if (original.startsWith("'") && original.endsWith("'")) {
+    newText = `'${newPin}'`;
+  } else {
+    newText = newPin;
+  }
+
+  return { start, end, newText };
+}
 
 /** The module doc (`Telo.Application` / `Telo.Library`) within a parsed file,
  *  if any. Imports live as an `imports:` map on this doc. */

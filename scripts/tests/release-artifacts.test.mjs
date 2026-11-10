@@ -1,5 +1,5 @@
 // Shared pointers move only forward; the site is composed from release assets.
-// Run: node --test scripts/tests/
+// Run: node --test scripts/tests/*.test.mjs
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";

@@ -25,10 +25,9 @@ Google** goes to a consent stand-in that grants at once;
 `/api/auth/consent?outcome=denied` and `?outcome=expired` answer as a refused
 or lapsed consent would.
 
-The UI, data-model and translation modules are not released yet, so this
-example imports `http-server`, `data-model`, `ui` and `ui-react` from
-this workspace by relative path and runs only from a checkout. Its other import
-is pinned.
+This example imports `http-server`, `data-model`, `ui` and `ui-react` from
+this workspace by relative path, so it runs from a checkout; a release tag pins
+them to `oci://` refs. Its other import is pinned.
 
 ## What the screen does
 

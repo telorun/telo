@@ -31,7 +31,10 @@
  *
  * The publish destination stays an input, because canonicalization writes it
  * into the manifest. It is not derivable, so the ledger records which base its
- * digests were taken against.
+ * digests were taken against. Inside a release workspace a sibling's destination
+ * is an input too — the workspace ASSIGNS it (`AssignedDestinations`) — since a
+ * module at another depth or under another base than its importer publishes
+ * where its own entry says, not where the importer's path would put it.
  */
 
 import {
@@ -104,12 +107,15 @@ export interface ModulePayload {
   readonly buildInputs: readonly string[];
   /**
    * In-repo siblings this module imports relatively: the sibling's absolute
-   * manifest path (the release edge) and the ref the import canonicalized to
-   * (which publish checks resolves at its published location before pushing).
+   * manifest path (the release edge), the ref the import canonicalized to and
+   * the pin derived from the sibling's locally built manifest — which publish
+   * checks against what the registry serves at that ref before pushing.
    */
   readonly relativeImports: readonly {
+    readonly alias: string;
     readonly manifestPath: string;
     readonly ref: string;
+    readonly integrity: string;
   }[];
   /**
    * Libraries inside the root's directory that ship in this artifact, nested
@@ -159,6 +165,21 @@ export interface PayloadBuilderOptions {
    * `blob` is real and every sibling pin names the text the registry serves.
    */
   readonly stagedFiles?: "pins" | "disk";
+  /**
+   * Where the release workspace publishes each of its modules. Given, an import
+   * leaving the root is written as its target's assigned destination, and one
+   * naming a manifest the workspace does not release is refused. Absent (a
+   * publish outside any release workspace), the sibling's destination is derived
+   * from the root's by the import's path.
+   */
+  readonly assigned?: AssignedDestinations;
+}
+
+/** The release workspace's answer to where a module publishes, by its manifest. */
+export interface AssignedDestinations {
+  /** The destination assigned to the module whose `telo.yaml` is `manifestPath`,
+   *  or `undefined` when the workspace releases no module there. */
+  destinationOf(manifestPath: string): string | undefined;
 }
 
 /**
@@ -184,15 +205,15 @@ export class ModulePayloadBuilder {
    * policy no graph can answer, so the caller states it (the release derives it
    * as `<base>/<directory name>`, the rule the OCI mirror has always used).
    *
-   * A SIBLING's is *derived*: the parent's destination with the sibling's
-   * addressed path, relative to the parent's, applied — a `telo.yaml` is
-   * addressed by its directory, any other manifest by its name without the
-   * extension — never the import source as written, which would keep
-   * `telo.yaml` as a segment. That is the transport's own rule and exactly what
-   * canonicalization writes into the manifest. That one is not a free choice — deriving it
-   * independently, from the directory name say, would work for this repo's
-   * layout and quietly disagree with the ref the artifact actually carries the
-   * moment a layout differs.
+   * A SIBLING leaving the root is its ASSIGNED destination inside a release
+   * workspace (`PayloadBuilderOptions.assigned`) — the same answer the release
+   * plan and the publisher read, so the ref an artifact carries is where its
+   * dependency is pushed whatever the two modules' depths and bases. Outside
+   * one, and for a library nested inside the root, it is *derived*: the
+   * parent's destination with the sibling's addressed path, relative to the
+   * parent's, applied — a `telo.yaml` is addressed by its directory, any other
+   * manifest by its name without the extension — never the import source as
+   * written, which would keep `telo.yaml` as a segment.
    *
    * When a module is reached both ways and the two answers differ,
    * `claimDestination` refuses rather than picking one, because the manifest can
@@ -244,7 +265,7 @@ export class ModulePayloadBuilder {
   async relativeImportsOf(
     manifestPath: string,
     destination: string,
-  ): Promise<readonly { manifestPath: string; ref: string }[]> {
+  ): Promise<readonly { manifestPath: string; ref: string | undefined }[]> {
     const key = path.resolve(manifestPath);
     const manifestDir = path.dirname(key);
     const docs = parseAllDocuments(fs.readFileSync(key, "utf8"), {
@@ -262,21 +283,24 @@ export class ModulePayloadBuilder {
     // The root's own imports and those of the libraries shipping inside it. An
     // import inside the root is listed too, because `telo release` refuses a
     // workspace module among them.
-    const imports: { manifestPath: string; ref: string }[] = [];
+    const imports: { manifestPath: string; ref: string | undefined }[] = [];
+    const assigned = this.options.assigned;
     const collect = (importerDoc: typeof moduleDoc, dir: string): void => {
       for (const entry of importSourceRefs(importerDoc)) {
         const source = entry.source;
         if (!source.startsWith(".") && !source.startsWith("/")) continue;
         const siblingManifest = resolveSiblingManifest(dir, source);
         if (imports.some((known) => known.manifestPath === siblingManifest)) continue;
+        const leavesRoot = siblingManifest === key || !isInside(manifestDir, siblingManifest);
         imports.push({
           manifestPath: siblingManifest,
           // The destination the import resolves to, unversioned: the question here
           // is WHERE a sibling publishes, and the version is the pin's business.
-          ref: transport.source.resolveRelative(
-            destination,
-            siblingAddressPath(key, siblingManifest),
-          ),
+          // Undefined where the workspace releases no module at the target.
+          ref:
+            assigned && leavesRoot
+              ? assigned.destinationOf(siblingManifest)
+              : transport.source.resolveRelative(destination, siblingAddressPath(key, siblingManifest)),
         });
       }
     };
@@ -360,7 +384,7 @@ export class ModulePayloadBuilder {
   private async transformManifest(manifestPath: string, build: RootBuild): Promise<{
     text: string;
     /** Imports leaving the root: separate artifacts. */
-    relativeImports: { manifestPath: string; ref: string }[];
+    relativeImports: ModulePayload["relativeImports"][number][];
     /** Every relative import, nested ones too: the libraries whose specifiers
      *  this module's bundles must not inline. */
     siblings: { manifestPath: string }[];
@@ -371,7 +395,7 @@ export class ModulePayloadBuilder {
     const original = fs.readFileSync(manifestPath, "utf8");
     const docs = parseAllDocuments(original, { customTags: defaultCustomTags() });
     const moduleDoc = findModuleDoc(docs);
-    const relativeImports: { manifestPath: string; ref: string }[] = [];
+    const relativeImports: ModulePayload["relativeImports"][number][] = [];
     const siblings: { manifestPath: string }[] = [];
     const authoredPins: { alias: string; ref: string; integrity: string }[] = [];
     const sources = readSources(moduleDoc?.toJSON(), manifestDir);
@@ -406,7 +430,6 @@ export class ModulePayloadBuilder {
         }
 
         const siblingManifest = resolveSiblingManifest(manifestDir, source);
-        const addressPath = siblingAddressPath(manifestPath, siblingManifest);
         siblings.push({ manifestPath: siblingManifest });
 
         // Inside the root's directory: the library ships in this artifact. The
@@ -414,7 +437,10 @@ export class ModulePayloadBuilder {
         if (siblingManifest !== build.scope.manifestPath && isInside(build.scope.dir, siblingManifest)) {
           this.claimDestination(
             siblingManifest,
-            transport.source.resolveRelative(destination, addressPath),
+            transport.source.resolveRelative(
+              destination,
+              siblingAddressPath(manifestPath, siblingManifest),
+            ),
           );
           const nested = await this.nestedPayload(siblingManifest, build);
           const hash = `sha256-${await sha256Base64Url(new TextEncoder().encode(nested.manifest))}`;
@@ -424,16 +450,19 @@ export class ModulePayloadBuilder {
 
         assertNotNestedElsewhere(manifestPath, siblingManifest, entry.alias, build.scope.dir);
         const version = readSiblingVersion(siblingManifest, source);
-        const ref = transport.canonicalizeSiblingRef(destination, addressPath, version);
-        relativeImports.push({ manifestPath: siblingManifest, ref });
-        this.claimDestination(
+        const { ref, siblingDestination } = this.siblingRef(
+          manifestPath,
           siblingManifest,
-          transport.source.resolveRelative(destination, addressPath),
+          entry.alias,
+          source,
+          version,
         );
+        this.claimDestination(siblingManifest, siblingDestination);
         // The sibling's pin comes from the sibling's own published bytes, in
         // topological order — never from the registry, which has not seen the
         // post-bump version this batch is planning.
         const hash = await this.siblingHash(siblingManifest);
+        relativeImports.push({ alias: entry.alias, manifestPath: siblingManifest, ref, integrity: hash });
         moduleDoc.setIn(entry.path, `${ref}#${hash}`);
       }
     }
@@ -454,6 +483,49 @@ export class ModulePayloadBuilder {
       authoredPins,
       sources,
     };
+  }
+
+  /**
+   * The versioned ref an import leaving the root is written as, and the
+   * destination its target publishes to.
+   *
+   * Inside a release workspace the target's assigned destination, written with
+   * the transport owning it; outside one, the importer's destination with the
+   * import's addressed path applied, which `sibling_not_published` then holds
+   * to what the registry serves.
+   */
+  private siblingRef(
+    manifestPath: string,
+    siblingManifest: string,
+    alias: string,
+    source: string,
+    version: string,
+  ): { ref: string; siblingDestination: string } {
+    const assigned = this.options.assigned;
+    if (!assigned) {
+      const destination = this.destinationOf(manifestPath);
+      const transport = this.transportFor(manifestPath);
+      const addressPath = siblingAddressPath(manifestPath, siblingManifest);
+      return {
+        ref: transport.canonicalizeSiblingRef(destination, addressPath, version),
+        siblingDestination: transport.source.resolveRelative(destination, addressPath),
+      };
+    }
+    const siblingDestination = assigned.destinationOf(siblingManifest);
+    if (!siblingDestination) {
+      const target = path.relative(path.dirname(manifestPath), siblingManifest).split(path.sep).join("/");
+      throw new Error(
+        `import '${alias}' (${source}) names '${target}', which lies outside the module and is ` +
+          `not a module the release workspace releases, so the published artifact could name ` +
+          `no artifact for it. Import a module the workspace releases, or move the library ` +
+          `inside the module importing it.`,
+      );
+    }
+    const transport = defaultTransportRegistry().forRef(siblingDestination);
+    if (!transport) {
+      throw new Error(`no transport owns publish destination '${siblingDestination}'`);
+    }
+    return { ref: transport.withVersion(siblingDestination, version), siblingDestination };
   }
 
   private async siblingHash(siblingManifest: string): Promise<string> {

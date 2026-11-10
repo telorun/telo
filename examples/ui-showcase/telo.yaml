@@ -19,9 +19,6 @@ metadata:
 # 0.129.0: ui's shipped translations, which an older runtime cannot load.
 requires: { telo: ">=0.129.0" }
 lang: en
-# Every module imported below
-# come from this repository while their changes are unreleased;
-# `telo upgrade --pin-local` pins them again once they ship.
 imports:
   Run: ../../modules/run
   Http: ../../modules/http-server
