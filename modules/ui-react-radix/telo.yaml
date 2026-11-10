@@ -12,7 +12,7 @@ metadata:
     menus, tabs, tooltips and icons drawn by Radix's accessible primitives.
     Picked by one theme reference; a theme of another module can take its
     controls whole and give them a look of its own.
-requires: { telo: ">=0.133.0" }
+requires: { telo: ">=unreleased" }
 imports: { Ui: ../ui, UiReact: ../ui-react }
 exports:
   resources: [controls, theme]

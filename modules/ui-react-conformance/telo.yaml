@@ -18,7 +18,7 @@ requires:
   # On 0.120.1 the import of ui-react is refused first: this block makes the
   # refusal name this module too (MODULE_REQUIRES_NEWER_RUNTIME), verified by
   # execution of `check`.
-  telo: ">=0.133.0"
+  telo: ">=unreleased"
 imports:
   # The design token names come from `ui`'s code entry, their CSS spelling
   # from ui-react's contract entry.
