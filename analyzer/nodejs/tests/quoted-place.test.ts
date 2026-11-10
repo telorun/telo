@@ -246,7 +246,7 @@ const SHIFTED = [
   '    if: !cel "variables.flag2"',
   "    then: !ref val",
   "---",
-  "kind: Run.Value",
+  "kind: Telo.Value",
   "metadata: { name: val }",
   "value: 1",
   "---",
@@ -313,7 +313,7 @@ describe("a message quoting its place quotes its data.path", () => {
         ],
         [
           "REFERENCE_KIND_MISMATCH",
-          "Telo.Application/ShiftedFinding: reference at 'targets[2].then' → 'Run.Value' does not implement 'Telo.Runnable' (known implementations: Telo.Sequence, Run.Sequence, Run.Iteration, Run.Loop); 'Run.Value' does not implement 'Telo.Service' — it declares 'Telo.Invocable'",
+          "Telo.Application/ShiftedFinding: reference at 'targets[2].then' → 'Telo.Value' does not implement 'Telo.Runnable' (known implementations: Telo.Sequence, Run.Sequence, Run.Iteration, Run.Loop); 'Telo.Value' does not implement 'Telo.Service' — it declares 'Telo.Invocable'",
           "targets[2].then",
         ],
       ]);

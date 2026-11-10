@@ -27,7 +27,6 @@ kind: Telo.Application
 metadata: { name: MyStdioMcp, version: 1.0.0 }
 imports:
   Mcp: oci://ghcr.io/telorun/mcp-server@0.9.0
-  Run: oci://ghcr.io/telorun/run@0.13.0
 targets: [ !ref server ]
 ---
 kind: Mcp.StdioServer
@@ -53,7 +52,7 @@ entries:
         - type: text
           text: !cel "result.summary"
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: getWeatherImpl }
 inputType:
   kind: Telo.JsonSchema

@@ -45,6 +45,8 @@ const TEXT_TRANSLATIONS: &str = "Telo.TextTranslations";
 const KEYED_TRANSLATIONS: &str = "Telo.KeyedTranslations";
 /// The built-in invocable that hands a URL to the host to open.
 const OPEN_URL: &str = "Telo.OpenUrl";
+/// The built-in invocable that shapes a value with CEL.
+const VALUE: &str = "Telo.Value";
 use crate::controllers::resource_definition::resource_definition_controller::register_definition;
 use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
@@ -668,6 +670,12 @@ fn resolve_resource_kind(
             format!(
                 "resource '{name}' declares `{SEQUENCE}`; this kernel does not run the step grammar yet"
             ),
+        ));
+    }
+    if kind == VALUE {
+        return Err(KernelError::new(
+            "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+            format!("resource '{name}' declares `{VALUE}`; this kernel does not evaluate CEL yet"),
         ));
     }
     if kind == TEXT_TRANSLATIONS {

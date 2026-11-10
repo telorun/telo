@@ -11,7 +11,7 @@ metadata:
     back a page at a time. Editing or regenerating a message keeps the old
     branch as a sibling, a turn-id fence stops a superseded run from writing,
     and uploaded files belong to the conversation that first sends them.
-requires: { telo: ">=0.128.0" }
+requires: { telo: ">=0.133.0" }
 imports: { Ai: ../ai }
 exports:
   kinds: [Store, Create, Read, List, Entries, Append, Update, Admit, Delete, RecordApproval, RegisterAttachment, ReadAttachment, ExpireAttachments, ForgetAttachments]

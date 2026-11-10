@@ -72,7 +72,11 @@ describe("published diagnostics", () => {
       (d) => (d.data as { configurations?: unknown } | undefined)?.configurations,
     );
     const checked = teloCheck(entry).map((d) => d.configurations);
-    expect(published).toEqual([[{ "variables.dialect": "memory" }], [{ "variables.dialect": "memory" }]]);
+    expect(published).toEqual([
+      [{ "variables.dialect": "memory" }],
+      [{ "variables.dialect": "memory" }],
+      [{ "variables.dialect": "memory" }],
+    ]);
     expect(published.sort()).toEqual(checked.sort());
   });
 

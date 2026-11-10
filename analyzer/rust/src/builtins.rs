@@ -48,6 +48,7 @@ const ENTRY_FILES: &[(&str, &str)] = &[
     ("TraceSink.json", include_str!("../../../sdk/builtins/TraceSink.json")),
     ("Translations.json", include_str!("../../../sdk/builtins/Translations.json")),
     ("Type.json", include_str!("../../../sdk/builtins/Type.json")),
+    ("Value.json", include_str!("../../../sdk/builtins/Value.json")),
 ];
 
 /// One built-in document, as written.

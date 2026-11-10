@@ -1,13 +1,13 @@
 ---
-description: "Orchestrate work declaratively with Telo.Sequence, Run.Choice and Run.Value: steps, branching, loops, error handling, and when a script is genuinely the right answer."
+description: "Orchestrate work declaratively with Telo.Sequence, Telo.Value and Run.Choice: steps, branching, loops, error handling, and when a script is genuinely the right answer."
 ---
 
 # Composing behaviour
 
-A handler that returns one value is `Run.Value`. Everything beyond that —
+A handler that returns one value is `Telo.Value`. Everything beyond that —
 calling several things in order, branching, looping, handling failure — is
-`Telo.Sequence`, a built-in kind that needs no import, and its siblings in the
-`run` module.
+`Telo.Sequence`. Both are built-in kinds that need no import; their siblings
+live in the `run` module.
 
 A sequence is a `Telo.Runnable`, so it fits anywhere a runnable does: an
 application's `targets:`, an HTTP route's `handler:`, another sequence's step.
@@ -86,13 +86,13 @@ A step with `value:` instead of `invoke:` publishes `steps.total.result` exactly
 as an invoke step does, so nothing downstream can tell the difference — but it
 dispatches nothing: no resource, no span, no topology node. Reach for it when an
 intermediate is derived from an earlier step and would otherwise cost a whole
-`Run.Value` resource to name. It sees the same scope as any other step,
+`Telo.Value` resource to name. It sees the same scope as any other step,
 including the enclosing kind's (`item` / `index` inside an iteration,
 `iteration` / `previous` inside a loop).
 
-For intermediates derived from `inputs:` rather than from a step, `Run.Value`
+For intermediates derived from `inputs:` rather than from a step, `Telo.Value`
 and `Run.Choice` take a `bindings:` map — see
-[naming an intermediate value](/learn/refs-and-cel#naming-an-intermediate-value).
+[Naming intermediate values](#naming-intermediate-values).
 
 ### Conditional — `if` / `elseif` / `then` / `else`
 
@@ -229,14 +229,120 @@ its CEL as `CEL_UNKNOWN_FIELD`, each saying why. Give that target a name under
 `with:` and invoke it with `!ref`. An inline entry in `targets:` is the other way round: it is created
 in the scope, since that is where a target runs.
 
+## `Telo.Value` — return a shaped value
+
+`Telo.Value` is a built-in `Telo.Invocable` whose result is a CEL expression — or a structure with CEL leaves, or a plain constant — evaluated over the caller's `inputs`. It is how a handler **shapes a value**: string concatenation, field mapping, arithmetic, or returning a fixed literal. No I/O, no branching, no Node API — those belong in `Run.Choice`, a `Telo.Sequence`, or a purpose-built resource kind.
+
+```yaml
+kind: Telo.Value
+metadata: { name: makeId }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      seed: { type: string }
+value:
+  documentId: !cel "'drawings/' + inputs.seed + '.png'"
+```
+
+| Field | Purpose |
+| --- | --- |
+| `inputType` | The input **contract** — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. `value` reads the values as `!cel "inputs.<name>"`. Optional — a constant needs none. |
+| `outputType` | The result contract. `value` is checked against it statically by `telo check`, and the result at every call. |
+| `bindings` | Optional named intermediate values, readable by bare name inside `value` and by each other — see below. |
+| `value` | Required. A CEL expression, a structure (map / array) with CEL leaves, or a plain literal; the result may be any shape. |
+
+`value` can be a plain literal — useful for fixtures and stub tools:
+
+```yaml
+kind: Telo.Value
+metadata: { name: snapshot }
+value:
+  - { type: text, text: page rendered }
+  - { type: image, data: aGVsbG8=, mediaType: image/png }
+```
+
+Because it is a plain `Telo.Invocable`, it composes anywhere an invocable is accepted — an `Ai.Tools` entry, a `Telo.Sequence` step, an `Http.Api` handler.
+
+**Numbers: int vs double.** CEL does not implicitly promote between integers and doubles. A number nothing declares as an integer — an argument a contract leaves untyped — arrives as a double, so multiplying it by an integer literal fails with `no overload of "*" takes (double, int)`. Use a double literal, or `double(...)`. A value declared `type: integer`, and an integral number written literally in a parent step's `value:`, is already an int.
+
+**When not to use it.** `value` is pure CEL, which already covers `parseJson`, `base64Encode`, `sha256`, `uuidv7`, `nowIso`, `regexGroups`, `sum`, `sort`, `flatten` and more. Branching is `Run.Choice`, mapping is `Run.Projection`, aggregation lives in the `collection` module. What is left for a dedicated resource kind is a Node.js API the kernel does not expose: `fetch`, `Buffer`, streams, a native library.
+
+`Run.Value` is the deprecated twin: it behaves identically and reports `DEPRECATED_KIND` naming `Telo.Value`. `Telo.Value`'s schema is closed, unlike `Run.Value`'s: an undeclared key is refused, so switching a `Run.Value` that carries a stray key means removing that key.
+
+## Naming intermediate values
+
+A calculation with intermediate values does not need a resource each — four derived values would otherwise be four invocables chained through a sequence: four dispatches, four spans, four names in module scope, for arithmetic. Two constructs close that, one per place the intermediates live.
+
+### `bindings:` — inside a pure expression kind
+
+`Telo.Value` and `Run.Choice` take an optional `bindings:` map. Each entry names a value; every name is then readable **by bare name** inside the kind's expressions and inside the other bindings.
+
+```yaml
+kind: Telo.Value
+metadata: { name: priceLine }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [qty, unitPrice, discountRate, taxRate]
+    properties:
+      qty: { type: number }
+      unitPrice: { type: number }
+      discountRate: { type: number }
+      taxRate: { type: number }
+bindings:
+  net: !cel "gross - discount"
+  gross: !cel "inputs.qty * inputs.unitPrice"
+  discount: !cel "gross * inputs.discountRate"
+value:
+  net: !cel "net"
+  tax: !cel "net * inputs.taxRate"
+```
+
+**Order is derived, not declared.** `net` is written first and reads two bindings declared after it; what orders them is the references. That is why `bindings:` is a map and `steps:` is a list — a map says order carries no meaning, so reordering rows (or an editor rewriting them) can never change behaviour. A binding that reaches itself, directly or through others, is a `BINDING_CYCLE` error at `telo check`.
+
+**Evaluation is lazy and memoised per call.** A binding is computed on first read, at most once; one nothing reads is never computed. That makes a binding exactly equivalent to inlining its expression at each use site. It matters most in a decision table:
+
+```yaml
+kind: Run.Choice
+metadata: { name: shippingTier }
+bindings:
+  weight: !cel "sum(inputs.items.map(i, i.grams)) / 1000.0"
+choices:
+  - when: !cel "weight > 30.0"
+    value: { tier: freight }
+  - when: !cel "weight > 2.0"
+    value: { tier: parcel }
+default:
+  value: { tier: letter }
+```
+
+`weight` is computed once for the whole call however many rows read it — and not at all if no row that runs needs it.
+
+**Names may not shadow the scope.** A binding named `inputs`, `resources`, `variables`, `secrets`, `ports`, `steps` or `error` is a `BINDING_NAME_RESERVED` error: at runtime a scope variable always wins, so such a binding would silently never be read.
+
+**Types flow where they can.** A binding whose expression is a plain path into a typed value (`inputs.order`) carries that value's schema, so `order.<typo>` under it is a `CEL_UNKNOWN_FIELD`. Anything else — arithmetic, a call, a comprehension — is left open rather than guessed.
+
+### A pure step — inside a sequence or a body
+
+Bindings are evaluated before any step runs, so they cannot see `steps.*`. For an intermediate derived from a step's result, use the `value:` step shape above. Its result is typed permissively — there is no dispatch target whose contract could describe it — so read it into a step whose `inputType` declares the shape when you want it checked.
+
+| You need | Use |
+| --- | --- |
+| An intermediate inside `Telo.Value` / `Run.Choice` | `bindings:` |
+| A value shared by several decision rows | `bindings:` |
+| An intermediate derived from a step's result | a `value:` step |
+| A value used once, in one expression | neither — write it inline |
+
 ## The other `run` kinds
 
-`Telo.Sequence` is the general case. Reach for a narrower kind when it fits — it
+`Telo.Sequence` and `Telo.Value` are the built-in cases. Reach for a narrower kind when it fits — it
 says more about intent and is easier to read:
 
 | Kind | For |
 | --- | --- |
-| `Run.Value` | Return a shaped value computed with CEL, naming its intermediate steps with `bindings:`. The declarative alternative to a one-line script. |
 | `Run.Choice` | A first-match decision table: return the value of the first choice whose predicate holds, or a declared default. Also takes `bindings:`, shared across rows. |
 | `Run.Iteration` | Run a step body once per collection element, with configurable concurrency. |
 | `Run.Projection` | Map each element of a collection through a body into a result array. |

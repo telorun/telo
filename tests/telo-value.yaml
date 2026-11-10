@@ -1,0 +1,97 @@
+kind: Telo.Application
+metadata:
+  name: TeloValueTest
+  version: 1.0.0
+  description: |
+    The built-in value kind needs no import: it returns an object, a list or a
+    scalar over its inputs and bindings, fills `inputType` defaults, computes each
+    binding once whatever the order they are written in, and refuses an input or a
+    result its contracts do not hold.
+targets:
+  - !ref verify
+---
+kind: Telo.Value
+metadata: { name: shaped }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [name]
+    properties: { name: { type: string }, title: { type: string }, suffix: { type: string, default: "!" } }
+outputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [greeting, length], properties: { greeting: { type: string }, length: { type: integer } } }
+bindings:
+  greeting: !cel "'Hello ' + addressed + inputs.suffix"
+  addressed: !cel "has(inputs.title) ? inputs.title + ' ' + inputs.name : inputs.name"
+value:
+  greeting: !cel "greeting"
+  length: !cel "size(greeting)"
+---
+kind: Telo.Value
+metadata: { name: listed }
+value: [!cel "1 + 1", two, !cel "inputs.n"]
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: { n: { type: integer, default: 3 } } }
+---
+kind: Telo.Value
+metadata: { name: scalar }
+value: !cel "uuidv4() == uuidv4() ? 'same' : 'different'"
+---
+# `computeOnce` reads `id` twice; computed at most once, both reads agree.
+kind: Telo.Value
+metadata: { name: computeOnce }
+bindings:
+  id: !cel "uuidv4()"
+value: !cel "id == id"
+---
+# The result fails outputType at the call: `n` is a string at runtime.
+kind: Telo.Value
+metadata: { name: badResult }
+outputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [n], properties: { n: { type: integer } } }
+value: { n: !cel "dyn('x')" }
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - { name: object, invoke: !ref shaped, inputs: { name: telo, title: Dr } }
+  - name: checkObject
+    if: !cel "steps.object.result != {'greeting': 'Hello Dr telo!', 'length': 14}"
+    then:
+      - { name: wrongObject, throw: { code: WRONG_OBJECT, message: !cel "json(steps.object.result)" } }
+  - { name: defaulted, invoke: !ref listed }
+  - name: checkList
+    if: !cel "steps.defaulted.result != [2, 'two', 3]"
+    then:
+      - { name: wrongList, throw: { code: WRONG_LIST, message: !cel "json(steps.defaulted.result)" } }
+  - { name: scalarCall, invoke: !ref scalar }
+  - name: checkScalar
+    if: !cel "steps.scalarCall.result != 'different'"
+    then:
+      - { name: wrongScalar, throw: { code: WRONG_SCALAR } }
+  - { name: once, invoke: !ref computeOnce }
+  - name: checkOnce
+    if: !cel "steps.once.result != true"
+    then:
+      - { name: computedTwice, throw: { code: COMPUTED_TWICE } }
+  - name: input
+    try:
+      - { name: call, invoke: !ref shaped, inputs: { name: !cel "dyn(1)" } }
+      - { name: inputAccepted, throw: { code: INPUT_ACCEPTED } }
+    catch:
+      - name: checkInput
+        if: !cel "error.code != 'ERR_INPUT_INVALID'"
+        then:
+          - { name: wrongInputCode, throw: { code: WRONG_INPUT_CODE, message: !cel "error.code" } }
+  - name: output
+    try:
+      - { name: call, invoke: !ref badResult }
+      - { name: outputAccepted, throw: { code: OUTPUT_ACCEPTED } }
+    catch:
+      - name: checkOutput
+        if: !cel "error.code != 'ERR_OUTPUT_INVALID'"
+        then:
+          - { name: wrongOutputCode, throw: { code: WRONG_OUTPUT_CODE, message: !cel "error.code" } }

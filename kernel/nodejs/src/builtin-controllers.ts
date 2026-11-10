@@ -39,6 +39,9 @@ const BUILTIN_CONTROLLERS: Readonly<Record<string, () => Promise<ControllerInsta
   // The step grammar is core, so the kind that runs a list of steps needs no
   // import either.
   "Telo.Sequence": () => import("./controllers/sequence/sequence-controller.js"),
+  // Value shaping is core too: a handler returning a CEL-shaped value needs no
+  // import.
+  "Telo.Value": () => import("./controllers/value/value-controller.js"),
   // Opening a page is the host's business; the kernel logs the request and
   // forwards it to the host's hook.
   "Telo.OpenUrl": () => import("./controllers/open-url/open-url-controller.js"),

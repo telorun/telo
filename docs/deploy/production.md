@@ -102,7 +102,6 @@ metadata:
   version: 1.0.0
 imports:
   Http: oci://ghcr.io/telorun/http-server@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
 targets:
   - !ref server
 ports:
@@ -127,7 +126,7 @@ routes:
       path: /healthz
       method: GET
     handler:
-      kind: Run.Value
+      kind: Telo.Value
       value:
         status: ok
     returns:

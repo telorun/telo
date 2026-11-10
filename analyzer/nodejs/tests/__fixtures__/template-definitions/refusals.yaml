@@ -113,9 +113,9 @@ resources:
       - !for-each
         in: !cel "self.items"
         emit:
-          kind: Run.Value
+          kind: Telo.Value
           metadata: { name: named }
-  - kind: Run.Value
+  - kind: Telo.Value
     metadata: { name: bound }
     bindings:
       each: 1

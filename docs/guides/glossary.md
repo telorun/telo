@@ -127,7 +127,7 @@ bound parameter instead of text pasted into the statement. See
 
 ### Binding
 
-A named CEL value readable by its bare name. `Run.Value` and `Run.Choice` take a
+A named CEL value readable by its bare name. `Telo.Value` and `Run.Choice` take a
 `bindings:` map to name intermediate values. See
 [naming an intermediate value](/learn/refs-and-cel#naming-an-intermediate-value).
 

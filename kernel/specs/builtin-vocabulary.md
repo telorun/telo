@@ -6,7 +6,7 @@ description: "Normative: the Telo.Builtins archive — the built-in vocabulary o
 
 Normative. The kinds a manifest names without an import — `Telo.Application`,
 `Telo.Library`, `Telo.Definition`, `Telo.Abstract`, `Telo.Import`, `Telo.NeedType`,
-`Telo.JsonSchema`, `Telo.Function`, `Telo.Sequence`, the sinks, the capability roles, the
+`Telo.JsonSchema`, `Telo.Function`, `Telo.Sequence`, `Telo.Value`, the sinks, the capability roles, the
 public-address need types — and the shapes they share are the **built-in vocabulary**. Its source is the data under
 `sdk/builtins/` (`sdk/builtins/README.md`); this document specifies the form one telo release
 renders it in, publishes it in and prints it in. The Node reference is

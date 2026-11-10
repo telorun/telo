@@ -54,7 +54,7 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.13.0
 targets: [ !ref check ]
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: addNumbers }
 value: { total: 42 }
 ---

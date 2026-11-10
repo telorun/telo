@@ -39,7 +39,6 @@ kind: Telo.Application
 metadata: { name: HelloHttp, version: 1.0.0 }
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0
-  Run: oci://ghcr.io/telorun/run@0.13.0
 targets: [ !ref server ]
 ---
 kind: Http.Server
@@ -83,7 +82,7 @@ routes:
                   examples: [ "Hello, Ada!" ]
             body: { message: !cel "result.message" }
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: greet }
 inputType:
   kind: Telo.JsonSchema
@@ -114,6 +113,10 @@ value:
 ## Implementation Contract
 
 The `Http.Server` and `Http.Api` manifests in Telo are designed to be strictly language-agnostic and framework-agnostic. To maintain the "Zero Lock-in" promise, the underlying HTTP engine (e.g. Fastify in Node.js, Actix in Rust) is treated purely as an implementation detail. All HTTP modules integrated into the Telo kernel MUST adhere to this behavioural contract.
+
+### Mount start-up
+
+A mount may do work while the server registers it (a UI mount builds and addresses its browser entries). The server allows each mount up to 120 seconds to finish registering before it fails to start, rather than the framework's 10-second default.
 
 ### 1. Routing (path definitions)
 

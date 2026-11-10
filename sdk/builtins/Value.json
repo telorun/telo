@@ -1,0 +1,47 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "Value",
+    "description": "Returns a value shaped from its inputs — mapped fields, a built response body, joined text or a constant — with optional named intermediate values. Declares the input and result types it is checked against before it runs and at every call."
+  },
+  "capability": "Telo.Invocable",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "inputType": {
+        "title": "Input Type",
+        "description": "The input contract, a named type reference or an inline type definition. Defaults are filled and every call is validated against it; the body reads the inputs as `inputs.<name>`.",
+        "x-telo-ref": { "kind": "Telo.Type", "use": "schema" }
+      },
+      "outputType": {
+        "title": "Output Type",
+        "description": "The result contract, a named type reference or an inline type definition. It types the result for callers, is checked against `value` statically and validates the produced value at every call.",
+        "x-telo-ref": { "kind": "Telo.Type", "use": "schema" }
+      },
+      "bindings": {
+        "title": "Bindings",
+        "description": "Named intermediate values, read by bare name by `value` and by each other. Order follows what each one references, and each is computed at most once per call, only if something reads it.",
+        "type": "object",
+        "additionalProperties": true,
+        "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "x-telo-context": {
+          "type": "object",
+          "x-telo-bindings-from": "bindings",
+          "properties": { "inputs": { "type": "object", "x-telo-context-from": "inputType" } }
+        }
+      },
+      "value": {
+        "title": "Value",
+        "description": "A `!cel` expression, or a map or list with `!cel` leaves, evaluated at each call over `inputs` and the bindings. The result may be any shape: object, list, scalar or constant.",
+        "x-telo-context": {
+          "type": "object",
+          "x-telo-bindings-from": "bindings",
+          "properties": { "inputs": { "type": "object", "x-telo-context-from": "inputType" } }
+        },
+        "x-telo-value-schema-from": "outputType"
+      }
+    },
+    "required": ["value"],
+    "additionalProperties": false
+  }
+}

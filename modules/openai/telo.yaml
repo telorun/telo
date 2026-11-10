@@ -12,7 +12,7 @@ metadata:
     completions, token streaming, tool calling, image and document input, reasoning
     that survives a tool loop, prompt-to-picture generation and editing, and text
     vectors.
-requires: { telo: ">=0.128.0" }
+requires: { telo: ">=0.133.0" }
 imports: { Ai: ../ai, Embedding: ../embedding, Http: ../http-client }
 exports:
   resources: [AcceptedContent]

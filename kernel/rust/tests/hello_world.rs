@@ -95,6 +95,20 @@ fn refuses_a_sequence() {
     assert!(err.message.contains("'greet' declares `Telo.Sequence`"), "{err}");
 }
 
+/// CEL is not evaluated here: a declared `Telo.Value` is refused by name.
+#[test]
+fn refuses_a_value() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-value"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(
+        err.message.contains("'greet' declares `Telo.Value`; this kernel does not evaluate CEL yet"),
+        "{err}"
+    );
+}
+
 /// There is no host to open a URL in: a declared `Telo.OpenUrl` is refused by name.
 #[test]
 fn refuses_open_url() {

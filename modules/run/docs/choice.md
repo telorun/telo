@@ -13,10 +13,10 @@ Routing rules, pricing tiers, authorization policies, and status mappings are al
 
 ## Why it exists
 
-`Run.Value` can branch, but only through nested CEL ternaries — which stop being readable at the second arm:
+`Telo.Value` can branch, but only through nested CEL ternaries — which stop being readable at the second arm:
 
 ```yaml
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: ShippingTier }
 inputType:
   kind: Telo.JsonSchema
@@ -60,7 +60,7 @@ default:
 | Field | Purpose |
 | --- | --- |
 | `inputType` | The input **contract** — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. Rows read the values as `!cel "inputs.<name>"`. The kernel fills declared defaults and validates every call against it. |
-| `bindings` | Optional named values, readable by bare name in every row's `when` / `value` and in `default`. A binding several rows share is computed once per call, and one that no row reaching evaluation reads is never computed. See [Bindings and pure steps](./bindings.md). |
+| `bindings` | Optional named values, readable by bare name in every row's `when` / `value` and in `default`. A binding several rows share is computed once per call, and one that no row reaching evaluation reads is never computed. See [Naming intermediate values](https://telo.run/learn/composing-behaviour#naming-intermediate-values). |
 | `choices` | Ordered decision rows, each `{ when, value }`. The first row whose `when` is true wins; no later row is evaluated. At least one row is required. |
 | `default` | `{ value }` produced when no row matches. Omit it to make a non-exhaustive table an error. |
 | `outputType` | Optional named or inline type every row's `value` must satisfy. |
@@ -80,7 +80,7 @@ choices:
 
 ## Declaring the outcome type
 
-`outputType` gives every row one shared result contract. Declaring it is what lets a caller's `!cel "steps.<name>.result.<field>"` type-check — without it the result is untyped downstream, exactly like `Run.Value`'s.
+`outputType` gives every row one shared result contract. Declaring it is what lets a caller's `!cel "steps.<name>.result.<field>"` type-check — without it the result is untyped downstream, exactly like `Telo.Value`'s.
 
 ```yaml
 kind: Run.Choice
@@ -154,7 +154,7 @@ A table with no matching row and no `default` throws `ERR_NO_MATCH`. It never re
 | Use | When |
 | --- | --- |
 | `Run.Choice` | A pure first-match **value** from arbitrary predicates. |
-| `Run.Value` | One value with no branching (or a single ternary). |
+| `Telo.Value` | One value with no branching (or a single ternary). |
 | `Telo.Sequence` `switch` | Matching one value against equality **keys**, then running steps. |
 | `Telo.Sequence` `if` / `elseif` | Arbitrary predicates that select **steps to execute** (side effects), not a value. |
 

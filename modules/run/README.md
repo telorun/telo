@@ -1,8 +1,8 @@
 # Run
 
-Control flow for Telo manifests beyond a plain list of steps: iteration and mapping over collections, loops, decision tables, value shaping and background dispatch.
+Control flow for Telo manifests beyond a plain list of steps: iteration and mapping over collections, loops, decision tables and background dispatch.
 
-An ordered list of steps — `if`, `while`, `switch`, `try`/`catch` over invocable steps — is the built-in `Telo.Sequence`, which needs no import. `Run.Sequence` is deprecated: it behaves identically and reports `DEPRECATED_KIND` naming `Telo.Sequence`. Write `kind: Telo.Sequence`, and drop the `run` import when nothing else uses it.
+An ordered list of steps — `if`, `while`, `switch`, `try`/`catch` over invocable steps — is the built-in `Telo.Sequence`, which needs no import. `Run.Sequence` is deprecated: it behaves identically and reports `DEPRECATED_KIND` naming `Telo.Sequence`. Write `kind: Telo.Sequence`, and drop the `run` import when nothing else uses it. Shaping a value with CEL is likewise the built-in `Telo.Value`; `Run.Value` is deprecated and reports `DEPRECATED_KIND` naming it.
 
 ## Why use this
 
@@ -16,7 +16,7 @@ An ordered list of steps — `if`, `while`, `switch`, `try`/`catch` over invocab
 | Kind | Purpose |
 | --- | --- |
 | `Run.Sequence` | **Deprecated** — identical to the built-in `Telo.Sequence`, which needs no import. |
-| `Run.Value` | A pure value/binding invocable — shape a CEL value (or a constant) with no `JS.Script`. See [Run.Value](docs/value.md). |
+| `Run.Value` | **Deprecated** — identical to the built-in `Telo.Value`, which needs no import. See [Composing behaviour](https://telo.run/learn/composing-behaviour). |
 | `Run.Choice` | A first-match decision table — pick one typed value from ordered `when → value` rows. See [Run.Choice](docs/choice.md). |
 
 ## Example
@@ -128,7 +128,7 @@ steps:
 
 ## Naming intermediate values
 
-A calculation's intermediate values do not need a resource each. `Run.Value` and `Run.Choice` take a `bindings:` map — names readable bare in their expressions, ordered by what they reference and evaluated lazily — and any step list takes a step carrying `value:` instead of `invoke:`, which publishes `steps.<name>.result` with no dispatch:
+A calculation's intermediate values do not need a resource each. `Telo.Value` and `Run.Choice` take a `bindings:` map — names readable bare in their expressions, ordered by what they reference and evaluated lazily — and any step list takes a step carrying `value:` instead of `invoke:`, which publishes `steps.<name>.result` with no dispatch:
 
 ```yaml
 steps:
@@ -138,7 +138,7 @@ steps:
     value: !cel "sum(steps.cart.result.lines.map(l, l.price * double(l.qty)))"
 ```
 
-See [Bindings and pure steps](docs/bindings.md).
+See [Naming intermediate values](https://telo.run/learn/composing-behaviour#naming-intermediate-values).
 
 ## Retrying a step
 
@@ -154,6 +154,6 @@ It retries a domain failure and refuses two things it cannot help: a cancellatio
 
 ## Reference
 
-- [Bindings and pure steps](docs/bindings.md) — naming intermediate values without a dispatch.
+- [Composing behaviour](https://telo.run/learn/composing-behaviour) — `Telo.Value`, bindings and pure steps: naming intermediate values without a dispatch.
 - [Step retry](docs/retry.md) — re-attempting a failed step, and why a stream cannot be one.
 - [Structured Errors](docs/structured-errors.md) — how `try`/`catch` interacts with `InvokeError`.

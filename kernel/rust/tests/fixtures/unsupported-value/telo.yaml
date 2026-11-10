@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedValue
+  version: 1.0.0
+  description: |
+    Declares a value shaped by CEL. This kernel evaluates no CEL, so the load must
+    fail naming the kind rather than as an unknown built-in.
+---
+kind: Telo.Value
+metadata: { name: greet }
+value: hello

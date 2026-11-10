@@ -4,7 +4,7 @@ One JSON file per built-in document, and one per shared schema fragment under
 `fragments/`, read as one lexically ordered set. The **built-in vocabulary** is
 every kind a manifest names without an import — `Telo.Application`,
 `Telo.Library`, `Telo.Definition`, `Telo.Abstract`, `Telo.Import`,
-`Telo.NeedType`, `Telo.JsonSchema`, `Telo.Function`, `Telo.Sequence`, the sinks,
+`Telo.NeedType`, `Telo.JsonSchema`, `Telo.Function`, `Telo.Sequence`, `Telo.Value`, the sinks,
 the capability abstracts, the public-address need types — plus the fragments a
 schema points at with `$ref: "telo://manifest#/$defs/<Name>"`.
 

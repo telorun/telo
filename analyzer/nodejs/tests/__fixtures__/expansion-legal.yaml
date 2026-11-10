@@ -12,7 +12,7 @@ with:
   - !if
     metadata: { name: member }
     if: true
-    then: { kind: Run.Value, value: 1 }
+    then: { kind: Telo.Value, value: 1 }
 steps:
   - !switch
     switch: a
@@ -31,7 +31,7 @@ resources:
   - !for-each
     metadata: { name: family }
     in: !cel "self.items"
-    emit: { kind: Run.Value, value: 1 }
+    emit: { kind: Telo.Value, value: 1 }
   - kind: Run.Sequence
     metadata: { name: body }
     steps:

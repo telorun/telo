@@ -89,8 +89,6 @@ metadata:
   description: >-
     Greeting text for one person in a configurable language, ready to call:
     pass a name, get back the sentence to show.
-imports:
-  Run: oci://ghcr.io/telorun/run@<version>#<pin>
 variables:
   greeting:
     type: string
@@ -99,7 +97,7 @@ variables:
 exports:
   resources: [greeter]
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: greeter }
 inputType:
   kind: Telo.JsonSchema
