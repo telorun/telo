@@ -28,7 +28,7 @@ The rules are short:
   from `kind: Console.WriteLine` — see the
   [style guide](./style-guide.md).
 - **The tag is mandatory.** A bare string (`handler: greet`) or the old object
-  form (`handler: { kind: Run.Value, name: greet }`) is rejected with
+  form (`handler: { kind: Telo.Value, name: greet }`) is rejected with
   `INVALID_REFERENCE_FORM`, which names the `!ref` to write. The object form is
   read that way only for a kind that declares no `name` field; for a kind that
   does, `{ kind, name }` is an inline declaration (below). A library you import
@@ -64,7 +64,7 @@ called `name` is one of them when the kind declares it, so
 
 ```yaml
 handler:
-  kind: Run.Value
+  kind: Telo.Value
   bindings:
     who: !cel "variables.audience"
   value:
@@ -145,12 +145,12 @@ metadata, not the application's, because a library's version is its own.
 ### Naming an intermediate value
 
 One expression that computes four things at once is unreadable, and splitting it
-across four resources costs four dispatches. `Run.Value` and `Run.Choice` take a
+across four resources costs four dispatches. `Telo.Value` and `Run.Choice` take a
 `bindings:` map instead: each entry names a value, readable by bare name in the
 kind's expressions and in the other bindings.
 
 ```yaml
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: priceLine }
 inputType:
   kind: Telo.JsonSchema

@@ -23,7 +23,6 @@ metadata:
   version: 1.0.0
 imports:
   Http: oci://ghcr.io/telorun/http-server@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
 targets:
   - !ref server
 ports:
@@ -55,7 +54,7 @@ routes:
             body:
               message: !cel "result.message"
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata:
   name: greet
 value:
@@ -70,9 +69,9 @@ curl http://localhost:8080/v1/greet
 
 That is a complete application. Read it top to bottom:
 
-- **`imports:`** pulls in two modules under aliases you chose. Those aliases are
-  why the kinds below are written `Http.Server` and `Run.Value` — alias the
-  first one `Web` and it would be `Web.Server`.
+- **`imports:`** pulls in a module under an alias you chose. That alias is
+  why the kind below is written `Http.Server` — alias it `Web` and it would be
+  `Web.Server`. Built-in kinds such as `Telo.Value` need no import.
 - **`ports:`** declares that this application listens, bound to the `PORT`
   environment variable with a default, and resolves into the `ports.http` CEL
   scope. `port: !cel "ports.http"` reads it: one declaration, one source of
@@ -83,7 +82,7 @@ That is a complete application. Read it top to bottom:
 - **A route is three things**: a request matcher, a `handler:` reference, and a
   `returns:` block mapping the handler's result into a response. Inside
   `returns:`, `result` *is* what the handler produced.
-- **`Run.Value`** is the simplest possible handler: it returns a shaped value
+- **`Telo.Value`** is the simplest possible handler: it returns a shaped value
   and nothing else.
 
 The server stays up after it starts — a `Telo.Service` holds the process open
@@ -129,7 +128,7 @@ Two payoffs from that `schema:` block:
 Now give the handler a contract and use the input:
 
 ```yaml
-kind: Run.Value
+kind: Telo.Value
 metadata:
   name: greet
 inputType:
@@ -193,7 +192,6 @@ metadata:
   version: 1.0.0
 imports:
   Http: oci://ghcr.io/telorun/http-server@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
 targets:
   - !ref server
 ports:
@@ -250,7 +248,7 @@ routes:
             body:
               message: !cel "result.message"
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata:
   name: greet
 inputType:
@@ -293,7 +291,7 @@ but nothing serves it.
 ## What to do next
 
 - **Real logic in the handler** — a `Telo.Sequence` (built in, no import) when the work is several
-  steps, a `Run.Choice` when it is a decision, and `bindings:` on a `Run.Value`
+  steps, a `Run.Choice` when it is a decision, and `bindings:` on a `Telo.Value`
   to name the intermediate values of a calculation instead of nesting one
   unreadable expression: [Composing behaviour](/learn/composing-behaviour).
 - **Talk to a database** — [Talking to a database](/learn/talking-to-a-database):

@@ -99,7 +99,7 @@ schema:
   properties:
     secret: { type: string }
 resources:
-  - kind: Run.Value
+  - kind: Telo.Value
     metadata: { name: source }
     inputType:
       kind: Telo.JsonSchema

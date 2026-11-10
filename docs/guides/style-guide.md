@@ -161,7 +161,6 @@ metadata:
 imports:
   # Import aliases: PascalCase — this is the kind prefix you write below
   Console: oci://ghcr.io/telorun/console@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
 variables:
   # Declaration names: camelCase. The env var they bind to: SCREAMING_SNAKE_CASE.
   apiBaseUrl:
@@ -185,7 +184,7 @@ steps:
       output: !cel "steps.buildMessage.result.text"
     invoke: !ref Console.writeLine
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata:
   name: startupMessage
 outputType:

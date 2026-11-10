@@ -42,7 +42,7 @@ Inside the library a need is a declaration like any other resource, in the
 module's one namespace (`DUPLICATE_RESOURCE_NAME`). Its fields are read in CEL:
 
 ```yaml
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: describe }
 value:
   url: !cel "resources.databaseAccess.url"

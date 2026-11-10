@@ -645,7 +645,6 @@ metadata:
   version: 1.0.0
 imports:
   Http: oci://ghcr.io/telorun/http-server@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
 targets:
   - !ref Server
 ports:
@@ -675,7 +674,7 @@ routes:
       path: /hello
       method: GET
     handler:
-      kind: Run.Value
+      kind: Telo.Value
       # `bindings:` names a temporary value: computed once, read by bare name
       # wherever this resource's expressions need it.
       bindings:

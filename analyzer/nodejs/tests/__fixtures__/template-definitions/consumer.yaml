@@ -13,7 +13,7 @@ variables:
     type: object
     default: {}
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata:
   name: handle
 value: 1

@@ -31,8 +31,6 @@ metadata:
   name: Greetings
   version: 1.0.0
   description: Greeting text for one person, in a configurable language.
-imports:
-  Run: oci://ghcr.io/telorun/run@<version>
 variables:
   greeting:
     type: string
@@ -41,7 +39,7 @@ exports:
   resources:
     - greeter
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata:
   name: greeter
 inputType:

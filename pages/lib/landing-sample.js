@@ -22,7 +22,6 @@ metadata:
   name: GreetingApi
 imports:
   Http: oci://ghcr.io/telorun/http-server@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
 targets:
   - !ref Server
 ports:
@@ -50,7 +49,7 @@ routes:
             body:
               message: !cel "result.message"
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata:
   name: Greet
 outputType:
@@ -390,7 +389,7 @@ variables:
 targets:
   - !ref Main
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata:
   name: Greeting
 outputType:
@@ -444,13 +443,11 @@ telo.yaml:38:20  error  Run.Sequence/Main:
         body: `kind: Telo.Library
 metadata:
   name: Greeting
-imports:
-  Run: oci://ghcr.io/telorun/run@<version>
 exports:
   resources:
     - Formal
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: Formal }
 inputType:
   kind: Telo.JsonSchema
@@ -526,7 +523,7 @@ routes:
             body:
               message: !cel "result.message"
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: Greet }
 outputType:
   kind: Telo.JsonSchema

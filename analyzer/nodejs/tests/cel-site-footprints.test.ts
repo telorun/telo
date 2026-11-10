@@ -241,18 +241,18 @@ variables:
   flag1: { env: FLAG_1, type: boolean, default: false }
   flag2: { env: FLAG_2, type: boolean, default: false }
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: a }
 value: !if
   if: !cel "variables.flag1"
   then: 1
   else: 2
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: b }
 value: !cel "'b'"
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata: { name: c }
 value: !if
   if: !cel "variables.flag2"
@@ -375,7 +375,7 @@ targets:
 kind: Telo.Sequence
 metadata: { name: main }
 with:
-  - kind: Run.Value
+  - kind: Telo.Value
     metadata: { name: target }
     outputType:
       kind: Telo.JsonSchema

@@ -12,6 +12,18 @@
   "tests/__fixtures__/check-run-agreement/configurations/choices/app.yaml": [],
   "tests/__fixtures__/check-run-agreement/configurations/choices/telo.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/check-run-agreement/configurations/choices/telo.yaml",
+      "path": "then.kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead. (when variables.flag is true)",
+      "configurations": [
+        {
+          "variables.flag": true
+        }
+      ]
+    },
+    {
       "code": "BRANCH_UNDECIDABLE",
       "severity": 1,
       "file": "tests/__fixtures__/check-run-agreement/configurations/choices/telo.yaml",
@@ -263,6 +275,13 @@
   ],
   "tests/__fixtures__/check-run-agreement/template-init/undecidable-lib/telo.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/check-run-agreement/template-init/undecidable-lib/telo.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
       "code": "BRANCH_UNDECIDABLE",
       "severity": 1,
       "file": "tests/__fixtures__/check-run-agreement/template-init/undecidable-lib/telo.yaml",
@@ -271,7 +290,32 @@
     }
   ],
   "tests/__fixtures__/configurations/backends/telo.yaml": [],
-  "tests/__fixtures__/configurations/binding-lib/telo.yaml": [],
+  "tests/__fixtures__/configurations/binding-lib/telo.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/binding-lib/telo.yaml",
+      "path": "cases.pg.kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead. (when variables.dialect is pg)",
+      "configurations": [
+        {
+          "variables.dialect": "pg"
+        }
+      ]
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/binding-lib/telo.yaml",
+      "path": "cases.lite.kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead. (when variables.dialect is lite)",
+      "configurations": [
+        {
+          "variables.dialect": "lite"
+        }
+      ]
+    }
+  ],
   "tests/__fixtures__/configurations/binding-open.yaml": [
     {
       "code": "BRANCH_UNDECIDABLE",
@@ -283,6 +327,13 @@
   ],
   "tests/__fixtures__/configurations/binding-ternary.yaml": [],
   "tests/__fixtures__/configurations/bindings-choice.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/bindings-choice.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
     {
       "code": "CEL_UNKNOWN_IDENTIFIER",
       "severity": 1,
@@ -309,6 +360,20 @@
     }
   ],
   "tests/__fixtures__/configurations/call-refused.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/call-refused.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/call-refused.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
     {
       "code": "BRANCH_CONDITION_INVALID",
       "severity": 1,
@@ -340,6 +405,14 @@
       "file": "tests/__fixtures__/configurations/dead-branch-target.yaml",
       "path": "else",
       "message": "!if/main: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/dead-branch-target.yaml",
+      "path": "else.with[0].kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead. (in a branch no configuration takes)",
+      "configurations": []
     },
     {
       "code": "CEL_UNKNOWN_FIELD",
@@ -453,6 +526,18 @@
   ],
   "tests/__fixtures__/configurations/dialect.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/dialect.yaml",
+      "path": "cases.memory.kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead. (when variables.dialect is memory)",
+      "configurations": [
+        {
+          "variables.dialect": "memory"
+        }
+      ]
+    },
+    {
       "code": "SCHEMA_VIOLATION",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/dialect.yaml",
@@ -478,6 +563,30 @@
     }
   ],
   "tests/__fixtures__/configurations/duplicate.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/duplicate.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead. (when variables.pick is false)",
+      "configurations": [
+        {
+          "variables.pick": false
+        }
+      ]
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/duplicate.yaml",
+      "path": "then.kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead. (when variables.pick is true)",
+      "configurations": [
+        {
+          "variables.pick": true
+        }
+      ]
+    },
     {
       "code": "DUPLICATE_RESOURCE_NAME",
       "severity": 1,
@@ -612,6 +721,13 @@
   ],
   "tests/__fixtures__/configurations/named-shape-choice.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/named-shape-choice.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
       "code": "SCHEMA_VIOLATION",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/named-shape-choice.yaml",
@@ -645,6 +761,13 @@
       "message": "Self.Store/store: CEL at 'note' is never evaluated — the field has no x-telo-eval / x-telo-context annotation, so its value is read as a literal. Annotate the field as a CEL slot or remove the !cel tag."
     },
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/narrowing-runtime.yaml",
+      "path": "",
+      "message": "Self.Store/store: `Self.Store` body entry `echo`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
       "code": "SCHEMA_VIOLATION",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/narrowing-runtime.yaml",
@@ -658,6 +781,13 @@
     }
   ],
   "tests/__fixtures__/configurations/narrowing.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/narrowing.yaml",
+      "path": "",
+      "message": "Self.Store/store: `Self.Store` body entry `echo`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
     {
       "code": "SCHEMA_VIOLATION",
       "severity": 1,
@@ -687,6 +817,20 @@
   "tests/__fixtures__/configurations/needs/shelf/telo.yaml": [],
   "tests/__fixtures__/configurations/nullable-input.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/nullable-input.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/nullable-input.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
       "code": "CEL_NULLABLE_ACCESS",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/nullable-input.yaml",
@@ -715,6 +859,13 @@
   ],
   "tests/__fixtures__/configurations/presence.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/presence.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
       "code": "SCHEMA_VIOLATION",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/presence.yaml",
@@ -734,7 +885,15 @@
   "tests/__fixtures__/configurations/requirements/optional-input-app.yaml": [],
   "tests/__fixtures__/configurations/requirements/optional-input/telo.yaml": [],
   "tests/__fixtures__/configurations/requirements/provider.yaml": [],
-  "tests/__fixtures__/configurations/requirements/ternary.yaml": [],
+  "tests/__fixtures__/configurations/requirements/ternary.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/requirements/ternary.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    }
+  ],
   "tests/__fixtures__/configurations/resource-input-consumer.yaml": [],
   "tests/__fixtures__/configurations/resource-input/telo.yaml": [
     {
@@ -789,6 +948,30 @@
     }
   ],
   "tests/__fixtures__/configurations/scope-choice.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/scope-choice.yaml",
+      "path": "with[0].else.kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead. (when variables.verbose is false)",
+      "configurations": [
+        {
+          "variables.verbose": false
+        }
+      ]
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/scope-choice.yaml",
+      "path": "with[0].then.kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead. (when variables.verbose is true)",
+      "configurations": [
+        {
+          "variables.verbose": true
+        }
+      ]
+    },
     {
       "code": "SCHEMA_VIOLATION",
       "severity": 1,
@@ -957,6 +1140,13 @@
   ],
   "tests/__fixtures__/configurations/stand-in.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/stand-in.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
       "code": "BRANCH_UNDECIDABLE",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/stand-in.yaml",
@@ -977,6 +1167,13 @@
     }
   ],
   "tests/__fixtures__/configurations/step-inputs-choice.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/step-inputs-choice.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
     {
       "code": "CONTRACT_INPUTS_MISMATCH",
       "severity": 1,
@@ -1046,6 +1243,20 @@
   ],
   "tests/__fixtures__/configurations/step-result-forward-choice.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/step-result-forward-choice.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/step-result-forward-choice.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
       "code": "CEL_UNKNOWN_FIELD",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-result-forward-choice.yaml",
@@ -1095,6 +1306,13 @@
   ],
   "tests/__fixtures__/configurations/step-target.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/step-target.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
       "code": "SCHEMA_VIOLATION",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-target.yaml",
@@ -1120,6 +1338,13 @@
     }
   ],
   "tests/__fixtures__/configurations/step-union-choice.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/step-union-choice.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
     {
       "code": "SCHEMA_VIOLATION",
       "severity": 1,
@@ -1159,6 +1384,13 @@
   ],
   "tests/__fixtures__/configurations/undecidable-reads.yaml": [
     {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/undecidable-reads.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
       "code": "BRANCH_UNDECIDABLE",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/undecidable-reads.yaml",
@@ -1178,9 +1410,103 @@
   "tests/__fixtures__/configurations/url-scheme.yaml": [],
   "tests/__fixtures__/resource-inputs/optional/lib/telo.yaml": [],
   "tests/__fixtures__/resource-inputs/optional/shared/telo.yaml": [],
-  "tests/template-declared-integers.yaml": [],
-  "tests/template-expansion-servers.yaml": [],
-  "tests/template-expansion.yaml": [],
+  "tests/template-declared-integers.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-declared-integers.yaml",
+      "path": "",
+      "message": "Self.Endpoint/upstream: `Self.Endpoint` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-declared-integers.yaml",
+      "path": "",
+      "message": "Self.Crossing/crossing: `Self.Crossing` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    }
+  ],
+  "tests/template-expansion-servers.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion-servers.yaml",
+      "path": "kind",
+      "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    }
+  ],
+  "tests/template-expansion.yaml": [
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Columns/columns: `Self.Columns` body entry `columns`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Holder/holderY: `Self.Holder` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Holder/holderDefault: `Self.Holder` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Switched/switchedY: `Self.Switched` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Switched/switchedDefault: `Self.Switched` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Table/users: `Self.Table` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Table/posts: `Self.Table` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Catalog/catalog: `Self.Catalog` body entry `names`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Reads/reads: `Self.Reads` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    },
+    {
+      "code": "DEPRECATED_KIND",
+      "severity": 2,
+      "file": "tests/template-expansion.yaml",
+      "path": "",
+      "message": "Self.Keyed/keyed: `Self.Keyed` body entry `value`, field `kind`: Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
+    }
+  ],
   "analyzer/nodejs/tests/__generated__/configuration-cost-isolated-0.yaml": [
     {
       "code": "UNUSED_DECLARATION",
@@ -1504,7 +1830,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/care-identity.yaml",
       "path": "outputType",
-      "message": "Run.Value/producer: reference at 'outputType' → resource 'Shape' not found (when variables.flag2 is false)",
+      "message": "Telo.Value/producer: reference at 'outputType' → resource 'Shape' not found (when variables.flag2 is false)",
       "configurations": [
         {
           "variables.flag2": false

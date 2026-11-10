@@ -27,7 +27,7 @@ inside a controller class.
 
 **Where does my business logic go?** In a resource — and more of it is
 declarable than the YAML suggests. Orchestration is a `Telo.Sequence`. A decision
-is a `Run.Choice`. Shaping a value is a `Run.Value`, whose `bindings:` let you
+is a `Run.Choice`. Shaping a value is a `Telo.Value`, whose `bindings:` let you
 name the steps of a calculation without a resource each, and whose expressions
 reach a CEL library that already covers hashing, UUIDs, timestamps, regex
 captures, JSON parsing and base64. Mapping over a collection is a

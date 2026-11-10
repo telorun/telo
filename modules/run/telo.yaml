@@ -8,9 +8,9 @@ metadata:
   description: >-
     Control flow for manifests: iteration and mapping over collections at a chosen
     concurrency; loops that repeat a step body while a condition holds;
-    first-match decision tables; pure value shaping with CEL; and background
-    dispatch that returns without waiting.
-requires: { telo: ">=0.128.0" }
+    first-match decision tables; and background dispatch that returns without
+    waiting.
+requires: { telo: ">=0.133.0" }
 exports: { kinds: [Sequence, Value, Choice, Loop, Iteration, Projection, Detach] }
 ---
 kind: Telo.Definition
@@ -113,7 +113,10 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Value
-  description: Evaluates a CEL expression over typed inputs and returns the shaped value — a declarative value-only script.
+  description: Evaluates a CEL expression over typed inputs and returns the shaped value.
+  deprecated:
+    reason: Identical to the kernel built-in Telo.Value, which needs no import.
+    replacedBy: Telo.Value
 capability: Telo.Invocable
 controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Value]
 schema:
@@ -158,8 +161,6 @@ schema:
         A CEL expression — or a structure (map / array) with `!cel` leaves —
         evaluated at invoke time over `inputs` and `bindings`. Its result becomes the
         resource's invoke result and may be any shape (object, array, scalar).
-        The declarative replacement for a `Js.Script` that only shapes a value
-        (concat, field mapping, a constant literal) with no I/O or branching.
       x-telo-context:
         type: object
         x-telo-bindings-from: bindings
@@ -180,12 +181,10 @@ schema:
         - { type: image, data: aGVsbG8=, mediaType: image/png }
 ---
 # Run.Choice — a first-match decision table. Rows are evaluated in manifest
-# order; the first `when` that is true contributes its `value` as the invoke
-# result. Where Run.Value shapes ONE value (branching only via nested CEL
-# ternaries, unreadable past two arms) and Telo.Sequence's `switch` matches
-# equality keys, Choice takes arbitrary predicates and stays a pure value — no
-# steps, no side effects. Declare `outputType` to give every row one shared
-# result contract and to type `steps.<name>.result` for callers.
+# order; the first `when` that is true contributes its `value` as the result.
+# Unlike Telo.Value (one value, branching only via nested ternaries) and
+# Telo.Sequence's `switch` (equality keys), it takes arbitrary predicates and
+# stays a pure value.
 kind: Telo.Definition
 metadata:
   name: Choice

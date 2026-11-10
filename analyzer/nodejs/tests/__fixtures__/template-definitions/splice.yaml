@@ -22,7 +22,7 @@ schema:
           type: { type: string, enum: [integer, text] }
     mode: { type: string, enum: [a, b] }
 resources:
-  - kind: Run.Value
+  - kind: Telo.Value
     metadata:
       name: columns
     value:

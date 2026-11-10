@@ -131,7 +131,7 @@ describe("the definition-check model", () => {
   const generated = (n: number) => {
     const entries = Array.from({ length: n }, (_, i) =>
       [
-        `  - kind: Run.Value`,
+        `  - kind: Telo.Value`,
         `    metadata: { name: value${i} }`,
         `    value: !if`,
         `      if: !cel "self.a${i} == self.b${i}"`,
@@ -158,8 +158,8 @@ describe("the definition-check model", () => {
       `  - !if`,
       `    metadata: { name: chosen }`,
       `    if: !cel "self.dialect == 'a'"`,
-      `    then: { kind: Run.Value, value: 1 }`,
-      `    else: { kind: Run.Value, value: 2 }`,
+      `    then: { kind: Telo.Value, value: 1 }`,
+      `    else: { kind: Telo.Value, value: 2 }`,
       ...entries,
       `invoke: !ref chosen`,
     ].join("\n");

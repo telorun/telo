@@ -10,7 +10,7 @@ A body of JavaScript is opaque to every guarantee the rest of the runtime rests 
 
 There is no single replacement, because what replaces a script depends on what the script does:
 
-- **Shaping a value, choosing a branch, iterating** — the `Run` kinds (`Run.Value`, `Run.Choice`, `Run.Iteration`, `Run.Projection`) with CEL, which the analyzer type-checks.
+- **Shaping a value, choosing a branch, iterating** — `Telo.Value` and the `Run` kinds (`Run.Choice`, `Run.Iteration`, `Run.Projection`) with CEL, which the analyzer type-checks.
 - **Reaching an API nothing else exposes** — write a resource kind. That is the case the escape hatch existed for, and a kind makes the capability reusable, statically analyzable and available to every consumer instead of one manifest.
 
 ## Why use this

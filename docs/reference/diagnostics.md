@@ -152,7 +152,7 @@ how to read a failure, and the debugging flags — see
 | `ENGINE_DIAGNOSTIC` | A templating tag other than `!cel` (for example `!sql`) reported a problem with its body. The message carries the engine's own text. |
 | `UNKNOWN_ENGINE` | A `!<tag>` names a templating engine that is not registered. |
 | `UNUSED_DECLARATION` ⚠️ | A declared `variables.*` / `secrets.*` entry is referenced by no CEL expression. Usually a typo at the use site. |
-| `BINDING_CYCLE` | A named binding (`bindings:` on `Run.Value` / `Run.Choice`) references itself, directly or through other bindings. |
+| `BINDING_CYCLE` | A named binding (`bindings:` on `Telo.Value` / `Run.Choice`) references itself, directly or through other bindings. |
 | `BINDING_NAME_RESERVED` | A name that could never be read where it is written: a CEL keyword; a name already in scope at that site (`inputs`, `steps`, …), which always wins; or one of the module's own names — an `imports:` alias, `Self`, or its `metadata.name` — through which a call `<name>.f(…)` reaches that module's function instead. Covers a `bindings:` key, a comprehension variable and a `cel.bind` name. |
 | `IMPORT_ALIAS_SHADOWS_CONTEXT` | An `imports:` alias is also the name of a CEL variable a kind this module uses puts in scope (`x-telo-context`), so a call `<alias>.f(…)` reaches the imported module and the variable cannot be reached through one. Reported at the `imports:` key; rename the alias. |
 | `BINDING_FIELD_AMBIGUOUS` | A kind's schema points `x-telo-bindings-from` at more than one field — a module-authoring bug. |

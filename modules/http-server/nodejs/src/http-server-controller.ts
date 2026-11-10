@@ -222,6 +222,9 @@ type ResolvedHandler = {
 };
 
 /** The `status.localUrl` type, as the kind's `status:` declares it. */
+/** How long a mount may take to register before the server fails to start. */
+const MOUNT_START_TIMEOUT_MS = 120_000;
+
 const LOCAL_URL_TYPE = {
   "x-telo-type": { name: "Telo.Url", scheme: { enum: ["http", "https"] } },
 };
@@ -369,6 +372,10 @@ class HttpServer implements ResourceInstance {
       // mounts answering one path is decided where the route is found.
       routerOptions: { constraints: { teloHost: this.hostConstraint() as never } },
       bodyLimit: Number(resource.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES),
+      // A mount does real work while it registers (a UI mount builds and
+      // addresses its browser entries); Fastify's 10 s default failed it on a
+      // loaded host.
+      pluginTimeout: MOUNT_START_TIMEOUT_MS,
       // `removeAdditional: false` overrides Fastify's default, which STRIPS a
       // property the schema does not declare. A request body declaring
       // `additionalProperties: false` then answered 201 with the undeclared

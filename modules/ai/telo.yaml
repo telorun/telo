@@ -14,7 +14,7 @@ metadata:
 # An agent's `context` input is typed by `x-telo-value-schema-from` naming a LIST
 # of locations — its tool providers' `contextType`s and its resolver's — which no
 # runtime before 0.122.0 reads: an older one refuses the annotation's list form.
-requires: { telo: ">=0.128.0" }
+requires: { telo: ">=0.133.0" }
 imports: { Run: ../run, Stream: ../stream }
 exports:
   kinds: [Model, ModelStream, Buffered, Text, TextStream, ToolProvider, Tools, Agent, AgentStream, ImageModel, Image]

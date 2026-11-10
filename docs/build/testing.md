@@ -28,12 +28,11 @@ metadata:
   name: AddTwoNumbers
   version: 1.0.0
 imports:
-  Run: oci://ghcr.io/telorun/run@<version>
   Assert: oci://ghcr.io/telorun/assert@<version>
 targets:
   - !ref testAdd
 ---
-kind: Run.Value
+kind: Telo.Value
 metadata:
   name: add
 inputType:

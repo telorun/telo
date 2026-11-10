@@ -29,7 +29,7 @@ run it on every manifest you write.
 THE BUILT-IN KINDS ARE DATA — READ THEIR FIELDS, DO NOT RECALL THEM. Every kind
 that needs no import (`Telo.Application`, `Telo.Library`, `Telo.Definition`,
 `Telo.Abstract`, `Telo.Import`, `Telo.NeedType`, `Telo.JsonSchema`,
-`Telo.Function`, the sinks, `Telo.PublicUrl`, …), every shared schema fragment
+`Telo.Function`, `Telo.Value`, the sinks, `Telo.PublicUrl`, …), every shared schema fragment
 (`Step`, `InvokeStep`, `RetryPolicy`, `KindSchema`, `NeedRequest`,
 `NativeEntries`, `ModuleSources`, …), every value type (`Telo.Url`), zone
 attribute (`noSuspend`) and string format (`css-selector`) is printed exactly,
@@ -4191,7 +4191,7 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   manifest stays readable and visually editable. A static page needs NO
   handler: the route renders the embedded file directly, e.g.
   `returns: [{ status: 200, content: { text/html: { schema: { type: string },
-  body: !include-text public/index.html } } }]` — never a `Run.Value` holding
+  body: !include-text public/index.html } } }]` — never a `Telo.Value` holding
   the markup. A whole directory of assets (a built SPA, images, several
   pages) is `Http.Static` mounted beside the `Http.Api`, not one route per
   file, with `root: !module-path ./public`.
@@ -4532,7 +4532,7 @@ sequence is not, and OMIT the import when the app uses none of it. The rest of
 were a third-party capability: `Run.Loop` repeats a body while a CEL condition holds, seeing
 `iteration` (0-based, an integer — `iteration + 1` needs no cast) and
 `previous`; `Run.Iteration` / `Run.Projection` walk a collection, their body
-seeing each element as `item` and its 0-based position as `index`; `Run.Value` /
+seeing each element as `item` and its 0-based position as `index`; `Telo.Value` /
 `Run.Choice` compute. A `Run.Projection`'s result is always an ARRAY: type one
 element with `elementType:` (never `outputType:`, which is the whole array) —
 `outputs` is checked against it and `steps.<name>.result[i]` is typed from it —
@@ -4540,8 +4540,12 @@ and write a `catches:` fallback `value:` as an array too. A recurring job is `Sc
 loop that paces itself is `Run.Loop` with a `Timer.Delay` step. Neither needs a
 counter resource — the loop already carries one.
 
-For pure value logic in the `run` module, pick by shape: `Run.Value` shapes ONE
-value; `Run.Choice` is a first-match decision TABLE (ordered `when → value`
+For pure value logic, pick by shape: `Telo.Value` (a BUILT-IN kind, no import)
+shapes ONE value — `value:` is any shape, with optional `inputType` /
+`outputType`; `Run.Value` is DEPRECATED (`DEPRECATED_KIND`, replaced by
+`Telo.Value`): never write it. A manifest declaring `Telo.Value` needs the telo
+release that introduced it (`telo release floor` writes the bound in a release
+workspace). `Run.Choice` is a first-match decision TABLE (ordered `when → value`
 rows plus an optional `default`) and is what a routing rule, pricing tier, or
 authz policy wants. Reach for it instead of nesting CEL ternaries — past one
 `? :` the ternary is the wrong tool. `Telo.Sequence`'s `switch` matches equality
@@ -4550,7 +4554,7 @@ Declaring `outputType` on a `Run.Choice` makes `telo check` validate every row
 against one contract and types `steps.<name>.result` for callers.
 
 Name the intermediate values of a calculation instead of nesting one huge
-expression or minting a resource per step. `Run.Value` and `Run.Choice` take an
+expression or minting a resource per step. `Telo.Value` and `Run.Choice` take an
 optional `bindings:` MAP (name → CEL); every name is read BARE in that kind's
 expressions and in the other bindings. Order is DERIVED from what each one
 references, so declaration order carries no meaning; evaluation is lazy and
@@ -5038,7 +5042,7 @@ under you — so the assertion is either weak or wrong tomorrow. Mock the servic
 with an `Http.Server` STANDING INSIDE THE TEST, serving the responses the case
 needs:
 
-    kind: Run.Value
+    kind: Telo.Value
     metadata: { name: cannedRates }
     value:
       usd: 1.25
@@ -5087,7 +5091,7 @@ Three things make it work, and each is load-bearing:
     kernel hold for as long as the process lives, and the test would pass and
     then HANG instead of exiting.
   - `targets:` inside the sequence starts it before the steps run.
-  - The canned response is a `Run.Value` as the route's `handler`; the shape it
+  - The canned response is a `Telo.Value` as the route's `handler`; the shape it
     returns is declared in `returns`. Bind `listen.address: 127.0.0.1` and an unusual port, so
     the mock is unreachable from outside and does not collide with a real
     service. That is a rule for a test's mock ONLY: an application's own

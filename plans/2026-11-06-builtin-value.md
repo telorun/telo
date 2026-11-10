@@ -1,5 +1,5 @@
 ---
-status: approved
+status: done
 priority: medium
 depends-on: []
 packages: [sdk/builtins, analyzer/nodejs, analyzer/rust, kernel/nodejs, kernel/rust, modules/run, tests, docs, apps/authoring-agent, apps/hub]
@@ -177,11 +177,11 @@ schema:
   additionalProperties: false
 ```
 
-`outputType` is held against `value` before anything runs. Had `length` been written `!cel "greeting"`, the check refuses it:
+`outputType` is held against `value` before anything runs. Had `length` been written `!cel "inputs.name"`, the check refuses it:
 
 ```shell
 $ telo check telo.yaml
-telo.yaml:36:17  error  CEL_TYPE_ERROR  'value.length' is declared integer by outputType, but the expression is string
+telo.yaml:36:22  error  Http.Api/helloApi: CEL at 'routes[0].handler.value.length' reads 'inputs.name', whose declared shape does not fit what the field expects: /: type mismatch — source is 'string', target expects 'integer'.  CEL_TYPE_ERROR
 
 1 error
 ```
