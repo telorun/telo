@@ -5,6 +5,8 @@ on:
     branches: [main, "release/*"]
   pull_request:
     branches: [main, "release/*"]
+    # `labeled` / `unlabeled` so adding or removing `full-ci` re-runs the checks.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
   checks:
@@ -300,19 +302,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The branch the change lands on: the PR's base, else the pushed branch.
+      # The branch the change lands on: the PR's base, else the pushed branch. A pull
+      # request carrying the `full-ci` label, or whose head commit message holds
+      # `[full ci]`, is run as a release would be: every platform and every manifest test.
       - name: Detect a release branch
         id: branch
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
           REF_NAME: ${{ github.ref_name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           target="${BASE_REF:-$REF_NAME}"
+          full=false
+          if [ -n "$HEAD_SHA" ]; then
+            jq -e 'index("full-ci")' <<<"$LABELS" >/dev/null && full=true
+            git log -1 --format=%B "$HEAD_SHA" | grep -qiF '[full ci]' && full=true
+          fi
           case "$target" in
             release/*) echo "release=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "release=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "release=$full" >> "$GITHUB_OUTPUT" ;;
           esac
+          echo "full=$full" >> "$GITHUB_OUTPUT"
 
       # FAIL OPEN at every step: a diff that cannot be taken, or a `telo
       # changed` that fails, runs everything. Only an explicit empty `affected`
@@ -323,6 +335,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           EVENT_NAME: ${{ github.event_name }}
+          FULL_CI: ${{ steps.branch.outputs.full }}
         run: |
           full() {
             echo "mode=full" >> "$GITHUB_OUTPUT"
@@ -331,6 +344,7 @@ jobs:
             exit 0
           }
           [ "$EVENT_NAME" = "pull_request" ] || full "Not a pull request"
+          [ "$FULL_CI" = "true" ] && full "Marked full-ci"
           git fetch --no-tags origin "$BASE_REF" || true
           base="origin/$BASE_REF"
           changed=$(git diff --name-only "$base...HEAD") || full "Could not diff against $base"
@@ -372,6 +386,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           EVENT_NAME: ${{ github.event_name }}
+          FULL_CI: ${{ steps.branch.outputs.full }}
         run: |
           emit() {
             {
@@ -398,6 +413,7 @@ jobs:
             exit 0
           }
           [ "$EVENT_NAME" = "pull_request" ] || full "Not a pull request"
+          [ "$FULL_CI" = "true" ] && full "Marked full-ci"
           changed=$(git diff --name-only "origin/$BASE_REF...HEAD") || full "Could not diff against origin/$BASE_REF"
           json=$(node scripts/select-package-tests.mjs <<<"$changed") || full "The selection script failed"
           jq -e '.mode == "full" or .mode == "selected" or .mode == "none"' <<<"$json" >/dev/null \
