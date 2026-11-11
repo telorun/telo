@@ -19,7 +19,8 @@ requires:
   # 0.118.0: `site` is a `Telo.PublicUrl` need, a kind an older analyzer does not
   # declare.
   # 0.129.0: the `ui-react` renderer.
-  telo: ">=0.129.0"
+  # 0.133.0: `Telo.OpenUrl`.
+  telo: ">=0.133.0"
 lang: en
 imports:
   Ui: ../../modules/ui
@@ -52,6 +53,7 @@ needs: { site: { kind: Telo.PublicUrl, parameters: { port: http } } }
 targets:
   - !ref setupDb
   - !ref server
+  - { name: openApp, invoke: !ref openApp, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/ui" } }
 ---
 kind: SQLite.Schema
 metadata: { name: setupDb }
@@ -112,3 +114,6 @@ pages:
             children:
               - { type: text, text: Your short URL, style: muted }
               - { type: value, value: !cel "result.shortUrl", style: strong }
+---
+kind: Telo.OpenUrl
+metadata: { name: openApp }

@@ -43,7 +43,8 @@ metadata:
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-  telo: ">=0.128.0"
+  # 0.133.0: `Telo.OpenUrl`.
+  telo: ">=0.133.0"
 imports:
   Durable: ../../modules/durable
   Local: ../../modules/durable-local
@@ -53,6 +54,7 @@ imports:
   Timer: ../../modules/timer
 targets:
   - !ref server
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
   - !ref resumer
 ports: { http: { env: PORT, protocol: tcp, default: 8081 } }
 variables:
@@ -212,6 +214,7 @@ openapi: { info: { title: Expense approvals, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref routes
+  - { path: /docs, mount: { kind: Http.Reference } }
 ---
 kind: Http.Api
 metadata: { name: routes }
@@ -305,3 +308,6 @@ payload:
 kind: Local.Status
 metadata: { name: runStatus }
 journal: !ref expenses
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

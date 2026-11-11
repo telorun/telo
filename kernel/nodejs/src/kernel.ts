@@ -101,6 +101,7 @@ import {
   isResolvedReference,
   registeredCoReferrerCalls,
   type CoReferrerCall,
+  splitIntegrity,
 } from "@telorun/analyzer";
 import { spanRecordOf } from "./span-export.js";
 import { CoReferrerIndex } from "./co-referrer-index.js";
@@ -283,6 +284,13 @@ import {
   resolveNativeFileUri,
   type NativeFileModule,
 } from "./module-file-resolution.js";
+import * as path from "path";
+import {
+  RemoteModuleFiles,
+  pinnedFilesDirectory,
+  remoteManifestUrl,
+  remoteModuleScratchDirectory,
+} from "./remote-module-files.js";
 import {
   moduleArtifactFor,
   moduleDirectoriesOf,
@@ -468,6 +476,7 @@ export class Kernel implements IKernel {
   /** Per-module artifact handles, keyed by canonical manifest source. Rebuilt on
    *  every `load()`; empty for a graph of purely local / manifest-only modules. */
   private readonly moduleArtifacts = new Map<string, ModuleArtifact>();
+  readonly remoteModuleFiles = new RemoteModuleFiles();
   /** Per-module sibling-library resolution, keyed by the same canonical manifest
    *  source: which bare specifiers this module's controller bundles import, and
    *  which module's library layer each resolves to. Rebuilt on every `load()`. */
@@ -2707,6 +2716,7 @@ export class Kernel implements IKernel {
    */
   private buildModuleArtifacts(graph: LoadedGraph, manifestsDir: string | undefined): void {
     this.moduleArtifacts.clear();
+    this.remoteModuleFiles.clear();
     this.siblingLibraries.clear();
     this.nativeFileModules.clear();
     this.directImports.clear();
@@ -2741,6 +2751,7 @@ export class Kernel implements IKernel {
         log: this.logging.kernelLogger(),
       });
       if (artifact) this.moduleArtifacts.set(file.source, artifact);
+      else this.registerRemoteModule(file, moduleDir, manifestsDir);
       const native: NativeFileModule = {
         source: file.source,
         ...(owner.name !== undefined ? { name: owner.name } : {}),
@@ -2768,6 +2779,26 @@ export class Kernel implements IKernel {
     })) {
       this.siblingLibraries.set(source, map);
     }
+  }
+
+  /** A module read over plain HTTP keeps its files beside its cached manifest, or
+   *  in a private scratch directory when there is no cache to live in. */
+  private registerRemoteModule(
+    file: { source: string; requestedUrl: string },
+    moduleDir: string | null,
+    manifestsDir: string | undefined,
+  ): void {
+    const manifestUrl = remoteManifestUrl(file.requestedUrl);
+    if (!manifestUrl) return;
+    const scratch = manifestsDir && moduleDir ? undefined : remoteModuleScratchDirectory(manifestUrl);
+    const base = scratch ? scratch.directory : path.resolve(moduleDir!);
+    const pinned = splitIntegrity(file.requestedUrl).integrity !== undefined;
+    this.remoteModuleFiles.register(file.source, {
+      manifestUrl,
+      directory: pinned ? pinnedFilesDirectory(base, file.requestedUrl) : base,
+      reuse: pinned,
+      ...(scratch ? { privateRoot: scratch.root } : {}),
+    });
   }
 
   /** The artifact of the module whose manifest resolved from `source`, or

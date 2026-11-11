@@ -21,7 +21,7 @@ export interface SessionEventsDeps {
 }
 
 /** The SSE event names the runner sends; each payload carries its own `type`. */
-const FORWARDED = new Set(["status", "progress", "debug", "app", "reachability", "run", "endpoints", "route"]);
+const FORWARDED = new Set(["status", "progress", "debug", "app", "reachability", "run", "endpoints", "route", "openUrl"]);
 
 /**
  * The session's event stream, read through the fetch-based reader so every

@@ -30,7 +30,7 @@ metadata:
     before `/ask`, because a wrong answer is usually wrong retrieval rather than
     a wrong model.
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-requires: { telo: ">=0.128.0" }
+requires: { telo: ">=0.133.0" }
 imports:
   Http: ../../modules/http-server
   HttpClient: ../../modules/http-client
@@ -44,6 +44,7 @@ imports:
 targets:
   - !ref indexCorpus
   - !ref server
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8079 } }
 secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string } }
 ---
@@ -229,6 +230,7 @@ openapi: { info: { title: Semantic search, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref searchRoutes
+  - { path: /docs, mount: { kind: Http.Reference } }
 ---
 kind: Http.Api
 metadata: { name: searchRoutes }
@@ -275,3 +277,6 @@ routes:
           application/json:
             body:
               error: !cel "error.code"
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

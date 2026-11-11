@@ -790,7 +790,7 @@ export async function run(given: RunArgv): Promise<void> {
 
   // As the desktop host, the inputs are asked in a form in its window instead (below).
   let inputs = inputSessionFor(argv);
-  const openUrl = openUrlHookFor(argv);
+  const openUrl = openUrlHookFor(argv, debug);
   // Held outside the try so the catch can reach the loaded graph a static
   // failure's location resolves against.
   let bootedKernel: Kernel | undefined;
@@ -1023,8 +1023,16 @@ function inputSessionFor(argv: RunArgv): ApplicationInputSession | undefined {
   return new ApplicationInputSession(terminalPrompter(process.stdin, output()));
 }
 
-function openUrlHookFor(argv: RunArgv): ((url: string) => void) | undefined {
-  return createOpenUrlHook({ input: argv.input, stdin: process.stdin, stderr: process.stderr });
+function openUrlHookFor(
+  argv: RunArgv,
+  debug: DebugSession | undefined,
+): ((url: string) => void) | undefined {
+  return createOpenUrlHook({
+    input: argv.input,
+    stdin: process.stdin,
+    stderr: process.stderr,
+    ...(debug ? { emit: (url) => debug.emitEvent("Kernel.OpenUrlRequested", { url }) } : {}),
+  });
 }
 
 /** Once the kernel has accepted the answers, offer to keep them — written beside
@@ -1139,7 +1147,6 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
   // One session for every reload: a reload asks only for what it has not
   // been told, or for what it refuses.
   const inputs = inputSessionFor(given);
-  const openUrl = openUrlHookFor(given);
   const sessionCacheRoot = first.argv.cacheDir ?? resolveCacheRoot(first.argv.path);
   // One inspect endpoint for the whole watch session — reloads re-attach the
   // rebuilt kernel to it (see startDebugSession), so the UI connection survives.
@@ -1147,6 +1154,7 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
     given.debug || given.inspect !== undefined
       ? await startDebugSession(first.argv, log, sessionCacheRoot)
       : undefined;
+  const openUrl = openUrlHookFor(given, debug);
 
   let stopping = false;
   let signalChange: (() => void) | null = null;

@@ -432,6 +432,10 @@ export type RunOutcomeEvent =
     }
   | { type: "run"; app: string; generation: number; phase: "failed"; reason: string };
 
+/** Where an `openUrl` request points: a port of the session the runner routes,
+ *  a loopback port it does not route, or any other http(s) address. */
+export type OpenUrlReach = "port" | "unrouted" | "external";
+
 /**
  * Workload output does NOT travel this channel, in either mode — it goes over the
  * byte channel (`/io`), which exists precisely because per-chunk events are
@@ -445,6 +449,12 @@ export type RunEvent =
   | { type: "progress"; app?: string; phase: RunPhase; message: string; done?: boolean }
   /** A kernel event frame relayed from one app's debug stream while it runs. */
   | { type: "debug"; app: string; frame: DebugFrame }
+  /** The app asked for a URL to be opened (`Telo.OpenUrl`). `url` is the
+   *  runner's own serialization. `port` is the loopback port the URL names, for
+   *  `reach: "port"` and `"unrouted"`. The runner never builds an address: a
+   *  client opens a `port` request through the `endpoints` it holds, and
+   *  `external` as written. `generation` is the app's open run generation. */
+  | { type: "openUrl"; app: string; generation: number; url: string; reach: OpenUrlReach; port?: number }
   /** One app's state changed. */
   | ({ type: "app"; app: string } & AppState)
   /** A reachability transition for one declared port of one app. */

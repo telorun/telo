@@ -28,7 +28,8 @@ requires:
   # 0.98.0: the database file is a host path, and 0.97.0 refuses the
   # expression at the in-repo sqlite's `file`.
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-  telo: ">=0.128.0"
+  # 0.133.0: `Telo.OpenUrl`.
+  telo: ">=0.133.0"
 imports:
   Http: ../../modules/http-server
   Sql: ../../modules/sql
@@ -40,6 +41,7 @@ imports:
 targets:
   - !ref migrate
   - !ref server
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
   - !ref sweeper
 ports: { http: { env: PORT, protocol: tcp, default: 8099 } }
 variables:
@@ -225,6 +227,7 @@ openapi: { info: { title: Order webhook, version: 1.0.0 } }
 mounts:
   - path: /webhooks
     mount: !ref webhookRoutes
+  - { path: /docs, mount: { kind: Http.Reference } }
 ---
 # The background half. Same app, no queue broker, no worker process: a schedule
 # is a resource, so it is declared beside the route it drains for.
@@ -253,3 +256,6 @@ kind: Schedule.Interval
 metadata: { name: sweeper }
 every: !cel "duration(variables.sweepEvery)"
 invoke: !ref shipPending
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

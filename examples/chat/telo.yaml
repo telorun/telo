@@ -16,8 +16,9 @@ metadata:
     Run with the Anthropic key in the environment (or in a sibling `.env.local`
     file, which the CLI loads from the manifest's directory):
         ANTHROPIC_API_KEY=sk-ant-...
-    then open http://localhost:8080.
-requires: { telo: ">=0.129.0" }
+    and the page opens in the browser on a host that has one, else open
+    http://localhost:8080.
+requires: { telo: ">=0.133.0" }
 lang: en
 imports:
   Http: ../../modules/http-server
@@ -39,7 +40,11 @@ imports:
   Ui: ../../modules/ui
   UiLucide: ../../modules/ui-lucide
   UiReact: ../../modules/ui-react
-targets: [!ref server, !ref journalExpiry, !ref attachmentExpiry]
+targets:
+  - !ref server
+  - !ref journalExpiry
+  - !ref attachmentExpiry
+  - { name: openChat, invoke: !ref openChat, inputs: { url: !interpolate "http://localhost:${{ ports.http }}" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
 variables:
   stateDir:
@@ -370,3 +375,6 @@ mounts:
   - path: /api/chat
     mount: { kind: Chat.Api, conversation: !ref conversation }
   - { path: /, mount: !ref ui }
+---
+kind: Telo.OpenUrl
+metadata: { name: openChat }

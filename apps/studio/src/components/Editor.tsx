@@ -147,6 +147,7 @@ import { useModuleVersions } from "./sidebar/useModuleVersions";
 import { useVersionCompatibility } from "./sidebar/useVersionCompatibility";
 import { useWorkspaceImportUpgrades } from "./sidebar/useWorkspaceImportUpgrades";
 import { ImportLookupNotice } from "./sidebar/ImportLookupNotice";
+import { OpenUrlDialog } from "./OpenUrlDialog";
 import { TermsGateDialog } from "./TermsGateDialog";
 import { WorkspaceModeDialog } from "./WorkspaceModeDialog";
 import { TopBar } from "./TopBar";
@@ -2649,6 +2650,7 @@ export function Editor() {
         open={agentRootDir !== null && workspaceMode === null}
         onChoose={chooseWorkspaceMode}
       />
+      <OpenUrlDialog />
       <TermsGateDialog
         terms={termsGate?.terms ?? null}
         onAccept={() => {

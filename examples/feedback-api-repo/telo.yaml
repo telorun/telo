@@ -19,7 +19,8 @@ metadata:
         curl localhost:8844/v1/feedback
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.133.0: `Telo.OpenUrl`.
+  telo: ">=0.133.0"
 imports:
   Http: ../../modules/http-server
   Sql: ../../modules/sql
@@ -28,10 +29,8 @@ imports:
 targets:
   - !ref migrate
   - !ref server
-ports:
-  http:
-    env: PORT
-    default: 8844
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
+ports: { http: { env: PORT, default: 8844 } }
 variables:
   dbFile:
     env: DB_FILE
@@ -75,13 +74,11 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Feedback API (Repository)
-    version: 1.0.0
+openapi: { info: { title: Feedback API (Repository), version: 1.0.0 } }
 mounts:
   - path: /v1
     mount: !ref feedbackRoutes
+  - { path: /docs, mount: { kind: Http.Reference } }
 ---
 kind: Http.Api
 metadata: { name: feedbackRoutes }
@@ -97,15 +94,9 @@ routes:
           additionalProperties: false
           required: [ text, rating ]
           properties:
-            text:
-              type: string
-              minLength: 1
-            source:
-              type: string
-            rating:
-              type: integer
-              minimum: 1
-              maximum: 5
+            text: { type: string, minLength: 1 }
+            source: { type: string }
+            rating: { type: integer, minimum: 1, maximum: 5 }
     handler: !ref insertFeedback
     inputs:
       data:
@@ -114,19 +105,12 @@ routes:
         rating: !cel "request.body.rating"
     returns:
       - status: 201
-        content:
-          application/json:
-            body:
-              ok: true
-              message: Feedback received
+        content: { application/json: { body: { ok: true, message: Feedback received } } }
 
   # GET /v1/feedback — list all entries
-  - request:
-      path: /feedback
-      method: GET
+  - request: { path: /feedback, method: GET }
     handler: !ref readFeedback
-    inputs:
-      filters: {}
+    inputs: { filters: {} }
     returns:
       - status: 200
         content:
@@ -138,12 +122,7 @@ routes:
       path: /feedback/{id}
       method: GET
       schema:
-        params:
-          type: object
-          properties:
-            id:
-              type: integer
-          required: [ id ]
+        params: { type: object, properties: { id: { type: integer } }, required: [id] }
     handler: !ref readFeedback
     inputs:
       filters:
@@ -155,8 +134,7 @@ routes:
           application/json:
             body: !cel "result.rows[0]"
       - status: 404
-        content:
-          application/json:
-            body:
-              ok: false
-              message: Not found
+        content: { application/json: { body: { ok: false, message: Not found } } }
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

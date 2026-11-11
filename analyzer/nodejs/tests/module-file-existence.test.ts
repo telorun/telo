@@ -168,13 +168,78 @@ describe("INCLUDE_FILE_NOT_FOUND at load", () => {
 
   it("leaves a library reached by a registry import to its publish", async () => {
     const files = {
-      "/app/telo.yaml": importing("https://registry.example/chat/telo.yaml"),
-      "https://registry.example/chat/telo.yaml": withPrompt("./primer.md"),
+      "/app/telo.yaml": importing("oci://registry.example/chat@1.0.0"),
+      "oci://registry.example/chat@1.0.0": withPrompt("./primer.md"),
     };
     const graph = await new Loader([source(files, [])]).loadGraph("/app/telo.yaml", { desugarImports: true });
     expect(graph.errors).toEqual([]);
-    expect(graph.modules.has("https://registry.example/chat/telo.yaml")).toBe(true);
+    expect(graph.modules.has("oci://registry.example/chat@1.0.0")).toBe(true);
     expect(graph.moduleFileDiagnostics).toEqual([]);
+  });
+
+  it("asks the origin of a library imported by URL, since nothing publishes it", async () => {
+    const files = {
+      "/app/telo.yaml": importing("https://registry.example/chat/telo.yaml"),
+      "https://registry.example/chat/telo.yaml": withPrompt("./primer.md"),
+    };
+    const asked: string[] = [];
+    const remote: ManifestSource = {
+      ...source(files, []),
+      async entryAt(base: string, relative: string) {
+        asked.push(`${base} ${relative}`);
+        return undefined;
+      },
+      locate: (base: string, relative: string) => base.replace("telo.yaml", relative.replace(/^\.\//, "")),
+    };
+    const graph = await new Loader([remote]).loadGraph("/app/telo.yaml", { desugarImports: true });
+    expect(asked).toEqual(["https://registry.example/chat/telo.yaml primer.md"]);
+    expect(graph.moduleFileDiagnostics.map((d) => d.code)).toEqual(["INCLUDE_FILE_NOT_FOUND"]);
+    expect(graph.moduleFileDiagnostics[0].message).toContain("https://registry.example/chat/primer.md");
+  });
+
+  it("warns instead of refusing a claim that may name a directory over a URL, which cannot be listed", async () => {
+    const files = {
+      "/app/telo.yaml": importing("https://registry.example/chat/telo.yaml"),
+      "https://registry.example/chat/telo.yaml": [
+        "kind: Telo.Library",
+        "metadata: { name: Chat, version: 1.0.0 }",
+        "---",
+        "kind: Http.Static",
+        "metadata: { name: site }",
+        "root: !module-path ./public",
+      ].join("\n"),
+    };
+    const remote: ManifestSource = {
+      ...source(files, []),
+      async entryAt() {
+        return undefined;
+      },
+      locate: (base: string, relative: string) => base.replace("telo.yaml", relative.replace(/^\.\//, "")),
+    };
+    const graph = await new Loader([remote]).loadGraph("/app/telo.yaml", { desugarImports: true });
+    expect(graph.moduleFileDiagnostics).toHaveLength(1);
+    expect(graph.moduleFileDiagnostics[0]).toMatchObject({ code: "MODULE_PATH_NOT_FOUND", severity: 2 });
+    expect(graph.moduleFileDiagnostics[0].message).toContain("a directory cannot be listed");
+  });
+
+  it("locates a claim whose origin could not answer instead of failing the load", async () => {
+    const files = {
+      "/app/telo.yaml": importing("https://registry.example/chat/telo.yaml"),
+      "https://registry.example/chat/telo.yaml": withPrompt("./primer.md"),
+    };
+    const refusing: ManifestSource = {
+      ...source(files, []),
+      async entryAt() {
+        throw new Error("Failed to read https://registry.example/chat/primer.md: 403 Forbidden");
+      },
+    };
+    const graph = await new Loader([refusing]).loadGraph("/app/telo.yaml", { desugarImports: true });
+    expect(graph.moduleFileDiagnostics).toHaveLength(1);
+    expect(graph.moduleFileDiagnostics[0]).toMatchObject({
+      code: "MODULE_FILE_UNREADABLE",
+      data: { filePath: "https://registry.example/chat/telo.yaml" },
+    });
+    expect(graph.moduleFileDiagnostics[0].message).toContain("403 Forbidden");
   });
 
   it("leaves a module shipped inside an artifact to its layers, though a path import names it and a file serves it", async () => {

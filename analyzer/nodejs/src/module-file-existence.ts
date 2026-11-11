@@ -8,17 +8,21 @@ import { pathsAtOrBeneath, readAssetPatterns, stagedModuleFiles } from "./module
 import { readNativeEntries } from "./native-entries.js";
 import { readModuleSources } from "./source-entries.js";
 import { isNeverInstantiated } from "./validate-include-placement.js";
+import { httpManifestUrl } from "./sources/http-source.js";
 import { isOciRef } from "./sources/oci-ref.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type ManifestSource } from "./types.js";
 
 /**
  * File-claim diagnostics for the entry and every module it reaches through a
- * filesystem-path import (`source: ./chat`), transitively.
+ * filesystem-path import (`source: ./chat`) or an `http(s)://` import,
+ * transitively.
  *
  * A registry import is skipped: its files were verified when it was published,
  * and its assets layer is fetched lazily, so asking the disk would be wrong. A
  * path import is never published on its own — this is the only point at which
- * anything checks its files before a resource embedding one is created.
+ * anything checks its files before a resource embedding one is created. A module
+ * read over HTTP has no publish step either, so its files are asked of its
+ * origin, even when the manifest itself was served from a cached copy.
  */
 export async function collectLocalModuleFileDiagnostics(
   entry: LoadedModule,
@@ -30,15 +34,25 @@ export async function collectLocalModuleFileDiagnostics(
   const seen = new Set<string>([entry.owner.source]);
   const queue: LoadedModule[] = [entry];
   for (let next = queue.shift(); next; next = queue.shift()) {
-    out.push(...(await collectModuleFileDiagnostics(next, sourceFor(next.owner.source))));
+    const remote = httpManifestUrl(next.owner.requestedUrl);
+    out.push(
+      ...(await collectModuleFileDiagnostics(
+        next,
+        sourceFor(remote ?? next.owner.source),
+        remote ?? next.owner.source,
+      )),
+    );
     for (const file of [next.owner, ...next.partials]) {
       for (const edge of importEdges.get(file.source)?.values() ?? []) {
-        if (!isPathImport(edge.targetRef) || seen.has(edge.targetSource)) continue;
-        seen.add(edge.targetSource);
+        if (seen.has(edge.targetSource)) continue;
         const target = modules.get(edge.targetSource);
+        if (!target) continue;
         // A path import inside an artifact names a module shipped in it, whose
         // files are its layers — published, verified, and fetched lazily.
-        if (target && !isOciRef(target.owner.requestedUrl)) queue.push(target);
+        const local = isPathImport(edge.targetRef) && !isOciRef(target.owner.requestedUrl);
+        if (!local && httpManifestUrl(target.owner.requestedUrl) === undefined) continue;
+        seen.add(edge.targetSource);
+        queue.push(target);
       }
     }
   }
@@ -132,11 +146,11 @@ function stagedEntry(staged: readonly string[], relative: string): HostEntryKind
 export async function collectModuleFileDiagnostics(
   module: LoadedModule,
   source: ManifestSource | undefined,
+  base: string = module.owner.source,
 ): Promise<AnalysisDiagnostic[]> {
   if (!source?.entryAt) return [];
   const registry = defaultRegistry();
   const out: AnalysisDiagnostic[] = [];
-  const ownerSource = module.owner.source;
   let staged: readonly string[] | undefined;
   for (const file of [module.owner, ...module.partials]) {
     const found: Array<{
@@ -146,13 +160,22 @@ export async function collectModuleFileDiagnostics(
       claims: number;
       relative: string;
       code: string;
+      directory: boolean;
     }> = [];
     file.manifests.forEach((manifest, index) => {
       if (!manifest) return;
       const collect = (sentinel: TaggedSentinel, at: string) => {
         const claims = registry.get(sentinel.engine)?.fileClaims?.(sentinel.source) ?? [];
         for (const claim of claims) {
-          found.push({ index, at, sentinel, claims: claims.length, relative: claim.path, code: claim.notFoundCode });
+          found.push({
+            index,
+            at,
+            sentinel,
+            claims: claims.length,
+            relative: claim.path,
+            code: claim.notFoundCode,
+            directory: claim.directory === true,
+          });
         }
       };
       // A module document's needs' `parameters:` are resolved at load; nothing
@@ -167,31 +190,55 @@ export async function collectModuleFileDiagnostics(
       if (isNeverInstantiated(manifest.kind)) return;
       walkSentinels(manifest, "", collect);
     });
-    for (const { index, at, sentinel, claims, relative, code } of found) {
+    for (const { index, at, sentinel, claims, relative, code, directory } of found) {
       staged ??= stagedFilesOf(module.owner.manifests.find((m) => m && isModuleKind(m.kind)));
       // Module-root-relative: resolved against the OWNER, never the partial.
-      const entry = stagedEntry(staged, relative) ?? (await source.entryAt(ownerSource, relative));
-      if (entry !== undefined) {
-        if (claims === 1) {
-          const stamped = sentinel as unknown as Record<string, unknown>;
-          stamped[FOUND_ENTRY] = entry;
-          const head =
-            entry === "file" && HOST_MEDIA_HEAD_LENGTH > 0
-              ? await source.readHead?.(ownerSource, relative, HOST_MEDIA_HEAD_LENGTH)
-              : undefined;
-          if (head) stamped[FOUND_HEAD] = Array.from(head, (b) => b.toString(16).padStart(2, "0")).join("");
-        }
-        continue;
-      }
       const written = sentinel.source;
       const engine = sentinel.engine;
       const manifest = file.manifests[index]!;
       const name = (manifest.metadata as { name?: string } | undefined)?.name;
       const range = file.positions[index]?.positionIndex?.get(at);
-      const absolute = source.locate?.(ownerSource, relative);
-      const hint = await nearMiss(source, ownerSource, relative, written);
+      const absolute = source.locate?.(base, relative);
+      const remote = absolute !== undefined && /^https?:\/\//.test(absolute);
+      let entry: HostEntryKind | undefined;
+      let head: Uint8Array | undefined;
+      try {
+        entry = stagedEntry(staged, relative) ?? (await source.entryAt(base, relative));
+        if (entry === "file" && claims === 1 && HOST_MEDIA_HEAD_LENGTH > 0) {
+          head = await source.readHead?.(base, relative, HOST_MEDIA_HEAD_LENGTH);
+        }
+      } catch (error) {
+        out.push({
+          severity: DiagnosticSeverity.Error,
+          code: "MODULE_FILE_UNREADABLE",
+          source: "telo-analyzer",
+          message:
+            `${manifest.kind}${name ? `/${name}` : ""}: \`!${engine} ${written}\` names '${relative}', ` +
+            `and checking it failed${absolute ? ` (${absolute})` : ""}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+          data: {
+            resource: { kind: manifest.kind, name: name ?? "" },
+            filePath: file.source,
+            path: at,
+          },
+          ...(range ? { range } : {}),
+        });
+        continue;
+      }
+      if (entry !== undefined) {
+        if (claims === 1) {
+          const stamped = sentinel as unknown as Record<string, unknown>;
+          stamped[FOUND_ENTRY] = entry;
+          if (head) stamped[FOUND_HEAD] = Array.from(head, (b) => b.toString(16).padStart(2, "0")).join("");
+        }
+        continue;
+      }
+      const hint = await nearMiss(source, base, relative, written);
+      // A URL cannot be listed, so a claim that may name a directory cannot be told
+      // from a missing file there: it is advice, and the runtime still refuses it.
+      const unverifiable = remote && directory;
       out.push({
-        severity: DiagnosticSeverity.Error,
+        severity: unverifiable ? DiagnosticSeverity.Warning : DiagnosticSeverity.Error,
         code,
         source: "telo-analyzer",
         message:
@@ -199,6 +246,11 @@ export async function collectModuleFileDiagnostics(
           `names '${relative}', and there is nothing there${absolute ? ` (${absolute})` : ""}.` +
           (hint ? ` ${hint.text}` : "") +
           ` The path is relative to the module root — the directory holding telo.yaml. ` +
+          (remote
+            ? `A module read over a URL ships the files it names one by one — a directory ` +
+              `cannot be listed${unverifiable ? `, so this cannot be told from a missing file and will not be fetched` : ""}; ` +
+              `claim the files inside it individually. `
+            : "") +
           `Create it or correct the path; if it exists in your checkout, whatever copied ` +
           `the module here left it out (an ignore file, a COPY step).`,
         data: {

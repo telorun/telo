@@ -1122,7 +1122,7 @@ export {
     offsetToPosition,
 } from "./position-metadata.js";
 export type { DocumentPosition } from "./position-metadata.js";
-export { HttpSource } from "./sources/http-source.js";
+export { HttpSource, httpManifestUrl } from "./sources/http-source.js";
 export { defaultSources } from "./sources/default-sources.js";
 export {
   splitIntegrity,

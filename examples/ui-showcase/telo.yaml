@@ -17,7 +17,7 @@ metadata:
     requests, bookings, comments, blog posts and reporting lines in SQLite,
     with real sessions behind a sign-in gate.
 # 0.129.0: ui's shipped translations, which an older runtime cannot load.
-requires: { telo: ">=0.129.0" }
+requires: { telo: ">=0.133.0" }
 lang: en
 imports:
   Run: ../../modules/run
@@ -78,6 +78,7 @@ translations:
 targets:
   - !ref migrate
   - !ref server
+  - { name: openApp, invoke: !ref openApp, inputs: { url: !interpolate "http://localhost:${{ ports.http }}" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8150 } }
 variables:
   dbFile:
@@ -1023,3 +1024,6 @@ mounts:
     mount: !ref sidebarShowcase
   - path: /
     mount: !ref showcase
+---
+kind: Telo.OpenUrl
+metadata: { name: openApp }

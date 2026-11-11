@@ -24,25 +24,22 @@ metadata:
     Run its tests — every test manifest is its own kernel, so nothing leaks
     between them:
         telo ./examples/testing-a-manifest/test-suite.yaml
-imports:
-  Api: ./api
-  Http: ../../modules/http-server
+requires: { telo: ">=0.133.0" }
+imports: { Api: ./api, Http: ../../modules/http-server }
 targets:
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8078
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
+ports: { http: { env: PORT, protocol: tcp, default: 8078 } }
 ---
 kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Cart pricing
-    version: 1.0.0
+openapi: { info: { title: Cart pricing, version: 1.0.0 } }
 mounts:
   - path: /cart
     mount: !ref Api.cartApi
+  - { path: /docs, mount: { kind: Http.Reference } }
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

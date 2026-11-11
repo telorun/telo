@@ -31,7 +31,8 @@ requires:
   # 0.98.0: the database file is a host path, and 0.97.0 refuses the
   # expression at the in-repo sqlite's `file`.
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-  telo: ">=0.128.0"
+  # 0.133.0: `Telo.OpenUrl`.
+  telo: ">=0.133.0"
 imports:
   Http: ../../modules/http-server
   Multipart: ../../modules/multipart
@@ -45,6 +46,7 @@ imports:
 targets:
   - !ref migrate
   - !ref server
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
 variables:
   dbFile:
@@ -226,6 +228,7 @@ openapi: { info: { title: Streaming export, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref routes
+  - { path: /docs, mount: { kind: Http.Reference } }
 ---
 kind: Http.Api
 metadata: { name: routes }
@@ -278,3 +281,6 @@ routes:
             encoder: !ref ndjson
           text/event-stream:
             encoder: !ref sse
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

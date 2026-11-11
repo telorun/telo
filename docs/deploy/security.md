@@ -46,7 +46,7 @@ The fetched bytes are hashed and compared against the fragment **before the
 manifest is parsed or cached**. A mismatch is terminal — never downgraded to a
 cache miss, never retried against another source. The fragment is authoritative
 across every transport, so the same pin protects an OCI ref and a plain HTTPS
-URL alike.
+URL alike. A module read from a plain HTTPS URL has no layer index, so the files it claims (`!include-*`, `!module-path`, `ctx.resolveModuleFile`) are fetched from beside its `telo.yaml` unverified — the pin covers the manifest only.
 
 `telo upgrade` maintains these pins for you: an upgraded import is rewritten
 with the new version **and** the new version's hash, and an import already at

@@ -75,6 +75,15 @@ export class HttpTransport implements Transport {
         return this.httpSource.read(url);
       },
       resolveRelative: (base, relative) => this.httpSource.resolveRelative(base, relative),
+      entryAt: async (base, relative) => {
+        await assertPublicEgress(this.httpSource.locate(base, relative));
+        return this.httpSource.entryAt(base, relative);
+      },
+      readHead: async (base, relative, length) => {
+        await assertPublicEgress(this.httpSource.locate(base, relative));
+        return this.httpSource.readHead(base, relative, length);
+      },
+      locate: (base, relative) => this.httpSource.locate(base, relative),
     };
   }
 

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DirEntry, WorkspaceAdapter } from "../model";
 import {
   buildRemoteImportPlan,
+  collectClaimedRemoteFiles,
   collectPlanFiles,
   fetchRemoteManifest,
   manifestExists,
@@ -325,5 +326,151 @@ layers:
     expect(error.message.startsWith(`Integrity check failed for ${ref}: expected ${pin}, got sha256-`)).toBe(
       true,
     );
+  });
+});
+
+describe("collectClaimedRemoteFiles", () => {
+  const root = "https://h/app/telo.yaml";
+  const dest = "/workspace/apps/slug/telo.yaml";
+  const claiming = (path: string, tag = "module-path") =>
+    `kind: Telo.Application\nmetadata: { name: A }\nicon: !${tag} ${path}\n`;
+
+  function stubBodies(bodies: Record<string, Uint8Array | number>): string[] {
+    const requested: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        requested.push(url);
+        const body = bodies[url];
+        if (typeof body === "number") {
+          return { ok: false, status: body, statusText: "Nope" } as Response;
+        }
+        if (!body) return { ok: false, status: 404, statusText: "Not Found" } as Response;
+        return { ok: true, status: 200, statusText: "OK", arrayBuffer: async () => body.buffer } as Response;
+      }),
+    );
+    return requested;
+  }
+
+  it("copies a file a tag claims from beside the module's manifest", async () => {
+    const requested = stubBodies({ "https://h/app/telo-mark.svg": new TextEncoder().encode("<svg/>") });
+    const out = await collectClaimedRemoteFiles(
+      root,
+      dest,
+      [mod(root, claiming("./telo-mark.svg"))],
+      new Set([dest]),
+    );
+    expect(requested).toEqual(["https://h/app/telo-mark.svg"]);
+    expect(out.files).toEqual([
+      {
+        url: "https://h/app/telo-mark.svg",
+        destPath: "/workspace/apps/slug/telo-mark.svg",
+        text: "<svg/>",
+        isRoot: false,
+        exists: false,
+      },
+    ]);
+    expect(out.errors).toEqual([]);
+  });
+
+  it("does not fetch a file the plan already holds", async () => {
+    const requested = stubBodies({});
+    const out = await collectClaimedRemoteFiles(
+      root,
+      dest,
+      [mod(root, claiming("./telo-mark.svg"))],
+      new Set([dest, "/workspace/apps/slug/telo-mark.svg"]),
+    );
+    expect(requested).toEqual([]);
+    expect(out.files).toEqual([]);
+  });
+
+  it("reports a file the origin does not serve as an error", async () => {
+    stubBodies({});
+    const out = await collectClaimedRemoteFiles(root, dest, [mod(root, claiming("./gone.svg"))], new Set());
+    expect(out.files).toEqual([]);
+    expect(out.errors).toHaveLength(1);
+    expect(out.errors[0]).toMatchObject({ url: "https://h/app/gone.svg" });
+    expect(out.errors[0].message).toMatch(/^HTTP 404 Not Found/);
+  });
+
+  it("reports a binary file, which the workspace cannot store, as an error", async () => {
+    stubBodies({ "https://h/app/logo.png": new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe]) });
+    const out = await collectClaimedRemoteFiles(root, dest, [mod(root, claiming("./logo.png"))], new Set());
+    expect(out.files).toEqual([]);
+    expect(out.warnings).toEqual([]);
+    expect(out.errors).toEqual([
+      { url: "https://h/app/logo.png", message: expect.stringContaining("binary file") },
+    ]);
+  });
+
+  it("skips cross-origin modules", async () => {
+    const requested = stubBodies({});
+    await collectClaimedRemoteFiles(
+      root,
+      dest,
+      [mod("https://other/telo.yaml", claiming("./x.svg"))],
+      new Set(),
+    );
+    expect(requested).toEqual([]);
+  });
+});
+
+describe("buildRemoteImportPlan — an http root that claims a file", () => {
+  const ROOT = "https://raw.example/app/telo.yaml";
+  const YAML = `kind: Telo.Application
+metadata:
+  name: IconApp
+  version: 1.0.0
+targets: [!ref icon]
+---
+kind: Telo.Provider
+metadata: { name: icon }
+file: !module-path ./mark.svg
+`;
+
+  function serve(files: Record<string, string>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const text = files[url];
+        if (text === undefined) return { ok: false, status: 404, statusText: "Not Found", body: null } as Response;
+        const bytes = new TextEncoder().encode(text);
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          body:
+            init?.method === "HEAD"
+              ? null
+              : new ReadableStream({
+                  start(controller) {
+                    controller.enqueue(bytes);
+                    controller.close();
+                  },
+                }),
+          text: async () => text,
+          arrayBuffer: async () => bytes.buffer,
+        } as Response;
+      }),
+    );
+  }
+
+  it("copies the claimed file beside the manifest into the plan", async () => {
+    serve({ [ROOT]: YAML, "https://raw.example/app/mark.svg": "<svg/>" });
+    const plan = await buildRemoteImportPlan(ROOT, listDirAdapter({}));
+    expect(plan.files.map((f) => f.destPath)).toEqual([
+      "/workspace/apps/icon-app/telo.yaml",
+      "/workspace/apps/icon-app/mark.svg",
+    ]);
+    expect(plan.files[1].text).toBe("<svg/>");
+    expect(plan.errors).toEqual([]);
+  });
+
+  it("lists a claimed file the origin does not serve as an error", async () => {
+    serve({ [ROOT]: YAML });
+    const plan = await buildRemoteImportPlan(ROOT, listDirAdapter({}));
+    expect(plan.files.map((f) => f.destPath)).toEqual(["/workspace/apps/icon-app/telo.yaml"]);
+    expect(plan.errors.map((e) => e.url)).toEqual(["https://raw.example/app/mark.svg"]);
   });
 });

@@ -23,7 +23,7 @@ metadata:
   version: 1.0.0
   description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-requires: { telo: ">=0.128.0" }
+requires: { telo: ">=0.133.0" }
 imports:
   Http: ../../modules/http-server
   Ai: ../../modules/ai
@@ -34,6 +34,7 @@ imports:
   Run: ../../modules/run
 targets:
   - !ref server
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
 ports: { http: { env: PORT, default: 8080 } }
 variables:
   modelId: { env: MODEL, type: string, default: gpt-5.2 }
@@ -325,6 +326,7 @@ openapi: { info: { title: Draw Shapes Agent, version: 1.0.0 } }
 mounts:
   - path: /v1
     mount: !ref drawRoutes
+  - { path: /docs, mount: { kind: Http.Reference } }
 ---
 kind: Http.Api
 metadata: { name: drawRoutes }
@@ -357,3 +359,6 @@ routes:
             body:
               error: !cel "error.message"
               code: !cel "error.code"
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

@@ -180,6 +180,7 @@ export class WorkspaceSession {
   private refusedSet: SessionAppSpec[] | null = null;
   private capabilities: RunnerCapabilities | null = null;
   private capabilitiesRead = false;
+  private connectedBaseUrl: string | null = null;
   private mode: "agent" | "manual";
   private acceptedTerms: string | undefined;
   private agentApplied: string | null = null;
@@ -243,6 +244,7 @@ export class WorkspaceSession {
       // about itself until it is up.
       const connection = await adapter.connect(this.options.runner.config);
       if (this.disposed) return;
+      this.connectedBaseUrl = connection.baseUrl;
       if (!this.capabilitiesRead) {
         this.capabilities = (await adapter.fetchCapabilities?.(this.options.runner.config)) ?? null;
         this.capabilitiesRead = true;
@@ -368,6 +370,12 @@ export class WorkspaceSession {
   /** One app's byte channel, from the output after `fromSeq`. */
   io(app: string, fromSeq: number): SequencedRunIo {
     return this.liveSession().io(app, fromSeq);
+  }
+
+  /** The address the runner was last reached on; host-less endpoints are
+   *  completed with its hostname. */
+  get runnerBaseUrl(): string | null {
+    return this.connectedBaseUrl;
   }
 
   /** The byte-channel mode a Run asks for: a terminal where the runner offers

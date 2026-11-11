@@ -2,6 +2,7 @@ import {
   DEFAULT_MANIFEST_FILENAME,
   HttpSource,
   ManifestNotFoundError,
+  collectModuleFileClaims,
   describeSelector,
   flattenLoadedModule,
   isOciRef,
@@ -146,6 +147,80 @@ export async function collectRemoteFiles(
   }
 
   return { files, warnings };
+}
+
+/** Fetch every file the same-origin modules claim with a file tag
+ *  (`!module-path`, `!include-text`, `!include-bytes`), from beside the module's
+ *  manifest, and map them into the workspace — a module's files are what an app
+ *  reads at run time, so an open that copied only manifests would run an app
+ *  that cannot find them. A claim already in `have` is skipped. A directory claim
+ *  can't be listed over a URL, so it must name a file; and the workspace stores
+ *  text only, so a binary file is not copied. Either is an error: the copy cannot run without it. */
+export async function collectClaimedRemoteFiles(
+  rootCanonical: string,
+  rootDestPath: string,
+  modules: Iterable<readonly [string, PlanModule]>,
+  have: ReadonlySet<string>,
+): Promise<{
+  files: PlanFile[];
+  errors: { url: string; message: string }[];
+  warnings: string[];
+}> {
+  const rootOrigin = new URL(rootCanonical).origin;
+  const files: PlanFile[] = [];
+  const errors: { url: string; message: string }[] = [];
+  const warnings: string[] = [];
+  const seen = new Set(have);
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+
+  for (const [canonical, lm] of modules) {
+    if (new URL(canonical).origin !== rootOrigin) continue;
+    const texts = [lm.owner.text, ...lm.partials.map((p) => p.text)];
+    for (const claim of texts.flatMap((text) => collectModuleFileClaims(text))) {
+      if (claim.role !== "assets") continue;
+      const fileUrl = new URL(claim.path, lm.owner.source).href;
+      let destPath: string;
+      try {
+        destPath = workspacePathFor(rootCanonical, rootDestPath, fileUrl);
+      } catch (err) {
+        warnings.push(err instanceof Error ? err.message : String(err));
+        continue;
+      }
+      if (seen.has(destPath)) continue;
+      seen.add(destPath);
+
+      try {
+        const res = await fetch(fileUrl);
+        if (!res.ok) {
+          errors.push({
+            url: fileUrl,
+            message:
+              `HTTP ${res.status} ${res.statusText}` +
+              (claim.directory
+                ? ` — if ${claim.origin} names a directory, claim the files it holds individually, ` +
+                  `since a URL can't be listed`
+                : ""),
+          });
+          continue;
+        }
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        let text: string;
+        try {
+          text = decoder.decode(bytes);
+        } catch {
+          errors.push({
+            url: fileUrl,
+            message: "a binary file, which the workspace cannot store — the copy will not find it",
+          });
+          continue;
+        }
+        files.push({ url: fileUrl, destPath, text, isRoot: false, exists: false });
+      } catch (err) {
+        errors.push({ url: fileUrl, message: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  }
+  return { files, errors, warnings };
 }
 
 /** Reads the manifest URL from a `location.search` string, or null when absent. */
@@ -376,6 +451,15 @@ export async function buildRemoteImportPlan(
   );
   files.push(...assetFiles);
 
+  const claimed = await collectClaimedRemoteFiles(
+    graph.rootSource,
+    root.destPath,
+    graph.modules,
+    new Set(files.map((f) => f.destPath)),
+  );
+  files.push(...claimed.files);
+  warnings.push(...claimed.warnings);
+
   await markExisting(adapter, files);
 
   // Surface same-origin load failures so the preview doesn't imply a complete
@@ -384,6 +468,7 @@ export async function buildRemoteImportPlan(
   const errors = graph.errors
     .filter((e) => sameOrigin(e.url, rootOrigin))
     .map((e) => ({ url: e.url, message: e.error instanceof Error ? e.error.message : String(e.error) }));
+  errors.push(...claimed.errors);
 
   return {
     rootUrl,

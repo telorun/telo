@@ -22,7 +22,8 @@ metadata:
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-  telo: ">=0.128.0"
+  # 0.133.0: `Telo.OpenUrl`.
+  telo: ">=0.133.0"
 imports:
   Http: ../../modules/http-server
   Mcp: ../../modules/mcp-server
@@ -31,6 +32,7 @@ imports:
 targets:
   - !ref migrate
   - !ref server
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8066 } }
 variables:
   dbFile:
@@ -186,3 +188,7 @@ mounts:
     mount: !ref ticketRoutes
   - path: /mcp
     mount: !ref mcpEndpoint
+  - { path: /docs, mount: { kind: Http.Reference } }
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

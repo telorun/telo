@@ -21,6 +21,7 @@ import {
   type SessionConfig,
 } from "../contract.js";
 import { relayDebugStream } from "../debug/relay.js";
+import { OpenUrlRequests } from "../debug/open-url-requests.js";
 import { portsResolvedFrom } from "../debug/ports-resolved.js";
 import { RunProjection } from "../debug/run-projection.js";
 import { watchReachability } from "../reachability.js";
@@ -309,7 +310,10 @@ export class SessionLifecycle {
         }
       }
       for (const name of [...entry.apps.keys()]) {
-        if (!apps.some((a) => a.name === name)) entry.apps.delete(name);
+        if (!apps.some((a) => a.name === name)) {
+          entry.apps.delete(name);
+          this.openUrlsOf(entry).forget(name);
+        }
       }
       for (const app of apps) entry.apps.get(app.name)!.ports = app.ports;
     } finally {
@@ -487,6 +491,17 @@ export class SessionLifecycle {
   private readonly addressesOf = new WeakMap<object, AppAddresses>();
   /** The epoch of the workload creation in flight, per session. */
   private readonly starting = new WeakMap<SessionEntry, number>();
+  /** What each session's apps asked to have opened, and which ports it routes. */
+  private readonly openUrls = new WeakMap<SessionEntry, OpenUrlRequests>();
+
+  private openUrlsOf(entry: SessionEntry): OpenUrlRequests {
+    let requests = this.openUrls.get(entry);
+    if (!requests) {
+      requests = new OpenUrlRequests();
+      this.openUrls.set(entry, requests);
+    }
+    return requests;
+  }
 
   /** `containers` is what a previous runner process stored of a session whose
    *  workload may still run, and so still use them. */
@@ -696,6 +711,7 @@ export class SessionLifecycle {
           const added = (change.added ?? []).filter((e) => e.protocol === "tcp").map((e) => e.port);
           if (channel.run?.started && added.length > 0) this.watchPorts(entry, channel, added);
         }
+        this.openUrlsOf(entry).routing(appName, change);
         this.publish(entry, { type: "endpoints", app: appName, ...change });
       },
     };
@@ -751,6 +767,21 @@ export class SessionLifecycle {
             entry.attribution?.frame(channel.name, frame);
             if (isEventFrame(frame)) {
               this.publish(entry, { type: "debug", app: channel.name, frame });
+            }
+            const open = this.openUrlsOf(entry).request(channel.name, channel.generation, frame, {
+              declared: () =>
+                [...entry.apps.values()].map((c) => ({
+                  app: c.name,
+                  ports: c.ports.filter((p) => p.protocol === "tcp").map((p) => p.port),
+                })),
+            });
+            if (open) {
+              this.publish(entry, {
+                type: "openUrl",
+                app: channel.name,
+                generation: channel.generation,
+                ...open,
+              });
             }
             const declared = portsResolvedFrom(frame);
             if (declared) entry.workload?.applyDeclaredPorts?.(channel.name, declared);
