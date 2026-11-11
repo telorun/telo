@@ -25,6 +25,7 @@
 import {
   CEL_ENGINE,
   EACH_SEGMENT,
+  ELEMENT_SEGMENT,
   PRESENCE_SEGMENT,
   INDEX_SEGMENT,
   isRefSentinel,
@@ -570,6 +571,9 @@ export interface ReadNode {
  * is read on every element of the collection reached so far. A chain ENDING
  * there is a collection that is only iterated — none of its elements is read,
  * and only a collection that is itself not known until creation counts.
+ * `ELEMENT_SEGMENT` after it reads each element whole — over a list; over a map
+ * the variable is a KEY, so the values are not read and a map whose values are
+ * not yet known still serves a condition about its keys.
  */
 export function readNodes(
   chains: readonly (readonly string[])[],
@@ -597,9 +601,12 @@ export function readNodes(
       if (segment === EACH_SEGMENT) {
         if (dynamicNode(current, path)) break;
         if (i === chain.length - 1) return;
+        const whole = chain[i + 1] === ELEMENT_SEGMENT;
         if (Array.isArray(current)) {
-          current.forEach((item, index) => walk(item, chain, i + 1, `${path}[${index}]`));
-        } else if (isObject(current)) {
+          // Each element whole is the list whole, which stops at a nested declaration.
+          if (whole) nodes.push({ node: current, path });
+          else current.forEach((item, index) => walk(item, chain, i + 1, `${path}[${index}]`));
+        } else if (isObject(current) && !whole) {
           for (const [key, item] of Object.entries(current)) {
             walk(item, chain, i + 1, `${path}.${key}`);
           }

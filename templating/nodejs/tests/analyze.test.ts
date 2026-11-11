@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   extractAccessChains,
+  extractReadChains,
+  extractValueReadChains,
   findNullableAccessIssues,
   validateChainAgainstSchema,
 } from "../src/cel/analyze.js";
@@ -276,5 +278,28 @@ describe("validateChainAgainstSchema — unions", () => {
   it("leaves the chain unjudged when an alternative is open", () => {
     const open = { type: "object", properties: { m: { anyOf: [message, { type: "object" }] } } };
     expect(validateChainAgainstSchema(["m", "anything"], open)).toBeNull();
+  });
+});
+
+describe("extractValueReadChains", () => {
+  const readsOf = (source: string) => extractValueReadChains(env.parse(source).root);
+  const wholeOf = (source: string) => extractReadChains(env.parse(source).root);
+
+  it("reads a bare iteration variable as each element of its range", () => {
+    expect(readsOf("self.m.all(k, k in self.names)")).toContainEqual(["self", "m", "[]", "[]!"]);
+    expect(wholeOf("self.m.all(k, k in self.names)")).toContainEqual(["self", "m"]);
+  });
+
+  it("reads the range of an `in` test as each element of it", () => {
+    expect(readsOf("n in self.m")).toContainEqual(["self", "m", "[]", "[]!"]);
+    expect(wholeOf("n in self.m")).toContainEqual(["self", "m"]);
+  });
+
+  it("keeps a member read through the variable as before", () => {
+    expect(readsOf("self.xs.all(x, x.path != '')")).toContainEqual(["self", "xs", "[]", "path"]);
+  });
+
+  it("leaves a range that is only iterated unread", () => {
+    expect(readsOf("self.xs.all(x, true)")).toEqual([["self", "xs", "[]"]]);
   });
 });

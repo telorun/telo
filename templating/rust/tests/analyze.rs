@@ -1,7 +1,10 @@
 //! Twin of `templating/nodejs/tests/analyze.test.ts`, case for case.
 
 use serde_json::{json, Value};
-use telo_templating::cel::analyze::{extract_access_chains, find_nullable_access_issues, validate_chain_against_schema, NullableIssue};
+use telo_templating::cel::analyze::{
+    extract_access_chains, extract_read_chains, extract_value_read_chains, find_nullable_access_issues, validate_chain_against_schema,
+    NullableIssue,
+};
 use telo_templating::{build_cel_environment, CelHandlers};
 use telorun_cel::CelEnvironment;
 
@@ -276,4 +279,36 @@ fn leaves_the_chain_unjudged_when_an_alternative_is_open() {
     let (message, _) = union_context();
     let open = json!({ "type": "object", "properties": { "m": { "anyOf": [message, { "type": "object" }] } } });
     assert_eq!(validate(&["m", "anything"], &open), None);
+}
+
+// --- extractValueReadChains ---------------------------------------------------
+
+fn reads(source: &str) -> Vec<Vec<String>> {
+    extract_value_read_chains(&env().parse(source).root)
+}
+
+fn whole(source: &str) -> Vec<Vec<String>> {
+    extract_read_chains(&env().parse(source).root)
+}
+
+#[test]
+fn value_reads_a_bare_iteration_variable_as_each_element_of_its_range() {
+    assert!(reads("self.m.all(k, k in self.names)").contains(&chain(&["self", "m", "[]", "[]!"])));
+    assert!(whole("self.m.all(k, k in self.names)").contains(&chain(&["self", "m"])));
+}
+
+#[test]
+fn value_reads_the_range_of_an_in_test_as_each_element_of_it() {
+    assert!(reads("n in self.m").contains(&chain(&["self", "m", "[]", "[]!"])));
+    assert!(whole("n in self.m").contains(&chain(&["self", "m"])));
+}
+
+#[test]
+fn value_reads_keep_a_member_read_through_the_variable() {
+    assert!(reads("self.xs.all(x, x.path != '')").contains(&chain(&["self", "xs", "[]", "path"])));
+}
+
+#[test]
+fn value_reads_leave_a_range_that_is_only_iterated_unread() {
+    assert_eq!(reads("self.xs.all(x, true)"), [chain(&["self", "xs", "[]"])]);
 }

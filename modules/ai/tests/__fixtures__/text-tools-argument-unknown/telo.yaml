@@ -1,0 +1,41 @@
+# Text tools mapping an argument the static tool's parameters refuse. Refused by
+# `telo check` at the declaration, and by the agent when it first lists its tools.
+kind: Telo.Library
+metadata: { name: TextToolsArgumentUnknown }
+imports: { Ai: ../../.., AiEcho: ../ai-echo.yaml }
+exports: { resources: [agent] }
+---
+kind: Ai.Tools
+metadata: { name: fileTools }
+tools:
+  - name: apply_changes
+    tool: { kind: Telo.Value, value: { wrote: true } }
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [changes]
+      properties: { changes: { type: array }, dryRun: { type: boolean } }
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model: { kind: AiEcho.EchoModel }
+textTools:
+  - tags: [telo-edit]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, b.body)"
+      force: !cel "true"
+toolProviders:
+  - provider: !ref fileTools
+---
+kind: Ai.AgentStream
+metadata: { name: stream }
+model: { kind: AiEcho.EchoModelStream }
+textTools:
+  - tags: [telo-edit]
+    tool: apply_changes
+    arguments:
+      changes: !cel "blocks.map(b, b.body)"
+      force: !cel "true"
+toolProviders:
+  - provider: !ref fileTools

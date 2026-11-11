@@ -16,6 +16,7 @@ import {
   buildCelEnvironment,
   celEngine,
   extractReadChains,
+  extractValueReadChains,
   interpolationShape,
   MODULE_CALL_DISPATCH_KEY,
   moduleCallNames,
@@ -113,6 +114,11 @@ export type CompiledRule =
   | {
       parsed: (ctx: Record<string, unknown>) => unknown;
       chains: readonly (readonly string[])[];
+      /** The same reads told apart by what a range holds, for the check of which
+       *  VALUES a condition reads (`findDynamicRead`): an iteration variable and
+       *  an `in` test read a map's keys, never its values. `chains` stays the
+       *  whole-range reading the places a rule reads are worked out from. */
+      reads: readonly (readonly string[])[];
       /** The module functions it calls, as written (`Self.fits`). */
       calls: readonly string[];
       /** The members of `self` a presence test asks about (`has(self.port)`),
@@ -207,6 +213,7 @@ export function compileRuleCondition(
       // to the member it reads on each element — so an expression in a field of
       // an element the condition never reads does not stop the rule running.
       chains: extractReadChains(parsed.root),
+      reads: extractValueReadChains(parsed.root),
       calls: calledFunctions(parsed.root),
       rootPresence: rootPresenceMembers(parsed.root),
     };
