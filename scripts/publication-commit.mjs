@@ -5,13 +5,17 @@
 // no branch. The release's tags are placed on it, so a tag carries pins to published
 // artifacts while every branch keeps relative imports.
 //
-// It is made in a scratch worktree of the release commit, removed afterwards, so the
-// caller's checkout is never touched. The command is the caller's built CLI (`TELO_CLI`
-// overrides it), and the worktree borrows the caller's `node_modules` directories for
-// the controller builds the release plan digests — which reach the workspace packages
-// a bundle inlines in the caller's tree — so the caller's checkout must be the release
-// commit, installed and built (`pnpm -r build`), as a Publish job's is; it warns when
-// HEAD is another commit. Every import must come out published:
+// It is made in the checkout of the release commit itself: the one computation the release
+// PR's gate (`check-release-imports.mjs`) and `telo publish` run, in the layout they run it in.
+// A controller bundle records the path of every dependency it inlines relative to its build
+// root, so the same sources built in another tree — one borrowing this checkout's
+// `node_modules` — digest differently and every module reads as changed. The checkout must be
+// the release commit, installed and built (`pnpm -r build`), as a Publish job's is, with no
+// tracked change and no untracked consumer manifest: anything else is refused. The rewrite
+// edits the consumer manifests in place, the tree is written through a private index (HEAD,
+// the real index and every branch stay where they were), and the manifests are restored from
+// the release commit before the run returns. The command is the checkout's built CLI
+// (`TELO_CLI` overrides it). Every import must come out published:
 // one left relative fails the run, naming it, and a re-run heals a registry error.
 //
 // The commit is a function of the release commit and the registry's immutable pins:
@@ -33,13 +37,13 @@
 // Env: TELO_CLI, TELO_OCI_REGISTRY (read by the command).
 
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdtempSync, readdirSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setOutput } from "./release-actions-output.mjs";
 import { publicationRefusal, publicationSubject } from "./release-commit.mjs";
-import { consumerManifests, describeImports, releaseImportsJson } from "./release-imports.mjs";
+import { CONSUMER_ROOTS, consumerManifests, describeImports, releaseImportsJson } from "./release-imports.mjs";
 import { ensureTag } from "./release-tag.mjs";
 import { ROOT } from "./version-line.mjs";
 
@@ -48,7 +52,6 @@ export const PUBLICATION_IDENTITY = {
   email: "41898282+github-actions[bot]@users.noreply.github.com",
 };
 const CANDIDATE_TAG = /^v\d+\.\d+\.\d+-/;
-const SKIP_DIRS = new Set([".git", ".claude", ".telo", "target"]);
 
 function git(cwd, args, env) {
   return execFileSync("git", args, {
@@ -60,35 +63,13 @@ function git(cwd, args, env) {
   }).trim();
 }
 
-/** Links every `node_modules` directory of `from` into `to` where `to` has the parent
- *  directory and no entry of that name. Returns the links made. */
-function borrowDependencies(from, to) {
-  const links = [];
-  const visit = (dir) => {
-    for (const entry of readdirSync(join(from, dir), { withFileTypes: true })) {
-      if (!entry.isDirectory() || SKIP_DIRS.has(entry.name)) continue;
-      const path = dir ? join(dir, entry.name) : entry.name;
-      if (entry.name !== "node_modules") {
-        if (existsSync(join(to, path))) visit(path);
-        continue;
-      }
-      if (!existsSync(join(to, path))) {
-        symlinkSync(join(from, path), join(to, path), "dir");
-        links.push(join(to, path));
-      }
-    }
-  };
-  visit("");
-  return links;
-}
-
-/** Runs `--as=published` over the consumer manifests of `worktree`; throws naming every
- *  import it left relative or could not decide. */
-export function publishImports(worktree) {
-  const manifests = consumerManifests(worktree);
+/** Runs `--as=published` over the consumer manifests of the checkout at `root`; throws naming
+ *  every import it left relative or could not decide. */
+export function publishImports(root) {
+  const manifests = consumerManifests(root);
   if (manifests.length === 0) return;
   console.error(`publication-commit: telo release imports --as=published over ${manifests.length} manifest(s)`);
-  const { status, result } = releaseImportsJson({ cwd: worktree, args: ["--as=published"], manifests });
+  const { status, result } = releaseImportsJson({ cwd: root, args: ["--as=published"], manifests });
   if (status === 0) return;
   const named = describeImports([...(result?.keptRelative ?? []), ...(result?.errors ?? [])]);
   if (status === 1 && named.length > 0) {
@@ -97,10 +78,44 @@ export function publishImports(worktree) {
   throw new Error(`telo release imports exited ${status ?? "on a signal"} and named no import; see its output above.`);
 }
 
+/** At most `limit` of `paths`, then the count of the rest. */
+const named = (paths, limit = 20) =>
+  paths.slice(0, limit).join(", ") + (paths.length > limit ? ` and ${paths.length - limit} more` : "");
+
+const lines = (text) => text.split("\n").filter(Boolean);
+
+/** The consumer roots that exist in the checkout at `root` — a pathspec naming none is an error. */
+const presentRoots = (root) => CONSUMER_ROOTS.filter((name) => existsSync(join(root, name)));
+
+/** Tracked paths whose content differs from HEAD, the index's stat cache refreshed first. */
+function changedTracked(root) {
+  git(root, ["update-index", "-q", "--refresh"]);
+  return lines(git(root, ["diff-index", "--name-only", "HEAD"]));
+}
+
+/** Why `cwd`'s checkout is not the release commit as published, or undefined. */
+function checkoutRefusal(cwd, releaseCommit) {
+  const head = git(cwd, ["rev-parse", "HEAD"]);
+  if (head !== releaseCommit) {
+    return `HEAD is ${head}, not the release commit ${releaseCommit}: check out ${releaseCommit}, install and build it, and run again`;
+  }
+  const changed = changedTracked(cwd);
+  if (changed.length > 0) {
+    return `the checkout has changes to tracked files (${named(changed)}): the release plan digests the whole tree, so a change anywhere makes the verdict about a tree that is not the release`;
+  }
+  const roots = presentRoots(cwd);
+  const untracked = roots.length === 0 ? [] : lines(git(cwd, ["ls-files", "--others", "--exclude-standard", "--", ...roots]));
+  if (untracked.length > 0) {
+    return `untracked files under ${CONSUMER_ROOTS.join(", ")} (${named(untracked)}): the rewrite would read them and the commit would leave them out`;
+  }
+  return undefined;
+}
+
 /**
  * Makes the publication commit of `release` named for `tag`:
  * `{ releaseCommit, sha, publication, diffstat }`, `sha` being the release commit
- * itself when the rewrite changes nothing. `rewrite(worktree)` rewrites the tree.
+ * itself when the rewrite changes nothing. `rewrite(root)` rewrites the checkout's
+ * consumer manifests in place; they are restored before this returns.
  */
 export function makePublicationCommit({ cwd = ROOT, release, tag, rewrite = publishImports }) {
   let releaseCommit;
@@ -109,56 +124,57 @@ export function makePublicationCommit({ cwd = ROOT, release, tag, rewrite = publ
   } catch {
     throw new Error(`${release} is not a commit of this repository.`);
   }
-  if (git(cwd, ["rev-parse", "HEAD"]) !== releaseCommit) {
-    console.log(
-      `::warning::publication-commit: this checkout is not at ${releaseCommit}; the controller builds borrow its ` +
-        "node_modules (workspace packages included), so a module may read as changed. Run it from a checkout of the release commit.",
-    );
-  }
+  const refusal = checkoutRefusal(cwd, releaseCommit);
+  if (refusal) throw new Error(refusal);
+
+  const root = git(cwd, ["rev-parse", "--show-toplevel"]);
   const scratch = mkdtempSync(join(tmpdir(), "telo-publication-"));
-  const worktree = join(scratch, "tree");
-  let links = [];
-  let added = false;
   let failed = false;
+  let result;
   try {
-    git(cwd, ["worktree", "add", "--detach", "--quiet", worktree, releaseCommit]);
-    added = true;
-    links = borrowDependencies(git(cwd, ["rev-parse", "--show-toplevel"]), worktree);
-    rewrite(worktree);
-    git(worktree, ["add", "--update"]);
-    const tree = git(worktree, ["write-tree"]);
+    rewrite(root);
+    const index = { ...process.env, GIT_INDEX_FILE: join(scratch, "index") };
+    git(root, ["read-tree", releaseCommit], index);
+    const roots = presentRoots(root);
+    if (roots.length > 0) git(root, ["add", "--update", "--", ...roots], index);
+    const tree = git(root, ["write-tree"], index);
     if (tree === git(cwd, ["rev-parse", `${releaseCommit}^{tree}`])) {
-      return { releaseCommit, sha: releaseCommit, publication: false, diffstat: "" };
+      result = { releaseCommit, sha: releaseCommit, publication: false, diffstat: "" };
+    } else {
+      const date = git(cwd, ["log", "-1", "--format=%cd", "--date=raw", releaseCommit]);
+      const { name, email } = PUBLICATION_IDENTITY;
+      const env = {
+        ...process.env,
+        GIT_AUTHOR_NAME: name,
+        GIT_AUTHOR_EMAIL: email,
+        GIT_AUTHOR_DATE: date,
+        GIT_COMMITTER_NAME: name,
+        GIT_COMMITTER_EMAIL: email,
+        GIT_COMMITTER_DATE: date,
+      };
+      const sha = git(cwd, ["commit-tree", "--no-gpg-sign", tree, "-p", releaseCommit, "-m", publicationSubject(tag)], env);
+      const notPublication = publicationRefusal({ cwd, commit: sha });
+      if (notPublication) throw new Error(`the rewrite of ${releaseCommit} is not a publication: ${notPublication}.`);
+      result = { releaseCommit, sha, publication: true, diffstat: git(cwd, ["diff", "--stat", releaseCommit, sha]) };
     }
-    const date = git(cwd, ["log", "-1", "--format=%cd", "--date=raw", releaseCommit]);
-    const { name, email } = PUBLICATION_IDENTITY;
-    const env = {
-      ...process.env,
-      GIT_AUTHOR_NAME: name,
-      GIT_AUTHOR_EMAIL: email,
-      GIT_AUTHOR_DATE: date,
-      GIT_COMMITTER_NAME: name,
-      GIT_COMMITTER_EMAIL: email,
-      GIT_COMMITTER_DATE: date,
-    };
-    const sha = git(cwd, ["commit-tree", "--no-gpg-sign", tree, "-p", releaseCommit, "-m", publicationSubject(tag)], env);
-    const refusal = publicationRefusal({ cwd, commit: sha });
-    if (refusal) throw new Error(`the rewrite of ${releaseCommit} is not a publication: ${refusal}.`);
-    return { releaseCommit, sha, publication: true, diffstat: git(cwd, ["diff", "--stat", releaseCommit, sha]) };
   } catch (error) {
     failed = true;
     throw error;
   } finally {
     try {
-      for (const link of links) if (lstatSync(link).isSymbolicLink()) unlinkSync(link);
-      if (added) git(cwd, ["worktree", "remove", "--force", worktree]);
+      const roots = presentRoots(root);
+      if (roots.length > 0) git(root, ["restore", `--source=${releaseCommit}`, "--worktree", "--", ...roots]);
+      const left = changedTracked(root);
+      if (left.length > 0) throw new Error(`the checkout was not restored: ${named(left)} still differ from ${releaseCommit}`);
+    } catch (restore) {
+      // A failed run already throws its own cause; the restore failure is named beside it.
+      if (!failed) throw restore;
+      console.error(`publication-commit: ${restore.message}`);
+    } finally {
       rmSync(scratch, { recursive: true, force: true });
-    } catch (cleanup) {
-      // A failed run already throws its own cause; the leftover is named beside it.
-      if (!failed) throw cleanup;
-      console.error(`publication-commit: could not remove the scratch worktree ${worktree}: ${cleanup.message}`);
     }
   }
+  return result;
 }
 
 function options(argv) {
