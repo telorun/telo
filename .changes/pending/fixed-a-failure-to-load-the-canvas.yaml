@@ -1,0 +1,4 @@
+modules:
+  modules/pdf: Fixed
+body: A failure to load the canvas, pdf.js or its assets no longer makes every later
+  call in the process fail with it; the next call tries again.

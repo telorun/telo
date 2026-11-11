@@ -6,6 +6,8 @@ vi.mock("@napi-rs/canvas", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@napi-rs/canvas")>();
   return { ...actual, loadImage: vi.fn(actual.loadImage) };
 });
+// The kernel's native-file resolution is not here; the package finds its own addon.
+vi.mock("../src/canvas-runtime.js", () => ({ loadCanvas: () => import("@napi-rs/canvas") }));
 
 const { createCanvas, loadImage } = await import("@napi-rs/canvas");
 const { create } = await import("../src/fit-controller.js");

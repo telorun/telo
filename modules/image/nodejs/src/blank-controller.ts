@@ -1,6 +1,7 @@
-import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
+import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { loadCanvas } from "./canvas-runtime.js";
 import { integerSetting } from "./integer-setting.js";
 import { encodeCanvas } from "./encode.js";
 
@@ -36,7 +37,10 @@ interface BlankOutputs {
  * that replaces embedded base64 images.
  */
 class ImageBlank implements ResourceInstance<BlankInputs, BlankOutputs> {
-  constructor(private readonly resource: BlankResource) {}
+  constructor(
+    private readonly resource: BlankResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   // `width` / `height` bounds are declared on `inputType` (integer, 1..16384)
   // and enforced by the kernel's contract binding before this runs, so the guard
@@ -49,6 +53,7 @@ class ImageBlank implements ResourceInstance<BlankInputs, BlankOutputs> {
     const width = integerSetting(inputs.width, label, "width");
     const height = integerSetting(inputs.height, label, "height");
 
+    const { createCanvas } = await loadCanvas(this.ctx);
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext("2d");
     assertValidColor(ctx, color, label);
@@ -85,6 +90,6 @@ export async function create(
   resource: BlankResource,
   ctx: ResourceContext,
 ): Promise<ImageBlank> {
-  return new ImageBlank(resource);
+  return new ImageBlank(resource, ctx);
 }
 

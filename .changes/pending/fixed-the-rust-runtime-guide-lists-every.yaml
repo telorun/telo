@@ -1,0 +1,4 @@
+modules:
+  modules/console: Fixed
+body: "The Rust runtime guide lists every runtime: form itself instead of linking to
+  another module's page."

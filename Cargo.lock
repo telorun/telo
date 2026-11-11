@@ -1500,14 +1500,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "telorun-starlark"
-version = "0.13.3"
-dependencies = [
- "serde_json",
- "telorun-sdk",
-]
-
-[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

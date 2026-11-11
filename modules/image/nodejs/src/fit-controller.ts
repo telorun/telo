@@ -1,6 +1,7 @@
-import { createCanvas, loadImage, type Image, type SKRSContext2D } from "@napi-rs/canvas";
+import type { Image, SKRSContext2D } from "@napi-rs/canvas";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { loadCanvas } from "./canvas-runtime.js";
 import { encodeCanvas } from "./encode.js";
 import { ImageHeaderError, readImageHeader, withUprightTag, type ImageHeader } from "./image-header.js";
 
@@ -43,7 +44,10 @@ class ImageFit implements ResourceInstance<FitInputs, FitOutputs> {
   private readonly maxBytes: number;
   private readonly maxPixels: number;
 
-  constructor(private readonly resource: FitResource) {
+  constructor(
+    private readonly resource: FitResource,
+    private readonly ctx: ResourceContext,
+  ) {
     this.label = `Image.Fit "${resource.metadata.name}"`;
     this.maxBytes = Number(resource.maxBytes ?? DEFAULT_MAX_BYTES);
     this.maxPixels = Number(resource.maxPixels ?? DEFAULT_MAX_PIXELS);
@@ -63,8 +67,9 @@ class ImageFit implements ResourceInstance<FitInputs, FitOutputs> {
       );
     }
 
+    const { createCanvas, loadImage } = await loadCanvas(this.ctx);
     const tag = header.orientation;
-    const source = await this.decode(tag === undefined ? data : withUprightTag(data, tag));
+    const source = await this.decode(loadImage, tag === undefined ? data : withUprightTag(data, tag));
     const orientation = tag?.value ?? 1;
     // Orientations 5–8 turn the image a quarter, so upright it is as wide as
     // it is stored tall.
@@ -98,7 +103,10 @@ class ImageFit implements ResourceInstance<FitInputs, FitOutputs> {
     }
   }
 
-  private async decode(data: Uint8Array): Promise<Image> {
+  private async decode(
+    loadImage: (data: Uint8Array) => Promise<Image>,
+    data: Uint8Array,
+  ): Promise<Image> {
     try {
       return await loadImage(data);
     } catch (err) {
@@ -149,5 +157,5 @@ function turnUpright(ctx: SKRSContext2D, orientation: number, width: number, hei
 export function register(ctx: ControllerContext): void {}
 
 export async function create(resource: FitResource, ctx: ResourceContext): Promise<ImageFit> {
-  return new ImageFit(resource);
+  return new ImageFit(resource, ctx);
 }

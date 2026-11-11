@@ -455,9 +455,9 @@ field.
 
 Most of those packages are private: the controller is bundled into the module
 artifact, so nothing is fetched at load and there is no tarball to push. A module
-that cannot be bundled — one whose driver resolves a native binary relative to
-its own package directory — names `pkg:npm/<name>@<version>` in `controllers:`
-instead, and that tarball has to exist for any consumer outside this checkout.
+delivered from npm instead — a third-party one; no module in this repository
+is — names `pkg:npm/<name>@<version>` in `controllers:`, and that tarball has to
+exist for any consumer outside this checkout.
 
 **`telo publish` pushes it**, before the manifest that names it, and skips it
 when npm already has that exact version. It is the same step `--skip-controllers`

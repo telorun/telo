@@ -1,0 +1,4 @@
+modules:
+  modules/type: Fixed
+body: The usage notes no longer mention a scripting kind that is not part of the
+  standard library.

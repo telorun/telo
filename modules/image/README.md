@@ -27,6 +27,21 @@ it propose bounding boxes, draw them, let it look again.
   an expression of another type, and a value only known at run fails the call
   with `ERR_INPUT_INVALID`. Each output reports its `mediaType`.
 
+## Platforms
+
+Drawing and decoding run on Skia, which ships as a binary per platform: macOS
+(Intel and Apple Silicon), Linux x64 and arm64 on both glibc and musl, and
+Windows x64 and arm64. Only the one your machine needs is downloaded; the rest of
+the module travels inside its artifact, so running it needs no package manager
+and no build step.
+
+Requires telo 0.90.0 or newer.
+
+**One Skia release per process.** The addon is located through
+`NAPI_RS_NATIVE_LIBRARY_PATH`, the wrapper's only override, which is
+process-wide. This module and `pdf` stage the same upstream release, so loading
+both in one application is safe.
+
 ## Kinds
 
 | Kind | Purpose |

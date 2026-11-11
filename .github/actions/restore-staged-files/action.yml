@@ -23,7 +23,7 @@ runs:
   using: composite
   steps:
     # Mirrors the staged paths in the .gitignore of modules/http-server,
-    # tesseract, tesseract-lang, pdf, sqlite and ui-lucide.
+    # tesseract, tesseract-lang, pdf, image, sqlite and ui-lucide.
     - id: paths
       shell: bash
       run: |
@@ -38,6 +38,8 @@ runs:
           echo 'modules/pdf/native/'
           echo 'modules/pdf/assets/'
           echo 'modules/pdf/notices/'
+          echo 'modules/image/native/'
+          echo 'modules/image/notices/'
           echo 'modules/sqlite/native/'
           echo 'modules/ui-lucide/icons/'
           echo 'modules/ui-lucide/notices/'
@@ -47,6 +49,6 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ steps.paths.outputs.list }}
-        key: staged-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('modules/http-server/telo.yaml', 'modules/tesseract/telo.yaml', 'modules/tesseract-lang/*/telo.yaml', 'modules/pdf/telo.yaml', 'modules/sqlite/telo.yaml', 'modules/ui-lucide/telo.yaml') }}
+        key: staged-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('modules/http-server/telo.yaml', 'modules/tesseract/telo.yaml', 'modules/tesseract-lang/*/telo.yaml', 'modules/pdf/telo.yaml', 'modules/image/telo.yaml', 'modules/sqlite/telo.yaml', 'modules/ui-lucide/telo.yaml') }}
         restore-keys: |
           staged-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-

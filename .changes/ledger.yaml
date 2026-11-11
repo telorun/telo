@@ -864,12 +864,6 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       library/js: sha256-Z7tEHyw1fa74mdI_bTCiFNF9LJ62Xb5zlQ5QJKLY_OA
       manifest: sha256-oX9Tv5PE_UaVmH3c77C7Oc0-zR6EaqgHuBg62IMmuQs
-  modules/starlark:
-    version: 0.13.3
-    registry: oci://ghcr.io/telorun
-    layers:
-      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-c4BrseGWhlu3v42UT1d4AaQ-V4lVY2e_XTmlF8Y5w0Q
   modules/stream:
     version: 0.15.1
     registry: oci://ghcr.io/telorun

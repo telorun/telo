@@ -75,7 +75,6 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | Module | Description |
 | --- | --- |
 | [javascript](./javascript/README.md) | Inline JavaScript execution via `JavaScript.Script`. |
-| [starlark](./starlark/README.md) | Deterministic, bounded scripting via `Starlark.Script`. |
 
 ### Configuration & Ops
 

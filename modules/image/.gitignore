@@ -1,0 +1,4 @@
+# Staged by `telo release stage` from the `sources:` block, and by the kernel on
+# first use in a checkout: Skia's addon for this host and its license.
+/native/
+/notices/

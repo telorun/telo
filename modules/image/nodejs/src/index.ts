@@ -5,3 +5,7 @@
  * visualization half of vision-grounding loops: render, let a model propose
  * boxes, draw them, look again. Coordinates are pixels, top-left origin.
  */
+
+export * as blank from "./blank-controller.js";
+export * as overlay from "./overlay-controller.js";
+export * as fit from "./fit-controller.js";

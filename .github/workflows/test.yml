@@ -699,15 +699,9 @@ jobs:
       # Package unit tests resolve sibling workspace packages to their built
       # dist/, so the build must run before vitest.
       #
-      # This includes modules, and the module half is NOT a no-op even though the
-      # kernel builds bundled controllers from source at load. 13 of the 61
-      # modules emit dist/: the three `pkg:npm` ones (image, pdf, starlark),
-      # whose controller is resolved as a package EXPORT SUBPATH (`#./script`)
-      # inside the installed node_modules and so must be staged, plus ten
-      # libraries other packages compile against. The other 48 are
-      # `tsc --noEmit` and contribute a type-check only. Filtering modules out
-      # here breaks every manifest test touching one of the three, with
-      # "Controller entry could not be resolved".
+      # This includes modules: the kernel builds their controllers from source at
+      # load, so their build is a type-check, plus a dist/ for the libraries
+      # other packages compile against.
       #
       # On a pull request that reaches only some packages, those and what they
       # depend on are built, and their tests alone run.
@@ -786,8 +780,10 @@ jobs:
         with:
           scope: ${{ github.job }}
 
+      # A manifest test runs the CLI, which is all that reads built output: the
+      # kernel builds every module controller from source at load.
       - name: Build for Node.js
-        run: pnpm -r run build
+        run: pnpm --filter "@telorun/cli..." run build
 
       - name: Run tests (node)
         if: needs.select.outputs.mode != 'none'
@@ -904,11 +900,11 @@ jobs:
         with:
           scope: ${{ github.job }}
 
-      # Test setup (not a runtime-image concern): build the module controllers
-      # and their compile deps so the mounted suite's local_path controllers
-      # resolve to built dist/. The image stays a pure runtime.
-      - name: Build module controllers
-        run: pnpm --filter "{./modules/**}..." run build
+      # Test setup (not a runtime-image concern): the CLI the mounted suite's
+      # tests start. Module controllers are built from source at load, so no
+      # module needs a dist/. The image stays a pure runtime.
+      - name: Build the CLI
+        run: pnpm --filter "@telorun/cli..." run build
 
       # Anonymous pulls are limited per IP, and a hosted runner shares its IP
       # with everyone else's jobs. A fork's pull request holds no secrets and
@@ -1185,17 +1181,11 @@ jobs:
         with:
           scope: ${{ github.job }}
 
-      # Everything below reads from dist/, so a failure here makes the rest of
-      # the run meaningless rather than merely red. Modules are included: the
-      # three `pkg:npm` ones stage a dist/ their controller entry is resolved
-      # from — see the note in the Linux unit job.
-      #
-      # The excluded packages are browser bundles and the docs site: nothing
-      # here reads their output, they have no Windows-specific path, and the
-      # Linux unit job builds them.
+      # A manifest test runs the CLI, which is all that reads built output: the
+      # kernel builds every module controller from source at load.
       - name: Build for Node.js
         shell: bash
-        run: pnpm -r --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
+        run: pnpm --filter "@telorun/cli..." run build
 
       # `telo check` is analyze-only — it installs no controller — so this is the
       # part of the surface expected to work first. Run through bash so the glob
@@ -1415,17 +1405,11 @@ jobs:
         with:
           scope: ${{ github.job }}
 
-      # Everything below reads from dist/, so a failure here makes the rest of
-      # the run meaningless rather than merely red. Modules are included: the
-      # three `pkg:npm` ones stage a dist/ their controller entry is resolved
-      # from — see the note in the Linux unit job.
-      #
-      # The excluded packages are browser bundles and the docs site: nothing
-      # here reads their output, they have no macOS-specific path, and the
-      # Linux unit job builds them.
+      # A manifest test runs the CLI, which is all that reads built output: the
+      # kernel builds every module controller from source at load.
       - name: Build for Node.js
         shell: bash
-        run: pnpm -r --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
+        run: pnpm --filter "@telorun/cli..." run build
 
       - name: Check module manifests
         if: needs.select.outputs.platform_suites == 'true'

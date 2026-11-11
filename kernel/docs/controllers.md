@@ -88,10 +88,10 @@ kernel the `dylib`:
 
 ```yaml
 controllers:
-  - pkg:telo/local/napi?path=./native/linux-amd64-gnu/starlark.node&os=linux&arch=amd64&libc=gnu#script
-  - pkg:telo/local/napi?path=./native/darwin-arm64/starlark.node&os=darwin&arch=arm64#script
-  - pkg:telo/local/dylib?path=./native/linux-amd64-gnu/libtelorun_starlark.so&os=linux&arch=amd64&libc=gnu&abi=telo-3
-  - pkg:cargo/telorun-starlark?local_path=./rust#script
+  - pkg:telo/local/napi?path=./native/linux-amd64-gnu/solver.node&os=linux&arch=amd64&libc=gnu#solve
+  - pkg:telo/local/napi?path=./native/darwin-arm64/solver.node&os=darwin&arch=arm64#solve
+  - pkg:telo/local/dylib?path=./native/linux-amd64-gnu/libacme_solver.so&os=linux&arch=amd64&libc=gnu&abi=telo-3
+  - pkg:cargo/acme-solver?local_path=./rust#solve
 ```
 
 The prebuilt files are staged, not committed: a `sources:` block names the release

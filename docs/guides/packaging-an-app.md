@@ -97,8 +97,8 @@ offering a bundled controller beside a crate-built one is fine, and only the
 kinds your application actually declares a resource of are judged — importing a
 module that happens to declare one crate-built kind you never use costs nothing.
 What is refused is a kind you *do* use whose every candidate needs a package
-manager (`pkg:npm`) or a toolchain (`pkg:cargo`) — today that is the `image` and
-`starlark` modules, and any kind of your own with a `pkg:cargo` controller. The
+manager (`pkg:npm`) or a toolchain (`pkg:cargo`) — no standard-library kind
+today, but a kind of your own with only a `pkg:cargo` controller. The
 refusal names the kind, the candidate and which of the two rules it failed.
 
 Such an application still runs under an installed telo, which can reach a
