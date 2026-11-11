@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
@@ -63,15 +63,23 @@ describe("check-no-major-bump over modules", () => {
     const root = repo();
     mkdirSync(join(root, "scripts"));
     cpSync(join(REPO, "scripts/check-no-major-bump.mjs"), join(root, "scripts/check-no-major-bump.mjs"));
-    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
-    put(root, "telo-workspace.yaml", "release:\n  modules:\n    - modules/*\n    - path: blueprints/*\n");
+    // No node_modules: the release PR job runs this guard with no install.
+    put(
+      root,
+      "telo-workspace.yaml",
+      'release:\n  registry: oci://ghcr.io/telorun\n  modules:\n    - modules/*\n    # a comment\n    - "!modules/skipped"\n    - path: blueprints/*\n      registry: oci://ghcr.io/telorun/blueprints\nenv:\n  files: [.env]\n',
+    );
     put(root, "modules/a/telo.yaml", moduleDoc(version));
+    put(root, "modules/skipped/telo.yaml", moduleDoc("1.0.0"));
+    put(root, "blueprints/b/telo.yaml", moduleDoc(version));
     return spawnSync("node", ["scripts/check-no-major-bump.mjs"], { cwd: root, encoding: "utf8" });
   }
   it("fails naming a module at 1.0.0", () => {
     const run = workspace("1.0.0");
     assert.equal(run.status, 1);
     assert.match(run.stderr, /modules\/a@1\.0\.0/);
+    assert.match(run.stderr, /blueprints\/b@1\.0\.0/);
+    assert.doesNotMatch(run.stderr, /modules\/skipped/);
   });
   it("passes a pre-1.0 module", () => {
     assert.equal(workspace("0.9.0").status, 0);
