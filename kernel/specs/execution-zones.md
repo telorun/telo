@@ -13,8 +13,8 @@ carries, when the stack is guaranteed cleared, and where a provider's private
 state may live.
 
 It is normative for the same reason the invocation contract is: the annotations
-bind every controller of a kind, including a second language's — `console` and
-`starlark` already ship dual Node/Rust controllers — and a manifest-facing
+bind every controller of a kind, including a second language's — `console`
+already ships dual Node/Rust controllers — and a manifest-facing
 promise enforced only by one implementation's tests is not a contract.
 
 The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **MAY** are per

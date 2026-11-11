@@ -336,18 +336,18 @@ names the crate under `build`:
 
 ```yaml
 sources:
-  starlark:
+  solver:
     version: 0.12.1
-    url: https://github.com/telorun/telo/releases/download/starlark-v{version}/{upstream}.tar.gz
+    url: https://github.com/acme/solver/releases/download/v{version}/{upstream}.tar.gz
     archive: tar.gz
-    notices: [./notices/starlark.NOTICE]
+    notices: [./notices/solver.NOTICE]
     build:
       cargo: ./rust
       inputs: sha256-Zitbq_WbjT8oRgJ7k0aZJEioihYBzGGZAOULeFUBwpg
     entries:
-      ./native/linux-amd64-gnu/starlark.node:
+      ./native/linux-amd64-gnu/solver.node:
         upstream: linux-amd64-gnu
-        member: starlark.node
+        member: solver.node
         sha256: 9c1e…
         executable: false
 ```

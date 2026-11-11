@@ -48,7 +48,8 @@ let canvasModule: Promise<typeof import("@napi-rs/canvas")> | undefined;
  * initializes, so the assignment has to happen before the first import and must
  * not be racing a second one. It is set for the whole process — the variable is
  * the wrapper's only override — so it is written once and left, rather than
- * being restored under a concurrent load that would then look elsewhere.
+ * being restored under a concurrent load that would then look elsewhere. Each
+ * loader here forgets a failed attempt, so the next call tries again.
  */
 export function loadCanvas(ctx: ResourceContext): Promise<typeof import("@napi-rs/canvas")> {
   canvasModule ??= (async () => {
@@ -57,13 +58,16 @@ export function loadCanvas(ctx: ResourceContext): Promise<typeof import("@napi-r
     if (process.platform === "win32") await ctx.resolveNativeFile("canvas-icu");
     process.env.NAPI_RS_NATIVE_LIBRARY_PATH = addon;
     return import("@napi-rs/canvas");
-  })();
+  })().catch((err: unknown) => {
+    canvasModule = undefined;
+    throw err;
+  });
   return canvasModule;
 }
 
 /** Where this module's copy of pdf.js's assets lives. */
 export function pdfAssetOptions(ctx: ResourceContext): Promise<PdfAssetOptions> {
-  assetOptions ??= (async () => {
+  assetOptions ??= (async (): Promise<PdfAssetOptions> => {
     const root = fileURLToPath(await ctx.resolveControllerFile("./assets/pdfjs/"));
     const dir = (name: string) => `${root.replace(/[/\\]$/, "")}/${name}/`;
     return {
@@ -72,7 +76,10 @@ export function pdfAssetOptions(ctx: ResourceContext): Promise<PdfAssetOptions> 
       cMapPacked: true,
       wasmUrl: dir("wasm"),
     };
-  })();
+  })().catch((err: unknown) => {
+    assetOptions = undefined;
+    throw err;
+  });
   return assetOptions;
 }
 
@@ -106,6 +113,9 @@ export function loadPdfjs(
       "./assets/pdfjs/pdf.worker.mjs",
     );
     return module;
-  })();
+  })().catch((err: unknown) => {
+    pdfjs = undefined;
+    throw err;
+  });
   return pdfjs;
 }

@@ -6,29 +6,19 @@ metadata:
   license: MIT
   categories: [Data]
   description: |
-    Working with PDF documents: render a page to an image at a chosen scale, read the
-    text a document renders, and add editable form fields — text boxes, checkboxes,
-    signatures — at measured positions. Rendering and field placement share one
-    coordinate space, the pixels of the rendered image from the top-left, so what a
-    model or a human measures on the image is where the field lands.
+    Working with PDF documents: render a page to an image at a chosen scale, read
+    its text, and add editable form fields — text boxes, checkboxes, signatures — at
+    measured positions. Rendering and field placement share one coordinate space,
+    the rendered image's pixels from the top-left, so what a model measures on the
+    image is where the field lands.
 exports: { kinds: [Rasterizer, Text, FormFields] }
 requires:
-  # 0.91.0: a `sources:` entry claimed by an `assets:` pattern, which an older
-  # analyzer rejects as SOURCE_ENTRY_UNCLAIMED, and `ctx.resolveControllerFile`,
-  # which the controllers call for pdf.js's fonts, CMaps, wasm and worker.
-  # Verified by execution: 0.90.0 reports 199 SOURCE_ENTRY_UNCLAIMED errors.
+  # 0.91.0: a `sources:` entry claimed by an `assets:` pattern (0.90.0 reports
+  # SOURCE_ENTRY_UNCLAIMED), and `ctx.resolveControllerFile` for pdf.js's assets.
   telo: ">=0.91.0"
-# Skia, through `@napi-rs/canvas`, for every platform its upstream release
-# publishes. The wrapper's JavaScript inlines into the bundle; only the addon is
-# staged, and the controller hands its path to the wrapper the way sqlite hands
-# better-sqlite3 its `nativeBinding` — the package's own search walks up from a
-# `__filename` a bundle does not have. On Windows Skia's text layout also reads
-# ICU data from `icudtl.dat` beside the addon and aborts the process without it,
-# so that file is staged next to the addon.
-#
-# pdf.js's fonts, CMaps and wasm decoders are staged as the module's own assets
-# for the same reason: pdf.js resolves them beside its package, which a bundle
-# is not, and reads them from wherever it is told instead.
+# Skia's addon (with Windows' `icudtl.dat` beside it) and pdf.js's fonts, CMaps,
+# wasm and worker are staged as the module's own files, since both packages look
+# beside themselves and a bundle has no "beside" (README, Platforms).
 native:
   - { name: canvas, format: napi, os: darwin, arch: amd64, path: ./native/darwin-amd64/skia.node }
   - { name: canvas, format: napi, os: darwin, arch: arm64, path: ./native/darwin-arm64/skia.node }
@@ -43,8 +33,8 @@ native:
 assets: [./assets/]
 sources:
   # The addon staged here and the `@napi-rs/canvas` wrapper the lockfile holds are
-  # one version: the controller sets the addon path for the whole process, so
-  # every wrapper in it — another module's included — opens this file.
+  # one version: the addon path is process-wide, and `image` stages the same
+  # release.
   canvas:
     version: 1.0.10
     url: https://registry.npmjs.org/@napi-rs/{upstream}/-/{upstream}-{version}.tgz
@@ -483,11 +473,8 @@ sources:
       ./notices/pdfjs-dist.LICENSE:
         { upstream: pdfjs-dist, member: package/LICENSE, sha256: 0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594, executable: false }
 ---
-# Rasterizer: PDF bytes → one page as a PNG image.
-#
-# Renders with pdf.js onto a server-side canvas. The reported width/height are
-# the rendered pixel dimensions at the configured scale — the coordinate space
-# downstream consumers (e.g. Pdf.FormFields, Image.Overlay) measure against.
+# Rasterizer: PDF bytes → one page as a PNG image, at the scale whose pixels
+# Pdf.FormFields and Image.Overlay measure against (docs/rasterizer.md).
 kind: Telo.Definition
 metadata:
   name: Rasterizer
@@ -581,12 +568,8 @@ schema:
       description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
   additionalProperties: false
 ---
-# Text: PDF bytes → the text the document renders, per page.
-#
-# The counterpart to Rasterizer. Rasterizing answers what a page LOOKS LIKE,
-# which is a question about pixels and moves with the platform's font
-# rasterization; this answers what it SAYS, which is what an assertion about a
-# generated document needs.
+# Text: PDF bytes → the text the document renders, per page — what a page says,
+# where Rasterizer shows what it looks like (docs/text.md).
 kind: Telo.Definition
 metadata:
   name: Text
@@ -636,12 +619,8 @@ outputType:
         type: integer
 schema: { type: object, additionalProperties: false }
 ---
-# FormFields: PDF bytes + field placements → PDF bytes with editable AcroForm fields.
-#
-# Coordinates are pixels of the image Pdf.Rasterizer renders at the same
-# `scale`, origin top-left — the conversion to PDF user space (points,
-# bottom-left origin) happens inside the controller, so manifests and vision
-# models never translate coordinates.
+# FormFields: PDF bytes + field placements → PDF bytes with editable AcroForm
+# fields, placed in Pdf.Rasterizer's pixels at the same `scale` (docs/form-fields.md).
 kind: Telo.Definition
 metadata:
   name: FormFields

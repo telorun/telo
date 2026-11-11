@@ -23,8 +23,10 @@ const HUB = (process.env.TELO_HUB ?? "http://localhost:8040").replace(/\/+$/, ""
 const DRY_RUN = process.argv.includes("--dry-run");
 const IMPORTABLE = ["modules/", "blueprints/"];
 
+// The workspace CLI, never a `telo` from PATH: an installed release may refuse
+// what this checkout's release model accepts.
 const ordered = JSON.parse(
-  execFileSync("telo", ["release", "order", "-o", "json"], {
+  execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
     cwd: ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],

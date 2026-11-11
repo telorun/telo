@@ -1,6 +1,6 @@
-import { createCanvas, loadImage } from "@napi-rs/canvas";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { loadCanvas } from "./canvas-runtime.js";
 import { encodeCanvas } from "./encode.js";
 
 type LabelPlacement = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -45,7 +45,10 @@ const LABEL_PADDING = 4;
  * image edges — showing a wrong proposal is the point of a review loop.
  */
 class ImageOverlay implements ResourceInstance<OverlayInputs, OverlayOutputs> {
-  constructor(private readonly resource: OverlayResource) {}
+  constructor(
+    private readonly resource: OverlayResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(inputs: OverlayInputs): Promise<OverlayOutputs> {
     const label = `Image.Overlay "${this.resource.metadata.name}"`;
@@ -62,6 +65,7 @@ class ImageOverlay implements ResourceInstance<OverlayInputs, OverlayOutputs> {
     // stays: "is a Uint8Array" is a runtime value identity JSON Schema cannot
     // express, as is decodability below.
 
+    const { createCanvas, loadImage } = await loadCanvas(this.ctx);
     let source;
     try {
       source = await loadImage(data);
@@ -122,6 +126,6 @@ export async function create(
   resource: OverlayResource,
   ctx: ResourceContext,
 ): Promise<ImageOverlay> {
-  return new ImageOverlay(resource);
+  return new ImageOverlay(resource, ctx);
 }
 

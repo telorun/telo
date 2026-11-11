@@ -3,11 +3,11 @@ metadata:
   name: ImageFitAfterPdfTest
   version: 1.0.0
   description: |
-    A PDF page is rendered first, which points every canvas loaded afterwards
-    at the pdf module's own decoder file; an image whose body is cut short is
-    then fitted by a resource created only at that moment, and is refused as
-    unsupported instead of ending the process. It holds only while that decoder
-    file and the canvas library are one version.
+    A PDF page is rendered first, so the pdf module has already loaded its
+    canvas and set the process-wide addon path; an image whose body is cut short
+    is then fitted by a resource created only at that moment, which points the
+    path at this module's own addon before its canvas loads, and is refused as
+    unsupported instead of ending the process.
 imports:
   Image: ../
   Pdf: ../../pdf

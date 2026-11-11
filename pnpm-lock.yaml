@@ -2870,25 +2870,6 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
-  modules/starlark/nodejs:
-    dependencies:
-      ajv:
-        specifier: ^8.17.1
-        version: 8.17.1
-      starlark-webasm:
-        specifier: ^1.0.3
-        version: 1.0.3
-    devDependencies:
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../../sdk/nodejs
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.30
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
-
   modules/stream/nodejs:
     devDependencies:
       '@telorun/sdk':
@@ -12805,9 +12786,6 @@ packages:
 
   standard-as-callback@2.1.0:
     resolution: {integrity: sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==}
-
-  starlark-webasm@1.0.3:
-    resolution: {integrity: sha512-+vYe+Q/9xoWraV0eIfgmQviQeokMXQOu1ZZ202i6g1RJO6Nr3ZYM0tIY+rf1bsPLbfFNtXW4xQHEfDs9vVoHug==}
 
   state-local@1.0.7:
     resolution: {integrity: sha512-HTEHMNieakEnoe33shBYcZ7NX83ACUjCu8c40iOGEZsngj9zRnkqS9j1pqQPXwobB0ZcVTk27REb7COQ0UR59w==}
@@ -24783,8 +24761,6 @@ snapshots:
   stackback@0.0.2: {}
 
   standard-as-callback@2.1.0: {}
-
-  starlark-webasm@1.0.3: {}
 
   state-local@1.0.7: {}
 

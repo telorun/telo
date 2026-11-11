@@ -143,6 +143,6 @@ Each `Type.JsonSchema` registers its schema under the canonical id `telo://<modu
 
 ## Usage patterns
 
-- **Input/output contracts for scripts** — define `inputType` / `outputType` once, reference from `JavaScript.Script` / `Starlark.Script`.
+- **Input/output contracts for scripts** — define `inputType` / `outputType` once, reference from `JavaScript.Script`.
 - **HTTP schemas** — refer to a named type from a route's `schema.body` or `schema.query` to keep the OpenAPI output aligned with internal types.
 - **Shared vocabularies** — a dedicated type module (`Telo.Library`) lets multiple applications import the same `User`, `Order`, `Invoice` types without duplication.

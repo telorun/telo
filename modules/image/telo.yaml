@@ -11,7 +11,51 @@ metadata:
     limits enforced before decoding; make a solid-colour canvas; and draw
     labelled rectangles onto an image. Reads PNG, JPEG, WebP and GIF, and
     returns encoded PNG, JPEG or WebP bytes.
+requires: { telo: ">=0.90.0" }
 exports: { kinds: [Blank, Overlay, Fit] }
+# Skia, through `@napi-rs/canvas`, for every platform its upstream release
+# publishes. Its JavaScript inlines into the bundle; only the addon is staged and
+# handed to the wrapper by path. The same release `pdf` stages.
+native:
+  - { name: canvas, format: napi, os: darwin, arch: amd64, path: ./native/darwin-amd64/skia.node }
+  - { name: canvas, format: napi, os: darwin, arch: arm64, path: ./native/darwin-arm64/skia.node }
+  - { name: canvas, format: napi, os: linux, arch: amd64, libc: gnu, path: ./native/linux-amd64-gnu/skia.node }
+  - { name: canvas, format: napi, os: linux, arch: amd64, libc: musl, path: ./native/linux-amd64-musl/skia.node }
+  - { name: canvas, format: napi, os: linux, arch: arm64, libc: gnu, path: ./native/linux-arm64-gnu/skia.node }
+  - { name: canvas, format: napi, os: linux, arch: arm64, libc: musl, path: ./native/linux-arm64-musl/skia.node }
+  - { name: canvas, format: napi, os: windows, arch: amd64, path: ./native/windows-amd64/skia.node }
+  - { name: canvas, format: napi, os: windows, arch: arm64, path: ./native/windows-arm64/skia.node }
+  - { name: canvas-icu, format: napi, os: windows, arch: amd64, path: ./native/windows-amd64/icudtl.dat }
+  - { name: canvas-icu, format: napi, os: windows, arch: arm64, path: ./native/windows-arm64/icudtl.dat }
+sources:
+  canvas:
+    version: 1.0.10
+    url: https://registry.npmjs.org/@napi-rs/{upstream}/-/{upstream}-{version}.tgz
+    archive: tar.gz
+    notices: [./notices/napi-rs-canvas.LICENSE]
+    entries:
+      ./notices/napi-rs-canvas.LICENSE:
+        { upstream: canvas, member: package/LICENSE, sha256: 8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6, executable: false }
+      ./native/darwin-amd64/skia.node:
+        { upstream: canvas-darwin-x64, member: package/skia.darwin-x64.node, sha256: a1995c62e422e45b17bb3a64ce246112776c12f96bb6563be2697de5c66b3a61, executable: false }
+      ./native/darwin-arm64/skia.node:
+        { upstream: canvas-darwin-arm64, member: package/skia.darwin-arm64.node, sha256: 207921c48ce2f93b85548ffc1a1226d50d3e1c2cece96a711844828a62fdbabe, executable: false }
+      ./native/linux-amd64-gnu/skia.node:
+        { upstream: canvas-linux-x64-gnu, member: package/skia.linux-x64-gnu.node, sha256: eff464d8c283ad1e73e36c636d9ec9a6469ae34c3c04b298794735c89f9c863a, executable: false }
+      ./native/linux-amd64-musl/skia.node:
+        { upstream: canvas-linux-x64-musl, member: package/skia.linux-x64-musl.node, sha256: dd7ce0e30c270ef8f5fe7ca1905efb35ebeca52124631956a1e1da76a2972298, executable: false }
+      ./native/linux-arm64-gnu/skia.node:
+        { upstream: canvas-linux-arm64-gnu, member: package/skia.linux-arm64-gnu.node, sha256: 5baabaf23dfe6559b75db5661e91b476f8fc5291a6855d7292a3e24a545654e9, executable: false }
+      ./native/linux-arm64-musl/skia.node:
+        { upstream: canvas-linux-arm64-musl, member: package/skia.linux-arm64-musl.node, sha256: 7787bf4bff18a279dfdba877e8af113eddc57da10f14ef2fb2e5a9ab4d9bed01, executable: false }
+      ./native/windows-amd64/skia.node:
+        { upstream: canvas-win32-x64-msvc, member: package/skia.win32-x64-msvc.node, sha256: c067e5d5df2abd36789c4d371efc60ce0a29d204575f316345b57dcd2f4b74e7, executable: false }
+      ./native/windows-amd64/icudtl.dat:
+        { upstream: canvas-win32-x64-msvc, member: package/icudtl.dat, sha256: 9f48c7f9c7c94d516a14870707e910ab94d75ae640ff6842c4af53276cd26ebe, executable: false }
+      ./native/windows-arm64/skia.node:
+        { upstream: canvas-win32-arm64-msvc, member: package/skia.win32-arm64-msvc.node, sha256: 8d931edf8d0933abae7609c584cbda240a12211bb3fa7149f04badfe7dbd98e8, executable: false }
+      ./native/windows-arm64/icudtl.dat:
+        { upstream: canvas-win32-arm64-msvc, member: package/icudtl.dat, sha256: 9f48c7f9c7c94d516a14870707e910ab94d75ae640ff6842c4af53276cd26ebe, executable: false }
 ---
 # Blank: a solid-color canvas → encoded image bytes. The seed of an image
 # pipeline — compose diagrams with Image.Overlay, or use it as a hermetic test
@@ -21,7 +65,7 @@ metadata:
   name: Blank
   description: Produces a solid-color image canvas of the given size, encoded as PNG/JPEG/WebP bytes.
 capability: Telo.Invocable
-controllers: [pkg:npm/@telorun/image@0.10.2?local_path=./nodejs#blank]
+controllers: [pkg:telo/local/js?path=./nodejs/image.mjs&local_path=./nodejs/src/index.ts#blank]
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -98,18 +142,14 @@ schema:
       description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
   additionalProperties: false
 ---
-# Overlay: image bytes + labelled rectangles → annotated image bytes (PNG).
-#
-# Visualization, not mutation: shapes are drawn as given and clipped at the
-# image edges — a box that hangs off the canvas renders partially, because
-# showing a wrong proposal is the point of a review loop. Only non-finite
-# coordinates or non-positive sizes are rejected.
+# Overlay: image bytes + labelled rectangles → annotated image bytes. Shapes are
+# drawn as given and clipped at the image edges (docs/overlay.md).
 kind: Telo.Definition
 metadata:
   name: Overlay
   description: Draws labelled rectangles onto an image and returns the annotated image as encoded bytes.
 capability: Telo.Invocable
-controllers: [pkg:npm/@telorun/image@0.10.2?local_path=./nodejs#overlay]
+controllers: [pkg:telo/local/js?path=./nodejs/image.mjs&local_path=./nodejs/src/index.ts#overlay]
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -238,13 +278,8 @@ schema:
       description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
   additionalProperties: false
 ---
-# Fit: image bytes + a box → the image scaled down to fit it, re-encoded.
-#
-# Both limits are judged from the header, before a decoder is handed the bytes:
-# `maxBytes` against the input's length, `maxPixels` against the size the header
-# declares. The canvas is always re-encoded, so nothing but pixels survives.
-# An EXIF orientation — a JPEG's, a WebP's or a PNG's — is applied, and the box
-# is measured on the upright image.
+# Fit: image bytes + a box → the image scaled down to fit it, re-encoded. Both
+# limits are judged from the header before decoding (docs/fit.md).
 kind: Telo.Definition
 metadata:
   name: Fit
@@ -255,7 +290,7 @@ metadata:
     pixel counts are refused from the header before decoding. Returns the bytes,
     the final dimensions and the media type.
 capability: Telo.Invocable
-controllers: [pkg:npm/@telorun/image@0.10.2?local_path=./nodejs#fit]
+controllers: [pkg:telo/local/js?path=./nodejs/image.mjs&local_path=./nodejs/src/index.ts#fit]
 throws:
   codes:
     ERR_IMAGE_TOO_LARGE:

@@ -1,7 +1,7 @@
 {
-  "name": "@telorun/image",
+  "name": "@telorun/image-build",
   "version": "0.10.2",
-  "description": "Image primitives — draw labelled rectangles onto an image for vision-grounding loops.",
+  "description": "Build-only package for the image module: declares the dependencies its bundled controller inlines, and type-checks its sources. Never published.",
   "keywords": [
     "telo",
     "image",
@@ -28,21 +28,6 @@
       "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
-    },
-    "./blank": {
-      "types": "./dist/blank-controller.d.ts",
-      "bun": "./src/blank-controller.ts",
-      "import": "./dist/blank-controller.js"
-    },
-    "./overlay": {
-      "types": "./dist/overlay-controller.d.ts",
-      "bun": "./src/overlay-controller.ts",
-      "import": "./dist/overlay-controller.js"
-    },
-    "./fit": {
-      "types": "./dist/fit-controller.d.ts",
-      "bun": "./src/fit-controller.ts",
-      "import": "./dist/fit-controller.js"
     }
   },
   "files": [
@@ -51,9 +36,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
-    "test": "vitest run",
-    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
@@ -66,5 +49,6 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.10"
-  }
+  },
+  "private": true
 }
