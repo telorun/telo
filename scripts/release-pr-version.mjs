@@ -16,8 +16,8 @@
 //        RELEASE_PLAN_FILE optional)
 
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, openSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, existsSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ROOT } from "./version-line.mjs";
 
@@ -55,9 +55,33 @@ export function versionReleasePr({ cwd = ROOT, args = [], planFile, run = runCom
   return true;
 }
 
+/**
+ * The changesets action reads `CHANGELOG.md` beside every `package.json` whose version the
+ * version command moved, and crashes on a missing one. `telo release apply` moves the build
+ * package of every module it releases, whose changelog is the module's own, so a package
+ * with none gets a heading-only file the action reads as an empty entry.
+ */
+export function stubMissingChangelogs({ cwd = ROOT } = {}) {
+  const diff = spawnSync("git", ["diff", "--name-only", "HEAD", "--", "*package.json"], { cwd, encoding: "utf8" });
+  if (diff.error) throw diff.error;
+  if (diff.status !== 0) throw new Error(`git diff exited ${diff.status ?? "on a signal"}: ${diff.stderr.trim()}`);
+  const stubbed = [];
+  for (const file of diff.stdout.split("\n").filter(Boolean)) {
+    const dir = dirname(join(cwd, file));
+    const changelog = join(dir, "CHANGELOG.md");
+    if (existsSync(changelog) || !existsSync(join(cwd, file))) continue;
+    writeFileSync(changelog, `# ${JSON.parse(readFileSync(join(cwd, file), "utf8")).name}\n`);
+    stubbed.push(file);
+  }
+  return stubbed;
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
-    versionReleasePr({ args: process.argv.slice(2), planFile: process.env.RELEASE_PLAN_FILE || undefined });
+    if (versionReleasePr({ args: process.argv.slice(2), planFile: process.env.RELEASE_PLAN_FILE || undefined })) {
+      const stubbed = stubMissingChangelogs();
+      console.log(`release-pr-version: stubbed ${stubbed.length} missing changelog(s) for the release action.`);
+    }
   } catch (error) {
     console.error(`::error::release-pr-version: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
