@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
@@ -500,6 +500,7 @@ const FAKE_CLI = `
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 const args = process.argv.slice(2);
+if (process.env.FAKE_CWD_FILE) writeFileSync(process.env.FAKE_CWD_FILE, process.cwd());
 const result = { ok: true, as: "published", dryRun: args.includes("--dry-run"), check: false, rewritten: [], keptRelative: [], errors: [] };
 for (const manifest of args.filter((arg) => /\\.ya?ml$/.test(arg))) {
   const text = readFileSync(manifest, "utf8").replace(/^(  (\\w+): )(\\.\\.\\/\\S+)$/gm, (line, key, alias, source) => {
@@ -513,6 +514,7 @@ for (const manifest of args.filter((arg) => /\\.ya?ml$/.test(arg))) {
   });
   if (!result.dryRun) writeFileSync(manifest, text);
 }
+if (process.env.FAKE_FAIL) process.exit(2);
 result.ok = result.keptRelative.length === 0;
 process.stdout.write(JSON.stringify(result));
 process.exit(result.ok ? 0 : 1);
@@ -582,6 +584,48 @@ describe("publication commits", () => {
     assert.equal(git(root, "show", `${sha}:starters/s/telo.yaml`), consumer("oci://ghcr.io/telorun/a@1.1.0#sha256-A").trim());
     assert.equal(isPublicationCommit({ cwd: root, commit: sha }), true);
     assert.deepEqual([git(root, "status", "--porcelain"), git(root, "worktree", "list")], before);
+  });
+
+  it("builds in the checkout itself and leaves it as it was, whether the rewrite succeeds or fails", () => {
+    const { root, release } = released();
+    const cwdFile = join(mkdtempSync(join(tmpdir(), "telo-cwd-")), "cwd");
+    made.push(dirname(cwdFile));
+    const worktrees = git(root, "worktree", "list");
+    const ok = publish(root, ["--release", release, "--tag", "v0.85.1"], { FAKE_CWD_FILE: cwdFile });
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.equal(readFileSync(cwdFile, "utf8"), realpathSync(root));
+    assert.deepEqual([git(root, "status", "--porcelain"), git(root, "diff", "--cached", "--name-only"), git(root, "worktree", "list")], ["", "", worktrees]);
+
+    const failed = publish(root, ["--release", release, "--tag", "v0.85.1"], { FAKE_FAIL: "1" });
+    assert.equal(failed.status, 1);
+    assert.match(failed.stderr, /telo release imports exited 2 and named no import/);
+    assert.equal(git(root, "status", "--porcelain"), "");
+    assert.equal(git(root, "diff", "--cached", "--name-only"), "");
+    assert.equal(readFileSync(join(root, "starters/s/telo.yaml"), "utf8"), consumer("../../modules/a"));
+  });
+
+  it("refuses a checkout that is not the release commit as published, naming why", () => {
+    const { root, release } = released();
+    const refuse = (extra = {}) => publish(root, ["--release", release, "--tag", "v0.85.1"], extra);
+
+    put(root, "modules/a/telo.yaml", library("A", "1.1.1"));
+    const dirty = refuse();
+    assert.equal(dirty.status, 1);
+    assert.match(dirty.stderr, /the checkout has changes to tracked files \(modules\/a\/telo\.yaml\)/);
+    git(root, "checkout", "--", "modules/a/telo.yaml");
+
+    put(root, "starters/new/telo.yaml", consumer("../../modules/a"));
+    const untracked = refuse();
+    assert.equal(untracked.status, 1);
+    assert.match(untracked.stderr, /untracked files under examples, starters, apps, blueprints \(starters\/new\/telo\.yaml\)/);
+    rmSync(join(root, "starters/new"), { recursive: true });
+
+    put(root, "x.txt", "later");
+    commit(root, "fix: later");
+    const moved = refuse();
+    assert.equal(moved.status, 1);
+    assert.match(moved.stderr, new RegExp(`HEAD is [0-9a-f]{40}, not the release commit ${release}: check out ${release}, install and build it, and run again`));
+    assert.equal(git(root, "status", "--porcelain"), "");
   });
 
   it("pushes the tag with the branchless commit to the remote once, and finds it there on a re-run", () => {

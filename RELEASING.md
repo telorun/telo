@@ -148,7 +148,7 @@ Steps 1–3 are idempotent: a re-run skips what npm and the registry already hol
 pnpm run publication-commit -- --release <commit> --tag <tag> --dry-run
 ```
 
-From a checkout of the release commit, installed and built (`pnpm install && pnpm -r build`), with `TELO_OCI_REGISTRY` set as Publish sets it, this builds the publication commit of a release whose modules are published and prints its diffstat and what each tag would do, pushing nothing. Run against the release commit of the live line's newest tag, it rehearses steps 3 and 4 with no publish.
+From a checkout of the release commit, installed and built (`pnpm install && pnpm -r build`), with `TELO_OCI_REGISTRY` set as Publish sets it, this builds the publication commit of a release whose modules are published and prints its diffstat and what each tag would do, pushing nothing. The command runs in that checkout, the same place the release PR's gate and `telo publish` build in, because a controller bundle records the path of each inlined dependency relative to its build root and digests differently in any other tree. It refuses, naming why, a `HEAD` that is not `--release`, a change to a tracked file and an untracked manifest under the consumer roots; it rewrites the consumer manifests in place, writes the commit through a private index, and restores the manifests before it returns, so the checkout, `HEAD` and the index end as they began. Run against the release commit of the live line's newest tag, it rehearses steps 3 and 4 with no publish.
 
 ## Record
 
