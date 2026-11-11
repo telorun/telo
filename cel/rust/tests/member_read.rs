@@ -298,7 +298,8 @@ fn ranges_a_record_and_a_map_in_their_own_orders() {
 /// Node names a key with JavaScript's `String()`: a list `[1, 2]` as `1,2`, bytes as
 /// their numbers, a map or a timestamp as `[object Object]` — and a record makes
 /// `String()` throw a `TypeError` out of the read. Here such a key is named in CEL's
-/// terms; a string, a number, a bool and null are named as on Node.
+/// terms; a string, a number, a bool, bytes and null are named as on Node, bytes because
+/// a conformance row pins them.
 #[test]
 fn names_a_key_that_is_no_scalar_in_cel_terms() {
     let unusable = |key: CelValue| cel_read(&rec(vec![("a", i(1))]), &key, Some(RANGE), None);
@@ -306,7 +307,6 @@ fn names_a_key_that_is_no_scalar_in_cel_terms() {
     assert_eq!(unusable(l(vec![i(1), i(2)])), named("a list"));
     assert_eq!(unusable(rec(vec![])), named("a map"));
     assert_eq!(unusable(m(vec![(i(1), i(1))])), named("a map"));
-    assert_eq!(unusable(by(&[1, 2])), named("a value of type bytes"));
     assert_eq!(unusable(ts(0, 0)), named("a value of type google.protobuf.Timestamp"));
     assert_eq!(unusable(ty("int")), named("a value of type type"));
     assert_eq!(unusable(some(i(1))), named("a value of type optional"));
@@ -316,6 +316,8 @@ fn names_a_key_that_is_no_scalar_in_cel_terms() {
     assert_eq!(unusable(d(f64::INFINITY)), named("Infinity"));
     assert_eq!(unusable(null()), named("null"));
     assert_eq!(unusable(b(true)), named("true"));
+    assert_eq!(unusable(by(&[1, 2])), named("1,2"));
+    assert_eq!(unusable(by(&[])), named(""));
 }
 
 fn money() -> CelValue {

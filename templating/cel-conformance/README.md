@@ -111,7 +111,7 @@ A language row drives the language's own seams, and every row runs both halves:
 
 So an ill-typed expression evaluates to the checker's error, and a row can record a clean `check` beside such an error (declarations the evaluation half lacks), but never a refused `check` beside a `value`.
 
-Not yet pinned: what `substring` and the receiver `split` answer where the result would hold an unpaired surrogate; the wording with which `bytes.json()` refuses bytes that are not JSON text, and what it answers for an escape naming an unpaired surrogate; how a refused lookup names a key that is not a string, a number, a bool or null; how the refusal of a comprehension's test that answered no bool names what it answered; and what `+` on strings, `join`, `lowerAscii`, `upperAscii`, `string(bytes)`, `bytes.string()`, `bytes.hex()`, `bytes.base64()` and `bytes.json()` answer for a text past the longest string, 536,870,888 UTF-16 code units — the Node engine throws a host `RangeError`, crashes, exhausts its heap or names the bytes not UTF-8, and the Rust engine answers `<function>: the text built would exceed the longest text a string can hold (536870888 UTF-16 code units)`, code `invalid_argument`.
+Not yet pinned: what `substring` and the receiver `split` answer where the result would hold an unpaired surrogate; the wording with which `bytes.json()` refuses bytes that are not JSON text, and what it answers for an escape naming an unpaired surrogate; how a refused lookup names a key that is not a string, a number, a bool, bytes or null; how the refusal of a comprehension's test that answered no bool names what it answered; and what `+` on strings, `join`, `lowerAscii`, `upperAscii`, `string(bytes)`, `bytes.string()`, `bytes.hex()`, `bytes.base64()` and `bytes.json()` answer for a text past the longest string, 536,870,888 UTF-16 code units — the Node engine throws a host `RangeError`, crashes, exhausts its heap or names the bytes not UTF-8, and the Rust engine answers `<function>: the text built would exceed the longest text a string can hold (536870888 UTF-16 code units)`, code `invalid_argument`.
 
 The authored row `telo/getHours/unknown_zone` pins a zone the engine does not know: `t.getHours(z)` over a bound timestamp and the zone `Nowhere/Land` answers `invalid_argument`, `"Nowhere/Land" is not a time zone`, the zone written as a JSON string. The row `timestamps/timestamp_selectors_tz/getHours` pins a zone written `HH:MM` as a fixed offset ahead of UTC, so it evaluates to `1`.
 
@@ -397,9 +397,13 @@ It enforces the Node test's gates over the three files it drives — the directo
 
 It does not run Node's catalog-dispatch, literal-guard and RE2-kind gates.
 
+### The Rust engine's replay
+
+`cel/rust/tests/language_replay.rs`, part of `cargo test -p telorun-cel`, is the Rust twin of the engine's `language.json` replay: every row answered by `telorun-cel` through the two halves of [Language rows](#language-rows) and compared with `expect` by deep equality, under the same gates — a row's keys, the two classes, `divergence` refused, the error shape and its `celCode` vocabulary, `deviation`'s checks, the round trip of every source that reads — and the same pin (`LANGUAGE_ROWS`, 1816). It locates this directory from the crate's manifest directory and fails on a file it does not know. Its codec is its own, standalone as the Node engine replay's is, and reads only the canonical writing of a value; it reads an object in the order the file writes its keys, so a plain map written in another order is refused, where Node's `JSON.parse` moves array-index keys first. Negative controls show its gates fail naming the row.
+
 ### The Rust runners to come
 
 Two Rust runners complete the set, each answering what its Node twin answers:
 
-- **`telorun-cel`** drives `language.json` whole (both halves, deep equality of `expect`, the deviation checks and the round trip) and `catalog.json` / `types.json` through the projection, after the input gate, over host types it derives by the [rule above](#host-types) from `sdk/value-types/*.json`.
+- **`telorun-cel`** drives `catalog.json` / `types.json` through the projection, after the input gate, over host types it derives by the [rule above](#host-types) from `sdk/value-types/*.json`.
 - **`telo-templating`** drives all five dialect files whole, with the `celCode` gate over the six files and the conformance conversions of [the handler set](#the-conformance-handler-set) registered from the value-type entries. Where the Rust engine lacks a code or a wording Node records, the Rust engine is fixed, never the row.

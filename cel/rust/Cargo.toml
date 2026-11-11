@@ -17,4 +17,5 @@ jiff-tzdb = "=0.1.8"
 getrandom = { version = "=0.4.3", default-features = false }
 
 [dev-dependencies]
-serde_json = "=1.0.149"
+# Reads the conformance vectors: in the file's key order, and every double to its last digit.
+serde_json = { version = "=1.0.149", features = ["float_roundtrip", "preserve_order"] }
