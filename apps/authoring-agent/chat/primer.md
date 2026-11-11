@@ -4754,6 +4754,16 @@ interfaces, then ONE `get_kinds` call for every `ui`, `ui-react`,
 `LIBRARY INDEX:` gives. The API comes first: a screen calls routes and never
 reaches a database itself, and the screen and its routes read the same shapes.
 
+## Desktop apps — a window around a web app (the `desktop` module)
+
+A desktop app is a **wrapper `Telo.Application`**; the web app (HTTP server, `ui-react` screens) stays unchanged and deployable on its own. The wrapper runs it with `App.Instance` (passing the web app's port variable from the wrapper's own `ports:` entry) and declares windows on its origin. Add the `desktop` import (`Desktop`) via the hub tools.
+
+- **The need is the identity.** The root declares `needs: { desktopHost: { kind: Telo.DesktopHost, parameters: { identifier, productName, icon, port, showInDock, callbackPaths } } }`. `identifier` is reverse-DNS; `icon` is `!module-path icon.png`, a square PNG of at least 1024 px (packaging refuses a smaller one); `port` names a key of the root's `ports:`, which the host fills in, so that port's variable needs no value; `showInDock: false` hides the macOS Dock icon; `callbackPaths` lists the app-relative paths an external sign-in returns to (below).
+- **Kinds.** `Desktop.Window` (`host: !ref desktopHost`, `path`, `title`, `size`, `minSize`, `resizable`, `visible`, `onClose: close | hide`), `Desktop.TrayIcon` (`icon: !module-path tray.png` — a PNG —, `monochrome`, `tooltip`, `menu` of items and separators, each item `action: { invoke, inputs? }`), `Desktop.ShowWindow` (`window: !ref …`) and `Desktop.Quit` (`host: !ref desktopHost`) as menu actions or any step. List the web app instance and every window and tray in `targets:` — the kernel starts only what `targets:` names.
+- **Tray apps.** A window with `onClose: hide` plus a tray icon keeps running when the user closes it; a `visible: false` window opens only from a tray item. Without a tray the host shows every window, so no window is unreachable.
+- **Run and ship.** `telo run <wrapper>` is the host (no environment variables to set); `telo package <wrapper>` writes a `.app`, a GUI `.exe` or an ELF. One instance runs per `identifier`.
+- **External sign-in.** Nothing changes in the web app. Declare `callbackPaths: [/auth/callback]`, register `http://127.0.0.1:<port>/auth/callback` with the provider, and the system browser's return lands in the window. A provider that matches the redirect address exactly needs the root port's `default:`. A `form_post` return needs the web app to parse urlencoded bodies, and reaches it from the host's own loopback origin (another port), so an `Origin` allowlist on the callback must accept it. Popups relying on `window.opener` are unsupported.
+
 ## Guides — the `guide_…` tools
 
 Every tool whose name starts `guide_` is a how-to guide the hub serves, one

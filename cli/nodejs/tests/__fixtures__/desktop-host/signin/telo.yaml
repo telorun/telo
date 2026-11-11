@@ -1,0 +1,80 @@
+kind: Telo.Application
+metadata:
+  name: DesktopSigninFixture
+  version: 1.0.0
+  description: |
+    A web app that receives an external sign-in at /auth/callback, by GET or form
+    POST, answers 302 with a session cookie and echoes what reached it.
+lang: en
+imports:
+  Desktop: ../../../../../../modules/desktop
+  Http: ../../../../../../modules/http-server
+  HttpDispatch: ../../../../../../modules/http-dispatch
+ports: { http: { env: DESKTOP_SIGNIN_PORT } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters:
+      identifier: run.telo.tests.desktopsignin
+      productName: Notes
+      icon: !module-path icon.png
+      port: http
+      callbackPaths: [/auth/callback]
+targets:
+  - !ref server
+  - !ref mainWindow
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+contentTypeParsers:
+  - contentType: application/x-www-form-urlencoded
+    parser: !ref formParser
+mounts:
+  - { path: /, mount: !ref pages }
+---
+kind: Telo.Value
+metadata: { name: formParser }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { body: { type: string } } } }
+value: !cel "inputs.body"
+---
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: session }
+name: notes-session
+secure: false
+---
+kind: Http.Api
+metadata: { name: pages }
+routes:
+  - request: { path: /, method: GET }
+    handler: { kind: Telo.Value, value: {} }
+    returns:
+      - { status: 200, content: { text/html: { body: "<h1>Notes</h1>" } } }
+  - request: { path: /auth/callback, method: GET }
+    inputs:
+      method: GET
+      query: !cel "request.query"
+      cookie: !cel "request.headers.cookie"
+    handler: { kind: Telo.Value, value: !cel "inputs" }
+    returns:
+      - status: 302
+        headers: { Location: / }
+        cookies: [{ cookie: !ref session, value: Jk29fQ7xLm }]
+        content: { application/json: { body: !cel "result" } }
+  - request: { path: /auth/callback, method: POST }
+    inputs:
+      method: POST
+      body: !cel "request.body"
+      cookie: !cel "request.headers.cookie"
+      origin: !cel "request.headers.origin"
+    handler: { kind: Telo.Value, value: !cel "inputs" }
+    returns:
+      - status: 302
+        headers: { Location: / }
+        cookies: [{ cookie: !ref session, value: Jk29fQ7xLm }]
+        content: { application/json: { body: !cel "result" } }
+---
+kind: Desktop.Window
+metadata: { name: mainWindow }
+host: !ref desktopHost
+title: Notes

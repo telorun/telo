@@ -29,6 +29,11 @@ name: Release standalone CLI
 # and a final or patch as latest unless a higher release already is
 # (`scripts/release-promote.mjs`).
 #
+# The webview helper `telo run` drives as the desktop host (`cli/rust/desktop-host`)
+# is published beside the CLI as `telo-desktop-host-<version>-<os>-<arch>[-<libc>]`,
+# one asset per target, and listed in the same `checksums.txt`. The CLI does not
+# carry it: `telo run` downloads it on first use and checks it against that file.
+#
 # A build runs on the runner its target needs: macOS signing needs macOS, and a
 # Windows installer needs Windows. Everything else cross-builds, because nothing
 # here compiles native code — the Node runtime and esbuild's executable are
@@ -199,6 +204,102 @@ jobs:
             dist-standalone/*.msi
           if-no-files-found: error
 
+  # The desktop host's webview helper. Unlike the CLI it IS native code against a
+  # toolkit (WebKitGTK, WKWebView, WebView2), so each target builds on a runner of
+  # its own OS. Its artifacts are named `telo-desktop-host-*` so the `release`
+  # job's `telo-*` pattern collects them into the one `checksums.txt`.
+  desktop-host:
+    name: Desktop host helper (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # `smoke` marks a runner that can execute what it built.
+          - target: linux-amd64-gnu
+            os: ubuntu-22.04
+            triple: x86_64-unknown-linux-gnu
+            smoke: true
+          - target: linux-arm64-gnu
+            os: ubuntu-22.04-arm
+            triple: aarch64-unknown-linux-gnu
+            smoke: true
+          - target: darwin-amd64
+            os: macos-latest
+            triple: x86_64-apple-darwin
+          - target: darwin-arm64
+            os: macos-latest
+            triple: aarch64-apple-darwin
+            smoke: true
+          - target: windows-amd64
+            os: windows-latest
+            triple: x86_64-pc-windows-msvc
+            smoke: true
+          - target: windows-arm64
+            os: windows-latest
+            triple: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    env:
+      # WKWebView's per-application data store, which the helper relies on so that
+      # two apps never share cookies, exists from macOS 14.
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+      CARGO_PROFILE_RELEASE_STRIP: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+
+      - name: Install the WebKitGTK development libraries
+        if: startsWith(matrix.target, 'linux')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev libdbus-1-dev pkg-config
+
+      # The helper is checked against the CLI that downloads it by version, so the
+      # crate must carry the release's.
+      - name: The crate carries the release's version
+        shell: bash
+        run: |
+          set -euo pipefail
+          crate=$(sed -n '/^\[package\]/,/^\[/{s/^version = "\(.*\)"$/\1/p}' cli/rust/desktop-host/Cargo.toml)
+          [ "$crate" = "${{ inputs.version }}" ] || { echo "cli/rust/desktop-host is $crate, the release is ${{ inputs.version }}" >&2; exit 1; }
+
+      - name: Build the helper
+        run: cargo build --release --locked -p telo-desktop-host --features gui --target ${{ matrix.triple }}
+
+      - name: Stage the asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          ext=""
+          case "${{ matrix.target }}" in windows-*) ext=".exe" ;; esac
+          mkdir -p desktop-host-dist
+          cp "target/${{ matrix.triple }}/release/telo-desktop-host$ext" \
+            "desktop-host-dist/telo-desktop-host-${{ inputs.version }}-${{ matrix.target }}$ext"
+
+      # A GUI-subsystem binary on Windows prints only into a pipe, which this
+      # step's stdout is.
+      - name: Smoke test
+        if: matrix.smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin=$(ls desktop-host-dist/telo-desktop-host-*)
+          out=$("$bin" --version | cat)
+          [ "$out" = "telo-desktop-host ${{ inputs.version }}" ] || { echo "unexpected: $out" >&2; exit 1; }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: telo-desktop-host-${{ matrix.target }}
+          path: desktop-host-dist/*
+          if-no-files-found: error
+
   # The only place "no Node.js installed" is a fact rather than an assumption:
   # images that have never had it. macOS and Windows have no such image, so their
   # equivalent is the PATH-stripped smoke test in the build job.
@@ -286,7 +387,7 @@ jobs:
 
   release:
     name: Attach binaries and publish the release
-    needs: [build, verify, package-app]
+    needs: [build, desktop-host, verify, package-app]
     runs-on: ubuntu-latest
     permissions:
       contents: write

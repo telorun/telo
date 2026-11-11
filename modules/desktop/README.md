@@ -19,6 +19,6 @@ Native windows and a tray icon for a web application. The module speaks one prot
 
 ## Hosts
 
-`telo run` is not yet a desktop host. Today a host is supplied through the environment: set `TELO_NEED_<NEED>__ENDPOINT` (a `unix:` socket path, or `npipe:` on Windows) and `TELO_NEED_<NEED>__TOKEN` for the application's `Telo.DesktopHost` need, with a process speaking `desktop_host-1` behind the socket. Setting only one of the two is refused at load. The module's own tests do this with a fixture host.
+`telo run` is the desktop host when the root `Telo.Application` declares a `Telo.DesktopHost` need and neither `TELO_NEED_<NEED>__ENDPOINT` nor `TELO_NEED_<NEED>__TOKEN` is set: it opens the windows and tray icons itself, and `telo package` writes the same application as a macOS `.app`, a Windows GUI `.exe` or a Linux executable. Another shell embedding Telo supplies both variables (a `unix:` socket path, or `npipe:` on Windows, and a token) with a process speaking `desktop_host-1` behind the endpoint; setting only one of the two is refused at load. The module's own tests do this with a fixture host.
 
-Documentation: [windows](docs/windows.md), [tray icons](docs/tray-icons.md), [actions](docs/actions.md).
+Documentation: [hosts](docs/hosts.md), [windows](docs/windows.md), [tray icons](docs/tray-icons.md), [actions](docs/actions.md), [external sign-in](docs/external-sign-in.md).

@@ -1,0 +1,192 @@
+kind: Telo.Application
+metadata:
+  name: NotesWeb
+  version: 1.0.0
+  description: |
+    A web app that signs users in through an OIDC-style provider (authorization code
+    flow): `/auth/login` sends the browser to the provider, `/auth/callback` checks
+    the returned `state`, exchanges the `code` at the provider's token endpoint and
+    starts a session, and `/` shows who is signed in. The provider answers either in
+    the redirect's query or with a form POST (`responseMode`).
+
+    Run, with a provider registered for the redirect address below:
+        PROVIDER_URL=https://id.example.com CLIENT_ID=notes telo run ./examples/notes-web
+        redirect address: http://127.0.0.1:8080/auth/callback
+lang: en
+imports:
+  Http: ../../modules/http-server
+  HttpDispatch: ../../modules/http-dispatch
+  HttpClient: ../../modules/http-client
+  Session: ../../modules/session
+  KvStoreMemory: ../../modules/kv-store-memory
+  Html: ../../modules/html
+variables:
+  providerUrl:
+    env: PROVIDER_URL
+    type: string
+    default: https://id.example.com
+    description: Origin of the identity provider, serving `/authorize` and `/token`.
+  clientId:
+    env: CLIENT_ID
+    type: string
+    default: notes-example
+    description: The client id registered with the provider.
+  responseMode:
+    env: RESPONSE_MODE
+    type: string
+    enum: [query, form_post]
+    default: query
+    description: How the provider returns the code, in the redirect's query or as a form POST.
+ports: { http: { env: PORT, default: 8080 } }
+targets:
+  - !ref server
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+contentTypeParsers:
+  - { contentType: application/x-www-form-urlencoded }
+mounts:
+  - path: /auth
+    mount: !ref auth
+    authentication: { anonymous: allow }
+  - path: /
+    mount: !ref pages
+    authentication:
+      anonymous: allow
+      verifiers:
+        - verifier: { kind: Session.Verifier, sessions: !ref sessions }
+          from: { kind: Http.FromCookie, cookie: !ref sessionCookie, scheme: Session }
+---
+kind: Session.Sessions
+metadata: { name: sessions }
+store: { kind: KvStoreMemory.Store }
+name: notes
+idleTimeout: 1800s
+absoluteLifetime: 43200s
+---
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: sessionCookie }
+name: notes-session
+secure: false
+---
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: stateCookie }
+name: notes-state
+secure: false
+---
+# Checks the returned state against the one this browser was sent away with, then
+# trades the code for the user and starts a session.
+kind: Telo.Sequence
+metadata: { name: completeSignIn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [code, state, expectedState]
+    properties: { code: { type: string }, state: { type: string }, expectedState: { type: string } }
+steps:
+  - name: stateMatches
+    value: !cel "inputs.code != '' && inputs.state != '' && inputs.state == inputs.expectedState"
+  - name: exchange
+    if: !cel "steps.stateMatches.result"
+    then:
+      - name: token
+        invoke:
+          kind: HttpClient.Request
+          client: { kind: HttpClient.Client, baseUrl: !cel "variables.providerUrl", throwOnHttpError: false }
+          method: POST
+          url: /token
+        inputs:
+          headers: { content-type: application/x-www-form-urlencoded }
+          body:
+            grant_type: authorization_code
+            code: !cel "inputs.code"
+            client_id: !cel "variables.clientId"
+            redirect_uri: !interpolate "http://127.0.0.1:${{ ports.http }}/auth/callback"
+      - name: user
+        value: !cel "steps.token.result.status == 200 ? string(steps.token.result.body.sub) : ''"
+    else:
+      - { name: user, value: "" }
+  - name: signedIn
+    if: !cel "steps.user.result != ''"
+    then:
+      - name: started
+        invoke: { kind: Session.Start, sessions: !ref sessions }
+        inputs:
+          principal:
+            subject: !cel "steps.user.result"
+            issuer: null
+            kind: user
+            claims: {}
+            scopes: []
+            roles: []
+            permissions: []
+            org: null
+            amr: [oidc]
+            acr: null
+            sessionId: null
+            authenticatedAt: null
+            via: login
+      - name: outcome
+        value: !cel "{'accepted': true, 'token': steps.started.result.token}"
+    else:
+      - { name: outcome, value: { accepted: false, token: "" } }
+outputs:
+  accepted: !cel "steps.outcome.result.accepted"
+  token: !cel "steps.outcome.result.token"
+---
+kind: Http.Api
+metadata: { name: auth }
+catches:
+  - status: 503
+    content: { text/html: { body: "<p>Sign-in is unavailable; try again</p>" } }
+routes:
+  - request: { path: /login, method: GET }
+    handler: { kind: Telo.Value, value: !cel "{'state': uuidv4()}" }
+    returns:
+      - status: 302
+        headers:
+          Location: !interpolate "${{ variables.providerUrl }}/authorize?response_type=code&client_id=${{ urlEncode(variables.clientId) }}&redirect_uri=${{ urlEncode('http://127.0.0.1:' + string(ports.http) + '/auth/callback') }}&state=${{ result.state }}&response_mode=${{ variables.responseMode }}"
+        cookies: [{ cookie: !ref stateCookie, value: !cel "result.state" }]
+        content: { text/html: { body: "<p>Redirecting to the provider</p>" } }
+  - request: { path: /callback, method: GET }
+    handler: !ref completeSignIn
+    inputs:
+      code: !cel "'code' in request.query ? request.query.code : ''"
+      state: !cel "'state' in request.query ? request.query.state : ''"
+      expectedState: !cel "'cookie' in request.headers ? request.headers.cookie.split('; ').filter(p, p.startsWith('notes-state=')).map(p, p.substring(12)).join('') : ''"
+    returns: &signInReturns
+      - status: 302
+        when: !cel "result.accepted"
+        headers: { Location: / }
+        cookies:
+          - { cookie: !ref stateCookie, maxAge: 0s }
+          - { cookie: !ref sessionCookie, value: !cel "result.token" }
+        content: { text/html: { body: "<p>Signed in</p>" } }
+      - status: 400
+        cookies: [{ cookie: !ref stateCookie, maxAge: 0s }]
+        content: { text/html: { body: "<p>Sign-in was refused</p>" } }
+  - request: { path: /callback, method: POST }
+    handler: !ref completeSignIn
+    inputs:
+      code: !cel "request.body.split('&').filter(p, p.startsWith('code=')).map(p, urlDecode(p.substring(5))).join('')"
+      state: !cel "request.body.split('&').filter(p, p.startsWith('state=')).map(p, urlDecode(p.substring(6))).join('')"
+      expectedState: !cel "'cookie' in request.headers ? request.headers.cookie.split('; ').filter(p, p.startsWith('notes-state=')).map(p, p.substring(12)).join('') : ''"
+    returns: *signInReturns
+---
+kind: Http.Api
+metadata: { name: pages }
+routes:
+  - request: { path: /, method: GET }
+    inputs: { user: !cel "request.principal != null ? request.principal.subject : ''" }
+    handler:
+      kind: Telo.Value
+      inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { user: { type: string } } } }
+      value: !cel "{'user': inputs.user}"
+    returns:
+      - status: 200
+        when: !cel "result.user != ''"
+        content: { text/html: { body: !interpolate "<h1>Notes</h1><p>Signed in as ${{ Html.escape(result.user) }}</p>" } }
+      - status: 200
+        content: { text/html: { body: '<h1>Notes</h1><p><a href="/auth/login">Sign in</a></p>' } }

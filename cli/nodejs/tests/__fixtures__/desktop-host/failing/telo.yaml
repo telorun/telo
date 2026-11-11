@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: DesktopFailingFixture
+  version: 1.0.0
+  description: A desktop wrapper that loads but whose first boot target fails, so the host shows a boot refusal.
+lang: en
+imports:
+  Desktop: ../../../../../../modules/desktop
+  Console: ../../../../../../modules/console
+ports: { http: { env: DESKTOP_FAILING_PORT } }
+variables:
+  zero: { env: DESKTOP_FAILING_ZERO, type: integer, default: 0 }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.tests.desktopfailing, productName: Failing, port: http }
+targets:
+  - invoke: !ref Console.writeLine
+    inputs: { output: !interpolate "${{ 1 / variables.zero }}" }

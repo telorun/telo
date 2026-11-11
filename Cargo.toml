@@ -15,6 +15,7 @@ members = [
     "analyzer/rust",
     "kernel/rust",
     "cli/rust",
+    "cli/rust/desktop-host",
     "modules/console/rust",
     "examples/local-modules/pow-rust/rust",
     "packages/runner-core/supervisor",

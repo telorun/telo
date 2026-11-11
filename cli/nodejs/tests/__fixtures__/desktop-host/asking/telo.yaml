@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: DesktopAskingFixture
+  version: 1.0.0
+  description: A desktop wrapper with inputs nothing supplies, which the host asks for in a form; it prints what was answered.
+lang: en
+imports:
+  Desktop: ../../../../../../modules/desktop
+  Console: ../../../../../../modules/console
+ports: { http: { env: DESKTOP_ASKING_PORT } }
+variables:
+  greeting: { env: DESKTOP_ASKING_GREETING, type: string, title: The greeting }
+  count: { env: DESKTOP_ASKING_COUNT, type: integer, minimum: 1 }
+  mode: { env: DESKTOP_ASKING_MODE, type: string, enum: [fast, slow] }
+secrets:
+  token: { env: DESKTOP_ASKING_TOKEN, type: string }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.tests.desktopasking, productName: Asking, port: http }
+targets:
+  - invoke: !ref Console.writeLine
+    inputs: { output: !interpolate "answered ${{ variables.greeting }} ${{ variables.count }} ${{ variables.mode }} ${{ size(secrets.token) }}" }
+  - !ref onlyWindow
+---
+kind: Desktop.Window
+metadata: { name: onlyWindow }
+host: !ref desktopHost
+title: Only
+onClose: close

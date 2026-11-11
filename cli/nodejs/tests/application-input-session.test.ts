@@ -62,6 +62,34 @@ async function load(manifest: string, session: ApplicationInputSession, env: Rec
   return kernel;
 }
 
+describe("a prompter that asks every input at once", () => {
+  const entry = (name: string, extra: object = {}) =>
+    ({ id: `variables.${name}`, block: "variables", name, sensitive: false, type: "string", schema: {}, ...extra }) as never;
+
+  it("is asked once for the entries not answered yet, and a refused entry again", async () => {
+    const calls: string[][] = [];
+    const session = new ApplicationInputSession({
+      ask: async () => null,
+      askAll: async (inputs) => {
+        calls.push(inputs.map((input) => input.id));
+        return new Map(inputs.map((input) => [input.id, `${input.id}!`]));
+      },
+      confirm: async () => false,
+      say: () => undefined,
+    });
+    const first = await session.resolve([entry("a"), entry("b")]);
+    expect([...first!]).toEqual([["variables.a", "variables.a!"], ["variables.b", "variables.b!"]]);
+    await session.resolve([entry("a"), entry("b", { refusal: "bad" })]);
+    expect(calls).toEqual([["variables.a", "variables.b"], ["variables.b"]]);
+    expect(session.takeFresh().map((answer) => answer.input.id)).toEqual(["variables.a", "variables.b"]);
+  });
+
+  it("declines when the prompter ends the input", async () => {
+    const session = new ApplicationInputSession({ ask: async () => null, askAll: async () => undefined, confirm: async () => false, say: () => undefined });
+    expect(await session.resolve([entry("a")])).toBeUndefined();
+  });
+});
+
 describe("a run's answers", () => {
   it("are kept across reloads: a reload asks only for a new entry, or one it refuses", async () => {
     const { prompter, asked } = person({ "variables.region": ["eu", "7"], "variables.zone": ["a"] });

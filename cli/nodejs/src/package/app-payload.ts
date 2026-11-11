@@ -20,6 +20,11 @@ export const PAYLOAD_INDEX = "telo-app.json";
 export const APP_PREFIX = "app";
 /** The warmed `.telo` tree, which becomes the app's cache root. */
 export const CACHE_PREFIX = "cache";
+/** The desktop host helper a desktop app carries, where its platform's bundle
+ *  keeps it in the payload (`desktop-bundle.ts`). */
+export const HELPER_PREFIX = "helper";
+/** The helper's file name, before a platform's executable extension. */
+export const HELPER_FILE = "telo-desktop-host";
 
 /**
  * None of these can contribute to the analysis key: the stamp IS what the key
@@ -77,6 +82,13 @@ export interface AppIndex {
    * start, silently, because a stamp miss is the designed quiet recovery.
    */
   readonly analysisKey: string;
+  /**
+   * Present exactly when the application is a desktop app — its root declares a
+   * `Telo.DesktopHost` need — and then names its identity. A start reads it to
+   * find the per-user directory before it can know anything else; an index of
+   * any other application has no such key.
+   */
+  readonly desktopHost?: { readonly identifier: string };
   readonly modules: readonly AppModuleRecord[];
 }
 

@@ -178,6 +178,9 @@ export function describeInput(input: UnresolvedApplicationInput): string[] {
 export interface InputPrompter {
   /** Ask for one entry; `null` when the person ended the input. */
   ask(input: UnresolvedApplicationInput): Promise<string | null>;
+  /** Ask every entry at once (a form); `null` when the person ended the input.
+   *  When present the session uses it instead of `ask` per entry. */
+  askAll?(inputs: readonly UnresolvedApplicationInput[]): Promise<ReadonlyMap<string, string> | undefined>;
   /** Ask a yes/no question; anything but yes, and the end of input, is no. */
   confirm(question: string): Promise<boolean>;
   /** A line of prose on the asking stream. */

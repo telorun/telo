@@ -388,16 +388,78 @@ TELO_HOST_STATE_DIR=./data telo run ./shop
 ## Desktop hosts
 
 `Telo.DesktopHost` is the need a desktop application asks the desktop shell for.
-It is supplied like every root need, from the environment only: the shell's
+When neither of its variables is set, `telo run` is the desktop host: it shows
+the application's windows and tray icons itself, keeps one instance running per
+`identifier` (a second start shows the first one's windows and exits 0), serves
+the windows' origin on `127.0.0.1` at a port it remembers across launches, and
+supplies that port to the root's `ports:` entry the need names, so its variable
+needs no value. A start with no display, or on macOS older than 14, is refused
+before anything runs (`ERR_DESKTOP_HOST_UNAVAILABLE`), as is `telo run --watch`.
+
+The host opens a window of its own at once, which shows "Starting…" until the
+application's first visible window replaces it. An input nothing supplies is
+asked in a form in that window (a masked field for a secret, a choice for an
+`enum`); `--no-input` refuses instead, as in a terminal. If the application
+fails to boot, the window shows the same diagnostics `telo run` prints, and the
+run exits 1 when you close it.
+
+Only the application's own windows reach the origin: a window's first load is
+on a second loopback port of the host's own — the host origin, assigned at every
+launch — which exchanges a one-time code for a cookie and sends the window on to
+its page; cookies ignore the port, so the cookie works on both. The host answers
+`403` to a request without the cookie or with another `Host` or `Origin`. Every
+page the host itself shows a window is served on the host origin, so the web app
+owns every path of its own origin. The origin is
+`http://127.0.0.1:<port>`; the port is the `default:` of the root's `ports:`
+entry when it declares one, else a number remembered in the application's
+per-user directory. When it cannot be bound a new one is recorded and
+`DESKTOP_ORIGIN_CHANGED` names both origins, so browser storage keyed by the
+origin is lost once. Where the session has no tray, a `Desktop.TrayIcon` is
+skipped with `DESKTOP_TRAY_UNAVAILABLE` and windows declared `visible: false` are
+shown. The helper that owns the windows, `telo-desktop-host`, is the packaged
+app's own, a source checkout's build, or the release's download; set
+`TELO_HOST_DESKTOP_HELPER` to an absolute path to use another (a test and
+development seam). `telo package` writes the application as a macOS `.app`, a
+Windows GUI `.exe` or a Linux executable
+([Packaging an app](/learn/packaging-an-app)).
+
+Another shell supplies the need like every root need, from the environment: its
 control channel is `TELO_NEED_<NEED>__ENDPOINT` (a `unix:` or `npipe:` address)
 and `TELO_NEED_<NEED>__TOKEN` (sensitive), or the names the need's `env:` binds.
-Setting one and not the other is refused as partly supplied; setting neither is
-refused as unmet, naming both variables. `telo needs report` lists the
-parameters (`identifier`, `productName`, `icon` as a module-relative path,
-`port`, `showInDock`, `callbackPaths`) and both variables.
+`telo run` then starts no helper, takes no lock, binds no port and admits
+nothing. Setting one and not the other is refused as partly supplied.
+`telo needs report` lists the parameters (`identifier`, `productName`, `icon` as
+a module-relative path, `port`, `showInDock`, `callbackPaths`) and both
+variables. A runner never supplies one.
 
-`telo run` does not yet act as the desktop host, and a runner never supplies
-one, so today the variables must be set by whatever starts the application.
+### External sign-in
+
+A web app that signs in through an external identity provider needs no change to
+run in a window. A navigation to another origin never loads in the window: an
+`http` or `https` one opens in the system browser, and the sign-in returns
+through the origin, so the app's own redirect address works.
+
+- Declare the return paths on the need (`callbackPaths: [/auth/callback]`), and
+  register `http://127.0.0.1:<port>/auth/callback` with the provider. A provider
+  that accepts any loopback port needs nothing more; one that matches the
+  redirect address exactly needs the root's `ports:` entry to declare a
+  `default:`, since the origin is then the same on every launch.
+- The return may be a `GET`, or a `POST` of `application/x-www-form-urlencoded`
+  (`response_mode=form_post`; the web app needs a urlencoded body parser). The
+  browser shows "Return to <productName> to finish signing in." and the host
+  replays the request inside the window that left, so the session lands in the
+  window, not the browser. A `POST` is replayed through a page on the host
+  origin, so it reaches the app with the host origin as `Origin`: an app that
+  allowlists the `Origin` of its callback must accept it, as a `form_post`
+  callback already must accept the provider's.
+- One return is accepted per external navigation, on exactly the declared path;
+  anything else is `403`.
+- A popup flow that relies on `window.opener` is not supported: the system
+  browser has no opener.
+- The host cannot tell a genuine return from a forged one. The app's own `state`
+  or PKCE check is the protection.
+
+Spec: `kernel/specs/desktop-host.md` §5.
 
 ## Needs supplied by a parent
 

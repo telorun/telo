@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: NotesDesktop
+  version: 1.0.0
+  description: |
+    The `notes-web` sign-in app in a desktop window. The identity provider's answer
+    arrives at `/auth/callback`, a path the desktop host is told to expect, so the
+    sign-in that started in the window ends in the window.
+
+    Run: telo run ./examples/notes-desktop
+lang: en
+imports: { App: ../../modules/app, Desktop: ../../modules/desktop }
+ports: { http: { env: PORT, default: 53817 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters:
+      identifier: run.telo.examples.notes
+      productName: Notes
+      icon: !module-path icon.png
+      port: http
+      callbackPaths: [/auth/callback]
+targets:
+  - !ref web
+  - !ref mainWindow
+---
+kind: App.Instance
+metadata: { name: web }
+source: ../notes-web
+ports: { http: !cel "ports.http" }
+---
+kind: Desktop.Window
+metadata: { name: mainWindow }
+host: !ref desktopHost
+title: Notes
+size: { width: 960, height: 640 }

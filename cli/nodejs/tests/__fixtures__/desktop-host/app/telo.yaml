@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata:
+  name: DesktopHostFixture
+  version: 1.0.0
+  description: |
+    A desktop wrapper `telo run` hosts: a page served on the port the host binds,
+    a window shown at start, one hidden until asked for, and a tray icon whose
+    first item quits.
+lang: en
+imports:
+  Desktop: ../../../../../../modules/desktop
+  Http: ../../../../../../modules/http-server
+ports: { http: { env: DESKTOP_FIXTURE_PORT } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.tests.desktophost, productName: Fixture, icon: !module-path icon.png, port: http }
+targets:
+  - !ref server
+  - !ref mainWindow
+  - !ref settingsWindow
+  - !ref tray
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - { path: /, mount: !ref pages }
+---
+kind: Http.Api
+metadata: { name: pages }
+routes:
+  - request: { path: /, method: GET }
+    handler: { kind: Telo.Value, value: {} }
+    returns:
+      - { status: 200, content: { text/html: { body: "<h1>Hello</h1>" } } }
+---
+kind: Desktop.Window
+metadata: { name: mainWindow }
+host: !ref desktopHost
+title: Fixture
+onClose: hide
+---
+kind: Desktop.Window
+metadata: { name: settingsWindow }
+host: !ref desktopHost
+path: /settings
+title: Settings
+visible: false
+onClose: hide
+---
+kind: Desktop.TrayIcon
+metadata: { name: tray }
+host: !ref desktopHost
+icon: !module-path icon.png
+menu:
+  - { type: item, label: Quit, action: { invoke: { kind: Desktop.Quit, host: !ref desktopHost } } }

@@ -74,6 +74,13 @@ export interface PackageBuildOptions {
   readonly platform: PlatformTarget;
   /** One line per step, on stderr through the caller's seam. */
   readonly report: (message: string) => void;
+  /** Set for a desktop app: its identity, which the index records, and the
+   *  helper to carry in the payload under `name` when the platform's bundle
+   *  keeps it there. */
+  readonly desktop?: {
+    readonly identifier: string;
+    readonly helper?: { readonly file: string; readonly name: string };
+  };
 }
 
 export interface PackageBuildResult {
@@ -158,13 +165,17 @@ export async function buildAppPayload(options: PackageBuildOptions): Promise<Pac
       },
       telo: cliVersion() ?? "unversioned",
       analysisKey,
+      ...(options.desktop ? { desktopHost: { identifier: options.desktop.identifier } } : {}),
       modules: local.modules,
     };
+    const helper = options.desktop?.helper;
 
     const payload = await packPayload([
       { name: PAYLOAD_INDEX, content: `${JSON.stringify(index, null, 2)}\n` },
       ...directoryEntries(appRoot, APP_PREFIX),
       ...directoryEntries(cacheRoot, CACHE_PREFIX),
+      // Always executable: a payload unpacks to a mode the entry names, and the helper is run.
+      ...(helper ? [{ name: helper.name, content: fs.readFileSync(helper.file), executable: true }] : []),
     ]);
     return { payload, index };
   } finally {

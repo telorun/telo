@@ -96,6 +96,8 @@ export class ReleaseBinaryError extends Error {
   constructor(
     public readonly failure: ReleaseBinaryFailure,
     message: string,
+    /** The HTTP status and URL of the request that failed, when one answered. */
+    public readonly response?: { status: number; url: string },
   ) {
     super(message);
     this.name = "ReleaseBinaryError";
@@ -134,6 +136,64 @@ export function releaseBinary(
 }
 
 const inFlight = new Map<string, Promise<string>>();
+
+/**
+ * One file of release `version` that is not an archive — a binary published
+ * under its own name, `telo-desktop-host-<version>-<target>` — downloaded,
+ * verified against the release's `checksums.txt` and kept at
+ * `<cache root>/<version>/<asset>` under the same recorded-digest rule as
+ * {@link releaseBinary}.
+ */
+export function releaseAsset(asset: string, version: string, options: ReleaseBinaryOptions): Promise<string> {
+  const key = `${options.cacheRoot ?? ""}\u0000${version}\u0000asset\u0000${asset}`;
+  const running = inFlight.get(key);
+  if (running) return running;
+  const fetched = fetchReleaseAsset(asset, version, options).finally(() => inFlight.delete(key));
+  inFlight.set(key, fetched);
+  return fetched;
+}
+
+async function fetchReleaseAsset(asset: string, version: string, options: ReleaseBinaryOptions): Promise<string> {
+  const cached = options.cacheRoot ? path.join(options.cacheRoot, version, asset) : undefined;
+  if (cached) {
+    const recorded = await readRecordedDigest(cached);
+    if (recorded !== undefined && fs.existsSync(cached)) {
+      const actual = await sha256OfFile(cached);
+      if (actual === recorded) return cached;
+      throw new ReleaseBinaryError(
+        "cache-corrupt",
+        `the cached ${asset} at ${cached} is not the file that was downloaded ` +
+          `(sha256 ${actual}, recorded ${recorded}). Delete it to fetch the release again.`,
+      );
+    }
+  }
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const base = `https://github.com/${RELEASE_REPO}/releases/download/v${version}`;
+  options.report?.(`fetching ${base}/${asset}`);
+  const url = `${base}/${asset}`;
+  const response = await request(fetchImpl, url);
+  if (!response.ok) {
+    throw new ReleaseBinaryError(
+      response.status === 404 ? "not-published" : "unreachable",
+      `downloading ${asset} failed (HTTP ${response.status} at ${url}).`,
+      { status: response.status, url },
+    );
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  await verifyChecksum(fetchImpl, base, asset, bytes);
+  if (!cached) {
+    throw new ReleaseBinaryError(
+      "no-cache-directory",
+      `there is no writable cache directory to keep the downloaded ${asset} in. Set TELO_APP_DIR to a writable path.`,
+    );
+  }
+  await fsp.mkdir(path.dirname(cached), { recursive: true });
+  const partial = `${cached}.${randomUUID()}.partial`;
+  await fsp.writeFile(partial, bytes, { mode: 0o755 });
+  await fsp.rename(partial, cached);
+  await fsp.writeFile(digestFile(cached), createHash("sha256").update(bytes).digest("hex"));
+  return cached;
+}
 
 async function fetchReleaseBinary(
   target: string,

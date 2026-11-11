@@ -220,4 +220,14 @@ describe("a started child application", () => {
       }),
     ).toEqual({ TELO_HOST_CONTAINER_ENGINE_URL: "unix:///var/run/docker.sock", PATH: "/bin" });
   });
+
+  it("inherits no desktop helper path, and a controller reads none", async () => {
+    expect(withoutHostValues({ TELO_HOST_DESKTOP_HELPER: "/bin/helper", PATH: "/bin" })).toEqual({ PATH: "/bin" });
+    const kernel = await load({ app: app(UPLOADS) }, { TELO_HOST_STATE_DIR: scratch, TELO_HOST_DESKTOP_HELPER: "/bin/helper" });
+    const root = (kernel as unknown as { rootContext: ModuleContext }).rootContext;
+    const ctx = (kernel as unknown as {
+      createResourceContext(m: ModuleContext, r: unknown): { env: Record<string, string | undefined> };
+    }).createResourceContext(root, { kind: "Test.Probe", metadata: { name: "probe" } });
+    expect(ctx.env.TELO_HOST_DESKTOP_HELPER).toBeUndefined();
+  });
 });

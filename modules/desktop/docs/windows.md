@@ -19,8 +19,8 @@ onClose: hide
 | `title` | A `Text`, shown in the application's fallback language until the page sets its own document title. |
 | `size`, `minSize` | `{ width, height }` in logical pixels. |
 | `resizable` | Default `true`. |
-| `visible` | Default `true`; `false` starts the window hidden. |
-| `onClose` | `close` (default) destroys the window when the user closes it and stops holding the application for it; `hide` keeps it, and it is shown again by `Desktop.ShowWindow`. |
+| `visible` | Default `true`; `false` starts the window hidden. Where the session has no tray icon it is shown at start anyway, so the application stays reachable. |
+| `onClose` | `close` (default) destroys the window when the user closes it and stops holding the application for it; `hide` keeps it, and it is shown again by `Desktop.ShowWindow`, a tray item, a second start or (macOS) a click on the Dock icon. Hiding is not stopping: under `telo run` the application stops when no window is visible and no tray icon is open, so an `onClose: hide` window with a tray icon keeps the application running, and without one hiding the last window stops it. |
 
 `Desktop.ShowWindow` takes a `window:` slot naming a `Desktop.Window` and shows and focuses it. If the host connection ends, the application is no longer held by its windows. After a `Desktop.Quit` that is the expected end and silent; a host that goes away on its own (a crash, a reset connection, a refused frame) is logged once at error severity with the code, the endpoint and the reason, and the application exits non-zero. A host that accepts the connection but does not answer the handshake within 5 seconds is `ERR_DESKTOP_HOST_UNREACHABLE`.
 

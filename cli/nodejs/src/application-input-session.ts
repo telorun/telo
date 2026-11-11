@@ -32,6 +32,18 @@ export class ApplicationInputSession {
       if (known !== undefined && input.refusal === undefined) given.set(input.id, known);
       else toAsk.push(input);
     }
+    if (toAsk.length > 0 && this.prompter.askAll) {
+      const values = await this.prompter.askAll(toAsk);
+      if (values === undefined) return undefined;
+      for (const input of toAsk) {
+        const value = values.get(input.id);
+        if (value === undefined) continue;
+        given.set(input.id, value);
+        this.answers.set(input.id, value);
+        this.fresh.set(input.id, { input, value });
+      }
+      return given;
+    }
     if (toAsk.length > 0 && toAsk.every((input) => input.refusal === undefined)) {
       this.prompter.say(
         `${toAsk.length === 1 ? "1 input has" : `${toAsk.length} inputs have`} no value — enter ` +

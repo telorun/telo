@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: HelloDesktopTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/hello-desktop` against a fixture desktop host: the main window at
+    `/`, the settings window hidden at `/settings`, the tray with its menu, and Quit
+    ending in a `Host.Quit` request.
+imports: { Test: ../../../modules/test }
+targets:
+  - !ref wrapperUnderHost
+---
+kind: Test.Suite
+metadata: { name: wrapperUnderHost }
+include: ["__fixtures__/wrapper-under-host.yaml"]
+exclude: []
+env:
+  TELO_NEED_DESKTOP_HOST__ENDPOINT: unix:///tmp/telo-examples-hello-desktop/control.sock
+  TELO_NEED_DESKTOP_HOST__TOKEN: s3cret-token
