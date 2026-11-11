@@ -55,7 +55,7 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, loadWorkspace } from "./module-ownership.mjs";
-import { channelOf, githubReleaseFlags } from "./release-channel.mjs";
+import { channelOf, cliVersionCommit, githubReleaseFlags } from "./release-channel.mjs";
 
 const dryRun = process.argv.includes("--dry-run");
 
@@ -85,15 +85,17 @@ if (!dryRun && (!repository || !token)) {
 const workspace = loadWorkspace();
 
 /**
- * The packages whose versions moved in this commit — the recovery source when the
+ * The packages whose versions moved in this run's release commit — the tip, or the
+ * Version PR merge a fix was pushed on top of — the recovery source when the
  * changesets action did not report a set (a re-run, or a manual dispatch). A Version
  * PR merge is exactly a commit that rewrites `version` in each released package's
  * manifest, which is the same signal `publish-modules.mjs` uses for modules.
  */
 function versionBumpsInHeadCommit() {
+  const release = cliVersionCommit({ cwd: ROOT }) ?? "HEAD";
   let diff;
   try {
-    diff = execSync("git diff --unified=0 HEAD^ HEAD -- '**/package.json' package.json", {
+    diff = execSync(`git diff --unified=0 ${release}^ ${release} -- '**/package.json' package.json`, {
       cwd: ROOT,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],

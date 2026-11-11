@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setOutput } from "./release-actions-output.mjs";
 import { releaseCommitOf, tagsOfReleaseCommit } from "./release-commit.mjs";
+import { newestVersionCommit } from "./version-commit.mjs";
 import { ROOT, compareVersions, readPreState, readReleasePlan } from "./version-line.mjs";
 
 const CLI = "@telorun/cli";
@@ -40,28 +41,31 @@ export function channelOf({ preMode, cliVersion }) {
   return cliVersion.endsWith(".0") ? "final" : "patch";
 }
 
-/** Did the run's commit move the CLI's version — is it a Version PR merge. */
-function cliMovedIn(cwd) {
+const cliVersionAt = (cwd, ref) => JSON.parse(git(cwd, "show", `${ref}:${CLI_MANIFEST}`)).version;
+
+/** Did `sha` move the CLI's version against its parent — is it a Version PR merge. */
+function cliMovedIn(cwd, sha) {
   try {
-    const before = JSON.parse(git(cwd, "show", `HEAD^:${CLI_MANIFEST}`)).version;
-    const after = JSON.parse(readFileSync(join(cwd, CLI_MANIFEST), "utf8")).version;
-    return before !== after;
+    return cliVersionAt(cwd, `${sha}^`) !== cliVersionAt(cwd, sha);
   } catch {
     return false;
   }
 }
 
 /**
- * Did the run's commit release the CLI: it moved the version, and `v<version>` names
- * no other release commit (`release-commit.mjs`) — a tag on HEAD's publication commit
- * names HEAD, so a re-run classifies as the first run did. A record on main moves the
- * version to one already released, so a branch cut at that commit releases nothing by it.
+ * The commit that released the CLI in the run at `cwd`'s HEAD, or undefined. It is the
+ * newest version commit (`version-commit.mjs`) — the tip, or the Version PR merge a fix
+ * was pushed on top of — and it released the CLI unless `v<version>` already names
+ * another release (a record on main moves the version to one already released, so a
+ * branch cut at it releases nothing by it; a tag on the version's own publication commit
+ * names the run's HEAD, so a re-run classifies as the first run did).
  */
-function cliReleasedIn(cwd) {
-  if (!cliMovedIn(cwd)) return false;
-  const tag = `v${JSON.parse(readFileSync(join(cwd, CLI_MANIFEST), "utf8")).version}`;
-  if (!git(cwd, "tag", "--list", tag)) return true;
-  return releaseCommitOf({ cwd, tag }) === git(cwd, "rev-parse", "HEAD");
+export function cliVersionCommit({ cwd = ROOT } = {}) {
+  const commit = newestVersionCommit({ cwd, paths: [CLI_MANIFEST], moves: (sha) => cliMovedIn(cwd, sha) });
+  if (!commit) return undefined;
+  const tag = `v${cliVersionAt(cwd, commit)}`;
+  if (!git(cwd, "tag", "--list", tag)) return commit;
+  return releaseCommitOf({ cwd, tag }) === git(cwd, "rev-parse", "HEAD") ? commit : undefined;
 }
 
 /**
@@ -71,7 +75,8 @@ function cliReleasedIn(cwd) {
  * `packages-<major>.<minor>-<n>`; empty otherwise.
  */
 export function plannedTag({ cwd = ROOT, branch }) {
-  if (cliReleasedIn(cwd)) return `v${JSON.parse(readFileSync(join(cwd, CLI_MANIFEST), "utf8")).version}`;
+  const released = cliVersionCommit({ cwd });
+  if (released) return `v${cliVersionAt(cwd, released)}`;
   if (existsSync(join(cwd, ".changeset", "pre.json")) || !RELEASE_BRANCH.test(branch ?? "")) return "";
   return numberedTag({ cwd, branch, kind: "packages" }).tag;
 }
@@ -88,8 +93,9 @@ export function classifyPublish({ cwd = ROOT, published = [], branch }) {
     ? JSON.parse(readFileSync(join(cwd, ".changeset", "pre.json"), "utf8"))
     : undefined;
   const none = { channel: "none", version: "", tag: "", releaseTag: "", candidates: pre !== undefined, recordTag: "" };
-  if (cliReleasedIn(cwd)) {
-    const cliVersion = JSON.parse(readFileSync(join(cwd, CLI_MANIFEST), "utf8")).version;
+  const released = cliVersionCommit({ cwd });
+  if (released) {
+    const cliVersion = cliVersionAt(cwd, released);
     const channel = channelOf({ preMode: pre?.mode, cliVersion });
     const tag = `v${cliVersion}`;
     return { channel, version: cliVersion, tag, releaseTag: tag, candidates: pre !== undefined, recordTag: channel === "candidate" ? "" : tag };

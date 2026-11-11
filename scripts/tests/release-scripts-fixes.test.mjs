@@ -35,7 +35,7 @@ const moduleDoc = (version) => `kind: Telo.Library\nmetadata:\n  name: A\n  vers
 
 describe("module release tag of a re-run", () => {
   it("counts the versions the commit moved, published or not, and names the same tag again", async () => {
-    const { versionsMovedInHead } = await load("module-versions-moved.mjs");
+    const { versionsMovedInRelease } = await load("module-versions-moved.mjs");
     const { numberedTag } = await load("release-channel.mjs");
     const root = repo();
     put(root, "modules/a/telo.yaml", moduleDoc("0.1.0"));
@@ -44,17 +44,38 @@ describe("module release tag of a re-run", () => {
     commit(root, "version modules");
 
     const manifests = ["modules/a/telo.yaml"];
-    assert.deepEqual([...versionsMovedInHead(root, manifests)], manifests);
+    assert.deepEqual([...versionsMovedInRelease(root, manifests)], manifests);
     const first = numberedTag({ cwd: root, branch: "release/0.85", kind: "modules" });
     assert.equal(first.tag, "modules-0.85-1");
 
     git(root, "tag", first.tag);
-    assert.deepEqual([...versionsMovedInHead(root, manifests)], manifests);
+    assert.deepEqual([...versionsMovedInRelease(root, manifests)], manifests);
     assert.equal(numberedTag({ cwd: root, branch: "release/0.85", kind: "modules" }).tag, first.tag);
 
     put(root, "README.md", "x");
     commit(root, "later");
-    assert.equal(versionsMovedInHead(root, manifests).size, 0);
+    assert.equal(versionsMovedInRelease(root, manifests).size, 0);
+  });
+
+  it("counts the versions of the version commit a fix sits on, until a tag contains it", async () => {
+    const { versionsMovedInRelease } = await load("module-versions-moved.mjs");
+    const root = repo();
+    put(root, "modules/a/telo.yaml", moduleDoc("0.1.0"));
+    commit(root, "init");
+    put(root, "modules/a/telo.yaml", moduleDoc("0.2.0"));
+    commit(root, "chore(release): version modules");
+    put(root, "README.md", "fix");
+    commit(root, "fix: repair the pipeline");
+
+    const manifests = ["modules/a/telo.yaml"];
+    assert.deepEqual([...versionsMovedInRelease(root, manifests)], manifests);
+
+    git(root, "tag", "modules-0.85-1");
+    assert.deepEqual([...versionsMovedInRelease(root, manifests)], manifests);
+
+    put(root, "README.md", "later");
+    commit(root, "fix: later");
+    assert.equal(versionsMovedInRelease(root, manifests).size, 0);
   });
 });
 

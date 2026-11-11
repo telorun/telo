@@ -710,6 +710,36 @@ describe("publication commits", () => {
     assert.deepEqual([next.tag, next.existing], ["modules-0.85-2", "false"]);
   });
 
+  it("releases the version commit a fix was pushed on top of, until a tag names a release", () => {
+    const { root } = released();
+    const branchEnv = { GITHUB_REF_NAME: "release/0.85", PUBLISHED_PACKAGES: "[]" };
+    put(root, "x.txt", "fix");
+    commit(root, "fix: repair the pipeline");
+    const first = outputsOf(script(root, "release-channel.mjs", ["classify"], branchEnv));
+    assert.deepEqual([first.channel, first.tag, first["record-tag"]], ["patch", "v0.85.1", "v0.85.1"]);
+    assert.match(script(root, "release-channel.mjs", ["pack-tag"], branchEnv).stdout, /^tag=v0\.85\.1$/m);
+
+    const tip = git(root, "rev-parse", "HEAD");
+    const sha = outputsOf(publish(root, ["--release", tip, "--tag", "v0.85.1"])).sha;
+    git(root, "tag", "v0.85.1", sha);
+    assert.deepEqual(outputsOf(script(root, "release-channel.mjs", ["classify"], branchEnv)), first);
+
+    put(root, "y.txt", "next fix");
+    commit(root, "fix: later");
+    assert.equal(outputsOf(script(root, "release-channel.mjs", ["classify"], branchEnv)).channel, "none");
+  });
+
+  it("does not release a record's version beneath a fix", () => {
+    const root = workspace("0.85.0");
+    git(root, "switch", "-q", "-c", "release/0.86");
+    put(root, "cli/nodejs/package.json", JSON.stringify({ name: "@telorun/cli", version: "0.85.1" }));
+    commit(root, "chore(release): record v0.85.1 on main");
+    put(root, "x.txt", "fix");
+    commit(root, "fix");
+    const classified = outputsOf(script(root, "release-channel.mjs", ["classify"], { GITHUB_REF_NAME: "release/0.86", PUBLISHED_PACKAGES: "[]" }));
+    assert.equal(classified.channel, "none");
+  });
+
   it("gates the release PR on imports awaiting this release's publish only", async () => {
     const { releaseImportsVerdict } = await import(pathToFileURL(join(REPO, "scripts/check-release-imports.mjs")).href);
     const kept = (alias, cause) => ({ manifest: "starters/s/telo.yaml", alias, source: `../../modules/${alias}`, cause, reason: cause });
