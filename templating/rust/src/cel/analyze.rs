@@ -44,6 +44,11 @@ pub const EACH_SEGMENT: &str = "[]";
 /// presence test (`has(a.b)`) reads.
 pub const PRESENCE_SEGMENT: &str = "?";
 
+/// The chain segment for "each element of the range, read whole", after [`EACH_SEGMENT`]: a bare
+/// use of the iteration variable, or the range of an `in` test. Over a list it reads every
+/// element; over a map only the keys, which the variable and the tested value stand for there.
+pub const ELEMENT_SEGMENT: &str = "[]!";
+
 /// Every member-access chain of the tree, in walk order. A chain rooted at a call or a
 /// non-identifier is not one; a name a comprehension or `cel.bind` binds is not a root
 /// inside what it scopes; a resolved module call's receiver is not a root.
@@ -190,7 +195,17 @@ fn extract_chain(node: &CelNode, bound: &HashSet<String>) -> Option<Vec<String>>
 /// ([`PRESENCE_SEGMENT`]). A variable whose range is not a plain chain contributes nothing.
 pub fn extract_read_chains(node: &CelNode) -> Vec<Vec<String>> {
     let mut chains = Vec::new();
-    visit_reads(node, &mut chains, &Vec::new());
+    visit_reads(node, &mut chains, &Vec::new(), false);
+    chains
+}
+
+/// [`extract_read_chains`] told apart by what a range holds: a bare use of an iteration variable
+/// and the range of an `in` test read `<range>.[].[]!` ([`ELEMENT_SEGMENT`]) — each element whole
+/// over a list, and over a map nothing but its keys — where [`extract_read_chains`] reads the
+/// range whole.
+pub fn extract_value_read_chains(node: &CelNode) -> Vec<Vec<String>> {
+    let mut chains = Vec::new();
+    visit_reads(node, &mut chains, &Vec::new(), true);
     chains
 }
 
@@ -234,14 +249,34 @@ fn read_chain_of(node: &CelNode, bound: &BoundRanges) -> Option<Vec<String>> {
     }
 }
 
-fn visit_reads(node: &CelNode, chains: &mut Vec<Vec<String>>, bound: &BoundRanges) {
+fn visit_reads(node: &CelNode, chains: &mut Vec<Vec<String>>, bound: &BoundRanges, value_reads: bool) {
     if let Some(mut chain) = read_chain_of(node, bound) {
         // The variable itself, with no member read off it: the whole element.
         if chain.last().is_some_and(|segment| segment == EACH_SEGMENT) {
-            chain.pop();
+            if value_reads {
+                chain.push(ELEMENT_SEGMENT.into());
+            } else {
+                chain.pop();
+            }
         }
         chains.push(chain);
         return;
+    }
+    if value_reads {
+        // `k in m` tests a key of a map and an element of a list.
+        if let CelNode::Binary(binary) = node {
+            if binary.operator == CelBinaryOperator::In {
+                if let Some(mut range) = read_chain_of(&binary.right, bound) {
+                    if range.last().is_none_or(|segment| segment != EACH_SEGMENT) {
+                        range.push(EACH_SEGMENT.into());
+                        range.push(ELEMENT_SEGMENT.into());
+                        chains.push(range);
+                        visit_reads(&binary.left, chains, bound, value_reads);
+                        return;
+                    }
+                }
+            }
+        }
     }
     if let Some(presence) = presence_operand(node) {
         if let Some(mut owner) = read_chain_of(presence, bound) {
@@ -252,13 +287,13 @@ fn visit_reads(node: &CelNode, chains: &mut Vec<Vec<String>>, bound: &BoundRange
     }
     if let Some(call) = module_call_of(node) {
         for arg in call.args {
-            visit_reads(arg, chains, bound);
+            visit_reads(arg, chains, bound, value_reads);
         }
         return;
     }
     if let Some(bind) = bind_call(node) {
-        visit_reads(bind.init, chains, bound);
-        visit_reads(bind.body, chains, &with_range(bound, bind.name, None));
+        visit_reads(bind.init, chains, bound, value_reads);
+        visit_reads(bind.body, chains, &with_range(bound, bind.name, None), value_reads);
         return;
     }
     if let Some(macro_call) = comprehension(node) {
@@ -269,16 +304,16 @@ fn visit_reads(node: &CelNode, chains: &mut Vec<Vec<String>>, bound: &BoundRange
                 each.push(EACH_SEGMENT.into());
                 chains.push(each);
             }
-            None => visit_reads(macro_call.receiver, chains, bound),
+            None => visit_reads(macro_call.receiver, chains, bound, value_reads),
         }
         let inner = with_range(bound, macro_call.bound, range);
         for arg in macro_call.scoped {
-            visit_reads(arg, chains, &inner);
+            visit_reads(arg, chains, &inner, value_reads);
         }
         return;
     }
     for child in child_nodes(node) {
-        visit_reads(child, chains, bound);
+        visit_reads(child, chains, bound, value_reads);
     }
 }
 

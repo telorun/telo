@@ -637,7 +637,7 @@ export function evaluateResourceRules(
       findings.push({ kind: "failed", rule, path: "", reason: compiled.reason });
       continue;
     }
-    const { parsed, chains } = compiled;
+    const { parsed, reads: chains } = compiled;
 
     // The budget stops the loop, so it is asked before a subject is evaluated:
     // one slow evaluation with nothing left to judge has skipped nothing.

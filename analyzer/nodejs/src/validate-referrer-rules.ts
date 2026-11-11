@@ -478,7 +478,7 @@ export function evaluateReferrerRules(
       findings.push({ kind: "failed", rule, reason: compiled.reason });
       continue;
     }
-    const { parsed, chains } = compiled;
+    const { parsed, reads: chains } = compiled;
     // `self` with the declarations its own `resolveSelf:` slots name.
     const selfView = rule.resolveSelf
       ? resolvedRuleView(manifest, rule.resolveSelf, context.peerBinder, manifest.kind)

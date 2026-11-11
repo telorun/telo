@@ -1,5 +1,7 @@
 # Text tools `telo check` accepts: a name carrying its entry's `prefix`, a tool
-# named by its resource, and any name beside a provider that declares no tools.
+# named by its resource, any name beside a provider that declares no tools, and
+# arguments the tool's parameters allow — a declared one, any key where the schema
+# is open or has pattern properties, every required one mapped.
 kind: Telo.Library
 metadata: { name: TextToolsAccepted }
 imports: { Ai: ../.., AiEcho: ./ai-echo.yaml, Run: ../../../run }
@@ -16,6 +18,17 @@ tools:
     parameters: { type: object, properties: { changes: { type: array } } }
   - tool: !ref summarize
     parameters: { type: object, properties: { text: { type: string } } }
+  - name: open_tool
+    tool: { kind: Telo.Value, value: { ok: true } }
+    parameters: { type: object, required: [text], properties: { text: { type: string } } }
+  - name: closed_tool
+    tool: { kind: Telo.Value, value: { ok: true } }
+    parameters:
+      type: object
+      additionalProperties: false
+      patternProperties: { "^x-": { type: string } }
+      required: [text]
+      properties: { text: { type: string } }
 ---
 kind: Ai.Agent
 metadata: { name: prefixed }
@@ -33,6 +46,23 @@ toolProviders:
   - provider: !ref fileTools
     prefix: files_
     include: [apply_changes, summarize]
+---
+kind: Ai.Agent
+metadata: { name: lenient }
+model: { kind: AiEcho.EchoModel }
+textTools:
+  - tags: [open]
+    tool: open_tool
+    arguments:
+      text: !cel "blocks[0].body"
+      extra: !cel "blocks[0].tag"
+  - tags: [closed]
+    tool: closed_tool
+    arguments:
+      text: !cel "blocks[0].body"
+      x-note: !cel "blocks[0].tag"
+toolProviders:
+  - provider: !ref fileTools
 ---
 kind: AiEcho.EchoToolProvider
 metadata: { name: discovered }

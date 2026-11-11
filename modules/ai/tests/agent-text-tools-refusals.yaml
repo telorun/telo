@@ -1,8 +1,8 @@
 # What is refused about an agent's `textTools`: a tool no static provider
-# declares and a tag listed by two entries, at the declaration by `telo check`
+# declares, an argument its parameters refuse, a required parameter left
+# unmapped and a tag listed by two entries, at the declaration by `telo check`
 # and again by the agent from a consumer whose entry-scoped check is silent
-# (`runFails:`); a discovered tool name, and arguments the advertised schema
-# refuses, when the agent first lists its tools.
+# (`runFails:`); a discovered tool name when the agent first lists its tools.
 kind: Telo.Application
 metadata:
   name: AgentTextToolsRefusalsTest
@@ -17,7 +17,9 @@ targets:
   - !ref accepted
   - !ref discoveredUnknown
   - !ref argumentUnknown
+  - !ref argumentUnknownAtRuntime
   - !ref argumentMissing
+  - !ref argumentMissingAtRuntime
 ---
 kind: Assert.Manifest
 metadata: { name: unknownTool }
@@ -67,14 +69,34 @@ expect:
 ---
 kind: Assert.Manifest
 metadata: { name: argumentUnknown }
-source: ./__fixtures__/text-tools-runtime/argument-unknown.yaml
+source: ./__fixtures__/text-tools-argument-unknown/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.Agent/agent at 'textTools[0]': maps an argument the tool's `parameters` refuse"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.AgentStream/stream at 'textTools[0]': maps an argument the tool's `parameters` refuse"
+---
+kind: Assert.Manifest
+metadata: { name: argumentUnknownAtRuntime }
+source: ./__fixtures__/text-tools-argument-unknown-app.yaml
 expect:
   errors: []
   runFails: "ERR_AI_TEXT_TOOL_ARGUMENT_UNKNOWN: Ai.Agent \"agent\": textTools[0] maps the argument \"force\", which the parameters of \"apply_changes\" do not allow."
 ---
 kind: Assert.Manifest
 metadata: { name: argumentMissing }
-source: ./__fixtures__/text-tools-runtime/argument-missing.yaml
+source: ./__fixtures__/text-tools-argument-missing/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.Agent/agent at 'textTools[0]': leaves unmapped a parameter the tool's `parameters` list as `required`"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.AgentStream/stream at 'textTools[0]': leaves unmapped a parameter the tool's `parameters` list as `required`"
+---
+kind: Assert.Manifest
+metadata: { name: argumentMissingAtRuntime }
+source: ./__fixtures__/text-tools-argument-missing-app.yaml
 expect:
   errors: []
   runFails: "ERR_AI_TEXT_TOOL_ARGUMENT_MISSING: Ai.Agent \"agent\": textTools[0] leaves the required parameter \"changes\" of \"apply_changes\" unmapped."

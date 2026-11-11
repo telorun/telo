@@ -2212,6 +2212,25 @@ schema:
       message: >-
         names a tool no tool provider declares, by the name the model is told after
         each provider entry's `include`, `exclude` and `prefix`.
+    - resolve: [/toolProviders/*/provider, /toolProviders/*/provider/tools/*/tool]
+      in: /textTools
+      condition: !cel >-
+        !(has(self.toolProviders) ? self.toolProviders : []).all(p, (has(p.provider.tools) && p.provider.tools.all(t, has(t.name) || (has(t.tool.metadata) && has(t.tool.metadata.name))))) ||
+        !(has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool))) ||
+        (has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool && this.arguments.all(k, (has(t.parameters.properties) && k in t.parameters.properties) || has(t.parameters.patternProperties) || !has(t.parameters.additionalProperties) || t.parameters.additionalProperties != false))))
+      code: AI_TEXT_TOOL_ARGUMENT_UNKNOWN
+      message: >-
+        maps an argument the tool's `parameters` refuse: one absent from `properties`,
+        unmatched by `patternProperties`, under `additionalProperties: false`.
+    - resolve: [/toolProviders/*/provider, /toolProviders/*/provider/tools/*/tool]
+      in: /textTools
+      condition: !cel >-
+        !(has(self.toolProviders) ? self.toolProviders : []).all(p, (has(p.provider.tools) && p.provider.tools.all(t, has(t.name) || (has(t.tool.metadata) && has(t.tool.metadata.name))))) ||
+        !(has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool))) ||
+        (has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool && (!has(t.parameters.required) || t.parameters.required.all(r, r in this.arguments)))))
+      code: AI_TEXT_TOOL_ARGUMENT_MISSING
+      message: >-
+        leaves unmapped a parameter the tool's `parameters` list as `required`.
     - in: /textTools
       condition: !cel "this.tags.all(g, size(self.textTools.filter(o, g in o.tags)) == 1)"
       code: AI_TEXT_TOOL_TAG_DUPLICATE
@@ -2705,6 +2724,25 @@ schema:
       message: >-
         names a tool no tool provider declares, by the name the model is told after
         each provider entry's `include`, `exclude` and `prefix`.
+    - resolve: [/toolProviders/*/provider, /toolProviders/*/provider/tools/*/tool]
+      in: /textTools
+      condition: !cel >-
+        !(has(self.toolProviders) ? self.toolProviders : []).all(p, (has(p.provider.tools) && p.provider.tools.all(t, has(t.name) || (has(t.tool.metadata) && has(t.tool.metadata.name))))) ||
+        !(has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool))) ||
+        (has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool && this.arguments.all(k, (has(t.parameters.properties) && k in t.parameters.properties) || has(t.parameters.patternProperties) || !has(t.parameters.additionalProperties) || t.parameters.additionalProperties != false))))
+      code: AI_TEXT_TOOL_ARGUMENT_UNKNOWN
+      message: >-
+        maps an argument the tool's `parameters` refuse: one absent from `properties`,
+        unmatched by `patternProperties`, under `additionalProperties: false`.
+    - resolve: [/toolProviders/*/provider, /toolProviders/*/provider/tools/*/tool]
+      in: /textTools
+      condition: !cel >-
+        !(has(self.toolProviders) ? self.toolProviders : []).all(p, (has(p.provider.tools) && p.provider.tools.all(t, has(t.name) || (has(t.tool.metadata) && has(t.tool.metadata.name))))) ||
+        !(has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool))) ||
+        (has(self.toolProviders) ? self.toolProviders : []).exists(p, p.provider.tools.exists(t, cel.bind(n, has(t.name) ? t.name : t.tool.metadata.name, (!has(p.include) || n in p.include) && (!has(p.exclude) || !(n in p.exclude)) && (has(p.prefix) ? p.prefix : '') + n == this.tool && (!has(t.parameters.required) || t.parameters.required.all(r, r in this.arguments)))))
+      code: AI_TEXT_TOOL_ARGUMENT_MISSING
+      message: >-
+        leaves unmapped a parameter the tool's `parameters` list as `required`.
     - in: /textTools
       condition: !cel "this.tags.all(g, size(self.textTools.filter(o, g in o.tags)) == 1)"
       code: AI_TEXT_TOOL_TAG_DUPLICATE

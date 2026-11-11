@@ -176,6 +176,14 @@ export const EACH_SEGMENT = "[]";
  *  before it reaches and on none of its values. */
 export const PRESENCE_SEGMENT = "?";
 
+/** Chain segment for "each element of the range, read whole", after
+ *  {@link EACH_SEGMENT}: a bare use of the iteration variable, or the range of an
+ *  `in` test. Over a list it reads every element; over a map it reads only the
+ *  KEYS, because a comprehension's variable and an `in` test stand for a key
+ *  there, so no value of the map is read. Which of the two a range is, is known
+ *  only to the reader holding the data. */
+export const ELEMENT_SEGMENT = "[]!";
+
 /**
  * What an expression READS of the values its roots name, as member chains —
  * {@link extractAccessChains} with a comprehension's iteration variable followed
@@ -195,7 +203,22 @@ export const PRESENCE_SEGMENT = "?";
  */
 export function extractReadChains(node: CelNode): string[][] {
   const chains: string[][] = [];
-  visitReads(node, chains, new Map());
+  visitReads(node, chains, new Map(), false);
+  return chains;
+}
+
+/**
+ * {@link extractReadChains} told apart by what a range holds: a bare use of an
+ * iteration variable and the range of an `in` test read `<range>.[].[]!`
+ * ({@link ELEMENT_SEGMENT}) — each element whole over a list, and over a map
+ * nothing but its keys — where {@link extractReadChains} reads the range whole.
+ * The one question it answers is which VALUES an expression reads, which a
+ * caller holding the data answers per range: a rule iterating a map's keys must
+ * not be taken for one reading its values.
+ */
+export function extractValueReadChains(node: CelNode): string[][] {
+  const chains: string[][] = [];
+  visitReads(node, chains, new Map(), true);
   return chains;
 }
 
@@ -223,12 +246,26 @@ function readChainOf(node: CelNode, bound: BoundRanges): string[] | null {
   return null;
 }
 
-function visitReads(node: CelNode, chains: string[][], bound: BoundRanges): void {
+function visitReads(node: CelNode, chains: string[][], bound: BoundRanges, valueReads: boolean): void {
   const chain = readChainOf(node, bound);
   if (chain !== null) {
     // The variable itself, with no member read off it: the whole element.
-    chains.push(chain[chain.length - 1] === EACH_SEGMENT ? chain.slice(0, -1) : chain);
+    if (chain[chain.length - 1] === EACH_SEGMENT) {
+      chains.push(valueReads ? [...chain, ELEMENT_SEGMENT] : chain.slice(0, -1));
+    } else {
+      chains.push(chain);
+    }
     return;
+  }
+
+  if (valueReads && node.kind === "binary" && node.operator === "in") {
+    // `k in m` tests a key of a map and an element of a list.
+    const range = readChainOf(node.right, bound);
+    if (range !== null && range[range.length - 1] !== EACH_SEGMENT) {
+      chains.push([...range, EACH_SEGMENT, ELEMENT_SEGMENT]);
+      visitReads(node.left, chains, bound, valueReads);
+      return;
+    }
   }
 
   const presence = presenceOperand(node);
@@ -242,14 +279,14 @@ function visitReads(node: CelNode, chains: string[][], bound: BoundRanges): void
 
   const moduleCall = moduleCallOf(node);
   if (moduleCall) {
-    for (const arg of moduleCall.args) visitReads(arg, chains, bound);
+    for (const arg of moduleCall.args) visitReads(arg, chains, bound, valueReads);
     return;
   }
 
   const bind = bindCall(node);
   if (bind) {
-    visitReads(bind.init, chains, bound);
-    visitReads(bind.body, chains, new Map(bound).set(bind.name, null));
+    visitReads(bind.init, chains, bound, valueReads);
+    visitReads(bind.body, chains, new Map(bound).set(bind.name, null), valueReads);
     return;
   }
 
@@ -257,13 +294,13 @@ function visitReads(node: CelNode, chains: string[][], bound: BoundRanges): void
   if (macro) {
     const range = readChainOf(macro.receiver, bound);
     if (range !== null) chains.push([...range, EACH_SEGMENT]);
-    else visitReads(macro.receiver, chains, bound);
+    else visitReads(macro.receiver, chains, bound, valueReads);
     const inner = new Map(bound).set(macro.bound, range);
-    for (const arg of macro.scoped) visitReads(arg, chains, inner);
+    for (const arg of macro.scoped) visitReads(arg, chains, inner, valueReads);
     return;
   }
 
-  for (const child of childNodes(node)) visitReads(child, chains, bound);
+  for (const child of childNodes(node)) visitReads(child, chains, bound, valueReads);
 }
 
 /** What a presence test `has(<operand>.<member>)` asks the keys of. */

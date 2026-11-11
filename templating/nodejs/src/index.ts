@@ -25,9 +25,11 @@ export {
 } from "./cel/interpolation-holes.js";
 export {
   EACH_SEGMENT,
+  ELEMENT_SEGMENT,
   PRESENCE_SEGMENT,
   extractAccessChains,
   extractReadChains,
+  extractValueReadChains,
   findNullableAccessIssues,
   INDEX_SEGMENT,
   schemaConjuncts,
