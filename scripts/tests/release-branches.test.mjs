@@ -512,7 +512,13 @@ for (const manifest of args.filter((arg) => /\\.ya?ml$/.test(arg))) {
     result.rewritten.push({ manifest, alias, source, to });
     return key + to;
   });
-  if (!result.dryRun) writeFileSync(manifest, text);
+  const flowed = text.replace(/^imports: \\{(.*)\\}$/gm, (line, inner) =>
+    "imports: {" + inner.replace(/(\\w+): (\\.\\.\\/[^,\\s}]+)/g, (entry, alias, source) => {
+      const to = "oci://ghcr.io/telorun/" + basename(source) + "@1.1.0#sha256-" + alias;
+      result.rewritten.push({ manifest, alias, source, to });
+      return alias + ": " + to;
+    }) + "}");
+  if (!result.dryRun) writeFileSync(manifest, flowed);
 }
 if (process.env.FAKE_FAIL) process.exit(2);
 result.ok = result.keptRelative.length === 0;
@@ -602,6 +608,20 @@ describe("publication commits", () => {
     assert.equal(git(root, "status", "--porcelain"), "");
     assert.equal(git(root, "diff", "--cached", "--name-only"), "");
     assert.equal(readFileSync(join(root, "starters/s/telo.yaml"), "utf8"), consumer("../../modules/a"));
+  });
+
+  it("accepts a flow-style `imports: { … }` line as an import line respelled", async () => {
+    const { isPublicationCommit } = await import(pathToFileURL(join(REPO, "scripts/release-commit.mjs")).href);
+    const { root } = released();
+    put(root, "starters/f/telo.yaml", "kind: Telo.Application\nmetadata:\n  name: F\nimports: { A: ../../modules/a }\n");
+    commit(root, "chore(release): version, flow");
+    const release = git(root, "rev-parse", "HEAD");
+    const result = publish(root, ["--release", release, "--tag", "v0.85.1"]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const sha = outputsOf(result).sha;
+    assert.equal(git(root, "diff", "--name-only", release, sha), "starters/f/telo.yaml\nstarters/s/telo.yaml");
+    assert.match(git(root, "show", `${sha}:starters/f/telo.yaml`), /^imports: \{ A: oci:\/\/ghcr\.io\/telorun\/a@1\.1\.0#sha256-A \}$/m);
+    assert.equal(isPublicationCommit({ cwd: root, commit: sha }), true);
   });
 
   it("refuses a checkout that is not the release commit as published, naming why", () => {

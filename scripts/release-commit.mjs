@@ -8,7 +8,8 @@
 // commits existed, names the commit it points at.
 //
 // An IMPORT LINE is a line of a YAML file holding a top-level `imports:` block, of the
-// form `<indent>[- ]<key>: <value>` where the value — bare or quoted, a comment
+// form `<indent>[- ]<key>: <value>` (or the one-line flow form `imports: { <key>: <value>, … }`,
+// every entry of which is one) where the value — bare or quoted, a comment
 // allowed after it — is an `oci://` reference or a relative path (`.`, `..`, `./…`,
 // `../…`). A publication commit's diff against its first parent modifies files
 // under the four roots only, keeps every mode, and pairs each removed line with an
@@ -45,9 +46,24 @@ function git(cwd, ...args) {
   }).trim();
 }
 
-/** The `<indent><key>: ` of an import line, or undefined for any other line. */
+// `imports: { A: ../a, B: oci://… }` — the flow spelling of the block, written on one line.
+const FLOW_IMPORTS = /^(\s*imports:\s*)\{\s*(.*?)\s*\}(?:\s+#.*)?\s*$/;
+const FLOW_ENTRY = new RegExp(String.raw`^([A-Za-z_][\w-]*|"[^"]*"|'[^']*')\s*:\s+${IMPORT_VALUE}$`);
+
+/** The `<indent><key>: ` of an import line, or — for a flow `imports: { … }` line whose every
+ *  entry is an import — `<indent>imports: { <key>, <key>… }`; undefined for any other line. */
 export function importLineKey(line) {
-  return IMPORT_LINE.exec(line)?.[1];
+  const block = IMPORT_LINE.exec(line)?.[1];
+  if (block !== undefined) return block;
+  const flow = FLOW_IMPORTS.exec(line);
+  if (!flow) return undefined;
+  const keys = [];
+  for (const entry of flow[2].split(/\s*,\s*/)) {
+    const key = FLOW_ENTRY.exec(entry)?.[1];
+    if (key === undefined) return undefined;
+    keys.push(key);
+  }
+  return `${flow[1]}{ ${keys.join(", ")} }`;
 }
 
 /** The unified diff `git diff -U0` printed, split per file in the order git lists them. */
