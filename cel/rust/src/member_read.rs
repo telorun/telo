@@ -18,9 +18,10 @@
 //!
 //! How a refusal names its key: a string as `JSON.stringify` quotes it, an int or a
 //! uint in decimal, a double as ECMAScript writes it, `true`, `false` and `null` as
-//! themselves — as on Node. Any other key is named in CEL's terms (`a list`, `a map`,
-//! `a value of type bytes`, `a value outside the CEL value domain`), where Node writes
-//! JavaScript's `String()` of it — an interim wording.
+//! themselves — as on Node. Bytes are named as JavaScript's `String()` writes them, their
+//! decimal bytes joined by commas. Any other key is named in CEL's terms (`a list`,
+//! `a map`, `a value outside the CEL value domain`), where Node writes `String()` of
+//! it — an interim wording.
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -200,6 +201,8 @@ fn describe(key: &CelValue) -> String {
         CelValue::Uint(held) => held.to_string(),
         CelValue::Double(held) => es_number(*held),
         CelValue::Bool(held) => held.to_string(),
+        // Node's `String()` of its bytes, pinned by `fields/map_fields/map_bad_key_type`.
+        CelValue::Bytes(bytes) => bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(","),
         other => cel_terms(other),
     }
 }
