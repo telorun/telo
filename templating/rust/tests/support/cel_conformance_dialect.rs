@@ -33,7 +33,7 @@ use telorun_cel::{
     NominalTypeDefinition, PropertyMap, TypeDeclaration,
 };
 use telorun_sdk_core::value_type::{cel_type_of_value_type, value_types_in_order};
-use telorun_cel_value::{cel_error, CelEvaluationCode, CelValue};
+use telorun_cel_value::{cel_error, es_number, json_quote, CelEvaluationCode, CelValue};
 
 use super::cel_conformance_value::{decode, encode, typed_frame_text};
 
@@ -89,6 +89,45 @@ pub fn conformance_handlers() -> CelHandlers {
     }
 }
 
+/// A JSON value as ECMAScript's `JSON.stringify` writes it, where serde_json's writer
+/// differs in number text (`1e21`, `123456789012345680000`).
+pub fn json_text(node: &Value) -> String {
+    let mut out = String::new();
+    write_json(node, &mut out);
+    out
+}
+
+fn write_json(node: &Value, out: &mut String) {
+    match node {
+        Value::Null => out.push_str("null"),
+        Value::Bool(held) => out.push_str(if *held { "true" } else { "false" }),
+        Value::Number(number) => out.push_str(&es_number(number.as_f64().expect("a JSON number reads as a double"))),
+        Value::String(text) => out.push_str(&json_quote(text)),
+        Value::Array(items) => {
+            out.push('[');
+            for (at, item) in items.iter().enumerate() {
+                if at > 0 {
+                    out.push(',');
+                }
+                write_json(item, out);
+            }
+            out.push(']');
+        }
+        Value::Object(object) => {
+            out.push('{');
+            for (at, (key, item)) in object.iter().enumerate() {
+                if at > 0 {
+                    out.push(',');
+                }
+                out.push_str(&json_quote(key));
+                out.push(':');
+                write_json(item, out);
+            }
+            out.push('}');
+        }
+    }
+}
+
 /// The conformance handler rule applied to the conversion each value type with members
 /// implements: `string(<value>)` answers `string(<conformance text of the value>)`, so a row
 /// pins what the engine hands the host's encoder rather than the encoder's text. Read off the
@@ -98,7 +137,7 @@ pub fn with_conformance_conversions(mut env: CelEnvironment) -> CelEnvironment {
         let name = cel_type_of_value_type(entry);
         let implementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| match args {
             [value] => match encode(value) {
-                Ok(written) => CelValue::String(format!("string({written})").into()),
+                Ok(written) => CelValue::String(format!("string({})", json_text(&written)).into()),
                 Err(message) => cel_error(CelEvaluationCode::InvalidArgument, message, context.range).into(),
             },
             _ => cel_error(CelEvaluationCode::NoMatchingOverload, "string: expected one value", context.range).into(),

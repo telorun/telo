@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 use support::cel_conformance_dialect::{
     catalog_overloads, conformance_environment, conformance_handlers, dispatch_tracing_environment,
-    evaluate_dialect_row, run_dialect_row, with_conformance_conversions, DIALECT_TAGS,
+    evaluate_dialect_row, json_text, run_dialect_row, with_conformance_conversions, DIALECT_TAGS,
 };
 use support::cel_conformance_value::decode;
 use telo_templating::{CelDiagnosticCode, CEL_VERDICT_CODES};
@@ -227,24 +227,28 @@ fn the_well_formedness_gate_fires_on_each_defect() {
     }
 }
 
-/// Every row of a file deep-equals its `expect`; answers every row before failing, and
-/// asserts the file holds exactly `count` rows, all executed.
-fn drive_rows(name: &str, count: usize) {
+/// Every row of a file deep-equals its `expect`: the failures of every row, and of the file's
+/// row count, all executed.
+fn drive_rows(name: &str, count: usize) -> Vec<String> {
     let env = conformance_environment();
     let file = read_file(name);
+    drive_row_list(&env, name, rows(&file), count)
+}
+
+fn drive_row_list(env: &CelEnvironment, name: &str, rows: &[Value], count: usize) -> Vec<String> {
     let mut executed = 0;
     let mut failures = Vec::new();
-    for row in rows(&file) {
+    for row in rows {
         executed += 1;
         let id = row["id"].as_str().unwrap();
-        match run_dialect_row(&env, row) {
+        match run_dialect_row(env, row) {
             Ok(answer) if answer == row["expect"] => {}
-            Ok(answer) => failures.push(format!("{id}\n  expected {}\n  answered {answer}", row["expect"])),
-            Err(malformed) => failures.push(format!("{id}: {malformed}")),
+            Ok(answer) => failures.push(format!("{name}: {id}\n  expected {}\n  answered {answer}", row["expect"])),
+            Err(malformed) => failures.push(format!("{name}: {id}: {malformed}")),
         }
     }
-    assert!(failures.is_empty(), "{} of {executed} rows differ:\n{}", failures.len(), failures.join("\n"));
-    assert_eq!(count_defects(rows(&file).len(), executed, count), Vec::<String>::new(), "{name}");
+    failures.extend(count_defects(rows.len(), executed, count).into_iter().map(|defect| format!("{name}: {defect}")));
+    failures
 }
 
 /// A file holding another number of rows than pinned, or a row left unexecuted.
@@ -268,9 +272,8 @@ fn the_row_count_gate_fires_on_a_dropped_row_and_on_an_unexecuted_one() {
 
 #[test]
 fn answers_every_row_of_every_dialect_file() {
-    for (name, count) in DRIVEN_FILES {
-        drive_rows(name, count);
-    }
+    let failures: Vec<String> = DRIVEN_FILES.iter().flat_map(|(name, count)| drive_rows(name, *count)).collect();
+    assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
 }
 
 #[test]
@@ -703,8 +706,11 @@ fn the_guard_gate_fires_for_a_guarded_name_no_row_fires() {
 
 /// The RE2 parse-error kind a row's refusal ends with, when its message is one.
 fn re2_kind_of(message: &str) -> Option<&str> {
-    let rest = message.trim_start_matches(|c: char| c.is_ascii_alphabetic());
-    let rest = rest.strip_prefix(": invalid RE2 pattern \"")?;
+    let letters = message.bytes().take_while(u8::is_ascii_alphabetic).count();
+    if letters == 0 {
+        return None;
+    }
+    let rest = message[letters..].strip_prefix(": invalid RE2 pattern \"")?;
     let at = rest.rfind("\": ")?;
     let kind = &rest[at + 3..];
     (!kind.is_empty() && !kind.contains(['"', ':'])).then_some(kind)
@@ -845,8 +851,28 @@ fn fails_the_celcode_gate_on_a_code_no_row_records_an_unreachable_one_a_stray_on
 fn a_wrong_expected_value_fails_naming_the_row() {
     let env = conformance_environment();
     let mut row = rows(&read_file("catalog.json")).iter().find(|row| row["expect"]["value"] == true).expect("a row evaluates to true").clone();
-    assert_eq!(run_dialect_row(&env, &row).unwrap(), row["expect"]);
     let id = row["id"].as_str().unwrap().to_owned();
+    assert!(drive_row_list(&env, "scratch.json", std::slice::from_ref(&row), 1).is_empty());
     row["expect"]["value"] = Value::Bool(false);
-    assert_ne!(run_dialect_row(&env, &row).unwrap(), row["expect"], "{id}");
+    let failures = drive_row_list(&env, "scratch.json", std::slice::from_ref(&row), 1);
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert!(failures[0].starts_with(&format!("scratch.json: {id}\n")), "{failures:?}");
+}
+
+#[test]
+fn a_row_re2_kind_needs_one_or_more_leading_letters() {
+    let tail = ": invalid RE2 pattern \"(\": missing closing )";
+    assert_eq!(re2_kind_of(&format!("regexMatch{tail}")), Some("missing closing )"));
+    assert_eq!(re2_kind_of(&format!("1{tail}")), None);
+    assert_eq!(re2_kind_of(tail), None);
+}
+
+#[test]
+fn writes_a_conversions_json_with_ecmascripts_number_text() {
+    let encoded: Value = serde_json::from_str(r#"{"$telo":"x","value":{"a":[1e21,1.2345678901234568e20,100.0,"q\"" ]}}"#).unwrap();
+    assert_eq!(
+        json_text(&encoded),
+        r#"{"$telo":"x","value":{"a":[1e+21,123456789012345680000,100,"q\""]}}"#
+    );
+    assert_ne!(encoded.to_string(), json_text(&encoded));
 }

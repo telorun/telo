@@ -127,18 +127,24 @@ fn rows_of(file: &str) -> Vec<Value> {
 #[test]
 fn drives_every_row_of_each_file_through_the_projection() {
     let host = host_types();
+    let mut failures = Vec::new();
     for (file, pinned) in [(CATALOG_FILE, CATALOG_ROWS), (TYPES_FILE, TYPES_ROWS)] {
         let rows = rows_of(file);
-        assert_eq!(unknown_declared_types(&rows, &host), Vec::<String>::new(), "{file}: a type no host type accounts for");
-        assert_eq!(row_count_problem(file, &rows), None);
-        assert_eq!(rows.len(), pinned);
+        failures.extend(unknown_declared_types(&rows, &host).into_iter().map(|type_name| format!("{file}: a type no host type accounts for: {type_name}")));
+        failures.extend(row_count_problem(file, &rows).map(|problem| format!("{file}: {problem}")));
+        if rows.len() != pinned {
+            failures.push(format!("{file}: holds {} rows, not the {pinned} pinned", rows.len()));
+        }
         let report = replay_dialect_rows(file, &rows, &host);
-        assert_eq!(report.malformed, []);
-        assert_eq!(report.inputs, []);
-        assert_eq!(report.answers, []);
-        assert_eq!(report.driven, rows.len());
+        failures.extend(report.malformed.iter().map(|item| format!("{file}: malformed: {item:?}")));
+        failures.extend(report.inputs.iter().map(|item| format!("{file}: input: {item:?}")));
+        failures.extend(report.answers.iter().map(|item| format!("{file}: answer: {item:?}")));
+        if report.driven != rows.len() {
+            failures.push(format!("{file}: drove {} of {} rows", report.driven, rows.len()));
+        }
         println!("{file}: rows {}, {} answered through the projection", report.rows, report.driven);
     }
+    assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
 }
 
 #[test]
