@@ -1,0 +1,196 @@
+kind: Telo.Library
+metadata:
+  name: Rendezvous
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Coordination]
+  description: >-
+    Hand one value from one call to another that is waiting for it: a call blocks
+    under a key until another supplies a value under the same key, with a bounded
+    timeout and cancellation and no polling. Whichever side arrives first waits,
+    and an early value is held for a window. Fits approvals, webhooks, client-run
+    agent tools and human-in-the-loop steps.
+requires: { telo: ">=0.133.0" }
+restrictions:
+  - requires: { telo: ">=0.108.0" }
+    reason: "The controllers read a duration through the value domain (`isCelDuration`, `durationNanos`), which SDKs before 0.108.0 do not export; also they return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
+exports:
+  kinds: [Point, MemoryPoint, Await, Deliver]
+  # The point interface a backend implements. Optional for a backend — a point
+  # is recognised by its methods, never by having imported this.
+  code:
+    - specifier: "@telorun/rendezvous"
+      format: js
+      path: ./nodejs/rendezvous.mjs
+      source: ./nodejs/src/index.ts
+---
+# A backend extends this with a kind whose instance implements the point
+# interface (docs/point-contract.md); the operation kinds own every code.
+kind: Telo.Abstract
+metadata:
+  name: Point
+  description: >-
+    A named meeting place where a call waiting for a value and a call supplying it
+    meet under a key. Whichever arrives first waits; a value supplied early is held
+    for a window and a value goes to at most one waiter. Two points never share
+    keys. How far a point reaches — one process or several instances — is the
+    backend's.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [payloadType]
+  properties:
+    payloadType:
+      title: Payload type
+      description: >-
+        The shape of every value delivered on this point, inline or a `!ref` to a
+        named type. It is held as plain JSON, so a live value (a stream) is refused
+        anywhere in it.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+      x-telo-serializable: true
+    hold:
+      title: Hold
+      description: >-
+        How long a value delivered before anyone waits is kept for a waiter; `60s`
+        when omitted. A later delivery under the same key replaces it and restarts
+        the window.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+---
+kind: Telo.Definition
+metadata:
+  name: MemoryPoint
+  description: >-
+    Keeps waiters and held values in this resource's own memory, handing a value
+    over the moment it is delivered. Nothing is shared between processes or survives
+    a restart: a wait and a delivery in different instances never meet, so it fits
+    single-process applications, development and tests. Held values are bounded by
+    the delivery rate times the hold window.
+extends: Self.Point
+controllers: [pkg:telo/local/js?path=./nodejs/rendezvous.mjs&local_path=./nodejs/src/index.ts#MemoryPoint]
+---
+kind: Telo.Definition
+metadata:
+  name: Await
+  description: >-
+    Waits for a value delivered under a key, returning it at once when one is already
+    held. Takes the key and returns the value typed by the point's payload type. Fails
+    when nothing arrives within the timeout or when another call already waits under
+    the key; a cancelled call stops waiting without consuming anything. Fits one
+    process only when the point is in memory.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/rendezvous.mjs&local_path=./nodejs/src/index.ts#Await]
+throws:
+  codes:
+    ERR_RENDEZVOUS_AWAIT_TIMEOUT:
+      description: >-
+        Nothing was delivered under the key before the timeout. A delivery arriving
+        later is held for the next wait.
+      data:
+        type: object
+        additionalProperties: false
+        required: [key]
+        properties: { key: { type: string, description: The key waited under. } }
+    ERR_RENDEZVOUS_KEY_BUSY:
+      description: >-
+        Another call is already waiting under the key; one waiter per key. A client
+        that reconnected before the old call ended retries.
+      data:
+        type: object
+        additionalProperties: false
+        required: [key]
+        properties: { key: { type: string, description: The key waited under. } }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    examples:
+      - { key: "approval-42" }
+    properties:
+      key:
+        title: Key
+        type: string
+        minLength: 1
+        description: What is being waited for — an approval id, a tool-call id, an OAuth `state`.
+outputType:
+  kind: Telo.JsonSchema
+  schema: { x-telo-value-schema-from: /point/payloadType }
+schema:
+  type: object
+  additionalProperties: false
+  required: [point, timeout]
+  # A wait lives in the memory of the call that opened it, so replaying it after
+  # a restart would wait again for a delivery sent to the process that died.
+  x-telo-violates-zone:
+    replayed: >-
+      this wait lives only in the memory of the call that opened it, so a replay after
+      a restart would begin waiting again for a delivery that went to the process that
+      died; inside a durable run, wait for a delivery with Durable.Await instead
+  properties:
+    point:
+      title: Point
+      description: The meeting place waited on.
+      x-telo-ref: { kind: Self.Point, use: dependency }
+    timeout:
+      title: Timeout
+      x-telo-type: Telo.Duration
+      x-telo-eval: compile
+      description: >-
+        How long a call waits (`25s`) before failing; zero or less checks for a held
+        value without waiting. Required because an unbounded wait holds its caller
+        forever.
+  examples:
+    - point: !ref decisions
+      timeout: 25s
+---
+kind: Telo.Definition
+metadata:
+  name: Deliver
+  description: >-
+    Supplies a value under a key: handed to the call waiting under it, or held for
+    the point's window when nobody waits yet. Takes the key and a payload, which
+    must have the point's payload type; returns whether a waiter took it. A later delivery to a held key replaces the value, so a retry is harmless.
+    Reaches waiters in the same process only when the point is in memory.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/rendezvous.mjs&local_path=./nodejs/src/index.ts#Deliver]
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key, payload]
+    properties:
+      key:
+        title: Key
+        type: string
+        minLength: 1
+        description: The key a waiting call is waiting under.
+      payload:
+        title: Payload
+        description: The value to hand over, which must have the point's `payloadType`.
+        x-telo-value-schema-from: /point/payloadType
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [delivered]
+    properties:
+      delivered:
+        type: boolean
+        description: >-
+          True when a waiting call took the value; false when it was held for a later
+          wait, which is also what a key nobody will ever wait on reads.
+schema:
+  type: object
+  additionalProperties: false
+  required: [point]
+  properties:
+    point:
+      title: Point
+      description: The meeting place delivered to.
+      x-telo-ref: { kind: Self.Point, use: dependency }
+  examples:
+    - point: !ref decisions

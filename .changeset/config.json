@@ -119,6 +119,7 @@
     "@telorun/rate-limit-build",
     "@telorun/record-stream",
     "@telorun/record-stream-sql-build",
+    "@telorun/rendezvous",
     "@telorun/run-build",
     "@telorun/scheduler-build",
     "@telorun/secret-scan-build",

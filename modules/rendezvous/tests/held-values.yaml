@@ -1,0 +1,69 @@
+kind: Telo.Application
+metadata:
+  name: RendezvousHeldValues
+  version: 1.0.0
+  description: |
+    A second delivery to a held key replaces the value and the wait takes the
+    newer one; a value nobody takes within the point's `hold` is removed, so a
+    later wait times out instead of receiving it.
+imports: { Rendezvous: ../, Timer: ../../timer, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Rendezvous.MemoryPoint
+metadata: { name: decisions }
+hold: 200ms
+payloadType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [version], properties: { version: { type: integer } } }
+---
+kind: Rendezvous.Await
+metadata: { name: await }
+point: !ref decisions
+timeout: 50ms
+---
+kind: Rendezvous.Deliver
+metadata: { name: deliver }
+point: !ref decisions
+---
+kind: Timer.Delay
+metadata: { name: pause }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: first
+    inputs: { key: r-1, payload: { version: 1 } }
+    invoke: !ref deliver
+  - name: second
+    inputs: { key: r-1, payload: { version: 2 } }
+    invoke: !ref deliver
+  - name: awaitReplaced
+    inputs: { key: r-1 }
+    invoke: !ref await
+  - name: heldThenForgotten
+    inputs: { key: r-2, payload: { version: 1 } }
+    invoke: !ref deliver
+  - { name: pastHold, inputs: { duration: 500ms }, invoke: !ref pause }
+  - name: expired
+    try:
+      - name: awaitExpired
+        inputs: { key: r-2 }
+        invoke: !ref await
+      - name: notExpired
+        throw: { code: NOT_REFUSED, message: a value past its hold was still delivered }
+    catch:
+      - name: assertExpired
+        inputs: { actual: !cel "error.code", expected: ERR_RENDEZVOUS_AWAIT_TIMEOUT }
+        invoke: { kind: Assert.Equals }
+  - name: assertReplaced
+    inputs:
+      actual:
+        first: !cel "steps.first.result"
+        second: !cel "steps.second.result"
+        awaitReplaced: !cel "steps.awaitReplaced.result"
+      expected:
+        first: { delivered: false }
+        second: { delivered: false }
+        awaitReplaced: { version: 2 }
+    invoke: { kind: Assert.Equals }

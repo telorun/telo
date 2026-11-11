@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: RendezvousMisspeltResult
+  version: 1.0.0
+  description: A step reading a field the point's payload type does not declare.
+imports: { Rendezvous: ../../../ }
+targets:
+  - !ref flow
+---
+kind: Rendezvous.MemoryPoint
+metadata: { name: decisions }
+payloadType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [approved], properties: { approved: { type: boolean } } }
+---
+kind: Rendezvous.Await
+metadata: { name: await }
+point: !ref decisions
+timeout: 25s
+---
+kind: Telo.Sequence
+metadata: { name: flow }
+steps:
+  - name: decision
+    inputs: { key: a-1 }
+    invoke: !ref await
+  - name: read
+    value: !cel "steps.decision.result.approvd"

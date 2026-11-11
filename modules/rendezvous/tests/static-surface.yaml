@@ -1,0 +1,66 @@
+kind: Telo.Application
+metadata:
+  name: RendezvousStaticSurface
+  version: 1.0.0
+  description: |
+    What `telo check` says about the rendezvous kinds before anything runs: the
+    documented use checks clean, each refusal is reported where it is written,
+    and a wait inside a durable run is refused because its waiter would not
+    survive a replay.
+imports: { Assert: ../../assert }
+targets:
+  - !ref documentedUse
+  - !ref payloadMismatch
+  - !ref misspeltResult
+  - !ref missingTimeout
+  - !ref zeroHold
+  - !ref emptyKey
+  - !ref durableRun
+---
+kind: Assert.Manifest
+metadata: { name: documentedUse }
+source: ./__fixtures__/valid/telo.yaml
+expect: {}
+---
+kind: Assert.Manifest
+metadata: { name: payloadMismatch }
+source: ./__fixtures__/payload-mismatch/telo.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/payload/approved must be boolean" }
+---
+kind: Assert.Manifest
+metadata: { name: misspeltResult }
+source: ./__fixtures__/misspelt-result/telo.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_FIELD, message: "'steps.decision.result.approvd' is not defined" }
+---
+kind: Assert.Manifest
+metadata: { name: missingTimeout }
+source: ./__fixtures__/missing-timeout/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "missing required property 'timeout'" }
+---
+kind: Assert.Manifest
+metadata: { name: zeroHold }
+source: ./__fixtures__/zero-hold/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "greater than 0s" }
+---
+kind: Assert.Manifest
+metadata: { name: emptyKey }
+source: ./__fixtures__/empty-key/telo.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/key must NOT have fewer than 1 characters" }
+---
+kind: Assert.Manifest
+metadata: { name: durableRun }
+source: ./__fixtures__/in-durable-run/telo.yaml
+expect:
+  errors:
+    - code: ZONE_ATTRIBUTE_VIOLATED
+      message: "wait for a delivery with Durable.Await instead"

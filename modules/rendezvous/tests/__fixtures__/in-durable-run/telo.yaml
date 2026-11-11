@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: RendezvousInDurableRun
+  version: 1.0.0
+  description: >-
+    A non-durable wait inside a durable body. Never run — it exists so a test can
+    assert that `telo check` refuses the placement.
+imports:
+  Rendezvous: ../../../
+  Local: ../../../../durable-local
+  Journal: ../../../../durable-journal-file
+variables:
+  journalDir:
+    env: RENDEZVOUS_DURABLE_PROBE_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/rendezvous-durable-probe
+targets:
+  - name: start
+    invoke: !ref approval
+---
+kind: Local.Workflow
+metadata: { name: approval }
+journal:
+  kind: Journal.Journal
+  directory: !cel "variables.journalDir"
+steps:
+  - name: decision
+    inputs: { key: expense-1 }
+    invoke:
+      kind: Rendezvous.Await
+      timeout: 25s
+      point:
+        kind: Rendezvous.MemoryPoint
+        payloadType:
+          kind: Telo.JsonSchema
+          schema: { type: object, required: [approved], properties: { approved: { type: boolean } } }

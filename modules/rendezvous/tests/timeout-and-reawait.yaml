@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: RendezvousTimeout
+  version: 1.0.0
+  description: |
+    A wait nobody answers fails with ERR_RENDEZVOUS_AWAIT_TIMEOUT naming the key
+    and consumes nothing: a delivery made in the gap before the client re-awaits
+    is held and the new wait takes it. The point's `hold` is left at its default.
+imports: { Rendezvous: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Rendezvous.MemoryPoint
+metadata: { name: decisions }
+payloadType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [approved], properties: { approved: { type: boolean } } }
+---
+kind: Rendezvous.Await
+metadata: { name: await }
+point: !ref decisions
+timeout: 100ms
+---
+kind: Rendezvous.Deliver
+metadata: { name: deliver }
+point: !ref decisions
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: timedOut
+    try:
+      - name: firstWait
+        inputs: { key: k-1 }
+        invoke: !ref await
+      - name: notTimedOut
+        throw: { code: NOT_REFUSED, message: the wait returned with nothing delivered }
+    catch:
+      - name: assertTimeout
+        inputs:
+          actual: { code: !cel "error.code", key: !cel "error.data.key" }
+          expected: { code: ERR_RENDEZVOUS_AWAIT_TIMEOUT, key: k-1 }
+        invoke: { kind: Assert.Equals }
+  - name: inTheGap
+    inputs: { key: k-1, payload: { approved: true } }
+    invoke: !ref deliver
+  - name: reAwait
+    inputs: { key: k-1 }
+    invoke: !ref await
+  - name: assertGap
+    inputs:
+      actual: { gap: !cel "steps.inTheGap.result", reAwait: !cel "steps.reAwait.result" }
+      expected: { gap: { delivered: false }, reAwait: { approved: true } }
+    invoke: { kind: Assert.Equals }
