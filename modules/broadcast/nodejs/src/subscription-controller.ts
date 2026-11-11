@@ -1,5 +1,6 @@
 import {
   resolveInvocableDispatcher,
+  type OpenSpan,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
@@ -118,12 +119,38 @@ class BroadcastSubscription implements ResourceInstance {
           return { ok: false, reason: err instanceof Error ? err.message : String(err) };
         }
       },
-      openSpan: (label, attributes) =>
-        ctx.openSpan(ctx.rootContext({ cancellation }), {
-          ref,
-          label: `${resource.metadata.name} ${label}`,
-          attributes,
-        }),
+      // Each unit of work — a delivery's handler, an `onError`, an `onGap` —
+      // runs under a source of its own, cancelled with the subscription and
+      // disposed when its span settles, so what it leaves behind is released then.
+      openSpan: async (label, attributes) => {
+        const unit = ctx.createCancellationSource();
+        const unlink = cancellation.token.onCancelled((reason) => unit.cancel(reason));
+        const release = (): void => {
+          unlink();
+          unit.dispose();
+        };
+        let span: OpenSpan;
+        try {
+          span = await ctx.openSpan(ctx.rootContext({ cancellation: unit }), {
+            ref,
+            label: `${resource.metadata.name} ${label}`,
+            attributes,
+          });
+        } catch (err) {
+          release();
+          throw err;
+        }
+        return {
+          context: span.context,
+          settle: async (outcome, detail) => {
+            try {
+              await span.settle(outcome, detail);
+            } finally {
+              release();
+            }
+          },
+        };
+      },
       runHandler: (topic, message, invokeCtx) =>
         handler((ctx.expandValue(resource.inputs ?? {}, { topic, message }) ?? {}) as Record<string, unknown>, invokeCtx),
       ...(onError

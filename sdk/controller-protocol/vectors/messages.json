@@ -522,6 +522,22 @@
     },
     {
       "message": "Dispatch.Invoke",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "kind": "Stream.Collect",
+        "name": "collect",
+        "inputs": {},
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "owner": "o7"
+        }
+      }
+    },
+    {
+      "message": "Dispatch.Invoke",
       "part": "response",
       "body": {
         "result": {
@@ -1885,6 +1901,24 @@
         }
       },
       "pointer": "/context/inputsAt"
+    },
+    {
+      "name": "a dispatch whose owner is empty",
+      "message": "Dispatch.Invoke",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "kind": "Sql.Query",
+        "name": "health",
+        "inputs": {},
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "owner": ""
+        }
+      },
+      "pointer": "/context/owner"
     },
     {
       "name": "a settled failure whose location names no resource",

@@ -120,12 +120,32 @@ export interface ScopeContext {
    *  Rebuilt per `ScopeHandle.run()`, so two concurrent runs of the same
    *  sequence never observe each other's scoped resources. */
   readonly resources: Record<string, unknown>;
+  /** This run's opaque identity. A dispatch the holder issues inside the run
+   *  carries it as `InvokeContext.scopeRun`, so the run's sensitive values are
+   *  redacted from that dispatch's trace payload; the step engine does this for
+   *  every step it runs in the scope. */
+  readonly runIdentity: object;
 }
 
 /** Returned by Phase 5 injection in place of an x-telo-scope manifest array.
  *  The controller calls run() to open the scope, execute work, and tear it down. */
 export interface ScopeHandle {
-  run<T>(fn: (scope: ScopeContext) => Promise<T>): Promise<T>;
+  /**
+   * Open one run of the scope, call `fn`, and tear the run down.
+   *
+   * `inputs` is what the invocation opening the run received — its inputs as
+   * the bound contract delivered them, or a `run()`'s contract applied to `{}`.
+   * Required: an object on a scope the kind declares `openedBy: dispatch`, whose
+   * members' creation-time fields read it as `inputs`; `null` on any other. A
+   * value disagreeing with the declaration is `ERR_SCOPE_OPENING_INVALID`.
+   *
+   * What `fn` returns is the run's produced value, and `run` returns it with
+   * every stream it reaches held by the runtime: the run is torn down once each
+   * of those streams has settled (finished, failed or cancelled), so a scoped
+   * resource's stream stays readable after `run` returns. With no stream in it,
+   * the run is torn down before `run` returns.
+   */
+  run<T>(inputs: Record<string, unknown> | null, fn: (scope: ScopeContext) => Promise<T>): Promise<T>;
 }
 
 /** Transforms the raw config shape into the controller's view:

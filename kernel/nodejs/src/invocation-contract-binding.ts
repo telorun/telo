@@ -32,6 +32,7 @@ import {
  *  twin of `SPAN_ATTRIBUTE_INVALID` / `SPAN_ATTRIBUTE_MISPLACED`. */
 export const ERR_SPAN_ATTRIBUTE_INVALID = "ERR_SPAN_ATTRIBUTE_INVALID";
 import { typeReferenceKey } from "./type-field-schema.js";
+import type { WalkGuide } from "./held-streams.js";
 import {
   buildMembersValues,
   copyPlainContainers,
@@ -118,6 +119,9 @@ export interface BoundContract {
    *  copy, `value` itself when the contract declares no such slot. What a built one
    *  then shows is the payload writer's value rule. */
   payloadView(value: unknown, censor: string): unknown;
+  /** The resolved contract as a held-stream walk reads it, to skip what can hold
+   *  no stream. */
+  walkGuide(): WalkGuide;
 }
 
 const CONTRACT_ERROR: Record<ContractDirection, string> = {
@@ -325,6 +329,10 @@ export function resolveBoundContract(
       resolve();
       return spanAttributes ?? [];
     },
+    walkGuide: () => ({
+      schema: shape().projected,
+      resolveRef: (ref: string) => factory.resolveRef(ref),
+    }),
     resolveProjections: () => {
       if (!projections) return;
       const schema = factory.schemaOf(declared);
@@ -493,6 +501,32 @@ function ruleViolationCode(cause: unknown): string | undefined {
   return STRUCTURAL_VALIDATION_CODES.has(code) ? undefined : code;
 }
 
+const boundInputs = new WeakMap<object, BoundContract>();
+
+/** Record the input contract bound to `instance` — what a scope it opens reads
+ *  its opening inputs by. First record wins, as for every per-instance fact. */
+export function recordBoundInput(instance: object, input: BoundContract): void {
+  if (!boundInputs.has(instance)) boundInputs.set(instance, input);
+}
+
+/** The input contract bound to `instance`, when it has one. */
+export function boundInputOf(instance: unknown): BoundContract | undefined {
+  return instance && typeof instance === "object" ? boundInputs.get(instance) : undefined;
+}
+
+const boundOutputs = new WeakMap<object, BoundContract>();
+
+/** Record the output contract bound to `instance` — what a walk of its returned
+ *  value is guided by. First record wins. */
+export function recordBoundOutput(instance: object, output: BoundContract): void {
+  if (!boundOutputs.has(instance)) boundOutputs.set(instance, output);
+}
+
+/** The output contract bound to `instance`, when it has one. */
+export function boundOutputOf(instance: unknown): BoundContract | undefined {
+  return instance && typeof instance === "object" ? boundOutputs.get(instance) : undefined;
+}
+
 export interface ContractBinding {
   input?: BoundContract;
   output?: BoundContract;
@@ -502,13 +536,13 @@ export interface ContractBinding {
 }
 
 /**
- * Bind `invoke()` and `provide()` in place.
+ * Bind `invoke()`, `provide()` and `run()`'s input side in place.
  *
  * `provide()` takes no caller arguments, so it has no input side, but it returns
  * a value against a declared `outputType` and that result is validated exactly as
  * an invocable's is — same path, same stream skip, same ambient error code.
- * `run()` is bound to nothing: parameterless and void, there is nothing to fill
- * defaults into and no result to validate, so it is guarded statically instead.
+ * `run()` takes no caller arguments either: it receives the input contract
+ * applied to `{}` after its dispatch context, and has no result to validate.
  */
 export function bindContract(instance: ResourceInstance, binding: ContractBinding): void {
   const { input, output, describeTarget } = binding;
@@ -580,6 +614,22 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
       }
       return produced;
     };
+  }
+
+  // A run is the contract applied to the empty call, handed over after the
+  // dispatch context. Not async: `run()` may return an effect chain, which an
+  // async wrapper would unwrap.
+  if (input && typeof instance.run === "function") {
+    const original = instance.run.bind(instance) as (...args: unknown[]) => unknown;
+    instance.run = ((invokeCtx?: unknown) => {
+      const effective = built(input, {});
+      try {
+        input.validate(effective);
+      } catch (error) {
+        throw contractViolation("inputType", describeTarget, error);
+      }
+      return original(invokeCtx, effective);
+    }) as typeof instance.run;
   }
 
   if (output && typeof instance.provide === "function") {

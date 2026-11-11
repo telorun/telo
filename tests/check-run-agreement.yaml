@@ -662,6 +662,10 @@ targets:
   - !ref pathParamsForInvalidAtRuntime
   - !ref evalModeBranchConflict
   - !ref evalModeBranchConflictAtRuntime
+  - !ref scopeInputsUndeclaredField
+  - !ref scopeInputsNotOpenedByDispatch
+  - !ref scopeInputsRunDefaults
+  - !ref scopeInputsRunRefusesEmpty
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -6448,3 +6452,56 @@ expect:
     - code: EVAL_MODE_BRANCH_CONFLICT
       message: "reached through import 'Lib': Telo.Definition 'Card' declares a union at 'schema.properties.content'"
   runFails: "[EVAL_MODE_BRANCH_CONFLICT] Imported library 'EvalModeBranchConflictLib', reached through import 'Lib': Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'text' two eval modes"
+---
+# A scope annotation the kind cannot honour is refused at the kind writing it…
+kind: Assert.Manifest
+metadata: { name: scopeOpenedByInvalid }
+source: ./__fixtures__/check-run-agreement/scope-opened-by-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: SCOPE_OPENED_BY_INVALID
+      message: "Telo.Definition 'Holder' declares `x-telo-scope` at 'schema.properties.members.x-telo-scope' that it cannot honour"
+---
+# …and at the import reaching it, since the kernel refuses the kind when the
+# import registers it.
+kind: Assert.Manifest
+metadata: { name: scopeOpenedByInvalidAtRuntime }
+source: ./__fixtures__/check-run-agreement/scope-opened-by-invalid/telo.yaml
+expect:
+  errors:
+    - code: SCOPE_OPENED_BY_INVALID
+      message: "reached through import 'Lib': Telo.Definition 'Holder' declares `x-telo-scope` at 'schema.properties.members.x-telo-scope' that it cannot honour"
+  runFails: "[SCOPE_OPENED_BY_INVALID] Imported library 'ScopeOpenedByInvalidLib', reached through import 'Lib': Telo.Definition 'Holder' declares `x-telo-scope` at 'schema.properties.members.x-telo-scope' that it cannot honour"
+---
+# A `with:` member's creation-time field reads the opening call's `inputs`,
+# typed by the holder's input contract: an undeclared field is refused where it
+# is written and at load.
+kind: Assert.Manifest
+metadata: { name: scopeInputsUndeclaredField }
+source: ./__fixtures__/check-run-agreement/scope-opening-inputs/undeclared-field.yaml
+expect:
+  errors: [{ code: CEL_UNKNOWN_FIELD, message: "'inputs.apikey' is not defined (available: apiKey)" }]
+  runFails: "[CEL_UNKNOWN_FIELD] Http.ApiKeyHeader/credential: !cel: 'inputs.apikey' is not defined (available: apiKey)"
+---
+# A scope declared without `openedBy: dispatch` binds no `inputs` in its members.
+kind: Assert.Manifest
+metadata: { name: scopeInputsNotOpenedByDispatch }
+source: ./__fixtures__/check-run-agreement/scope-opening-inputs/not-opened-by-dispatch.yaml
+expect:
+  errors: [{ code: CEL_UNKNOWN_IDENTIFIER, message: "unknown identifier 'inputs'" }]
+  runFails: "[CEL_UNKNOWN_IDENTIFIER] Http.ApiKeyHeader/credential: !cel: unknown identifier 'inputs'"
+---
+# A run is the contract applied to `{}`: a step reading a defaulted input is
+# checked clean and runs.
+kind: Assert.Manifest
+metadata: { name: scopeInputsRunDefaults }
+source: ./__fixtures__/check-run-agreement/scope-opening-inputs/run-defaults.yaml
+expect: { errors: [], runs: true }
+---
+# A contract refusing `{}` can never be started at a run site.
+kind: Assert.Manifest
+metadata: { name: scopeInputsRunRefusesEmpty }
+source: ./__fixtures__/check-run-agreement/scope-opening-inputs/run-refuses-empty.yaml
+expect:
+  errors: [{ code: CONTRACT_INPUTS_AT_RUN_SITE, message: "its contract refuses `{}`" }]
+  runFails: "[CONTRACT_INPUTS_AT_RUN_SITE] Telo.Application/ScopeInputsRunRefusesEmpty: 'greet' is wired at 'targets[0]'"

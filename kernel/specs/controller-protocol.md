@@ -94,8 +94,9 @@ written into a native controller's PURL as `abi=telo-<n>`.
   `Span.Carrier` (§6.5). No carrier implemented any of them and no artifact could
   declare one, so each is superseded rather than kept readable.
 - **Generation `10` is the generation this specification defines.** It is `9`'s
-  message set plus `Ref.CoReferrers` (§7.1) and the three listener messages
-  (§9.4) — additive within `10`, which no carrier speaks yet — with the same
+  message set plus `Ref.CoReferrers` (§7.1), the three listener messages
+  (§9.4) and `Controller.Run`'s `inputs` (§5.2) — additive within `10`, which no
+  carrier speaks yet — with the same
   value encoding:
   `durable-execution.md` §6's typed frame, whose timestamp payload is RFC 3339
   with a trimmed nanosecond fraction. It is the value in
@@ -634,7 +635,10 @@ a fresh `Controller.Create`.
   (§5.5).
 - `Controller.Run` starts a `Telo.Service` or runs a `Telo.Runnable`. It carries
   an invocation context, so a boot run cancelled by a signal reaches the
-  controller's own cancellation token.
+  controller's own cancellation token, and — exactly when the instance has an
+  input contract — `inputs`: that contract applied to the empty call, defaults
+  filled and validated (`kernel/specs/invocation-contract.md` §3.2). A
+  controller that ignores the member keeps working.
 - `Controller.Provide` reads a `Telo.Provider`'s value.
 - `Controller.Destroy` releases the instance, after every frame has unwound.
 
@@ -751,14 +755,24 @@ carry `calledAt`, an RFC 6901 pointer to where the calling resource's declaratio
 makes this call (`/steps/1`, `/targets/0`), handled exactly as `inputsAt` is — read
 at that one dispatch, never inherited — and the pointer of the caller's frame in
 the failure's trace (`kernel/specs/invocation-contract.md` §5.5). `calledAt` is an
-additive member within `telo-10`. One member of the in-process context deliberately does **not**
+additive member within `telo-10`. Every context may also carry `owner`, the opaque
+id the kernel minted for the dispatch the context belongs to (`kernel/specs/invocation-contract.md`,
+"Held streams"). Unlike `inputsAt` it is inherited: the kernel replaces it at every
+dispatch it hands a controller, and a controller forwards it unchanged on every
+callback dispatch it issues under that context, which is what makes what the callback
+returns owned by that dispatch. A context the kernel cannot match to a live owner —
+an id it never minted or one whose dispatch has ended — counts as closed: a held
+stream registered with it is cancelled at once. `owner` is an additive member within
+`telo-10`. One member of the in-process context deliberately does **not**
 cross: the durable run handle, which is a live object with methods. The kernel is
 a pure conduit for it — it carries it and never calls it — so a second runtime
 threads a handle it owns rather than deserializing this one.
 
 ### 6.3 Cancellation
 
-`Cancellation.Create` mints a writable source for a trigger to own;
+`Cancellation.Create` mints a writable source for a trigger to own, and the context
+it answers carries a root `owner`: it owns until the source is disposed (completed)
+or cancelled (abandoned), so an inbound transport mints one per unit of inbound work;
 `Cancellation.Cancel` cancels it, or arms it to trip at an absolute instant (a
 deadline is not a separate concept); `Cancellation.Dispose` releases a pending
 deadline and its subscribers without cancelling.

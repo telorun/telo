@@ -300,8 +300,10 @@ pub fn destroy_function<F: Function>(instance: Option<F>) -> Result<()> {
 /// object (a direct napi call), the token is never cancelled.
 pub fn invoke_context_from_js(ctx: Option<JsObject>) -> InvokeContext {
     match ctx {
+        // In process the owner is an object, not an id: there is none to carry.
         Some(obj) => InvokeContext {
             cancellation: CancellationToken::from_poll(move || poll_cancelled(&obj)),
+            owner: None,
         },
         None => InvokeContext::never(),
     }

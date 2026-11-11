@@ -136,7 +136,6 @@ inputType:
         Inputs forwarded to the body when this call runs it, held to the body's
         own input contract when it declares one.
       type: object
-      additionalProperties: true
       x-telo-value-schema-from: /invoke/inputType
 outputType:
   type: object

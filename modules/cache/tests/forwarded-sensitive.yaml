@@ -1,0 +1,60 @@
+kind: Telo.Application
+metadata:
+  name: CacheViewForwardedSensitive
+  version: 1.0.0
+  description: |
+    The inputs Cache.View forwards to its target are typed by the target's input
+    contract, so a field the target marks sensitive is redacted in the view's own
+    traced inputs while `key` and the rest stay verbatim, and a served value's
+    sensitive field is redacted by the target's output contract.
+imports: { Cache: ../, CacheMemory: ../../cache-memory, Assert: ../../assert }
+targets:
+  - !ref call
+  - !ref expectRedacted
+---
+kind: CacheMemory.Store
+metadata: { name: mem }
+---
+kind: Cache.View
+metadata: { name: report }
+store: !ref mem
+ttl: 60s
+invoke:
+  kind: Telo.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [key, token, day]
+      properties:
+        key: { type: string }
+        token: { type: string, x-telo-sensitive: true }
+        day: { type: string }
+  outputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [receipt, day]
+      properties: { receipt: { type: string, x-telo-sensitive: true }, day: { type: string } }
+  steps:
+    - name: done
+      value: { receipt: r-9f3a, day: !cel "inputs.day" }
+  outputs: !cel "steps.done.result"
+---
+kind: Telo.Sequence
+metadata: { name: call }
+steps:
+  - name: report
+    invoke: !ref report
+    inputs: { key: nightly-report, token: s3cr3t-token, day: "2026-11-06" }
+---
+kind: Assert.Events
+metadata: { name: expectRedacted }
+filter:
+  - { type: "*" }
+expect:
+  - event: report.Invoked
+    payload:
+      ref: { kind: Cache.View }
+      inputs: { key: nightly-report, token: "[redacted]", day: "2026-11-06" }
+      outputs: { state: miss, value: { receipt: "[redacted]", day: "2026-11-06" } }

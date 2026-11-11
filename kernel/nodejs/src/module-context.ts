@@ -5,7 +5,9 @@ import {
   type InlineInvokeTarget,
   nowUnixNano,
   RuntimeError,
+  UNCANCELLABLE_CONTEXT,
 } from "@telorun/sdk";
+import { BOOT_RUN_ENDED, StreamOwner } from "./held-streams.js";
 import type { ScopeConfig } from "./logging/scope-config.js";
 import type {
   BootTarget,
@@ -978,14 +980,15 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         outcome,
         phase === "end" && appRootScope ? { context: appRootScope } : {},
       );
-    const targetCtx: InvokeContext | undefined =
-      tracing && ctx
-        ? deriveContext(ctx, {
-            invocationId: appSpanId,
-            parentInvocationId: undefined,
-            traceId: appTraceId,
-          })
-        : ctx;
+    // One owner for the whole boot run, closed when the last target returns: a
+    // scoped stream a target leaves behind is cancelled then.
+    const bootOwner = new StreamOwner(undefined, BOOT_RUN_ENDED);
+    const targetCtx: InvokeContext = deriveContext(
+      ctx ?? UNCANCELLABLE_CONTEXT,
+      tracing
+        ? { invocationId: appSpanId, parentInvocationId: undefined, traceId: appTraceId, owner: bootOwner }
+        : { owner: bootOwner },
+    );
 
     const steps: Record<string, unknown> = {};
     const caller: DispatchCaller = {
@@ -997,7 +1000,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     // The boot run's own context, carrying only the per-dispatch place of the
     // target's inputs the leaf sends.
     const dispatchCtx = (sent: InvokeContext | undefined): InvokeContext | undefined =>
-      (sent?.inputsAt === undefined && sent?.calledAt === undefined) || targetCtx === undefined
+      sent?.inputsAt === undefined && sent?.calledAt === undefined
         ? targetCtx
         : deriveContext(targetCtx, {
             ...(sent.inputsAt === undefined ? {} : { inputsAt: sent.inputsAt }),
@@ -1035,6 +1038,8 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         finishApp(cancelled ? "cancelled" : "failed", err);
       }
       throw err;
+    } finally {
+      bootOwner.produce();
     }
   }
 

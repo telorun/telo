@@ -65,8 +65,8 @@ inputType:
           unrelated calls onto one record.
       inputs:
         type: object
-        additionalProperties: true
-        description: Inputs forwarded to the wrapped body when this call claims the key.
+        description: Inputs forwarded to the wrapped body when this call claims the key, held to that body's input contract.
+        x-telo-value-schema-from: /invoke/inputType
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -87,7 +87,8 @@ outputType:
           result. Distinguishing the last two is why `executed` alone is not
           enough: both report `executed: false`.
       result:
-        description: The body's result — freshly produced, or replayed from the store. Absent while `in-flight`.
+        description: The body's result — freshly produced, or replayed from the store. Absent while `in-flight`. Typed by the body's output contract.
+        x-telo-value-schema-from: /invoke/outputType
       holder:
         type: [string, "null"]
         description: On `in-flight`, the token of the caller currently running the body.

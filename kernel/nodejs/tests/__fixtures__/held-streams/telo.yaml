@@ -1,0 +1,26 @@
+kind: Telo.Library
+metadata:
+  name: HeldStreamKernelFixtures
+  version: 0.0.0
+  description: >-
+    Test fixture: a stream source marking the stream it produces, and an invocable
+    answering a body that counts every time something walks it.
+exports: { kinds: [Source, Body] }
+---
+kind: Telo.Definition
+metadata:
+  name: Source
+  description: Answers `{ output, usage }`, `output` a stream marked as this source's own.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./kinds.mjs#Source]
+schema: { type: object, additionalProperties: false }
+---
+kind: Telo.Definition
+metadata:
+  name: Body
+  description: >-
+    Answers `{ body }`, a large record counting every walk of it. It declares no
+    contract, so nothing tells a walk the body holds no stream.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./kinds.mjs#Body]
+schema: { type: object, additionalProperties: false }

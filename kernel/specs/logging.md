@@ -1374,6 +1374,38 @@ their type-level protection applied.
   message, which is why §14 applies to attributes and errors and why controllers
   SHOULD keep secrets out of message strings entirely.
 
+### 14.5 A set per lifetime: the scope run
+
+A value that belongs to ONE call — a credential a caller hands an invocation
+whose scope stands up resources from it — MUST NOT join a module context's set:
+that set would grow with every call and scan every concurrent call's values on
+every record. It joins a set owned by that lifetime instead.
+
+- **Filled once.** When a holder opens one run of a scope from a call
+  (`x-telo-scope`'s `openedBy: dispatch`), the run's set is the text of the
+  opening inputs at every path the holder's input contract marks
+  `x-telo-sensitive`, every string leaf beneath such a path included. A sensitive
+  non-string scalar is not value-redacted. The set is layered over the sets of the
+  context owning the holder: the module's, and for a holder that is itself a
+  scope member, the enclosing run's.
+- **Matched by substring, at any length, every occurrence**, replaced by the
+  default censor — so a value interpolated into another string (`Bearer …`) is
+  redacted with it, in a record's message as well as its attributes and error.
+- **Owned, never ambient.** A record is redacted by the run's set when it is
+  written by a resource created in the run (its records' message, attributes and
+  error, its `Created` properties, every debug-wire event carrying its reading);
+  when it is the trace payload (inputs, outputs, error) of a dispatch whose target
+  was created in the run, of a dispatch the holder issues inside the run — which
+  names the run by an opaque identity in its own per-dispatch context, never
+  inherited — or of the opening dispatch itself; and when it is the error value a
+  runtime builds for a failure that left the run, which carries the run's set from
+  its exit, through any error wrapping it. A record a module-level resource writes
+  from its own code is redacted by the module's set and its contract's marks only.
+  A published reading read as CEL data is never redacted.
+- **Never cleared.** The set is dropped by reference with the run, so an event
+  serialized after the run ended still redacts; the module context's set stays
+  the size it was before the first call, however many calls there were.
+
 ---
 
 ## 15. Sampling

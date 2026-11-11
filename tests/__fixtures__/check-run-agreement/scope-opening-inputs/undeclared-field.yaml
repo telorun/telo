@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata: { name: ScopeInputsUndeclaredField }
+imports: { Http: ../../../../modules/http-client }
+targets:
+  - !ref call
+---
+kind: Telo.Sequence
+metadata: { name: byok }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [apiKey], properties: { apiKey: { type: string } } }
+with:
+  - kind: Http.ApiKeyHeader
+    metadata: { name: credential }
+    header: x-api-key
+    key: !cel "inputs.apikey"
+steps:
+  - name: sign
+    invoke: !ref credential
+    inputs:
+      request: { method: GET, url: "http://127.0.0.1/", headers: {}, query: {} }
+---
+kind: Telo.Sequence
+metadata: { name: call }
+steps:
+  - name: run
+    invoke: !ref byok
+    inputs: { apiKey: k }

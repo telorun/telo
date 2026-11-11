@@ -58,7 +58,10 @@ root; an id follows that entry.
 ### The run
 
 The admitted turn runs detached, drained into its journal key by `RecordStream.JournalSink`
-under the writer token that claimed it:
+under the writer token that claimed it. Each turn runs under a context of its own,
+minted through the runtime and closed when the turn ends, so an agent whose streamed
+output comes from a `with:`-scoped resource keeps that resource alive for the whole
+turn, and an output the turn leaves unread is released when it ends:
 
 1. Human decisions in `approvals` are recorded (`AiConversation.RecordApproval`).
 2. Without approvals, the user message is appended: its text, then each attachment by

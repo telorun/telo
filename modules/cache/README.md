@@ -58,3 +58,5 @@ revalidate: background
 `ttl` and `staleTtl` are durations (`300s`, `5m`, `1d12h`, `250ms`); a malformed literal is refused by `telo check` and an integer is milliseconds.
 
 Invoke `UserView` with `{ key: "<cache key>", ... }`; all inputs are forwarded to the wrapped target on a miss or revalidation.
+
+The inputs are typed by the target's input contract (the instance's `inputType`, else its kind's) beside the view's own `key`, and the served `value` by its output contract. A call the target's contract refuses is `CONTRACT_INPUTS_MISMATCH` under `telo check` and `ERR_INPUT_INVALID` at the view's own dispatch; a field the contract marks `x-telo-sensitive` is `[redacted]` in the view's traced inputs and value. The contract sees `key` too, so a target that closes its inputs must declare `key`. A target with no statically resolvable contract leaves the inputs unconstrained, and its forwarded value is withheld whole from traces.

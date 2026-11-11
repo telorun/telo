@@ -186,7 +186,15 @@ export interface ResourceContext extends ControllerContext {
   emitEvent(event: string, payload?: any): Promise<void>;
   /** Mint a writable cancellation source for a trigger to own (HTTP request,
    *  lambda budget). Pass `source.context` into `invokeResolved` to scope an
-   *  invocation tree to it. */
+   *  invocation tree to it.
+   *
+   *  Its context is also a ROOT OWNER: a stream from a `with:` scope that a
+   *  dispatch under it leaves behind is held until the source is `dispose()`d
+   *  (the work completed) or `cancel()`led (abandoned), and cancelled then.
+   *  Mint one source per unit of inbound work (a request, a delivery, a turn):
+   *  a long-lived source owns what every unit dispatched under it leaves
+   *  behind. An inbound transport mints its source here, never with the free
+   *  `createCancellationSource()`, whose context owns nothing. */
   createCancellationSource(): CancellationSource;
   /** This resource's own handle. Its `ref` is how a controller names itself in a
    *  diagnostic; its id is what the kernel stamps as a zone's `provider`. */
@@ -272,7 +280,12 @@ export interface ResourceContext extends ControllerContext {
    *  message): inherits nothing from whatever ambient happens to be live at the
    *  registration site — no zones, no trace parent, no caller token. An inbound
    *  registrant dispatches with this (or a cancellation source's context, which
-   *  is one), never `undefined`. */
+   *  is one), never `undefined`.
+   *
+   *  With a source from {@link createCancellationSource} the context owns until
+   *  that source is disposed or cancelled; without one it is the bare root,
+   *  which owns nothing, so a scoped stream a dispatch under it returns is
+   *  cancelled at once. */
   rootContext(opts?: { cancellation?: CancellationSource }): InvokeContext;
   /** Run `fn` detached from the caller's cancellation/trace scope: the ambient
    *  request token + span are replaced with the uncancellable root, so request

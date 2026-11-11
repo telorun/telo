@@ -1,0 +1,5 @@
+modules:
+  modules/cache: Added
+body: Cache.View's forwarded inputs and served value are typed by the target's
+  contracts, so sensitive marks are redacted in the view's traces and a payload the
+  target's contract refuses fails at the view's own dispatch.

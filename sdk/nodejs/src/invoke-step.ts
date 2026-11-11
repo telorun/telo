@@ -806,14 +806,18 @@ async function dispatch(
   // arrived with, which names the call that reached this body. The direct call
   // below gets none: it has no exit to read one at and would hand it on.
   const ownCtx =
-    attemptCtx?.inputsAt === undefined && attemptCtx?.calledAt === undefined
+    attemptCtx?.inputsAt === undefined && attemptCtx?.calledAt === undefined && attemptCtx?.scopeRun === undefined
       ? attemptCtx
       : deriveContext(attemptCtx!, {});
+  // A step inside a scope run says so, by the run's identity, so the run's
+  // sensitive values are redacted from the dispatch it issues.
+  const scopeRun = state.scope?.runIdentity;
   const dispatchCtx =
-    attemptCtx && (state.inputsAt !== undefined || state.calledAt !== undefined)
+    attemptCtx && (state.inputsAt !== undefined || state.calledAt !== undefined || scopeRun !== undefined)
       ? deriveContext(attemptCtx, {
           ...(state.inputsAt === undefined ? {} : { inputsAt: state.inputsAt }),
           ...(state.calledAt === undefined ? {} : { calledAt: state.calledAt }),
+          ...(scopeRun === undefined ? {} : { scopeRun }),
         })
       : ownCtx;
 

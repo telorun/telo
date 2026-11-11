@@ -227,6 +227,47 @@ describe("buildCallGraph — x-telo-scope descent", () => {
     expect(invoke.use).toEqual(["call", "detached"]);
   });
 
+  it("unions a scoped member's case map whose selector reads the opening inputs", () => {
+    const opened = {
+      ...scopedSeqDef,
+      metadata: { name: "Opened", module: "run" },
+      schema: {
+        type: "object",
+        properties: {
+          with: {
+            "x-telo-scope": { regions: ["/targets"], openedBy: "dispatch" },
+            type: "array",
+            items: { type: "object" },
+          },
+          targets: scopedSeqDef.schema.properties.targets,
+        },
+      },
+    };
+    const scoped = buildCallGraph(
+      [
+        { kind: "test.Echo", metadata: { name: "Body" } },
+        {
+          kind: "run.Opened",
+          metadata: { name: "Holder" },
+          with: [
+            {
+              kind: "lease.Critical",
+              metadata: { name: "guarded" },
+              detach: makeTaggedSentinel("cel", "inputs.background"),
+              invoke: ref("Body"),
+            },
+          ],
+          targets: [ref("guarded")],
+        },
+      ] as unknown as ResourceManifest[],
+      registryOf(opened, echoDef, criticalDef),
+    );
+    const guarded = scoped.edgesFrom(resourceId("run.Opened", "Holder"))[0].to!;
+    const invoke = scoped.edgesFrom(guarded).find((e) => e.slot === "invoke")!;
+    expect(invoke.use).toEqual(["call", "detached"]);
+    expect(invoke.unresolvedReason).toBe("dynamic");
+  });
+
   it("keeps every scoped node and edge out of init order", () => {
     const pairs = projectToPairs(graph);
     expect(pairs.get(outer)).toEqual(new Set());

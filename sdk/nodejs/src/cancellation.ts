@@ -134,6 +134,25 @@ export interface InvokeContext {
    * per dispatch, never inherited, stripped from the target's context.
    */
   readonly calledAt?: string;
+  /**
+   * The scope run this dispatch is issued from: the opaque
+   * {@link ScopeContext.runIdentity} of a run the issuing holder opened, so the
+   * runtime redacts the run's sensitive values from this dispatch's trace
+   * payload. An identity, never a value. Handled exactly as {@link inputsAt}:
+   * per dispatch, never inherited, stripped from the target's context.
+   */
+  readonly scopeRun?: object;
+  /**
+   * The dispatch this context belongs to, as the runtime's opaque owner: a
+   * stream from a `with:` scope that reaches this dispatch's body is held for it
+   * and cancelled once the dispatch ends without having passed it on. Replaced
+   * by the runtime at every dispatch and inherited by every context derived
+   * from this one ({@link deriveContext}), so a controller forwards it simply
+   * by forwarding its context. A context built as a fresh literal carries none,
+   * and a scoped stream handed to a dispatch under it is cancelled at once.
+   * An identity, never a value.
+   */
+  readonly owner?: object;
 }
 
 /**
@@ -144,11 +163,13 @@ export interface InvokeContext {
  * site (the kernel's tracing branches, span derivation) goes through here so a
  * field added to {@link InvokeContext} propagates without each site opting in.
  *
- * The members that do not propagate are the per-dispatch `inputsAt` and `calledAt`:
- * each is kept only when `overrides` states it.
+ * The members that do not propagate are the per-dispatch `inputsAt`, `calledAt`
+ * and `scopeRun`: each is kept only when `overrides` states it. `owner` does
+ * propagate, so a context derived to swap the cancellation token (a timeout, a
+ * per-attempt source) stays owned by the dispatch it was derived in.
  */
 export function deriveContext(base: InvokeContext, overrides: Partial<InvokeContext>): InvokeContext {
-  const { inputsAt, calledAt, ...inherited } = base;
+  const { inputsAt, calledAt, scopeRun, ...inherited } = base;
   return { ...inherited, ...overrides };
 }
 

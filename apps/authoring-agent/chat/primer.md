@@ -1219,6 +1219,16 @@ on the `inputType` / `outputType` — the kernel then redacts it in trace
 payloads. It is read ONLY from a contract; on a kind's own `schema:` it is
 reported as misplaced.
 
+A kind that FORWARDS a payload to the resource in its `invoke:` slot —
+`Lease.Critical`, `Idempotency.Once`, `IdempotencySql.Once`, `Cache.View`,
+`Run.Detach` — types the forwarded `inputs` from that target's `inputType`
+(and a returned `result` / `value` from its `outputType`). So the target's
+`x-telo-sensitive` marks are redacted in the wrapper's own trace payloads, and
+a payload the target's contract refuses is `CONTRACT_INPUTS_MISMATCH` at
+`telo check` and `ERR_INPUT_INVALID` at the wrapper's dispatch. `Cache.View`'s
+target sees `key` too, so a closed `inputType` there must declare it.
+`Sql.Transaction` maps its own `inputs:` and does not forward.
+
 A SCALAR contract property marked `x-telo-span-attribute: "<name>"` (e.g.
 `turnId: { type: string, x-telo-span-attribute: app.turn.id }`) puts its value
 on that resource's dispatch span under that name — how an id or a count
@@ -1255,6 +1265,38 @@ reached with `!ref`; read anywhere else it is an unknown field. Two members of o
 `with:` block cannot share a name, but a member may reuse a module-level name,
 which it shadows inside the scope; members holding each other at reference slots
 are `DEPENDENCY_CYCLE`. The same holds for any kind's `x-telo-scope` field.
+
+**A value that belongs to one call configures a `with:` resource through
+`inputs`.** Every call of a sequence gets its own `with:` resources, and their
+creation-time fields (`x-telo-eval: compile`, every field of a provider) read
+`inputs` — the inputs of the call that opened this run, typed by the sequence's
+`inputType` (a misspelled field is `CEL_UNKNOWN_FIELD`). That, never an invented
+per-call field on a kind, is how a caller's credential, endpoint or tenant
+reaches a client: route `inputs: { apiKey: !cel "request.headers['x-model-key']" }`
+into a sequence whose `with:` holds the credential
+(`key: !cel "inputs.apiKey"`), the client and the request, and invoke the request
+with `!ref`. Nested declarations inside a member read it too; a per-call field
+(`x-telo-eval: runtime`) keeps its own meaning of `inputs`, and `steps` is not in
+scope there. A sequence started by `run()` (a boot target) reads its contract's
+defaults — in its steps too — so a contract refusing `{}` there is
+`CONTRACT_INPUTS_AT_RUN_SITE`. Mark the credential `x-telo-sensitive: true` in
+`inputType`: its text is then `[redacted]`, every occurrence, wherever the
+scoped resources' configuration, logs or trace payloads surface, in the
+payloads of what the sequence dispatches during that call, and in an error that
+leaves the call. Keep a per-call credential inside the scoped resources: a
+module-level resource handed one writes its own records covered only by its own
+contract's marks.
+
+**A scoped resource's stream may be returned.** A sequence may return a `with:`
+member's streamed answer (`outputs: { output: !cel "steps.reply.result.output" }`),
+map it through a module-level `Stream.Map`, or hand it to `Run.Detach`: the scope
+stays alive until the stream is read to its end, fails, or is cancelled by its
+reader, so a route can stream a per-call model's reply with `mode: stream`. A
+stream a caller does not read — a route whose `returns:` reads only
+`result.usage` — is cancelled when the call that received it ends, and at once
+when it reaches a caller that opened no context (a schedule tick, a queue
+message, `ctx.rootContext()` with no source). Never collect a stream just to keep
+its scope alive.
 
 A `Telo.Import` may be a `with:` member too: each run of the scope gets its own
 instance of the library, checked and loaded as an `imports:` entry is (a broken

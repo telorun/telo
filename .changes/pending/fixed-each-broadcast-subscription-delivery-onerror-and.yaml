@@ -1,0 +1,5 @@
+modules:
+  modules/broadcast: Fixed
+body: Each Broadcast.Subscription delivery, onError and onGap run now dispatches under a
+  context of its own, released when it returns, so a handler's scoped resources are torn
+  down once per message instead of being held until the subscription stops.

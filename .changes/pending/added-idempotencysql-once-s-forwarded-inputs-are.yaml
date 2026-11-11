@@ -1,0 +1,5 @@
+modules:
+  modules/idempotency-sql: Added
+body: IdempotencySql.Once's forwarded inputs are typed by the body's input contract, so
+  its sensitive marks are redacted in the claim's traces and a refused payload fails at
+  the claim's own dispatch.

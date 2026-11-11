@@ -415,7 +415,7 @@ with:
 
 ```typescript
 export interface ScopeHandle {
-  run<T>(fn: (scope: ScopeContext) => Promise<T>): Promise<T>;
+  run<T>(inputs: Record<string, unknown> | null, fn: (scope: ScopeContext) => Promise<T>): Promise<T>;
 }
 
 export interface ScopeContext {
@@ -424,14 +424,16 @@ export interface ScopeContext {
    *  this is always a programming error; all scope members are statically
    *  validated in Phase 3 before the kernel ever reaches runtime. */
   getInstance(name: string): ResourceInstance;
+  /** The run's opaque identity, carried by a dispatch issued inside it. */
+  readonly runIdentity: object;
 }
 ```
 
-`ScopeHandle.run()` initializes all declared resources in the scope, executes the callback with a `ScopeContext` giving access to those instances by name, then tears them down when the callback resolves or rejects. Each call to `run()` produces a fresh initialization. The controller decides when and how many times to open the scope — the kernel has no involvement in that decision:
+`ScopeHandle.run()` initializes all declared resources in the scope, executes the callback with a `ScopeContext` giving access to those instances by name, then tears them down when the callback rejects, or when it resolves and every stream in what it returned has settled — the value is handed back at once with those streams held, so a scoped resource's stream stays readable after `run()` returns (`kernel/specs/invocation-contract.md` §4.9). Each call to `run()` produces a fresh initialization, from its own copy of the declarations. The controller decides when and how many times to open the scope — the kernel has no involvement in that decision. Its first argument is the inputs of the call opening the scope: an object on a scope the kind declares `x-telo-scope: { regions, openedBy: dispatch }`, whose members' creation-time fields read them as `inputs`, and `null` on any other; a disagreement is `ERR_SCOPE_OPENING_INVALID`:
 
 ```typescript
-async run() {
-  await this.config.with.run(async (scope) => {
+async invoke(inputs) {
+  await this.config.with.run(inputs, async (scope) => {
     const fetcher = scope.getInstance("FetchData");
     await fetcher.invoke(inputs);
   });

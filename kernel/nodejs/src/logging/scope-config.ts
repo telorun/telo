@@ -29,4 +29,14 @@ export interface ScopeConfig {
   module?: string;
   /** Resource-level attributes merged into every record from this scope. */
   attributes?: LogAttributes;
+  /** The redaction set of the scope run the writing resource was created in:
+   *  every occurrence of its values is replaced in the record's message,
+   *  attributes and error (§14.5). */
+  runRedaction?: ValueRedaction;
+}
+
+/** A value redaction applied by substring, every occurrence. */
+export interface ValueRedaction {
+  scrub(text: string): string;
+  scrubValue(value: unknown): unknown;
 }

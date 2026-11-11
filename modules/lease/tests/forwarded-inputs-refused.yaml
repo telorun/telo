@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: LeaseForwardedInputsRefused
+  version: 1.0.0
+  description: |
+    The payload a lease forwards is held to the body's input contract: a
+    missing required field is refused by `telo check` and at load.
+imports: { Assert: ../../assert }
+targets:
+  - !ref missingFieldRefused
+---
+kind: Assert.Manifest
+metadata: { name: missingFieldRefused }
+source: ./__fixtures__/forwarded-inputs-missing-field.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: day }
+  runFails: "[CONTRACT_INPUTS_MISMATCH]"

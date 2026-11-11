@@ -1,0 +1,55 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastDeliveryReleasesStreams
+  version: 1.0.0
+  description: |
+    Each delivery runs under a context of its own, released when its handler
+    returns: a handler whose `with:` member answers a stream nobody reads has its
+    scope torn down once per message, while the subscription keeps running.
+imports: { Broadcast: ../, Stream: ../../stream, Timer: ../../timer, Assert: ../../assert }
+targets:
+  - !ref test
+  - !ref expectReleased
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: delivery_releases
+messageType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [n], properties: { n: { type: integer } } }
+---
+kind: Telo.Sequence
+metadata: { name: reply }
+with:
+  - { kind: Stream.Of, metadata: { name: replyItems }, items: [a, b] }
+steps:
+  - { name: call, invoke: !ref replyItems }
+outputs: { output: !cel "steps.call.result.output" }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Broadcast.Subscription
+    metadata: { name: replies }
+    channel: !ref bus
+    invoke: !ref reply
+targets:
+  - !ref replies
+steps:
+  - name: first
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 1 } }
+  - name: second
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 2 } }
+  - name: third
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 3 } }
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
+---
+kind: Assert.Events
+metadata: { name: expectReleased }
+filter:
+  - { type: "*" }
+expect:
+  - { event: Stream.Of.replyItems.Teardown, times: 3 }

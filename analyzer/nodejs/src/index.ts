@@ -637,7 +637,8 @@ export type {
   ReachSite,
   SchemaFromResolver,
 } from "./reference-reach.js";
-export { scopeSlotProblems } from "./validate-scope-slots.js";
+export { scopeOpenedByProblems, scopeSlotProblems } from "./validate-scope-slots.js";
+export { readScopeAnnotation, type ScopeAnnotation } from "./scope-annotation.js";
 export type { ScopeSlotProblem } from "./validate-scope-slots.js";
 export { namedContractShape, valueSchemaFromProblems } from "./validate-value-schema-location.js";
 export type {

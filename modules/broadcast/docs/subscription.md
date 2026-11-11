@@ -52,3 +52,9 @@ Nothing stops a subscription:
 
 When the subscription stops, the channel stops delivering, queued messages are
 dropped and handlers still running are cancelled.
+
+Each delivery's handler, and each `onError` and `onGap` run, dispatches under a
+context of its own, cancelled when the subscription stops and released when that
+dispatch returns. So a handler whose `with:`-scoped resource answers a stream the
+subscription does not read has its scope torn down at its return, once per message,
+rather than holding it until the subscription stops.

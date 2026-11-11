@@ -6,6 +6,7 @@ import { pointerSegments } from "./resource-rule.js";
 import { isInlineDeclaration } from "./resolved-reference.js";
 import { forEachStep, stepBodiesOf } from "./step-bodies.js";
 import { placeAt, READS_IDENTITY, type ReadPlace, type ReadReporter } from "./read-place.js";
+import { readScopeAnnotation } from "./scope-annotation.js";
 
 /**
  * The execution scopes ONE resource declares — the `x-telo-scope` arrays it
@@ -28,6 +29,9 @@ export interface DeclaredScope {
   /** Every region its names resolve in (`steps`, `targets`), as keys from the
    *  resource root. */
   regions: readonly (readonly string[])[];
+  /** Opened by an invocation of its holder, whose inputs its members'
+   *  creation-time fields read (`openedBy: dispatch`). */
+  openedByDispatch: boolean;
 }
 
 export type ScopeMember = ResourceManifest & { metadata: { name: string } };
@@ -40,13 +44,22 @@ export function declaredScopes(sites: readonly ReachSite[]): DeclaredScope[] {
   for (const site of sites) {
     if (site.scopes.length === 0 || !Array.isArray(site.data)) continue;
     const regions = new Map<string, readonly string[]>();
+    let openedByDispatch = false;
     for (const { scope } of site.scopes) {
-      for (const pointer of Array.isArray(scope) ? scope : [scope]) {
+      const annotation = readScopeAnnotation(scope);
+      openedByDispatch ||= annotation.openedByDispatch;
+      for (const pointer of annotation.regions) {
         const keys = pointerSegments(pointer.startsWith("/") ? pointer : `/${pointer}`);
         if (keys) regions.set(JSON.stringify(keys), keys);
       }
     }
-    out.push({ path: site.path, keys: site.keys, declarations: site.data, regions: [...regions.values()] });
+    out.push({
+      path: site.path,
+      keys: site.keys,
+      declarations: site.data,
+      regions: [...regions.values()],
+      openedByDispatch,
+    });
   }
   return out;
 }
@@ -185,9 +198,7 @@ export function outsideScopesOf(manifest: unknown): OutsideScope[] {
 
 /** What `x-telo-scope` reads: each field holding the scope's members — a
  *  declaration a name written there may resolve to, by its identity. */
-export const scopeReads: ReadReporter = ({ value }) => {
-  const pointers = Array.isArray(value) ? value : [value];
-  return pointers.flatMap((pointer): ReadPlace[] =>
-    typeof pointer === "string" ? [{ kind: "reference", keys: placeAt([], pointer), transitive: false, reads: READS_IDENTITY }] : [],
+export const scopeReads: ReadReporter = ({ value }) =>
+  readScopeAnnotation(value).regions.map(
+    (pointer): ReadPlace => ({ kind: "reference", keys: placeAt([], pointer), transitive: false, reads: READS_IDENTITY }),
   );
-};

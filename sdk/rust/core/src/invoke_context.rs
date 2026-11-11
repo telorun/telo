@@ -49,13 +49,18 @@ impl CancellationToken {
 /// change — matching the Node SDK's `InvokeContext`.
 pub struct InvokeContext {
     pub cancellation: CancellationToken,
+    /// The opaque id of the dispatch this context belongs to, as the kernel minted
+    /// it (`kernel/specs/controller-protocol.md` §6.2). A callback dispatch issued
+    /// under this context carries it unchanged; `None` when the host handed none.
+    pub owner: Option<String>,
 }
 
 impl InvokeContext {
-    /// An `InvokeContext` whose token is never cancelled.
+    /// An `InvokeContext` whose token is never cancelled and which belongs to no owner.
     pub fn never() -> Self {
         Self {
             cancellation: CancellationToken::never(),
+            owner: None,
         }
     }
 }

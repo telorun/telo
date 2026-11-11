@@ -126,6 +126,53 @@ steps:
 
 `targets:` is **not** Application-only — both `Telo.Application` and `Telo.Sequence` have it. The difference is lifetime: an Application's targets/resources live for the process; a sequence's `with:` resources live only for that run. So a `Telo.Sequence` can start an `Http.Server` (put it in `with:`, list it in `targets:`) — useful for self-contained integration tests.
 
+### Per-call resources: `with:` reads `inputs`
+
+Every call of a sequence gets its own `with:` resources, and their **creation-time fields** (those a kind evaluates at creation — `x-telo-eval: compile`, and every field of a provider) read `inputs`: the inputs of the call that opened this run, exactly as the steps see them — validated against `inputType`, defaults filled. That is how a value belonging to one call — a caller's API key, an endpoint, a tenant — configures a resource without putting it at module level, where every caller would share it:
+
+```yaml
+kind: Telo.Sequence
+metadata: { name: reply }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [apiKey, prompt]
+    properties: { apiKey: { type: string, x-telo-sensitive: true }, prompt: { type: string } }
+with:
+  - kind: Http.ApiKeyHeader
+    metadata: { name: credential }
+    header: x-api-key
+    key: !cel "inputs.apiKey"
+  - kind: Http.Client
+    metadata: { name: upstream }
+    baseUrl: https://api.example.test
+    credential: !ref credential
+  - kind: Http.Request
+    metadata: { name: send }
+    client: !ref upstream
+    url: /reply
+steps:
+  - name: send
+    invoke: !ref send
+```
+
+- The field is typed by the sequence's `inputType`, so `inputs.apikey` is `CEL_UNKNOWN_FIELD` under `telo check`, and the kernel refuses it at load. An inline declaration nested in a `with:` member reads `inputs` too; a nested sequence's `with:` reads the inputs of the call that opened *it*.
+- It is evaluated once, when the resource is created at scope entry, and two concurrent calls each get their own. `steps` is not in scope there, and a per-call field (`x-telo-eval: runtime`) keeps its own meaning of `inputs` — lift a value it needs from the opening call into a creation-time field.
+- A sequence started by `run()` (a boot target) reads its contract applied to `{}` — the declared defaults — in its steps and its `with:` alike; a contract that refuses `{}` there is `CONTRACT_INPUTS_AT_RUN_SITE`.
+- A field the contract marks `x-telo-sensitive` joins a redaction set of the run's own: its text is `[redacted]`, every occurrence, in the `Created` event, logs and trace payloads of the resources created in the run, in the trace payloads of the dispatches the sequence issues during the run (a `Bearer ${{ inputs.apiKey }}` handed to a module-level resource included), and in an error that leaves the run. A record a module-level resource writes from its own code is redacted only by the module's set and its own contract's marks.
+
+`with:` is declared on both kinds as `x-telo-scope: { regions: [/steps, /targets], openedBy: dispatch }`; a `run` release published before that declaration reads `inputs` in a `Run.Sequence` member as `CEL_UNKNOWN_IDENTIFIER`.
+
+### A scope lives until the streams leaving it settle
+
+A `with:` resource may answer a stream — a model's streamed reply, a multipart parse — and the sequence may return it, map it through a module-level stage, or hand it to `Run.Detach`. The run is torn down only once the sequence has produced its result **and** every stream leaving the run has settled: read to its end, failed, or cancelled by its reader. So the resource behind a streamed HTTP reply is torn down after the last chunk is written, or when the client disconnects.
+
+- **What leaves a run**: a stream reachable through maps and lists from the sequence's result (with no `outputs:`, the whole `steps` map), a stream derived from one (`Stream.Map` over it), a stream inside an item of one (each part's `content`), and a stream in the inputs of detached work (`Run.Detach`), which then holds the run until it has drained it. A stream with no scope behind it is never touched.
+- **Who owns it**: the call that received it. A stream nobody reads is cancelled when that call ends — a sequence calling a scoped reply and keeping only its `usage`, a route whose `returns:` reads only `result.usage` — and its scope is torn down then. An inbound transport's context (one per HTTP request, one per broadcast delivery) owns until the request completes or is abandoned; a boot `targets:` run owns until its last target returns; a dispatch under `ctx.rootContext()` with no source owns nothing, so a schedule tick's or a queue message's unread stream is cancelled at once.
+- **Reading one late**: a held stream pulled after it was cancelled, or a second time once consumed, raises `ERR_INVOKE_CANCELLED` saying why.
+- **A failed teardown** has no caller to throw to: it is logged as an error on the sequence's logger under `scope.teardown.failed`.
+
 ## Naming intermediate values
 
 A calculation's intermediate values do not need a resource each. `Telo.Value` and `Run.Choice` take a `bindings:` map — names readable bare in their expressions, ordered by what they reference and evaluated lazily — and any step list takes a step carrying `value:` instead of `invoke:`, which publishes `steps.<name>.result` with no dispatch:

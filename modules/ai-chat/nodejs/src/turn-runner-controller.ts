@@ -4,6 +4,7 @@ import {
   Stream,
   celTimestampFromMillis,
   createCancellationSource,
+  deriveContext,
   isInvokeError,
   type CancellationSource,
   type CelTimestamp,
@@ -312,20 +313,22 @@ class TurnRunner implements ResourceInstance {
     text: string,
     admittedBy: InvokeContext,
   ): void {
-    const stop = createCancellationSource();
+    // The turn's own context, opened through the runtime: what the turn reads
+    // (the agent's streamed output) is held for it until the turn ends.
+    const stop = this.ctx.createCancellationSource();
     const unlink = this.shutdown.token.onCancelled((reason) => stop.cancel(reason));
     // The run continues the admitting call's trace, and inherits neither its
     // cancellation nor its zones: it outlives the call.
-    const runCtx: InvokeContext = {
-      cancellation: stop.token,
-      ...(admittedBy.traceId === undefined
+    const runCtx: InvokeContext = deriveContext(
+      stop.context,
+      admittedBy.traceId === undefined
         ? {}
         : {
             traceId: admittedBy.traceId,
             invocationId: admittedBy.invocationId,
             parentInvocationId: admittedBy.parentInvocationId,
-          }),
-    };
+          },
+    );
     const titler = this.endpoint().titler?.();
     // A title is the turn's courtesy, not its work: a failure is logged and the turn ends as it would have.
     const beforeEnd = titler

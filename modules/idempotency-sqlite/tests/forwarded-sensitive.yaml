@@ -1,0 +1,92 @@
+kind: Telo.Application
+metadata:
+  name: IdempotencySqlForwardedSensitive
+  version: 1.0.0
+  description: |
+    A payload forwarded through IdempotencySql.Once is typed by the guarded
+    body's input contract, so a field the body marks sensitive is redacted in
+    the claim's own traced inputs while the rest stays verbatim. The enclosing
+    Sql.Transaction maps its caller's data through its own `inputs:` and is not
+    typed from the body, so it traces the value verbatim.
+imports:
+  IdempotencySql: ../../idempotency-sql
+  Idempotency: ../
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref call
+  - !ref expectRedacted
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Idempotency.Table
+metadata: { name: keys }
+table: idempotency_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Idempotency.Ledger
+metadata: { name: ledger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: reports
+retention: 1h
+---
+kind: IdempotencySql.Once
+metadata: { name: once }
+ledger: !ref ledger
+invoke:
+  kind: Telo.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [token, day]
+      properties: { token: { type: string, x-telo-sensitive: true }, day: { type: string } }
+  steps:
+    - name: noop
+      value: !cel "inputs.day"
+---
+kind: Sql.Transaction
+metadata: { name: record }
+connection: !ref db
+inputs:
+  key: !cel "inputs.key"
+  token: !cel "inputs.token"
+steps:
+  kind: Telo.Sequence
+  steps:
+    - name: once
+      invoke: !ref once
+      inputs:
+        key: !cel "inputs.key"
+        inputs: { token: !cel "inputs.token", day: "2026-11-06" }
+---
+kind: Telo.Sequence
+metadata: { name: call }
+steps:
+  - name: record
+    invoke: !ref record
+    inputs: { key: report-1, token: s3cr3t-token }
+---
+kind: Assert.Events
+metadata: { name: expectRedacted }
+filter:
+  - { type: "*" }
+expect:
+  - event: once.Invoked
+    payload:
+      ref: { kind: IdempotencySql.Once }
+      inputs: { key: report-1, inputs: { token: "[redacted]", day: "2026-11-06" } }
+  - event: record.Invoked
+    payload:
+      ref: { kind: Sql.Transaction }
+      inputs: { key: report-1, token: s3cr3t-token }

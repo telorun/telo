@@ -270,18 +270,22 @@ particular mechanism.
 | ------------------- | ---------- | ----------- |
 | `invoke(inputs, …)` | bound      | bound       |
 | `provide()`         | n/a        | bound       |
-| `run(…)`            | not bound  | not bound   |
+| `run(…)`            | bound      | not bound   |
 
 `provide()` takes no caller arguments, so it has no input side; its result is
 validated exactly as an invocable's, by the same path.
 
-`run()` is parameterless and returns nothing, so there is nothing to fill
-defaults into and no result to validate. A runtime MUST NOT extend the runnable
-signature to carry inputs, and MUST NOT smuggle values through the dispatch
-context: that would make defaults a property each controller opts into rather
-than a runtime guarantee. A resource whose resolved contract requires any input
-is therefore unsatisfiable at a run dispatch site, and a checker MUST reject that
-wiring.
+`run()` takes no caller arguments: **a run is its contract applied to the empty
+call**. For an instance with an input contract a runtime MUST fill the
+contract's defaults into `{}`, validate the result (`ERR_INPUT_INVALID` when the
+contract refuses it), and hand the value to the runnable entry point as its
+inputs — after the dispatch context, so a controller that ignores it keeps
+working (`Controller.Run`'s `inputs`, `kernel/specs/controller-protocol.md`
+§5.2). An instance with no input contract receives none. The value travels in
+the run request, never in the dispatch context. `run()` returns nothing, so its
+output side is not bound. A resource whose resolved contract refuses `{}` — a
+required input, or any other keyword `{}` fails — is unsatisfiable at a run
+dispatch site, and a checker MUST reject that wiring.
 
 ### 3.3 Argument forwarding
 
@@ -592,6 +596,68 @@ is not a literal object (`ARGUMENT_MAP_DEFAULT_INVALID`, at the declaring module
 Where a kind published before this rule declares no default, its consumers' sites
 stay unjudged. A runtime MUST NOT write the default into the declaration: it is
 filled where the dispatch reads it.
+
+### 4.9 Held streams
+
+A run of a scope (`x-telo-scope`) ends only when its holder has produced the run's
+value **and** every stream that left the run has settled — finished, failed, or
+cancelled by its consumer. Every runtime that hosts scopes MUST implement this
+section; a runtime hosting none (the Rust kernel today) has no held stream.
+
+**What is held.** A stream reachable through maps and lists from a value leaving a
+scope run is held: the run's produced value, and the inputs of a detached or
+trigger dispatch issued inside the run. So is a stream leaving a dispatch that owns
+a held stream (a stream derived from one), and a stream reachable from an item of a
+held stream, found as the consumer pulls that item. A runtime MUST wrap a held
+stream to observe its settlement, MUST NOT pull ahead of its consumer or buffer an
+item, and MUST NOT wrap, track or cancel a stream found anywhere else: a stream
+that leaves no scope run and no dispatch owning a held stream reaches its consumer
+as the identical object. A stream inside a host object
+that is neither a map, a list nor a stream is outside this section.
+
+**Where values are walked.** A runtime walks a value for streams only at a scope
+run's end, at a detached or trigger dispatch whose issuer is inside a scope run or
+owns a held stream, and at the return of a dispatch that owns a live held stream.
+No other dispatch's value is walked. A walk MAY skip a subtree whose resolved
+contract admits no stream at any depth (every object closed, no live value type).
+
+**Owners.** Every dispatch has an owner of its own, carried as the invocation
+context's opaque `owner`: inherited by every context derived from it, replaced by
+the runtime at each dispatch. A dispatch is detached or trigger when its context's
+owner is not the owner of the dispatch that issued it — for work run detached
+(`ctx.runDetached`), the dispatch that started the work. A held stream found in a
+dispatch's returned value is registered with the owner of the context the dispatch
+was issued under; one found in a detached or trigger dispatch's inputs, with that
+dispatch. A dispatch's ownership closes once it has produced its value (or failed)
+and every held stream leaving it has settled; the runtime then cancels every held
+stream it still owns. A derived stream therefore keeps its source alive: the
+source's owner is among the derived stream's producers and closes only once the
+derived stream settles.
+
+**Roots.** A context a source minted by the runtime's cancellation-source factory
+carries (`ctx.createCancellationSource()`, `Cancellation.Create`) is a root owner:
+it owns until the source is disposed or cancelled, and then cancels what it owns.
+The boot runner opens one owner for its whole `targets:` run, closed when the last
+target returns. A context carrying no owner the runtime minted — the bare root
+`ctx.rootContext()`, a source the SDK's free function made, a context written as a
+literal — owns nothing: a held stream that would be registered with it, or with a
+closed owner, is cancelled at once.
+
+**Settlement and refusal.** A held stream settles when every iterator opened on it
+has settled; one no iterator opened settles when its owner closes. A pull of a
+cancelled held stream, and an iterator opened on one that has settled, raise
+`ERR_INVOKE_CANCELLED`, the message saying why: the stream reached a caller that
+opened no context (naming the fix), the dispatch or inbound work that received it
+ended without reading it, or it was already consumed and its scope has ended.
+
+**Teardown.** A run no stream leaves is torn down before its handle returns, a
+failure raised to the holder. Otherwise the handle returns the value at once and
+the run is torn down once those streams settle and every run opened inside it has
+been torn down; a failure of that teardown is reported on the holder's log under
+`scope.teardown.failed`. Detached work started inside a run holds what its issuer
+holds until its first dispatch has walked its inputs. A runtime shutting down, or
+tearing the holder down, cancels a pending run's held streams first and then waits
+for its teardown.
 
 ## 5. Errors
 
