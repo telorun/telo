@@ -48,7 +48,7 @@ describe("the runtime library", () => {
       "hostOnly(string): string",
       { hostBacked: true },
     );
-    expect(() => environment.evaluate("hostOnly('x')")).toThrow(/unbound|no overload/);
+    expect(() => environment.evaluate("hostOnly('x')")).toThrow(/unbound function 'hostOnly'/);
     environment.registerFunction("hostOnly(string): string", {
       implementation: (ctx, a) => `${a as string}!`,
     });

@@ -113,6 +113,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 6 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -249,6 +250,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!sql: the hole opened at offset 7 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -450,6 +452,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -476,6 +479,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"'a\\\\\\nb'\" could not be read: \\\n is not an escape sequence"
         }
       }
@@ -497,6 +501,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -543,6 +548,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"'a\\\\\\rb'\" could not be read: \\\r is not an escape sequence"
         }
       }
@@ -564,6 +570,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -585,6 +592,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -767,6 +775,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 2 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -788,6 +797,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 13 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -809,6 +819,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -836,6 +847,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -857,6 +869,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -1031,6 +1044,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"x\" could not be read: unexpected character \"\""
         }
       }
@@ -1057,6 +1071,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"\" could not be read: the expression ends before it is complete"
         }
       }
@@ -1128,6 +1143,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -1174,6 +1190,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"rb'\\\\''\" could not be read: \"'\\\\''\" cannot stand here"
         }
       }
@@ -1294,6 +1311,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"r'\\\\'\" could not be read: unterminated string"
         }
       }
@@ -1342,6 +1360,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"rb'x'\" could not be read: \"'x'\" cannot stand here"
         }
       }
@@ -1714,6 +1733,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ [1, 2] }}' at offset 0 of !interpolate \"${{ [1, 2] }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -1742,6 +1762,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ {'a': 1} }}' at offset 0 of !interpolate \"${{ {'a': 1} }}\" evaluated to a map, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -1770,6 +1791,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ optional.of(1) }}' at offset 0 of !interpolate \"${{ optional.of(1) }}\" evaluated to a value of type optional_type, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -1800,6 +1822,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ int }}' at offset 0 of !interpolate \"${{ int }}\" evaluated to a value of type type, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -1828,6 +1851,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ null }}' at offset 0 of !interpolate \"${{ null }}\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -1866,6 +1890,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ tags }}' at offset 6 of !interpolate \"tags: ${{ tags }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -1894,6 +1919,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -1927,6 +1953,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -1957,6 +1984,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to a map, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -1991,6 +2019,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to a value of type optional_type, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -2022,6 +2051,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to a value of type type, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -2047,6 +2077,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: x"
         }
       }
@@ -2158,6 +2189,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ note }}' at offset 6 of !interpolate \"Note: ${{ note }}\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -2361,6 +2393,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"lower\" takes (string)"
         }
       }
@@ -2402,6 +2435,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"uppe\" takes (string)"
         }
       }
@@ -2461,6 +2495,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"startsWith\" takes (string, string)"
         }
       }
@@ -2515,6 +2550,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"+\" takes (int, string)"
         }
       }
@@ -2712,6 +2748,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: nme"
         }
       }
@@ -2756,6 +2793,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"lower\" takes (string)"
         }
       }
@@ -3135,6 +3173,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: missing"
         }
       }

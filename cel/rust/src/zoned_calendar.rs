@@ -4,7 +4,7 @@
 //! The function catalog reads every calendar field through here. Node takes a zone's rules
 //! from its host's Intl; here they are the bundled IANA database's (`zone_database.rs`,
 //! tzdata 2026c), and what this file reproduces is how Node applies them — including
-//! where it computes through `Date.UTC`. An instant is a whole number of milliseconds
+//! where it computes through `Date.UTC`'s arithmetic. An instant is a whole number of milliseconds
 //! since the epoch, as Node's are; an answer Node cannot give — it throws a `RangeError`
 //! or answers `NaN` — is `None`.
 //!
@@ -13,10 +13,10 @@
 //! minutes at most 59, read arithmetically. Node's host also takes `+05`, `+0530` and ICU's
 //! own names, and refuses `Factory`; those differ by charter.
 //!
-//! **Node's readings, reproduced.** `Date.UTC` reads a year from 0 to 99 as 1900 to 1999,
-//! and the offset, the solver and `iso_text_in` compute through it; a wall-clock year at or
-//! below zero is written as Intl writes it, its era year (`1 − year`) with no era; and the
-//! date of every spelling but exactly `UTC` (or `Z`) writes its year unpadded; an instant
+//! **Node's readings, reproduced.** The year is read as itself everywhere — the offset, the
+//! solver, `iso_text_in` and `days_in_month` set it as `setUTCFullYear` does, with no 0 to 99
+//! switch; a wall-clock year at or below zero is written as Intl writes it, its era year
+//! (`1 − year`) with no era; and the date of every spelling but exactly `UTC` (or `Z`) writes its year unpadded; an instant
 //! whose wall clock lies past the time range writes its offset `-NaN:NaN`; and a wall clock
 //! that occurs twice resolves to whichever instant the solver's first guess lands on —
 //! the later east of UTC — where Node's own comment promises the earlier. Each is held by a
@@ -116,14 +116,6 @@ pub fn civil_time_in(instant: i64, zone: &str) -> Option<CivilTime> {
     civil_in(instant, &calendar_zone(zone)?)
 }
 
-/// How a year is read: as `Date.UTC` reads it, 0 to 99 meaning 1900 to 1999, or as
-/// `setUTCFullYear` does, as itself.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum YearReading {
-    DateUtc,
-    FullYear,
-}
-
 /// V8's `MakeDay`: the day number of a year, a zero-based month and a date, or `None` (NaN)
 /// outside the years and months V8 computes.
 fn make_day(year: f64, month: f64, date: f64) -> Option<f64> {
@@ -152,32 +144,19 @@ fn make_day(year: f64, month: f64, date: f64) -> Option<f64> {
     Some((day - 1) as f64 + date.trunc())
 }
 
-/// ECMAScript's time value of a UTC wall clock, `Date.UTC(year, month, day, hours, minutes,
-/// seconds)` or `setUTCFullYear` on midnight: `MakeDate(MakeDay(…), MakeTime(…))` in double
+/// ECMAScript's time value of a UTC wall clock, the year read as itself — `setUTCFullYear`
+/// then `setUTCHours` on the epoch: `MakeDate(MakeDay(…), MakeTime(…))` in double
 /// arithmetic, clipped to the time range. `None` is ECMAScript's NaN.
-fn ecmascript_time_value(
-    reading: YearReading,
-    year: f64,
-    month: f64,
-    day: f64,
-    hours: f64,
-    minutes: f64,
-    seconds: f64,
-) -> Option<i64> {
-    let year = match reading {
-        YearReading::DateUtc if (0.0..=99.0).contains(&year.trunc()) => 1900.0 + year.trunc(),
-        _ => year,
-    };
+fn ecmascript_time_value(year: f64, month: f64, day: f64, hours: f64, minutes: f64, seconds: f64) -> Option<i64> {
     let day = make_day(year, month, day)?;
     let time = hours.trunc() * 3_600_000.0 + minutes.trunc() * 60_000.0 + seconds.trunc() * 1000.0;
     let date = time + day * MS_PER_DAY;
     (date.is_finite() && date.abs() <= MAX_TIME_VALUE as f64).then(|| date.trunc() as i64)
 }
 
-/// `Date.UTC` of a wall clock, as Node hands it a `CivilTime`.
-fn date_utc(fields: &CivilTime) -> Option<i64> {
+/// The instant a wall clock names read as UTC, its year read as itself — Node's `utcInstantOf`.
+fn utc_instant_of(fields: &CivilTime) -> Option<i64> {
     ecmascript_time_value(
-        YearReading::DateUtc,
         fields.year as f64,
         fields.month as f64 - 1.0,
         fields.day as f64,
@@ -187,10 +166,10 @@ fn date_utc(fields: &CivilTime) -> Option<i64> {
     )
 }
 
-/// The zone's offset at an instant as Node reads it: the wall clock taken as `Date.UTC`,
-/// minus the instant. `None` where the instant or that reading is NaN.
+/// The zone's offset at an instant as Node reads it: the wall clock read as UTC, minus the
+/// instant. `None` where the instant or that reading is NaN.
 fn offset_at(instant: i64, zone: &CalendarZone) -> Option<i64> {
-    Some(date_utc(&civil_in(instant, zone)?)? - instant)
+    Some(utc_instant_of(&civil_in(instant, zone)?)? - instant)
 }
 
 fn same_wall_clock(left: &CivilTime, right: &CivilTime) -> bool {
@@ -221,7 +200,7 @@ pub fn instant_of_civil_time(fields: &CivilTime, zone: &str) -> Option<i64> {
 /// `instantOfCivilTime`'s algorithm, pure over its two readings: `offset_at`, Node's
 /// `offsetAt`, and `wall_clock_at`, its `civilTimeIn`; `None` from either is Node's throw.
 ///
-/// The zone's own readings are consistent — `offset_at` is `Date.UTC` of `wall_clock_at`
+/// The zone's own readings are consistent — `offset_at` is `utc_instant_of` of `wall_clock_at`
 /// minus the instant — so a first candidate whose wall clock reads back has an unchanged
 /// offset and has already been answered: under them the two branches where it reads back
 /// are never reached, and only readings handed in apart reach them.
@@ -230,7 +209,7 @@ fn solve_wall_clock(
     offset_at: impl Fn(i64) -> Option<i64>,
     wall_clock_at: impl Fn(i64) -> Option<CivilTime>,
 ) -> Option<i64> {
-    let as_utc = date_utc(fields)?;
+    let as_utc = utc_instant_of(fields)?;
     let offset_a = offset_at(as_utc)?;
     let candidate_a = as_utc - offset_a;
     let offset_b = offset_at(candidate_a)?;
@@ -251,7 +230,7 @@ fn solve_wall_clock(
 /// The days in a month of a year, the year read as itself; `None` where ECMAScript's
 /// answer is NaN, outside its time range.
 pub fn days_in_month(year: i64, month: i64) -> Option<i64> {
-    let last = ecmascript_time_value(YearReading::FullYear, year as f64, month as f64, 0.0, 0.0, 0.0, 0.0)?;
+    let last = ecmascript_time_value(year as f64, month as f64, 0.0, 0.0, 0.0, 0.0)?;
     Some(civil_from_days(last.div_euclid(86_400_000)).2)
 }
 
@@ -295,14 +274,14 @@ fn number_text(value: f64) -> String {
 }
 
 /// An instant as ISO-8601 in a zone, with milliseconds: exactly `UTC` and `Z` as `…Z`, any
-/// other zone with its offset in minutes — `Date.UTC` of the wall clock minus the instant,
+/// other zone with its offset in minutes — the wall clock read as UTC minus the instant,
 /// rounded as `Math.round` rounds — and `Z` where that is zero.
 pub fn iso_text_in(instant: i64, zone: &str) -> Option<String> {
     if zone == "UTC" || zone == "Z" {
         return in_time_range(instant).then(|| iso_utc(instant));
     }
     let fields = civil_time_in(instant, zone)?;
-    let difference = date_utc(&fields).map_or(f64::NAN, |wall| (wall - instant) as f64);
+    let difference = utc_instant_of(&fields).map_or(f64::NAN, |wall| (wall - instant) as f64);
     let minutes = math_round(difference / 60_000.0);
     let offset = if minutes == 0.0 {
         "Z".to_owned()
@@ -364,8 +343,8 @@ mod tests {
     }
 
     #[test]
-    fn date_utc_of_the_fields() {
-        assert_eq!(date_utc(&FIELDS), Some(AS_UTC));
+    fn utc_instant_of_the_fields() {
+        assert_eq!(utc_instant_of(&FIELDS), Some(AS_UTC));
     }
 
     /// `offsetA === offsetB` → `candidateA`, `asUtc − 1h`; no wall clock is read.

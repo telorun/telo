@@ -1,6 +1,6 @@
 /**
  * The conformance value (`templating/cel-conformance/README.md`): the typed frame
- * held as a JSON value, plus the `$cel` forms for a type and an optional.
+ * held as a JSON value, plus the `$cel` forms for a type, an optional and a host value.
  *
  * **The typed frame is still the writer**, which is the format's own rule — a row pins
  * exactly what a host is handed, in the encoding every Telo boundary uses. What the engine
@@ -11,6 +11,8 @@
  * refusals already do.
  */
 import {
+  CEL_VALUE_KEYS,
+  CEL_VALUE_TYPE,
   celMapFromEntries,
   celNone,
   celSome,
@@ -72,6 +74,13 @@ function refuse(path: readonly string[], detail: string): Error {
 
 function unreadable(path: readonly string[], detail: string): Error {
   return new Error(`Cannot read a conformance value: '/${path.join("/")}' ${detail}.`);
+}
+
+/** The type key of a value of a host's own named type, or nothing. */
+function hostTypeOf(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const key = (value as { [CEL_VALUE_TYPE]?: unknown })[CEL_VALUE_TYPE];
+  return typeof key === "string" && !(CEL_VALUE_KEYS as readonly string[]).includes(key) ? key : undefined;
 }
 
 /** How a type value is spelled in the vectors, which is not how the engine names it. */
@@ -141,6 +150,10 @@ export function conformanceValueCodec(): ConformanceValueCodec {
     if (value instanceof Map) return writeMap([...value], path);
     if (isCelError(value)) throw refuse(path, `is the CEL error '${value.message}', which is not a value`);
     if (isCelRecord(value)) return writeMap(Object.entries(value), path);
+    const host = hostTypeOf(value);
+    if (host !== undefined) {
+      return { [CEL_TAG]: "host", type: host, value: writeMap(Object.entries(value as object), [...path, "value"]) };
+    }
     return scalar(value, path);
   };
 
@@ -211,7 +224,23 @@ export function conformanceValueCodec(): ConformanceValueCodec {
     if (form === "optional" && keys.join() === "$cel,value") {
       return celSome(read(node.value!, [...path, "value"]) as CelValue);
     }
-    throw unreadable(path, `is not a '${CEL_TAG}' type or optional form`);
+    if (form === "host" && keys.join() === "$cel,type,value" && typeof node.type === "string") {
+      const entries = node.value;
+      if (
+        (CEL_VALUE_KEYS as readonly string[]).includes(node.type) ||
+        entries === null ||
+        typeof entries !== "object" ||
+        Array.isArray(entries) ||
+        Object.prototype.hasOwnProperty.call(entries, CEL_TAG) ||
+        Object.prototype.hasOwnProperty.call(entries, TYPED_FRAME_TAG)
+      ) {
+        throw unreadable(path, "is a host value, which carries a host's type name and a plain map of its entries");
+      }
+      const value: Record<string | symbol, unknown> = { [CEL_VALUE_TYPE]: node.type };
+      for (const [key, entry] of Object.entries(entries)) value[key] = read(entry, [...path, "value", key]);
+      return value;
+    }
+    throw unreadable(path, `is not a '${CEL_TAG}' type, optional or host form`);
   };
 
   const readMap = (node: { [key: string]: ConformanceValue }, path: string[]): unknown => {

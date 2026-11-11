@@ -165,18 +165,26 @@ impl From<CelAnalyzeResult> for AnalyzeResult {
 }
 
 /// Why compiling or evaluating a tagged value answered no value. `code` is a Telo error
-/// code where one names the failure — set only by [`cel_verdict_error`] — and absent for
-/// the engine's own refusals (an expression that does not read, an evaluation error).
+/// code where one names the failure — set only by [`cel_verdict_error`]. `cel_code` is the
+/// CEL engine's own code where the failure is the engine's — an evaluation error's, or an
+/// engine error's (`unreadable_expression`) — as Node's thrown engine error carries it. At
+/// most one of the two is set; a failure neither names (a hole that never closes) has none.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TemplatingError {
     pub code: Option<String>,
+    pub cel_code: Option<String>,
     pub message: String,
 }
 
 impl TemplatingError {
-    /// A failure no Telo code names.
+    /// A failure no code names.
     pub fn uncoded(message: impl Into<String>) -> Self {
-        Self { code: None, message: message.into() }
+        Self { code: None, cel_code: None, message: message.into() }
+    }
+
+    /// The CEL engine's own failure, under its code.
+    pub fn engine(cel_code: &str, message: impl Into<String>) -> Self {
+        Self { code: None, cel_code: Some(cel_code.into()), message: message.into() }
     }
 }
 
@@ -193,5 +201,5 @@ impl std::error::Error for TemplatingError {}
 
 /// The one constructor of a coded failure those engines answer.
 pub fn cel_verdict_error(code: CelErrorCode, message: impl Into<String>) -> TemplatingError {
-    TemplatingError { code: Some(code.as_str().into()), message: message.into() }
+    TemplatingError { code: Some(code.as_str().into()), cel_code: None, message: message.into() }
 }

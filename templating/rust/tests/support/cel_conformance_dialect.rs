@@ -299,14 +299,22 @@ pub struct RowFailure {
     pub message: String,
 }
 
-/// An error as a row records it: a Telo code where one names it, else `null`.
-fn conformance_error(code: Option<&str>, message: &str) -> Value {
-    let code = code.filter(|code| {
-        code.strip_prefix("ERR_").is_some_and(|rest| {
+/// An error as a row records it, read from the error that left the seam: its Telo code as
+/// `code`, the engine's own as `celCode`, at most one of them. A code that is not a Telo
+/// error code is one the format cannot record, so the row fails.
+fn conformance_error(code: Option<&str>, cel_code: Option<&str>, message: &str) -> Result<Value, String> {
+    if let Some(code) = code {
+        let telo = code.strip_prefix("ERR_").is_some_and(|rest| {
             !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
-        })
-    });
-    json!({ "code": code, "message": message })
+        });
+        if !telo {
+            return Err(format!("the error carries the code {code:?}, which is neither a Telo error code nor the engine's own: {message}"));
+        }
+    }
+    if code.is_some() && cel_code.is_some() {
+        return Err(format!("the error carries both a Telo code and the engine's: {message}"));
+    }
+    Ok(json!({ "code": code, "celCode": cel_code, "message": message }))
 }
 
 /// The row's module functions as the dispatch table, each recording the call it was handed
@@ -369,7 +377,8 @@ pub fn evaluate_dialect_row(env: &CelEnvironment, row: &Value) -> Result<Evaluat
             return Ok(Evaluation {
                 compiled: None,
                 dispatched: modules.map(|_| Vec::new()),
-                outcome: Err(conformance_error(error.code.as_deref(), &error.message)),
+                outcome: Err(conformance_error(error.code.as_deref(), error.cel_code.as_deref(), &error.message)
+                    .map_err(|refusal| format!("The row '{id}' is malformed: {refusal}"))?),
             });
         }
     };
@@ -390,10 +399,14 @@ pub fn evaluate_dialect_row(env: &CelEnvironment, row: &Value) -> Result<Evaluat
     if let Some(refusal) = refusals.first() {
         return Err(format!("The row '{id}' is malformed: {refusal}"));
     }
-    let outcome = answered.map_err(|error| match error {
-        CallError::Templating(error) => conformance_error(error.code.as_deref(), &error.message),
-        CallError::Module(failure) => conformance_error(failure.code.as_deref(), &failure.message),
-    });
+    let outcome = match answered {
+        Ok(value) => Ok(value),
+        Err(error) => Err(match error {
+            CallError::Templating(error) => conformance_error(error.code.as_deref(), error.cel_code.as_deref(), &error.message),
+            CallError::Module(failure) => conformance_error(failure.code.as_deref(), None, &failure.message),
+        }
+        .map_err(|refusal| format!("The row '{id}' is malformed: {refusal}"))?),
+    };
     let dispatched = modules.map(|_| std::mem::take(&mut *dispatched.lock().unwrap()));
     Ok(Evaluation { compiled: Some((refs, compiled.volatile())), dispatched, outcome })
 }

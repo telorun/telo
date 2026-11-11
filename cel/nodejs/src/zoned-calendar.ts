@@ -77,13 +77,21 @@ export function civilTimeIn(instant: number, zone: string): CivilTime {
   };
 }
 
+/**
+ * The instant these wall-clock fields name read as UTC. The year is read as itself: `Date.UTC`
+ * maps years 0-99 to 1900-1999, so the date is set with `setUTCFullYear` and the time after
+ * it, which normalizes a field past its range as `Date.UTC` does.
+ */
+function utcInstantOf(fields: CivilTime): number {
+  const date = new Date(0);
+  date.setUTCFullYear(fields.year, fields.month - 1, fields.day);
+  date.setUTCHours(fields.hour, fields.minute, fields.second, 0);
+  return date.getTime();
+}
+
 /** The zone's offset at an instant, in milliseconds: its wall clock read as UTC, minus it. */
 function offsetAt(instant: number, zone: string): number {
-  const fields = civilTimeIn(instant, zone);
-  return (
-    Date.UTC(fields.year, fields.month - 1, fields.day, fields.hour, fields.minute, fields.second) -
-    instant
-  );
+  return utcInstantOf(civilTimeIn(instant, zone)) - instant;
 }
 
 function sameWallClock(left: CivilTime, right: CivilTime): boolean {
@@ -113,14 +121,7 @@ function sameWallClock(left: CivilTime, right: CivilTime): boolean {
  * (a spring-forward gap) shifts FORWARD out of the gap, which keeps the requested day.
  */
 export function instantOfCivilTime(fields: CivilTime, zone: string): number {
-  const asUtc = Date.UTC(
-    fields.year,
-    fields.month - 1,
-    fields.day,
-    fields.hour,
-    fields.minute,
-    fields.second,
-  );
+  const asUtc = utcInstantOf(fields);
   const offsetA = offsetAt(asUtc, zone);
   const candidateA = asUtc - offsetA;
   const offsetB = offsetAt(candidateA, zone);
@@ -163,11 +164,7 @@ export function isoTextIn(instant: number, zone: string): string {
   const fields = civilTimeIn(instant, zone);
   // Sub-second is zone-independent; read it off the instant directly.
   const milliseconds = pad(((instant % 1000) + 1000) % 1000, 3);
-  const minutes = Math.round(
-    (Date.UTC(fields.year, fields.month - 1, fields.day, fields.hour, fields.minute, fields.second) -
-      instant) /
-      60000,
-  );
+  const minutes = Math.round((utcInstantOf(fields) - instant) / 60000);
   const offset =
     minutes === 0
       ? "Z"

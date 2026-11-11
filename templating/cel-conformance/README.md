@@ -1,19 +1,24 @@
 # CEL conformance vectors
 
-Telo's CEL behaviour, frozen as data. Every file here is a set of rows, each an expression and an answer recorded for it, and this README is their format. Whose answer a row holds, and how much of it is compared, depends on the file:
+Telo's CEL behaviour, frozen as data. Every file here is a set of rows, each an expression and the Node engine's **whole answer** to it, and this README is their format. Which Node seam gives the answer depends on the file:
 
-- `holes.json`, `module-calls.json` and `verdicts.json` hold the whole answers of the Node tag engines (`@telorun/templating`, over the CEL engine `@telorun/cel`): every row's `expect` is reproduced whole.
-- `language.json` is a recording. Its rows hold the answers of the engine `@telorun/cel` replaced — cel-js under Telo's options — and are read through `deviation`: where a row carries `deviation.celSpec`, cel-spec is the authority wherever cel-spec's language definition, or a library Telo enables, fixes the meaning, and the row is evidence of what the replaced engine answered.
-- `catalog.json` and `types.json` hold answers recorded through the `cel` tag engine while it ran over the replaced engine — except the presence rows of `types.json` and the three rows beside them, which are authored (see [`catalog.json` and `types.json`](#catalogjson-and-typesjson)). `@telorun/cel` reproduces them at the level [Runners](#runners) states — whether a row checks, its type, its value or that it fails, and every refusal and literal-guard diagnostic the catalog words, byte for byte — with one row of each file answered otherwise, named there. Outside what is compared there, a recorded row's diagnostic text, its error text and the remaining fields of its `check` are that recording: no runner holds any engine to them, and the Node tag engine does not reproduce every one.
+- `language.json` holds the whole answer of the engine `@telorun/cel`, in the language environment.
+- `catalog.json`, `types.json`, `holes.json`, `module-calls.json` and `verdicts.json` (the dialect files) hold the whole answer of the Node tag engines (`@telorun/templating`, over `@telorun/cel`), in the dialect environment.
+
+A runner computes a row's whole answer and compares it with `expect` by deep equality; no list of rows answered otherwise exists anywhere. Where cel-spec's own outcome still differs from a `language.json` row, the row says so under `deviation`, and cel-spec — not the row — is the authority on what the language means there.
+
+**What deep equality cannot see.** It pins whatever Node answered, a defect included: `catalog/addMonths/result_before_range` recorded a wrong value (a timestamp in 1900) until the calendar was fixed, and a row is only as right as the answer it was recorded from. `deviation.celSpec` is the only check against cel-spec, and only on the rows that carry one. Each gate below states what it cannot see.
 
 The files split along one line:
 
-- **`language.json`** — the bare CEL language: cel-spec's `simple` conformance suite as the replaced engine answered it in the language environment, with cel-spec's own outcome under `deviation` where the two differ.
-- **`catalog.json`** — Telo's function catalog: every function in every overload it registers, every refusal a function makes except those listed as not yet pinned, the literal guards that refuse an argument statically, and every host-backed handler's call, as the dialect environment answered them when recorded.
+- **`language.json`** — the bare CEL language: cel-spec's `simple` conformance suite, answered by the engine in the language environment, then a few authored rows pinning what Telo fixes and cel-spec leaves open ([Language rows](#language-rows)).
+- **`catalog.json`** — Telo's function catalog: every function in every overload it registers, every refusal a function makes, the literal guards that refuse an argument statically, and every host-backed handler's call.
 - **`types.json`** — Telo's types: every nominal value brand, every value type whose members are its fields (`Telo.Url`), the live `Stream` type, and what a read answers over each value that holds no members.
 - **`holes.json`** — the hole grammar of the tags that hold text with `${{ … }}` holes, and what `interpolate` and `sql` make of the holes.
 - **`module-calls.json`** — calls on a module's name: what resolves as one, how it is typed, and how it is dispatched.
 - **`verdicts.json`** — every diagnostic code and Telo error code the tag engines emit, each in each circumstance it is reported.
+
+Row counts, pinned by the runners: `language.json` 1816 (1814 cel-spec rows and 2 authored), `catalog.json` 195, `types.json` 74, `holes.json` 97, `module-calls.json` 53, `verdicts.json` 112.
 
 ## Files
 
@@ -34,18 +39,26 @@ A row is an object with these keys. A key whose value would be empty is omitted 
 - `source` — the CEL expression.
 - `provenance` — language rows only: `{ "file", "section", "test" }`, the cel-spec file (relative to the cel-spec root), section name and test name (the bare name, without an `id`'s occurrence suffix).
 - `declarations` — variable name → its type, in the type-expression grammar of `@telorun/cel`, which is also the spelling the engine prints a type in: `int`, `uint`, `double`, `bool`, `string`, `bytes`, `null`, `dyn`, `list<int>`, `map<string, int>`, `optional<int>`, `google.protobuf.Timestamp`, `google.protobuf.Duration`, and in a dialect row a brand (`Telo.TcpPort`) or `Stream`. A variable holding a record is declared `{ "fields": { <field>: <type> } }`, each field's type in turn a type string or a record.
-- `functions` — functions the row declares, each `{ "signature", "result" }` or `{ "signature", "error" }`. `signature` is a signature in the engine's signature grammar (`fn(string, int): string`, `int.fn(): int` for a receiver call, a single capital letter for a type parameter). A call returns `result` (a conformance value), or throws an error whose message is the `error` string.
+- `functions` — functions the row declares. `signature` is a signature in the engine's signature grammar (`fn(string, int): string`, `int.fn(): int` for a receiver call, a single capital letter for a type parameter). In a language row an entry is `{ "signature" }` alone: the function is declared and has no implementation, and a call that resolves to it answers `unbound_function`, `unbound function '<name>' — <signature> is declared and nothing implements it` — `<signature>` the overload its argument types resolved to, written as `calls` writes a `signature` — ranged over the call. In a row of `holes.json`, `module-calls.json` or `verdicts.json` an entry is `{ "signature", "result" }` or `{ "signature", "error" }`: a call returns `result` (a conformance value), or, with `error`, answers the CEL error value `invalid_argument` with the `error` string as its message — a declared function is a registered implementation, and a registered implementation fails only as an error value. `catalog.json` and `types.json` rows carry no `functions`.
 - `bindings` — variable name → its value at evaluation, a conformance value.
 - `expect` — the answer; see below.
-- `deviation` — language rows only: where the answer differs from cel-spec's, or the row could not carry a cel-spec input; see below.
-- `divergence` — language rows only: the replaced engine's answer left the CEL value domain, so `expect` is not its answer; see [Divergences](#divergences).
-- `tag`, `context`, `explain`, `rootsDeclared`, `couldNameModule`, `modules` — dialect rows only; see [Dialect rows](#dialect-rows) and [Module calls](#module-calls).
+- `deviation` — cel-spec rows of `language.json` only: where the answer still differs from cel-spec's, or the row could not carry a cel-spec input; see [`deviation`](#deviation).
+- `tag` — dialect rows only, and every one carries it.
+- `context`, `explain`, `rootsDeclared`, `couldNameModule`, `modules` — dialect rows of `holes.json`, `module-calls.json` and `verdicts.json` only, the inputs of a tag site; see [Dialect rows](#dialect-rows) and [Module calls](#module-calls). A row of `catalog.json` or `types.json` carries none of them, nor `functions`: those two files ask the engine alone ([Input gate](#input-gate)).
 
-A row carrying any other key is malformed.
+A row carrying any other key is malformed; `divergence`, which an earlier format carried, is refused by name.
 
 ## `expect`
 
-For a language row, `expect.check` is the verdict of the type check: `{ "type": "<type>" }` when it passes — the type in the spelling `declarations` uses, which is how the engine's check prints it; in every file a top-level `list<dyn>` prints as `list` and a top-level `map<dyn, dyn>` as `map`. That holds wherever a row records a type — `check.type` and a module call argument's `type`. A type parameter the check left unresolved is where the recording and the engine part: eleven `language.json` rows and `types/optional/none` in `types.json` record it under the letter of the declaration that introduced it, as the replaced engine printed it — `list<T>` for `[]`, `map<K, V>` for `{}`, `optional<T>` for `optional.none()`, `T` for a declared function returning `T` — while `@telorun/cel` reports it as `dyn`, or on two concatenation rows resolves it (`lists/concatenation/left_unit` to `list<int>`, `type_deduction/type_decay/type_free_param_list_concat` to `list<list<type>>`), so `[]` is `list`, `{}` is `map` and `optional.none()` is `optional<dyn>`; each of those rows is listed in the engine's replays as answered otherwise (see [Runners](#runners)). Inside a message the same parameter is written `dyn`. Otherwise `expect.check` is `{ "diagnostics": [ <error> ] }`, when parsing or checking fails. A dialect row's `expect.check` is the tag engine's whole static answer; see [Dialect rows](#dialect-rows).
+`expect.check` is the static answer, and every row carries it.
+
+**In a language row** `expect.check` is `{ "diagnostics", "type"?, "calls" }`:
+
+- `diagnostics` — every diagnostic the engine's check reported, in its order, each `{ "code", "message", "range": { "start", "end" }, "fix"? }`: `code` the `CEL_*` check code, `range` in UTF-16 code units, `fix` — `{ "replacement" }`, the whole corrected source — when the engine offers one. Empty when the expression is clean.
+- `type` — present only when `diagnostics` is empty: the type the check resolved, in the spelling `declarations` uses, which is how the engine prints a type. A type parameter the check left unresolved is `dyn`, so `[]` is `list`, `{}` is `map` and `optional.none()` is `optional<dyn>`; this holds wherever a row records a type (`check.type`, a module call argument's `type`). A top-level `list<dyn>` prints as `list` and a top-level `map<dyn, dyn>` as `map`.
+- `calls` — every call the checker lowered, in its order, resolved or not, each `{ "name", "form", "namespace"?, "arity", "range": { "start", "end" }, "signature"?, "returns"?, "deterministic"?, "hostBacked"?, "throws"?, "argumentTypes"? }` — every field the checker reports and no other: `signature`, `returns`, `deterministic` and `hostBacked` only for a call that resolved to a registration, a call that resolved to none — to an unknown function, or to a known one no overload of which takes its argument types — carrying `name`, `form`, `arity` and `range` alone. A macro lowers to a comprehension and is not listed; the calls written inside it are.
+
+**In a dialect row** `expect.check` is the tag engine's whole static answer; see [The dialect `check`](#the-dialect-check).
 
 Then exactly one of:
 
@@ -54,20 +67,25 @@ Then exactly one of:
 
 A row carrying `modules` also carries `expect.dispatched`; see [Module calls](#module-calls).
 
-For a row of `holes.json`, `module-calls.json` or `verdicts.json` the runner computes the whole `expect` and compares it to the row's by deep equality; nothing is compared partially. Of a row of `language.json`, `catalog.json` or `types.json` only part of `expect` is compared; see [Runners](#runners).
+Every file's `expect` is computed whole by a runner and compared to the row's by deep equality, except that the engine's replay of `catalog.json` and `types.json` compares their [projection](#the-engines-projection). Nothing else is compared partially.
 
 ### Errors
 
-An error is `{ "code", "message" }`:
+An error is `{ "code", "celCode", "message" }`, and a language row's also carries `range` when the engine gives one:
 
-- `code` is the Telo error code the error carries (`ERR_…`), else `null`. The engine's own error codes are never recorded.
-- `message` is the full message as thrown. When the error has a location in the expression, the message is the summary, a blank line, and a highlight: `> `, the line number right-aligned in four columns, ` | `, the source line, a newline, then spaces and a `^` under the column. Columns count UTF-16 code units.
+- `code` is the Telo error code the error carries (`ERR_…`), else `null`.
+- `celCode` is the CEL engine's code for the failure, else `null`: one of the engine's 16 evaluation codes (`no_such_key`, `invalid_argument`, …), an engine-error code (`unreadable_expression` for a source the engine cannot read, and three others), or — only in a language row whose evaluation half its own check refused — the first diagnostic's `CEL_*` code. Evaluation codes are the engine's closed `CEL_EVALUATION_CODES`; a runner counts them from there, never from a list kept beside the rows.
+- At most one of the two is non-null, and both are read from **the error that left the seam**, never from its cause: a tag-layer `ERR_*` that replaced an engine error records `celCode: null`. An error carrying no code at all records both as `null` (an unclosed hole, a module function's scripted failure). In `language.json` an error always carries a code; one with neither is the engine failing and fails the runner. An error carrying any other code is not one the format can record, and the runner fails naming the row.
+- `message` is the full message as thrown, with no rendered highlight: a location is `range`, never text in the message. A message whose error has a location in the expression says where only through `range`.
+- `range` — `{ "start", "end" }`, UTF-16 code units: the evaluation error's own range, or the refusing diagnostic's.
+
+A module function's scripted `error` under `modules.functions` is `{ "code", "message" }` and is rethrown unchanged, so the row that dispatches it records `celCode: null`.
 
 Where a message quotes a text **written as a JSON string**, it is the text between double quotes, with `"` and `\` each behind a backslash, U+0008, U+0009, U+000A, U+000C and U+000D as `\b`, `\t`, `\n`, `\f` and `\r`, every other character below U+0020 as `\u` and four lowercase hexadecimal digits, and every other character as itself — U+007F, U+2028 and a character outside the basic plane included. No file holds a string with an unpaired surrogate: such a string is outside the CEL value domain, and a file holding one, raw or as a `\u` escape, is malformed. Not yet pinned: what an engine answers where the Node engine produces such a string, and with it how a message writes one.
 
 ## Conformance values
 
-One encoding carries every value — bindings, results, function results and cel-spec's own values in a deviation. It is the typed frame (`kernel/specs/durable-execution.md` §6) held as a JSON value rather than as text: a string, bool, null and finite double are themselves; an int, uint, bytes, timestamp, duration, a non-finite or negative-zero double and a map that is not a plain string-keyed object are tagged under `$telo`, with the frame's canonical payloads and orders — with one exception: a timestamp in `catalog.json` is written with exactly three fractional digits (`2026-03-01T00:00:00.000Z`), where `holes.json` writes the frame's trimmed form (`2026-03-15T10:30:00Z`); no other file holds a timestamp the two spellings write differently. On top of the frame, three forms under the reserved key `$cel`:
+One encoding carries every value — bindings, results, function results and cel-spec's own values in a deviation. It is the typed frame (`kernel/specs/durable-execution.md` §6) held as a JSON value rather than as text: a string, bool, null and finite double are themselves; an int, uint, bytes, timestamp, duration, a non-finite or negative-zero double and a map that is not a plain string-keyed object are tagged under `$telo`, with the frame's canonical payloads and orders. A timestamp is the frame's trimmed form in every file (`2026-03-15T10:30:00Z`, a fraction only where the instant carries one, to the precision it carries); there is no other spelling and no reader that accepts one. On top of the frame, three forms under the reserved key `$cel`:
 
 ```json
 { "$cel": "type", "value": "google.protobuf.Duration" }
@@ -80,7 +98,7 @@ A type value carries its name in the spelling `declarations` uses (`int`, `list`
 
 `$cel` is reserved exactly as `$telo` is: a data map with `$cel` (or `$telo`) as a key is written as a tagged `map`.
 
-There is no opaque form. A value that cannot be written — one outside the CEL value domain, a string holding an unpaired surrogate among them, or one that does not read back to the same encoding — is an error in generation, never a stand-in; the one out-of-domain result a row records is a divergence (see [Divergences](#divergences)), and it records it as an error, not as a value. The templating test's reader refuses a node that is not the canonical encoding of the value it reads; the reader of the engine's replays accepts a timestamp in either spelling (see [Runners](#runners)).
+There is no opaque form. A value that cannot be written — one outside the CEL value domain, a string holding an unpaired surrogate among them, or one that does not read back to the same encoding — is an error in generation, never a stand-in: an engine that keeps to the value domain answers such an operation with an error, and the row records that error. Every reader refuses a node that is not the canonical encoding of the value it reads.
 
 ## Language rows
 
@@ -88,30 +106,41 @@ A language row runs against the **language environment**: the standard library o
 
 A language row drives the language's own seams, and every row runs both halves:
 
-- **Check** — a copy of the language environment plus the row's `declarations` and `functions`, then the engine's type check of `source`.
-- **Evaluate** — a copy of the language environment plus the row's `functions` but **without** its `declarations`; `source` is parsed and evaluated with `bindings` as the activation. Evaluation type-checks first, so an ill-typed expression evaluates to the checker's error; that is what the row records.
+- **Check** — a copy of the language environment plus the row's `declarations` and `functions`, then the engine's type check of `source`. This is `expect.check`.
+- **Evaluate** — a copy of the language environment plus the row's `functions` but **without** its `declarations`. The evaluation half checks first, in that environment: when the check refuses, `expect.error` is the refusal — `code: null`, `celCode` the first diagnostic's `CEL_*` code, `message` its message and `range` its range — and nothing is evaluated. Otherwise `source` is compiled and evaluated with `bindings` as the activation, and `expect` is its `value` or the `error` it raised.
+
+So an ill-typed expression evaluates to the checker's error, and a row can record a clean `check` beside such an error (declarations the evaluation half lacks), but never a refused `check` beside a `value`.
 
 Not yet pinned: what `substring` and the receiver `split` answer where the result would hold an unpaired surrogate; the wording with which `bytes.json()` refuses bytes that are not JSON text, and what it answers for an escape naming an unpaired surrogate; how a refused lookup names a key that is not a string, a number, a bool or null; how the refusal of a comprehension's test that answered no bool names what it answered; and what `+` on strings, `join`, `lowerAscii`, `upperAscii`, `string(bytes)`, `bytes.string()`, `bytes.hex()`, `bytes.base64()` and `bytes.json()` answer for a text past the longest string, 536,870,888 UTF-16 code units — the Node engine throws a host `RangeError`, crashes, exhausts its heap or names the bytes not UTF-8, and the Rust engine answers `<function>: the text built would exceed the longest text a string can hold (536870888 UTF-16 code units)`, code `invalid_argument`.
 
-The row `timestamps/timestamp_selectors_tz/getHours` records the replaced engine's refusal in its JS host's wording (`Invalid time zone specified: 02:00`). `@telorun/cel` answers the row's `deviation.celSpec` instead: a zone written `HH:MM` is a fixed offset ahead of UTC, so the row evaluates to `1`. A zone it does not know it refuses in its own words — `"<zone>" is not a time zone`, the zone written as a JSON string — which no row holds.
+The authored row `telo/getHours/unknown_zone` pins a zone the engine does not know: `t.getHours(z)` over a bound timestamp and the zone `Nowhere/Land` answers `invalid_argument`, `"Nowhere/Land" is not a time zone`, the zone written as a JSON string. The row `timestamps/timestamp_selectors_tz/getHours` pins a zone written `HH:MM` as a fixed offset ahead of UTC, so it evaluates to `1`.
+
+### Two classes of row
+
+`language.json` is one file in two classes, in this order:
+
+1. **The cel-spec import**, in import order. Every row carries `provenance`.
+2. **Authored rows**, after the import, with ids `telo/<subject>/<case>`: each pins a language-environment answer Telo fixes and cel-spec leaves open (an unknown zone, `optional.none().value()`). An authored row carries neither `provenance` nor `deviation`.
+
+`provenance` is present exactly when the id does not start with `telo/`, and a cel-spec row after an authored one is malformed.
 
 ### From cel-spec
 
-Every kept cel-spec `simple` test is one row, and its `expect` is the replaced engine's answer — except in a divergence row. What cel-spec says goes into `deviation`, only where it differs.
+Every kept cel-spec `simple` test is one row, and its `expect` is the engine's whole answer. What cel-spec says goes into `deviation`, only where it still differs.
 
 | cel-spec | Row |
 | --- | --- |
 | `expr` | `source` |
 | file, section and test name | `id`, `provenance` |
 | `type_env` identifier | `declarations`, the type in the spelling that key defines (`optional_type` is `optional<…>`, a well-known Timestamp or Duration is `google.protobuf.Timestamp` / `google.protobuf.Duration`) |
-| `type_env` function overload | a `functions` entry whose `error` is `cel-spec declares this function without an implementation`; an overload the replaced engine's signature grammar could not state is uncarried |
+| `type_env` function overload | a `functions` entry, `{ "signature" }` alone; an overload the engine's signature grammar cannot state is uncarried |
 | `bindings` | `bindings`; cel-spec's `int64`, `uint64`, `double`, `string`, `bytes`, `bool`, `null`, list, map, type (`null_type` is `null`), Timestamp and Duration are the CEL values of the same type |
 | `container`, `disable_check`, `disable_macros`, `check_only` | uncarried: the row always checks and evaluates, with no container and with macros |
 | no result matcher | an expectation of `true` |
 | `value` | compared with the evaluation result |
 | `typed_result` | its result compared with the evaluation result (unless `check_only`), its deduced type with `expect.check` |
 | `eval_error`, `any_eval_errors` | compared as "an error": any error agrees, whatever its message |
-| `unknown`, `any_unknowns` | recorded as cel-spec's outcome whenever the engine answers otherwise |
+| `unknown`, `any_unknowns` | recorded as cel-spec's outcome; no answer of this engine is an unknown set, so it always differs |
 
 Values compare by CEL equality including the type: an int, a uint and a double are never equal; NaN equals NaN; `-0` equals `0`; maps compare regardless of order.
 
@@ -119,46 +148,23 @@ Values compare by CEL equality including the type: an int, a uint and a double a
 
 `deviation` has at least one of:
 
-- `celSpec` — cel-spec's outcome, where it differs from `expect`: `{ "value": <conformance value> }`, `{ "error": "<cel-spec's message text>" }`, `{ "unknown": [ <expression ids> ] }` or `{ "type": "<cel-spec's deduced type in the spelling declarations uses>" }`. A `typed_result` whose value and type both differ carries both `value` and `type`.
-- `uncarried` — the cel-spec inputs the row could not carry: `container`, `disable_check`, `disable_macros`, `check_only`, or `function <overload id>` for a function declaration the replaced engine's signature grammar could not state.
+- `celSpec` — cel-spec's outcome, only the parts where it still differs from `expect`: `{ "value": <conformance value> }`, `{ "error": "<cel-spec's message text>" }`, `{ "unknown": [ <expression ids> ] }` or `{ "type": "<cel-spec's deduced type in the spelling declarations uses>" }`. A `typed_result` whose value and type both differ carries both. A part agrees with the answer when, by the cel-spec rule above (CEL equality including the type, NaN equals NaN, `-0` equals `0`, maps unordered, any error agreeing with an error, `type` against `check.type`), cel-spec and `expect` say the same; an agreeing part is dropped, so no stated part agrees.
+- `reason` — present exactly when `celSpec` is, one of four closed values naming why the engine's answer differs from cel-spec's:
+  - `extension-library` — the row calls into a cel-go extension library Telo does not ship;
+  - `feature-not-carried` — the answer needs a cel-spec typing feature the engine does not carry;
+  - `container-not-declared` — the answer is a name resolved through a container, and Telo declares none;
+  - `uncarried-input` — an input of the cel-spec test the row could not carry decides the answer (a function declaration, or `disable_check`).
+- `uncarried` — the cel-spec inputs the row could not carry: `container`, `disable_check`, `disable_macros`, `check_only`, or `function <overload id>` for a function declaration the engine's signature grammar cannot state. It may stand alone. `uncarried-input` requires it non-empty, and `container-not-declared` requires it to hold `container`.
+
+**What the checks cannot see.** `deviation` is the only place cel-spec is consulted, so a row with none is a row cel-spec was not asked about or agrees with; the checks hold the stated parts to being true, not the absent ones to being absent.
 
 ### What is dropped
 
 A cel-spec test is dropped exactly when it constructs, declares, binds or names a protobuf message or enum type outside Telo's CEL value domain: the test protos (`TestAllTypes`, `NestedMessage`, `NestedTestAllTypes`, `NestedEnum`, `GlobalEnum`, `TestRequired`, `Proto2ExtensionScopedMessage`), enum values, the `google.protobuf` wrappers (`BoolValue`, `BytesValue`, `DoubleValue`, `FloatValue`, `Int32Value`, `Int64Value`, `StringValue`, `UInt32Value`, `UInt64Value`), `Any`, `Struct`, `Value`, `ListValue`, `NullValue`, `Empty` and `FieldMask`. `google.protobuf.Timestamp` and `google.protobuf.Duration` are CEL's timestamp and duration, and are kept. Every extension-library file (`string_ext`, `math_ext`, `lists_ext`, `encoders_ext`, `bindings_ext`, `block_ext`, `network_ext`, `optionals`, …) is kept: the engine's answer — usually a rejection — is what pins which extensions it lacks. Nothing is dropped for what the engine accepts.
 
-## Divergences
-
-The engine `language.json` was recorded from did not keep every result inside the CEL value domain: some operations that cel-spec expects to fail returned an int beyond int64, a uint beyond uint64, a timestamp outside 0001-01-01T00:00:00Z … 9999-12-31T23:59:59.999999999Z, or a duration beyond ±315,576,000,000.999999999s. Such a value cannot be written as a conformance value, and an engine that keeps to the domain answers with an error. The `divergence` key marks the rows where that happened; fourteen rows carry it.
-
-A language row is a **divergence row** exactly when cel-spec expects an evaluation error (`eval_error` / `any_eval_errors`), the replaced engine evaluated without error, and its result itself — not a value nested inside it — was outside the domain. Any other out-of-domain value is an error in generation. In a divergence row:
-
-- `expect.check` is the replaced engine's check verdict, as in any row.
-- `expect.error` is the domain-keeping answer, and the only `expect` in `language.json` that is not the replaced engine's: `{ "code": null, "message": … }`, the message a fixed summary for the condition followed by the usual highlight under the expression node that produced the out-of-domain value (for a binary operator, the start of its left operand, as the engine highlights its own operator errors). The summaries are `integer overflow: <the exact decimal result>` for an int operator, `int() type error: integer overflow` for `int()` of a double, `Unsigned integer overflow` for a uint operator, `uint() type error: unsigned integer overflow` for `uint()` of a double, `timestamp out of range` and `duration out of range` for a timestamp or duration constructed or computed out of range.
-- `divergence` is `{ "nodeOutOfDomain": "int" | "uint" | "google.protobuf.Timestamp" | "google.protobuf.Duration" }` — the CEL type of the replaced engine's out-of-domain result.
-- `deviation` may carry only `celSpec.type` and `uncarried`: `expect` already is cel-spec's outcome.
-
-`@telorun/cel` keeps to the value domain: it raises integer overflow, `timestamp out of range` and `duration out of range` itself, so it answers an error on every one of the fourteen rows. Its duration is the int64 range of the total nanoseconds, -9223372036.854775808s … 9223372036.854775807s — narrower than the ±315,576,000,000.999999999s a conformance value carries — and a duration outside it is `duration out of range`. Its replays (see [Runners](#runners)) drive a divergence row as any other: the check is held to `expect.check`, and evaluation is held to failing. Of `expect.error`, the code is never compared, and the message is compared byte for byte, highlight included, only on the six `timestamps/duration_range` rows (`RECORDED_MESSAGE_ROWS` in `cel/nodejs/conformance/value-replay.ts`). On the other eight the engine's own message stands uncompared, and differs from the row's on the three `int()` rows, where it is `integer overflow: <the double converted>`. No runner asserts anything of the `divergence` key, and none checks the table below against the rows.
-
-| Row | `nodeOutOfDomain` | Error |
-| --- | --- | --- |
-| `conversions/int/double_int_max_range` | `int` | `int() type error: integer overflow` |
-| `conversions/int/double_range` | `int` | `int() type error: integer overflow` |
-| `conversions/uint/double_uint_max_range` | `int` | `int() type error: integer overflow` |
-| `integer_math/int64_math/int64_min_negate` | `int` | `integer overflow: 9223372036854775808` |
-| `integer_math/int64_math/int64_min_negate_div` | `int` | `integer overflow: 9223372036854775808` |
-| `timestamps/timestamp_range/add_duration_under` | `google.protobuf.Timestamp` | `timestamp out of range` |
-| `timestamps/timestamp_range/add_duration_over` | `google.protobuf.Timestamp` | `timestamp out of range` |
-| `timestamps/timestamp_range/add_duration_nanos_under` | `google.protobuf.Timestamp` | `timestamp out of range` |
-| `timestamps/duration_range/from_string_under` | `google.protobuf.Duration` | `duration out of range` |
-| `timestamps/duration_range/from_string_over` | `google.protobuf.Duration` | `duration out of range` |
-| `timestamps/duration_range/add_under` | `google.protobuf.Duration` | `duration out of range` |
-| `timestamps/duration_range/add_over` | `google.protobuf.Duration` | `duration out of range` |
-| `timestamps/duration_range/sub_under` | `google.protobuf.Duration` | `duration out of range` |
-| `timestamps/duration_range/sub_over` | `google.protobuf.Duration` | `duration out of range` |
-
 ## Dialect rows
 
-A dialect row runs against the **dialect environment**: the language environment plus Telo's function catalog, every value type's CEL face and the `Stream` type, with the conformance handler set (below) installed as its host handlers. It drives the seams of the TAG ENGINE the row names — `cel`, `interpolate` or `sql`: the engine's `analyze`, then its `compile` and an evaluation of what it compiled — and every row runs both halves. The rows of `holes.json`, `module-calls.json` and `verdicts.json` are driven exactly so. Every row of `catalog.json` and `types.json` names `cel`, and those two files are driven through the check and the evaluation of `@telorun/cel` itself, over the same two environments (see [Runners](#runners)).
+A dialect row runs against the **dialect environment**: the language environment plus Telo's function catalog, every value type's CEL face and the `Stream` type, with the conformance handler set (below) installed as its host handlers. It drives the seams of the TAG ENGINE the row names — `cel`, `interpolate` or `sql`: the engine's `analyze`, then its `compile` and an evaluation of what it compiled — and every row runs both halves. The rows of `holes.json`, `module-calls.json` and `verdicts.json` are driven exactly so. Every row of `catalog.json` and `types.json` names `cel`; those two files are answered by the tag engine like the rest, and also by `@telorun/cel` alone through the [projection](#the-engines-projection) (see [Runners](#runners)).
 
 - **Static** — a copy of the dialect environment, which carries every nominal value brand (each brand a type of its own: its conversion to its base, `int(<brand>)` over an int and `string(<brand>)` over a string; `string(<brand>)` where the base is not a string; and, for a brand whose values come from the host, `<brand>.joinPath(string)` typed back to the brand), plus the row's `declarations` and `functions`. The engine analyzes `source` against it, given the row's `context`, `rootsDeclared`, `couldNameModule` and `modules`.
 - **Runtime** — a copy of the dialect environment plus the row's `functions`, **without** its `declarations`. The brands are registered there too, and change no evaluation: at runtime a branded value is its base. The engine compiles `source` against the row's module names, and the compiled value is evaluated with `bindings` as the activation and the row's module functions bound as the dispatch table; a result that is a promise is awaited.
@@ -203,7 +209,7 @@ A dialect row's `expect.check` is an object with these fields, a field marked op
 - `refs` — the root identifiers the compiled expression reads, sorted.
 - `volatile` — whether the compiled expression calls a catalog function whose result differs per call.
 
-`refs` and `volatile` are what compiling answers. When compilation throws, `check` keeps everything the static half answered and carries neither `refs` nor `volatile`, nothing is evaluated, and the compile error is the row's `error`, as `{ "code", "message" }`. Every offset counts UTF-16 code units from the start of `source`. Then, as in every row, exactly one of `value` or `error` — the evaluation's result or the error compiling or evaluating threw (see [Errors](#errors)).
+`refs` and `volatile` are what compiling answers. When compilation throws, `check` keeps everything the static half answered and carries neither `refs` nor `volatile`, nothing is evaluated, and the compile error is the row's `error` (see [Errors](#errors)). Every offset counts UTF-16 code units from the start of `source`. Then, as in every row, exactly one of `value` or `error` — the evaluation's result or the error compiling or evaluating threw (see [Errors](#errors)).
 
 ### Holes
 
@@ -213,12 +219,12 @@ The `interpolate` and `sql` tags hold text with holes, and one grammar reads bot
 - A hole closes at the first `}}` that is outside a quoted literal and outside any `{` the hole's own text opened. A `}` closing such a brace closes no hole, and a `}` outside every brace that is not followed by a second `}` leaves the hole unclosed.
 - A quoted literal inside a hole ends exactly where the language ends it: the hole grammar has no literal rule of its own and asks the engine (`quotedLiteralEnd` in `@telorun/cel`, `quoted_literal_end` in `telorun-cel`). A quoted literal is a string or bytes literal — `'…'`, `"…"` and their triple-quoted forms — or a member name between backticks. The word directly before a string quote is its prefix and switches the reading only when the language accepts it: `r`, `b` or `br`, in any case; `rb` and every other word mean a plain literal (which the expression then refuses, as `holes/language/prefix_rb` pins). In a string without the `r` prefix a backslash takes the next character with it, so an escaped quote does not end the string — and neither does a line feed or a carriage return directly after a backslash: the backslash rule comes first, the string runs on, and what the expression makes of that escape is its own matter. A raw string is read whole too: a `}}` inside it closes no hole, and a backslash takes the next character with it, kept as written — so `r'\''` is a backslash and a quote, and in `r'\'` the backslash takes the closing quote and the hole never closes — except before a line feed or a carriage return of a single-line literal, where the backslash is content; a backslash that ends the source is content too. A single-line literal ends unterminated at a line feed (U+000A) or a carriage return (U+000D), and so does its hole; a triple-quoted one may span lines and holds both as written. A member name between backticks ends at the next backtick, and is unterminated when there is none or a line feed or a carriage return comes first. No other character ends a literal: U+2028 inside one is content. A comment is not read: `//` is hole text like any other, so a quote after it opens a literal.
 - A literal `${{` is written as a hole that yields it: `${{ '${{' }}`.
-- A hole that never closes makes the whole scalar unreadable, at the offset of its `${{`. Statically that is one `CEL_SYNTAX_ERROR` — `the hole opened at offset <n> never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened` — with no calls and no regions, whatever holes precede it; compiling throws the same sentence behind `!<tag>: `, with no code.
+- A hole that never closes makes the whole scalar unreadable, at the offset of its `${{`. Statically that is one `CEL_SYNTAX_ERROR` — `the hole opened at offset <n> never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened` — with no calls and no regions, whatever holes precede it; compiling throws the same sentence behind `!<tag>: `, both codes `null`.
 - A hole's expression is its body without the whitespace at either end, whitespace being exactly U+0009 to U+000D, U+0020, U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F, U+3000 and U+FEFF. Any other character — U+0085, for one — stays in the expression. An empty body is an empty expression, which CEL refuses.
 
 A scalar has one of four shapes: `none` (no hole), `lone-hole` (exactly one hole with only whitespace around it), `interpolated` (any other readable text with holes) and `malformed` (a hole that never closes). Both tags read the first three alike: a lone hole under `interpolate` is still text, and the whitespace around it is kept. Which shape a scalar has is not an answer of either tag, so no row carries it: the naming of the shapes is not pinned and binds no engine.
 
-Statically each hole's expression is analyzed exactly as a `cel` row's source is, in order, with every site input of the row; `check` is their sum. `diagnostics` holds each hole's diagnostics in hole order, worded as they are under `cel`: a highlight inside a message quotes the hole's expression alone, and a `fix` is re-anchored — its `replacement` is the whole scalar with that one hole's expression replaced. `calls` holds each hole's calls with offsets counted in the scalar. There is no `type`, `stringLiteral` or `readTypes`. Compiling compiles each hole; `refs` is the sorted union over the holes and `volatile` holds when any hole is volatile. A hole CEL cannot parse fails the compile with CEL's own error for that expression.
+Statically each hole's expression is analyzed exactly as a `cel` row's source is, in order, with every site input of the row; `check` is their sum. `diagnostics` holds each hole's diagnostics in hole order, worded as they are under `cel`: a `fix` is re-anchored — its `replacement` is the whole scalar with that one hole's expression replaced. `calls` holds each hole's calls with offsets counted in the scalar. There is no `type`, `stringLiteral` or `readTypes`. Compiling compiles each hole; `refs` is the sorted union over the holes and `volatile` holds when any hole is volatile. A hole CEL cannot parse fails the compile with CEL's own error for that expression.
 
 **`interpolate`** yields a string: the text between the holes joined with `string(<hole>)` for each hole — CEL's own conversion in the dialect environment, never the host language's. A string is itself, an int and a uint their decimal digits, a bool `true` or `false`, a double as `string()` writes it, bytes their UTF-8 text, a timestamp RFC 3339 in UTC, its fraction written to the precision it carries and omitted when the instant is whole (`2026-03-15T10:30:00Z`), a duration its seconds (`5400s`). Holes are evaluated and converted left to right, and the first failure is the row's error.
 
@@ -248,7 +254,7 @@ The receiver of a module call names a module, not a value: it is not among `refs
 
 In `calls`, a module call is `{ "name": <qualified name>, "form": "receiver", "moduleCall": true, "arity", "arguments", "start", "end" }`, with `deterministic` and `hostBacked` as its `functions` entry gives them and neither when it has no entry. `arguments` has one entry per argument: `type`, the type the checker gave it, printed as [`expect`](#expect) says a type is, absent when the expression did not check far enough to type it; and `chain`, when the argument is a plain member chain with no index, rooted at a name the expression does not itself bind. The catalog's classification passes a module call over: it is never an unknown function, a wrong call form or a literal-guard refusal.
 
-**How it is dispatched.** The runtime half binds the row's `functions` as the dispatch table — qualified name to function — under a key no expression can name. Evaluating a module call looks its qualified name up first: with none bound it fails, before any argument is evaluated, with `unbound function '<qualified name>' — nothing is bound under that name here` and no code. Otherwise the arguments are evaluated left to right and the function is handed their values in order; the call's value is its `result`, or the evaluation fails with its `error`, code and message unchanged.
+**How it is dispatched.** The runtime half binds the row's `functions` as the dispatch table — qualified name to function — under a key no expression can name. Evaluating a module call looks its qualified name up first: with none bound it fails, before any argument is evaluated, with `unbound function '<qualified name>' — nothing is bound under that name here`, `code` `null` and `celCode` `unbound_function`. Otherwise the arguments are evaluated left to right and the function is handed their values in order; the call's value is its `result`, or the evaluation fails with its `error`, code and message unchanged.
 
 `expect.dispatched` is every dispatch evaluation made, in the order made, each `{ "name", "arguments" }`: the qualified name and the values handed over, as conformance values. Every row carrying `modules` carries it; no other row does.
 
@@ -258,18 +264,20 @@ In `calls`, a module call is `{ "name": <qualified name>, "form": "receiver", "m
 
 Nine catalog functions reach the host through a handler: `sha256`, `md5`, `sha1`, `sha512`, `hmac`, `base64Encode`, `base64Decode`, `json` and `joinPath`. In every dialect row each handler answers with the text `<handler name>(<arg>, …)` — its name, then each argument it was handed, in order, written as its typed-frame text (`kernel/specs/durable-execution.md` §6) and separated by `, `. So `sha256('abc')` evaluates to `sha256("abc")`, `'/data'.joinPath('reports')` to `joinPath("/data", "reports")`, and `json({'a': 1})` to `json({"a":{"$telo":"int","value":"1"}})`: a row pins exactly what the engine hands the host, and every engine reproduces the text with its own typed-frame writer. The set is defined only over values the typed frame writes. A value it cannot write — an optional, a type value, a live `Stream`, a number or an instant outside the value domain, a string holding an unpaired surrogate — has no frame text, so no row hands one to a handler: such a row is malformed. What a writer answers when it refuses is the typed frame's own contract (`kernel/specs/durable-execution.md` §6.1 and §6.5: `ERR_TYPED_FRAME_UNENCODABLE` and its `path`), not these vectors'; it is not pinned here and binds no engine.
 
+**A conversion a value type with members implements follows the same rule.** `string()` of a `Telo.Url` is the host's own conversion, and in both drives it answers `<name>(<conformance text of each argument>)` too, so `types/Url/string` pins what the engine hands the host and not the URL's text. A driver registers these from the value-type entries, naming no type: every `members`-bearing entry's `string(Self)` is bound to the rule.
+
 A catalog function whose result differs per call (`now`, `nowIso`, `today`, `nowMillis`, `nowSeconds`, `uuidv1`, `uuidv4`, `uuidv6`, `uuidv7`) is pinned only through a deterministic expression over its result — a size, a type, a suffix, a comparison against a fixed instant — never by recording a value it returned.
 
 ### Catalog refusals
 
-Every refusal a catalog function makes is worded by Telo — `<function>: <what is wrong>` — and is the same text on every engine; a row records it verbatim, with `code` `null`. No wording of a library or of the host language's runtime reaches one, except in the refusals listed first below. Two families are fixed by rule rather than by a sentence.
+Every refusal a catalog function makes is worded by Telo — `<function>: <what is wrong>` — and is the same text on every engine; a row records it verbatim, with `code` `null` and the `celCode` the engine gives the failure (`invalid_argument` for a refused argument). No wording of a library or of the host language's runtime reaches one, except in the refusals listed first below. Two families are fixed by rule rather than by a sentence.
 
 Not yet pinned — no row answers on any of these:
 
 1. the refusals of `range` (a count too large), `urlDecode`, `urlEncode`, `uuidv3`, `uuidv5`, `uuidVersion`, `hmac` (an unknown algorithm) and `joinPath` (an absolute argument), and of a text built past the longest string — each is still a dependency's or the host's wording;
-2. three refusals the catalog words, which no row holds yet: `nowIso` and `today` of an unknown zone — `<function>: unknown IANA time zone "<zone>"`, the zone written as a JSON string, as the pinned refusal of `addMonths` is — with whether `Z` is a zone, and with neither function refusing a literal zone statically; `addMonths` of a result out of range — `addMonths: the result is outside the range of a timestamp`; and a non-finite number handed to `round`, `format`, `fixed` or `formatDuration` — `<function>: expected a finite number, got double`;
-3. whether `parseJson` and `bytesFromBase64` refuse a literal argument statically — their refusals at evaluation are pinned, through a bound argument;
-4. what a catalog function answers where its result would hold an unpaired surrogate — `parseJson` for a text whose string holds one, `slice` for a string range that starts or ends inside a surrogate pair, `split` for an empty separator and `replace` for an empty search over a string holding a pair.
+2. whether `parseJson` and `bytesFromBase64` refuse a literal argument statically — their refusals at evaluation are pinned, through a bound argument;
+3. what a catalog function answers where its result would hold an unpaired surrogate — `parseJson` for a text whose string holds one, `slice` for a string range that starts or ends inside a surrogate pair, `split` for an empty separator and `replace` for an empty search over a string holding a pair;
+4. whether `Z` names a zone for the catalog's zone arguments — the Node engine asks its host's zone data, which refuses it, and the Rust engine refuses it too, in the same words.
 
 Until these are pinned, the Rust engine (`telorun-cel`) answers each with an interim reading of its own, an error value where the Node engine throws its host's or a dependency's exception out of evaluation or answers a string holding half a pair — all `invalid_argument` unless named:
 
@@ -311,11 +319,45 @@ Where a function checks its literal arguments, its refusal is also made statical
 
 ### `catalog.json` and `types.json`
 
-`catalog.json` holds, for every function of the catalog and every overload it registers (one registration per signature, an optional parameter registering one per arity), at least one row whose evaluation dispatches that overload and returns a value; for every function that checks its literal arguments, a row where that check refuses one statically (`CEL_INVALID_ARGUMENT`); and every host-backed function's call through the handler set. Its rows also record the catalog's call classification — a function called in the wrong form, a name no function has, an argument type no overload takes — of which only that the row is refused, and fails at evaluation, is compared. And it holds a row for every refusal a catalog function makes (see [Catalog refusals](#catalog-refusals)), except those listed there as not yet pinned: each distinct refusal of each function, every RE2 parse-error kind, and for each regex function an invalid pattern refused at evaluation — the pattern bound, so the check passes — and one refused statically, the pattern a literal.
+`catalog.json` holds, for every function of the catalog and every overload it registers (one registration per signature, an optional parameter registering one per arity), at least one row whose evaluation dispatches that overload and returns a value; for every function that checks its literal arguments, a row where that check refuses one statically (`CEL_INVALID_ARGUMENT`); and every host-backed function's call through the handler set. Its rows also record the catalog's call classification — a function called in the wrong form, a name no function has, an argument type no overload takes. And it holds a row for every refusal a catalog function makes (see [Catalog refusals](#catalog-refusals)), except those listed there as not yet pinned: each distinct refusal of each function, every RE2 parse-error kind, and for each regex function an invalid pattern refused at evaluation — the pattern bound, so the check passes — and one refused statically, the pattern a literal. Among them are an unknown time zone for `nowIso` and `today`, an `addMonths` result outside a timestamp's range on either side (and one in a year below 100, which reads as itself), and a non-finite number handed to `round`, `format`, `fixed` and `formatDuration`; each decides its argument through a bound variable, so no row pins whether a literal guard exists.
 
-`types.json` holds, for every nominal value brand, a row declaring a variable of it and reading it, its conversion to its base, its `string()` rendering, an operator its base accepts refused on the brand, and — for a brand whose values come from the host — `joinPath` typed back to the brand; for the live `Stream` type, a value passed through and member access refused; and, under the subject `optional`, the none optional, whose row records its type with the unresolved parameter (`optional<T>`) where `@telorun/cel` reports `optional<dyn>`. No conformance value carries a live `Stream`, so a `Stream` row binds nothing and records what the engine answers without the value. For every value type declaring members, under its own subject (`types/Url/…`), it holds a row reading each kind of field (a string, an int, a map's entry, a field by index), the presence forms over a field the value holds and one it does not (`has()`, `.?`), the ordinary read of a field it does not hold — a CEL error — a field the type does not declare refused at check, and `string()` reaching the host's own conversion, whose conformance implementation answers `string(<conformance text of the value>)`, so the row pins what the engine hands the host rather than the URL's text: that text is pinned by `sdk/value-types/encodings/url-text.json`, which each runtime's codec runs. **These rows are authored, not recorded.**
+`types.json` holds, for every nominal value brand, a row declaring a variable of it and reading it, its conversion to its base, its `string()` rendering, an operator its base accepts refused on the brand, and — for a brand whose values come from the host — `joinPath` typed back to the brand; for the live `Stream` type, a value passed through and member access refused; and, under the subject `optional`, the none optional, typed `optional<dyn>`. No conformance value carries a live `Stream`, so a `Stream` row binds nothing and records what the engine answers without the value. For every value type declaring members, under its own subject (`types/Url/…`), it holds a row reading each kind of field (a string, an int, a map's entry, a field by index), the presence forms over a field the value holds and one it does not (`has()`, `.?`), the ordinary read of a field it does not hold — a CEL error — a field the type does not declare refused at check, and `string()` reaching the host's own conversion, whose conformance implementation answers `string(<conformance text of the value>)`, so the row pins what the engine hands the host rather than the URL's text: that text is pinned by `sdk/value-types/encodings/url-text.json`, which each runtime's codec runs. **These rows are authored, not recorded.**
 
 It also holds, under the subject of each value that holds **no members at all** — `string`, `int`, `uint`, `double`, `bool`, `bytes`, `timestamp`, `duration`, `null`, a nominal brand, and `dyn` for the one receiver whose shape the check does not know — a row per **presence-shaped** read over it: `a.?b`, `a[?k]` and `has(a.b)`. Each answers **absence** (`optional.none()`, or `false` for `has()`), and each whose operand type is known refuses at check with `CEL_TYPE_ERROR`, so one row pins both halves. Beside them are the three readings that are not absence: the ordinary read of such a member (`types/dyn/ordinary_read`), the ordinary step of a chain that has entered optional land (`types/optional/ordinary_read_over_scalar`), and an unusable key in the presence form (`types/list/presence_unusable_key`) — each a CEL error. **These rows are authored, not recorded**: they are what this engine answers, and the authority for them is the optional library Telo enables, which enters whole from cel-go — whose attribute qualification answers "not found" for a receiver that is neither a mapper, a lister nor an indexer whenever the read is a presence test, erroring only under an explicitly named opt-in Telo does not carry.
+
+### Input gate
+
+`catalog.json` and `types.json` ask the engine alone, so a row of either carries none of `context`, `explain`, `rootsDeclared`, `couldNameModule`, `modules` or `functions` — inputs only a tag site has — it names the tag `cel`, its `source` reads with no syntax diagnostic, and every error it records has `code: null` and a non-null `celCode`. Both Node runners enforce it, and a row failing it is refused naming the row. It cannot see an input a tag site has that is not on that list; the list is the format's.
+
+### The engine's projection
+
+The engine's replay of `catalog.json` and `types.json` compares the part of a row's answer `@telorun/cel` gives by itself, not the whole answer:
+
+- `check.diagnostics`, each `{ code, message, fix? }`, in order — no `range`;
+- `check.type`, when present;
+- the row's `value`, or its `error` whole (`code`, `celCode`, `message`).
+
+Outside the projection, and so seen only by the templating test: `calls`, `stringLiteral`, `readTypes`, `regions`, `refs` and `volatile`. That is this driver's blind spot: whatever the tag engine adds to a row is not held here.
+
+The two halves are computed independently, as a dialect row's are:
+
+- **Static** — the engine's check in the dialect environment, plus the [host types](#host-types) and the row's `declarations`. Diagnostics are recorded without their range; `type` only when there is none.
+- **Runtime** — the engine's own evaluation, unchecked, in the dialect environment plus the host types, **without** the row's `declarations` and with `bindings` as the activation. The conformance handler set serves the nine host-backed functions, and each conversion and member a host type declares is bound to the conformance rule. The value is in the canonical encoding, and both sides are compared by deep equality.
+
+### Host types
+
+The engine knows no host type name, so a driver is handed the host's types. They are derived from `sdk/value-types/*.json` by rule, naming no type:
+
+- an entry with `representation: json` and no `celType` is a brand over its `base`, with its base conversion (`int(Self): int`) and `string(Self): string`; where the base is a string, the `string` conversion alone;
+- `fromHost` adds the member `Self.joinPath(string): Self`;
+- an entry with `members` becomes a type whose fields are those members — each member's schema read as a CEL type: a string, a number, a boolean, a list's element, a map's value — plus `string(Self): string`;
+- plus `Stream`, over `dyn`, with nothing declared.
+
+A row declaring a type name that no host type accounts for is malformed. Every Node and Rust driver derives the list itself; `scripts/check-cel-conformance.mjs` is the Node one and holds no hand-written list.
+
+### The `celCode` gate
+
+Across all six files, the templating test counts the codes the rows record: every one of the engine's evaluation codes is some row's `celCode`, except `async_value_unsupported`, held unreachable (a row recording it fails the gate); every `celCode` is an evaluation code, an engine-error code, or — in a language row only — a `CEL_*` check code; no error has both `code` and `celCode`. A reachable code with no row gets an authored row (`telo/…` in `language.json` for a language code). The gate counts codes over the whole set of files, not per catalog function: a function's refusal being recorded under some other function's row satisfies it.
 
 ### `holes.json`, `module-calls.json` and `verdicts.json`
 
@@ -327,51 +369,37 @@ It also holds, under the subject of each value that holds **no members at all** 
 
 ## Runners
 
-Three runners drive the files, two on Node and one on Rust, each by its own rule. Each executes every row of every file it drives and never skips one.
+Each runner executes every row of every file it drives, never skips one, and pins each file's row count, because a row that is deleted leaves every other number true. A row whose input cannot be built is malformed and fails its runner naming the row.
 
 ### The engine's replays
 
-`cel/nodejs/conformance/`, run by `pnpm run check:cel-conformance` — `scripts/check-cel-conformance.mjs`, which names this directory and hands the drivers the host's nominal types (`Telo.TcpPort`, `Telo.UdpPort`, `Telo.HostPath`, `Telo.Url` with its fields, `Stream`) — and run in CI. They drive `language.json`, `catalog.json` and `types.json` against `@telorun/cel` alone, and they do not compare `expect` whole. Each row is accounted for as exactly one of:
+`cel/nodejs/conformance/`, run by `pnpm run check:cel-conformance` — `scripts/check-cel-conformance.mjs`, which names this directory and hands the drivers the host types derived as [Host types](#host-types) states — and in CI. They drive `language.json`, `catalog.json` and `types.json` against `@telorun/cel` alone.
 
-- **agreed** — the engine answers what the row records, as far as the driver compares;
-- **corrected** — the engine answers otherwise, on an authority the driver cites: for most language rows, the row's own `deviation.celSpec`;
-- **excluded** — the engine is held to the recording, for one of five reasons.
+- **`language.json` whole** (`language-replay.ts`). The answer is computed by the two halves of [Language rows](#language-rows) and compared with `expect` by deep equality (`LANGUAGE_ROWS`, 1816). Beside it, the format: a row's keys, the two classes with `provenance` exactly for cel-spec rows, `divergence` refused, every error `{ code, celCode, message }` (with `range` where the engine gives one) and its `celCode` in the vocabulary; and `deviation`'s checks — `reason` exactly when `celSpec`, one of the four reasons, every stated part disagreeing with the answer (an agreeing one fails, instructing to drop it), `uncarried-input` with a non-empty `uncarried`, `container-not-declared` with `container` in it. Every source that reads also writes back and reads again to an equal tree, with no exception. Blind spot: deep equality pins whatever the engine answered, and only `deviation.celSpec` is checked against cel-spec.
+- **`catalog.json` and `types.json` through the [projection](#the-engines-projection)** (`dialect-replay.ts`), after the [input gate](#input-gate); `CATALOG_ROWS` 195, `TYPES_ROWS` 74. Blind spot: nothing outside the projection.
+- **Both backends** (`emitter-identity.ts`). Every `language.json` row is answered by the closure backend and by the emitted module — or refused by both at compile — and the two answers must be the same text. It asks whether the backends agree, not whether the answer is right.
 
-Values are compared as text through the replays' own conformance-value writer (`conformance-value.ts`), after reading the row's value: the reader accepts a timestamp with any fraction, and the writer writes one with exactly three fractional digits and refuses an instant finer than a millisecond.
-
-The lists are in the drivers, not in the rows: `SPEC_CORRECTION_GROUPS` and `SPEC_EXCLUSION_GROUPS` (`language-replay.ts`), `VALUE_CORRECTION_GROUPS` and `VALUE_EXCLUSION_GROUPS` (`value-replay.ts`), `CATALOG_CORRECTIONS` and `CATALOG_EXCLUSIONS` (`catalog-replay.ts`), `TYPES_CORRECTIONS` and `TYPES_EXCLUSIONS` (`types-replay.ts`). Each correction group names its cause and its authority, and each exclusion group pins its row count there. A row that disagrees with its recording and is on no list fails, as does a language row whose `deviation.celSpec` holds an answer and that is on none; a row listed as corrected fails once the engine answers it as recorded.
-
-The five reasons are a closed set:
-
-- `extension-library` — the row calls into a cel-go extension library Telo does not ship;
-- `feature-not-carried` — the answer needs a cel-spec typing feature the engine does not carry;
-- `container-not-declared` — the answer is a name resolved through a container, and Telo declares none;
-- `uncarried-input` — an input of the cel-spec test the row could not carry: a function declaration, or `disable_check` where the engine refuses at check;
-- `evaluation-answer` — the check agrees with the row and the difference is in what evaluation answers. It exists at the check level only: the value level corrects those rows.
-
-What is compared:
-
-- **`language.json` at the check** (`language-replay.ts`). A row recorded as checking must check, to the recorded type as the row spells it. A row recorded as refused must be refused, at the offset the recorded message's highlight points at where it has one. A recorded diagnostic's code and message are not compared. A corrected row carrying `deviation.celSpec.type` must check to that type. An excluded row is still held to checking or being refused as recorded, and to the recorded offset or type unless its group lists it as differing (`offsetDiffers`, `typeDiffers`). Every source that reads must also serialize and read back to an equal tree.
-- **`language.json` at evaluation** (`value-replay.ts`). A row recorded with a value must evaluate to it, the two compared as canonical conformance-value text, so a difference of CEL type is a difference. A row recorded with an error must fail, at the check or at evaluation; the error's code and message are not compared, except the message on the six rows [Divergences](#divergences) names. A corrected row is held to its `deviation.celSpec` where it carries one — that value, or failing where cel-spec records an error — and an excluded row to the recording. A row that evaluates as recorded and whose `deviation.celSpec` is a type alone is left to the check-level driver, which must list it as corrected.
-- **`language.json` through both backends** (`emitter-identity.ts`). Every row is answered by the closure backend and by the emitted module — or refused by both at compile — and the two answers must be the same text.
-- **`catalog.json` and `types.json`** (`dialect-replay.ts`). The static half is the engine's check in the dialect environment plus the host's nominal types and the row's `declarations`; the runtime half is the engine's evaluation in the dialect environment plus the host's nominal types — each conversion and member they declare bound to a conformance implementation answering `<name>(<conformance text of each argument>)` — with `bindings` as the activation. Compared: that the row checks or is refused as recorded; `check.type` where the row checks; the code and message of a row's first diagnostic where that is `CEL_INVALID_ARGUMENT`, byte for byte; the value, as canonical conformance-value text; that a row recorded with an error fails, and — where the recorded message is a catalog refusal, `<function>: …` over a catalog function's name — its message, byte for byte. Not compared: any other diagnostic's code and message, any other error's message, and an error's code. One row of each file is corrected: `catalog/string/timestamp`, which records `.000Z` where the engine writes a whole second with no fraction, and `types/optional/none`. Neither file has an exclusion. Each file's row count is pinned (`CATALOG_ROWS`, `TYPES_ROWS`).
-
-No runner compares `check.calls`, `check.regions`, `check.refs`, `check.volatile`, `check.stringLiteral` or `check.readTypes` of a `catalog.json` or `types.json` row, and none reads those rows' `context`, `explain`, `rootsDeclared` or `couldNameModule`.
-
-The replays fail when the directory holds a file they do not know, when `language.json` carries a key other than `celSpec` and `rows` or a dialect file a key other than `rows`, when a row lacks `expect`, when an `id` repeats, when the number of rows driven differs from the number in the file, and when a `catalog.json` or `types.json` row declares a type the host's nominal types do not hold.
+The replays fail when the directory holds a file they do not know, when `language.json` carries a key other than `celSpec` and `rows` or a dialect file a key other than `rows`, when a row lacks `expect`, when an `id` repeats, and when the number of rows driven differs from the pin or the file.
 
 ### The templating test
 
-`templating/nodejs/tests/cel-conformance.test.ts`, part of `pnpm --filter @telorun/templating test`. It drives every row of `holes.json`, `module-calls.json` and `verdicts.json` through the tag engine the row names, as [Dialect rows](#dialect-rows) describes, computes the whole `expect` and compares it to the row's by deep equality.
+`templating/nodejs/tests/cel-conformance.test.ts`, part of `pnpm --filter @telorun/templating test`. It drives **all five dialect files whole**: every row through the tag engine it names, as [Dialect rows](#dialect-rows) describes, the computed `expect` compared with the row's by deep equality. It reads `language.json` only for the file-set, surrogate and `celCode` gates.
 
-It fails when the directory holds a file other than the six, when any of the six holds a string with an unpaired surrogate, when one of the three files it drives carries a key other than `rows`, when a row of those three carries an unknown key, lacks `id`, `tag`, `source` or `expect`, names a tag other than `cel`, `interpolate` and `sql`, or carries a malformed `modules`, when an `id` repeats, when the number of rows it executed differs from the number in the file, and when evaluating a row hands a conformance handler a value its typed-frame writer refuses — a row of those three files, or a `catalog.json` row recording a value, which the first gate below evaluates. No runner checks a row of `language.json`, `catalog.json` or `types.json` for an unknown key.
+It fails when the directory holds a file other than the six, when any file holds a string with an unpaired surrogate, when a dialect file carries a key other than `rows`, when a dialect row carries an unknown key, lacks `id`, `tag`, `source` or `expect`, names a tag other than `cel`, `interpolate` and `sql`, or carries a malformed `modules`, when an `id` repeats, when the number of rows executed differs from the number in the file, when a row's error is not `{ code, celCode, message }`, when a `catalog.json` or `types.json` row breaks the [input gate](#input-gate), when the [`celCode` gate](#the-celcode-gate) fails, and when evaluating a row hands a conformance handler a value its typed-frame writer refuses.
 
-It also reads `catalog.json` and `types.json` for the coverage gates. It fails when a catalog overload the dialect environment registers is dispatched by no `catalog.json` row that evaluates to a value, when a catalog function's literal check fires in no `catalog.json` row, when an RE2 parse-error kind of the vocabulary above is the refusal of no `catalog.json` row, when a nominal brand, or a value type whose members are its fields, the value types define is declared by no `types.json` row, and when a diagnostic code or Telo error code the tag engines can emit is reported by no `verdicts.json` row, as a diagnostic's `code` or the `code` of the row's `error` — each counted from what the engine, its kind vocabulary, the value-type vocabulary and the engine's verdict vocabulary state, never from a list kept beside the rows. Each engine declares its verdict vocabulary once — its diagnostic codes and its error codes — its type system holds every place it builds a diagnostic or throws a coded error to that declaration, and a runner reads the declaration. A diagnostic code is satisfied only by a diagnostic's `code`, an error code only by a row's `expect.error.code`. The one list the test keeps is of four diagnostic codes the vocabulary declares and the tag engines cannot produce — `CEL_TYPE_ARGUMENT_MISMATCH`, `FUNCTION_ARGUMENT_MISMATCH`, `FUNCTION_ARITY_MISMATCH` and `FUNCTION_UNRESOLVED`: each is exempt from the gate, and the test fails when a `verdicts.json` row reports one.
+Coverage gates read `catalog.json`, `types.json` and `verdicts.json`. It fails when a catalog overload the dialect environment registers is dispatched by no `catalog.json` row that evaluates to a value, when a catalog function's literal check fires in no `catalog.json` row, when an RE2 parse-error kind of the vocabulary above is the refusal of no `catalog.json` row, when a nominal brand, or a value type whose members are its fields, is declared by no `types.json` row, and when a diagnostic code or Telo error code the tag engines can emit is reported by no `verdicts.json` row, as a diagnostic's `code` or the `code` of the row's `error` — each counted from what the engine, its kind vocabulary, the value-type vocabulary and the engine's verdict vocabulary state, never from a list kept beside the rows. A diagnostic code is satisfied only by a diagnostic's `code`, an error code only by a row's `expect.error.code`. The one list the test keeps is of four diagnostic codes the vocabulary declares and the tag engines cannot produce — `CEL_TYPE_ARGUMENT_MISMATCH`, `FUNCTION_ARGUMENT_MISMATCH`, `FUNCTION_ARITY_MISMATCH` and `FUNCTION_UNRESOLVED`: each is exempt, and the test fails when a `verdicts.json` row reports one. Blind spot: the coverage gates count, they do not pair — a function's overload dispatched by some row says nothing about that row's answer being right.
 
 ### The Rust templating test
 
-`templating/rust/tests/cel_conformance.rs`, part of `cargo test -p telo-templating`, is the Rust twin of the templating test: it drives every row of `holes.json` (97), `module-calls.json` (53) and `verdicts.json` (111) through the tag engine the row names, as [Dialect rows](#dialect-rows) describes, and compares the computed `expect` to the row's by deep equality, ignoring key order. Its helpers are `templating/rust/tests/support/` — a subdirectory because that is Rust's integration-test layout for code shared by several test files — and its codec has its own tests in `tests/cel_conformance_value.rs`. The codec is the typed frame from `telorun-sdk-core` held as a JSON value, plus the `$cel` type and optional forms; it has no host form.
+`templating/rust/tests/cel_conformance.rs`, part of `cargo test -p telo-templating`, is today the Rust twin of the templating test over the three tag files: it drives every row of `holes.json` (97), `module-calls.json` (53) and `verdicts.json` (112) through the tag engine the row names and compares the computed `expect` to the row's by deep equality, ignoring key order. Its helpers are `templating/rust/tests/support/` — a subdirectory because that is Rust's integration-test layout for code shared by several test files — and its codec has its own tests in `tests/cel_conformance_value.rs`. The codec is the typed frame from `telorun-sdk-core` held as a JSON value, plus the `$cel` type and optional forms; it has no host form yet. Its error shaping classifies as Node does — a Telo `ERR_*` into `code`, an engine error into `celCode`, nothing into both `null`, any other code failing the row.
 
 It enforces the Node test's gates over the three files it drives — the directory's file set, no unpaired surrogate (a Rust string holds none, so a file holding one fails to read, and a test shows the JSON reader refusing the escapes), the keys a file and a row may carry, the required members, the tags, `modules`, unique ids, the row count of each file pinned and every row executed, a handler handed a value the typed frame refuses making its row malformed — and the coverage gates over `types.json` (every nominal brand and every value type declaring members declared by some row; declarations are read, nothing is evaluated) and `verdicts.json` (every code of Rust's `CEL_VERDICT_CODES` reported by some row, the four exempt codes excepted and refused if a row reports one). One gate has no Node twin: every value a row holds — bindings, module function results, the expected value and the arguments it expects a function to be dispatched with — must be the canonical writing of what it reads, a plain map's keys in ECMAScript's order over the code-unit-sorted keys and a tagged map's pairs by the code units of each key's JSON text, because `expect` is compared without key order and nothing else would hold the file to one writing. Each gate is a function over rows, and a test of its own feeds it a row that breaks it.
 
-It does not run Node's catalog-dispatch, literal-guard and RE2-kind gates: those belong to the engine's replay of `catalog.json`.
+It does not run Node's catalog-dispatch, literal-guard and RE2-kind gates.
+
+### The Rust runners to come
+
+Two Rust runners complete the set, each answering what its Node twin answers:
+
+- **`telorun-cel`** drives `language.json` whole (both halves, deep equality of `expect`, the deviation checks and the round trip) and `catalog.json` / `types.json` through the projection, after the input gate, over host types it derives by the [rule above](#host-types) from `sdk/value-types/*.json`.
+- **`telo-templating`** drives all five dialect files whole, with the `celCode` gate over the six files and the conformance conversions of [the handler set](#the-conformance-handler-set) registered from the value-type entries. Where the Rust engine lacks a code or a wording Node records, the Rust engine is fixed, never the row.

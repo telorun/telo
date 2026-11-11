@@ -253,7 +253,7 @@ fn answers_every_row_of_module_calls_json() {
 
 #[test]
 fn answers_every_row_of_verdicts_json() {
-    drive_rows("verdicts.json", 111);
+    drive_rows("verdicts.json", 112);
 }
 
 #[test]

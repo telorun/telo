@@ -50,7 +50,7 @@ use crate::cel_type::{list_of, map_of, optional_of, CelType, NominalType, BOOL, 
 use crate::function_registry::{FunctionRegistry, Resolution, ResolutionFailure};
 use crate::member_read::{cel_has, cel_lookup, cel_read, lookup_absence, lookup_error, HostFields, Lookup};
 use crate::runtime_library::{implementation_of, CelCallContext, CelImplementation, CALL_SITE_DIRECT_ARITY};
-use crate::signature::{CallForm, CelSignature};
+use crate::signature::{format_signature, CallForm, CelSignature};
 
 /// What a namespaced function IS: a value, an error value as any implementation answers
 /// one, or the host's own failure. A failure ends the evaluation at once — no later
@@ -306,7 +306,10 @@ fn dispatch_of(name: &str, resolution: Result<Resolution, ResolutionFailure>) ->
     match resolution {
         Ok(resolution) => match &resolution.resolved.metadata.implementation {
             Some(host) => Some(Arc::clone(host)),
-            None => implementation_of(&resolution.resolved.signature),
+            None => Some(
+                implementation_of(&resolution.resolved.signature)
+                    .unwrap_or_else(|| unimplemented(name, &resolution.resolved.signature)),
+            ),
         },
         // **Equality is universal at runtime**, over every pair of types: the checker
         // refuses `1 == 1u` deliberately, but `dyn(1) == 1u` reaches evaluation. A host's
@@ -316,6 +319,17 @@ fn dispatch_of(name: &str, resolution: Result<Resolution, ResolutionFailure>) ->
         }
         Err(_) => None,
     }
+}
+
+/// A registration neither the host nor the engine implements. Its types took the call, so
+/// `no_matching_overload` would be false: the call is `unbound_function`, naming the
+/// signature it resolved to.
+#[allow(unused_variables)]
+fn unimplemented(name: &str, signature: &CelSignature) -> CelImplementation {
+    let message = format!("unbound function '{name}' — {} is declared and nothing implements it", format_signature(signature));
+    Arc::new(move |context: &CelCallContext, args: &[CelValue]| {
+        cel_error(CelEvaluationCode::UnboundFunction, message.clone(), context.range).into()
+    })
 }
 
 /// A site's first resolution, published once.

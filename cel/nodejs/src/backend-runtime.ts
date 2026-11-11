@@ -52,7 +52,8 @@ import type { HostFields } from "./member-read.js";
 import { celHas, celLookup, celRead, lookupAbsence, lookupError } from "./member-read.js";
 import type { CelCallContext, CelImplementation } from "./runtime-library.js";
 import { implementationOf } from "./runtime-library.js";
-import type { CallForm } from "./signature.js";
+import type { CallForm, CelSignature } from "./signature.js";
+import { formatSignature } from "./signature.js";
 import type { CelNode, CelSelectNode, SourceRange } from "./syntax-tree.js";
 
 /** A compile-time refusal: a tree neither backend can compile at all. */
@@ -393,13 +394,23 @@ function dispatchOf(name: string, resolution: Resolution | ResolutionFailure): D
     const host = resolution.resolved.metadata.implementation;
     if (host) return { implementation: host, foreign: true };
     const own = implementationOf(resolution.resolved.signature);
-    return own ? { implementation: own, foreign: false } : null;
+    return { implementation: own ?? unimplemented(name, resolution.resolved.signature), foreign: false };
   }
   // **Equality is universal at runtime**, over every pair of types: the checker refuses
   // `1 == 1u` deliberately, but `dyn(1) == 1u` reaches evaluation and cel-spec answers
   // `true` there. A host's own registration still wins, because it resolved first.
   const equality = equalityFallback(name);
   return equality ? { implementation: equality, foreign: false } : null;
+}
+
+/**
+ * A registration neither the host nor the engine implements. Its types took the call, so
+ * `no_matching_overload` would be false: the call is `unbound_function`, naming the
+ * signature it resolved to.
+ */
+function unimplemented(name: string, signature: CelSignature): CelImplementation {
+  const message = `unbound function '${name}' — ${formatSignature(signature)} is declared and nothing implements it`;
+  return (context) => celError("unbound_function", message, context.range);
 }
 
 /** The universal equality, for a pair of types no registration names. */

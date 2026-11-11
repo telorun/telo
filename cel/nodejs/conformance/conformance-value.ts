@@ -41,7 +41,6 @@ import {
   isCelUint,
   parseDuration,
   parseTimestamp,
-  timestampNanos,
   type CelValue,
 } from "../src/index.js";
 
@@ -124,16 +123,7 @@ export function encodeConformanceValue(value: CelValue): ConformanceValue {
   if (typeof value === "bigint") return tagged("int", String(value));
   if (isCelUint(value)) return tagged("uint", String(value.value));
   if (isCelBytes(value)) return tagged("bytes", base64url(value));
-  if (isCelTimestamp(value)) {
-    if (value.nanos % 1_000_000 !== 0) {
-      throw new ConformanceValueError(
-        `the instant ${formatTimestamp(value)} is finer than a millisecond, which the encoding does not carry`,
-      );
-    }
-    const whole = timestampNanos(value) % 1_000_000_000n === 0n;
-    const text = formatTimestamp(value);
-    return tagged("google.protobuf.Timestamp", whole ? `${text.slice(0, -1)}.000Z` : padMilliseconds(text));
-  }
+  if (isCelTimestamp(value)) return tagged("google.protobuf.Timestamp", formatTimestamp(value));
   if (isCelDuration(value)) return tagged("google.protobuf.Duration", formatDuration(value));
   if (isCelTypeValue(value)) return { [CEL_TAG]: "type", value: recordedTypeName(value.name) };
   if (isCelOptional(value)) {
@@ -161,12 +151,6 @@ export function encodeConformanceValue(value: CelValue): ConformanceValue {
   throw new ConformanceValueError("this value is of no CEL type");
 }
 
-/** The millisecond form the encoding carries: exactly three fractional digits. */
-function padMilliseconds(text: string): string {
-  const [body, fraction] = text.slice(0, -1).split(".");
-  return `${body}.${(fraction ?? "").padEnd(3, "0").slice(0, 3)}Z`;
-}
-
 function encodeMap(pairs: readonly (readonly [CelValue, CelValue])[]): ConformanceValue {
   const written = pairs.map(([key, value]) => ({
     key: encodeConformanceValue(key),
@@ -191,8 +175,8 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/** A recorded value as a value of this engine. Throws on a node the encoding does not define. */
-export function decodeConformanceValue(node: ConformanceValue): CelValue {
+/** A recorded node as a value of this engine. Throws on a node the encoding does not define. */
+function decodeConformanceValue(node: ConformanceValue): CelValue {
   if (node === null || typeof node === "boolean" || typeof node === "string") return node;
   if (typeof node === "number") return node;
   if (Array.isArray(node)) return node.map((held) => decodeConformanceValue(held));
@@ -203,7 +187,23 @@ export function decodeConformanceValue(node: ConformanceValue): CelValue {
   return expectValue(celMapFromEntries(flat));
 }
 
-function decodeCel(node: { [key: string]: ConformanceValue }): CelValue {
+/**
+ * A recorded node as a value of this engine, read only in its canonical writing: it must be
+ * exactly what the writer writes for the value it reads, so a file holds one text per value.
+ * This is the codec's one reader.
+ */
+export function readCanonicalConformanceValue(node: ConformanceValue): CelValue {
+  const value = decodeConformanceValue(node);
+  const written = JSON.stringify(encodeConformanceValue(value));
+  if (written !== JSON.stringify(node)) {
+    throw new ConformanceValueError(
+      `${JSON.stringify(node)} is not the canonical writing of its value, which is ${written}`,
+    );
+  }
+  return value;
+}
+
+function decodeCel(node:{ [key: string]: ConformanceValue }): CelValue {
   const form = node[CEL_TAG];
   if (form === "type" && typeof node.value === "string") {
     return celTypeValue(engineTypeName(node.value));
@@ -277,20 +277,7 @@ function expectValue(value: CelValue): CelValue {
   return value;
 }
 
-/**
- * The canonical text of a recorded node or an engine value — what the two sides of a
- * comparison are reduced to. A recorded node goes through the engine's domain first, so a
- * row written in a form that is not canonical is caught rather than compared loosely.
- */
+/** The canonical text of a value: what the conformance handler set hands back for an argument. */
 export function conformanceText(value: CelValue): string {
   return JSON.stringify(encodeConformanceValue(value));
-}
-
-/** Kept for a message: a value the engine answered, however it is written. */
-export function describeValue(value: CelValue): string {
-  try {
-    return conformanceText(value);
-  } catch (cause) {
-    return `<${(cause as Error).message}>`;
-  }
 }

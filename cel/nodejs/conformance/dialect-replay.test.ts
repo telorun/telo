@@ -1,6 +1,6 @@
 /**
- * Runs the conformance vectors' dialect files — the function catalog and the host's types —
- * against the engine with the catalog registered.
+ * Runs the conformance vectors' dialect files the engine alone answers — the function
+ * catalog and the host's types — through the projection driver.
  *
  * The vectors directory is a **parameter** (`CEL_CONFORMANCE_DIR`) and so is the host's
  * type vocabulary (`CEL_CONFORMANCE_HOST_TYPES`, a JSON list of nominal type definitions):
@@ -12,14 +12,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { NominalTypeDefinition } from "../src/index.js";
-import { CATALOG_CORRECTIONS, CATALOG_EXCLUSIONS, CATALOG_FILE, CATALOG_ROWS } from "./catalog-replay.js";
 import {
+  CATALOG_FILE,
+  CATALOG_ROWS,
+  dialectEnvironment,
+  inputProblems,
   replayDialectRows,
+  TYPES_FILE,
+  TYPES_ROWS,
   unknownDeclaredTypes,
-  type DialectReplayReport,
   type DialectRow,
 } from "./dialect-replay.js";
-import { TYPES_CORRECTIONS, TYPES_EXCLUSIONS, TYPES_FILE, TYPES_ROWS } from "./types-replay.js";
 
 const directory = process.env.CEL_CONFORMANCE_DIR;
 if (!directory) {
@@ -43,80 +46,61 @@ function rowsOf(file: string): readonly DialectRow[] {
   return held.rows;
 }
 
-const files = [
-  { file: CATALOG_FILE, rows: CATALOG_ROWS, corrections: CATALOG_CORRECTIONS, exclusions: CATALOG_EXCLUSIONS },
-  { file: TYPES_FILE, rows: TYPES_ROWS, corrections: TYPES_CORRECTIONS, exclusions: TYPES_EXCLUSIONS },
-];
-
-for (const held of files) {
+for (const held of [
+  { file: CATALOG_FILE, rows: CATALOG_ROWS },
+  { file: TYPES_FILE, rows: TYPES_ROWS },
+]) {
   const rows = rowsOf(held.file);
-  const report: DialectReplayReport = replayDialectRows(rows, {
-    file: held.file,
-    hostTypes,
-    corrections: held.corrections,
-    exclusions: held.exclusions,
-  });
+  const report = replayDialectRows(held.file, rows, hostTypes);
 
-  describe(`CEL conformance — ${held.file} through the engine and its catalog`, () => {
-    it("reads a well-formed dialect file", () => {
-      const ids = new Set<string>();
-      for (const row of rows) {
-        expect(typeof row.source, row.id).toBe("string");
-        expect(row, `row ${row.id} has no expect`).toHaveProperty("expect");
-        expect(row.tag, `row ${row.id} names no tag`).toBeTypeOf("string");
-        expect(ids.has(row.id), `row id ${row.id} repeats`).toBe(false);
-        ids.add(row.id);
-      }
-    });
-
+  describe(`CEL conformance — ${held.file} through the engine's projection`, () => {
     it("is given a host type for every type its rows declare", () => {
       expect(unknownDeclaredTypes(rows, hostTypes)).toEqual([]);
     });
 
+    it("reads every row as a question the engine alone answers", () => {
+      expect(report.malformed).toEqual([]);
+      expect(report.inputs).toEqual([]);
+    });
+
+    it("answers the projection of every row", () => {
+      expect(report.answers).toEqual([]);
+    });
+
     it("drives every row of the file, and the file holds the rows it is pinned to", () => {
       expect(report.driven).toBe(rows.length);
-      // **A removed row is what a per-row driver cannot see**: every other number in the
-      // report stays true, so the count is pinned and a row added or deleted fails here.
       expect(rows.length).toBe(held.rows);
-    });
-
-    it("answers every row it drives", () => {
-      expect(report.failures).toEqual([]);
-    });
-
-    it("accounts for every row: answered, corrected, or excluded", () => {
-      expect(report.matched + report.correctionsSeen.length + report.exclusionsSeen.length).toBe(
-        report.rows,
-      );
-      expect(report.unaccounted).toEqual([]);
-    });
-
-    it("holds every correction and exclusion group to its pinned row count", () => {
-      expect(report.correctionCounts.filter((group) => group.rows !== group.pinned)).toEqual([]);
-      expect(report.exclusionCounts.filter((group) => group.rows !== group.pinned)).toEqual([]);
-      for (const group of held.corrections) expect(group.authority.length, group.cause).toBeGreaterThan(40);
-    });
-
-    it("declares what it does not answer, each naming rows that exist", () => {
-      for (const elsewhere of [...report.answeredElsewhere, ...report.notCompared]) {
-        expect(elsewhere.rows, elsewhere.expectation).toBeGreaterThan(0);
-      }
-      console.log(
-        [
-          `${held.file}: rows ${report.rows}, ${report.matched} answered,`,
-          `${report.correctionsSeen.length} corrected against a cited authority,`,
-          `${report.exclusionsSeen.length} excluded with a reason.`,
-          `${report.typesCompared} checked to the recorded type,`,
-          `${report.refusalsPinned.length} refusals reproduced byte for byte,`,
-          `${report.guardsPinned.length} literal-guard diagnostics reproduced byte for byte.`,
-          "Answered elsewhere:",
-          ...report.answeredElsewhere.map(
-            (d) => `  ${d.expectation} — ${d.rows} rows → ${d.answeredBy} (${d.because})`,
-          ),
-          "Not compared:",
-          ...report.notCompared.map((d) => `  ${d.expectation} — ${d.rows} rows (${d.because})`),
-        ].join("\n"),
-      );
+      console.log(`${held.file}: rows ${report.rows}, ${report.driven} answered through the projection`);
     });
   });
 }
+
+describe("the input gate", () => {
+  const row = (extra: Record<string, unknown>, source = "1"): DialectRow =>
+    ({
+      id: "scratch/input",
+      tag: "cel",
+      source,
+      ...extra,
+      expect: { check: { diagnostics: [] }, value: { $telo: "int", value: "1" } },
+    }) as unknown as DialectRow;
+
+  it("refuses a tag other than cel, a tag-site input, a source that does not read and an error that is not the engine's", () => {
+    const base = dialectEnvironment();
+    expect(inputProblems(base, row({ tag: "interpolate" }))).toEqual([
+      'names the tag "interpolate"; these files ask the cel engine alone',
+    ]);
+    expect(inputProblems(base, row({ context: {} }))).toEqual([
+      "carries `context`, an input only a tag site has",
+    ]);
+    expect(inputProblems(base, row({}, "1 +"))).toEqual([expect.stringMatching(/^does not read: /)]);
+    const coded = {
+      ...row({}),
+      expect: { check: { diagnostics: [] }, error: { code: "ERR_X", celCode: null, message: "x" } },
+    } as unknown as DialectRow;
+    expect(inputProblems(base, coded)).toEqual([
+      'records an error that is not the engine\'s own: {"code":"ERR_X","celCode":null,"message":"x"}',
+    ]);
+    expect(inputProblems(base, row({}))).toEqual([]);
+  });
+});

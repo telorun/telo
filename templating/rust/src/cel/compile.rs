@@ -303,10 +303,10 @@ impl CompiledValue {
 }
 
 fn program_refusal(refusal: CelProgramError) -> TemplatingError {
-    TemplatingError::uncoded(match refusal {
-        CelProgramError::Engine(error) => error.message,
-        CelProgramError::Compile(error) => error.message,
-    })
+    match refusal {
+        CelProgramError::Engine(error) => TemplatingError::engine(error.code.as_str(), error.message),
+        CelProgramError::Compile(error) => TemplatingError::uncoded(error.message),
+    }
 }
 
 /// One program's value, in the form a host holds it.
@@ -317,7 +317,9 @@ fn evaluate_program<E: Any + Send + Sync>(
 ) -> Result<CelValue, CallError<E>> {
     match program.evaluate(activation, options) {
         Ok(value) => Ok(host_value_of(&value)),
-        Err(CelEvaluationError::Error(error)) => Err(CallError::Templating(TemplatingError::uncoded(error.message))),
+        Err(CelEvaluationError::Error(error)) => {
+            Err(CallError::Templating(TemplatingError::engine(error.code.as_str(), error.message)))
+        }
         Err(CelEvaluationError::Host(failure)) => Err(CallError::Module(failure.downcast::<E>().unwrap_or_else(
             |_| panic!("a module function of this table failed with another table's failure type"),
         ))),
