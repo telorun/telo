@@ -53,7 +53,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { promisify } from "node:util";
-import { versionsMovedInHead } from "./module-versions-moved.mjs";
+import { manifestVersionAt, versionsMovedInHead } from "./module-versions-moved.mjs";
 import { setOutput } from "./release-actions-output.mjs";
 
 import {
@@ -165,7 +165,7 @@ const unanswered = [];
 // The version-absent gate, over every importable manifest.
 const toCheck = importable
   .map((abs) => ({ abs, rel: abs.replace(ROOT + "/", "") }))
-  .map((e) => ({ ...e, version: manifestVersionAt("HEAD", e.rel) }))
+  .map((e) => ({ ...e, version: manifestVersionAt(ROOT, "HEAD", e.rel) }))
   .filter((e) => e.version);
 
 // Where each module publishes, from the release model — the same answer the push
