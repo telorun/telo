@@ -66172,8 +66172,8 @@
         },
         "error": {
           "code": null,
-          "celCode": "no_matching_overload",
-          "message": "no overload of \"fn\" takes (string, int)",
+          "celCode": "unbound_function",
+          "message": "unbound function 'fn' — fn(string, int): string is declared and nothing implements it",
           "range": {
             "start": 0,
             "end": 14
@@ -66953,8 +66953,8 @@
         },
         "error": {
           "code": null,
-          "celCode": "no_matching_overload",
-          "message": "no overload of \"cast\" takes (string, type)",
+          "celCode": "unbound_function",
+          "message": "unbound function 'cast' — cast(dyn, type): T is declared and nothing implements it",
           "range": {
             "start": 0,
             "end": 18
@@ -67006,8 +67006,8 @@
         },
         "error": {
           "code": null,
-          "celCode": "no_matching_overload",
-          "message": "no overload of \"cast\" takes (int, type)",
+          "celCode": "unbound_function",
+          "message": "unbound function 'cast' — cast(dyn, type): T is declared and nothing implements it",
           "range": {
             "start": 0,
             "end": 17
@@ -67072,8 +67072,8 @@
         },
         "error": {
           "code": null,
-          "celCode": "no_matching_overload",
-          "message": "no overload of \"first_elem_type\" takes (string, type)",
+          "celCode": "unbound_function",
+          "message": "unbound function 'first_elem_type' — first_elem_type(dyn, type): T is declared and nothing implements it",
           "range": {
             "start": 0,
             "end": 34
@@ -67138,8 +67138,8 @@
         },
         "error": {
           "code": null,
-          "celCode": "no_matching_overload",
-          "message": "no overload of \"unwrap_type\" takes (type)",
+          "celCode": "unbound_function",
+          "message": "unbound function 'unwrap_type' — unwrap_type(type): type is declared and nothing implements it",
           "range": {
             "start": 0,
             "end": 22

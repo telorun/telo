@@ -111,7 +111,9 @@ function declaredTypes(declaration: Declaration): string[] {
 
 /** Why a `catalog.json` or `types.json` row is not an engine's question; nothing when it is. */
 function engineInputProblems(row: DialectRow): string[] {
-  const problems = TAG_SITE_INPUTS.filter((key) => key in row).map((key) => `carries \`${key}\``);
+  const problems: string[] = [];
+  if (row.tag !== "cel") problems.push(`names the tag ${JSON.stringify(row.tag)}; these files ask the cel engine alone`);
+  for (const key of TAG_SITE_INPUTS) if (key in row) problems.push(`carries \`${key}\``);
   const read = dialectEnv.parse(row.source).diagnostics[0];
   if (read) problems.push(`does not read: ${read.message}`);
   const error = row.expect.error;
@@ -205,10 +207,10 @@ describe("CEL conformance vectors", () => {
     expect(refused).toEqual([]);
   });
 
-  it("refuses a catalog.json or types.json row carrying a tag-site input", () => {
+  it("refuses a catalog.json or types.json row naming another tag or carrying a tag-site input", () => {
     const row: DialectRow = {
       id: "scratch/input",
-      tag: "cel",
+      tag: "interpolate",
       source: "s.text +",
       context: {},
       expect: {
@@ -217,6 +219,7 @@ describe("CEL conformance vectors", () => {
       },
     };
     expect(engineInputProblems(row)).toEqual([
+      'names the tag "interpolate"; these files ask the cel engine alone',
       "carries `context`",
       expect.stringMatching(/^does not read: /),
       'records an error that is not the engine\'s: {"code":"ERR_X","celCode":null,"message":"x"}',

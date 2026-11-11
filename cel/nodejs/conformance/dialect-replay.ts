@@ -217,9 +217,11 @@ export function recordedProjection(row: DialectRow): DialectProjection {
 /** Why a row is not a question the engine alone answers; nothing when it is. */
 export function inputProblems(base: CelEnvironment, row: DialectRow): string[] {
   const held = row as unknown as Record<string, unknown>;
-  const problems = TAG_SITE_INPUTS.filter((key) => key in held).map(
-    (key) => `carries \`${key}\`, an input only a tag site has`,
-  );
+  const problems: string[] = [];
+  if (row.tag !== "cel") problems.push(`names the tag ${JSON.stringify(row.tag)}; these files ask the cel engine alone`);
+  for (const key of TAG_SITE_INPUTS) {
+    if (key in held) problems.push(`carries \`${key}\`, an input only a tag site has`);
+  }
   const read = base.parse(row.source).diagnostics[0];
   if (read) problems.push(`does not read: ${read.message}`);
   const error = row.expect?.error;

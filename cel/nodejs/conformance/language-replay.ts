@@ -142,7 +142,9 @@ export function checkEnvironment(base: CelEnvironment, row: LanguageRow): CelEnv
 
 /**
  * The environment a row is EVALUATED in: its functions, and none of its declarations. A
- * declared function has no implementation, so a call to it answers `unbound_function`.
+ * declared function is a signature with no implementation, so a call that resolves to it
+ * answers `unbound_function`, naming the function and the signature it resolved to; its
+ * arguments are evaluated first, since their types choose the overload.
  */
 export function evaluationEnvironment(base: CelEnvironment, row: LanguageRow): CelEnvironment {
   if (!row.functions || row.functions.length === 0) return base;
@@ -398,6 +400,9 @@ export function celCodeProblems(row: LanguageRow): string[] {
     problems.push(`records the celCode ${JSON.stringify(error.celCode)}, which no language answer can carry`);
   }
   if (error.code !== null && error.celCode !== null) problems.push("records both a Telo code and a celCode");
+  if (error.code === null && error.celCode === null) {
+    problems.push("records an error with no code — the engine failing, never an answer");
+  }
   return problems;
 }
 

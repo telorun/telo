@@ -85,8 +85,11 @@ describe("the input gate", () => {
       expect: { check: { diagnostics: [] }, value: { $telo: "int", value: "1" } },
     }) as unknown as DialectRow;
 
-  it("refuses a tag-site input, a source that does not read and an error that is not the engine's", () => {
+  it("refuses a tag other than cel, a tag-site input, a source that does not read and an error that is not the engine's", () => {
     const base = dialectEnvironment();
+    expect(inputProblems(base, row({ tag: "interpolate" }))).toEqual([
+      'names the tag "interpolate"; these files ask the cel engine alone',
+    ]);
     expect(inputProblems(base, row({ context: {} }))).toEqual([
       "carries `context`, an input only a tag site has",
     ]);

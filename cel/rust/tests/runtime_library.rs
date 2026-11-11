@@ -771,8 +771,6 @@ fn reads_json_of_any_depth_on_a_small_stack() {
         .unwrap();
 }
 
-/// Node's reading, reproduced and reported: a registration with no implementation answers
-/// `no_matching_overload`, where Node's own docs say `unbound_function`.
 #[test]
 #[allow(unused_variables)]
 fn leaves_a_hosts_own_function_to_the_host_and_fails_a_call_to_one_with_no_behaviour() {
@@ -782,7 +780,7 @@ fn leaves_a_hosts_own_function_to_the_host_and_fails_a_call_to_one_with_no_behav
         .unwrap();
     assert_eq!(
         source_answer(&environment, "hostOnly('x')", &()),
-        "error no_matching_overload [0, 13] no overload of \"hostOnly\" takes (string)"
+        "error unbound_function [0, 13] unbound function 'hostOnly' — hostOnly(string): string is declared and nothing implements it"
     );
     let implementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| match args {
         [CelValue::String(held)] => CelValue::String(format!("{held}!").into()),
