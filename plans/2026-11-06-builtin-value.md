@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 priority: medium
 depends-on: []
 packages: [sdk/builtins, analyzer/nodejs, analyzer/rust, kernel/nodejs, kernel/rust, modules/run, tests, docs, apps/authoring-agent, apps/hub]

@@ -3,7 +3,7 @@
 // tests, the record) is the real code. Run: node --test benchmarks/authoring/tests
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, appendFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync, appendFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -73,7 +73,21 @@ before(() => {
   assert.equal(build.status, 0, build.stdout + build.stderr);
 });
 
-const linkModules = (workspace) => symlinkSync(join(leadIntake, "node_modules"), join(workspace, "node_modules"));
+// A directory of links, not one link to the directory: pnpm's .bin shims locate packages relative
+// to the path they are invoked by, so each one is reached through a wrapper that runs the real shim.
+const linkModules = (workspace) => {
+  const source = join(leadIntake, "node_modules");
+  const target = join(workspace, "node_modules");
+  mkdirSync(join(target, ".bin"), { recursive: true });
+  for (const entry of readdirSync(source)) {
+    if (entry !== ".bin") symlinkSync(join(source, entry), join(target, entry));
+  }
+  for (const bin of readdirSync(join(source, ".bin"))) {
+    const wrapper = join(target, ".bin", bin);
+    writeFileSync(wrapper, `#!/bin/sh\nexec "${join(source, ".bin", bin)}" "$@"\n`);
+    chmodSync(wrapper, 0o755);
+  }
+};
 
 const nodeBuild = (workspace) => {
   cpSync(join(builtNode, "dist"), join(workspace, "dist"), { recursive: true });

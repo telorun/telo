@@ -24,9 +24,14 @@ const append = (records, target) => {
   return spawnSync(process.execPath, [script, "--records", file, "--target", target, "--remote", bare], { cwd: scratch, encoding: "utf8" });
 };
 
-before(() => git(["init", "--bare", "--quiet", bare]));
+// The CLI image ships without git, by design; append.mjs needs it.
+const noGit = spawnSync("git", ["--version"]).error ? "git is not installed" : false;
 
-test("creates the orphan branch on the first append and adds to the file on the next", () => {
+before(() => {
+  if (!noGit) git(["init", "--bare", "--quiet", bare]);
+});
+
+test("creates the orphan branch on the first append and adds to the file on the next", { skip: noGit }, () => {
   assert.equal(append('{"run":1}\n{"run":2}\n', "authoring.jsonl").status, 0);
   assert.equal(git(["rev-list", "--count", "benchmark-results"], bare), "1");
   assert.equal(git(["rev-list", "--max-parents=0", "benchmark-results"], bare), git(["rev-parse", "benchmark-results"], bare));
@@ -40,7 +45,7 @@ test("creates the orphan branch on the first append and adds to the file on the 
   assert.equal(git(["log", "-1", "--format=%an", "benchmark-results"], bare), "github-actions[bot]");
 });
 
-test("refuses a line that is not a JSON object and pushes nothing", () => {
+test("refuses a line that is not a JSON object and pushes nothing", { skip: noGit }, () => {
   const before = git(["rev-parse", "benchmark-results"], bare);
   const run = append('{"run":4}\nnot json\n', "authoring.jsonl");
   assert.equal(run.status, 1);
@@ -48,7 +53,7 @@ test("refuses a line that is not a JSON object and pushes nothing", () => {
   assert.equal(git(["rev-parse", "benchmark-results"], bare), before);
 });
 
-test("refuses a target that is not a bare .jsonl name", () => {
+test("refuses a target that is not a bare .jsonl name", { skip: noGit }, () => {
   const run = append('{"run":5}\n', "../escape.jsonl");
   assert.equal(run.status, 1);
   assert.match(run.stderr, /bare file name/);
