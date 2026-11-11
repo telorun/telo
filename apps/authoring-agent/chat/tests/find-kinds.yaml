@@ -13,7 +13,7 @@ metadata:
     the second agent's two included: with 15 tokens a call, naming (15), the
     agent's two calls (30) and the search's two (30) are 75.
 imports:
-  Mcp: ../../../../modules/mcp-client
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
   Chat:
     source: ../
     resources:
@@ -25,10 +25,10 @@ imports:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18560/v1
       hubPublisher: example.test
-  App: ../../../../modules/app
-  Stream: ../../../../modules/stream
-  HttpClient: ../../../../modules/http-client
-  Assert: ../../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
     env: CHAT_TEST_FIND_KINDS_SCRATCH

@@ -13,11 +13,11 @@ metadata:
     The stack lifts the per-address limit (REGISTER_RATE_LIMIT), so the bypass
     itself is pinned in process by `tests/integration/register-unlimited.yaml`.
 imports:
-  HttpClient: ../../../../modules/http-client
-  Postgres: ../../../../modules/postgres
-  App: ../../../../modules/app
-  Channel: ../../../../modules/channel
-  Assert: ../../../../modules/assert
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.4#sha256-CsWk9ZmHFz7CUumvp9A0trpYqJY-qVfWrgmzSZXDEZo
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Channel: oci://ghcr.io/telorun/channel@0.4.0#sha256-nD_0ZsyaVddeihAxep3t4y7Di0V0wSRrscxi5Pb5uuE
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   dbHost: { env: DB_HOST, type: string, default: localhost }
   dbPort: { env: DB_PORT, type: integer, default: 5432 }

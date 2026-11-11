@@ -23,9 +23,9 @@ imports:
   # Published, like the modules the blueprint itself imports: importing the
   # local copies of these beside the blueprint's published `ai` is refused with
   # DUPLICATE_IMPORT_ALIAS.
-  Run: ../../../modules/run
-  OpenAI: ../../../modules/openai
-  Http: ../../../modules/http-client
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  OpenAI: oci://ghcr.io/telorun/openai@0.21.0#sha256-1QunhR8HAYpoCZ6rf0_ENpvCHcsghciYBb9_A4WCSHs
+  Http: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
 targets:
   - !ref assistant
 ports:

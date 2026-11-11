@@ -34,21 +34,21 @@ metadata:
     and DB_NAME, never a developer's database. Run only by the hub's own suite
     through that command.
 imports:
-  Run: ../../../../modules/run
-  Http: ../../../../modules/http-server
-  Sql: ../../../../modules/sql
-  Postgres: ../../../../modules/postgres
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.4#sha256-CsWk9ZmHFz7CUumvp9A0trpYqJY-qVfWrgmzSZXDEZo
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Shell: ../../../../modules/shell
-  Embedding: ../../../../modules/embedding
-  OpenAI: ../../../../modules/openai
-  HttpClient: ../../../../modules/http-client
-  VectorStore: ../../../../modules/vector-store
-  VectorStorePgvector: ../../../../modules/vector-store-pgvector
-  Timer: ../../../../modules/timer
-  RateLimit: ../../../../modules/rate-limit
-  CacheMemory: ../../../../modules/cache-memory
-  Assert: ../../../../modules/assert
+  Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.2#sha256-XHN0qwYwQm_Lk2OaYZEiqRzEyvIHdhd6u29bfYkvT64
+  OpenAI: oci://ghcr.io/telorun/openai@0.21.0#sha256-1QunhR8HAYpoCZ6rf0_ENpvCHcsghciYBb9_A4WCSHs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.2#sha256-X_V4hFmjTZsOvGlvV9N7kIdpQ-vsnduMukV8jNXpt8A
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.4#sha256-_zLE304dCuwBpnc6oJFGoAuUcKhJf-JeGoAXdjEYudE
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.14.4#sha256-f93g2kLEM6UVcEuZDug7xod5SKMN1gYkxQtdFbGs5Jg
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.4#sha256-DU29iuzDOKnYhLYS1B7PBRkDIJoeKxETWc8cy-QFqPY
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
   Schema:
     source: ../../hub-schema.yaml
     resources:

@@ -22,7 +22,7 @@ requires:
   telo: ">=0.128.0"
 imports:
   ApprovalApp: ..
-  Console: ../../../modules/console
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
 targets:
   - !ref approvals
 ports: { http: { env: PORT, protocol: tcp, default: 8850 } }

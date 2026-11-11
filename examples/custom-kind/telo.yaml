@@ -18,8 +18,8 @@ metadata:
 requires: { telo: ">=0.128.0" }
 imports:
   Notify: ./notify
-  Http: ../../modules/http-server
-  Console: ../../modules/console
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
 targets:
   - !ref demo
 ---

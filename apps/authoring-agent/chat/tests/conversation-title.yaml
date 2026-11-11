@@ -21,12 +21,12 @@ metadata:
     splitting it, and a first message whose 4000th code point is astral is sent
     to the naming call as its first 4000 code points, the astral one whole.
 imports:
-  App: ../../../../modules/app
-  Fs: ../../../../modules/fs
-  HttpClient: ../../../../modules/http-client
-  Sse: ../../../../modules/sse-codec
-  Stream: ../../../../modules/stream
-  Assert: ../../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
+  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
     env: CHAT_TEST_CONVERSATION_TITLE_SCRATCH

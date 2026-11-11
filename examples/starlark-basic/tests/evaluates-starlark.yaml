@@ -5,7 +5,7 @@ metadata:
   description: >-
     Runs `examples/starlark-basic` to completion and checks the value it computed.
 imports:
-  Assert: ../../../modules/assert
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref test
 ---

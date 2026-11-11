@@ -8,10 +8,10 @@ metadata:
     work ran on its own schedule.
 imports:
   ScheduledJobs: ..
-  Cache: ../../../modules/cache
-  CacheMemory: ../../../modules/cache-memory
-  Timer: ../../../modules/timer
-  Assert: ../../../modules/assert
+  Cache: oci://ghcr.io/telorun/cache@0.14.3#sha256-5xxC8EaYL5HNRePD0GhtWJQWQTANZ9QFSvQ1_5oRiZA
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.11.4#sha256-DU29iuzDOKnYhLYS1B7PBRkDIJoeKxETWc8cy-QFqPY
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref test
 ---

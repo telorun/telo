@@ -25,10 +25,10 @@ requires:
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
-  Http: ../../modules/http-server
-  Durable: ../../modules/durable
-  DurableLocal: ../../modules/durable-local
-  Journal: ../../modules/durable-journal-file
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Durable: oci://ghcr.io/telorun/durable@0.4.4#sha256-pyKeKy8LL6RaVPxTFrkf9kys9bFIhpQQNUFaenhpiGY
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.7.0#sha256-qgLBYnTO62RNtfvlqzr7H1WaghiKr9__WLRKbDOyyy8
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.9.0#sha256-PD59UYrbP2kfHc0N9-hmvX4hMA52oFyZZZcknUiPjwM
 exports: { kinds: [App] }
 ---
 kind: Telo.Definition

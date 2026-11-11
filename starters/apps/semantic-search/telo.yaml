@@ -38,17 +38,17 @@ metadata:
 requires: { telo: ">=0.128.0" }
 lang: en
 imports:
-  Http: ../../../modules/http-server
-  Ui: ../../../modules/ui
-  UiReact: ../../../modules/ui-react
-  HttpClient: ../../../modules/http-client
-  OpenAI: ../../../modules/openai
-  Ai: ../../../modules/ai
-  Embedding: ../../../modules/embedding
-  VectorStore: ../../../modules/vector-store
-  VectorStoreMemory: ../../../modules/vector-store-memory
-  Run: ../../../modules/run
-  Console: ../../../modules/console
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Ui: oci://ghcr.io/telorun/ui@0.11.0#sha256-rkVNXO_R91lAVJx6pWdMdQte8anMu5Tt5OqV-j2waOw
+  UiReact: oci://ghcr.io/telorun/ui-react@0.12.1#sha256-eZUxX87sYKwno1IkXeK31h8LGiBrre-8jFK48W72v8Y
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  OpenAI: oci://ghcr.io/telorun/openai@0.21.0#sha256-1QunhR8HAYpoCZ6rf0_ENpvCHcsghciYBb9_A4WCSHs
+  Ai: oci://ghcr.io/telorun/ai@0.35.0#sha256-gig6UlfoWjTsdpnPCl2n2lGuU8Sae6K74dtF7ORujxs
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.2#sha256-XHN0qwYwQm_Lk2OaYZEiqRzEyvIHdhd6u29bfYkvT64
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.2#sha256-X_V4hFmjTZsOvGlvV9N7kIdpQ-vsnduMukV8jNXpt8A
+  VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.9.3#sha256-LzuFUrhzUl2JPh7xg9w5D-r_l_xXQu-gYApqwSAV6VM
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
 targets:
   - !ref indexCorpus
   - !ref server

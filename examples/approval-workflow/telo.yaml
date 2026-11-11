@@ -45,12 +45,12 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  Durable: ../../modules/durable
-  Local: ../../modules/durable-local
-  Journal: ../../modules/durable-journal-file
-  Http: ../../modules/http-server
-  Console: ../../modules/console
-  Timer: ../../modules/timer
+  Durable: oci://ghcr.io/telorun/durable@0.4.4#sha256-pyKeKy8LL6RaVPxTFrkf9kys9bFIhpQQNUFaenhpiGY
+  Local: oci://ghcr.io/telorun/durable-local@0.7.0#sha256-qgLBYnTO62RNtfvlqzr7H1WaghiKr9__WLRKbDOyyy8
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.9.0#sha256-PD59UYrbP2kfHc0N9-hmvX4hMA52oFyZZZcknUiPjwM
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
 targets:
   - !ref server
   - !ref resumer

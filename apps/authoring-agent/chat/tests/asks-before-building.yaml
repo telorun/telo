@@ -49,7 +49,7 @@ variables:
     x-telo-type: Telo.HostPath
     default: apps/authoring-agent/chat/tests/.scratch/asks-before-building
 imports:
-  Mcp: ../../../../modules/mcp-client
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
   Chat:
     source: ../
     resources:
@@ -65,9 +65,9 @@ imports:
       # Resolved from the agent's cwd, which IS the workspace directory above —
       # two levels below the repo root.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
-  Fs: ../../../../modules/fs
-  Stream: ../../../../modules/stream
-  Assert: ../../../../modules/assert
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   # Before ensureWorkspace, which creates the directory this removes.
   - !ref cleanWorkspace

@@ -10,10 +10,10 @@ metadata:
     a sent message is answered part by part over the event stream and stored as a
     transcript, and the conversation is listed as the collection contract asks. The stand-in checks the key the example's client sends.
 imports:
-  App: ../../../modules/app
-  Server: ../../../modules/http-server
-  HttpClient: ../../../modules/http-client
-  Assert: ../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Server: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # The DIRECTORY each run's state goes in, anchored at the working directory;
   # a run keeps its own subdirectory, since a chat's database outlives the test.

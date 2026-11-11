@@ -24,11 +24,11 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  Sql: ../../modules/sql
-  Run: ../../modules/run
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  PlainText: ../../modules/plain-text-codec
-  Yaml: ../../modules/yaml
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.11.1#sha256-m7zV389V7h7MXq87RhysqERsE7TW3HdUR1jjvON4Icg
+  Yaml: oci://ghcr.io/telorun/yaml@0.11.1#sha256-s7o7ypsk5oWGomn3BQpnfbfH_j61uOwn3ZqkPNU24yg
 resources:
   connection: { kind: Sql.Connection, description: The database holding the indexed rows. }
   bucketGet:

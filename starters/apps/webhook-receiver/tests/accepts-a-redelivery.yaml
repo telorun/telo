@@ -8,10 +8,10 @@ metadata:
     and sends the delivery a third time. Still being a replay after the restart
     is the claim the starter makes about where its idempotency records live.
 imports:
-  App: ../../../../modules/app
-  Timer: ../../../../modules/timer
-  HttpClient: ../../../../modules/http-client
-  Assert: ../../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratchDir:
     env: WEBHOOK_RECEIVER_TEST_SCRATCH_DIR

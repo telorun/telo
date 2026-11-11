@@ -12,7 +12,7 @@ metadata:
     whatever `teloVerbs` holds, while `--version` with anything after it is
     refused.
 imports:
-  Mcp: ../../../../modules/mcp-client
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
   Chat:
     source: ../
     resources:
@@ -44,7 +44,7 @@ imports:
       workspaceDir: !cel "variables.scratch.joinPath('identity/workspace')"
       teloProgram: [bun, ../../../../../../../../cli/nodejs/bin/telo.ts]
       teloVerbs: [check]
-  Assert: ../../../../modules/assert
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # Where this case's workspace and agent state live — the library takes both
   # as host paths, and neither is ever read here beyond the spawned program's cwd.

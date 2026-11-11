@@ -10,10 +10,10 @@ metadata:
     re-applied to the database it just produced is the failure this whole design
     exists to prevent.
 imports:
-  Run: ../../../modules/run
-  App: ../../../modules/app
-  Timer: ../../../modules/timer
-  Assert: ../../../modules/assert
+  Run: oci://ghcr.io/telorun/run@0.32.1#sha256-kV5CLg3aUn7XH49UnwIQ1f1UmnA7s1XGvJyX67GfJN8
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # Anchored at the working directory, as the example's own `dbFile` is: a value
   # supplied by name must already be an absolute host path.

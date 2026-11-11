@@ -26,7 +26,7 @@ metadata:
         telo ./examples/testing-a-manifest/test-suite.yaml
 imports:
   Api: ./api
-  Http: ../../modules/http-server
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
 targets:
   - !ref server
 ports:

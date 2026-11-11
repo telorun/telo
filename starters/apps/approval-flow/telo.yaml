@@ -40,16 +40,16 @@ metadata:
 requires: { telo: ">=0.128.0" }
 lang: en
 imports:
-  Http: ../../../modules/http-server
-  DataModel: ../../../modules/data-model
-  Ui: ../../../modules/ui
-  UiReact: ../../../modules/ui-react
-  Durable: ../../../modules/durable
-  DurableLocal: ../../../modules/durable-local
-  Journal: ../../../modules/durable-journal-file
-  Sql: ../../../modules/sql
-  SQLite: ../../../modules/sqlite
-  Console: ../../../modules/console
+  Http: oci://ghcr.io/telorun/http-server@0.44.0#sha256-nW6yftlrG4eHd0e511nB8ArmN04Y2DKEkwRy5BaSldI
+  DataModel: oci://ghcr.io/telorun/data-model@0.3.0#sha256-kve4_9Mk2KXi4vZyvcYNBrEp-ZD_jWDWZwdbpD8qhTs
+  Ui: oci://ghcr.io/telorun/ui@0.11.0#sha256-rkVNXO_R91lAVJx6pWdMdQte8anMu5Tt5OqV-j2waOw
+  UiReact: oci://ghcr.io/telorun/ui-react@0.12.1#sha256-eZUxX87sYKwno1IkXeK31h8LGiBrre-8jFK48W72v8Y
+  Durable: oci://ghcr.io/telorun/durable@0.4.4#sha256-pyKeKy8LL6RaVPxTFrkf9kys9bFIhpQQNUFaenhpiGY
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.7.0#sha256-qgLBYnTO62RNtfvlqzr7H1WaghiKr9__WLRKbDOyyy8
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.9.0#sha256-PD59UYrbP2kfHc0N9-hmvX4hMA52oFyZZZcknUiPjwM
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.4#sha256-iLCP1uoF4CymIEP-0-qkDtfCSEippGAMuzxh0w0nvqI
+  Console: oci://ghcr.io/telorun/console@0.19.3#sha256-v0Cf2BAatUlEU1VtW2QngvyBpsD0oWwUpBAqvmsy0n8
 targets:
   - !ref migrate
   - !ref resumer
