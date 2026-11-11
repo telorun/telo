@@ -5,7 +5,7 @@
 kind: Telo.Library
 metadata:
   name: ApprovalApp
-  version: 0.4.7
+  version: 0.5.0
   license: MIT
   description: >-
     A complete approval application from one declaration: describe the request,
@@ -21,7 +21,7 @@ requires:
   # 0.121.0: `journal` declares `entry: directory`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-  telo: ">=unreleased"
+  telo: ">=0.134.0"
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.

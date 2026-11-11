@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.4 - 2026-11-11
+### Fixed
+* The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.
+
 ## 0.9.3 - 2026-11-09
 ### Fixed
 * The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.
