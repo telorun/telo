@@ -11,9 +11,8 @@
 //! The rows are read as JSON values and the answer is built as one, so a row compares with
 //! the deep equality of `serde_json`'s map, which ignores key order.
 //!
-//! Node items with no twin: `dispatchTracingEnvironment` and `catalogOverloads` — the
-//! catalog-dispatch gate is not run here; and `AsyncLocalStorage` — a row is evaluated on
-//! one thread, and the handler refusals it meets are kept per thread.
+//! Node items with no twin: `AsyncLocalStorage` — a row is evaluated on one thread, and the
+//! handler refusals it meets are kept per thread.
 
 #![allow(dead_code)]
 
@@ -22,14 +21,18 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
+use telo_templating::cel::value_types::register_value_types;
 use telo_templating::{
-    AnalyzeEnv, CallError, CelEngine, CelHandlers, CompileEnv, CompileOutcome, InterpolateEngine, ModuleCallDispatch,
-    ModuleCallFlagValues, ModuleFunction, SqlEngine, TemplatingEngine,
+    build_cel_environment, build_cel_language_environment, AnalyzeEnv, CallError, CelEngine, CelHandlers, CompileEnv,
+    CompileOutcome, InterpolateEngine, ModuleCallDispatch, ModuleCallFlagValues, ModuleFunction, SqlEngine,
+    TemplatingEngine,
 };
 use telorun_cel::{
-    CatalogRefusal, CelCallContext, CelEnvironment, FieldDeclaration, FunctionMetadata, NamespaceFunctionDeclaration,
-    NamespaceOptions, PropertyMap, TypeDeclaration,
+    catalog_implementation, catalog_literal_check, function_catalog, parse_signature, signature_key, CatalogRefusal,
+    CelCallContext, CelEnvironment, FieldDeclaration, FunctionMetadata, NamespaceFunctionDeclaration, NamespaceOptions,
+    NominalTypeDefinition, PropertyMap, TypeDeclaration,
 };
+use telorun_sdk_core::value_type::{cel_type_of_value_type, value_types_in_order};
 use telorun_cel_value::{cel_error, CelEvaluationCode, CelValue};
 
 use super::cel_conformance_value::{decode, encode, typed_frame_text};
@@ -84,6 +87,84 @@ pub fn conformance_handlers() -> CelHandlers {
         json: Some(Arc::new(|value: &CelValue| frame_args("json", std::slice::from_ref(value)))),
         join_path: Some(Arc::new(|base: &str, relative: &str| frame_args("joinPath", &[text(base), text(relative)]))),
     }
+}
+
+/// The conformance handler rule applied to the conversion each value type with members
+/// implements: `string(<value>)` answers `string(<conformance text of the value>)`, so a row
+/// pins what the engine hands the host's encoder rather than the encoder's text. Read off the
+/// value-type entries; no type is named here.
+pub fn with_conformance_conversions(mut env: CelEnvironment) -> CelEnvironment {
+    for entry in value_types_in_order().filter(|entry| entry.members.is_some()) {
+        let name = cel_type_of_value_type(entry);
+        let implementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| match args {
+            [value] => match encode(value) {
+                Ok(written) => CelValue::String(format!("string({written})").into()),
+                Err(message) => cel_error(CelEvaluationCode::InvalidArgument, message, context.range).into(),
+            },
+            _ => cel_error(CelEvaluationCode::NoMatchingOverload, "string: expected one value", context.range).into(),
+        });
+        env.register_function(
+            format!("string({name}): string"),
+            FunctionMetadata { implementation: Some(implementation), ..FunctionMetadata::default() },
+        )
+        .unwrap_or_else(|refusal| panic!("string({name}) cannot be bound: {refusal}"));
+    }
+    env
+}
+
+/// The dialect environment the rows run against, its handlers and conversions the conformance set.
+pub fn conformance_environment() -> CelEnvironment {
+    with_conformance_conversions(build_cel_environment(conformance_handlers()))
+}
+
+/// Every overload the catalog registers, by the signature it registers under.
+pub fn catalog_overloads() -> Vec<(String, String)> {
+    function_catalog()
+        .iter()
+        .flat_map(|entry| entry.signatures.iter().map(|signature| (entry.name.clone(), signature.clone())))
+        .collect()
+}
+
+/// The dialect environment registered overload by overload, each reporting its own dispatch
+/// — how a runner learns which overload a row reached. It reproduces what
+/// `register_function_catalog` does through the same public registration surface, and the
+/// runner holds its listing to the dialect environment's so the two cannot drift.
+pub fn dispatch_tracing_environment(handlers: &CelHandlers, dispatched: Arc<Mutex<Vec<String>>>) -> CelEnvironment {
+    let mut env = build_cel_language_environment();
+    for entry in function_catalog() {
+        let check = entry.checks_literal_arguments.then(|| {
+            catalog_literal_check(&entry.name).unwrap_or_else(|| panic!("no guard answers for {}", entry.name))
+        });
+        for signature in &entry.signatures {
+            let parsed = parse_signature(signature, None).unwrap_or_else(|cause| panic!("{signature}: {cause}"));
+            let key = signature_key(&parsed);
+            let implementation = catalog_implementation(&key, handlers)
+                .unwrap_or_else(|| panic!("nothing implements {signature}"));
+            let record = Arc::clone(&dispatched);
+            let named = signature.clone();
+            let traced = Arc::new(move |context: &CelCallContext, args: &[CelValue]| {
+                record.lock().unwrap().push(named.clone());
+                implementation(context, args)
+            });
+            env.register_function(
+                signature.as_str(),
+                FunctionMetadata {
+                    implementation: Some(traced),
+                    check_arguments: check.clone(),
+                    deterministic: entry.deterministic,
+                    host_backed: entry.host_backed,
+                    description: Some(entry.summary.clone()),
+                    origin: Some("function-catalog".into()),
+                    ..FunctionMetadata::default()
+                },
+            )
+            .unwrap_or_else(|refusal| panic!("{signature}: {refusal}"));
+        }
+    }
+    register_value_types(&mut env);
+    env.register_type(NominalTypeDefinition { name: "Stream".into(), base: "dyn".into(), ..Default::default() })
+        .unwrap_or_else(|refusal| panic!("Stream: {refusal}"));
+    env
 }
 
 /// The engine driving a tag — the one place a dialect tag is tied to an engine.
