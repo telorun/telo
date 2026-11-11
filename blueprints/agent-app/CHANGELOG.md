@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-11-11
+### Added
+* Imports of workspace modules are relative paths in the source tree; the published form is written at release.
+
 ## 0.4.0 - 2026-10-23
 ### Added
 * history declares entry: file, so a directory passed for it is refused (HOST_PATH_ENTRY_MISMATCH). Requires telo 0.121.0.

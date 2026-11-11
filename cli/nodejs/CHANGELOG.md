@@ -1,5 +1,27 @@
 # @telorun/cli
 
+## 0.134.0
+
+### Minor Changes
+
+- 292c41f: Inside a release workspace, `telo publish` and `telo release` write a relative import of another workspace module as that module's assigned destination (`oci://ghcr.io/telorun/sql@<version>#<pin>` from a blueprint's `../../modules/sql`), so modules at different depths and registry bases import each other relatively; `telo publish` refuses a destination the workspace does not assign (`destination_mismatch`) and a sibling the registry serves with other bytes than its pin (`import_pin_mismatch`), and `telo release` refuses a relative import of a manifest the workspace does not release (`IMPORT_TARGET_NOT_RELEASED`), replacing `IMPORT_DESTINATION_CONFLICT` and the analyzer's `checkImportDestinations` export.
+- b1a4cb7: The Node kernel records application startup as one trace span, `startup <application name>`, from the process start `telo run` passes (a kernel started any other way, from its creation) to the end of the init loop. It is exported with its real start time when a trace sink is attached and never created otherwise.
+- 292c41f: `telo release imports <paths..> --as=published|relative` writes each import of a release-workspace module in the named manifests either as the published, registry-pinned reference of the module's version in the tree or as the relative path to the module's directory; `--check` exits 1 listing every import not in that form, and an import of the module a manifest sits inside is always relative. `telo upgrade --pin-local` is deprecated and now runs `--as=published` on the manifests it names.
+- e74098b: `telo release status`, `check` and `apply` take `--carried-by <ref>`: a pending fragment of the same path and content at that ref's merge base with `HEAD`, or written on it since, is dropped from the plan, so a fragment a release branch already carries plans nothing a second time. Without the option nothing is dropped. The changed-files reading of `telo release check` is now the plain `base...HEAD` diff: files of commits contained in a `v*`, `modules-*` or `packages-*` tag are no longer left out.
+
+### Patch Changes
+
+- Updated dependencies [292c41f]
+- Updated dependencies [04094d3]
+- Updated dependencies [b1a4cb7]
+- Updated dependencies [e74098b]
+- Updated dependencies [1a2bc03]
+  - @telorun/analyzer@0.134.0
+  - @telorun/sdk@0.134.0
+  - @telorun/kernel@0.134.0
+  - @telorun/ide-support@0.134.0
+  - @telorun/templating@0.134.0
+
 ## 0.133.0
 
 ### Minor Changes

@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Broadcast
-  version: 0.2.3
+  version: 0.2.4
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Coordination, Streaming]

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-11-11
+### Added
+* Imports of workspace modules are relative paths in the source tree; the published form is written at release.
+
 ## 0.4.3 - 2026-11-09
 ### Fixed
 * The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.

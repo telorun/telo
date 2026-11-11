@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 - 2026-11-11
+### Added
+* Adds Benchmark.Comparison, which starts programs itself and compares their cold and warm boot time, HTTP throughput at a concurrency, p50/p99 latency at a fixed rate measured from each request's scheduled send time, CPU per request and resident memory, with the load generator and the programs pinned to separate cores (Linux only). It prints a table, writes a JSON record with the median, min, max and coefficient of variation of every figure, marks a generator-bound throughput, reads a startup span from a trace file, and fails the run on breached thresholds. Benchmark.Suite's JSON report now gives errors as { count, rate, groups }, each group carrying its code, message, count and a sample, in place of the error count and errorRate; percentiles come from a fixed-memory histogram.
+
 ## 0.11.2 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

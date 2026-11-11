@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: UiReactRadix
-  version: 0.8.0
+  version: 0.8.1
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [UI]
@@ -12,7 +12,7 @@ metadata:
     menus, tabs, tooltips and icons drawn by Radix's accessible primitives.
     Picked by one theme reference; a theme of another module can take its
     controls whole and give them a look of its own.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.134.0" }
 imports: { Ui: ../ui, UiReact: ../ui-react }
 exports:
   resources: [controls, theme]

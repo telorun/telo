@@ -1,6 +1,6 @@
 {
   "name": "@telorun/api-key-sql",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "Telo api-key-sql module — the SQL family's shared half of the durable API-key store: one engine-neutral store written against the Sql contracts, never an engine.",
   "license": "MIT",

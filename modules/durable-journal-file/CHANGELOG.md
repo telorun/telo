@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 - 2026-11-11
+### Added
+* The file journal replaces a run's entries with a baseline in one atomic rename (replaceWithBaseline) and deletes a finished run (finishedRuns, deleteFinishedRun), for the workflow's compactAfter and retainFinished.
+### Fixed
+* A purge racing another purge of the same run on Windows now answers false instead of failing with EPERM.
+
 ## 0.8.2 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.

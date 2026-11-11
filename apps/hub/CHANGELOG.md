@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.0 - 2026-11-11
+### Added
+* Imports of workspace modules are relative paths in the source tree; the published form is written at release.
+
 ## 0.24.0 - 2026-11-09
 ### Added
 * The build-ui guide teaches search in a filter bar: a collection's query.search and the search= request parameter, the bar's search, the Ui.SearchBoxPlacement search box with its typed filter tokens, and show, controls and summary written on the filter placement.
