@@ -39,7 +39,7 @@ import {
 export const DRIVEN_FILE = "language.json";
 
 /** How many rows the file holds. A row deleted leaves every other count true, so it is pinned. */
-export const LANGUAGE_ROWS = 1815;
+export const LANGUAGE_ROWS = 1816;
 
 /** The prefix of an authored row's id: a row cel-spec's import did not produce. */
 export const AUTHORED_ROW_PREFIX = "telo/";

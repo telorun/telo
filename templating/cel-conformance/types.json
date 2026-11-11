@@ -140,7 +140,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: Telo.TcpPort + int"
+              "message": "no \"+\" is declared over Telo.TcpPort, int"
             }
           ],
           "calls": [],
@@ -182,7 +182,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: Telo.TcpPort == int"
+              "message": "no \"==\" is declared over Telo.TcpPort, int"
             }
           ],
           "calls": [],
@@ -343,7 +343,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: Telo.UdpPort + int"
+              "message": "no \"+\" is declared over Telo.UdpPort, int"
             }
           ],
           "calls": [],
@@ -385,7 +385,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: Telo.UdpPort == int"
+              "message": "no \"==\" is declared over Telo.UdpPort, int"
             }
           ],
           "calls": [],
@@ -489,7 +489,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: Telo.HostPath + string"
+              "message": "no \"+\" is declared over Telo.HostPath, string"
             }
           ],
           "calls": [],
@@ -525,7 +525,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: Telo.HostPath == string"
+              "message": "no \"==\" is declared over Telo.HostPath, string"
             }
           ],
           "calls": [],
@@ -568,7 +568,7 @@
               "start": 0,
               "end": 21,
               "deterministic": true,
-              "hostBacked": true
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -605,18 +605,18 @@
               "form": "receiver",
               "arity": 1,
               "start": 0,
-              "end": 29,
+              "end": 15,
               "deterministic": true,
-              "hostBacked": true
+              "hostBacked": false
             },
             {
               "name": "joinPath",
               "form": "receiver",
               "arity": 1,
               "start": 0,
-              "end": 15,
+              "end": 29,
               "deterministic": true,
-              "hostBacked": true
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -664,7 +664,7 @@
               "start": 7,
               "end": 28,
               "deterministic": true,
-              "hostBacked": true
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -755,8 +755,8 @@
         "check": {
           "diagnostics": [
             {
-              "code": "CEL_TYPE_ERROR",
-              "message": "No such key: htp"
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "\"htp\" is not declared here (declared: http, dns)"
             }
           ],
           "calls": [],
@@ -774,7 +774,8 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: htp\n\n>    1 | ports.htp\n               ^"
+          "celCode": "no_such_key",
+          "message": "no such key: \"htp\""
         }
       }
     },
@@ -807,7 +808,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: Telo.TcpPort == Telo.UdpPort"
+              "message": "no \"==\" is declared over Telo.TcpPort, Telo.UdpPort"
             }
           ],
           "calls": [],
@@ -889,14 +890,6 @@
       "declarations": {
         "s": "Stream"
       },
-      "context": {
-        "type": "object",
-        "properties": {
-          "s": {
-            "x-telo-type": "Telo.Stream"
-          }
-        }
-      },
       "expect": {
         "check": {
           "diagnostics": [],
@@ -915,7 +908,8 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: s\n\n>    1 | s\n         ^"
+          "celCode": "no_such_variable",
+          "message": "no such variable: s"
         }
       }
     },
@@ -925,14 +919,6 @@
       "source": "[s]",
       "declarations": {
         "s": "Stream"
-      },
-      "context": {
-        "type": "object",
-        "properties": {
-          "s": {
-            "x-telo-type": "Telo.Stream"
-          }
-        }
       },
       "expect": {
         "check": {
@@ -952,7 +938,8 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: s\n\n>    1 | [s]\n          ^"
+          "celCode": "no_such_variable",
+          "message": "no such variable: s"
         }
       }
     },
@@ -963,23 +950,14 @@
       "declarations": {
         "s": "Stream"
       },
-      "context": {
-        "type": "object",
-        "properties": {
-          "s": {
-            "x-telo-type": "Telo.Stream"
-          }
-        }
-      },
       "expect": {
         "check": {
           "diagnostics": [
             {
-              "code": "CEL_UNKNOWN_FIELD",
-              "message": "'s' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
+              "code": "CEL_TYPE_ERROR",
+              "message": "Stream holds no members"
             }
           ],
-          "type": "dyn",
           "calls": [],
           "regions": [
             {
@@ -990,11 +968,13 @@
           "refs": [
             "s"
           ],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: s\n\n>    1 | s.text\n         ^"
+          "celCode": "no_such_variable",
+          "message": "no such variable: s.text"
         }
       }
     },
@@ -1005,20 +985,12 @@
       "declarations": {
         "s": "Stream"
       },
-      "context": {
-        "type": "object",
-        "properties": {
-          "s": {
-            "x-telo-type": "Telo.Stream"
-          }
-        }
-      },
       "expect": {
         "check": {
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "found no matching overload for 'size(Stream)'"
+              "message": "no overload of \"size\" takes size(Stream): size(string): int, size(bytes): int, size(list<A>): int, size(map<K, V>): int"
             }
           ],
           "calls": [
@@ -1046,7 +1018,8 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: s\n\n>    1 | size(s)\n              ^"
+          "celCode": "no_such_variable",
+          "message": "no such variable: s"
         }
       }
     },
@@ -1057,25 +1030,15 @@
       "expect": {
         "check": {
           "diagnostics": [],
-          "type": "optional<T>",
-          "calls": [
-            {
-              "name": "none",
-              "form": "receiver",
-              "arity": 0,
-              "start": 0,
-              "end": 15
-            }
-          ],
+          "type": "optional<dyn>",
+          "calls": [],
           "regions": [
             {
               "start": 0,
               "end": 15
             }
           ],
-          "refs": [
-            "optional"
-          ],
+          "refs": [],
           "volatile": false
         },
         "value": {
@@ -2119,6 +2082,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unsupported_container",
           "message": "this value holds no members"
         }
       }
@@ -2148,6 +2112,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unsupported_key_type",
           "message": "\"nope\" cannot name an entry of this value"
         }
       }
@@ -2232,6 +2197,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unsupported_container",
           "message": "this value holds no members"
         }
       }
@@ -2606,6 +2572,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"password\""
         }
       }
@@ -2659,6 +2626,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"nope\""
         }
       }

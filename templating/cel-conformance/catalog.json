@@ -508,9 +508,9 @@
           "diagnostics": [
             {
               "code": "CEL_WRONG_CALL_FORM",
-              "message": "`lower` is a global function, not a method — pass the value to it:\n  write:  lower('HeLLo')\n  not:    'HeLLo'.lower()\nRegistered: lower(string): string.",
+              "message": "\"lower\" is called without a receiver: lower(string): string",
               "fix": {
-                "replacement": "lower('HeLLo')"
+                "replacement": "lower(\"HeLLo\")"
               }
             }
           ],
@@ -520,9 +520,7 @@
               "form": "receiver",
               "arity": 0,
               "start": 0,
-              "end": 15,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 15
             }
           ],
           "readTypes": [],
@@ -537,7 +535,8 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'string.lower()'\n\n>    1 | 'HeLLo'.lower()\n         ^"
+          "celCode": "no_matching_overload",
+          "message": "no overload of \"lower\" takes (string)"
         }
       }
     },
@@ -550,7 +549,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no function `lowr`. Every function taking 1 argument: abs, avg, base64Decode, base64Encode, bool, bytes, bytesFromBase64, bytesToBase64, ceil, coalesce, compact, dateIn, distinct, double, duration, dyn, enumerate, flatten, floor, has, int, isoIn, json, keys, lower, max, md5, min, nowIso, parseJson, range, reverse, round, sha1, sha256, sha512, size, sort, startOfMonth, string, sum, timestamp, today, trim, type, uint, upper, urlDecode, urlEncode, uuidValidate, uuidVersion, values. Full list: `telo cel functions`."
+              "message": "no function named \"lowr\" is registered — the closest taking 1 argument: lower, floor, bool, sort, abs"
             }
           ],
           "calls": [
@@ -574,7 +573,8 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'lowr(string)'\n\n>    1 | lowr('HeLLo')\n         ^"
+          "celCode": "no_matching_overload",
+          "message": "no overload of \"lowr\" takes (string)"
         }
       }
     },
@@ -812,7 +812,6 @@
               "message": "regexReplace: unknown regex flag 'q' (supported: i, m, s) (in `regexReplace('a', 'a', 'b', 'q')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexReplace",
@@ -831,10 +830,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "regexReplace: unknown regex flag 'q' (supported: i, m, s)"
         }
       }
@@ -874,6 +875,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexReplace: invalid RE2 pattern \"(\": missing closing )"
         }
       }
@@ -890,7 +892,6 @@
               "message": "regexReplace: invalid RE2 pattern \"a)\": unexpected ) (in `regexReplace('abc', 'a)', 'x')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexReplace",
@@ -909,10 +910,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexReplace: invalid RE2 pattern \"a)\": unexpected )"
         }
       }
@@ -952,6 +955,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexReplace: invalid RE2 pattern \"*\": missing argument to repetition operator"
         }
       }
@@ -968,7 +972,6 @@
               "message": "regexReplace: invalid RE2 pattern \"a**\": invalid nested repetition operator (in `regexReplace('abc', 'a**', 'x')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexReplace",
@@ -987,10 +990,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexReplace: invalid RE2 pattern \"a**\": invalid nested repetition operator"
         }
       }
@@ -1123,6 +1128,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexExtract: invalid RE2 pattern \"[a\": missing closing ]"
         }
       }
@@ -1139,7 +1145,6 @@
               "message": "regexExtract: invalid RE2 pattern \"\\\\\": trailing backslash at end of expression (in `regexExtract('abc', '\\\\')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexExtract",
@@ -1158,10 +1163,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexExtract: invalid RE2 pattern \"\\\\\": trailing backslash at end of expression"
         }
       }
@@ -1178,7 +1185,6 @@
               "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s) (in `regexExtract('abc', 'b', 'x')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexExtract",
@@ -1197,10 +1203,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s)"
         }
       }
@@ -1240,6 +1248,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s)"
         }
       }
@@ -1259,7 +1268,6 @@
               "message": "regexExtract: invalid RE2 pattern \"(\": missing closing ) (in `regexExtract('abc', '(', f)`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexExtract",
@@ -1280,10 +1288,14 @@
           "refs": [
             "f"
           ],
-          "volatile": false
+          "volatile": false,
+          "readTypes": [
+            "dyn"
+          ]
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexExtract: invalid RE2 pattern \"(\": missing closing )"
         }
       }
@@ -1303,7 +1315,6 @@
               "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s) (in `regexExtract('abc', p, 'x')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexExtract",
@@ -1324,10 +1335,14 @@
           "refs": [
             "p"
           ],
-          "volatile": false
+          "volatile": false,
+          "readTypes": [
+            "dyn"
+          ]
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s)"
         }
       }
@@ -1344,7 +1359,6 @@
               "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s) (in `regexExtract('abc', '(', 'x')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexExtract",
@@ -1363,10 +1377,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s)"
         }
       }
@@ -1383,7 +1399,6 @@
               "message": "regexExtract: unknown regex flag 'z' (supported: i, m, s) (in `regexExtract('abc', 'b', 'zq')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexExtract",
@@ -1402,10 +1417,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "regexExtract: unknown regex flag 'z' (supported: i, m, s)"
         }
       }
@@ -1507,6 +1524,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexExtract: invalid RE2 pattern \"é\\t\\u001f /😀\\b\\f\\r(\": missing closing )"
         }
       }
@@ -1523,7 +1541,6 @@
               "message": "regexExtract: invalid RE2 pattern \"(?=b)\": invalid or unsupported Perl syntax (in `regexExtract('abc', '(?=b)')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "regexExtract",
@@ -1542,10 +1559,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexExtract: invalid RE2 pattern \"(?=b)\": invalid or unsupported Perl syntax"
         }
       }
@@ -1585,6 +1604,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexExtract: invalid RE2 pattern \"a{2,1}\": invalid repeat count"
         }
       }
@@ -1695,6 +1715,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexExtractAll: invalid RE2 pattern \"\\\\q\": invalid escape sequence"
         }
       }
@@ -1711,7 +1732,6 @@
               "message": "regexExtractAll: invalid RE2 pattern \"[z-a]\": invalid character class range (in `regexExtractAll('abc', '[z-a]')`)"
             }
           ],
-          "type": "list<string>",
           "calls": [
             {
               "name": "regexExtractAll",
@@ -1730,10 +1750,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexExtractAll: invalid RE2 pattern \"[z-a]\": invalid character class range"
         }
       }
@@ -1750,7 +1772,6 @@
               "message": "regexExtractAll: unknown regex flag 'x' (supported: i, m, s) (in `regexExtractAll('abc', 'b', 'gx')`)"
             }
           ],
-          "type": "list<string>",
           "calls": [
             {
               "name": "regexExtractAll",
@@ -1769,10 +1790,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "regexExtractAll: unknown regex flag 'x' (supported: i, m, s)"
         }
       }
@@ -1812,6 +1835,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexExtractAll: invalid RE2 pattern \"((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))\": expression nests too deeply"
         }
       }
@@ -1988,6 +2012,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexGroups: invalid RE2 pattern \"(?P<n\": invalid named capture"
         }
       }
@@ -2004,7 +2029,6 @@
               "message": "regexGroups: invalid RE2 pattern \"(?P<n>a)(?P<n>b)\": duplicate capture group name (in `regexGroups('abc', '(?P<n>a)(?P<n>b)')`)"
             }
           ],
-          "type": "list<string>",
           "calls": [
             {
               "name": "regexGroups",
@@ -2023,10 +2047,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexGroups: invalid RE2 pattern \"(?P<n>a)(?P<n>b)\": duplicate capture group name"
         }
       }
@@ -2043,7 +2069,6 @@
               "message": "regexGroups: unknown regex flag 'u' (supported: i, m, s) (in `regexGroups('abc', '(b)', 'u')`)"
             }
           ],
-          "type": "list<string>",
           "calls": [
             {
               "name": "regexGroups",
@@ -2062,10 +2087,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "regexGroups: unknown regex flag 'u' (supported: i, m, s)"
         }
       }
@@ -2105,6 +2132,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_regular_expression",
           "message": "regexGroups: invalid RE2 pattern \"(?:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa){1000}\": expression too large"
         }
       }
@@ -2414,7 +2442,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "found no matching overload for 'slice(int, int, int)'"
+              "message": "no overload of \"slice\" takes slice(int, int, int): slice(bytes, int, int): dyn, slice(string, int, int): dyn, slice(list<dyn>, int, int): dyn"
             }
           ],
           "calls": [
@@ -2423,9 +2451,7 @@
               "form": "global",
               "arity": 3,
               "start": 0,
-              "end": 15,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 15
             }
           ],
           "readTypes": [],
@@ -2440,7 +2466,8 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'slice(int, int, int)'\n\n>    1 | slice(42, 0, 1)\n         ^"
+          "celCode": "no_matching_overload",
+          "message": "no overload of \"slice\" takes (int, int, int)"
         }
       }
     },
@@ -2740,7 +2767,6 @@
               "message": "round: decimal places must be an integer 0-10, got 11 (in `round(1.5, 11)`)"
             }
           ],
-          "type": "double",
           "calls": [
             {
               "name": "round",
@@ -2759,10 +2785,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "round: decimal places must be an integer 0-10, got 11"
         }
       }
@@ -2779,7 +2807,6 @@
               "message": "round: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double (in `round(9007199254740993)`)"
             }
           ],
-          "type": "double",
           "calls": [
             {
               "name": "round",
@@ -2798,10 +2825,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "round: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
         }
       }
@@ -2843,6 +2872,52 @@
           "volatile": false
         },
         "value": 1.3
+      }
+    },
+    {
+      "id": "catalog/round/non_finite",
+      "tag": "cel",
+      "source": "round(x)",
+      "declarations": {
+        "x": "double"
+      },
+      "bindings": {
+        "x": {
+          "$telo": "double",
+          "value": "NaN"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 8,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "round: expected a finite number, got double"
+        }
       }
     },
     {
@@ -3169,6 +3244,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 3"
         }
       }
@@ -3208,6 +3284,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 1 (unexpected end of input)"
         }
       }
@@ -3247,6 +3324,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 2"
         }
       }
@@ -3286,6 +3364,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 0 (unexpected end of input)"
         }
       }
@@ -3325,6 +3404,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 1"
         }
       }
@@ -3364,6 +3444,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 3 (unexpected end of input)"
         }
       }
@@ -3403,6 +3484,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 2"
         }
       }
@@ -3442,6 +3524,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 11 (unexpected end of input)"
         }
       }
@@ -3517,6 +3600,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 0"
         }
       }
@@ -3556,6 +3640,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 0"
         }
       }
@@ -3595,6 +3680,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "parseJson: invalid JSON at offset 2"
         }
       }
@@ -3639,9 +3725,9 @@
           "diagnostics": [
             {
               "code": "CEL_WRONG_CALL_FORM",
-              "message": "`joinPath` is a method, not a global function — call it on the value:\n  write:  ('/data').joinPath('reports')\n  not:    joinPath('/data', 'reports')\nRegistered: Telo.HostPath.joinPath(string): Telo.HostPath, string.joinPath(string): string.",
+              "message": "\"joinPath\" is called on a value: string.joinPath(string): string, Telo.HostPath.joinPath(string): Telo.HostPath",
               "fix": {
-                "replacement": "('/data').joinPath('reports')"
+                "replacement": "\"/data\".joinPath(\"reports\")"
               }
             }
           ],
@@ -3651,9 +3737,7 @@
               "form": "global",
               "arity": 2,
               "start": 0,
-              "end": 28,
-              "deterministic": true,
-              "hostBacked": true
+              "end": 28
             }
           ],
           "readTypes": [],
@@ -3668,7 +3752,8 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'joinPath(string, string)'\n\n>    1 | joinPath('/data', 'reports')\n         ^"
+          "celCode": "no_matching_overload",
+          "message": "no overload of \"joinPath\" takes (string, string)"
         }
       }
     },
@@ -3837,6 +3922,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "bytesFromBase64: input length is not valid base64"
         }
       }
@@ -3876,6 +3962,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "bytesFromBase64: '*' is not a base64 character"
         }
       }
@@ -4269,7 +4356,9 @@
               "form": "global",
               "arity": 1,
               "start": 0,
-              "end": 11
+              "end": 11,
+              "deterministic": true,
+              "hostBacked": false
             },
             {
               "name": "now",
@@ -4318,7 +4407,9 @@
               "form": "global",
               "arity": 1,
               "start": 8,
-              "end": 41
+              "end": 41,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -4347,7 +4438,9 @@
               "form": "global",
               "arity": 1,
               "start": 0,
-              "end": 14
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
             },
             {
               "name": "nowIso",
@@ -4359,19 +4452,21 @@
               "hostBacked": false
             },
             {
-              "name": "endsWith",
-              "form": "receiver",
-              "arity": 1,
-              "start": 24,
-              "end": 46
-            },
-            {
               "name": "nowIso",
               "form": "global",
               "arity": 0,
               "start": 24,
               "end": 32,
               "deterministic": false,
+              "hostBacked": false
+            },
+            {
+              "name": "endsWith",
+              "form": "receiver",
+              "arity": 1,
+              "start": 24,
+              "end": 46,
+              "deterministic": true,
               "hostBacked": false
             }
           ],
@@ -4397,19 +4492,21 @@
           "type": "bool",
           "calls": [
             {
-              "name": "endsWith",
-              "form": "receiver",
-              "arity": 1,
-              "start": 0,
-              "end": 38
-            },
-            {
               "name": "nowIso",
               "form": "global",
               "arity": 1,
               "start": 0,
               "end": 19,
               "deterministic": false,
+              "hostBacked": false
+            },
+            {
+              "name": "endsWith",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 38,
+              "deterministic": true,
               "hostBacked": false
             }
           ],
@@ -4426,6 +4523,49 @@
       }
     },
     {
+      "id": "catalog/nowIso/unknown_zone",
+      "tag": "cel",
+      "source": "nowIso(z)",
+      "declarations": {
+        "z": "string"
+      },
+      "bindings": {
+        "z": "Nowhere/Land"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "nowIso",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 9,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [
+            "z"
+          ],
+          "volatile": true
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "nowIso: unknown IANA time zone \"Nowhere/Land\""
+        }
+      }
+    },
+    {
       "id": "catalog/today/utc",
       "tag": "cel",
       "source": "today().matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')",
@@ -4435,19 +4575,21 @@
           "type": "bool",
           "calls": [
             {
-              "name": "matches",
-              "form": "receiver",
-              "arity": 1,
-              "start": 0,
-              "end": 47
-            },
-            {
               "name": "today",
               "form": "global",
               "arity": 0,
               "start": 0,
               "end": 7,
               "deterministic": false,
+              "hostBacked": false
+            },
+            {
+              "name": "matches",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 47,
+              "deterministic": true,
               "hostBacked": false
             }
           ],
@@ -4477,7 +4619,9 @@
               "form": "global",
               "arity": 1,
               "start": 0,
-              "end": 31
+              "end": 31,
+              "deterministic": true,
+              "hostBacked": false
             },
             {
               "name": "today",
@@ -4499,6 +4643,49 @@
           "volatile": true
         },
         "value": true
+      }
+    },
+    {
+      "id": "catalog/today/unknown_zone",
+      "tag": "cel",
+      "source": "today(z)",
+      "declarations": {
+        "z": "string"
+      },
+      "bindings": {
+        "z": "Nowhere/Land"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "today",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 8,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "refs": [
+            "z"
+          ],
+          "volatile": true
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "today: unknown IANA time zone \"Nowhere/Land\""
+        }
       }
     },
     {
@@ -4586,7 +4773,9 @@
               "form": "global",
               "arity": 1,
               "start": 7,
-              "end": 40
+              "end": 40,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -4598,7 +4787,7 @@
           "refs": [],
           "volatile": false
         },
-        "value": "2009-02-13T23:31:30.000Z"
+        "value": "2009-02-13T23:31:30Z"
       }
     },
     {
@@ -4624,7 +4813,9 @@
               "form": "global",
               "arity": 1,
               "start": 7,
-              "end": 24
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -4662,7 +4853,9 @@
               "form": "global",
               "arity": 1,
               "start": 7,
-              "end": 23
+              "end": 23,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -4907,6 +5100,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "\"1y\" is not a duration"
         }
       }
@@ -4941,6 +5135,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "\"2M\" is not a duration"
         }
       }
@@ -4975,6 +5170,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_conversion",
           "message": "\"1d 30m\" is not a duration"
         }
       }
@@ -5002,7 +5198,9 @@
               "form": "global",
               "arity": 1,
               "start": 4,
-              "end": 37
+              "end": 37,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5156,7 +5354,6 @@
               "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn) (in `format(1.0, '.2q')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "format",
@@ -5175,10 +5372,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn)"
         }
       }
@@ -5195,7 +5394,6 @@
               "message": "format: decimal places must be an integer 0-10, got 11 (in `format(1.0, '.11f')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "format",
@@ -5214,10 +5412,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "format: decimal places must be an integer 0-10, got 11"
         }
       }
@@ -5234,7 +5434,6 @@
               "message": "format: invalid format specifier \"..2f\" (in `format(1.0, '..2f')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "format",
@@ -5253,10 +5452,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "format: invalid format specifier \"..2f\""
         }
       }
@@ -5273,7 +5474,6 @@
               "message": "format: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double (in `format(9007199254740993, '.0f')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "format",
@@ -5292,10 +5492,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "format: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
         }
       }
@@ -5309,7 +5511,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "found no matching overload for 'format(string, string)'"
+              "message": "no overload of \"format\" takes format(string, string): format(double, string): string, format(int, string): string"
             }
           ],
           "calls": [
@@ -5318,9 +5520,7 @@
               "form": "global",
               "arity": 2,
               "start": 0,
-              "end": 18,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 18
             }
           ],
           "readTypes": [],
@@ -5335,7 +5535,54 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'format(string, string)'\n\n>    1 | format('x', '.2f')\n         ^"
+          "celCode": "no_matching_overload",
+          "message": "no overload of \"format\" takes (string, string)"
+        }
+      }
+    },
+    {
+      "id": "catalog/format/non_finite",
+      "tag": "cel",
+      "source": "format(x, '.2f')",
+      "declarations": {
+        "x": "double"
+      },
+      "bindings": {
+        "x": {
+          "$telo": "double",
+          "value": "NaN"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 16
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "format: expected a finite number, got double"
         }
       }
     },
@@ -5413,7 +5660,6 @@
               "message": "fixed: decimal places must be an integer 0-10, got 11 (in `fixed(1.0, 11)`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "fixed",
@@ -5432,10 +5678,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "fixed: decimal places must be an integer 0-10, got 11"
         }
       }
@@ -5452,7 +5700,6 @@
               "message": "fixed: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double (in `fixed(9007199254740993, 1)`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "fixed",
@@ -5471,11 +5718,59 @@
             }
           ],
           "refs": [],
+          "volatile": false,
+          "readTypes": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "fixed: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
+        }
+      }
+    },
+    {
+      "id": "catalog/fixed/non_finite",
+      "tag": "cel",
+      "source": "fixed(x, 2)",
+      "declarations": {
+        "x": "double"
+      },
+      "bindings": {
+        "x": {
+          "$telo": "double",
+          "value": "NaN"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "fixed",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 11,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [
+            "x"
+          ],
           "volatile": false
         },
         "error": {
           "code": null,
-          "message": "fixed: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
+          "celCode": "invalid_argument",
+          "message": "fixed: expected a finite number, got double"
         }
       }
     },
@@ -5553,7 +5848,6 @@
               "message": "formatDuration: minutesPerDay must be a positive number, got 0 (in `formatDuration(10, 0)`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "formatDuration",
@@ -5572,10 +5866,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "formatDuration: minutesPerDay must be a positive number, got 0"
         }
       }
@@ -5592,7 +5888,6 @@
               "message": "formatDuration: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double (in `formatDuration(9007199254740993, 480)`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "formatDuration",
@@ -5611,11 +5906,59 @@
             }
           ],
           "refs": [],
+          "volatile": false,
+          "readTypes": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "formatDuration: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
+        }
+      }
+    },
+    {
+      "id": "catalog/formatDuration/non_finite",
+      "tag": "cel",
+      "source": "formatDuration(x, 480)",
+      "declarations": {
+        "x": "double"
+      },
+      "bindings": {
+        "x": {
+          "$telo": "double",
+          "value": "NaN"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "formatDuration",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [
+            "x"
+          ],
           "volatile": false
         },
         "error": {
           "code": null,
-          "message": "formatDuration: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
+          "celCode": "invalid_argument",
+          "message": "formatDuration: expected a finite number, got double"
         }
       }
     },
@@ -5642,7 +5985,9 @@
               "form": "global",
               "arity": 1,
               "start": 7,
-              "end": 40
+              "end": 40,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5680,7 +6025,9 @@
               "form": "global",
               "arity": 1,
               "start": 7,
-              "end": 40
+              "end": 40,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5707,7 +6054,6 @@
               "message": "dateIn: unknown IANA time zone \"Mars/Olympus\" (in `dateIn(timestamp('2026-03-01T03:00:00Z'), 'Mars/Olympus')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "dateIn",
@@ -5723,7 +6069,9 @@
               "form": "global",
               "arity": 1,
               "start": 7,
-              "end": 40
+              "end": 40,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5733,10 +6081,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "dateIn: unknown IANA time zone \"Mars/Olympus\""
         }
       }
@@ -5767,7 +6117,9 @@
               "form": "global",
               "arity": 1,
               "start": 7,
-              "end": 40
+              "end": 40,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5783,6 +6135,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "dateIn: unknown IANA time zone \"Mars/\\\"Olympus\\\"\\té\""
         }
       }
@@ -5810,7 +6163,9 @@
               "form": "global",
               "arity": 1,
               "start": 6,
-              "end": 39
+              "end": 39,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5848,7 +6203,9 @@
               "form": "global",
               "arity": 1,
               "start": 6,
-              "end": 39
+              "end": 39,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5875,7 +6232,6 @@
               "message": "isoIn: unknown IANA time zone \"Nowhere/Land\" (in `isoIn(timestamp('2026-06-06T23:30:00Z'), 'Nowhere/Land')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "isoIn",
@@ -5891,7 +6247,9 @@
               "form": "global",
               "arity": 1,
               "start": 6,
-              "end": 39
+              "end": 39,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5901,10 +6259,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "isoIn: unknown IANA time zone \"Nowhere/Land\""
         }
       }
@@ -5932,7 +6292,9 @@
               "form": "global",
               "arity": 1,
               "start": 13,
-              "end": 46
+              "end": 46,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5946,7 +6308,7 @@
         },
         "value": {
           "$telo": "google.protobuf.Timestamp",
-          "value": "2026-03-01T00:00:00.000Z"
+          "value": "2026-03-01T00:00:00Z"
         }
       }
     },
@@ -5973,7 +6335,9 @@
               "form": "global",
               "arity": 1,
               "start": 13,
-              "end": 46
+              "end": 46,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -5987,7 +6351,7 @@
         },
         "value": {
           "$telo": "google.protobuf.Timestamp",
-          "value": "2021-02-28T23:00:00.000Z"
+          "value": "2021-02-28T23:00:00Z"
         }
       }
     },
@@ -6003,7 +6367,6 @@
               "message": "startOfMonth: unknown IANA time zone \"Nowhere/Land\" (in `startOfMonth(timestamp('2026-03-15T10:30:00Z'), 'Nowhere/Land')`)"
             }
           ],
-          "type": "google.protobuf.Timestamp",
           "calls": [
             {
               "name": "startOfMonth",
@@ -6019,7 +6382,9 @@
               "form": "global",
               "arity": 1,
               "start": 13,
-              "end": 46
+              "end": 46,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -6029,10 +6394,12 @@
             }
           ],
           "refs": [],
-          "volatile": false
+          "volatile": false,
+          "readTypes": []
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "startOfMonth: unknown IANA time zone \"Nowhere/Land\""
         }
       }
@@ -6060,7 +6427,9 @@
               "form": "global",
               "arity": 1,
               "start": 10,
-              "end": 43
+              "end": 43,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -6074,7 +6443,7 @@
         },
         "value": {
           "$telo": "google.protobuf.Timestamp",
-          "value": "2026-02-28T12:00:00.000Z"
+          "value": "2026-02-28T12:00:00Z"
         }
       }
     },
@@ -6101,7 +6470,9 @@
               "form": "global",
               "arity": 1,
               "start": 10,
-              "end": 43
+              "end": 43,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -6115,7 +6486,7 @@
         },
         "value": {
           "$telo": "google.protobuf.Timestamp",
-          "value": "2025-01-15T10:30:00.000Z"
+          "value": "2025-01-15T10:30:00Z"
         }
       }
     },
@@ -6142,7 +6513,9 @@
               "form": "global",
               "arity": 1,
               "start": 10,
-              "end": 43
+              "end": 43,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -6156,7 +6529,7 @@
         },
         "value": {
           "$telo": "google.protobuf.Timestamp",
-          "value": "2021-03-14T07:30:00.000Z"
+          "value": "2021-03-14T07:30:00Z"
         }
       }
     },
@@ -6172,7 +6545,6 @@
               "message": "addMonths: unknown IANA time zone \"Nowhere/Land\" (in `addMonths(timestamp('2026-03-15T10:30:00Z'), 1, 'Nowhere/Land')`)"
             }
           ],
-          "type": "google.protobuf.Timestamp",
           "calls": [
             {
               "name": "addMonths",
@@ -6188,7 +6560,9 @@
               "form": "global",
               "arity": 1,
               "start": 10,
-              "end": 43
+              "end": 43,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -6198,11 +6572,150 @@
             }
           ],
           "refs": [],
+          "volatile": false,
+          "readTypes": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "addMonths: unknown IANA time zone \"Nowhere/Land\""
+        }
+      }
+    },
+    {
+      "id": "catalog/addMonths/result_after_range",
+      "tag": "cel",
+      "source": "addMonths(t, 1)",
+      "declarations": {
+        "t": "google.protobuf.Timestamp"
+      },
+      "bindings": {
+        "t": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "9999-12-15T00:00:00Z"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "addMonths",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [
+            "t"
+          ],
           "volatile": false
         },
         "error": {
           "code": null,
-          "message": "addMonths: unknown IANA time zone \"Nowhere/Land\""
+          "celCode": "invalid_conversion",
+          "message": "addMonths: the result is outside the range of a timestamp"
+        }
+      }
+    },
+    {
+      "id": "catalog/addMonths/result_before_range",
+      "tag": "cel",
+      "source": "addMonths(t, -1)",
+      "declarations": {
+        "t": "google.protobuf.Timestamp"
+      },
+      "bindings": {
+        "t": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "0001-01-15T00:00:00Z"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "addMonths",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 16
+            }
+          ],
+          "refs": [
+            "t"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_conversion",
+          "message": "addMonths: the result is outside the range of a timestamp"
+        }
+      }
+    },
+    {
+      "id": "catalog/addMonths/year_below_100",
+      "tag": "cel",
+      "source": "addMonths(t, 1)",
+      "declarations": {
+        "t": "google.protobuf.Timestamp"
+      },
+      "bindings": {
+        "t": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "0050-01-31T00:00:00Z"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "addMonths",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [
+            "t"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "0050-02-28T00:00:00Z"
         }
       }
     },
@@ -6289,7 +6802,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "found no matching overload for 'compact(google.protobuf.Timestamp)'"
+              "message": "no overload of \"compact\" takes compact(google.protobuf.Timestamp): compact(list<dyn>): list<dyn>, compact(map<dyn, dyn>): map<dyn, dyn>"
             }
           ],
           "calls": [
@@ -6298,16 +6811,16 @@
               "form": "global",
               "arity": 1,
               "start": 0,
-              "end": 42,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 42
             },
             {
               "name": "timestamp",
               "form": "global",
               "arity": 1,
               "start": 8,
-              "end": 41
+              "end": 41,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "readTypes": [],
@@ -6322,7 +6835,8 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'compact(google.protobuf.Timestamp)'\n\n>    1 | compact(timestamp('2026-03-15T10:30:00Z'))\n         ^"
+          "celCode": "no_matching_overload",
+          "message": "no overload of \"compact\" takes (google.protobuf.Timestamp)"
         }
       }
     },
@@ -6379,7 +6893,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "found no matching overload for 'merge(list<int>, map<string, int>)'"
+              "message": "no overload of \"merge\" takes merge(list<int>, map<string, int>): merge(map<dyn, dyn>, map<dyn, dyn>): map<dyn, dyn>"
             }
           ],
           "calls": [
@@ -6388,9 +6902,7 @@
               "form": "global",
               "arity": 2,
               "start": 0,
-              "end": 20,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 20
             }
           ],
           "readTypes": [],
@@ -6405,7 +6917,8 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'merge(list<int>, map<string, int>)'\n\n>    1 | merge([1], {'a': 1})\n         ^"
+          "celCode": "no_matching_overload",
+          "message": "no overload of \"merge\" takes (list, map)"
         }
       }
     },

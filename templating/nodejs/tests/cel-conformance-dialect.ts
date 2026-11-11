@@ -12,10 +12,13 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { registerValueTypes } from "../src/cel/value-types.js";
-import { RuntimeError } from "@telorun/sdk";
+import { celTypeOfValueType, RuntimeError, VALUE_TYPES } from "@telorun/sdk";
 import {
   catalogImplementation,
   catalogLiteralCheck,
+  CelEngineError,
+  CelEvaluationError,
+  celError,
   functionCatalog,
   parseSignature,
   signatureKey,
@@ -23,7 +26,7 @@ import {
   type CelEnvironment,
 } from "@telorun/cel";
 import { builtinEngines } from "../src/builtins.js";
-import { buildCelLanguageEnvironment, type CelHandlers } from "../src/cel/environment.js";
+import { buildCelEnvironment, buildCelLanguageEnvironment, type CelHandlers } from "../src/cel/environment.js";
 import { MODULE_CALL_DISPATCH_KEY, type ModuleCallDispatch } from "../src/cel/module-call.js";
 import type { AnalyzeEnv, TemplatingEngine } from "../src/engine.js";
 import { typedFrameText, type ConformanceValue, type ConformanceValueCodec } from "./cel-conformance-value.js";
@@ -31,7 +34,15 @@ import { typedFrameText, type ConformanceValue, type ConformanceValueCodec } fro
 /** A CEL type expression, or a record whose fields are declarations in turn. */
 export type Declaration = string | { fields: Record<string, Declaration> };
 
+/** An error as a row records one: at most one of `code` and `celCode` is non-null. */
 export interface ConformanceError {
+  code: string | null;
+  celCode: string | null;
+  message: string;
+}
+
+/** What a module function is scripted to throw: a Telo code or none. */
+export interface ModuleFunctionError {
   code: string | null;
   message: string;
 }
@@ -42,10 +53,22 @@ export type ConformanceFunction =
 
 const TELO_CODE = /^ERR_[A-Z0-9_]+$/;
 
+/**
+ * The error that left the seam, as a row records it — never its cause. An engine error
+ * carries its code as `celCode`, a Telo error as `code`, an error with no code neither; an
+ * error carrying any other code is one the format cannot record, so the row fails.
+ */
 export function conformanceError(err: unknown): ConformanceError {
+  if (err instanceof CelEvaluationError || err instanceof CelEngineError) {
+    return { code: null, celCode: err.code, message: err.message };
+  }
   if (!(err instanceof Error)) throw new Error(`Evaluation threw a non-Error value: ${String(err)}`);
   const code = (err as { code?: unknown }).code;
-  return { code: typeof code === "string" && TELO_CODE.test(code) ? code : null, message: err.message };
+  if (code === undefined) return { code: null, celCode: null, message: err.message };
+  if (typeof code === "string" && TELO_CODE.test(code)) return { code, celCode: null, message: err.message };
+  throw new Error(
+    `${err.name} carries the code ${JSON.stringify(code)}, which is neither a Telo error code nor the engine's own: ${err.message}`,
+  );
 }
 
 /** A module function as the host answers for it, and what it does when dispatched. */
@@ -55,7 +78,7 @@ export interface ModuleFunction {
   hostBacked: boolean;
   resultSchema?: Record<string, unknown>;
   result?: ConformanceValue;
-  error?: ConformanceError;
+  error?: ModuleFunctionError;
 }
 
 export interface DialectModules {
@@ -154,6 +177,27 @@ export const CONFORMANCE_HANDLERS: CelHandlers = {
   joinPath: (...args) => frameArgs("joinPath", args),
 };
 
+/**
+ * The conformance handler rule applied to the conversion each value type with members
+ * implements: `string(<value>)` answers `string(<conformance text of the value>)`, so a row
+ * pins what the engine hands the host's encoder rather than the encoder's text (which its
+ * own encoding vectors pin). Read off the value-type entries; no type is named here.
+ */
+export function withConformanceConversions(env: CelEnvironment, codec: ConformanceValueCodec): CelEnvironment {
+  for (const entry of VALUE_TYPES.values()) {
+    if (entry.members === undefined) continue;
+    env.registerFunction(`string(${celTypeOfValueType(entry)}): string`, {
+      implementation: (ctx, value) => `string(${JSON.stringify(codec.encode(value))})`,
+    });
+  }
+  return env;
+}
+
+/** The dialect environment the rows run against, its handlers and conversions the conformance set. */
+export function conformanceEnvironment(codec: ConformanceValueCodec): CelEnvironment {
+  return withConformanceConversions(buildCelEnvironment(CONFORMANCE_HANDLERS), codec);
+}
+
 /** Every overload the catalog registers, by the signature it registers under. */
 export function catalogOverloads(): { name: string; signature: string }[] {
   return functionCatalog().flatMap((fn) =>
@@ -204,10 +248,9 @@ function withFunctions(env: CelEnvironment, row: DialectRow, codec: ConformanceV
   const cloned = env.clone();
   for (const fn of row.functions ?? []) {
     cloned.registerFunction(fn.signature, {
-      implementation: () => {
-        if ("error" in fn) throw new Error(fn.error);
-        return codec.decode(fn.result) as never;
-      },
+      // A declared function fails as a registered implementation does: with a CEL error
+      // value, its code fixed by the format.
+      implementation: () => ("error" in fn ? celError("invalid_argument", fn.error) : (codec.decode(fn.result) as never)),
     });
   }
   return cloned;

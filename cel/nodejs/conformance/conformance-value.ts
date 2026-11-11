@@ -175,8 +175,8 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/** A recorded value as a value of this engine. Throws on a node the encoding does not define. */
-export function decodeConformanceValue(node: ConformanceValue): CelValue {
+/** A recorded node as a value of this engine. Throws on a node the encoding does not define. */
+function decodeConformanceValue(node: ConformanceValue): CelValue {
   if (node === null || typeof node === "boolean" || typeof node === "string") return node;
   if (typeof node === "number") return node;
   if (Array.isArray(node)) return node.map((held) => decodeConformanceValue(held));
@@ -188,8 +188,9 @@ export function decodeConformanceValue(node: ConformanceValue): CelValue {
 }
 
 /**
- * A recorded node read only in its canonical writing: it must be exactly what the writer
- * writes for the value it reads, so a file holds one text per value.
+ * A recorded node as a value of this engine, read only in its canonical writing: it must be
+ * exactly what the writer writes for the value it reads, so a file holds one text per value.
+ * This is the codec's one reader.
  */
 export function readCanonicalConformanceValue(node: ConformanceValue): CelValue {
   const value = decodeConformanceValue(node);
@@ -276,20 +277,7 @@ function expectValue(value: CelValue): CelValue {
   return value;
 }
 
-/**
- * The canonical text of a recorded node or an engine value — what the two sides of a
- * comparison are reduced to. A recorded node goes through the engine's domain first, so a
- * row written in a form that is not canonical is caught rather than compared loosely.
- */
+/** The canonical text of a value: what the conformance handler set hands back for an argument. */
 export function conformanceText(value: CelValue): string {
   return JSON.stringify(encodeConformanceValue(value));
-}
-
-/** Kept for a message: a value the engine answered, however it is written. */
-export function describeValue(value: CelValue): string {
-  try {
-    return conformanceText(value);
-  } catch (cause) {
-    return `<${(cause as Error).message}>`;
-  }
 }

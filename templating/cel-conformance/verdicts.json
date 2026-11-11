@@ -22,6 +22,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"1 +\" could not be read: the expression ends before it is complete"
         }
       }
@@ -48,6 +49,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"'abc\" could not be read: unterminated string"
         }
       }
@@ -69,6 +71,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!interpolate: the hole opened at offset 14 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -90,6 +93,7 @@
         },
         "error": {
           "code": null,
+          "celCode": null,
           "message": "!sql: the hole opened at offset 31 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
@@ -116,6 +120,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"1 +\" could not be read: the expression ends before it is complete"
         }
       }
@@ -150,6 +155,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unreadable_expression",
           "message": "\"1 +\" could not be read: the expression ends before it is complete"
         }
       }
@@ -179,6 +185,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"+\" takes (int, string)"
         }
       }
@@ -216,6 +223,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"lower\" takes (int)"
         }
       }
@@ -253,6 +261,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"lower\" takes (string, string)"
         }
       }
@@ -295,6 +304,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"in\" takes (int, int)"
         }
       }
@@ -345,6 +355,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"now\" takes (int)"
         }
       }
@@ -395,6 +406,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"+\" takes (int, string)"
         }
       }
@@ -448,6 +460,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"+\" takes (int, string)"
         }
       }
@@ -477,6 +490,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"+\" takes (int, string)"
         }
       }
@@ -506,6 +520,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"+\" takes (int, string)"
         }
       }
@@ -552,6 +567,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"prt\""
         }
       }
@@ -632,6 +648,53 @@
       }
     },
     {
+      "id": "verdicts/CEL_TYPE_ERROR/stream_declared_and_schema",
+      "tag": "cel",
+      "source": "s.text",
+      "declarations": {
+        "s": "Stream"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "s": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "Stream holds no members"
+            },
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'s' yields a stream \u2014 pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [
+            "s"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_variable",
+          "message": "no such variable: s.text"
+        }
+      }
+    },
+    {
       "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/root",
       "tag": "cel",
       "source": "fff",
@@ -659,6 +722,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: fff"
         }
       }
@@ -685,6 +749,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: fff"
         }
       }
@@ -727,6 +792,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: missing"
         }
       }
@@ -764,6 +830,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: missing.a"
         }
       }
@@ -851,6 +918,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: Foo"
         }
       }
@@ -921,6 +989,7 @@
         "dispatched": [],
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: missing"
         }
       }
@@ -1050,6 +1119,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"nme\""
         }
       }
@@ -1179,6 +1249,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: reqest.query"
         }
       }
@@ -1308,6 +1379,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"amont\""
         }
       }
@@ -1437,6 +1509,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"lbel\""
         }
       }
@@ -1561,6 +1634,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"accept\""
         }
       }
@@ -1607,6 +1681,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"nme\""
         }
       }
@@ -1716,6 +1791,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: body.text"
         }
       }
@@ -1871,6 +1947,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: feed.text"
         }
       }
@@ -2021,6 +2098,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unsupported_container",
           "message": "this value holds no members"
         }
       }
@@ -2171,6 +2249,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unsupported_container",
           "message": "this value holds no members"
         }
       }
@@ -2478,6 +2557,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"b\""
         }
       }
@@ -2533,6 +2613,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"zzz\""
         }
       }
@@ -2683,6 +2764,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"b\""
         }
       }
@@ -2747,6 +2829,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"zzz\""
         }
       }
@@ -2902,6 +2985,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"zzz\""
         }
       }
@@ -3052,6 +3136,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"zzz\""
         }
       }
@@ -3207,6 +3292,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"zzz\""
         }
       }
@@ -3340,6 +3426,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"nme\""
         }
       }
@@ -3399,6 +3486,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"prt\""
         }
       }
@@ -3471,6 +3559,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"prt\""
         }
       }
@@ -3518,6 +3607,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"prt\""
         }
       }
@@ -3581,6 +3671,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_variable",
           "message": "no such variable: other.x"
         }
       }
@@ -3652,6 +3743,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"prt\""
         }
       }
@@ -3772,6 +3864,7 @@
         ],
         "error": {
           "code": null,
+          "celCode": "no_such_key",
           "message": "no such key: \"qy\""
         }
       }
@@ -3809,6 +3902,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"uppe\" takes (string)"
         }
       }
@@ -3846,6 +3940,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"no\" takes ()"
         }
       }
@@ -3883,6 +3978,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"frobnicate\" takes ()"
         }
       }
@@ -3920,6 +4016,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"endsWit\" takes (string, string)"
         }
       }
@@ -3957,6 +4054,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"frobnicate\" takes (string)"
         }
       }
@@ -4005,6 +4103,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"uppe\" takes (string)"
         }
       }
@@ -4084,6 +4183,7 @@
         ],
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"uppe\" takes (string)"
         }
       }
@@ -4124,6 +4224,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"lower\" takes (string)"
         }
       }
@@ -4164,6 +4265,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"replace\" takes (string, string, string)"
         }
       }
@@ -4211,6 +4313,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"startsWith\" takes (string, string)"
         }
       }
@@ -4260,6 +4363,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"startsWith\" takes (string, string)"
         }
       }
@@ -4300,6 +4404,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"startsWith\" takes (string, string)"
         }
       }
@@ -4349,6 +4454,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"lower\" takes (string)"
         }
       }
@@ -4734,6 +4840,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "unsupported_container",
           "message": "this value holds no members"
         }
       }
@@ -7626,6 +7733,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ codes }}' at offset 25 of !interpolate \"Note: ${{ note }}, codes ${{ codes }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -7888,6 +7996,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn)"
         }
       }
@@ -7927,6 +8036,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "round: decimal places must be an integer 0-10, got -1"
         }
       }
@@ -7964,6 +8074,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"format\" takes (string, string)"
         }
       }
@@ -8016,6 +8127,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "fixed: decimal places must be an integer 0-10, got 11"
         }
       }
@@ -8055,6 +8167,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "invalid_argument",
           "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn)"
         }
       }
@@ -8242,6 +8355,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ request.items }}' at offset 7 of !interpolate \"items: ${{ request.items }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -8282,6 +8396,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ {'a': [1]} }}' at offset 17 of !interpolate \"${{ 'ok' }} then ${{ {'a': [1]} }} then ${{ [true] }}\" evaluated to a map, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -8310,6 +8425,7 @@
         },
         "error": {
           "code": null,
+          "celCode": "no_matching_overload",
           "message": "no overload of \"+\" takes (int, string)"
         }
       }
@@ -8406,6 +8522,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ name }}' at offset 6 of !interpolate \"Hello ${{ name }}!\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -8442,6 +8559,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ b.c }}' at offset 10 of !interpolate \"${{ a }}\\n\\\"${{ b.c }}\\\"\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -8470,6 +8588,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ x }}' at offset 8 of !interpolate \"\u00e9\\t\\u001f\u007f\u2028/\ud83d\ude00${{ x }}\\b\\f\\r\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -8498,6 +8617,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ m }}' at offset 0 of !interpolate \"${{ m }}\" evaluated to a map, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
@@ -8555,6 +8675,7 @@
         ],
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "celCode": null,
           "message": "the hole '${{ Billing.nothing() }}' at offset 0 of !interpolate \"${{ Billing.nothing() }}\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }

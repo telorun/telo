@@ -67727,6 +67727,40 @@
           }
         }
       }
+    },
+    {
+      "id": "telo/value/none",
+      "source": "optional.none().value()",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "value",
+              "form": "receiver",
+              "arity": 0,
+              "range": {
+                "start": 0,
+                "end": 23
+              },
+              "signature": "optional<A>.value(): A",
+              "returns": "dyn",
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "celCode": "optional_value_missing",
+          "message": "the optional holds no value",
+          "range": {
+            "start": 0,
+            "end": 23
+          }
+        }
+      }
     }
   ]
 }

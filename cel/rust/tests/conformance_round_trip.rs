@@ -36,12 +36,12 @@ use telorun_cel::{
 
 /// `(file, its rows, the rows selected, the rows excluded, the selected rows that do not read)`.
 const NODE_COUNTS: [(&str, usize, usize, usize, usize); 6] = [
-    ("language.json", 1815, 1815, 0, 0),
-    ("catalog.json", 186, 186, 0, 0),
+    ("language.json", 1816, 1816, 0, 0),
+    ("catalog.json", 195, 195, 0, 0),
     ("types.json", 74, 74, 0, 0),
     ("holes.json", 97, 5, 92, 2),
     ("module-calls.json", 53, 49, 4, 0),
-    ("verdicts.json", 111, 94, 17, 2),
+    ("verdicts.json", 112, 95, 17, 2),
 ];
 
 /// Every selected row that does not read, with the code of its diagnostic.
@@ -52,7 +52,7 @@ const NODE_REFUSED: [(&str, CelSyntaxCode); 4] = [
     ("verdicts/CEL_SYNTAX_ERROR/unterminated_string", CelSyntaxCode::UnterminatedString),
 ];
 
-const NODE_LANGUAGE_ROUND_TRIPPED: usize = 1815;
+const NODE_LANGUAGE_ROUND_TRIPPED: usize = 1816;
 
 /// The files every row of which is an expression.
 const WHOLE_FILES: [&str; 3] = ["language.json", "catalog.json", "types.json"];
