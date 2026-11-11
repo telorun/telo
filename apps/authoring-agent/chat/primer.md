@@ -3299,7 +3299,9 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   another scheme is `URL_INVALID`, a computed one `ERR_INPUT_INVALID`) and
   output `null`. Every call logs `telo.url.open_requested` with `url.full`;
   `telo run` at a terminal also opens it in the browser, at most once per URL
-  per session, and every other host (`--no-input`, runners, CI) only logs. It
+  per session; under a runner (Studio) the runner forwards the request and
+  Studio asks the user to open it at the address they can reach; every other
+  host (`--no-input`, CI) only logs. It
   never fails the app and never blocks the targets after it. Declare it as a
   NAMED resource and list a step AFTER the server in `targets:` (an inline
   `invoke: { kind: … }` is not allowed in an Application's `targets:`):
@@ -5927,6 +5929,30 @@ order and stop at the first step that answers it:
      `.probes/x.yaml`, passes after the change" is a fix. "Should be resolved
      now" is not one — and when you could not reproduce it, say that instead.
 
+## Showing what you built — a page to open, an API with a face
+
+An application that serves HTTP is shown, not only started. Two rules, both
+applied to every app you build:
+
+- **An API is showcased by a UI or by reference docs.** Give it a UI (the
+  "Screens" section) when the app is about what a person does in a page. Every
+  other API gets `Http.Reference` — mount it at `/docs` on a server that
+  declares `openapi:` (the title and version; the server collects the document
+  from the mounted routes' schemas, so a server with no `openapi:` block is
+  `REFERRER_RULE_VIOLATED`): `mounts: [{ path: /v1, mount: !ref routes }, { path:
+  /docs, mount: { kind: Http.Reference } }]`. When the server's mounts declare
+  `authentication:`, the docs mount declares `authentication: { anonymous: allow
+  }` too, or the server refuses the mix as `RESOURCE_RULE_VIOLATED`. An API with
+  neither is an unfinished task, however well it checks.
+- **The page is opened.** An app serving a UI, or an API with docs, lists a
+  `Telo.OpenUrl` step in `targets:` right after the server (the bullet "Opening
+  the app's own page" above has the shape), with the UI's address — or the
+  docs' `/docs/` — as its `url`, built from the port:
+  `url: !interpolate "http://localhost:${{ ports.http }}/docs/"`. Declaring
+  `Telo.OpenUrl` needs `requires: { telo: ">=0.133.0" }` on the Application, the
+  release that introduced the kind; an app that already requires a newer telo
+  keeps its own floor.
+
 ## Act — and what DONE means
 
 This section governs every turn EXCEPT a question round above, which writes
@@ -5955,7 +5981,8 @@ them — all. Check them off before you reply:
   4. `apps/<slug>/telo.yaml` EXISTS — the `Telo.Application` a user runs —
      and wires those libraries and nothing else. A test is not it: a test
      proves the libraries, the application is what is asked for. With no
-     server, its `targets:` run what the request said the app does.
+     server, its `targets:` run what the request said the app does. With an
+     HTTP server, it also showcases and opens it ("Showing what you built").
   5. Every file you touched last checked `check: clean`.
   6. `run_manifest` on the suite came back with no `exit` line — or it answered
      `ERR_MANIFEST_RUNS_NOT_ALLOWED`, which you then say plainly.

@@ -225,6 +225,20 @@ describe("running an app", () => {
     expect(seen.map((h) => h["last-event-id"])).toEqual([undefined, undefined]);
   });
 
+  it("publishes an openUrl event for a relayed Kernel.OpenUrlRequested frame, once per generation", async () => {
+    const urls = ["http://localhost:3000/docs/", "http://localhost:3000/docs/", "javascript:alert(1)"];
+    const inspect = await sseServer(() => undefined, urls);
+    const backend = new FakeWorkloadBackend();
+    backend.addresses = () => ({ inspect: { listen: "0.0.0.0:9230", url: inspect.url }, host: "127.0.0.1" });
+    const b = await boot({ backend });
+    const s = await create(b);
+
+    await call(b, s, "POST", "/apps/web/run", { env: {}, io: "tty" });
+    await expect.poll(() => events(b, s.id).filter((e) => e.type === "openUrl")).toEqual([
+      { type: "openUrl", app: "web", generation: 1, url: "http://localhost:3000/docs/", reach: "port", port: 3000 },
+    ]);
+  });
+
   it("reports reachability of an app's ports only while it runs", async () => {
     const b = await boot();
     const s = await create(b);
@@ -593,7 +607,10 @@ function runStarts(b: Booted, sessionId: string) {
 }
 
 /** An inspect endpoint that answers each connection with one `Kernel.Starting`. */
-async function sseServer(onConnect: (headers: IncomingHttpHeaders) => void): Promise<{ url: string }> {
+async function sseServer(
+  onConnect: (headers: IncomingHttpHeaders) => void,
+  openUrls: string[] = [],
+): Promise<{ url: string }> {
   const server: Server = createServer((req, res) => {
     onConnect(req.headers);
     res.writeHead(200, { "content-type": "text/event-stream" });
@@ -604,6 +621,16 @@ async function sseServer(onConnect: (headers: IncomingHttpHeaders) => void): Pro
         event: "Kernel.Starting",
         payload: {},
       })}\n\n`,
+    );
+    openUrls.forEach((url, i) =>
+      res.write(
+        `id: ${8 + i}\nevent: debug\ndata: ${JSON.stringify({
+          kind: "event",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          event: "Kernel.OpenUrlRequested",
+          payload: { url },
+        })}\n\n`,
+      ),
     );
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

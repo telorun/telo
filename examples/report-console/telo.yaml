@@ -12,7 +12,7 @@ metadata:
     rows draft an e-mail or upload the report. A second page lists a sheet's
     projects in a table listing. The backend is a set of stub routes over fixture data.
 # 0.129.0: the `translations:` block and ui's shipped translations.
-requires: { telo: ">=0.129.0" }
+requires: { telo: ">=0.133.0" }
 lang: en
 imports:
   Http: ../../modules/http-server
@@ -30,6 +30,7 @@ translations:
     - !ref polish
 targets:
   - !ref server
+  - { name: openApp, invoke: !ref openApp, inputs: { url: !interpolate "http://localhost:${{ ports.http }}" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8140 } }
 ---
 # What the sign-in check answers: whether a session is open, and why the last
@@ -666,3 +667,6 @@ mounts:
           content: { application/problem+json: {} }
   - path: /
     mount: !ref console
+---
+kind: Telo.OpenUrl
+metadata: { name: openApp }

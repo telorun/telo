@@ -1,18 +1,18 @@
 # Building a user interface
 
 `ui` is the
-vocabulary (pages, listings, forms, actions, filter bars, surfaces, tokens);
+vocabulary (pages, listings, forms, actions, filters, surfaces, tokens);
 `ui-react` is a renderer serving it as data a prebuilt React app interprets,
 styled by a swappable theme.
 
-Rules throughout:
+Rules:
 
 - **No frontend code, and no `JS.Script`.** Everything a
   screen does is a declared kind; a component of your own is a library's
   browser entry.
 - **Exact schemas and `imports:` lines** of `ui`, `ui-react`, `http-server`,
   `data-model` and, for an admin screen, `crud` and `crud-ui` are on the
-  [hub](https://hub.telo.run) (`get_kinds` over MCP).
+  [hub](https://hub.telo.run) (`get_kinds`).
 - **The API comes first.** A screen calls routes, never a database or an
   invocable: declare the routes, then the screen.
 
@@ -20,7 +20,7 @@ Rules throughout:
 
 Reach for `ui` when a person browses, filters, creates, edits or deletes
 records, or runs an operation. A static page is a
-template module; a machine needs the API.
+template module.
 
 The **application** imports `ui`, `ui-react` and `http-server`, mounts the
 renderer on its server and owns the pages. A **library** describing its own
@@ -69,7 +69,8 @@ mounts:
 ```
 
 `UiReact.App` stays named, as any mounted router; a composite used once is
-inline (`ref: { kind: Ui.Listing, … }`); `taskTable` is used twice.
+inline (`ref: { kind: Ui.Listing, … }`); `taskTable` is used twice. List a
+`Telo.OpenUrl` after the server in `targets:` to open the page.
 
 - `title` and `theme` (the look: `!ref UiReact.defaultTheme`, or another) are
   required. `pages` (at least one) are `Ui.Page`s — `{ path, title?, query?,
@@ -85,7 +86,7 @@ inline (`ref: { kind: Ui.Listing, … }`); `taskTable` is used twice.
 - Optional: `translations: { catalogs }` of `Telo.TextTranslations` serve texts
   in the negotiated `request.lang` (`Http.Server.preferredLanguages`); the
   renderer's own texts are English, so list `ui`'s `Ui.polishTranslations`, …
-  (fourteen languages) to translate them and a `Ui.Translations` (`messages:
+  to translate them and a `Ui.Translations` (`messages:
   { save: Submit }`) to reword. Also `tokens`, `stylesheets` (`!module-path
   ./ui.css`), `compactBelow`, `pageWidth` (`contained` or `full`; a page's
   `width` wins), `header: { start?, end?, width? }`.

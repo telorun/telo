@@ -13,31 +13,19 @@ metadata:
         STRIPE_SECRET_KEY=sk_test_demo_value
     Run, then:
         curl -X POST http://localhost:4444/v1/charge
-imports:
-  Http: ../../modules/http-server
-  JavaScript: ../../modules/javascript
+requires: { telo: ">=0.133.0" }
+imports: { Http: ../../modules/http-server, JavaScript: ../../modules/javascript }
 targets:
   - !ref paymentServer
-ports:
-  http:
-    env: PORT
-    default: 4444
-variables:
-  apiBaseUrl:
-    env: API_BASE_URL
-    type: string
-secrets:
-  stripeSecretKey:
-    env: STRIPE_SECRET_KEY
-    type: string
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
+ports: { http: { env: PORT, default: 4444 } }
+variables: { apiBaseUrl: { env: API_BASE_URL, type: string } }
+secrets: { stripeSecretKey: { env: STRIPE_SECRET_KEY, type: string } }
 ---
 kind: Http.Api
-metadata:
-  name: paymentApi
+metadata: { name: paymentApi }
 routes:
-  - request:
-      path: /charge
-      method: POST
+  - request: { path: /charge, method: POST }
     handler:
       kind: JavaScript.Script
       code: |
@@ -60,14 +48,14 @@ routes:
               keyHint: !cel "result.keyHint"
 ---
 kind: Http.Server
-metadata:
-  name: paymentServer
-openapi:
-  info:
-    title: Configurable HTTP server
-    version: 1.0.0
+metadata: { name: paymentServer }
+openapi: { info: { title: Configurable HTTP server, version: 1.0.0 } }
 listen:
   port: !cel "ports.http"
 mounts:
   - path: /v1
     mount: !ref paymentApi
+  - { path: /docs, mount: { kind: Http.Reference } }
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

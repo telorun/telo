@@ -10,44 +10,31 @@ metadata:
 
     Run, then:
         curl 'http://localhost:8845/v1/hello?name=World'
-imports:
-  Http: ../../modules/http-server
-  Run: ../../modules/run
+requires: { telo: ">=0.133.0" }
+imports: { Http: ../../modules/http-server, Run: ../../modules/run }
 targets:
   - !ref exampleServer
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8845
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
+ports: { http: { env: PORT, protocol: tcp, default: 8845 } }
 ---
 kind: Http.Server
-metadata:
-  name: exampleServer
+metadata: { name: exampleServer }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Hello server
-    version: 1.0.0
+openapi: { info: { title: Hello server, version: 1.0.0 } }
 mounts:
   - path: /v1
     mount: !ref helloApi
+  - { path: /docs, mount: { kind: Http.Reference } }
 ---
 kind: Http.Api
-metadata:
-  name: helloApi
+metadata: { name: helloApi }
 routes:
   - request:
       path: /hello
       method: GET
       schema:
-        query:
-          type: object
-          properties:
-            name:
-              type: string
-          required: [ "name" ]
+        query: { type: object, properties: { name: { type: string } }, required: ["name"] }
     handler: !ref sayHello
     inputs:
       name: !cel "request.query.name" # CEL expression
@@ -57,9 +44,7 @@ routes:
           application/json:
             schema:
               type: object
-              properties:
-                greeting: { type: string }
-                nice: { type: string }
+              properties: { greeting: { type: string }, nice: { type: string } }
               required: [ greeting, nice ]
               additionalProperties: false
             body:
@@ -67,13 +52,12 @@ routes:
               nice: "WOW"
 ---
 kind: Run.Value
-metadata:
-  name: sayHello
+metadata: { name: sayHello }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      name: { type: string }
+  schema: { type: object, properties: { name: { type: string } } }
 value:
   message: !cel "'Hello ' + inputs.name + '!'"
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

@@ -11,28 +11,24 @@ metadata:
     Run, then:
         curl 'http://localhost:8845/v1/hello?name=World'
         curl 'http://localhost:8845/v2/hello?name=World'
-imports:
-  Http: ../../modules/http-server
-  Templated: ./library.yaml
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8845
+requires: { telo: ">=0.133.0" }
+imports: { Http: ../../modules/http-server, Templated: ./library.yaml }
+ports: { http: { env: PORT, protocol: tcp, default: 8845 } }
 targets:
   - !ref templatedApiServer
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
 ---
 kind: Http.Server
-metadata:
-  name: templatedApiServer
+metadata: { name: templatedApiServer }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: "Templated API Example"
-    version: "1.0.0"
+openapi: { info: { title: "Templated API Example", version: "1.0.0" } }
 mounts:
   - path: /v1
     mount: !ref Templated.helloApi
   - path: /v2
     mount: !ref Templated.helloApi
+  - { path: /docs, mount: { kind: Http.Reference } }
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

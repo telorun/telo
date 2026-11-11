@@ -18,7 +18,7 @@ metadata:
         REPORT_CRON='*/10 * * * * *' telo ./examples/nightly-report
     The report lands in ./reports/orders.csv.
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-requires: { telo: ">=0.128.0" }
+requires: { telo: ">=0.133.0" }
 imports:
   Http: ../../modules/http-server
   Sql: ../../modules/sql
@@ -32,6 +32,7 @@ targets:
   - !ref buildReport
   - !ref nightly
   - !ref server
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8044 } }
 variables: { reportCron: { env: REPORT_CRON, type: string, default: "0 3 * * *" } }
 ---
@@ -119,6 +120,7 @@ openapi: { info: { title: Nightly report, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref reportRoutes
+  - { path: /docs, mount: { kind: Http.Reference } }
 ---
 kind: Http.Api
 metadata: { name: reportRoutes }
@@ -145,3 +147,6 @@ metadata: { name: nightly }
 cron: !cel "variables.reportCron"
 timezone: UTC
 invoke: !ref buildReport
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

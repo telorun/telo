@@ -121,6 +121,22 @@ on a create and on `PUT …/apps`, the refusal naming what binds it.
 code?, signal?, reason? } }`. A generation's `run` event carries `trigger: run`
 (a Run), `watch` (a file changed) or `manual` (a reload).
 
+**Open requests.** When an app asks for a page to be opened (`Telo.OpenUrl`),
+core derives one `openUrl` event from the `Kernel.OpenUrlRequested` frame on the
+app's debug stream, and from nothing else: `{ app, generation, url, reach,
+port? }`. `url` is the runner's own WHATWG serialization; only an absolute
+`http:` / `https:` URL without credentials, at most 8 KiB, is accepted, and
+anything else is dropped without an event. `reach` is `port` (a loopback or
+unspecified host on a port some app of the session declares and the runner
+routes), `unrouted` (a loopback host on any other port, or one whose routing was
+rejected) or `external` (any other host); `port` is present for the first two,
+the scheme's default when the URL writes none. The runner never builds an
+address a client opens: the client builds it from the `endpoints` it already
+holds for a `port` request, opens an `external` one as written and opens an
+`unrouted` one never. Per app and generation a URL is published once and at
+most 16 distinct ones are. A client ignores an event `type` it does not know; a
+runner older than this event never sends it.
+
 ## Ownership
 
 A create with no identity mints a **resume secret** (256 bits), answers it once

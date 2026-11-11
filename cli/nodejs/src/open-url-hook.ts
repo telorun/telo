@@ -3,6 +3,8 @@ import { personIsAtTerminal, type TerminalStreams } from "./person-at-terminal.j
 
 export interface OpenUrlHookOptions extends TerminalStreams {
   open?: (url: string) => void;
+  /** Reports every call, undeduplicated, to the debug stream. */
+  emit?: (url: string) => void;
 }
 
 /**
@@ -10,17 +12,20 @@ export interface OpenUrlHookOptions extends TerminalStreams {
  * reload builds a new kernel and hands it this same function, which is where
  * "a URL is opened at most once" is remembered.
  *
- * Installed only where a person is at the terminal (stdin and stderr are TTYs,
- * no `--no-input`); every other host gets none and the log record carries the
- * URL. It opens at once, asks nothing and never touches stdin: after startup
- * the application owns it.
+ * The browser opener exists only where a person is at the terminal (stdin and
+ * stderr are TTYs, no `--no-input`); it opens at once, asks nothing and never
+ * touches stdin. Under `--inspect` / `--debug` the hook also reports every call
+ * through `emit`, whether or not a person is there. With neither, no hook.
  */
 export function createOpenUrlHook(options: OpenUrlHookOptions): ((url: string) => void) | undefined {
-  if (!personIsAtTerminal(options)) return undefined;
+  const atTerminal = personIsAtTerminal(options);
+  const { emit } = options;
+  if (!atTerminal && !emit) return undefined;
   const open = options.open ?? ((url: string) => openBrowser(url));
   const opened = new Set<string>();
   return (url) => {
-    if (opened.has(url)) return;
+    emit?.(url);
+    if (!atTerminal || opened.has(url)) return;
     opened.add(url);
     open(url);
   };

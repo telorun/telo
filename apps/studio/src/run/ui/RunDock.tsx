@@ -16,6 +16,7 @@ import { Button } from "../../components/ui/button";
 import { RUN_DOCK_MIN_HEIGHT, useRun } from "../context";
 import type { RunBlocker, RunRecord } from "../context";
 import type { RunWait, WorkspaceSessionState } from "../workspace-session";
+import { OpenUrlNotices } from "./OpenUrlNotices";
 import { RunOutput } from "./RunOutput";
 import { RunStatusChip } from "./RunStatusChip";
 import { describeTeloAlignment, staleRunVersion, teloAlignment } from "../telo-alignment";
@@ -231,6 +232,7 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
           </Button>
         </div>
       </div>
+      <OpenUrlNotices appPath={appPath} />
       <RunOutput appPath={appPath} onOpenConfig={onOpenConfig} />
     </div>
   );

@@ -148,7 +148,7 @@ export interface LoadedGraph {
   /** One diagnostic per tagged file claim that names nothing (`!include-text` /
    *  `!include-bytes` → `INCLUDE_FILE_NOT_FOUND`, `!module-path` →
    *  `MODULE_PATH_NOT_FOUND`), in the entry and every module it reaches through
-   *  a filesystem-path import — asked of each module's source at load, since
+   *  a filesystem-path or `http(s)://` import — asked of each module's source at load, since
    *  existence needs a filesystem and analysis runs without one. A path at or
    *  above a module file the module's `sources:` stages counts as present. Empty
    *  for a module whose source cannot answer (`ManifestSource.entryAt`). A value

@@ -445,6 +445,18 @@ export type RunEvent =
       reason?: string;
     }
   | RunOutcomeEvent
+  /** The app asked for a page to be opened (`Telo.OpenUrl`). `url` is the
+   *  runner's serialization of what the app asked for; `reach` says how a client
+   *  may act on it, and `port` (a SESSION port) is present for `port` and
+   *  `unrouted`. The runner never builds an address to open. */
+  | {
+      type: "openUrl";
+      app: string;
+      generation: number;
+      url: string;
+      reach: "port" | "unrouted" | "external";
+      port?: number;
+    }
   /** An app's declared port set changed on reload and the runner re-patched its
    *  routing. Without this the app binds the new port and is unreachable with no
    *  ingress, no error and no event. */

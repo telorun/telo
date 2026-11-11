@@ -58,6 +58,23 @@ describe("createOpenUrlHook", () => {
     expect(open.mock.calls.map((c) => c[0])).toEqual(["http://localhost:8080/", consentUrl]);
   });
 
+  it("emits every call and only emits with no terminal", () => {
+    const open = vi.fn();
+    const emit = vi.fn();
+    const headless = createOpenUrlHook({ input: false, stdin: tty, stderr: tty, open, emit })!;
+    headless("http://localhost:1/");
+    headless("http://localhost:1/");
+    expect(emit.mock.calls).toEqual([["http://localhost:1/"], ["http://localhost:1/"]]);
+    expect(open).not.toHaveBeenCalled();
+
+    const emitted = vi.fn();
+    const attended = createOpenUrlHook({ stdin: tty, stderr: tty, open, emit: emitted })!;
+    attended("http://localhost:2/");
+    attended("http://localhost:2/");
+    expect(emitted).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves stdin alone while an app-side reader receives every line in order", () => {
     const stdin = recordedStdin();
     const received: string[] = [];

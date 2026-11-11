@@ -21,6 +21,7 @@ import {
   type EnsuredEntryState,
 } from "./bundle/source-staging.js";
 import { hostPlatformTarget, type ModuleArtifact } from "./bundle/module-artifact.js";
+import type { RemoteModuleFiles } from "./remote-module-files.js";
 
 /** The slice of the kernel this module needs: a module's artifact, when it has
  *  one. A module already on disk has none — that is normal, not an error. */
@@ -31,6 +32,8 @@ export interface ModuleArtifactLookup {
 /** Module-file resolution also needs the module a file belongs to, for the
  *  `sources:` block that may stage it. */
 export interface ModuleFileLookup extends ModuleArtifactLookup {
+  /** The files of modules read over plain HTTP, which have no artifact. */
+  readonly remoteModuleFiles?: RemoteModuleFiles;
   /** The module one of whose files resolved from `source`, or `undefined` for a
    *  module this load did not read. */
   getDeclaringModule(source: string | undefined): NativeFileModule | undefined;
@@ -86,9 +89,12 @@ export async function resolveModuleFileUri(
     await artifact.materializeModuleFiles();
     return new URL(relative, pathToFileURL(path.join(artifact.directory, "/")).href).href;
   }
+  // A module read over plain HTTP has no artifact: its files are fetched from
+  // beside its manifest.
+  if (lookup.remoteModuleFiles?.has(source)) return lookup.remoteModuleFiles.resolve(source, relative);
   // No artifact means no payload to fetch. That is normal for a module already
-  // on disk (development) or one that ships no files — but for a module reached
-  // over a non-local scheme it means the artifact carries no layer index, i.e. it
+  // on disk (development) or one that ships no files — but for any other
+  // non-local source it means the artifact carries no layer index, i.e. it
   // predates layers. Raise the actionable error here rather than leaving each
   // caller to invent its own message from a URI it cannot open.
   if (!isLocalSource(source)) {

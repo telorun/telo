@@ -14,6 +14,10 @@ import { toast } from "sonner";
 import { type DebugFrame, isEventFrame } from "@telorun/debug-wire";
 
 import type { SessionAgentState, WorkspaceBridge } from "../agent/types";
+import { openExternal } from "../external-link";
+import { isAlwaysOpen, setAlwaysOpen } from "./open-app-preference";
+import { openAddressFor, parseWebUrl, type OpenUrlEvent, type OpenUrlRequest } from "./open-url-request";
+import { openWithoutGesture } from "./open-url-launch";
 import type { ResumeSecretStore } from "./runner-credentials";
 import type { DesiredAppSet } from "./session-apps";
 import { TerminalBuffer } from "./terminal-buffer";
@@ -69,6 +73,17 @@ export function isRunLive(status: AppRunStatus): boolean {
  *  that this page did not start (re-attached after a reload). Newest-first
  *  within its app's list. Live objects (the terminal) live in a ref-held side
  *  table keyed by `id`, so high-frequency byte output never churns React state. */
+/** Newest notices kept per run record. */
+const MAX_NOTICES_PER_RUN = 16;
+/** Handled addresses remembered per run record; the oldest are forgotten first. */
+const MAX_HANDLED_PER_RUN = 64;
+
+function trimHandled(handled: Set<string>, recordId: string): void {
+  const prefix = `${recordId}|`;
+  const own = [...handled].filter((id) => id.startsWith(prefix));
+  for (const id of own.slice(0, Math.max(0, own.length - MAX_HANDLED_PER_RUN))) handled.delete(id);
+}
+
 export interface RunRecord {
   id: string;
   /** The runner's id for the run, once it started. */
@@ -107,6 +122,9 @@ export interface RunRecord {
   endpoints: RunnerEndpoint[];
   /** Set once Stop was pressed: the run's ending is then read as stopped. */
   stopRequested?: boolean;
+  /** A run this page did not start: live before a reload, or asked for by
+   *  another client. Its open requests are shown, never asked about. */
+  adopted?: boolean;
 }
 
 /** The co-resident agent of the workspace's session, while it is running. */
@@ -238,6 +256,13 @@ interface RunContextValue {
   forgetApp(appPath: string): void;
 
   getTerminal(recordId: string): TerminalBuffer | null;
+
+  /** Open requests of live runs: a `confirm` one is asked in a dialog, a
+   *  `notice` one is shown in the run dock. */
+  openUrlRequests: OpenUrlRequest[];
+  /** Settle a request: open its address (remembering "always" for a `port`
+   *  one when asked), or leave it, which records nothing. */
+  answerOpenUrl(id: string, answer: { open: boolean; always?: boolean }): void;
 }
 
 const RunContextValue = createContext<RunContextValue | null>(null);
@@ -290,6 +315,13 @@ export function RunProvider({ children }: { children: ReactNode }) {
   const [selectedRunIdByApp, setSelectedRunIdByApp] = useState<Map<string, string>>(new Map());
   const [blockerByApp, setBlockerByApp] = useState<Map<string, RunBlocker>>(new Map());
   const [dockByApp, setDockByApp] = useState<Map<string, RunDockState>>(new Map());
+  const [openUrlRequests, setOpenUrlRequests] = useState<OpenUrlRequest[]>([]);
+  const openUrlRequestsRef = useRef(openUrlRequests);
+  openUrlRequestsRef.current = openUrlRequests;
+  // Open requests waiting for their run's endpoint, and the (run, address)
+  // pairs already handled, so a duplicate or a replay asks nothing twice.
+  const waitingOpenRef = useRef<Array<{ recordId: string; event: OpenUrlEvent }>>([]);
+  const handledOpenRef = useRef<Set<string>>(new Set());
   const [terminals, setTerminals] = useState<Map<string, TerminalBuffer>>(new Map());
   // Each run's byte channel, so the next run of the app starts after it.
   const ios = useRef<Map<string, SequencedRunIo>>(new Map());
@@ -420,7 +452,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
             status: { kind: "running" },
             requestedTelo: appsRef.current.telo.get(event.app),
           });
-          addRecord({ ...adopted, runId: event.runId });
+          addRecord({ ...adopted, runId: event.runId, adopted: true });
           // A replayed run that ended long ago arrives with its ending right
           // behind it; only one still running gets a terminal.
           setTimeout(() => {
@@ -454,6 +486,11 @@ export function RunProvider({ children }: { children: ReactNode }) {
       const record = currentRecord(appPath);
       if (!record) return;
       switch (event.type) {
+        case "openUrl":
+          if (!isRunLive(record.status)) return;
+          waitingOpenRef.current.push({ recordId: record.id, event });
+          drainOpenRef.current();
+          return;
         case "progress":
           updateRecord(record.id, (r) =>
             r.status.kind === "starting" || r.status.kind === "queued" ? { ...r, progress: { phase: event.phase, message: event.message } } : r,
@@ -508,8 +545,112 @@ export function RunProvider({ children }: { children: ReactNode }) {
     },
     [addRecord, attachRun, attachTerminal, currentRecord, updateRecord],
   );
+  const drainOpenRef = useRef<() => void>(() => undefined);
   const applyEventRef = useRef(applyEvent);
   applyEventRef.current = applyEvent;
+
+  const addOpenRequest = useCallback((request: OpenUrlRequest) => {
+    setOpenUrlRequests((prev) => {
+      if (prev.some((r) => r.id === request.id)) return prev;
+      const next = [...prev, request];
+      if (request.mode !== "notice") return next;
+      // An adopted run under --watch can write a new address every reload: keep the newest.
+      const own = next.filter((r) => r.mode === "notice" && r.recordId === request.recordId);
+      if (own.length <= MAX_NOTICES_PER_RUN) return next;
+      const dropped = new Set(own.slice(0, own.length - MAX_NOTICES_PER_RUN));
+      return next.filter((r) => !dropped.has(r));
+    });
+  }, []);
+
+  /** An address built for a live run: asked, shown, or opened as chosen before. */
+  const settleOpen = useCallback(
+    (record: RunRecord, event: OpenUrlEvent, address: string, host: string) => {
+      const id = `${record.id}|${address}`;
+      if (handledOpenRef.current.has(id)) return;
+      handledOpenRef.current.add(id);
+      trimHandled(handledOpenRef.current, record.id);
+      const request: OpenUrlRequest = {
+        id,
+        recordId: record.id,
+        appPath: record.appPath,
+        app: record.app,
+        reach: event.reach,
+        address,
+        host,
+        mode: "confirm",
+      };
+      // Never asked: an address no port of the app's answers, or a run this
+      // page did not start, whose request may be days old.
+      if (event.reach === "unrouted" || record.adopted) {
+        addOpenRequest({ ...request, mode: "notice" });
+        // The notice lives in the dock, so the dock opens to show it.
+        setDockByApp((prev) => {
+          const cur = prev.get(record.appPath) ?? DEFAULT_DOCK;
+          return cur.open ? prev : new Map(prev).set(record.appPath, { ...cur, open: true });
+        });
+        return;
+      }
+      const workspaceKey = bindingRef.current?.workspaceKey;
+      if (event.reach === "port" && workspaceKey !== undefined && isAlwaysOpen(workspaceKey, record.app)) {
+        // No gesture here: a browser may block the tab, and then the dialog asks.
+        openWithoutGesture(address)
+          .then((opened) => {
+            if (!opened) addOpenRequest(request);
+          })
+          .catch((err: unknown) => toast.error("Couldn't open the app", { description: message(err) }));
+        return;
+      }
+      addOpenRequest(request);
+    },
+    [addOpenRequest],
+  );
+
+  const drainOpen = useCallback(() => {
+    const waiting: typeof waitingOpenRef.current = [];
+    for (const item of waitingOpenRef.current) {
+      let record: RunRecord | undefined;
+      for (const records of runsRef.current.values()) record ??= records.find((r) => r.id === item.recordId);
+      if (!record || !isRunLive(record.status)) continue;
+      // A port request may name another app's port: resolve against the whole session.
+      const sessionEndpoints = [...(controllerRef.current?.state.endpoints ?? [])];
+      for (const records of runsRef.current.values()) for (const r of records) sessionEndpoints.push(...r.endpoints);
+      const result = openAddressFor(item.event, sessionEndpoints, controllerRef.current?.runnerBaseUrl ?? null);
+      if (result.kind === "waiting") waiting.push(item);
+      else if (result.kind === "ready") settleOpen(record, item.event, result.address, result.host);
+      else toast.error(`'${record.app}' asked to open an address Studio does not open`, { description: `${item.event.url}: ${result.reason}.` });
+    }
+    waitingOpenRef.current = waiting;
+  }, [settleOpen]);
+  drainOpenRef.current = drainOpen;
+
+  // A run's endpoints may arrive after its request; and a run that ended
+  // takes its requests with it.
+  useEffect(() => {
+    drainOpen();
+    const live = new Set<string>();
+    for (const records of runsByApp.values()) for (const r of records) if (isRunLive(r.status)) live.add(r.id);
+    setOpenUrlRequests((prev) => {
+      const kept = prev.filter((r) => live.has(r.recordId));
+      return kept.length === prev.length ? prev : kept;
+    });
+  }, [runsByApp, drainOpen]);
+
+  const answerOpenUrl = useCallback((id: string, answer: { open: boolean; always?: boolean }) => {
+    const request = openUrlRequestsRef.current.find((r) => r.id === id);
+    setOpenUrlRequests((prev) => prev.filter((r) => r.id !== id));
+    if (!request || !answer.open) return;
+    // Re-parsed: only an http(s) address is ever handed to the host.
+    if (!parseWebUrl(request.address)) return;
+    const workspaceKey = bindingRef.current?.workspaceKey;
+    if (answer.always && request.reach === "port" && workspaceKey !== undefined) {
+      try {
+        setAlwaysOpen(workspaceKey, request.app);
+      } catch (err) {
+        toast.error("Couldn't remember the choice", { description: message(err) });
+      }
+    }
+    void openExternal(request.address).catch((err: unknown) => toast.error("Couldn't open the app", { description: message(err) }));
+  }, []);
 
   const updateDock = useCallback((appPath: string, mut: (prev: RunDockState) => RunDockState) => {
     setDockByApp((prev) => {
@@ -609,6 +750,9 @@ export function RunProvider({ children }: { children: ReactNode }) {
     setRunsByApp(new Map());
     setSelectedRunIdByApp(new Map());
     setBlockerByApp(new Map());
+    setOpenUrlRequests([]);
+    waitingOpenRef.current = [];
+    handledOpenRef.current = new Set();
     if (!binding) {
       setSession(null);
       return;
@@ -945,6 +1089,8 @@ export function RunProvider({ children }: { children: ReactNode }) {
       setDockMaximized,
       forgetApp,
       getTerminal,
+      openUrlRequests,
+      answerOpenUrl,
     }),
     [
       bindWorkspace,
@@ -980,6 +1126,8 @@ export function RunProvider({ children }: { children: ReactNode }) {
       setDockMaximized,
       forgetApp,
       getTerminal,
+      openUrlRequests,
+      answerOpenUrl,
     ],
   );
 

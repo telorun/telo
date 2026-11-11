@@ -15,7 +15,7 @@ metadata:
     by both and written by neither.
 # Module `lang:` — the language this application's texts are written in — is
 # read from 0.121.0.
-requires: { telo: ">=0.121.0" }
+requires: { telo: ">=0.133.0" }
 lang: en
 imports:
   Http: ../../modules/http-server
@@ -28,6 +28,7 @@ imports:
 targets:
   - !ref migrate
   - !ref server
+  - { name: openApp, invoke: !ref openApp, inputs: { url: !interpolate "http://localhost:${{ ports.http }}" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8077 } }
 variables:
   dbFile:
@@ -191,3 +192,6 @@ mounts:
     # PUT /{id} (replace) and DELETE /{id}; both writes answer with the todo.
     mount: { kind: Crud.Api, connection: !ref db, plural: todos, singular: todo, collection: !ref todos }
   - { path: /, mount: !ref ui }
+---
+kind: Telo.OpenUrl
+metadata: { name: openApp }

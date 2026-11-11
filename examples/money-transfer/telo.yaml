@@ -22,7 +22,7 @@ metadata:
         curl -s -XPOST localhost:8055/transfers -H 'content-type: application/json' \
           -d '{"from":1,"to":2,"amountCents":999999}'   # 409, and nothing moved
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-requires: { telo: ">=0.128.0" }
+requires: { telo: ">=0.133.0" }
 imports:
   Http: ../../modules/http-server
   Sql: ../../modules/sql
@@ -30,6 +30,7 @@ imports:
 targets:
   - !ref migrate
   - !ref server
+  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8055 } }
 ---
 kind: SQLite.Connection
@@ -165,3 +166,7 @@ openapi: { info: { title: Money transfer, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref bankRoutes
+  - { path: /docs, mount: { kind: Http.Reference } }
+---
+kind: Telo.OpenUrl
+metadata: { name: openDocs }

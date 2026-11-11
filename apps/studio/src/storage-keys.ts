@@ -56,6 +56,9 @@ export const LOCAL_PREFIXES = {
   /** A workspace's mode and runner session — `{ mode, workspace, runner?,
    *  sessionId?, resumeSecret? }` — one entry per workspace root. */
   session: "telo-studio:session:v1:",
+  /** "Always open this app" answers: the tail is `<workspace key>:<app name>`,
+   *  both URI-encoded. */
+  openApp: "telo-studio:open-app:v1:",
   /** Auto resolutions of each module's telo version, one entry per workspace root. */
   engineResolutions: "telo-studio:engine-resolutions:v1:",
 } as const;
