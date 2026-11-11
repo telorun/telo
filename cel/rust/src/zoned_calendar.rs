@@ -4,7 +4,7 @@
 //! The function catalog reads every calendar field through here. Node takes a zone's rules
 //! from its host's Intl; here they are the bundled IANA database's (`zone_database.rs`,
 //! tzdata 2026c), and what this file reproduces is how Node applies them — including
-//! where it computes through `Date.UTC`. An instant is a whole number of milliseconds
+//! where it computes through `Date.UTC`'s arithmetic. An instant is a whole number of milliseconds
 //! since the epoch, as Node's are; an answer Node cannot give — it throws a `RangeError`
 //! or answers `NaN` — is `None`.
 //!
@@ -13,10 +13,10 @@
 //! minutes at most 59, read arithmetically. Node's host also takes `+05`, `+0530` and ICU's
 //! own names, and refuses `Factory`; those differ by charter.
 //!
-//! **Node's readings, reproduced.** `Date.UTC` reads a year from 0 to 99 as 1900 to 1999,
-//! and the offset, the solver and `iso_text_in` compute through it; a wall-clock year at or
-//! below zero is written as Intl writes it, its era year (`1 − year`) with no era; and the
-//! date of every spelling but exactly `UTC` (or `Z`) writes its year unpadded; an instant
+//! **Node's readings, reproduced.** The year is read as itself everywhere — the offset, the
+//! solver, `iso_text_in` and `days_in_month` set it as `setUTCFullYear` does, with no 0 to 99
+//! switch; a wall-clock year at or below zero is written as Intl writes it, its era year
+//! (`1 − year`) with no era; and the date of every spelling but exactly `UTC` (or `Z`) writes its year unpadded; an instant
 //! whose wall clock lies past the time range writes its offset `-NaN:NaN`; and a wall clock
 //! that occurs twice resolves to whichever instant the solver's first guess lands on —
 //! the later east of UTC — where Node's own comment promises the earlier. Each is held by a

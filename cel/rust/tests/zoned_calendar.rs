@@ -2,7 +2,7 @@
 //! `date_text_in`, `iso_text_in`, `instant_of_civil_time` and `days_in_month`.
 //!
 //! Every expected answer is Node's, executed — `@telorun/cel 0.129.0 at 2ee5ef49`, the answers
-//! that move once a year from 1 to 99 reads as itself re-derived from the fixed calendar — its
+//! for a year from 1 to 99 (read as itself) re-derived from the fixed calendar — its
 //! `knownTimeZone`, `civilTimeIn`, `dateTextIn`, `isoTextIn`, `instantOfCivilTime` and
 //! `daysInMonth`, on Node v24.21.0 (V8 13.6.233.17-node.53, ICU 78.3, tz 2026c), whose zone
 //! data is the bundled database's release (`jiff-tzdb` 0.1.8, tz 2026c); `uuid` 14.0.1 is

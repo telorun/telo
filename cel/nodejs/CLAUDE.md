@@ -122,14 +122,14 @@ Two readings the vectors pin, each recorded with no cel-spec answer against it:
    `STRING_LIT: [rR]? …` — so the bytes marker comes first: `br`, `bR`, `Br` and `BR` are raw bytes, and
    `rb` is the name `rb` beside a string, which no expression admits.
 
-And one the recording answers and cel-spec contradicts, so the engine answers cel-spec:
+And one the replaced engine answered and cel-spec contradicts, so the engine answers cel-spec:
 
 - **A bytes literal holds the UTF-8 of its text.** `b'ÿ'` is `0xC3 0xBF`, not `0xFF`: cel-spec's
-  `BYTES_LIT` is a string literal under a bytes marker, and the recording's per-character reading made
+  `BYTES_LIT` is a string literal under a bytes marker, and the replaced engine's per-character reading made
   `b'ÿ' == b'\303\277'` false. An escape (`\xff`, `\303`) is still the one byte it names, and the
   serializer writes every byte as `\xNN` or as itself, so a round trip cannot change it.
 
-Four the recording refuses and cel-spec answers, so the engine answers cel-spec:
+Four the replaced engine refused and cel-spec answers, so the engine answers cel-spec:
 
 - **A member name between backticks** — cel-spec's `ESCAPED_IDENTIFIER`, and **only where a member is
   read**: a backtick anywhere else is a syntax error, and a quoted name never names a called function
@@ -261,47 +261,13 @@ plain-object copy per bag, which is also where header lowercasing already happen
 
 ## cel-spec is the specification; the vectors are evidence
 
-**Where the conformance vectors and cel-spec disagree, cel-spec decides.** The vectors are a
-*recording* of the engine being replaced — their README says a `language.json` row's `expect` is "the
-replaced engine's answer" — and the format already carries cel-spec's own answer under `deviation.celSpec` wherever the two
-differ. So a row is evidence of what runs today, and a row's own `deviation.celSpec` is the authority
-for what this engine answers.
+**Where the conformance vectors and cel-spec disagree, cel-spec decides.** A `language.json` row's `expect` is this engine's whole answer, and the format carries cel-spec's own answer under `deviation.celSpec` — only the parts where the two still differ, each with a `reason`. So a row records what runs, and a row's own `deviation.celSpec` is the authority for what the language means there.
 
-**The bound on that authority:** `deviation.celSpec` binds where **cel-spec's language definition** fixes
-the meaning, or where **a library Telo enables** does. Outside it the engine answers the recording, and
-says why. A row whose `deviation.uncarried` holds `disable_check` says nothing about checking at all.
+**The bound on that authority:** `deviation.celSpec` binds where **cel-spec's language definition** fixes the meaning, or where **a library Telo enables** does. Outside it the engine's answer stands, and says why. A row whose `deviation.uncarried` holds `disable_check` says nothing about checking at all.
 
-**Two lists, and a completeness invariant over them** (`conformance/language-replay.ts`):
+**The reasons are four, and a closed set** (`DEVIATION_REASONS` in `conformance/language-replay.ts`): `extension-library`, `feature-not-carried`, `container-not-declared`, `uncarried-input`. Every one is a fact about the row's **input** — a library this engine does not ship, a cel-spec feature it does not carry, a container Telo never declares, a declaration the format could not carry — and a fact about the input still has to be TRUE of the row. A disagreement about what the engine itself computes, reports or prints is not a reason: it is a defect to fix, and the row then records the fixed answer with no `celSpec` (`evaluation-answer`, a fifth reason, is gone for that reason). The driver checks, per row: `reason` exactly when `celSpec`; every stated part disagrees with the answer (an agreeing part fails, instructing to drop it — so a row cannot keep an exemption after the engine was fixed); `uncarried-input` with a non-empty `uncarried`; `container-not-declared` with `container` in it.
 
-- `SPEC_CORRECTION_GROUPS` — where the engine answers cel-spec, each group naming its cause and its
-  authority (a `deviation.celSpec` field, or a cited grammar production).
-- `SPEC_EXCLUSION_GROUPS` — where it answers the recording, each carrying one reason from a closed set
-  (`extension-library`, `feature-not-carried`, `container-not-declared`, `uncarried-input`,
-  `evaluation-answer`) and a **pinned row count**, so a section that grows or shrinks fails the gate.
-  **The set stays at five, and here is the guard that keeps it there:** every one of those reasons is a
-  fact about the row's **input** — a library this engine does not ship, a cel-spec feature it does not
-  carry, a container Telo never declares, a declaration the format could not carry (`disable_check` among
-  them: cel-spec's value for such a row is what an evaluation answers with the check turned off) — or
-  about **which seam** answers it. A fact about the input still has to be TRUE of the row: `disable_check`
-  excuses a row only where this engine actually refuses at check, since a row it checks clean is not
-  answering a different question — matching on the fact alone counted nine rows cel-spec never
-  contradicted as excluded, and hid one whose real cause was the container it also declares. A
-  disagreement about what the engine itself computes, reports or prints is a **correction with a cited
-  authority, or a defect**. If a proposed sixth reason would describe the
-  engine's own answer, the answer is what to change.
-- **The invariant: every row that needs a position has one.** A row needs one when cel-spec answers a
-  value or a type and the recording fails — at its check **or at its evaluation**. That second half is the
-  whole point: the five dotted-declaration rows check clean in the recording and fail only when run, so a
-  sweep that looked at refusals alone walked straight past them, and an opt-in list let the gap hide as
-  silent agreement. The gate now names any row neither list accounts for.
-
-Reading a row for a defect without first looking at its `deviation` is how two false findings got into an
-earlier report of this card: **a row with no deviation of the kind in question is a row cel-spec was not
-asked about, or agrees with.**
-
-Not one byte of the vectors changes in this loop: the recorded engine answers every consumer until the
-cutover, so a corrected row cannot be green before the swap. At the cutover each listed row's `expect` is
-rewritten from its own `deviation.celSpec`, mechanically.
+**The blind spot is the point of the design, and it is written down:** deep equality of `expect` pins whatever this engine answered, so a row with no `celSpec` was either agreed with cel-spec or never asked of it. `catalog/addMonths/result_before_range` pinned a wrong value (a timestamp in 1900, from `Date.UTC` reading year 0 as 1900) until the calendar was fixed, with the row green throughout — and no `celSpec` on a dialect row is a check against cel-spec at all. Reading a row for a defect without first looking at its `deviation` is how a false finding is made.
 
 ## The registry: nothing is privileged
 
@@ -347,9 +313,8 @@ that equivalent**. No member of this library may claim an extension's semantics.
 matter: the index-taking members (`indexOf`, `lastIndexOf`, `substring`) index by **UTF-16 code unit, not
 code point**, so a port reading them as the extension's would index by rune and silently change the answer
 of every manifest that cuts a string; and `lowerAscii` / `upperAscii`, despite their names, apply the host
-language's own casing rather than touching the ASCII letters alone. Both are what the recording answers,
-and the vectors hold the engine to the recording for them — cel-spec is silent about a member it does not
-define.
+language's own casing rather than touching the ASCII letters alone. Both are what the vectors
+record for them — the engine's own answer, since cel-spec is silent about a member it does not define.
 
 ## The function catalog: the dialect, registered as a host registers one
 
@@ -376,7 +341,7 @@ the call) while evaluating it answers `unbound_function` **naming the function**
 an empty string: a hash that answers nothing looks like a value and ends up in a cache key.
 
 **A refusal is the catalog's own words, in one voice** — `<function>: <what is wrong>`, identical on
-every engine, and the vectors record 52 of them verbatim. It is never a library's wording or the host
+every engine, and the vectors record 60 of them verbatim. It is never a library's wording or the host
 language's: the regex family ends an invalid pattern with one of RE2's own parse-error kinds from a
 closed vocabulary (`RE2_PATTERN_ERROR_KINDS`) and nothing after it, and `parseJson` words its own
 offset from `src/json-text-scan.ts` rather than quoting the host parser. A refusal is thrown as
@@ -957,101 +922,17 @@ dependency**, and it costs the browser bundle about 420 KB.
 
 ## The conformance replay
 
-The vectors are the cross-engine contract, and this package drives the **language rows** of them —
-and, since the catalog ships here, the **dialect rows** too (below):
-`conformance/language-replay.ts` holds the driver, `language-replay.test.ts` runs it. Per row it asserts
-that a row recorded as checking checks **to the recorded type, spelled as the row spells it**, that a row
-recorded as refused is refused **at the offset the recorded message's caret points at**, and that
-whatever reads writes back and re-reads to an equal tree.
+The vectors are the cross-engine contract, and this package drives the files a Node engine alone answers (`CEL_CONFORMANCE_DIR`, below): `language.json` whole, and `catalog.json` / `types.json` through a projection. Three drivers live in `conformance/`, and each states its blind spot in its header. There is no list of rows answered otherwise anywhere: a row is the engine's answer, or the run fails.
 
-It is **half the answer and says so**. Three kinds of entry are declared in its report: what it answers,
-what is **answered elsewhere** (values, errors, bindings and deviations — all evaluation's, every one held
-by the value-level replay beside it), and what is **not comparable** — a recorded diagnostic's code is
-always null and its wording is the engine being replaced's, so a refusal is compared by its verdict and
-its offset rather than by its text. It also declares the files it does not drive at all. A driver that
-answers half a file without naming the half is how a gap survives to a later gate.
+**`language.json`: one table-free whole-row driver** (`conformance/language-replay.ts`). `languageAnswer` computes the whole `expect` of a row — the check half in the environment with the row's declarations and functions (`diagnostics` with ranges, `type` only when clean, every call the checker resolved), the evaluation half in the environment with the functions alone, which checks first and records a refusal as the first diagnostic's `CEL_*` code with its range, and otherwise evaluates with the bindings — and the driver deep-compares it with the row. Beside it: the row-key gates (`divergence` refused by name), the two classes (the cel-spec import, then authored `telo/` rows with neither `provenance` nor `deviation`), the `celCode` membership check (`conformance-error.ts` holds the vocabulary, the engine-error codes held complete by their type; no new export from this package), the `deviation` checks above, and the round trip of every source that reads — it writes back and reads again to an equal tree. `LANGUAGE_ROWS` pins the count (1,816). The error classifier reads the error that left the seam: an evaluation error or an engine error gives `celCode`, an `ERR_*` gives `code`, no code gives both null, and any other code fails the row naming it.
 
-**Both lists are asserted exact** — a new disagreement fails rather than hides, one that goes away fails
-too, and an exclusion group that gains or loses a row fails. An exclusion is about the **verdict** first:
-the engine refuses an extension call because it registers no such function where the recording refused
-for its own reason, so where the two positions differ the row is named in that group's `offsetDiffers`,
-again exactly. **An exclusion pins no TYPE, so an excluded row that checks clean is held to the recorded
-type as any other clean row is**, with a per-group `typeDiffers` working exactly as `offsetDiffers` does.
-Without it that branch compared nothing at all: a fabricated row declaring `1 + 1` to check as `string`
-passed the gate, and D1 made the case live — the three `type_parameters_in_type_type` rows now report
-`dyn` where the recording records a type parameter. And it covers **only rows whose call the engine does
-not resolve**: the `string_ext`
-sections whose members this library declares are compared like any other row, so a disagreement there is a
-defect in the member to fix rather than a new exclusion.
+**`catalog.json` and `types.json`: the table-free projection driver** (`conformance/dialect-replay.ts`). These files hold the `cel` tag engine's whole answer, which the templating package's test reproduces; this driver computes the part this engine gives by itself — the projection: the check's diagnostics (`code`, `message`, `fix`, in order, no range) and its type when clean, then the row's value or its error (`code`, `celCode`, `message`) — and deep-compares it with the same projection of the row. Before that a row is held to the **input gate**: no `context`, `explain`, `rootsDeclared`, `couldNameModule`, `modules` or `functions`, a source that reads, and only the engine's own errors (`code: null`, a `celCode`). Its static half checks in the dialect environment plus the host's types plus the row's declarations; its runtime half evaluates unchecked in the dialect environment plus the host's types, **without** the declarations, with the bindings — so a row can record a refusal at check and a value at evaluation (`p + 1` over a port). Every conversion and member a host type declares is bound at runtime to a conformance implementation answering `<name>(<conformance text of each argument>)`, the handler set's rule, and the nine host-backed functions answer by the handler set. `CATALOG_ROWS` (195) and `TYPES_ROWS` (74) pin the counts. **Its blind spot:** it sees nothing outside the projection — calls, regions, refs, volatility, a site's context — which only the templating test holds, and its deep equality pins whatever this engine answered.
 
-**The value-level replay is the other half** (`conformance/value-replay.ts`). Per row, exactly one of:
-**matched** (the engine answers what the row records, written canonically so a difference of CEL type is a
-difference of text, or an error where the row records one — **and cel-spec asked nothing of this row**),
-**corrected** (the engine answers cel-spec, and the driver then holds its answer to the row's own
-`deviation.celSpec` — a correction is evidence, not an exemption), **excluded** (the recording stands, with
-one reason — four of the check level's five, `evaluation-answer` having no counterpart because the rows it
-covers are value-level corrections — and a pinned count), or **answered by the check seam** (cel-spec's
-answer is a type, and the other driver holds the row to cel-spec's own recorded type: the defer requires a
-**correction** over there, never merely an exclusion, which pins no type and would make the two drivers
-each assume the other asked). Anything else
-is `unaccounted` and the gate fails naming it; a listed row that now agrees fails too. An error's code and
-message are not compared: a recorded error's code is always `null` and its wording is the engine being
-replaced's.
+**The host's vocabulary is a PARAMETER, never a name written here.** The driver takes `NominalTypeDefinition`s (`CEL_CONFORMANCE_HOST_TYPES`), which `scripts/check-cel-conformance.mjs` derives from `sdk/value-types/*.json` by rule and naming no type: a `json` entry with no `celType` is a brand over its `base` (its base conversion and `string(Self)`); `fromHost` adds `Self.joinPath(string): Self`; `members` become fields plus `string(Self)`; and `Stream` over `dyn`. The driver fails naming any type a row declares that the list does not carry, which is what lets the gate be driven by the host's rows while the package stays free of a host type name.
 
-**Both invariants are SYMMETRIC, and neither was at first.** The rule is: a row cel-spec answered must be
-on a list **whichever way the engine went**. `matched` means "the engine agrees with the recording", and a
-row can sit there while cel-spec says something else entirely — the engine then follows the recording
-silently, which is the one outcome these two lists exist to make impossible. The check-level invariant had
-the same hole for a **type**: it asked whether the recording *fails*, so a row where both engines check
-clean to different types was invisible to it. Both now trigger on the row's own `deviation.celSpec`, not
-on the recording's failure.
+**One canonical encoding, written and read** (`conformance/conformance-value.ts`): a timestamp is the typed frame's trimmed form, `readCanonicalConformanceValue` refuses any node that is not the canonical encoding of the value it reads, and nothing accepts a second spelling.
 
-**Six rows are held to their recorded error TEXT, byte for byte, caret included**
-(`RECORDED_MESSAGE_ROWS`). A recorded error is normally the replaced engine speaking, but these six are the
-exception the format names: they are divergence rows, whose `expect.error` is the only `expect` in
-`language.json` that is not that engine's — a fixed summary for the condition plus the usual highlight. So they are the one
-place where comparing a message says something, and the engine reproduces all six.
-
-**A row the engine answers its own way is pinned, not excused** (`VALUE_PENDING_DECISIONS`): an entry lists
-the question in full and the engine's exact answer, so the gate holds such a row as tightly as a matched
-one. **The list is empty**, and is meant to stay that way — it exists so that the next question of that
-kind is written down and measured rather than absorbed into an exclusion.
-
-**A fourth driver answers the dialect files** (`conformance/dialect-replay.ts`, with the positions each
-file needs in `catalog-replay.ts` and `types-replay.ts`): `catalog.json`'s 186 rows and `types.json`'s
-74, replayed in place, under the same completeness rule — every row answered, corrected with a cited
-authority, or excluded with one of the same five reasons, which **do not grow**. **Each file's row
-count is pinned** (`CATALOG_ROWS`, `TYPES_ROWS`), because a row that is DELETED leaves every other
-number in the report true — the one change a per-row driver cannot see. Today each file has
-exactly one correction and no exclusion: `catalog/string/timestamp`, which is character for character a
-language row the value replay already corrects, and `types/optional/none`, where an unresolved type
-parameter is reported as `dyn`.
-
-Three things about it are worth keeping:
-
-- **The host's vocabulary is a PARAMETER, never a name written here.** `types.json` declares variables of
-  Telo's nominal value types, so the driver takes a list of `NominalTypeDefinition`s
-  (`CEL_CONFORMANCE_HOST_TYPES`, supplied by `scripts/check-cel-conformance.mjs` exactly as the vectors'
-  path is) and registers each through `registerType` — and it **fails naming any type a row declares that
-  the list does not carry**, rather than letting an undeclared name read as whatever it would read as.
-  That is what lets the gate be driven by the host's own rows while the package stays free of a host type
-  name.
-- **A row's two halves are independent, as the format says**: the static half checks against the row's
-  declarations plus the nominal types, and the runtime half evaluates against its bindings with the
-  nominal types too but **no** declarations — a brand's value IS its base, while a value of a type that
-  declares fields carries its own key and is read through them. Every conversion and member a host type
-  declares is bound at runtime to a conformance implementation answering `<name>(<conformance text of
-  each argument>)`, so a `string()` row pins that dispatch reached the host's registration and what it
-  was handed. The conformance value carries such a value as `{"$cel": "host", "type", "value"}`, its
-  type name and entries. Checking first, as a language row is driven, would make every row that records a
-  refusal at check and a value at evaluation (`p + 1` over a port) answer an error and compare nothing.
-- **What it compares, and what it declares it does not.** The verdict and, for a clean row, the recorded
-  type; the value, written canonically; that a row recorded as failing fails — and, where the recorded
-  message is one the CATALOG words (`<function>: …`, 52 rows) or the recorded diagnostic is a
-  literal-argument refusal (28 rows), that text **byte for byte**, which is the vectors' own rule for a
-  refusal that is Telo's words rather than an engine's. Everything else in a dialect row's `check` is the
-  TAG engine's answer about a scalar — the call listing at a scalar's offsets, the regions, the refs, the
-  volatility, a site's context schema — and is declared as answered elsewhere rather than quietly skipped.
+**The `celCode` gate is not here.** It counts codes across all six files and lives in the templating package's test, which reads `language.json` for it. It counts codes, not functions: a catalog function whose refusal no row pins can hide behind another function's row, and the coverage gates over overloads and guards are what pair a function to a row.
 
 **A third driver asks a different question: do the two BACKENDS agree?**
 (`conformance/emitter-identity.ts`). The two drivers above ask whether the engine's answer is right; both
@@ -1069,7 +950,7 @@ state, no host-supplied implementation, no three-argument `map` whose filter and
 Measured rather than assumed, and on a **real defect** rather than an injected one: the emitter first
 numbered its temporaries per function, so a comprehension body's `let t0` shadowed the `t0` its caller
 held a bound value in and `cel.bind(n, 2, xs.map(e, e + n))` answered `[2, 4, 6]` for `[3, 4, 5]`. This
-driver reported **0 disagreements** over all 1,814 rows with that bug in place; the case list caught it on
+driver reported **0 disagreements** over all the rows then in the file (1,814) with that bug in place; the case list caught it on
 the first run. (Swapping `map/3`'s transform and filter behaves the same way.) So the two gates are
 complementary and neither is redundant: `tests/backend-identity.test.ts`'s completeness is over the
 grammar's node kinds (a `Record` over `CelNode["kind"]`, so a new node kind fails to compile until a case
@@ -1092,6 +973,9 @@ part of `test`. The repository gate that knows where the vectors live is
 **Every mechanism below was sound in the direction it looked and blind in the direction it did not** — and
 every one was found by a human reading the code or comparing two rows of an output, never by the gate that
 was supposed to hold it:
+
+(Items 1, 2, 4, 9 and 10 name the check-level and value-level drivers and their exclusion lists, since merged
+into one whole-row driver with no list; they stay as the reasons it compares whole answers.)
 
 1. a sweep over the rows the recording **refuses**, which could not see a row that parses and is answered
    wrongly;
@@ -1219,7 +1103,7 @@ filter is a result waiting to be re-derived by hand.
   `tests/emitter-text-corpus.ts`, pinned in `tests/__fixtures__/emitter-text.json`
 - A bounded cache → `src/bounded-cache.ts`
 - Whether the whole package type-checks — `src`, `tests` and `conformance` → `check:types`
-- The conformance drivers → `conformance/language-replay.ts` (check), `conformance/value-replay.ts`
-  (value), `conformance/dialect-replay.ts` (the catalog and a host's types, with the positions in
-  `catalog-replay.ts` and `types-replay.ts`), with the row encoding in
-  `conformance/conformance-value.ts`
+- The conformance drivers → `conformance/language-replay.ts` (`language.json`, whole),
+  `conformance/dialect-replay.ts` (`catalog.json` and `types.json`, through the projection, over a
+  host's types), `conformance/emitter-identity.ts` (the two backends), with the error classifier in
+  `conformance/conformance-error.ts` and the row encoding in `conformance/conformance-value.ts`
