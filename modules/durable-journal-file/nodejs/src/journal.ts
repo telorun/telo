@@ -17,7 +17,7 @@
  * claim is for, and a directory of files cannot make it safe anyway. Saying so
  * is better than a lock file that looks like a guarantee.
  */
-import { appendFile, mkdir, open, readFile, readdir, rename, truncate, unlink } from "node:fs/promises";
+import { access, appendFile, mkdir, open, readFile, readdir, rename, truncate, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { InvokeError, type ResourceContext, type ResourceManifest } from "@telorun/sdk";
 
@@ -378,7 +378,10 @@ class FileJournalController {
     try {
       await unlink(file);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return false;
+      // Windows reports a file another unlink is deleting as EPERM; gone afterwards means it lost the race.
+      if (code === "EPERM" && !(await access(file).then(() => true, () => false))) return false;
       throw err;
     }
     await unlink(stagingFor(file)).catch((err: NodeJS.ErrnoException) => {
