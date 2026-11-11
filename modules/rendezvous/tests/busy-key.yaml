@@ -1,0 +1,78 @@
+kind: Telo.Application
+metadata:
+  name: RendezvousBusyKey
+  version: 1.0.0
+  description: |
+    One waiter per key: a second wait under a key that already has one fails with
+    ERR_RENDEZVOUS_KEY_BUSY and leaves the first waiting, which the next
+    delivery still reaches.
+imports:
+  Rendezvous: ../
+  Lease: ../../lease
+  KvStoreMemory: ../../kv-store-memory
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: KvStoreMemory.Store
+metadata: { name: mem }
+---
+kind: Rendezvous.MemoryPoint
+metadata: { name: decisions }
+payloadType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [approved], properties: { approved: { type: boolean } } }
+---
+kind: Rendezvous.Await
+metadata: { name: await }
+point: !ref decisions
+timeout: 30s
+---
+kind: Rendezvous.Deliver
+metadata: { name: deliver }
+point: !ref decisions
+---
+kind: Telo.Sequence
+metadata: { name: waiting }
+steps:
+  - name: wait
+    inputs: { key: b-1 }
+    invoke: !ref await
+---
+kind: Lease.Critical
+metadata: { name: firstWaiter }
+store: !ref mem
+ttl: 60s
+detach: true
+invoke: !ref waiting
+---
+kind: Timer.Delay
+metadata: { name: pause }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: startFirstWaiter
+    invoke: !ref firstWaiter
+    inputs: { key: w1, holder: T1, inputs: {} }
+  - { name: firstWaiterOpens, invoke: !ref pause, inputs: { duration: 200ms } }
+  - name: secondWaiter
+    try:
+      - name: secondWait
+        inputs: { key: b-1 }
+        invoke: !ref await
+      - name: notBusy
+        throw: { code: NOT_REFUSED, message: a second waiter was admitted under one key }
+    catch:
+      - name: assertBusy
+        inputs:
+          actual: { code: !cel "error.code", key: !cel "error.data.key" }
+          expected: { code: ERR_RENDEZVOUS_KEY_BUSY, key: b-1 }
+        invoke: { kind: Assert.Equals }
+  - name: deliverToFirst
+    inputs: { key: b-1, payload: { approved: true } }
+    invoke: !ref deliver
+  - name: assertFirstStillWaiting
+    inputs: { actual: !cel "steps.deliverToFirst.result", expected: { delivered: true } }
+    invoke: { kind: Assert.Equals }

@@ -1,0 +1,81 @@
+kind: Telo.Application
+metadata:
+  name: RendezvousHandOver
+  version: 1.0.0
+  description: |
+    Whichever side arrives first waits for the other. A delivery before any wait
+    is held and the next wait takes it at once; a wait that opens first is woken
+    by the delivery, which reports that a waiter took it.
+imports: { Rendezvous: ../, Run: ../../run, Timer: ../../timer, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Rendezvous.MemoryPoint
+metadata: { name: decisions }
+hold: 120s
+payloadType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [approved]
+    properties: { approved: { type: boolean }, note: { type: string } }
+---
+kind: Rendezvous.Await
+metadata: { name: await }
+point: !ref decisions
+timeout: 30s
+---
+kind: Rendezvous.Deliver
+metadata: { name: deliver }
+point: !ref decisions
+---
+kind: Run.Projection
+metadata: { name: awaitThenDeliver }
+collection: !cel "['await', 'deliver']"
+concurrency: 2
+steps:
+  - name: role
+    if: !cel "item == 'deliver'"
+    then:
+      # Long enough that the wait has opened before the delivery lands.
+      - { name: pause, inputs: { duration: 200ms }, invoke: { kind: Timer.Delay } }
+      - name: delivered
+        inputs: { key: a-1, payload: { approved: true, note: second } }
+        invoke: !ref deliver
+    else:
+      - name: awaited
+        inputs: { key: a-1 }
+        invoke: !ref await
+outputs:
+  role: !cel "item"
+  result: !cel "item == 'await' ? steps.awaited.result : steps.delivered.result"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: deliverFirst
+    inputs: { key: d-1, payload: { approved: false, note: early } }
+    invoke: !ref deliver
+  - name: thenAwait
+    inputs: { key: d-1 }
+    invoke: !ref await
+  - name: awaitFirst
+    invoke: !ref awaitThenDeliver
+  - name: deliverAfterHandOver
+    inputs: { key: a-1, payload: { approved: true } }
+    invoke: !ref deliver
+  - name: assertHandOver
+    inputs:
+      actual:
+        deliverFirst: !cel "steps.deliverFirst.result"
+        thenAwait: !cel "steps.thenAwait.result"
+        awaitFirst: !cel "steps.awaitFirst.result"
+        deliverAfterHandOver: !cel "steps.deliverAfterHandOver.result"
+      expected:
+        deliverFirst: { delivered: false }
+        thenAwait: { approved: false, note: early }
+        awaitFirst:
+          - { role: await, result: { approved: true, note: second } }
+          - { role: deliver, result: { delivered: true } }
+        deliverAfterHandOver: { delivered: false }
+    invoke: { kind: Assert.Equals }

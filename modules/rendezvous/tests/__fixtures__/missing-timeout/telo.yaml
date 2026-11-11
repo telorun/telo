@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: RendezvousMissingTimeout
+  version: 1.0.0
+  description: An await with no timeout.
+imports: { Rendezvous: ../../../, Http: ../../../../http-server }
+ports: { http: { env: PORT, protocol: tcp, default: 8081 } }
+targets:
+  - !ref server
+---
+kind: Rendezvous.MemoryPoint
+metadata: { name: decisions }
+hold: 120s
+payloadType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [approved]
+    properties: { approved: { type: boolean }, note: { type: string } }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - { path: /, mount: !ref routes }
+---
+kind: Http.Api
+metadata: { name: routes }
+routes:
+  - request: { path: "/approvals/{id}/decision", method: GET }
+    handler: { kind: Rendezvous.Await, point: !ref decisions }
+    inputs: { key: !cel "request.params.id" }
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_RENDEZVOUS_AWAIT_TIMEOUT'"
+        status: 204
+      - when: !cel "error.code == 'ERR_RENDEZVOUS_KEY_BUSY'"
+        status: 409
+        content: { application/problem+json: {} }
+  - request:
+      path: "/approvals/{id}/decision"
+      method: PUT
+      schema:
+        body:
+          type: object
+          required: [approved]
+          properties: { approved: { type: boolean }, note: { type: string } }
+    handler: { kind: Rendezvous.Deliver, point: !ref decisions }
+    inputs:
+      key: !cel "request.params.id"
+      payload: !cel "request.body"
+    returns:
+      - { status: 202, content: { application/json: { body: !cel "result" } } }

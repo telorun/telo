@@ -1722,6 +1722,20 @@ When you AUTHOR a durable manifest:
     a topic's version cursor, woken by `Watch.Publish` after the write commits —
     read the database, wait on the version just read, read again. It is never
     durable, so never inside a durable body (ZONE_ATTRIBUTE_VIOLATED).
+  - A request waiting for a VALUE another call supplies (an agent tool's result
+    from a client, an approval, a webhook answered within a request) is
+    `Rendezvous.Await` on a named `Rendezvous.MemoryPoint` (`payloadType`,
+    `hold`); the other request is `Rendezvous.Deliver` on the same point. Both
+    take a `key` input, `Deliver` also `payload`, which must fit the point's
+    `payloadType` (a literal is refused by `telo check`, a computed one when the
+    call runs); `Await` has a required `timeout`, throws
+    ERR_RENDEZVOUS_AWAIT_TIMEOUT (catch it into a 204 so the client re-polls)
+    and ERR_RENDEZVOUS_KEY_BUSY (one waiter per key). Whichever side arrives
+    first waits: a value delivered early is held for `hold` and
+    `{ delivered: false }` says so. The memory point is one process — it does
+    not meet across replicas. It is never durable, so never inside a durable
+    body (ZONE_ATTRIBUTE_VIOLATED): a wait that must survive a restart is
+    `Durable.Await`.
   - A `Local.Resumer` holds the process open for as long as it polls. That is
     right for an app whose job is recovery, and wrong for a one-shot script.
 

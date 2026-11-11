@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: RendezvousPointsAreSeparate
+  version: 1.0.0
+  description: |
+    A point owns its key space: the same key string delivered on one point is
+    held there and never reaches a wait on another, whose payload type differs.
+imports: { Rendezvous: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Rendezvous.MemoryPoint
+metadata: { name: approvals }
+payloadType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [approved], properties: { approved: { type: boolean } } }
+---
+kind: Rendezvous.MemoryPoint
+metadata: { name: tickets }
+payloadType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [number], properties: { number: { type: integer } } }
+---
+kind: Rendezvous.Await
+metadata: { name: awaitTicket }
+point: !ref tickets
+timeout: 100ms
+---
+kind: Rendezvous.Await
+metadata: { name: awaitApproval }
+point: !ref approvals
+timeout: 100ms
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: deliverApproval
+    inputs: { key: shared-1, payload: { approved: true } }
+    invoke: { kind: Rendezvous.Deliver, point: !ref approvals }
+  - name: ticketWait
+    try:
+      - name: awaitOtherPoint
+        inputs: { key: shared-1 }
+        invoke: !ref awaitTicket
+      - name: met
+        throw: { code: NOT_REFUSED, message: a value crossed to another point }
+    catch:
+      - name: assertNoMeeting
+        inputs: { actual: !cel "error.code", expected: ERR_RENDEZVOUS_AWAIT_TIMEOUT }
+        invoke: { kind: Assert.Equals }
+  - name: ownPoint
+    inputs: { key: shared-1 }
+    invoke: !ref awaitApproval
+  - name: assertOwnPoint
+    inputs: { actual: !cel "steps.ownPoint.result", expected: { approved: true } }
+    invoke: { kind: Assert.Equals }

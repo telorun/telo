@@ -138,7 +138,5 @@ nothing, because the version is remembered and the data is in the database.
 
 Handing **one value to one waiter** — a tool result delivered to the call that is
 waiting for it, an approval answered within a request's lifetime — is a different
-primitive: the value itself travels, exactly one waiter takes it, and a second
-delivery must be told the hand-off already happened. That is a rendezvous, not a
-watch; build it on a primitive that owns a key's settlement rather than on a
-version cursor.
+primitive: the value itself travels and exactly one waiter takes it. That is
+`Rendezvous.Await` / `Rendezvous.Deliver` in the `rendezvous` module, not a watch.

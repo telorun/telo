@@ -99,6 +99,10 @@ wrong shape is still on the phone.
 A delivery that names no await — a token addressed from outside the manifest —
 has no declaration to check against and is unchecked by construction.
 
+A wait that needs no durability — a request holding for another request's
+answer, with nothing to resume after a restart — is `Rendezvous.Await` in the
+`rendezvous` module, which `telo check` refuses inside a durable body.
+
 ## Where waiting is forbidden
 
 Some regions promise that nothing inside them waits:
