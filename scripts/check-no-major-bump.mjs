@@ -17,7 +17,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse } from "yaml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -72,19 +71,40 @@ function manifestVersion(file) {
   return meta?.[1].match(/^[ \t]+version:[ \t]*["']?(\d+\.\d+\.\d+[^"'\s]*)["']?[ \t]*(?:#.*)?$/m)?.[1] ?? null;
 }
 
+// The `release.modules` entries of telo-workspace.yaml: a bare path or `- path: <path>`, an
+// exclusion written `!<path>`. Read without a YAML dependency — this guard runs with no install.
+function releaseModulePatterns(text) {
+  const lines = text.split("\n");
+  const release = lines.findIndex((line) => /^release:\s*(#.*)?$/.test(line));
+  const modules = release === -1 ? -1 : lines.findIndex((line, i) => i > release && /^ {2}modules:\s*(#.*)?$/.test(line));
+  if (modules === -1) return [];
+  const patterns = [];
+  for (const line of lines.slice(modules + 1)) {
+    if (/^\s*(#.*)?$/.test(line)) continue;
+    if (!/^ {3,}/.test(line)) break;
+    const entry = line.match(/^\s+-\s+(?:path:\s*)?["']?([^"'\s#]+)["']?\s*(?:#.*)?$/);
+    if (entry) patterns.push(entry[1]);
+  }
+  return patterns;
+}
+
 function moduleDirs() {
   const workspace = join(ROOT, "telo-workspace.yaml");
   if (!existsSync(workspace)) return [];
-  const entries = parse(readFileSync(workspace, "utf8"))?.release?.modules ?? [];
-  return entries.flatMap((entry) => {
-    const pattern = typeof entry === "string" ? entry : entry.path;
+  const expand = (pattern) => {
     if (!pattern.endsWith("/*")) return [pattern];
     const base = join(ROOT, pattern.slice(0, -2));
     if (!existsSync(base)) return [];
     return readdirSync(base)
       .filter((name) => statSync(join(base, name)).isDirectory())
       .map((name) => `${pattern.slice(0, -2)}/${name}`);
-  });
+  };
+  const dirs = new Set();
+  for (const pattern of releaseModulePatterns(readFileSync(workspace, "utf8"))) {
+    if (pattern.startsWith("!")) for (const dir of expand(pattern.slice(1))) dirs.delete(dir);
+    else for (const dir of expand(pattern)) dirs.add(dir);
+  }
+  return [...dirs];
 }
 
 const moduleOffenders = [];
