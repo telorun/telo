@@ -32,7 +32,7 @@
 // merely recorded (a branch cut at main's record of a release made elsewhere) is not
 // this run's release.
 //
-// `moved` counts the versions moved in HEAD^..HEAD that this run publishes for the
+// `moved` counts the versions moved in the release commit (the tip, or the version commit a fix sits on) that this run publishes for the
 // first time; `moved-in-commit` counts those moved in it whether or not they were already
 // published. The Publish workflow numbers a module release when the latter is non-zero, so a
 // re-run of a release whose publication failed re-derives the same tag.
@@ -53,7 +53,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { promisify } from "node:util";
-import { manifestVersionAt, versionsMovedInHead } from "./module-versions-moved.mjs";
+import { manifestVersionAt, versionsMovedInRelease } from "./module-versions-moved.mjs";
 import { setOutput } from "./release-actions-output.mjs";
 
 import {
@@ -151,8 +151,8 @@ const queued = new Set();
 // release model, so a module at any depth is included.
 const importable = importableManifests().filter((abs) => existsSync(abs));
 
-// The manifests whose metadata.version moved in HEAD^..HEAD.
-const movedRel = versionsMovedInHead(
+// The manifests whose metadata.version moved in this run's release commit.
+const movedRel = versionsMovedInRelease(
   ROOT,
   importable.map((abs) => abs.replace(ROOT + "/", "")),
 );
