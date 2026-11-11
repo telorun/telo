@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: HelloWebExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/hello-web` unmodified on a port of this test's own and reads both
+    of its pages.
+imports:
+  App: ../../../modules/app
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports: { http: 8851 }
+targets:
+  - !ref app
+steps:
+  - name: home
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8851/", method: GET, responseType: text }
+  - name: settings
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8851/settings", method: GET, responseType: text }
+  - name: verifyPages
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        home: { status: !cel "steps.home.result.status", body: !cel "steps.home.result.body" }
+        settings: { status: !cel "steps.settings.result.status", body: !cel "steps.settings.result.body" }
+      expected:
+        home: { status: 200, body: "<h1>Hello, world!</h1>" }
+        settings: { status: 200, body: "<h1>Settings</h1>" }

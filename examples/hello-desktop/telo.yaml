@@ -1,0 +1,73 @@
+kind: Telo.Application
+metadata:
+  name: HelloDesktop
+  version: 1.0.0
+  description: |
+    The `hello-web` app in a desktop shell: a window, a hidden settings window and a
+    tray icon with a menu. The web app is unchanged; this wrapper only supplies its
+    port and opens windows on it.
+
+    Run: telo run ./examples/hello-desktop
+    Package: telo package ./examples/hello-desktop
+lang: en
+imports:
+  App: ../../modules/app
+  Console: ../../modules/console
+  Desktop: ../../modules/desktop
+ports: { http: { env: PORT } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters:
+      identifier: run.telo.examples.hello
+      productName: Hello
+      icon: !module-path icon.png
+      port: http
+      showInDock: false
+targets:
+  - !ref web
+  - !ref mainWindow
+  - !ref settingsWindow
+  - !ref tray
+---
+kind: App.Instance
+metadata: { name: web }
+source: ../hello-web
+ports: { http: !cel "ports.http" }
+---
+kind: Desktop.Window
+metadata: { name: mainWindow }
+host: !ref desktopHost
+title: Hello
+size: { width: 480, height: 320 }
+minSize: { width: 320, height: 240 }
+onClose: hide
+---
+kind: Desktop.Window
+metadata: { name: settingsWindow }
+host: !ref desktopHost
+path: /settings
+title: { text: Settings, context: window title }
+size: { width: 400, height: 300 }
+resizable: false
+visible: false
+onClose: hide
+---
+kind: Desktop.TrayIcon
+metadata: { name: tray }
+host: !ref desktopHost
+icon: !module-path tray.png
+monochrome: true
+tooltip: Hello
+action: { invoke: { kind: Desktop.ShowWindow, window: !ref mainWindow } }
+menu:
+  - { type: item, label: Open Hello, action: { invoke: { kind: Desktop.ShowWindow, window: !ref mainWindow } } }
+  - { type: item, label: Settings, action: { invoke: { kind: Desktop.ShowWindow, window: !ref settingsWindow } } }
+  - type: item
+    label: Write status to log
+    action:
+      invoke: !ref Console.writeLine
+      inputs: { output: Hello is running }
+  - { type: item, label: Hello 1.0, enabled: false }
+  - { type: separator }
+  - { type: item, label: Quit, action: { invoke: { kind: Desktop.Quit, host: !ref desktopHost } } }

@@ -44,7 +44,7 @@ application:
 - Every need's variable — derived (`TELO_NEED_…`) or bound with `env:` — is
   hidden by its exact name, from `process.env` and `ctx.env` alike.
 - The host values (`TELO_HOST_STATE_DIR`, `TELO_HOST_PUBLIC_URL_TEMPLATE`,
-  `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE`) are hidden the same way, and are
+  `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE`, `TELO_HOST_DESKTOP_HELPER`) are hidden the same way, and are
   also stripped from the environment of an application started with
   `App.Instance`, which is a root of its own. The container-engine values are
   not hidden.
@@ -63,8 +63,9 @@ the manifest declares without naming a place. See
 | `TELO_HOST_STATE_DIR` | A directory this one application owns. Every `Telo.DurableDirectory` need with no variable of its own becomes `<state dir>/needs/<need path>`, created at load. See [Durable directories](/learn/providing-needs#durable-directories). |
 | `TELO_HOST_PUBLIC_URL_TEMPLATE` | An `http` / `https` origin with `{port}` optional. Answers each `Telo.PublicUrl` need that is the primary of its port. See [Deriving addresses](/learn/providing-needs#deriving-addresses-from-the-templates). |
 | `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` | The same with `{label}` required in the host. Answers every other `Telo.PublicUrl` need. |
+| `TELO_HOST_DESKTOP_HELPER` | The absolute path of a `telo-desktop-host` binary `telo run` uses as the desktop host's helper, instead of the packaged, built or downloaded one. A test and development seam. |
 
-The runtime reads the first three. `TELO_HOST_CONTAINER_ENGINE_URL` and
+The runtime reads the first four. `TELO_HOST_CONTAINER_ENGINE_URL` and
 `TELO_HOST_CONTAINER_ENGINE_TOKEN` are a convention instead: a manifest using
 `Docker.Engine` binds them with `env:` (default `unix:///var/run/docker.sock`, no
 token), and a runner with session containers on sets both to its own engine

@@ -189,3 +189,4 @@ export {
   toolRequirement,
 } from "./controller-loaders/controller-tool-requirements.js";
 export type { ToolRequirement } from "./controller-loaders/controller-tool-requirements.js";
+export { DESKTOP_HELPER_HOST_VALUE } from "./host-values.js";

@@ -1,5 +1,5 @@
 ---
-description: "Ship a Telo application as one executable with telo package: what the payload carries, which controllers can travel, how arguments and .env reach it, how to read a packaged binary, and how TELO_APP_CLI reaches the telo inside it."
+description: "Ship a Telo application as one executable with telo package: what the payload carries, which controllers can travel, how arguments and .env reach it, desktop apps as a macOS bundle or Windows GUI executable and how to sign them, how to read a packaged binary, and how TELO_APP_CLI reaches the telo inside it."
 ---
 
 # Packaging an application
@@ -63,8 +63,8 @@ exist and the command refuses rather than failing at the download.
 
 **Packaging a darwin platform requires a macOS host.** On Mach-O the payload
 goes into a segment of its own and the binary is re-signed afterwards, which
-only `codesign` does; on ELF and PE the payload is appended and any host can do
-it.
+only `codesign` does; on ELF and PE the payload is appended (a Windows desktop
+app carries it as a resource instead) and any host can do it.
 
 **The binary carries the telo that packaged it**, and that is enforced rather
 than assumed. There is no flag to choose another version, and only a *released*
@@ -148,6 +148,89 @@ unprivileged user needs only that directory (or `HOME`, or a writable temporary
 directory) — see [Running unprivileged](/deploy/production#running-unprivileged).
 `TELO_CACHE_DIR` is ignored inside a packaged app: the payload *is* its cache.
 
+## A desktop app
+
+A root `Telo.Application` that declares a `Telo.DesktopHost` need is packaged as a
+desktop app, with no flag: `telo package ./hello-desktop --out dist/Hello`. Its
+`icon` must be a square PNG of at least 1024 px, or packaging refuses
+(`icon.png must be square and at least 1024 px (it is 512 × 512)`) and writes
+nothing. The helper that owns the windows (`telo-desktop-host`) is obtained for
+the platform being packaged — `TELO_HOST_DESKTOP_HELPER` or a source checkout's
+own build for the machine's platform, else the release asset — and travels with
+the app, so it still starts offline. `telo package inspect` prints `desktopHost: { identifier }`.
+
+What is written depends on the platform:
+
+- **macOS** — `--out dist/Hello` writes the application bundle `dist/Hello.app`.
+  `Contents/Info.plist` carries the need's `identifier` (`CFBundleIdentifier`),
+  `productName` (`CFBundleName`, `CFBundleDisplayName`), the root's
+  `metadata.version` (`CFBundleShortVersionString`, `CFBundleVersion`),
+  `LSMinimumSystemVersion` 14.0, and `LSUIElement` when `showInDock: false`; the
+  icon becomes `Contents/Resources/AppIcon.icns`. The executable in
+  `Contents/MacOS/` is named after `productName` (`/` and `:` become `-`) and the
+  helper sits beside it as `Contents/MacOS/telo-desktop-host`, outside the
+  payload. Both are signed ad hoc.
+- **Windows** — `dist/Hello.exe`, a GUI-subsystem executable: starting it opens
+  no console window. It carries the icon (256 px down to 16 px) and a version
+  resource (`ProductName`, `FileDescription`, `ProductVersion`, `FileVersion`)
+  that Explorer and Task Manager show, and its payload as a resource, with the
+  helper inside the payload.
+- **Linux** — the plain executable, the helper in its payload.
+
+`package inspect` reads a bundle by its own path —
+`TELO_APP_CLI=1 dist/Hello.app/Contents/MacOS/Hello package inspect dist/Hello.app`,
+or `telo package inspect dist/Hello.app` from any telo. A GUI executable on
+Windows has no console to print to, so read it with an installed telo
+(`telo package inspect dist\Hello.exe`), or redirect its output to a file.
+
+The binary hosts itself: its working directory is the per-user application
+directory of the `identifier` (`$XDG_DATA_HOME/<identifier>` or
+`~/.local/share/<identifier>`, `~/Library/Application Support/<identifier>`,
+`%LOCALAPPDATA%\<identifier>`), `.env` is read there, and `TELO_HOST_STATE_DIR`
+is `<that directory>/state`, so every `Telo.DurableDirectory` need — a child web
+app's included — lands under `state/` with no setting. A state directory the
+environment already names is kept. When the environment supplies the host instead
+(`TELO_NEED_…` set) the binary keeps the working directory it was started in and
+only reads its `.env` from the per-user directory.
+
+### Signing a desktop app
+
+Signing is your step, done after packaging and before you distribute the file.
+
+**macOS.** Sign the bundle with your Developer ID and the hardened runtime, then
+notarize and staple it:
+
+```sh
+codesign --force --deep --options runtime --timestamp \
+  --entitlements entitlements.plist --sign "Developer ID Application: …" dist/Hello.app
+ditto -c -k --keepParent dist/Hello.app dist/Hello.zip
+xcrun notarytool submit dist/Hello.zip --keychain-profile … --wait
+xcrun stapler staple dist/Hello.app
+```
+
+The payload sits inside the carrier's Mach-O image, so the signature covers it
+and nothing follows it. The hardened runtime needs the entitlements the Node
+runtime inside asks for — `com.apple.security.cs.allow-jit` and
+`com.apple.security.cs.allow-unsigned-executable-memory` — and
+`com.apple.security.cs.disable-library-validation` when the app loads a native
+controller, since those are unpacked from the payload and are not signed by your
+team.
+
+**Windows.** Sign the executable with `signtool`:
+
+```sh
+signtool sign /fd SHA256 /tr <timestamp URL> /td SHA256 /f cert.pfx dist\Hello.exe
+```
+
+Signing writes the certificate after the image and rewrites the checksum. The
+payload is a resource inside the image, so signing leaves it intact.
+
+Not yet confirmed on a real machine: a bundle launching on macOS and passing
+`codesign` and notarization, a `signtool`-signed executable starting, and Windows
+starting the GUI executable. What packaging writes — the bundle, `Info.plist`,
+the `.icns`, the subsystem, checksum and resources, and a payload still found once
+a certificate table follows the image — is checked by reading the bytes back.
+
 ## Reading a packaged binary
 
 Every telo command that takes a manifest takes a packaged binary in its place —
@@ -171,8 +254,9 @@ telo package inspect dist/orders
 
 prints what the file carries — application name and version, the entry manifest,
 the platform and abi, the telo version that built it, every module inside, and
-the payload's digest. It reads the trailer alone, so it is instant and works on
-a file someone else built.
+the payload's digest and where it rides (`placement`: `appended`,
+`macho-segment` or `pe-resource`). It reads the trailer alone, so it is instant
+and works on a file someone else built.
 
 ## The telo inside it
 

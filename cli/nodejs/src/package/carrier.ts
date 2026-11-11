@@ -307,7 +307,7 @@ export async function writeAppExecutable(options: {
   codesign(["--sign", "-", out]);
 }
 
-function codesign(args: string[]): void {
+export function codesign(args: string[]): void {
   try {
     execFileSync("codesign", args, { stdio: "inherit" });
   } catch (err) {

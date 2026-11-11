@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: DesktopClosingFixture
+  version: 1.0.0
+  description: One window the user closes, and no tray icon, so closing it leaves nothing to reach the app by.
+lang: en
+imports: { Desktop: ../../../../../../modules/desktop }
+ports: { http: { env: DESKTOP_CLOSING_PORT } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.tests.desktopclosing, productName: Closing, port: http }
+targets:
+  - !ref onlyWindow
+---
+kind: Desktop.Window
+metadata: { name: onlyWindow }
+host: !ref desktopHost
+title: Only
+onClose: close

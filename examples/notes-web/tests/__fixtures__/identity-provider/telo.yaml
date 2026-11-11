@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: FixtureIdentityProvider
+  version: 1.0.0
+  description: |
+    Test fixture: an identity provider that signs "alice" in at once. `/authorize`
+    answers with the authorization code and the caller's `state`, in the redirect's
+    query or as a self-submitting form, as the request's `response_mode` asks; `/token`
+    redeems a code exactly once.
+imports:
+  Http: ../../../../../modules/http-server
+  Idempotency: ../../../../../modules/idempotency
+  KvStoreMemory: ../../../../../modules/kv-store-memory
+variables:
+  subject: { env: IDP_SUBJECT, type: string, default: alice, description: The user `/token` answers for. }
+ports: { http: { env: IDP_PORT, default: 9000 } }
+targets:
+  - !ref server
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+contentTypeParsers:
+  - { contentType: application/x-www-form-urlencoded }
+mounts:
+  - { path: /, mount: !ref provider }
+---
+kind: KvStoreMemory.Store
+metadata: { name: redeemed }
+---
+# The first redemption of a code runs the body; a repeat is replayed, which /token refuses.
+kind: Idempotency.Once
+metadata: { name: redeemOnce }
+store: !ref redeemed
+claimTtl: 30s
+ttl: 3600s
+invoke:
+  kind: Telo.Value
+  inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { code: { type: string } } } }
+  value: !cel "{'valid': inputs.code.contains('.') && inputs.code.split('.')[1] == hmac('sha256', 'fixture-secret', inputs.code.split('.')[0])}"
+---
+kind: Http.Api
+metadata: { name: provider }
+catches:
+  - status: 500
+    content: { application/json: { body: { error: server_error } } }
+routes:
+  - request: { path: /authorize, method: GET }
+    inputs:
+      nonce: !cel "uuidv4()"
+      redirectUri: !cel "request.query.redirect_uri"
+      state: !cel "request.query.state"
+      mode: !cel "'response_mode' in request.query ? request.query.response_mode : 'query'"
+    handler:
+      kind: Telo.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, properties: { nonce: { type: string }, redirectUri: { type: string }, state: { type: string }, mode: { type: string } } }
+      value:
+        code: !cel "inputs.nonce + '.' + hmac('sha256', 'fixture-secret', inputs.nonce)"
+        redirectUri: !cel "inputs.redirectUri"
+        state: !cel "inputs.state"
+        mode: !cel "inputs.mode"
+    returns:
+      - status: 200
+        when: !cel "result.mode == 'form_post'"
+        content:
+          text/html:
+            body: !interpolate "<form method=\"post\" action=\"${{ result.redirectUri }}\"><input type=\"hidden\" name=\"code\" value=\"${{ result.code }}\"><input type=\"hidden\" name=\"state\" value=\"${{ result.state }}\"></form><script>document.forms[0].submit()</script>"
+      - status: 302
+        headers:
+          Location: !interpolate "${{ result.redirectUri }}?code=${{ result.code }}&state=${{ result.state }}"
+        content: { text/html: { body: "<p>Signed in</p>" } }
+  - request: { path: /token, method: POST }
+    inputs:
+      key: !cel "request.body.split('&').filter(p, p.startsWith('code=')).map(p, urlDecode(p.substring(5))).join('')"
+      inputs: { code: !cel "request.body.split('&').filter(p, p.startsWith('code=')).map(p, urlDecode(p.substring(5))).join('')" }
+    handler: !ref redeemOnce
+    returns:
+      - status: 200
+        when: !cel "result.state == 'fresh' && result.result.valid"
+        content: { application/json: { body: { sub: !cel "variables.subject", name: Alice } } }
+      - status: 400
+        content: { application/json: { body: { error: invalid_grant } } }

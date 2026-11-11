@@ -73,23 +73,22 @@ inline (`ref: { kind: Ui.Listing, … }`); `taskTable` is used twice.
 
 - `title` and `theme` (the look: `!ref UiReact.defaultTheme`, or another) are
   required. `pages` (at least one) are `Ui.Page`s — `{ path, title?, query?,
-  width?, children }`, each path unique — inline or `!ref`. Omit `title` for no heading.
+  width?, children }`, each path unique — inline or `!ref`.
 - `navigation: { items, placement? }` is the menu, naming pages by `!ref`, not
   path: `{ type: page, page, text? }`, `{ type: link, text, href }`,
   `{ type: group, text, items }`, each with `when?` and `icon?` (a
   `UiLucide.Icon` from `ui-lucide`, or a `Ui.FileIcon`). Omitted, one entry per
-  page; an entry naming an unlisted page is refused by `telo check`.
+  page.
   `placement` is `Ui.HeaderNavigation` (default), `Ui.SidebarNavigation`
   (`side`, `rail`, `store`), or a compact one (`Ui.OverlayNavigation`,
   `Ui.TabBarNavigation`) that a header's or sidebar's `compact` names.
 - Optional: `translations: { catalogs }` of `Telo.TextTranslations` serve texts
-  in the negotiated `request.lang` (`Http.Server.preferredLanguages`). The
-  renderer's own texts are English; list `ui`'s `Ui.polishTranslations`, …
-  (fourteen languages) to translate them, then a `Ui.Translations` (`lang`,
-  `messages: { save: Submit }`) to reword. Also `tokens` (the brand),
-  `stylesheets` (`!module-path ./ui.css`), `compactBelow`, `pageWidth`
-  (`contained` or `full`; a page's `width` wins), `header: { start?, end?,
-  width? }`.
+  in the negotiated `request.lang` (`Http.Server.preferredLanguages`); the
+  renderer's own texts are English, so list `ui`'s `Ui.polishTranslations`, …
+  (fourteen languages) to translate them and a `Ui.Translations` (`messages:
+  { save: Submit }`) to reword. Also `tokens`, `stylesheets` (`!module-path
+  ./ui.css`), `compactBelow`, `pageWidth` (`contained` or `full`; a page's
+  `width` wins), `header: { start?, end?, width? }`.
 
 ### Nodes
 
@@ -103,7 +102,7 @@ A page's `children` are nodes, plain data with a `type`:
 | `menu` | `text`, `items` (`link`s behind a button; `strong` marks the current) |
 | `tabs` | `tabs: [{ text, children, when? }]`, `address?` (the chosen tab in the page address) |
 | `image` | `src`, `alt` (required, may be empty) |
-| `svg` | `markup`, `alt` — drawn as an image, never inserted |
+| `svg` | `markup`, `alt` (drawn as an image) |
 | `value` | `value` (an accessor), `text?`, `href?` — one value, presented as its schema says |
 | `list` | `rows` (an accessor), `columns: [{ header?, value, shown? }]`, `heading?` |
 | `bar` | `start?`, `center?`, `end?` — node lists; the centre stays centred |
@@ -123,8 +122,7 @@ text over data names its values (`text: { text: { plural: n, cases: { one:
 
 **Addresses.** An address inside the application (a page `path`, a `link`'s
 `href`, an `image`'s `src`, a `basePath`, a request target's `path`) is
-app-relative: `/` followed by anything but `/` or `\` (`//host` and `/\host`
-are refused). A `link` may also start `https://`, `http://` or `mailto:`; an `image`, `https://` or `http://`. It resolves under the mount: at `/admin`,
+app-relative: `/` followed by anything but `/` or `\`. A `link` may also start `https://`, `http://` or `mailto:`; an `image`, `https://` or `http://`. It resolves under the mount: at `/admin`,
 `/api/reports` is requested at `/admin/api/reports`, so serve the API there.
 
 Links, `href`s, menu items, `navigate` and request targets take a string, or
@@ -624,6 +622,10 @@ There is no `onClick`: listing buttons, form submit and filter change are
 built in; an operation is a `Ui.Action`. Requests carry the page's same-origin
 credentials; guard the routes.
 
+## A desktop app
+
+Keep the application deployable and wrap it: a second `Telo.Application` runs it with `App.Instance`, declares a `Telo.DesktopHost` need (`identifier`, `productName`, a 1024 px square PNG `icon`, `port`) and opens a `Desktop.Window` per screen at its `path`; a tray app adds `Desktop.TrayIcon`. `get_kinds` gives the fields.
+
 ## Testing a screen
 
 Start the app with `App.Instance` (module `app`) in a `Telo.Sequence`'s `with:`
@@ -640,10 +642,8 @@ and request its documents:
 
 ## Before you finish
 
-- `telo check` is clean: it reports an unknown column (`CEL_UNKNOWN_FIELD`), a
-  filter the collection does not declare (`UI_FILTER_NOT_ACCEPTED`), a layout
-  it cannot serve (`UI_LAYOUT_GROUP_NOT_FILTERABLE`), a key a surface does not
-  take (`SCHEMA_VIOLATION`), a malformed address and a path template
-  (`PATH_PARAMETER_UNBOUND`, `PATH_PARAMETER_UNUSED`).
+- `telo check` is clean: it reports an unknown column, a filter the collection
+  does not declare, a layout it cannot serve, a key a surface does not take, a
+  malformed address and an unbound path parameter.
 - Every listing, filter bar and action names a route answering its contract;
   the screen and the API read the same shapes.

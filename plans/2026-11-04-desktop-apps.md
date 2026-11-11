@@ -1,8 +1,9 @@
 ---
-status: approved
+status: in-progress
 priority: medium
 depends-on: []
 packages: [cli, kernel, cli/rust, modules/desktop, examples, docs, apps/authoring-agent, apps/hub]
+tracking: feat/desktop-apps
 ---
 
 # Desktop apps
@@ -38,19 +39,16 @@ At run time:
   - The host holds one armed return. Each navigation a window sends to the system browser arms it, recording that window; it is cleared when that window closes.
   - A request from the system browser to one of the need's `callbackPaths` is admitted without the cookie while a return is armed; `Host` is still checked. The first such request uses the return up.
   - The host does not serve that request to the browser. It answers it with its own page telling the user to return to the app (`productName`), focuses the window that armed the return, and replays the request there, where the cookie is:
-    - a GET by navigating the window to the same path and query;
-    - a form POST (`application/x-www-form-urlencoded`, at most 64 KiB) by navigating the window to the callback path with a single-use `_telo.return=<code>` parameter, which the host answers itself with a page on the app's origin that submits the form at once. The submission is same-origin, so it carries the cookie whatever the window showed before.
+    - a GET by navigating the window to the same path and query on the app origin;
+    - a form POST (`application/x-www-form-urlencoded`, at most 64 KiB) by navigating the window to `<host origin>/return?code=<code>`, a single-use page the host serves on its own origin that submits the form at once to `<app origin><callback path>`. The submission carries the cookie and `Origin: <host origin>`, which the app origin admits, so it reaches the web app whatever the window showed before and on whichever connection the webview reuses. A web app that allowlists the `Origin` of its callback POST must accept the host origin, as a `form_post` callback already must accept the provider's.
   - Any other return — unarmed, already used, to an undeclared path, or a POST of another type or size — gets `403`.
   - Protection against a forged return stays the web app's own `state` / PKCE check. A popup flow that relies on `window.opener` is not supported; the module docs say so.
   - A provider that accepts any loopback port (RFC 8252 §7.3) needs nothing more. One that matches the redirect address exactly needs the root's port to declare a `default:`; the module docs say so.
 - **Unavailable.** With no display, no WebKitGTK (Linux), no WebView2 (Windows), macOS older than 14, or a helper that cannot be obtained, the start is refused with `ERR_DESKTOP_HOST_UNAVAILABLE`, naming the reason.
 
-**Admission.** The host admits each connection on its first request, before handing it to the kernel (`HostListeners.admit`, with the bytes it read):
-- `Host` must be `127.0.0.1:<port>`, and `Origin` must be absent or that origin.
-- For each window it opens, the host gives the helper a single-use code over its link to the helper, and the helper navigates to the window's `path` with the query parameter `_telo.window=<code>`. The host answers that request itself: `303` to the same path and query without the parameter, with `Set-Cookie: telo-window=<token>; HttpOnly; SameSite=Strict; Path=/`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
-- Every other connection's first request must carry the `telo-window` cookie, whose value is the per-launch admission secret. It is the host's alone — distinct from the need's `token`, which secures the control channel — and never reaches the manifest's scope. Once admitted, a connection is handed over whole and its later requests reach the server unread.
-- An armed return to a `callbackPaths` entry is the one request admitted without the cookie (External sign-in, above).
-- A code that is unknown or already used, and anything else, gets `403` and the connection is closed.
+**Admission.** A window loads two origins, both on `127.0.0.1`: the **app origin** (the need's `port`, above) and the **host origin**, a second loopback listener the host owns on a port the OS assigns at every launch — recorded nowhere, never handed to the kernel and not reported on `Kernel.PortsResolved`. The host never answers a request on a connection it handed to the kernel, and every page it shows in a window is served on the host origin.
+- **App origin.** The host reads each connection's first request, before handing the connection to the kernel (`HostListeners.admit`, with the bytes it read). `Host` must be `127.0.0.1:<port>`. A request carrying the `telo-window` cookie, whose `Origin` is absent, the app origin or the host origin, hands over the connection whole; its later requests reach the server unread. The cookie's value is the per-launch admission secret: the host's alone — distinct from the need's `token`, which secures the control channel — and never in the manifest's scope. An armed return to a `callbackPaths` entry is the one request the host answers there, with `Connection: close` (External sign-in, above). Anything else gets `403` and the connection is closed. The web app owns every path of its origin.
+- **Host origin.** The host reads every request and closes the connection after each answer. `Host` must be `127.0.0.1:<host port>` and `Origin` absent or the host origin. For each window it opens, the host binds a single-use code to the window and a destination — the window's path and query on the app origin, or `<host origin>/startup` for its own startup window — and the helper loads `<host origin>/admit?code=<code>`. The host answers it `303` with `Location` the destination as an absolute URL built from its origin, `Set-Cookie: telo-window=<secret>; HttpOnly; SameSite=Strict; Path=/`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`. Cookies ignore the port, so the one cookie works on both origins. The startup view and the inputs form (`/startup`, `/startup/answers`) and the sign-in replay page (`/return`) need the cookie. A code that is unknown or already used, and anything else, gets `403`.
 - Neither secret appears in argv or a URL, and both join the root's redaction set.
 
 **The helper** is a Rust wry/tao crate at `cli/rust/desktop-host`, carrying the CLI's version. It talks to `telo run` over the controller protocol's frame (the `@telorun/sdk` codec on the Node end), with a message set internal to one release:
@@ -91,8 +89,9 @@ On a packaged desktop start:
 
 - **Wrapper application, not a key on the web app.** The web app must deploy unchanged. A top-level `desktop:` block on every Application, or a new root kind, was rejected: one breaks the one-root-doc rule and the other adds an Application key for one feature.
 - **Identity on a built-in need.** Packaging reads it the way the kernel reads `Telo.DurableDirectory` and `Telo.PublicUrl`, never a module's kind. A flag on `telo package` was rejected: the analyzer and the editor cannot check it.
-- **The port lives on the need, not on the window.** The host binds before boot and cannot read `Desktop.Window`. One origin per app also keeps admission to one cookie.
+- **The port lives on the need, not on the window.** The host binds before boot and cannot read `Desktop.Window`. One app origin per app also keeps admission to one cookie.
 - **Socket handover and admission stay with `telo run`'s own host.** An environment-supplied host gets the control channel only; fronting the ports is its concern.
+- **Host pages on a host origin of their own.** A connection handed to the kernel is never read again, and a webview pools keep-alive connections across its windows, so a host exchange sent on the app origin can arrive on an admitted connection and be swallowed by the web app.
 - **Admission rides a one-time code in the first URL, not a request header.** A URL is the one carrier every webview is sure to send; the code is single-use and is not the token, so history and `Referer` leak nothing.
 - **Other origins open in the system browser, and sign-in returns through loopback.** An embedded sign-in page is what RFC 8252 forbids and Google refuses. A loopback return keeps the web app's own redirect address, works under `telo run` on every platform and carries a form POST. Replaying it into the window keeps the session in the window's cookies rather than the browser's. A private-use URL scheme is not part of this plan: it needs the web app reconfigured and per-platform registration, and macOS registers one only for an app bundle.
 - **No tray on Linux warns and shows the hidden windows.** Refusing would make an app unusable on stock GNOME for want of an optional icon.
@@ -107,11 +106,11 @@ On a packaged desktop start:
 1. `examples/hello-web/telo.yaml` is byte-identical in both builds, and its server binary binds `0.0.0.0:$PORT`.
 2. `telo run ./examples/hello-desktop` opens a window showing the page and a tray icon. Closing the window hides it and the app keeps running. The tray's "Open Hello" and a second run both show it again, the second run exiting 0. "Settings", declared `visible: false`, opens only from the tray, and a second run leaves it hidden even after it was opened from the tray and hidden again. "Quit" logs the same unwind as SIGTERM and exits 0.
 3. "Write status to log" writes its line through `Console.writeLine`. On GNOME without the AppIndicator extension the run logs `DESKTOP_TRAY_UNAVAILABLE`, "Settings" is shown at start, a second run shows both windows, and closing both stops the app. On macOS, `showInDock: false` leaves no Dock icon under `telo run` and writes `LSUIElement` into the packaged `Info.plist`.
-4. `curl` to the port gets 403 without the cookie, with a forged `Host`, with a replayed `_telo.window` URL, and from another OS user. The page's `location` never shows `_telo.window`. Pages, EventSource and WebSocket work in the window. Two desktop apps run side by side under `telo run`, each keeping its own admission, and neither server receives the other's cookie. A value a page writes to `localStorage` is there after quit and restart, on the same port. With that port occupied, the next start logs `DESKTOP_ORIGIN_CHANGED` and records the new port. On macOS 13 `telo run` is refused with `ERR_DESKTOP_HOST_UNAVAILABLE` and the packaged app is refused by macOS. `Kernel.PortsResolved` shows `address: 127.0.0.1, suppliedBy: host`.
+4. `curl` to the app port gets 403 without the cookie, with a forged `Host` or a foreign `Origin`, and from another OS user; `curl` to the host port gets 403 with a forged `Host`, a replayed `/admit` URL, and for `/startup` or `/return` without the cookie. No app-origin URL ever carries an admission code. With the first window's connection to the app idle in the webview's pool, a second window's `/admit` is answered by the host and its page reaches the app on that pooled connection, and reloads of the startup view never reach the app. Pages, EventSource and WebSocket work in the window. Two desktop apps run side by side under `telo run`, each keeping its own admission, and neither server receives the other's cookie. A value a page writes to `localStorage` is there after quit and restart, on the same port. With that port occupied, the next start logs `DESKTOP_ORIGIN_CHANGED` and records the new port. On macOS 13 `telo run` is refused with `ERR_DESKTOP_HOST_UNAVAILABLE` and the packaged app is refused by macOS. `Kernel.PortsResolved` shows `address: 127.0.0.1, suppliedBy: host`.
 5. The same web-app variable declared on the wrapper and passed through is asked for in the window, and refused under `--no-input`. A boot refusal is shown in the window.
 6. `telo package ./examples/hello-desktop` writes `Hello.app` on macOS, a GUI `Hello.exe` with no console on Windows, and the ELF on Linux. Each starts offline, and a `Telo.DurableDirectory` need `data` of the web app lands at `<data dir>/state/apps/web/needs/data`. It carries `icon.png` and `tray.png` with no `files:` entry, and an icon under 1024 px is refused with `ERR_DESKTOP_ICON_INVALID`.
 7. A signed `Hello.exe` (signtool) still finds its payload.
-8. A fixture identity provider with a GET callback, and one answering with `form_post`, signs the window in under `telo run` and in the packaged app, also when the window showed an error page before the return; the system browser shows the return page, and the window ends signed in. A fixture matching the redirect address exactly works when the root's port declares a `default:`. A replayed, unarmed or undeclared return gets 403, as does a second return after one external navigation.
+8. A fixture identity provider with a GET callback, and one answering with `form_post`, signs the window in under `telo run` and in the packaged app, also when the window showed an error page before the return; the system browser shows the return page, and the window ends signed in. A fixture matching the redirect address exactly works when the root's port declares a `default:`. A replayed, unarmed or undeclared return gets 403, as does a second return after one external navigation. A `form_post` return replayed while the window's connection to the app idles in the webview's pool reaches the app on that connection with the provider's `code` and `state`, the window's cookie and `Origin: <host origin>`; `/return` without the cookie, or with a used or expired code, gets 403.
 9. A window opened before the web app's server is up shows the page once it is; with the server never starting, the window shows the boot-refusal view and a request gets `503`. A second start prints the running instance's process and source.
 10. With the env supply (`TELO_NEED_DESKTOP_HOST__ENDPOINT` / `__TOKEN` set), `telo run` starts no helper and binds nothing.
 
@@ -416,27 +415,29 @@ Cache-Control: no-store
 <p>Return to Notes to finish signing in.</p>
 ```
 
-The host navigates `mainWindow` to a single-use page of its own on the app's origin, which submits the form at once:
+The host navigates `mainWindow` to a single-use page of its own on the host origin (here port 41877), which submits the form at once to the app origin:
 
 ```
-GET /auth/callback?_telo.return=Hq3ZpW8sNc2v HTTP/1.1
-Host: 127.0.0.1:53817
+GET /return?code=Hq3ZpW8sNc2v HTTP/1.1
+Host: 127.0.0.1:41877
 Cookie: telo-window=8d2f6a1c9e4b7d3f0a5c2e8b1d6f4a9c
 
 HTTP/1.1 200 OK
 Content-Type: text/html
 Cache-Control: no-store
+Referrer-Policy: no-referrer
+Connection: close
 
-<form method="post" action="/auth/callback"><input type="hidden" name="code" value="SplxlOBeZQQYbYS6WxSbIA"><input type="hidden" name="state" value="af0ifjsldkj"></form><script>document.forms[0].submit()</script>
+<form method="post" action="http://127.0.0.1:53817/auth/callback"><input type="hidden" name="code" value="SplxlOBeZQQYbYS6WxSbIA"><input type="hidden" name="state" value="af0ifjsldkj"></form><script>document.forms[0].submit()</script>
 ```
 
-The submission reaches `notes-web` with the window's cookie:
+The submission reaches `notes-web` with the window's cookie and the host origin as `Origin`, on whichever connection the webview reuses:
 
 ```
 POST /auth/callback HTTP/1.1
 Host: 127.0.0.1:53817
 Cookie: telo-window=8d2f6a1c9e4b7d3f0a5c2e8b1d6f4a9c
-Origin: http://127.0.0.1:53817
+Origin: http://127.0.0.1:41877
 Content-Type: application/x-www-form-urlencoded
 Content-Length: 46
 
@@ -465,20 +466,21 @@ Connection: close
 
 ### Admission on the wire
 
-The window's first navigation, with the code the host gave the helper:
+The window's first navigation, on the host origin (here port 41877), with the code the host gave the helper:
 
 ```
-GET /?_telo.window=Q7vK2mX9pL4s HTTP/1.1
-Host: 127.0.0.1:53817
+GET /admit?code=Q7vK2mX9pL4s HTTP/1.1
+Host: 127.0.0.1:41877
 
 HTTP/1.1 303 See Other
-Location: /
+Location: http://127.0.0.1:53817/
 Set-Cookie: telo-window=8d2f6a1c9e4b7d3f0a5c2e8b1d6f4a9c; HttpOnly; SameSite=Strict; Path=/
 Referrer-Policy: no-referrer
 Cache-Control: no-store
+Connection: close
 ```
 
-The follow-up reaches the web app:
+The follow-up reaches the web app on the app origin, and every later request on that connection is the web app's:
 
 ```
 GET / HTTP/1.1
@@ -494,7 +496,13 @@ Content-Type: text/html
 A replayed code, a missing cookie or a forged `Host`:
 
 ```
-GET /?_telo.window=Q7vK2mX9pL4s HTTP/1.1
+GET /admit?code=Q7vK2mX9pL4s HTTP/1.1
+Host: 127.0.0.1:41877
+
+HTTP/1.1 403 Forbidden
+Connection: close
+
+GET / HTTP/1.1
 Host: 127.0.0.1:53817
 
 HTTP/1.1 403 Forbidden

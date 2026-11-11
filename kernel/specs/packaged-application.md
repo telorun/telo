@@ -1,5 +1,5 @@
 ---
-description: "Normative: a packaged Telo executable — the carrier, where its payload rides and how it is found, the payload index, how a start becomes the application or the telo CLI (TELO_APP_CLI), where the payload unpacks (TELO_APP_DIR), and the executable as a manifest source."
+description: "Normative: a packaged Telo executable — the carrier, where its payload rides and how it is found, the payload index, the desktop outputs (macOS bundle, Windows GUI executable), how a start becomes the application or the telo CLI (TELO_APP_CLI), where the payload unpacks (TELO_APP_DIR), and the executable as a manifest source."
 ---
 
 # Packaged application
@@ -33,15 +33,22 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    The payload is the `length` bytes immediately before the trailer. No absolute offset is
    recorded.
 2. On ELF and PE the payload and trailer are appended to the carrier, so the trailer ends
-   the file. On Mach-O they are the contents of the section `TELO_APP_PAYLOAD` of the
-   segment `TELO_APP`, so the trailer ends that section; the binary is re-signed after.
-3. A reader looks at the last 52 bytes of the file first and, only when they do not end in
-   the magic, at the `TELO_APP,TELO_APP_PAYLOAD` section of a 64-bit little-endian Mach-O.
-   A file with neither carries no payload. Finding a trailer is enough to call the file a
-   packaged executable; reading the payload verifies it.
+   the file (placement `appended`). On Mach-O they are the contents of the section
+   `TELO_APP_PAYLOAD` of the segment `TELO_APP`, so the trailer ends that section; the
+   binary is re-signed after (`macho-segment`). In a Windows desktop app (§3 rule 5) they are
+   the data of the first language of the PE resource of type `RT_RCDATA` (10) named
+   `TELO_APP_PAYLOAD`, so the trailer ends that resource (`pe-resource`): signing appends a
+   certificate table after the image, which a trailer ending the file would not survive.
+3. A reader looks at the last 52 bytes of the file first; only when they do not end in the
+   magic, at the `TELO_APP,TELO_APP_PAYLOAD` section of a 64-bit little-endian Mach-O; and
+   only when the file is not a Mach-O, at the `RT_RCDATA` / `TELO_APP_PAYLOAD` resource of a
+   PE image, found through its resource directory. A file with none carries no payload.
+   Finding a trailer is enough to call the file a packaged executable; reading the payload
+   verifies it.
 4. A payload whose sha256 differs from the trailer's is refused as truncated or modified. A
    format version the reader does not know is refused naming both versions. A trailer
-   claiming more bytes than the file holds is refused.
+   claiming more bytes than the file — or, as a resource, than its resource — holds is
+   refused.
 
 ## 3. The payload
 
@@ -64,6 +71,7 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    | `platform` | `{ os, arch, libc?, abi? }` the payload was warmed for |
    | `telo` | the version of the telo that packaged it |
    | `analysisKey` | the analysis key (rule 4) |
+   | `desktopHost` | `{ identifier }`, present exactly when the root declares a `Telo.DesktopHost` need (§3 rule 5); absent from every other index, which is otherwise unchanged |
    | `modules` | `{ source, name?, version?, delivery: local \| artifact }` per module |
 
 4. The **analysis key** is the sha256, as lowercase hex, of one line per payload entry —
@@ -72,6 +80,54 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    is the sha256 hex of the entry's bytes, or `link:<target>` for a link. The analysis
    verdict under `cache/analysis/` is filed and signed under it rather than under the
    unpacked tree's paths.
+
+5. A **desktop app** is an application whose root declares a `Telo.DesktopHost` need, read
+   from the need table. Packaging one refuses an `icon` that is not a PNG, or not square, or
+   under 1024 px a side, with `ERR_DESKTOP_ICON_INVALID` (`<icon as written> must be square
+   and at least 1024 px (it is <w> × <h>)`) before anything is written, and a helper that
+   cannot be obtained with `ERR_DESKTOP_HOST_UNAVAILABLE`. The helper for the packaged
+   platform is the environment's `TELO_HOST_DESKTOP_HELPER` or a source checkout's build when
+   that platform is the packaging machine's, the release's asset otherwise. What is written
+   depends on the platform:
+
+   | Platform | Output for `--out <path>` | Payload | Helper |
+   |---|---|---|---|
+   | linux | `<path>`, the carrier | `appended` | the payload entry `helper/telo-desktop-host` |
+   | darwin | the application bundle `<path>.app` (kept when `<path>` ends in `.app`) | `macho-segment`, in `Contents/MacOS/<name>` | `Contents/MacOS/telo-desktop-host`, beside the carrier; not in the payload |
+   | windows | `<path>.exe`, a GUI-subsystem executable | `pe-resource` | the payload entry `helper/telo-desktop-host.exe` |
+
+   - **darwin.** `<name>` is the `productName` with `/`, `:` and control characters
+     replaced by `-` and surrounding space and leading dots removed, or the root's
+     `metadata.name` when nothing remains. `Contents/Info.plist` is an XML property list
+     holding `CFBundleExecutable` (`<name>`), `CFBundleIdentifier` (`identifier`),
+     `CFBundleName` and `CFBundleDisplayName` (`productName`), `CFBundlePackageType`
+     `APPL`, `CFBundleInfoDictionaryVersion` `6.0`, `CFBundleShortVersionString` and
+     `CFBundleVersion` (the up to three leading integers of the root's `metadata.version`,
+     both absent without one), `CFBundleIconFile` `AppIcon` (with an `icon`),
+     `LSMinimumSystemVersion` `14.0`, `NSHighResolutionCapable` true, and `LSUIElement`
+     true when `showInDock` is false. `Contents/PkgInfo` is `APPL????`. With an `icon`,
+     `Contents/Resources/AppIcon.icns` holds it as PNG entries `icp4` (16 px), `icp5` and
+     `ic11` (32), `ic12` (64), `ic07` (128), `ic13` and `ic08` (256), `ic14` and `ic09`
+     (512) and `ic10` (1024), each reduced from the icon by area averaging, `ic10` the
+     icon's own bytes when it is exactly 1024 px. Both executables are mode `0755`, the
+     helper and then the bundle are signed ad hoc, and packaging requires a macOS host.
+   - **windows.** The carrier's `IMAGE_OPTIONAL_HEADER.Subsystem` is `2` (Windows GUI) and
+     its checksum is recomputed. Every resource the carrier holds is kept except the
+     version, the icons when the need names an `icon`, and a previous payload. Added, all
+     but the payload in language `0x0409`: with an `icon`, `RT_ICON` ids 1–6 (256 px as a
+     PNG, 64, 48, 32, 24 and 16 px as 32-bit bitmaps) and `RT_GROUP_ICON` id 1 naming them;
+     `RT_VERSION` id 1, whose string table `040904B0` holds `ProductName` and
+     `FileDescription` (`productName`) and, with a `metadata.version`, `ProductVersion` and
+     `FileVersion` (as written) — no `CompanyName` — and whose fixed version is its leading
+     integers; and the payload (§2 rule 2, language `0`). The resource tree is rewritten in
+     place when its section ends the image and as a new last section otherwise; no other
+     section's bytes or addresses move, except that headers with no room for one more
+     section header grow by one file-alignment unit, moving every section's file offset by
+     that much. A carrier's certificate table is dropped, since the edit invalidates it.
+
+   A start passes the packaged app's own helper — the unpacked payload entry, or on darwin
+   `telo-desktop-host` beside the running executable — which `TELO_HOST_DESKTOP_HELPER`
+   still overrides.
 
 ## 4. A start: the application or the CLI
 
@@ -89,7 +145,13 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    (`kernel/specs/application-arguments.md`), the payload unpacks into the same directory
    (§5), the payload's `cache/` is the cache, the run is keyed by the index's
    `analysisKey`, env files are read from the working directory, and the exit code and
-   signal handling are `telo run`'s.
+   signal handling are `telo run`'s. A desktop app (§3 rule 5) reads them from the per-user
+   application directory of its `identifier` instead (`$XDG_DATA_HOME/<identifier>` or
+   `~/.local/share/<identifier>`, `~/Library/Application Support/<identifier>`,
+   `%LOCALAPPDATA%\<identifier>`), created if missing; once it is hosting itself its working
+   directory is that directory too and `TELO_HOST_STATE_DIR` is `<that directory>/state`
+   unless the environment names one. An app whose host the environment supplies keeps the
+   working directory it started in.
 5. As the CLI, a packaged executable is the telo it carries, with every command and option
    that telo has. A `telo` that re-runs its own executable as the CLI — `telo runner`
    starting an application — sets `TELO_APP_CLI=1` on the child when that executable
@@ -98,7 +160,8 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    `TELO_APP_INFO` set to anything but whitespace refuses the invocation as rule 1 does —
    before any manifest is read, nothing on stdout, exit status 2 — and starts nothing,
    naming `TELO_APP_CLI=1 <binary> package inspect <binary>`, which prints the index with
-   the payload's size, digest and placement.
+   the payload's size, digest and placement (§2 rule 2). `package inspect` also takes an
+   application bundle's directory, reading the executable its `CFBundleExecutable` names.
 7. There is no other environment variable selecting an option of the CLI.
 
 ## 5. Where the payload unpacks

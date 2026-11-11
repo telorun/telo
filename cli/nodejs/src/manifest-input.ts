@@ -1,6 +1,7 @@
 import { resolveCacheRoot } from "@telorun/kernel";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { userAppDirectory } from "./desktop/desktop-app-directory.js";
 import { openPackagedApp, type PackagedApp } from "./package/app-unpack.js";
 
 /**
@@ -34,7 +35,8 @@ export interface ManifestInput {
 export interface PackagedInput extends PackagedApp {
   /** Where the application's env files are read from — and its `--debug` log
    *  written: the working directory, since the entry sits at a digest-keyed path
-   *  no operator should have to find. */
+   *  no operator should have to find. A desktop app's is its per-user
+   *  application directory instead, which its payload's index names. */
   readonly envAnchor: string;
 }
 
@@ -66,8 +68,14 @@ export async function resolveManifestInput(
     entryPath: app.entry,
     cacheRoot: app.cacheDir,
     cacheSealed: true,
-    packaged: { ...app, envAnchor: process.cwd() },
+    packaged: { ...app, envAnchor: envAnchorOf(app, options.env ?? process.env) },
   };
+}
+
+/** A desktop app reads its env files where it keeps everything else of its own — the per-user directory of its identifier; with no such directory (no `HOME`) the working directory, and the host's start is the one to refuse. */
+function envAnchorOf(app: PackagedApp, env: NodeJS.ProcessEnv): string {
+  const identifier = app.index.desktopHost?.identifier;
+  return (identifier ? userAppDirectory(identifier, { env }) : null) ?? process.cwd();
 }
 
 /** `file` when it names a regular file; a directory or a missing path is the

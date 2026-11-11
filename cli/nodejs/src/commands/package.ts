@@ -7,6 +7,8 @@ import { cliVersion } from "../distribution-versions.js";
 import { createLogger } from "../logger.js";
 import { outDocument, outEmit, outErrLine, outLine } from "../output.js";
 import { buildAppPayload } from "../package/build-app-payload.js";
+import { payloadDesktop, planDesktop } from "../package/desktop-packaging.js";
+import { appBundleExecutable } from "../package/macos-app-bundle.js";
 import { payloadDigest, readEmbeddedPayload } from "../package/app-trailer.js";
 import { readPayloadIndex } from "../package/app-payload.js";
 import {
@@ -66,42 +68,63 @@ async function packageApp(argv: PackageArgv): Promise<void> {
 
   const out = outputPath(argv.out, platform);
   outLine(`Packaging ${log.dim(argv.manifest)} for ${log.dim(carrierTarget(platform))}`);
+  const report = (message: string) => outErrLine(`  ${log.err.dim(message)}`);
+
+  // A desktop app is a root declaring the built-in `Telo.DesktopHost` need, read
+  // from the need table — nothing here names a module's kind. The environment
+  // does not enter into it: a host supplied through it is a way of RUNNING.
+  const desktop = await planDesktop(path.resolve(argv.manifest), platform, { version, log, report });
 
   const { payload, index } = await buildAppPayload({
     manifestPath: argv.manifest,
     platform,
-    report: (message) => outErrLine(`  ${log.err.dim(message)}`),
+    report,
+    ...(desktop ? { desktop: payloadDesktop(desktop, platform) } : {}),
   });
 
-  const carrier = await fetchCarrier(plan, version, (message) =>
-    outErrLine(`  ${log.err.dim(message)}`),
-  );
-  await writeAppExecutable({ carrier: carrier.file, payload, out, platform });
+  const carrier = await fetchCarrier(plan, version, report);
+  let written = { path: out, executable: out };
+  if (desktop) {
+    written = await desktop.bundle.write({
+      carrier: carrier.file,
+      payload,
+      out,
+      platform,
+      helper: desktop.helper,
+      identity: desktop.identity,
+      app: index.app,
+    });
+  } else {
+    await writeAppExecutable({ carrier: carrier.file, payload, out, platform });
+  }
 
-  const size = fs.statSync(out).size;
+  const size = fs.statSync(written.executable).size;
   outLine(
-    `${log.ok("✓")}  ${out}\n` +
+    `${log.ok("✓")}  ${written.path}\n` +
       `   ${index.app.name}${index.app.version ? ` ${index.app.version}` : ""} · telo ${index.telo} · ` +
       `${carrierTarget(platform)}${platform.abi ? ` · abi ${platform.abi}` : ""}\n` +
       `   payload ${mb(payload.length)}, executable ${mb(size)}`,
   );
   outEmit({
     ok: true,
-    out,
+    out: written.path,
     app: index.app,
     platform: index.platform,
     telo: index.telo,
+    ...(index.desktopHost ? { desktopHost: index.desktopHost } : {}),
     payload: { bytes: payload.length, digest: `sha256:${payloadDigest(payload)}` },
     bytes: size,
   });
 }
 
 /** Read any carrier — packaged or not — and report what it carries. It reads
- *  the trailer or the segment and nothing else, so it costs nothing, works on a
- *  file built by someone else's CLI, and is what makes a packaged binary
- *  auditable. */
+ *  the trailer, the segment or the resource and nothing else, so it costs
+ *  nothing, works on a file built by someone else's CLI, and is what makes a
+ *  packaged binary auditable. */
 async function inspect(argv: { file: string }): Promise<void> {
-  const payload = await readEmbeddedPayload(path.resolve(argv.file));
+  const file = path.resolve(argv.file);
+  // A macOS application bundle is read through the carrier it starts.
+  const payload = await readEmbeddedPayload(appBundleExecutable(file) ?? file);
   if (!payload) {
     outErrLine(`${argv.file} carries no telo application.`);
     process.exitCode = 1;
@@ -193,7 +216,7 @@ export function packageCommand(yargs: Argv): Argv {
           "Print what a packaged executable carries",
           (inner) =>
             inner.positional("file", {
-              describe: "A packaged executable",
+              describe: "A packaged executable, or a macOS application bundle",
               type: "string",
               demandOption: true,
             }),

@@ -376,6 +376,10 @@ export interface KernelOptions {
    *  configured with a held number serves the host's socket and binds nothing.
    *  A child application this kernel starts claims through the same set. */
   listeners?: HostListeners;
+  /** Secrets the host holds itself (a desktop host's control token and admission
+   *  secret), redacted from every log record of the application as its own
+   *  `secrets:` are. They never enter the manifest's scope. */
+  redactedValues?: readonly string[];
   /** When the process started, in epoch milliseconds — where the `startup <name>`
    *  span begins. Without it the span begins at this kernel's creation. */
   processStartedAt?: number;
@@ -499,6 +503,7 @@ export class Kernel implements IKernel {
    *  the env read for each name it covers. Undefined for a kernel started by a
    *  host rather than by another application. */
   private readonly _inputs?: ApplicationInputs;
+  private readonly hostRedactedValues: readonly string[];
   private _applicationHelp?: string;
 
   /** Set while a reconciliation is in flight. Two overlapping calls would
@@ -627,6 +632,7 @@ export class Kernel implements IKernel {
       this.loader.register(source);
     }
     this._inputs = options.inputs;
+    this.hostRedactedValues = options.redactedValues ?? [];
     this.hostListeners = options.listeners;
     this.listenerClaims = options.listeners && attachListeners(options.listeners, this.kernelInstanceId);
   }
@@ -1984,6 +1990,7 @@ export class Kernel implements IKernel {
       if (Object.keys(ports).length > 0) {
         this.rootContext.setPorts(ports);
       }
+      this.rootContext.addRedactedValues(this.hostRedactedValues);
       const portDecls = (rootApplicationManifest as { ports?: Record<string, { protocol?: string }> })
         .ports ?? {};
       // Refused here, before anything initializes: an address with no host, and

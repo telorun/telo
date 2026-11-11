@@ -63,6 +63,8 @@ async function runTemplate(argv: { manifest: string; write: boolean }): Promise<
     output().raw(texts.map(({ name, text }) => `# ---- ${name} ----\n${text}`).join("\n"));
     return;
   }
+  // A desktop app's per-user directory exists only once it has been started.
+  if (loaded.input.packaged) fs.mkdirSync(directory!, { recursive: true });
   writeTemplate(directory!, appName, entries, files, log);
 }
 

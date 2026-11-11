@@ -18,6 +18,7 @@ import {
   unresolvedInputsOf,
   writeManifestCache,
   type ApplicationInputResolver,
+  type KernelOptions,
   type RuntimeDiagnostic,
 } from "@telorun/kernel";
 import { SEVERITY, type RuntimeEvent } from "@telorun/sdk";
@@ -37,11 +38,18 @@ import { attachControllerProgress } from "../controller-progress.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
+import { readDesktopHostNeed } from "../desktop/desktop-host-need.js";
+import { startDesktopHost, type DesktopHostSession } from "../desktop/desktop-host-session.js";
+import { DesktopHostUnavailable } from "../desktop/desktop-host-unavailable.js";
+import { createAppDirectory, enterPackagedDesktopStart } from "../desktop/desktop-packaged-start.js";
+import { captureOutput } from "../desktop/refusal-capture.js";
+import { cliVersion } from "../distribution-versions.js";
 import { anchorDirectory, nativePath, resolveEnvFiles } from "../env-files.js";
 import { countRootErrors, createLogger, formatDiagnostics, type Logger } from "../logger.js";
-import { resolveManifestInput } from "../manifest-input.js";
+import { resolveManifestInput, type PackagedInput } from "../manifest-input.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
 import { createOpenUrlHook } from "../open-url-hook.js";
+import { packagedHelperPath } from "../package/desktop-bundle.js";
 import { personIsAtTerminal } from "../person-at-terminal.js";
 import { outErrLine, output } from "../output.js";
 import { StartupProfiler, writeStartupProfile } from "../startup-profile.js";
@@ -530,6 +538,8 @@ async function buildKernel(
   openUrl?: (url: string) => void,
   /** The first kernel of the process starts its `startup` span at process start. */
   fromProcessStart = false,
+  /** What `telo run` as the desktop host supplies: the origin socket, the port and need, the secrets. */
+  host?: Pick<KernelOptions, "listeners" | "inputs" | "redactedValues">,
 ): Promise<Kernel> {
   // The manifest cache (populated by `telo install`) wins over the network
   // sources so production images boot without any network I/O. A missing cache
@@ -551,6 +561,7 @@ async function buildKernel(
     sources,
     ...(openUrl ? { openUrl } : {}),
     ...(fromProcessStart ? { processStartedAt: performance.timeOrigin } : {}),
+    ...host,
   });
   // Pretty controller-download progress. With --verbose, always render
   // (so captured logs/CI output get the lines too); otherwise gate on TTY
@@ -714,10 +725,15 @@ function reportError(
  * `telo run ./orders <args>` are one run. A run is what reclaims the
  * application's other unpacked trees.
  */
-async function resolveRunInput(argv: RunArgv): Promise<{ argv: RunArgv; executable?: string }> {
+async function resolveRunInput(
+  argv: RunArgv,
+): Promise<{ argv: RunArgv; executable?: string; packaged?: PackagedInput }> {
   const input = await resolveManifestInput(argv.path, { reclaim: true });
   if (!input.packaged) return { argv };
+  // A desktop app's env files are read from its per-user directory, which a first start has not created.
+  if (input.packaged.index.desktopHost) createAppDirectory(input.packaged.envAnchor);
   return {
+    packaged: input.packaged,
     argv: {
       ...argv,
       path: input.entryPath,
@@ -743,8 +759,10 @@ export async function run(given: RunArgv): Promise<void> {
   }
 
   let argv: RunArgv;
+  let executable: string | undefined;
+  let packaged: PackagedInput | undefined;
   try {
-    ({ argv } = await resolveRunInput(given));
+    ({ argv, executable, packaged } = await resolveRunInput(given));
   } catch (error) {
     reportError(given, error, log);
     process.exit(1);
@@ -760,7 +778,9 @@ export async function run(given: RunArgv): Promise<void> {
   // A wait nothing can resolve (and nothing else keeps the event loop alive)
   // drains the process with code 0 before the run finishes; that is a failure.
   let settled = false;
+  let desktop: DesktopHostSession | undefined;
   process.once("exit", () => {
+    desktop?.removeNow();
     if (settled) return;
     outErrLine(
       "telo run: the process ran out of work before the application finished — something it was waiting for can never happen.",
@@ -768,7 +788,8 @@ export async function run(given: RunArgv): Promise<void> {
     process.exitCode = 1;
   });
 
-  const inputs = inputSessionFor(argv);
+  // As the desktop host, the inputs are asked in a form in its window instead (below).
+  let inputs = inputSessionFor(argv);
   const openUrl = openUrlHookFor(argv);
   // Held outside the try so the catch can reach the loaded graph a static
   // failure's location resolves against.
@@ -777,24 +798,53 @@ export async function run(given: RunArgv): Promise<void> {
   let loaded = false;
   let phase = "kernelCreate";
   try {
+    // Env files first: whether `telo run` is the desktop host depends on what
+    // they set, and the host is set up before the kernel exists.
+    phase = "envFiles";
+    profiler?.start("envFiles");
+    const env = await applyEnvFiles(argv.envAnchor ?? argv.path, argv.debug);
+    profiler?.end("envFiles");
+
+    const hosting = await hostDesktop(given.path, argv, env, executable, packaged, log);
+    if (hosting === "refused" || hosting === "running") {
+      settled = true;
+      debug?.stop();
+      if (hosting === "refused") process.exit(process.exitCode || 1);
+      return;
+    }
+    desktop = hosting;
+    if (desktop) inputs = argv.input === false ? undefined : new ApplicationInputSession(desktop.inputPrompter());
+
     profiler?.start("kernelCreate");
-    const kernel = await buildKernel(argv, log, cacheRoot, openUrl, true);
+    const kernel = await buildKernel(argv, log, cacheRoot, openUrl, true, desktop?.kernelOptions());
     profiler?.end("kernelCreate");
     bootedKernel = kernel;
     debug?.attach(kernel);
+    desktop?.attachLogger(kernel.logging.kernelLogger());
     const shutdown = () => {
       // Cooperatively cancel the boot run first (so honoring targets / in-flight
       // invoke trees stop early), then unblock the idle wait for graceful exit.
       kernel.cancel("interrupted");
       kernel.forceIdle();
+      desktop?.interrupt();
     };
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);
+    const host = desktop;
+    if (host) {
+      // A stop the host asks for during startup waits for its end: `forceIdle`
+      // releases only a wait already under way, and `start()` begins its wait
+      // in the turn after `Kernel.Started`.
+      let started = false;
+      let stopAsked = false;
+      kernel.on("Kernel.Started", () => {
+        started = true;
+        host.startupCompleted();
+        if (stopAsked) setImmediate(shutdown);
+      });
+      host.onStop(() => (started ? shutdown() : (stopAsked = true)));
+    }
 
-    phase = "envFiles";
-    profiler?.start("envFiles");
-    const env = await applyEnvFiles(argv.envAnchor ?? argv.path, argv.debug);
-    profiler?.end("envFiles");
     phase = "load";
     profiler?.start("load");
     const writeManifestCacheOnce = manifestCacheWriter(argv, kernel, log, cacheRoot);
@@ -810,11 +860,13 @@ export async function run(given: RunArgv): Promise<void> {
     warnSensitiveValues(kernel, env);
     if (answerApplicationHelp(kernel)) {
       await kernel.teardown();
+      await desktop?.close();
       debug?.stop(kernel);
       settled = true;
       return;
     }
-    if (inputs) await offerToSave(argv, inputs, env, log);
+    // A form in a window has no env file a person chose, so nothing is offered for saving.
+    if (inputs && !desktop) await offerToSave(argv, inputs, env, log);
     phase = "manifestCachePersist";
     profiler?.start("manifestCachePersist");
     await writeManifestCacheOnce();
@@ -845,13 +897,17 @@ export async function run(given: RunArgv): Promise<void> {
     } finally {
       if (inspectKeepAlive) clearInterval(inspectKeepAlive);
     }
+    // An application that ended on its own, or was stopped, closes its windows
+    // and tray icons with the host.
+    await desktop?.close();
     settled = true;
     // start() resolves once the app is idle/torn down (incl. via the SIGINT
     // handler's forceIdle). Stop the debug server so its SSE sockets + heartbeats
     // don't keep the process alive past here.
     debug?.stop(kernel);
-    if (kernel.exitCode !== 0) {
-      process.exit(kernel.exitCode);
+    const exitCode = kernel.exitCode || (desktop?.exitCode ?? 0);
+    if (exitCode !== 0) {
+      process.exit(exitCode);
     }
   } catch (error) {
     settled = true;
@@ -865,6 +921,7 @@ export async function run(given: RunArgv): Promise<void> {
       }
     }
     if (error instanceof InputInterrupted) {
+      await desktop?.close();
       debug?.stop();
       outErrLine();
       process.exit(130);
@@ -875,8 +932,85 @@ export async function run(given: RunArgv): Promise<void> {
     debug?.stop();
     reportError(argv, error, log, bootedKernel, loadedGraph);
     hintUnresolvedInputs(error, inputs, argv);
+    if (desktop) {
+      // `--no-input` never waits for a person: missing inputs are refused as ever.
+      const waits = !(argv.input === false && (unresolvedInputsOf(error)?.length ?? 0) > 0);
+      if (waits) await showBootRefusal(desktop, () => {
+        reportError(argv, error, createLogger(log.verbose), bootedKernel, loadedGraph);
+        hintUnresolvedInputs(error, inputs, argv);
+      });
+      await desktop.close();
+    }
     process.exit(1);
   }
+}
+
+/**
+ * The diagnostics are already on the terminal; the host's window shows them too
+ * and the run ends when the user closes it (or the helper ends, or the process is
+ * told to stop) — closing it unread would be the window going away with the news.
+ */
+async function showBootRefusal(desktop: DesktopHostSession, print: () => void): Promise<void> {
+  const dismissed = desktop.showRefusal(captureOutput(print));
+  let onSignal: (() => void) | undefined;
+  const signalled = new Promise<void>((resolve) => {
+    onSignal = resolve;
+    process.once("SIGINT", resolve);
+    process.once("SIGTERM", resolve);
+  });
+  try {
+    await Promise.race([dismissed, signalled]);
+  } finally {
+    process.removeListener("SIGINT", onSignal!);
+    process.removeListener("SIGTERM", onSignal!);
+  }
+}
+
+/**
+ * `telo run` as the desktop host, when the root declares a `Telo.DesktopHost`
+ * need and the environment sets neither of its fields: set up before the
+ * kernel, which is handed what it supplies. `undefined` when it is not the host;
+ * `running` when another start of the same application holds its lock — that
+ * start shows its windows, and this one prints the line and ends with 0.
+ */
+async function hostDesktop(
+  manifest: string,
+  argv: RunArgv,
+  env: AppliedEnvFiles,
+  executable: string | undefined,
+  packaged: PackagedInput | undefined,
+  log: Logger,
+): Promise<DesktopHostSession | undefined | "running" | "refused"> {
+  const reading = await readDesktopHostNeed(manifest, argv.path, process.env, log);
+  if (reading.kind === "none") return undefined;
+  if (reading.kind === "refused") return "refused";
+  const version = cliVersion();
+  if (!version) throw new DesktopHostUnavailable("this telo does not know its own version, so it cannot choose its helper");
+  const hidden = new Set([...env.applied, ...reading.need.declaredEnv]);
+  const start = await startDesktopHost({
+    need: reading.need,
+    source: executable ?? entryFilePath(argv.path),
+    version,
+    env: process.env,
+    helperEnv: Object.fromEntries(Object.entries(process.env).filter(([name]) => !hidden.has(name))),
+    openExternal: (url) => openBrowser(url),
+    ...(packaged && packagedHelperPath(packaged) ? { packagedHelperPath: packagedHelperPath(packaged)! } : {}),
+  });
+  if (start.kind === "running") {
+    output().line(start.line);
+    return "running";
+  }
+  // The packaged app hosting itself lives in its per-user directory; the helper
+  // and the lock were reached by absolute paths, so moving now disturbs neither.
+  if (packaged?.index.desktopHost) {
+    try {
+      enterPackagedDesktopStart({ identifier: reading.need.identifier, env: process.env });
+    } catch (err) {
+      await start.host.close();
+      throw err;
+    }
+  }
+  return start.host;
 }
 
 /**
@@ -989,6 +1123,19 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
     process.exit(1);
   }
   const env = await applyEnvFiles(first.argv.envAnchor ?? first.argv.path, given.debug);
+  const desktopNeed = await readDesktopHostNeed(given.path, first.argv.path, process.env, log);
+  if (desktopNeed.kind === "refused") process.exit(process.exitCode || 1);
+  if (desktopNeed.kind === "host") {
+    reportError(
+      given,
+      new DesktopHostUnavailable(
+        "telo run --watch does not act as the desktop host; run it without --watch, or supply the " +
+          `'${desktopNeed.need.name}' need through its environment variables`,
+      ),
+      log,
+    );
+    process.exit(1);
+  }
   // One session for every reload: a reload asks only for what it has not
   // been told, or for what it refuses.
   const inputs = inputSessionFor(given);

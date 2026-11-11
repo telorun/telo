@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: DesktopTrayOnlyFixture
+  version: 1.0.0
+  description: A tray icon and one window declared hidden, so the application opens no visible window of its own.
+lang: en
+imports: { Desktop: ../../../../../../modules/desktop }
+ports: { http: { env: DESKTOP_TRAYONLY_PORT } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.tests.desktoptrayonly, productName: TrayOnly, icon: !module-path icon.png, port: http }
+targets:
+  - !ref hiddenWindow
+  - !ref tray
+---
+kind: Desktop.Window
+metadata: { name: hiddenWindow }
+host: !ref desktopHost
+title: Hidden
+visible: false
+onClose: hide
+---
+kind: Desktop.TrayIcon
+metadata: { name: tray }
+host: !ref desktopHost
+icon: !module-path icon.png
+menu:
+  - { type: item, label: Quit, action: { invoke: { kind: Desktop.Quit, host: !ref desktopHost } } }

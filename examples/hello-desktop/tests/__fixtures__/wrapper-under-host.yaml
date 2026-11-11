@@ -1,0 +1,88 @@
+kind: Telo.Application
+metadata:
+  name: HelloDesktopUnderHost
+  version: 1.0.0
+  description: |
+    Starts `examples/hello-desktop` unmodified against a desktop_host-1 fixture and
+    reads what the wrapper asked the host for.
+lang: en
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  Timer: ../../../../modules/timer
+  Assert: ../../../../modules/assert
+  Fixture: ../../../../modules/desktop/tests/__fixtures__/host
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  desktopHost:
+    kind: Telo.DesktopHost
+    parameters: { identifier: run.telo.examples.hello.test, productName: Hello, icon: !module-path icon.png, port: http }
+targets:
+  - !ref verify
+---
+kind: Fixture.Host
+metadata: { name: fixture }
+host: !ref desktopHost
+---
+# Runs until the host has received `count` frames.
+kind: Run.Loop
+metadata: { name: awaitFrames }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { count: { type: integer } } } }
+condition: !cel "previous == null || size(previous.read.result.frames) < inputs.count"
+maxIterations: 200
+steps:
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 50ms } }
+  - name: read
+    invoke: { kind: Fixture.Frames, fixture: !ref fixture }
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+with:
+  - kind: App.Instance
+    metadata: { name: wrapper }
+    source: ../../telo.yaml
+    ports: { http: 18861 }
+    needs:
+      desktopHost:
+        endpoint: unix:///tmp/telo-examples-hello-desktop/control.sock
+        token: s3cret-token
+targets:
+  - !ref wrapper
+steps:
+  - { name: opened, invoke: !ref awaitFrames, inputs: { count: 4 } }
+  - name: frames
+    invoke: { kind: Fixture.Frames, fixture: !ref fixture }
+  - name: openedIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.frames.result.frames.map(f, f.type == 'Tray.Open' ? {'type': f.type, 'payload': {'tray': f.payload.tray, 'monochrome': f.payload.monochrome, 'tooltip': f.payload.tooltip, 'menu': f.payload.menu}} : f)"
+      expected:
+        - type: Host.Hello
+          payload: { generation: desktop_host-1, token: s3cret-token }
+        - type: Window.Open
+          payload: { window: mainWindow, path: /, title: Hello, size: { width: 480, height: 320 }, minSize: { width: 320, height: 240 }, resizable: true, visible: true, onClose: hide }
+        - type: Window.Open
+          payload: { window: settingsWindow, path: /settings, title: Settings, size: { width: 400, height: 300 }, resizable: false, visible: false, onClose: hide }
+        - type: Tray.Open
+          payload:
+            tray: tray
+            monochrome: true
+            tooltip: Hello
+            menu:
+              - { type: item, item: 0, label: Open Hello, enabled: true }
+              - { type: item, item: 1, label: Settings, enabled: true }
+              - { type: item, item: 2, label: Write status to log, enabled: true }
+              - { type: item, item: 3, label: Hello 1.0, enabled: false }
+              - { type: separator }
+              - { type: item, item: 5, label: Quit, enabled: true }
+  - name: choose
+    invoke: { kind: Fixture.Send, fixture: !ref fixture }
+    inputs: { type: Tray.ItemChosen, payload: { tray: tray, item: 5 } }
+  - { name: quit, invoke: !ref awaitFrames, inputs: { count: 5 } }
+  - name: after
+    invoke: { kind: Fixture.Frames, fixture: !ref fixture }
+  - name: quitIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.after.result.frames[4]"
+      expected: { type: Host.Quit, payload: {} }

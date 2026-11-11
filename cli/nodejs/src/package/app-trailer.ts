@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
+import { readPeImage, type ReadAt } from "./pe-image.js";
+import { findResource, RT_RCDATA } from "./pe-resources.js";
 
 /**
  * Where a packaged application's payload lives inside its carrier, and how it is
@@ -7,11 +9,12 @@ import * as fs from "node:fs/promises";
  *
  * The payload is followed by a fixed trailer ending in a magic, and the payload
  * is the `length` bytes immediately BEFORE that trailer. Nothing records an
- * absolute offset, which is what lets one reader serve both placements: on ELF
+ * absolute offset, which is what lets one reader serve every placement: on ELF
  * and PE the pair is appended, so the trailer ends the file; on Mach-O it rides
  * inside a segment, because data after `__LINKEDIT` is what "main executable
  * failed strict validation" means and an unsigned arm64 binary does not launch
- * at all.
+ * at all; in a Windows desktop app it is a PE resource, because signing appends
+ * the certificate table after the image and a trailer must end its container.
  *
  * A carrier with no payload is an ordinary `telo`, which is why the question is
  * one 52-byte tail read before anything else happens.
@@ -31,11 +34,13 @@ export const APP_FORMAT_VERSION = 1;
  *  resource name) inside it. Both are within Mach-O's 16-character limit. */
 export const MACHO_SEGMENT = "TELO_APP";
 export const MACHO_SECTION = "TELO_APP_PAYLOAD";
+/** The `RT_RCDATA` resource name the payload rides under in a PE resource. */
+export const PE_PAYLOAD_RESOURCE = "TELO_APP_PAYLOAD";
 
 export interface EmbeddedPayload {
   readonly bytes: Buffer;
   /** How it was carried, for `telo package inspect` to report. */
-  readonly placement: "appended" | "macho-segment";
+  readonly placement: "appended" | "macho-segment" | "pe-resource";
 }
 
 export function encodeTrailer(payload: Buffer): Buffer {
@@ -102,9 +107,10 @@ interface LocatedTrailer {
 }
 
 /**
- * The trailer of `file`, read without reading the payload. Two lookups, in the
- * order that costs least: the tail read every `telo` startup pays, then — only
- * for a Mach-O — a walk of its load commands.
+ * The trailer of `file`, read without reading the payload. Three lookups, in
+ * the order that costs least: the tail read every `telo` startup pays, then —
+ * only for a Mach-O — a walk of its load commands, then — only for a PE — a walk
+ * of its resource directory.
  */
 async function locateTrailer(
   handle: fs.FileHandle,
@@ -121,13 +127,44 @@ async function locateTrailer(
   }
 
   const section = await machoSection(handle, size);
-  if (!section || section.size < TRAILER_SIZE) return undefined;
-  const sectionTail = Buffer.alloc(TRAILER_SIZE);
-  const at = section.offset + section.size - TRAILER_SIZE;
-  await handle.read(sectionTail, 0, TRAILER_SIZE, at);
-  const embedded = decodeTrailer(sectionTail);
-  if (!embedded) return undefined;
-  return checkedExtent({ trailer: embedded, at, placement: "macho-segment" }, file);
+  if (section) {
+    if (section.size < TRAILER_SIZE) return undefined;
+    const sectionTail = Buffer.alloc(TRAILER_SIZE);
+    const at = section.offset + section.size - TRAILER_SIZE;
+    await handle.read(sectionTail, 0, TRAILER_SIZE, at);
+    const embedded = decodeTrailer(sectionTail);
+    if (!embedded) return undefined;
+    return checkedExtent({ trailer: embedded, at, placement: "macho-segment" }, file);
+  }
+
+  const resource = await pePayloadResource(handle, size);
+  if (!resource || resource.size < TRAILER_SIZE) return undefined;
+  const at = resource.offset + resource.size - TRAILER_SIZE;
+  const resourceTail = Buffer.alloc(TRAILER_SIZE);
+  await handle.read(resourceTail, 0, TRAILER_SIZE, at);
+  const carried = decodeTrailer(resourceTail);
+  if (!carried) return undefined;
+  if (carried.length > resource.size - TRAILER_SIZE) {
+    throw new Error(
+      `${file} carries a telo application trailer claiming ${carried.length} payload bytes, ` +
+        `which is more than its ${PE_PAYLOAD_RESOURCE} resource holds.`,
+    );
+  }
+  return { trailer: carried, at, placement: "pe-resource" };
+}
+
+/** The `RT_RCDATA` / `TELO_APP_PAYLOAD` resource of a PE image. */
+async function pePayloadResource(
+  handle: fs.FileHandle,
+  size: number,
+): Promise<{ offset: number; size: number } | undefined> {
+  const readAt: ReadAt = async (offset, length) => {
+    const buffer = Buffer.alloc(Math.max(0, Math.min(length, size - offset)));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
+    return buffer.subarray(0, bytesRead);
+  };
+  const image = await readPeImage(readAt, size);
+  return image && findResource(readAt, image, RT_RCDATA, PE_PAYLOAD_RESOURCE);
 }
 
 function checkedExtent(located: LocatedTrailer, file: string): LocatedTrailer {

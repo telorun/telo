@@ -1,5 +1,9 @@
 import { PUBLIC_URL_HOST_VALUES, STATE_DIR_HOST_VALUE } from "@telorun/analyzer";
 
+/** The absolute path of the desktop-host helper binary `telo run` uses as it is;
+ *  a test and development seam, read by the CLI and hidden like every host value. */
+export const DESKTOP_HELPER_HOST_VALUE = "TELO_HOST_DESKTOP_HELPER";
+
 /**
  * The HOST VALUES — what a host sets for the kernel to answer kernel-declared
  * need types from. They are the kernel's to read: hidden from every controller,
@@ -7,7 +11,11 @@ import { PUBLIC_URL_HOST_VALUES, STATE_DIR_HOST_VALUE } from "@telorun/analyzer"
  * own. Exactly these names, never the whole `TELO_HOST_*` prefix — the
  * container-engine values must still reach a child.
  */
-export const KERNEL_HOST_VALUES: readonly string[] = [...PUBLIC_URL_HOST_VALUES, STATE_DIR_HOST_VALUE];
+export const KERNEL_HOST_VALUES: readonly string[] = [
+  ...PUBLIC_URL_HOST_VALUES,
+  STATE_DIR_HOST_VALUE,
+  DESKTOP_HELPER_HOST_VALUE,
+];
 
 /** The environment a started child application inherits: without the host
  *  values, which answer the parent's needs and never the child's. */
