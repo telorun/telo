@@ -110,6 +110,7 @@ import {
 import { bodyForPath, templateBodies } from "./template-body.js";
 import { withCaughtData } from "./caught-member.js";
 import { scopeReadAt } from "./scoped-name-resolver.js";
+import { scopeMemberOf } from "./scope-members.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
 import {
   contextChainAt,
@@ -829,6 +830,9 @@ export class CelScopeResolver {
   private inputsSchema: Record<string, any> | undefined;
   /** Set only when the resource's kind receives call arguments. */
   private argumentSites: CelEvalSites | undefined;
+  /** The `inputs` a scope member's creation-time fields read: the input contract
+   *  of the holder opening its scope, when that scope is opened by dispatch. */
+  private openingInputs: Record<string, any> | undefined;
   /** The enclosing definition's `self` schema, resolved once per resource. A
    *  template body's contexts resolve against the BODY, so `self` — the one
    *  binding anchored on the definition — is substituted before they do. */
@@ -1039,6 +1043,17 @@ export class CelScopeResolver {
       : undefined;
     this.inputsSchema = this.argumentSites
       ? resolveContract("inputType", m as Record<string, any>, definition, contractScope)?.schema
+      : undefined;
+    // The holder's step body reads `inputs` by this same contract, so the two
+    // cannot disagree; open where the holder declares none.
+    const member = scopeMemberOf(m);
+    this.openingInputs = member?.scope.openedByDispatch
+      ? (resolveContract(
+          "inputType",
+          member.holder as Record<string, any>,
+          this.inputs.definitionOf?.(member.holder),
+          contractScope,
+        )?.schema ?? { type: "object", additionalProperties: true })
       : undefined;
     this.selfSchema =
       m.kind === "Telo.Definition" ? buildSelfSchema(m as Record<string, any>, defs, aliases) : undefined;
@@ -1257,6 +1272,14 @@ export class CelScopeResolver {
           steps: this.stepsAt(stepContext, localPath, inBody),
         },
       };
+    }
+
+    // A member of a scope its holder opens from a call reads that call's
+    // `inputs` in its creation-time fields — never in a per-call field, where
+    // `inputs` keeps the member's own call's meaning.
+    if (this.openingInputs && !parameterScope && !inBody && site.mode === "compile") {
+      const base = matched ?? { type: "object", properties: {}, additionalProperties: true };
+      matched = { ...base, properties: { ...(base.properties ?? {}), inputs: this.openingInputs } };
     }
 
     // `error` is only in scope inside an error-bearing branch (e.g. a

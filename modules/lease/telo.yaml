@@ -74,8 +74,8 @@ inputType:
           guard: the cancel applies only when it matches the running holder.
       inputs:
         type: object
-        additionalProperties: true
-        description: Inputs forwarded to the wrapped `invoke` body when the lease is acquired.
+        description: Inputs forwarded to the wrapped `invoke` body when the lease is acquired, held to that body's input contract.
+        x-telo-value-schema-from: /invoke/inputType
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -89,7 +89,8 @@ outputType:
       holder:
         description: When not acquired, the current holder's token (0/absent if unknown).
       result:
-        description: The body's result (synchronous mode only; absent when `detach` or not acquired).
+        description: The body's result (synchronous mode only; absent when `detach` or not acquired), typed by the body's output contract.
+        x-telo-value-schema-from: /invoke/outputType
       cancelled:
         type: boolean
         description: >-

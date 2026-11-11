@@ -193,7 +193,7 @@ import { catchesForProblems } from "./catches-for-slot.js";
 import { raisesProblems } from "./raises-slot.js";
 import { effectiveThrows } from "./throws-ceiling.js";
 import { serializableAnnotationProblems, serializableProblems } from "./serializable-slot.js";
-import { scopeSlotProblems } from "./validate-scope-slots.js";
+import { scopeOpenedByProblems, scopeSlotProblems } from "./validate-scope-slots.js";
 import { topologyRoleProblems } from "./validate-topology-roles.js";
 import { caughtMemberProblems } from "./validate-caught-members.js";
 import { CatchLadder } from "./catch-scope.js";
@@ -7388,6 +7388,23 @@ export class StaticAnalyzer {
           scopeSlotDiagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "SCOPE_SLOT_MISPLACED",
+            source: SOURCE,
+            message: `${m.kind} ${problem.message}`,
+            data: {
+              resource: { kind: m.kind, name: def.metadata?.name as string },
+              filePath: (def.metadata as { source?: string } | undefined)?.source,
+              path: problem.path,
+            },
+          });
+        }
+        const capability = inheritedCapability(
+          def,
+          (k) => defs.resolve(scopeResolver.resolveKind(k) ?? k) ?? defs.resolve(k),
+        );
+        for (const problem of scopeOpenedByProblems(def, capability)) {
+          scopeSlotDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "SCOPE_OPENED_BY_INVALID",
             source: SOURCE,
             message: `${m.kind} ${problem.message}`,
             data: {

@@ -81,12 +81,16 @@ import {
 } from "./bundle/source-staging.js";
 import {
   bindContract,
+  recordBoundInput,
+  recordBoundOutput,
   type ContractValidatorFactory,
   resolveBoundContract,
 } from "./invocation-contract-binding.js";
 import {
   readProjectionRef,
   reservedModuleNameMessage,
+  readScopeAnnotation,
+  scopeOpenedByProblems,
   scopeSlotProblems,
   keyedTranslationsOf,
   textKeysDeclarer,
@@ -695,6 +699,16 @@ export class Kernel implements IKernel {
       throw new RuntimeError(
         "ERR_SCOPE_SLOT_MISPLACED",
         misplaced.map((problem) => `${definition.kind} ${problem.message}`).join("\n"),
+      );
+    }
+    const openedBy = scopeOpenedByProblems(
+      definition,
+      definition.capability ?? inheritedCapability(definition, this.scopedDefResolver()),
+    );
+    if (openedBy.length > 0) {
+      throw new RuntimeError(
+        "ERR_SCOPE_OPENED_BY_INVALID",
+        openedBy.map((problem) => `${definition.kind} ${problem.message}`).join("\n"),
       );
     }
     const [textUnderAccessor] = textSlotAccessorProblems(
@@ -4036,9 +4050,11 @@ export class Kernel implements IKernel {
     if (input) recordPayloadView(instance, "inputType", (value) => input.payloadView(value, REDACTED));
     if (input) recordSpanAttributes(instance, "inputType", () => input.spanAttributes());
     if (input) impl.setInputScalarPaths(() => input.scalarPaths());
+    if (input) recordBoundInput(instance, input);
     if (output) recordSensitivePaths(instance, "outputType", () => output.sensitivePaths());
     if (output) recordPayloadView(instance, "outputType", (value) => output.payloadView(value, REDACTED));
     if (output) recordSpanAttributes(instance, "outputType", () => output.spanAttributes());
+    if (output) recordBoundOutput(instance, output);
 
     bindContract(instance, {
       input,
@@ -4261,6 +4277,7 @@ export class Kernel implements IKernel {
           site.data as ResourceManifest[],
           resource,
           site.path,
+          site.scopes.some(({ scope }) => readScopeAnnotation(scope).openedByDispatch),
         );
         continue;
       }

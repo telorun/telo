@@ -191,8 +191,15 @@ export interface EvaluationContext {
   spawnChildContext(): EvaluationContext;
   initializeResources(): Promise<void>;
   withManifests<T>(manifests: any[], fn: () => T): T;
-  /** `holder` is the resource owning the scope; it is the caller its `targets:` runs are framed by. */
-  createScopeHandle(manifests: ResourceManifest[], holder?: ResourceManifest): ScopeHandle;
+  /** `holder` is the resource owning the scope; it is the caller its `targets:` runs are framed by.
+   *  `openedByDispatch` is what the holder's kind declares (`x-telo-scope`'s
+   *  `openedBy: dispatch`): every open then names its opening inputs. */
+  createScopeHandle(
+    manifests: ResourceManifest[],
+    holder?: ResourceManifest,
+    field?: string,
+    openedByDispatch?: boolean,
+  ): ScopeHandle;
   /** Re-read a resource's `snapshot()` and republish it, joined with whatever
    *  observed state the resource has reported. The publication path the
    *  post-init capture, the post-run publication, the post-invoke refresh and

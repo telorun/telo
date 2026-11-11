@@ -144,7 +144,8 @@ inputType:
   schema:
     type: object
     required: [key]
-    additionalProperties: true
+    description: Inputs forwarded to the wrapped target on miss / revalidation, held to its input contract.
+    x-telo-value-schema-from: /invoke/inputType
     properties:
       key:
         type: string
@@ -163,7 +164,8 @@ outputType:
         enum: [miss, fresh, stale]
         description: The cache outcome (what the store held), not the freshness of `value`.
       value:
-        description: The served value — cached, or freshly loaded on miss / sync revalidation.
+        description: The served value — cached, or freshly loaded on miss / sync revalidation. Typed by the target's output contract.
+        x-telo-value-schema-from: /invoke/outputType
       age:
         type: [integer, "null"]
         description: Milliseconds since the served entry was written, or null when freshly loaded.

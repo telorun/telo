@@ -17,7 +17,7 @@ import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { refSentinelsIn } from "./contract-shapes.js";
 import { reachSites, siteRefEntry } from "./reference-reach.js";
-import { checkSchemaCompatibility } from "./schema-compat.js";
+import { checkSchemaCompatibility, validateAgainstSchemaWithDefaults } from "./schema-compat.js";
 import { signatureMismatches, type SignatureMismatch } from "./signature-substitution.js";
 import { codesOutsideCeiling, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -198,27 +198,40 @@ function checkRefSlotWiring(
       const target = findInModule(manifests, name, ownModule, scopeReadAt(m, path));
       if (!target) continue;
       const targetDef = resolveDef(target.kind, target as unknown as ResourceDefinition);
-      const targetRequired = requiredInputsOf(
-        contractSchemaFor(target, targetDef, resolveDef, manifests),
-      );
+      const targetSchema = contractSchemaFor(target, targetDef, resolveDef, manifests);
+      // A run is the contract applied to `{}` with defaults filled, as the kernel
+      // binds it: whatever it still refuses can never be started there.
+      if (runSite) {
+        const issues = targetSchema ? validateAgainstSchemaWithDefaults({}, targetSchema) : [];
+        if (issues.length > 0) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "CONTRACT_INPUTS_AT_RUN_SITE",
+            source: SOURCE,
+            message:
+              `${m.kind}/${resource.name}: '${name}' is wired at '${path}', which starts it with \`run()\` — ` +
+              `a dispatch whose inputs are its contract applied to \`{}\` — but its contract refuses \`{}\`: ` +
+              `${issues.map((issue) => issue.message).join("; ")}. Invoke it from a step instead, or let the ` +
+              `contract accept an empty call.`,
+            data: { resource, filePath, path },
+          });
+        }
+        continue;
+      }
+      const targetRequired = requiredInputsOf(targetSchema);
       if (!targetRequired || targetRequired.length === 0) continue;
 
-      const unsatisfiable = runSite
-        ? targetRequired
-        : targetRequired.filter((key) => !(slotDeclares ?? []).includes(key));
+      const unsatisfiable = targetRequired.filter((key) => !(slotDeclares ?? []).includes(key));
       if (unsatisfiable.length === 0) continue;
 
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
-        code: runSite ? "CONTRACT_INPUTS_AT_RUN_SITE" : "CONTRACT_SLOT_INPUTS_UNSATISFIABLE",
+        code: "CONTRACT_SLOT_INPUTS_UNSATISFIABLE",
         source: SOURCE,
-        message: runSite
-          ? `${m.kind}/${resource.name}: '${name}' is wired at '${path}', which starts it with \`run()\` — ` +
-            `a dispatch that passes no arguments — but its contract requires ${list(unsatisfiable)}. ` +
-            `Nothing can supply them there. Invoke it from a step instead, or drop the requirement.`
-          : `${m.kind}/${resource.name}: '${name}' is wired at '${path}', where the consumer builds the ` +
-            `arguments from the slot's declared kind alone, but its contract requires ${list(unsatisfiable)} ` +
-            `which that kind does not declare. Nothing could supply them.`,
+        message:
+          `${m.kind}/${resource.name}: '${name}' is wired at '${path}', where the consumer builds the ` +
+          `arguments from the slot's declared kind alone, but its contract requires ${list(unsatisfiable)} ` +
+          `which that kind does not declare. Nothing could supply them.`,
         data: { resource, filePath, path },
       });
     }

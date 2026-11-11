@@ -89,9 +89,10 @@ class Sequence {
   }
 
   /** A boot run. Its context is the kernel's boot cancellation, forwarded so an
-   *  interrupt ends a run parked in a retry backoff. */
-  async run(invokeCtx?: InvokeContext): Promise<void> {
-    await this.execute({}, { inputs: {} }, invokeCtx);
+   *  interrupt ends a run parked in a retry backoff; its inputs are the input
+   *  contract applied to `{}`, absent when the sequence declares none. */
+  async run(invokeCtx?: InvokeContext, inputs?: Record<string, unknown>): Promise<void> {
+    await this.execute({}, { inputs: inputs ?? {} }, invokeCtx, () => undefined);
   }
 
   /** The invocation context is forwarded to the step leaf, so a retry backoff
@@ -99,18 +100,19 @@ class Sequence {
   async invoke(inputs: Record<string, unknown>, invokeCtx?: InvokeContext): Promise<unknown> {
     const steps: Record<string, unknown> = {};
     const extraCtx = { inputs: inputs ?? {} };
-    await this.execute(steps, extraCtx, invokeCtx);
-    if (this.resource.outputs) {
-      return this.ctx.expandValue(this.resource.outputs, { steps, ...extraCtx });
-    }
-    return steps;
+    return this.execute(steps, extraCtx, invokeCtx, () =>
+      this.resource.outputs ? this.ctx.expandValue(this.resource.outputs, { steps, ...extraCtx }) : steps,
+    );
   }
 
-  private async execute(
+  /** Run the steps, then `produce` the result — inside the scope, so a stream in
+   *  it leaves the scope through its close and keeps the scope open. */
+  private async execute<T>(
     steps: Record<string, unknown>,
     extraCtx: Record<string, unknown>,
     invokeCtx: InvokeContext | undefined,
-  ): Promise<void> {
+    produce: () => T,
+  ): Promise<T> {
     if (!this.resource.with) {
       await this.engine.executeSteps(
         this.resource.steps,
@@ -121,9 +123,10 @@ class Sequence {
         undefined,
         STEPS_POINTER,
       );
-      return;
+      return produce();
     }
-    await this.resource.with.run(async (scope) => {
+    // The scope's members read the same `inputs` the steps do.
+    return this.resource.with.run(extraCtx.inputs as Record<string, unknown>, async (scope) => {
       await this.runScopeTargets(scope);
       await this.engine.executeSteps(
         this.resource.steps,
@@ -134,6 +137,7 @@ class Sequence {
         undefined,
         STEPS_POINTER,
       );
+      return produce();
     });
   }
 

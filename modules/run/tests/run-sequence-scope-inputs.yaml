@@ -1,0 +1,63 @@
+kind: Telo.Application
+metadata:
+  name: RunSequenceScopeInputs
+  version: 1.0.0
+  description: |
+    Run.Sequence opens its `with:` scope with the inputs of the call that opened
+    it — its contract applied to `{}` when started by `run()` — so a member's
+    creation-time field reads them.
+imports: { Run: ../, Http: ../../http-client, Assert: ../../assert }
+targets:
+  - !ref bootRun
+  - !ref invokeIt
+---
+kind: Run.Sequence
+metadata: { name: bootRun }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: { greeting: { type: string, default: hi } } }
+with:
+  - kind: Http.ApiKeyHeader
+    metadata: { name: credential }
+    header: x-api-key
+    key: !cel "inputs.greeting"
+steps:
+  - name: sign
+    invoke: !ref credential
+    inputs:
+      request: { method: GET, url: "http://127.0.0.1/", headers: {}, query: {} }
+  - name: readsTheDefaults
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: { step: !cel "inputs.greeting", scope: !cel "steps.sign.result.headers['x-api-key']" }
+      expected: { step: hi, scope: hi }
+---
+kind: Run.Sequence
+metadata: { name: signed }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [greeting], properties: { greeting: { type: string } } }
+with:
+  - kind: Http.ApiKeyHeader
+    metadata: { name: credential }
+    header: x-api-key
+    key: !cel "inputs.greeting"
+steps:
+  - name: sign
+    invoke: !ref credential
+    inputs:
+      request: { method: GET, url: "http://127.0.0.1/", headers: {}, query: {} }
+outputs:
+  sent: !cel "steps.sign.result.headers['x-api-key']"
+---
+kind: Telo.Sequence
+metadata: { name: invokeIt }
+steps:
+  - name: call
+    invoke: !ref signed
+    inputs: { greeting: yo }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.call.result.sent"
+      expected: yo

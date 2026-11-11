@@ -177,6 +177,35 @@
       ]
     },
     {
+      "name": "a callback dispatch carries the owner it was handed",
+      "note": "The owner is the dispatch the kernel handed the controller; forwarding the context forwards it, so what the callback returns is owned by that dispatch.",
+      "open": [
+        "s1"
+      ],
+      "frames": [
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"owner\":\"o7\"},\"inputs\":{},\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Controller.Invoke\"}",
+          "frame": "0000009701000000927b226964223a302c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c226f776e6572223a226f37227d2c22696e70757473223a7b7d2c22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e766f6b65227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"owner\":\"o7\"},\"inputs\":{},\"instance\":\"h1\",\"kind\":\"Fix.Source\",\"name\":\"model\"},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "000000b801000000b37b226964223a312c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c226f776e6572223a226f37227d2c22696e70757473223a7b7d2c22696e7374616e6365223a226831222c226b696e64223a224669782e536f75726365222c226e616d65223a226d6f64656c227d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":1,\"payload\":{\"ok\":{\"result\":{\"usage\":{\"items\":2}}}},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "0000006701000000627b226964223a312c227061796c6f6164223a7b226f6b223a7b22726573756c74223a7b227573616765223a7b226974656d73223a327d7d7d7d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":0,\"payload\":{\"ok\":{\"result\":{\"items\":2}}},\"session\":\"s1\",\"type\":\"Controller.Invoke\"}",
+          "frame": "0000005f010000005a7b226964223a302c227061796c6f6164223a7b226f6b223a7b22726573756c74223a7b226974656d73223a327d7d7d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e766f6b65227d"
+        }
+      ]
+    },
+    {
       "name": "a reentrant call served while a synchronous request is outstanding",
       "note": "The controller end blocks on Value.Expand; the expression reaches a module function whose controller is that same blocked end, and it serves Callable.Call rather than deadlocking.",
       "open": [

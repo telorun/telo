@@ -69,6 +69,35 @@ each one remembering. `Http.Credential` marks its own `headers` and `query` — 
 as well as outbound, since the request handed to a credential already carries the
 client's default headers.
 
+## A kind that forwards a payload
+
+A decorator such as a lease, an idempotency claim, a cache view or a detach takes a
+payload in its own contract and hands it unchanged to the resource in a slot. Declaring
+that payload as an open object makes the mark on the target's contract invisible: the
+credential would ride the wire verbatim through the wrapper. So **a kind that forwards a
+payload types the forwarded node from the slot target's contract, and a result it hands
+back from the target's `outputType`**, with `x-telo-value-schema-from` pointing through
+the slot:
+
+```yaml
+inputs:
+  type: object
+  x-telo-value-schema-from: /invoke/inputType
+```
+
+The node then carries the target's marks, so it is redacted like the target's own
+inputs, and the payload is checked against the target's contract — `telo check` reports
+a missing field as `CONTRACT_INPUTS_MISMATCH` and the wrapper's own dispatch refuses it
+as `ERR_INPUT_INVALID`. A target whose contract cannot be resolved statically (a
+kind-only dispatch) leaves the node unconstrained, and the forwarded value is withheld
+whole. The target's `x-telo-span-attribute` marks travel the same way, so the wrapper's
+dispatch span exports the attributes of the payload it forwards.
+
+A kind that **maps** its caller's data (a transaction's own `inputs:` field) rather than
+forwarding it does not use the annotation: it types that data by a declaration of its
+own, never an open object. Whether a kind forwards is controller behaviour, so a
+third-party kind is covered only when it follows this rule.
+
 ## What it does not cover
 
 A thrown error's structured `data` is **not** redacted. `ERR_HTTP_STATUS` carries up

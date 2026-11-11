@@ -350,8 +350,10 @@ unsafe fn invoke_context(host: *const TeloHost) -> InvokeContext {
     // token is documented as valid only for the duration of the call, which is
     // exactly how long the host guarantees the table.
     let ctx = ctx as usize;
+    // `telo-3`'s host table carries no owner; the Rust kernel opens no scopes.
     InvokeContext {
         cancellation: CancellationToken::from_poll(move || poll(ctx as *mut c_void)),
+        owner: None,
     }
 }
 

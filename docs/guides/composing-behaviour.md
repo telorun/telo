@@ -222,6 +222,22 @@ steps:
 A scoped name resolves only inside the sequence, and each run gets its own
 instances — two concurrent runs never observe each other.
 
+A scoped resource's creation-time fields read `inputs` — the inputs of the call
+that started this run, typed by the sequence's `inputType` — so a value that
+belongs to one call (a caller's API key, an endpoint, a tenant) configures a
+resource that lives for that call only: `key: !cel "inputs.apiKey"` on a scoped
+credential. A run started by `run()` reads the contract's defaults. An input the
+contract marks `x-telo-sensitive` is redacted wherever that run's resources
+surface — their configuration, logs and trace payloads. Details:
+`modules/run/README.md`.
+
+A scope lives until the streams leaving it settle: a sequence may return a scoped
+resource's stream (a model's streamed reply), map it through a module-level stage,
+or hand it to `Run.Detach`, and the resource stays alive until the stream is read to
+its end, fails, or is cancelled by its reader. A stream the caller does not read —
+a route reading only `result.usage` beside a streamed `output` — is cancelled when
+the call that received it ends, and the scope is torn down then.
+
 An inline step target (`invoke: { kind: … }`) is created where the sequence is,
 not in its scope, so nothing inside it can name a `with:` resource: `telo check`
 reports a `!ref` as `SCOPED_NAME_OUT_OF_REACH` and a `resources.<name>` read in

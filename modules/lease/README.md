@@ -66,6 +66,10 @@ The body runs under a lease-owned cancellation scope, so the cancel trips its ca
 
 Cancellation state is **process-local**: the cancel must reach the same instance that dispatched the body (a shared store spans the *lease* across instances, not the cancel).
 
+## The forwarded payload is typed by the body
+
+`inputs` is typed by the body's input contract (the instance's `inputType`, else its kind's) and `result` by its output contract. A call missing a field the body requires is `CONTRACT_INPUTS_MISMATCH` under `telo check` and `ERR_INPUT_INVALID` at the lease's own dispatch, before the lease is acquired. A field the contract marks `x-telo-sensitive` is `[redacted]` in the lease's traced inputs and result, not only in the body's. A body whose contract cannot be resolved statically (a kind-only dispatch) leaves `inputs` unconstrained, and its forwarded value is withheld whole from traces.
+
 ## `holder`
 
 The optional `holder` input is an opaque token identifying this holder; it's returned to a loser (so a 409 can name the in-flight operation) and doubles as the **release guard** — a stale holder whose lease already expired and was taken over by another owner cannot release the new owner's lease. A unique token is generated when omitted.

@@ -97,16 +97,19 @@ class RunSequence {
    * A boot `targets:` run. The context is the kernel's boot cancellation, which
    * the CLI's SIGINT handler trips — so forwarding it is what lets Ctrl-C end a
    * run parked in a retry backoff, rather than only refusing the next dispatch.
+   * The steps and the scope read the run's inputs: the contract's empty call.
    */
-  async run(invokeCtx?: InvokeContext): Promise<void> {
+  async run(invokeCtx?: InvokeContext, runInputs?: Record<string, unknown>): Promise<void> {
+    // The input contract applied to `{}` by the kernel; absent without one.
+    const inputs = runInputs ?? {};
     if (this.resource.with) {
-      await this.resource.with.run(async (scope) => {
+      await this.resource.with.run(inputs, async (scope) => {
         await this.runScopeTargets(scope);
         await this.engine.executeSteps(
           this.resource.steps,
           {},
           scope,
-          scopeCel(scope, { inputs: {} }),
+          scopeCel(scope, { inputs }),
           invokeCtx,
           undefined,
           STEPS_POINTER,
@@ -117,7 +120,7 @@ class RunSequence {
         this.resource.steps,
         {},
         undefined,
-        { inputs: {} },
+        { inputs },
         invokeCtx,
         undefined,
         STEPS_POINTER,
@@ -144,9 +147,13 @@ class RunSequence {
     // flat) so steps read them as `${{ inputs.x }}`, matching the documented
     // contract. `error` is threaded as a sibling key inside try/catch.
     const extraCtx = { inputs: inputs ?? {} };
+    // Produced inside the scope, so a stream in the result leaves through its
+    // close and keeps the scope open until it settles.
+    const produce = () =>
+      this.resource.outputs ? this.ctx.expandValue(this.resource.outputs, { steps, ...extraCtx }) : steps;
 
     if (this.resource.with) {
-      await this.resource.with.run(async (scope) => {
+      return this.resource.with.run(extraCtx.inputs, async (scope) => {
         await this.runScopeTargets(scope);
         await this.engine.executeSteps(
           this.resource.steps,
@@ -157,23 +164,19 @@ class RunSequence {
           undefined,
           STEPS_POINTER,
         );
+        return produce();
       });
-    } else {
-      await this.engine.executeSteps(
-        this.resource.steps,
-        steps,
-        undefined,
-        extraCtx,
-        invokeCtx,
-        undefined,
-        STEPS_POINTER,
-      );
     }
-
-    if (this.resource.outputs) {
-      return this.ctx.expandValue(this.resource.outputs, { steps, ...extraCtx });
-    }
-    return steps;
+    await this.engine.executeSteps(
+      this.resource.steps,
+      steps,
+      undefined,
+      extraCtx,
+      invokeCtx,
+      undefined,
+      STEPS_POINTER,
+    );
+    return produce();
   }
 
   private async runScopeTargets(scope: ScopeContext): Promise<void> {

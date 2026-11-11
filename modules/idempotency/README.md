@@ -41,6 +41,8 @@ Called from a step, with a **deterministic** key so a retry targets the same log
       amount: !cel "inputs.amount"
 ```
 
+The forwarded `inputs` is typed by the body's input contract and `result` by its output contract: a missing required field is `CONTRACT_INPUTS_MISMATCH` under `telo check` and `ERR_INPUT_INVALID` at the claim's own dispatch, and a field the contract marks `x-telo-sensitive` is `[redacted]` in the claim's traced inputs and result. A body with no statically resolvable contract leaves `inputs` unconstrained, and its forwarded value is withheld whole from traces.
+
 ## Fields
 
 | Field | Purpose |

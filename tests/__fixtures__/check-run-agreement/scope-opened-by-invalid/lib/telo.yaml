@@ -1,0 +1,18 @@
+# `openedBy` names a mode the annotation does not have.
+kind: Telo.Library
+metadata: { name: ScopeOpenedByInvalidLib }
+imports: { Run: ../../../../../modules/run }
+exports: { kinds: [Holder] }
+---
+kind: Telo.Definition
+metadata: { name: Holder, description: A holder whose scope annotation is malformed. }
+extends: Run.Value
+schema:
+  type: object
+  properties:
+    members:
+      type: array
+      x-telo-scope: { regions: [/steps], openedBy: call }
+      items: { type: object }
+    steps: { type: array, items: { type: object } }
+base: { value: holder }

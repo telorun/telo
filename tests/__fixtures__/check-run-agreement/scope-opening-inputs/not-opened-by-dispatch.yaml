@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata: { name: ScopeInputsNotOpenedByDispatch }
+imports: { Http: ../../../../modules/http-client }
+targets:
+  - !ref holder
+---
+# A scope declared in the list form is not opened by dispatch: its members'
+# fields read no `inputs`.
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Runnable
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties:
+    members: { type: array, x-telo-scope: [/steps], items: { type: object } }
+    steps: { type: array, items: { type: object } }
+---
+kind: Self.Holder
+metadata: { name: holder }
+members:
+  - kind: Http.ApiKeyHeader
+    metadata: { name: credential }
+    header: x-api-key
+    key: !cel "inputs.apiKey"
+steps: []

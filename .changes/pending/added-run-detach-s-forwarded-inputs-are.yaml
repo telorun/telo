@@ -1,0 +1,5 @@
+modules:
+  modules/run: Added
+body: Run.Detach's forwarded inputs are typed by the target's input contract, so its
+  sensitive marks are redacted in the detach's traces and a payload the contract refuses
+  fails at the detach's own dispatch.

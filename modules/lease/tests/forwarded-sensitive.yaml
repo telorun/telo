@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata:
+  name: LeaseForwardedSensitive
+  version: 1.0.0
+  description: |
+    A payload forwarded through Lease.Critical is typed by the body's input
+    contract, so a field the body marks sensitive is redacted in the lease's own
+    traced inputs while the rest stays verbatim, and the same holds for a
+    result field the body's output contract marks sensitive.
+imports: { Lease: ../, KvStoreMemory: ../../kv-store-memory, Assert: ../../assert }
+targets:
+  - !ref call
+  - !ref expectRedacted
+---
+kind: KvStoreMemory.Store
+metadata: { name: mem }
+---
+kind: Lease.Critical
+metadata: { name: nightly }
+store: !ref mem
+ttl: 30s
+invoke:
+  kind: Telo.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [token, day]
+      properties: { token: { type: string, x-telo-sensitive: true }, day: { type: string } }
+  outputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [receipt, day]
+      properties: { receipt: { type: string, x-telo-sensitive: true }, day: { type: string } }
+  steps:
+    - name: done
+      value: { receipt: r-9f3a, day: !cel "inputs.day" }
+  outputs: !cel "steps.done.result"
+---
+kind: Telo.Sequence
+metadata: { name: call }
+steps:
+  - name: nightly
+    invoke: !ref nightly
+    inputs: { key: nightly-report, inputs: { token: s3cr3t-token, day: "2026-11-06" } }
+---
+kind: Assert.Events
+metadata: { name: expectRedacted }
+filter:
+  - { type: "*" }
+expect:
+  - event: nightly.Invoked
+    payload:
+      ref: { kind: Lease.Critical }
+      inputs: { key: nightly-report, inputs: { token: "[redacted]", day: "2026-11-06" } }
+      outputs: { acquired: true, result: { receipt: "[redacted]", day: "2026-11-06" } }

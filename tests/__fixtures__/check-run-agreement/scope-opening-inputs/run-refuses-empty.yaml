@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata: { name: ScopeInputsRunRefusesEmpty }
+targets:
+  - !ref greet
+---
+# A contract `{}` cannot satisfy is never satisfiable at a run site.
+kind: Telo.Sequence
+metadata: { name: greet }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, minProperties: 1, properties: { greeting: { type: string } } }
+steps:
+  - name: say
+    value: !cel "inputs.greeting"

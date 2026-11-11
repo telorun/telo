@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata: { name: LeaseForwardedInputsMissingField }
+imports: { Lease: ../../, KvStoreMemory: ../../../kv-store-memory }
+targets:
+  - invoke: !ref nightly
+    inputs: { key: nightly-report, inputs: { token: s3cr3t-token } }
+---
+kind: KvStoreMemory.Store
+metadata: { name: mem }
+---
+kind: Lease.Critical
+metadata: { name: nightly }
+store: !ref mem
+ttl: 30s
+invoke:
+  kind: Telo.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [token, day]
+      properties: { token: { type: string, x-telo-sensitive: true }, day: { type: string } }
+  steps:
+    - name: send
+      value: !cel "inputs.day"

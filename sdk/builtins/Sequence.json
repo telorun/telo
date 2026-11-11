@@ -15,10 +15,13 @@
       "with": {
         "title": "With",
         "description": "Resources that exist only while the sequence runs; created on entry and torn down when it ends.",
-        "x-telo-scope": [
-          "/steps",
-          "/targets"
-        ]
+        "x-telo-scope": {
+          "regions": [
+            "/steps",
+            "/targets"
+          ],
+          "openedBy": "dispatch"
+        }
       },
       "targets": {
         "title": "Targets",

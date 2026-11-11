@@ -64,6 +64,7 @@ const BROKEN_ON_PURPOSE = new Set(
     "tests/__fixtures__/scoped-imports/kind-through-scope.yaml",
     "tests/__fixtures__/scoped-imports/outliving.yaml",
     "tests/__fixtures__/scoped-imports/shadowing.yaml",
+    "tests/__fixtures__/check-run-agreement/scope-opening-inputs/undeclared-field.yaml",
   ].map((file) => join(REPO, file)),
 );
 

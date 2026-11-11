@@ -129,6 +129,8 @@ import { KernelRuntimeSeam } from "./runtime-seam.js";
 import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 import { acceptsBy, buildMembersValues, membersEntryText, membersIssues } from "./members-values.js";
 import type { LateTexts } from "./text-records.js";
+import type { RunRedaction } from "./scope-run-redaction.js";
+import { INBOUND_ABANDONED, INBOUND_COMPLETED, rootOwner } from "./held-streams.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
 
@@ -188,19 +190,24 @@ export class ResourceContextImpl implements ResourceContext {
       // The runtime value is always the kernel's `ModuleContext`, which carries
       // the resolved per-scope config; the field is typed as the SDK's narrower
       // interface, which deliberately does not expose kernel-internal state.
-      const scope = (
-        this.moduleContext as unknown as KernelModuleContext
-      ).getLoggingConfig?.();
-      this.#log = this.kernel.logging.createLogger(scope, resource);
+      this.#log = this.kernel.logging.createLogger(this.#loggingScope(), resource);
     }
     return this.#log;
+  }
+
+  /** The module's logging scope, with the redaction set of the scope run this
+   *  resource was created in when it was created in one. */
+  #loggingScope(): ScopeConfig | undefined {
+    const scope = (this.moduleContext as unknown as KernelModuleContext).getLoggingConfig?.();
+    const runRedaction = (this.owningContext as unknown as { runRedaction?: RunRedaction }).runRedaction;
+    if (!runRedaction) return scope;
+    return { ...(scope ?? this.kernel.logging.rootScope), runRedaction };
   }
 
   /** A thrown value as a log record writes its error — Telo frames relative to the
    *  entry module's directory, redaction applied. */
   errorValueOf(thrown: unknown): ErrorValue {
-    const scope = (this.moduleContext as unknown as KernelModuleContext).getLoggingConfig?.();
-    return this.kernel.logging.errorValueOf(thrown, scope);
+    return this.kernel.logging.errorValueOf(thrown, this.#loggingScope());
   }
 
   /** The sink-facing half of the pipeline (level resolution, drop accounting).
@@ -545,8 +552,24 @@ export class ResourceContextImpl implements ResourceContext {
     }
   }
 
+  /** A source whose context is a root owner: what a dispatch under it leaves
+   *  behind is held until the source is disposed (completed) or cancelled
+   *  (abandoned). */
   createCancellationSource(): CancellationSource {
-    return createCancellationSource();
+    const source = createCancellationSource();
+    const owner = rootOwner();
+    source.token.onCancelled(() => owner.close(INBOUND_ABANDONED));
+    return {
+      token: source.token,
+      context: deriveContext(source.context, { owner }),
+      cancel: (reason?: string) => source.cancel(reason),
+      cancelAt: (epochMs: number) => source.cancelAt(epochMs),
+      cancelAfter: (ms: number) => source.cancelAfter(ms),
+      dispose: () => {
+        source.dispose();
+        owner.close(INBOUND_COMPLETED);
+      },
+    };
   }
 
   // ── Execution zones (kernel/specs/execution-zones.md) ─────────────────────

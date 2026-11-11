@@ -3,6 +3,7 @@ import { celHostScopeValue } from "./cel-host-scope-value.js";
 import { formatSpanCounter } from "./logging/span-id.js";
 import { settleNeedObservations } from "./need-observation.js";
 import { parseTraceParent } from "./logging/trace-parent.js";
+import { isTaggedSentinel } from "@telorun/templating";
 import {
   deriveContext,
   getRefIdentity,
@@ -40,12 +41,40 @@ import {
   celResourceReads,
   concreteEvalPaths,
   evalPathCovers,
+  normalizeDeclaredScalars,
   reportsFromInit,
   startupObservedStateReads,
   type CelEvalSites,
   type LoadedGraph,
 } from "@telorun/analyzer";
 import { authoredDeclarationOf, recordDeclarationScope } from "./declaration-scope.js";
+import { boundInputOf, boundOutputOf } from "./invocation-contract-binding.js";
+import {
+  DETACHED_TASK_ENDED,
+  DISPATCH_ENDED,
+  holdDetachedInputs,
+  holdersOf,
+  holdLeavingRun,
+  holdReturned,
+  issuerHolds,
+  issuingOwnerOf,
+  RUNTIME_STOPPING,
+  StreamOwner,
+  streamOwnerOf,
+} from "./held-streams.js";
+import {
+  attachErrorRedaction,
+  bindInstanceRedaction,
+  combinedScrub,
+  errorRedactionOf,
+  instanceRedactionOf,
+  markScopeOpener,
+  opensDispatchScope,
+  redactionOfRun,
+  RunRedaction,
+  scopeRunIdentity,
+  textsAtPaths,
+} from "./scope-run-redaction.js";
 import { outermostDeclarationOf } from "./instance-declaration.js";
 import { recordDispatchExit } from "./failure-trace.js";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
@@ -208,13 +237,46 @@ const MIN_SUBSTRING_SCRUB_LEN = 5;
 const hasSnapshotMethod = (value: unknown): boolean =>
   !!value && typeof (value as { snapshot?: unknown }).snapshot === "function";
 
+/** A scope run whose teardown waits for the streams leaving it. */
+interface PendingRun {
+  readonly runOwner: StreamOwner;
+  readonly holderInstance: unknown;
+  /** Settles once the run is torn down. */
+  readonly done: Promise<void>;
+  /** A teardown failure no logger could report, handed to whoever settles the run. */
+  failure: unknown;
+}
+
+/**
+ * A scope member's declaration as ONE run registers it: every plain container
+ * copied, so Phase-5 injection — which writes the instance a reference names
+ * into the declaration holding it — writes into this run's copy, never into
+ * the declaration the next run registers. Compiled expressions, tagged values
+ * and anything that is not a plain container are shared.
+ */
+function declarationForRun<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(declarationForRun) as T;
+  if (!value || typeof value !== "object" || isCompiledValue(value) || isTaggedSentinel(value)) return value;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return value;
+  const descriptors = Object.getOwnPropertyDescriptors(value) as Record<PropertyKey, PropertyDescriptor>;
+  for (const key of Reflect.ownKeys(descriptors)) {
+    const descriptor = descriptors[key as string]!;
+    if ("value" in descriptor) descriptor.value = declarationForRun(descriptor.value);
+  }
+  return Object.create(proto, descriptors) as T;
+}
+
 export function buildResolvedProperties(
   resource: ResourceManifest,
   secretValues: Set<string>,
+  /** The set of the scope run the resource was created in: every occurrence of
+   *  its values is redacted, at any length. */
+  runRedaction?: RunRedaction,
 ): Record<string, unknown> {
   const skipSchema = SCHEMA_AS_CONTRACT_KINDS.has(resource.kind as string);
   const scrub = (s: string): string => {
-    let out = s;
+    let out = runRedaction ? runRedaction.scrub(s) : s;
     for (const secret of secretValues) {
       if (!secret) continue;
       // Exact match is always a secret; substring-redact only longer values so a
@@ -598,6 +660,15 @@ export class EvaluationContext implements IEvaluationContext {
   /** Position in the lifecycle tree. */
   parent: IEvaluationContext | undefined = undefined;
   readonly children: IEvaluationContext[] = [];
+
+  /** Set on a scope run's child context: the run's own redaction set. */
+  ownRunRedaction: RunRedaction | undefined = undefined;
+
+  /** The redaction set of the scope run this context belongs to, at any depth
+   *  beneath it, or undefined outside every run. */
+  get runRedaction(): RunRedaction | undefined {
+    return this.ownRunRedaction ?? (this.parent as EvaluationContext | undefined)?.runRedaction;
+  }
 
   /** Where this node sits in its parent's teardown cascade — ascending, default
    *  0, reverse-registration within a tier. See `childTeardownOrder`. */
@@ -1254,6 +1325,14 @@ export class EvaluationContext implements IEvaluationContext {
     this._context = Object.assign(next, { [name]: value }) as Record<string, unknown>;
   }
 
+  /** Remove a name from this context's own CEL scope, on a copy as
+   *  {@link bindContextValue} writes one. */
+  unbindContextValue(name: string): void {
+    const descriptors = Object.getOwnPropertyDescriptors(this._context);
+    delete descriptors[name];
+    this._context = Object.defineProperties({}, descriptors) as Record<string, unknown>;
+  }
+
   /** The members of a family of the layered body record, where there is one. */
   private familyMembersOf?: (family: string) => string[];
 
@@ -1529,6 +1608,8 @@ export class EvaluationContext implements IEvaluationContext {
           const created = await this._createInstance(this, resource);
           if (created) {
             createOutcome = "created";
+            const runRedaction = this.runRedaction;
+            if (runRedaction) bindInstanceRedaction(created.instance as object, runRedaction);
             this.createdInstances.set(name, {
               resource: created.resource,
               instance: created.instance,
@@ -1572,7 +1653,8 @@ export class EvaluationContext implements IEvaluationContext {
             Object.defineProperty(payload, "properties", {
               enumerable: true,
               configurable: true,
-              get: () => (props ??= buildResolvedProperties(createdRes, this.secretValues)),
+              get: () =>
+                (props ??= buildResolvedProperties(createdRes, this.secretValues, runRedaction)),
             });
             await this.emit(`${createdRes.kind}.${createdRes.metadata.name}.Created`, payload);
           }
@@ -1676,6 +1758,77 @@ export class EvaluationContext implements IEvaluationContext {
     }
   }
 
+  /** Scope runs opened in this context whose teardown waits for held streams. */
+  readonly pendingRuns = new Map<EvaluationContext, PendingRun>();
+
+  /** Tear `child` down once `runOwner` closes and every run opened inside it has
+   *  been torn down — in the background, a failure reported on the holder's log,
+   *  or, with no holder logger, handed to whoever settles the run. */
+  deferRunTeardown(
+    child: EvaluationContext,
+    runOwner: StreamOwner,
+    holderOwner: StreamOwner | undefined,
+    holderInstance: unknown,
+    redaction: RunRedaction | undefined,
+  ): void {
+    let settled!: () => void;
+    const done = new Promise<void>((resolve) => {
+      settled = resolve;
+    });
+    const pending: PendingRun = { runOwner, holderInstance, done, failure: undefined };
+    this.pendingRuns.set(child, pending);
+    runOwner.onClose(() => {
+      holderOwner?.openRuns?.delete(runOwner);
+      void (async () => {
+        try {
+          const unreported = await child.settlePendingRuns(false);
+          await child.teardownResources();
+          child.raiseTeardownFailures(unreported);
+        } catch (err) {
+          if (redaction) attachErrorRedaction(err, redaction);
+          const log = (holderInstance ? effectOwnerOf(holderInstance as ResourceInstance) : undefined)?.log;
+          if (log) log.error("Scope teardown failed", undefined, { error: err, eventName: "scope.teardown.failed" });
+          else pending.failure = err;
+        } finally {
+          this.pendingRuns.delete(child);
+          this.forgetChild(child);
+          settled();
+        }
+      })();
+    });
+  }
+
+  /**
+   * Wait for every pending run opened in this context to be torn down. With
+   * `cancel`, a shutdown: each run's held streams are cancelled first, so a later
+   * pull raises `ERR_INVOKE_CANCELLED` rather than meet a torn-down resource.
+   * Never rejects: a teardown failure with no logger to report it on is
+   * returned, for the caller to aggregate with its own.
+   */
+  async settlePendingRuns(
+    cancel: boolean,
+    holderInstance?: unknown,
+  ): Promise<Array<{ resource: string; error: unknown }>> {
+    const runs = [...this.pendingRuns.values()].filter(
+      (pending) => holderInstance === undefined || pending.holderInstance === holderInstance,
+    );
+    if (cancel) {
+      for (const { runOwner } of runs) {
+        for (const held of runOwner.leavingStreams()) held.cancel(RUNTIME_STOPPING);
+        runOwner.close();
+      }
+    }
+    await Promise.all(runs.map((pending) => pending.done));
+    return runs
+      .filter((pending) => pending.failure !== undefined)
+      .map((pending) => ({ resource: "(scope run teardown)", error: pending.failure }));
+  }
+
+  forgetChild(child: IEvaluationContext): void {
+    const idx = this.children.indexOf(child);
+    if (idx >= 0) this.children.splice(idx, 1);
+  }
+
   /**
    * Returns a ScopeHandle that initializes `manifests` in a fresh child context each time
    * `run()` is called, executes the callback with a ScopeContext, and tears down when done.
@@ -1685,8 +1838,46 @@ export class EvaluationContext implements IEvaluationContext {
    * resources hold x-telo-ref slots pointing to outer resources — those deps are already
    * live when the scope opens.
    */
-  createScopeHandle(manifests: ResourceManifest[], holder?: ResourceManifest, field?: string): ScopeHandle {
+  createScopeHandle(
+    manifests: ResourceManifest[],
+    holder?: ResourceManifest,
+    field?: string,
+    openedByDispatch = false,
+  ): ScopeHandle {
     const parent = this;
+    const holderLabel = (): string =>
+      `${holder ? parent.resolveKindSafe(holder.kind as string) : "<unknown kind>"} '${String(holder?.metadata?.name ?? "<unnamed>")}'`;
+    // An open names its inputs as the kind declares: an object on a scope
+    // opened by dispatch, `null` on any other. A legacy one-argument open (a
+    // controller published before the argument existed) reads as `null`.
+    const openingOf = (args: unknown[]): { inputs: Record<string, unknown> | null; fn: (scope: ScopeContext) => Promise<unknown> } => {
+      const legacy = typeof args[0] === "function" && args[1] === undefined;
+      const [first, second] = legacy ? [null, args[0]] : args;
+      if (first !== null && (typeof first !== "object" || Array.isArray(first))) {
+        throw new RuntimeError(
+          "ERR_SCOPE_OPENING_INVALID",
+          `${holderLabel()} opened its \`${field ?? "scope"}\` scope with inputs that are not an object; ` +
+            `the controller passes its invocation's inputs as an object, or null for a scope not opened by dispatch.`,
+        );
+      }
+      if (openedByDispatch && first === null) {
+        throw new RuntimeError(
+          "ERR_SCOPE_OPENING_INVALID",
+          `${holderLabel()} opened its \`${field ?? "scope"}\` scope without inputs, but the kind declares it ` +
+            `\`openedBy: dispatch\`: the controller must pass the inputs of the invocation opening it, ` +
+            `which its members' creation-time fields read as \`inputs\`. Upgrade the module providing the kind.`,
+        );
+      }
+      if (!openedByDispatch && first !== null) {
+        throw new RuntimeError(
+          "ERR_SCOPE_OPENING_INVALID",
+          `${holderLabel()} opened its \`${field ?? "scope"}\` scope with inputs, but the kind does not declare ` +
+            `it \`openedBy: dispatch\`, so nothing reads them: the controller must pass null, or the kind ` +
+            `declare \`x-telo-scope: { regions, openedBy: dispatch }\`.`,
+        );
+      }
+      return { inputs: first as Record<string, unknown> | null, fn: second as (scope: ScopeContext) => Promise<unknown> };
+    };
     // The resource owning the scope, as the issuer of its `targets:` runs.
     const holderCaller = (): DispatchCaller | undefined => {
       const holderName = holder?.metadata?.name;
@@ -1701,7 +1892,24 @@ export class EvaluationContext implements IEvaluationContext {
       };
     };
     return {
-      async run<T>(fn: (scope: ScopeContext) => Promise<T>): Promise<T> {
+      async run<T>(...args: unknown[]): Promise<T> {
+        const { inputs, fn } = openingOf(args) as {
+          inputs: Record<string, unknown> | null;
+          fn: (scope: ScopeContext) => Promise<T>;
+        };
+        const holderName = holder?.metadata?.name;
+        // The holder's own instance: its bound input contract is what the
+        // opening inputs are typed and marked by.
+        const holderInstance =
+          typeof holderName === "string"
+            ? (parent.resourceInstances.get(holderName) ?? parent.createdInstances.get(holderName))?.instance
+            : undefined;
+        const holderInput = boundInputOf(holderInstance);
+        // A run with no sensitive value of its own redacts as its enclosing run
+        // does, and a run under none with none costs no walk anywhere.
+        const sensitive = inputs && holderInput ? textsAtPaths(inputs, holderInput.sensitivePaths()) : [];
+        const redaction = sensitive.length > 0 ? new RunRedaction(sensitive, parent.runRedaction) : parent.runRedaction;
+        if (holderInstance && sensitive.length > 0) markScopeOpener(holderInstance);
         const child = parent.spawnChild(
           new EvaluationContext(
             parent.source,
@@ -1712,9 +1920,21 @@ export class EvaluationContext implements IEvaluationContext {
           ),
         );
         child.kindResolver = (kind) => parent.resolveKindSafe(kind);
-        const holderName = holder?.metadata?.name;
         child.scopeHolders = typeof holderName === "string" ? [...parent.scopeHolders, holderName] : parent.scopeHolders;
         child.scopeField = field;
+        child.ownRunRedaction = redaction;
+        const runIdentity = redaction ? scopeRunIdentity(redaction) : Object.freeze({});
+        // The members' creation-time fields read the opening inputs as the
+        // holder's step body does — declared scalars in their CEL form. A scope
+        // not opened by dispatch reads none, an enclosing one's included.
+        if (inputs) {
+          child.bindContextValue(
+            "inputs",
+            holderInput ? normalizeDeclaredScalars(inputs, holderInput.scalarPaths()) : inputs,
+          );
+        } else if ("inputs" in parent._context) {
+          child.unbindContextValue("inputs");
+        }
         // A `Telo.Import` this run declares gives its exports to the run's
         // members and regions, innermost scope first, then the enclosing one's.
         child.resolveImportedInstance = (alias, name) =>
@@ -1763,9 +1983,16 @@ export class EvaluationContext implements IEvaluationContext {
         child.declaredBeyondReach = (name) =>
           !child.hasManifest(name) && parent.declaredBeyondReach(name);
 
+        // The run is an owner of its own: produced when `fn` returns, open while a
+        // stream leaving it is live. It is open on the dispatch that opened it, so
+        // detached work that dispatch issues holds it too.
+        const holderOwner = streamOwnerOf(cancellationStore.getStore());
+        const runOwner = new StreamOwner(undefined, RUNTIME_STOPPING, undefined, holderLabel());
+        (holderOwner ? (holderOwner.openRuns ??= new Set()) : undefined)?.add(runOwner);
+        let deferred = false;
         try {
           for (const manifest of manifests) {
-            child.registerManifest(manifest);
+            child.registerManifest(declarationForRun(manifest));
           }
           await child.initializeResources();
           const scope: ScopeContext = {
@@ -1805,12 +2032,45 @@ export class EvaluationContext implements IEvaluationContext {
               for (const [name, snap] of scopeLocal) merged[name] = snap;
               return merged;
             },
+            runIdentity,
           };
-          return await fn(scope);
+          const produced = holdLeavingRun(await fn(scope), runOwner, holderOwner);
+          runOwner.produce();
+          if (runOwner.closed && child.pendingRuns.size === 0) return produced as T;
+          // A stream leaves the run, or a run opened inside it is still held:
+          // the value is handed on now and the run torn down once those settle.
+          deferred = true;
+          parent.deferRunTeardown(child, runOwner, holderOwner, holderInstance, redaction);
+          return produced as T;
+        } catch (error) {
+          // A failure leaving the run carries its set to wherever its error value
+          // is built — a transport's error log record, the holder's trace payload.
+          if (redaction) attachErrorRedaction(error, redaction);
+          // A run opened inside this one may still be held by a stream the
+          // failing holder's dispatch owns: waiting for it here would wait for
+          // the failure this throw delivers.
+          // Detached work still pulling a stream leaving this run is cancelled,
+          // so a later pull raises ERR_INVOKE_CANCELLED rather than meeting the
+          // torn-down resources.
+          for (const held of runOwner.leavingStreams()) held.cancel(RUNTIME_STOPPING);
+          runOwner.close();
+          if (child.pendingRuns.size > 0) {
+            deferred = true;
+            parent.deferRunTeardown(child, runOwner, holderOwner, holderInstance, redaction);
+          }
+          throw error;
         } finally {
-          await child.teardownResources();
-          const idx = parent.children.indexOf(child);
-          if (idx >= 0) parent.children.splice(idx, 1);
+          if (!deferred) {
+            runOwner.close();
+            holderOwner?.openRuns?.delete(runOwner);
+            try {
+              const unreported = await child.settlePendingRuns(false);
+              await child.teardownResources();
+              child.raiseTeardownFailures(unreported);
+            } finally {
+              parent.forgetChild(child);
+            }
+          }
         }
       },
     };
@@ -1840,7 +2100,8 @@ export class EvaluationContext implements IEvaluationContext {
   // eslint-disable-next-line @typescript-eslint/member-ordering
   async teardownResources(): Promise<void> {
     this.state = "Draining";
-    const failures = await this.unwindEach(this.teardownOrder());
+    const failures = await this.settlePendingRuns(true);
+    failures.push(...(await this.unwindEach(this.teardownOrder())));
 
     // The backstop: whatever no resource's inverse claimed. Everything an import
     // or a template owns is already down, so this is a no-op for it.
@@ -1883,7 +2144,7 @@ export class EvaluationContext implements IEvaluationContext {
     this.raiseTeardownFailures(await this.unwindEach(selected));
   }
 
-  private raiseTeardownFailures(failures: Array<{ resource: string; error: unknown }>): void {
+  raiseTeardownFailures(failures: Array<{ resource: string; error: unknown }>): void {
     if (failures.length === 0) return;
     throw new RuntimeError(
       "ERR_TEARDOWN_FAILED",
@@ -1916,6 +2177,8 @@ export class EvaluationContext implements IEvaluationContext {
       // Tearing a resource down IS unwinding its effects — every frame, newest
       // first, LIFO within each. There is no `teardown()` to call: what undoes a
       // resource is what its `init()` and `run()` returned.
+      // Runs this resource opened and left held go first, their streams cancelled.
+      failures.push(...(await this.settlePendingRuns(true, instance)));
       const owner = effectOwnerOf(instance);
       const refused = (await owner?.effects.unwindAll()) ?? [];
       if (refused.length > 0) {
@@ -2294,6 +2557,8 @@ export class EvaluationContext implements IEvaluationContext {
     outcome: SpanOutcome | undefined,
     detail: Record<string, unknown>,
     views?: Readonly<Record<string, (value: unknown) => unknown>>,
+    /** The scope-run redaction that applies to this dispatch, when one does. */
+    runScrub?: (value: unknown) => unknown,
   ): Record<string, unknown> {
     const payload: Record<string, unknown> = {
       traceId,
@@ -2317,7 +2582,7 @@ export class EvaluationContext implements IEvaluationContext {
     };
     // Inputs, outputs, error data and scope may hold a value built at dispatch, which
     // no redaction set knows: each is written by the value rule (logging §14).
-    defineCensoredEntries(payload, detail, REDACTED, views);
+    defineCensoredEntries(payload, detail, REDACTED, views, runScrub);
     return payload;
   }
 
@@ -2431,6 +2696,24 @@ export class EvaluationContext implements IEvaluationContext {
       inputs: (value: unknown) => payloadViewOf(instance, "inputType", value),
       outputs: (value: unknown) => payloadViewOf(instance, "outputType", value),
     };
+    // A scope run's values are redacted from the payload of a dispatch whose
+    // target the run created, of one the holder issues inside the run (its
+    // per-dispatch `scopeRun`), of the opening dispatch — whose run's values are
+    // its own sensitive inputs — and of a failure that left a run. Read when the
+    // payload is built, so it costs nothing where nothing listens.
+    let failure: unknown;
+    const openingRedaction = (): RunRedaction | undefined => {
+      if (!opensDispatchScope(instance)) return undefined;
+      const own = textsAtPaths(inputs, sensitivePathsOfInstance(instance, "inputType") ?? []);
+      return own.length > 0 ? new RunRedaction(own, undefined) : undefined;
+    };
+    const runScrub = () =>
+      combinedScrub([
+        instanceRedactionOf(instance),
+        redactionOfRun(ctx?.scopeRun),
+        openingRedaction(),
+        failure === undefined ? undefined : errorRedactionOf(failure),
+      ]);
     const span = (
       phase: "start" | "end",
       outcome: SpanOutcome | undefined,
@@ -2447,6 +2730,7 @@ export class EvaluationContext implements IEvaluationContext {
         outcome,
         phase === "end" && rootScope ? { ...hide(detail), context: rootScope } : hide(detail),
         payloadViews,
+        runScrub(),
       );
     // When tracing, a derived context carries the new id down the tree so nested
     // invokes read it as their parent; it is never `=== ambient`, so the call
@@ -2459,15 +2743,27 @@ export class EvaluationContext implements IEvaluationContext {
     // makes this call, read here and handed on to nothing.
     const inputsAt = ctx?.inputsAt;
     const calledAt = ctx?.calledAt;
-    const invokeCtx: InvokeContext = tracing
-      ? deriveContext(baseCtx, { invocationId, parentInvocationId, traceId })
-      : inputsAt === undefined && calledAt === undefined
-        ? baseCtx
-        : deriveContext(baseCtx, {});
+    // Every dispatch owns what reaches its body; its context carries that owner.
+    const callerOwner = streamOwnerOf(baseCtx);
+    const own = new StreamOwner(callerOwner, DISPATCH_ENDED);
+    const invokeCtx: InvokeContext = deriveContext(
+      baseCtx,
+      tracing ? { invocationId, parentInvocationId, traceId, owner: own } : { owner: own },
+    );
+    // A dispatch under a context its issuer does not own is detached or a
+    // trigger: what its inputs hold from the issuer's scope runs moves to it.
+    const issuer = issuingOwnerOf(ambient);
+    if (issuer !== undefined && callerOwner !== issuer) {
+      if (issuerHolds(issuer)) {
+        inputs = holdDetachedInputs(inputs, issuer, own, boundInputOf(instance)?.walkGuide()) as TInputs;
+      }
+      streamOwnerOf(ambient)?.releaseProvisional();
+    }
 
     // Pre-dispatch gate: a sub-invoke reached after the tree was cancelled is
     // refused without ever touching the controller.
     if (token.isCancelled) {
+      own.produce();
       await this.emitSpan(`${name}.InvokeCancelled`, () => span("end", "cancelled", { inputs, reason: token.reason }));
       finish("cancelled", { cancellationReason: token.reason ?? "cancelled" });
       throw new RuntimeError(
@@ -2496,15 +2792,20 @@ export class EvaluationContext implements IEvaluationContext {
         typeof instance.invoke === "function"
           ? (instance.invoke as (i: any, c?: InvokeContext) => any)(inputs as any, invokeCtx)
           : (instance.run as (c?: InvokeContext) => any)(invokeCtx);
-      const outputs = await (invokeCtx === ambient
-        ? call()
-        : cancellationStore.run(invokeCtx, call));
+      const produced = await cancellationStore.run(invokeCtx, call);
+      // Only a dispatch still owning a held stream looks at what it returns.
+      const outputs = own.ownsLive()
+        ? holdReturned(produced, own, callerOwner, `${kind} '${name}'`, boundOutputOf(instance)?.walkGuide())
+        : produced;
+      own.produce();
       settleNeedObservations(instance, typeof instance.invoke === "function" ? "invoke" : "run");
       if (typeof instance.invoke !== "function") completedInstances.add(instance);
       await this.emitSpan(`${name}.Invoked`, () => span("end", "ok", { inputs, outputs }));
       finish("ok", { outputs });
       return outputs;
     } catch (err) {
+      failure = err;
+      own.produce();
       // Cooperative mid-flight cancellation (`throwIfCancelled`) joins the same
       // observable event family rather than masquerading as a rejection/failure.
       if (isCancellationError(err)) {
@@ -2870,6 +3171,7 @@ export class EvaluationContext implements IEvaluationContext {
         },
       });
     };
+    let failure: unknown;
     const span = (
       phase: "start" | "end",
       outcome: "ok" | "failed" | "cancelled" | undefined,
@@ -2885,13 +3187,21 @@ export class EvaluationContext implements IEvaluationContext {
         phase,
         outcome,
         phase === "end" && rootScope ? { ...detail, context: rootScope } : detail,
+        undefined,
+        combinedScrub([
+          instanceRedactionOf(instance),
+          failure === undefined ? undefined : errorRedactionOf(failure),
+        ]),
       );
-    const invokeCtx: InvokeContext = tracing
-      ? deriveContext(baseCtx, { invocationId, parentInvocationId, traceId })
-      : baseCtx;
+    const own = new StreamOwner(streamOwnerOf(baseCtx), DISPATCH_ENDED);
+    const invokeCtx: InvokeContext = deriveContext(
+      baseCtx,
+      tracing ? { invocationId, parentInvocationId, traceId, owner: own } : { owner: own },
+    );
 
     // Refuse a target reached after the boot run was cancelled.
     if (token.isCancelled) {
+      own.produce();
       await this.emitSpan(`${name}.RunCancelled`, () => span("end", "cancelled", { reason: token.reason }));
       finish("cancelled", { cancellationReason: token.reason ?? "cancelled" });
       throw new RuntimeError(
@@ -2929,7 +3239,9 @@ export class EvaluationContext implements IEvaluationContext {
         const returned = await (instance.run as (c?: InvokeContext) => Promise<unknown>)(invokeCtx);
         await executeReturnedChain(returned, effects);
       };
-      await (isService || invokeCtx === ambient ? call() : cancellationStore.run(invokeCtx, call));
+      // A Service's run() leaves no ambient behind for the work it registers.
+      await (isService ? cancellationStore.exit(call) : cancellationStore.run(invokeCtx, call));
+      own.produce();
       settleNeedObservations(instance, "run");
       // A one-shot Runnable that discovered something during run() publishes it
       // without an explicit call; a Service never reaches this until teardown.
@@ -2938,6 +3250,8 @@ export class EvaluationContext implements IEvaluationContext {
       await this.emitSpan(`${name}.Run`, () => span("end", "ok", {}));
       finish("ok");
     } catch (err) {
+      failure = err;
+      own.produce();
       // A run that did not complete leaves nothing of its own behind: its frame
       // unwinds here, so a `listen()` that threw releases the hold it took a
       // line earlier instead of holding the process open for a server that
@@ -2979,7 +3293,19 @@ export class EvaluationContext implements IEvaluationContext {
    * resource's teardown).
    */
   runDetached<T>(fn: () => Promise<T>): Promise<T> {
-    return cancellationStore.run(UNCANCELLABLE_CONTEXT, fn);
+    // The task owns what its dispatches return to it, closing when it settles,
+    // and holds what its issuer holds until its first dispatch has walked its
+    // inputs — a stream in them keeps its scope open from there.
+    const issuer = issuingOwnerOf(cancellationStore.getStore());
+    const task = new StreamOwner(issuer, DETACHED_TASK_ENDED, issuer);
+    if (issuerHolds(issuer)) task.holdProvisionally(holdersOf(issuer));
+    const settle = (): void => {
+      task.releaseProvisional();
+      task.produce();
+    };
+    return cancellationStore
+      .run(deriveContext(UNCANCELLABLE_CONTEXT, { owner: task }), fn)
+      .finally(settle);
   }
 
   /**

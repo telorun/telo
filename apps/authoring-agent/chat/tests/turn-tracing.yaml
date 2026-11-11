@@ -182,7 +182,7 @@ steps:
   - name: facts
     value: !cel >-
       cel.bind(spans, steps.traced.result.spans,
-      cel.bind(root, spans.filter(s, s.attrs.exists(a, a == 'telo.agent.turn.id=' + steps.traced.result.turnId))[0],
+      cel.bind(root, spans.filter(s, s.parent == '' && s.attrs.exists(a, a == 'telo.agent.turn.id=' + steps.traced.result.turnId))[0],
       cel.bind(trace, spans.filter(s, s.trace == root.trace), {
         'turnTraces': distinct(spans.filter(s, s.name.startsWith('invoke_agent ') || s.name.startsWith('chat ')
             || s.name.startsWith('execute_tool ')).map(s, s.trace)),

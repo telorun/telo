@@ -34,10 +34,13 @@ const Ajv = (AjvModule as any).default ?? AjvModule;
  *
  *  Called once for the module-level instance and once per
  *  DefinitionRegistry instance. */
-export function createAjv(options: { verbose?: boolean } = {}): InstanceType<typeof Ajv> {
+export function createAjv(options: { verbose?: boolean; useDefaults?: boolean } = {}): InstanceType<typeof Ajv> {
   // `verbose` makes each error name the schema node that raised it — what the
   // stand-in judge locates a union by.
-  const instance = new Ajv({ allErrors: true, strict: false, verbose: options.verbose === true });
+  const instance = new Ajv({ allErrors: true, strict: false,
+    verbose: options.verbose === true,
+    useDefaults: options.useDefaults === true,
+  });
   (addFormats as any).default
     ? (addFormats as any).default(instance)
     : (addFormats as any)(instance);
@@ -435,6 +438,31 @@ export function validateAgainstSchema(data: unknown, schema: Record<string, any>
   }
   if (validate(data)) return [];
   return schemaIssues(validate.errors, data);
+}
+
+const defaultFillingAjv = createAjv({ useDefaults: true });
+const defaultFillingValidators = new WeakMap<Record<string, any>, ReturnType<typeof ajv.compile>>();
+
+/** Validates `data` the way the kernel binds a contract: declared defaults are
+ *  filled into a copy first, so a value a default completes is not reported.
+ *  A schema that does not compile is the author's, reported elsewhere. */
+export function validateAgainstSchemaWithDefaults(
+  data: unknown,
+  schema: Record<string, any>,
+): SchemaIssue[] {
+  let validate = defaultFillingValidators.get(schema);
+  if (!validate) {
+    try {
+      validate = defaultFillingAjv.compile(schema);
+    } catch (err) {
+      if (schemaCompiles(schema)) throw err;
+      return [];
+    }
+    defaultFillingValidators.set(schema, validate);
+  }
+  const copy = structuredClone(data);
+  if (validate(copy)) return [];
+  return schemaIssues(validate.errors, copy);
 }
 
 /** Resolves a JSON Pointer (RFC 6901, must start with "/") into a schema object.

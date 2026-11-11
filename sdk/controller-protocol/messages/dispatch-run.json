@@ -54,6 +54,11 @@
           },
           "durablePath": {
             "type": "string"
+          },
+          "owner": {
+            "description": "The dispatch this context belongs to, as an opaque id the kernel minted for its owner: inherited by every context derived from this one and replaced by the kernel at each dispatch, so a controller forwards it by forwarding its context. A held stream registered with an unknown or closed owner is cancelled at once.",
+            "type": "string",
+            "minLength": 1
           }
         },
         "additionalProperties": false

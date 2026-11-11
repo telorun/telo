@@ -19,6 +19,7 @@ import type { ScopeConfig } from "./scope-config.js";
 
 export type { ScopeConfig } from "./scope-config.js";
 import { toErrorValue } from "./to-error-value.js";
+import { errorRedactionOf } from "../scope-run-redaction.js";
 
 /**
  * The emission pipeline — `kernel/specs/logging.md` §10.1:
@@ -102,7 +103,7 @@ export class LoggingPipeline {
   errorValueOf(thrown: unknown, scope: ScopeConfig): ErrorValue {
     const error = toErrorValue(thrown, scope.redaction.censor, { entryDirectory: this.#entryDirectory?.() });
     redactError(error, scope.redaction);
-    return error;
+    return runRedactedError(error, thrown, scope);
   }
 
   get sinkCount(): number {
@@ -239,16 +240,20 @@ export class LoggingPipeline {
     });
 
     redactAttributes(normalized.attributes, scope.redaction);
+    if (scope.runRedaction && normalized.attributes) {
+      normalized.attributes = scope.runRedaction.scrubValue(normalized.attributes) as typeof normalized.attributes;
+    }
 
-    const error = options?.error === undefined ? undefined : toErrorValue(options.error, scope.redaction.censor, { entryDirectory: this.#entryDirectory?.() });
-    redactError(error, scope.redaction);
+    const raw = options?.error === undefined ? undefined : toErrorValue(options.error, scope.redaction.censor, { entryDirectory: this.#entryDirectory?.() });
+    redactError(raw, scope.redaction);
+    const error = raw === undefined ? undefined : runRedactedError(raw, options!.error, scope);
 
     const timestamp = options?.timestamp ?? nowUnixNano();
     const record: LogRecord = {
       timestamp,
       severityNumber: severity,
       severityText: options?.severityText ?? canonicalSeverityText(severity),
-      message,
+      message: scope.runRedaction ? scope.runRedaction.scrub(message) : message,
     };
 
     // A bridged record's origin time precedes the moment the runtime saw it.
@@ -396,6 +401,16 @@ export class LoggingPipeline {
       // and throwing here would break the application — which §8.4 forbids.
     }
   }
+}
+
+/** A record's error with the values of the scope run its writer was created in,
+ *  and of the run the failure left, replaced. */
+function runRedactedError(error: ErrorValue, thrown: unknown, scope: ScopeConfig): ErrorValue {
+  let out = error;
+  for (const run of [scope.runRedaction, errorRedactionOf(thrown)]) {
+    if (run) out = run.scrubValue(out) as ErrorValue;
+  }
+  return out;
 }
 
 class ScopedLogger implements Logger {

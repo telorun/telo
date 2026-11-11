@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: IdempotencyForwardedSensitive
+  version: 1.0.0
+  description: |
+    A payload forwarded through Idempotency.Once is typed by the body's input
+    contract, so a field the body marks sensitive is redacted in the claim's own
+    traced inputs while the rest stays verbatim, and the same holds for a result
+    field the body's output contract marks sensitive.
+imports: { Idempotency: ../, KvStoreMemory: ../../kv-store-memory, Assert: ../../assert }
+targets:
+  - !ref call
+  - !ref expectRedacted
+---
+kind: KvStoreMemory.Store
+metadata: { name: store }
+---
+kind: Idempotency.Once
+metadata: { name: charge }
+store: !ref store
+claimTtl: 30s
+ttl: 60s
+invoke:
+  kind: Telo.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [token, day]
+      properties: { token: { type: string, x-telo-sensitive: true }, day: { type: string } }
+  outputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [receipt, day]
+      properties: { receipt: { type: string, x-telo-sensitive: true }, day: { type: string } }
+  steps:
+    - name: done
+      value: { receipt: r-9f3a, day: !cel "inputs.day" }
+  outputs: !cel "steps.done.result"
+---
+kind: Telo.Sequence
+metadata: { name: call }
+steps:
+  - name: charge
+    invoke: !ref charge
+    inputs: { key: order-1, inputs: { token: s3cr3t-token, day: "2026-11-06" } }
+---
+kind: Assert.Events
+metadata: { name: expectRedacted }
+filter:
+  - { type: "*" }
+expect:
+  - event: charge.Invoked
+    payload:
+      ref: { kind: Idempotency.Once }
+      inputs: { key: order-1, inputs: { token: "[redacted]", day: "2026-11-06" } }
+      outputs:
+        executed: true
+        state: fresh
+        result: { receipt: "[redacted]", day: "2026-11-06" }

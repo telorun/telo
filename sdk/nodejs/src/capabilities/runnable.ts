@@ -14,6 +14,12 @@ export interface Runnable {
    *   Optional — runnables that ignore it keep working unchanged. Long-lived
    *   targets (servers, loops) observe `ctx.cancellation` to stop early when the
    *   boot run is cancelled (e.g. SIGINT).
+   * @param inputs  The resource's input contract applied to the empty call —
+   *   defaults filled, validated. Present exactly when the resource has an
+   *   input contract.
    */
-  run(ctx?: InvokeContext): Promise<EffectChain<unknown> | void> | EffectChain<unknown> | void;
+  run(
+    ctx?: InvokeContext,
+    inputs?: Record<string, unknown>,
+  ): Promise<EffectChain<unknown> | void> | EffectChain<unknown> | void;
 }

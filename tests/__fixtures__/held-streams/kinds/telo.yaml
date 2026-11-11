@@ -1,0 +1,54 @@
+kind: Telo.Library
+metadata:
+  name: HeldStreamFixtures
+  version: 0.0.0
+  description: >-
+    Test fixture: a stream source whose stream refuses to be read once the source is
+    torn down, and one whose items carry streams of their own.
+exports: { kinds: [Source, Parts] }
+---
+kind: Telo.Definition
+metadata:
+  name: Source
+  description: >-
+    Answers a stream of `item-0` … `item-<n-1>` beside a usage record. A pull after the
+    resource was torn down fails, as a disposed client's stream would.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./kinds.mjs#Source]
+schema:
+  type: object
+  additionalProperties: false
+  properties: { items: { type: integer, default: 3 } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output, usage]
+    properties:
+      output: { x-telo-type: { name: Telo.Stream, of: { type: string } } }
+      usage:
+        type: object
+        additionalProperties: false
+        required: [items]
+        properties: { items: { type: integer } }
+---
+kind: Telo.Definition
+metadata:
+  name: Parts
+  description: >-
+    Answers a stream of parts, each a name and a `content` stream of its own, as a
+    multipart parse does. A pull of either after the resource was torn down fails.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./kinds.mjs#Parts]
+schema:
+  type: object
+  additionalProperties: false
+  properties: { parts: { type: integer, default: 2 } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [parts]
+    properties: { parts: { x-telo-type: Telo.Stream } }

@@ -1,0 +1,67 @@
+kind: Telo.Application
+metadata: { name: ShutdownReplica }
+imports:
+  Chat: ../../
+  Ai: ../../../ai
+  AiEcho: ../../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../../ai-conversation-sql
+  RecordStream: ../../../record-stream
+  RecordStreamSql: ../../../record-stream-sql
+  BlobFs: ../../../blob-fs
+  MediaType: ../../../media-type
+  SQLite: ../../../sqlite
+  Console: ../../../console
+  Timer: ../../../timer
+variables:
+  databaseFile: { env: SHUTDOWN_REPLICA_DATABASE, type: string, x-telo-type: { name: Telo.HostPath, entry: file } }
+  blobRoot: { env: SHUTDOWN_REPLICA_BLOBS, type: string, x-telo-type: { name: Telo.HostPath, entry: directory } }
+targets: [!ref run]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.databaseFile"
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+markerRetention: 1h
+---
+kind: BlobFs.Store
+metadata: { name: blobs }
+root: !cel "variables.blobRoot"
+---
+kind: Telo.Sequence
+metadata: { name: slowTool }
+steps:
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 10s } }
+---
+kind: Chat.Conversation
+metadata: { name: replica }
+agent:
+  kind: Ai.AgentStream
+  model: { kind: AiEcho.EchoModelStream, accepts: [], emitToolCall: { name: wait, arguments: {} } }
+  toolProviders:
+    - provider:
+        kind: Ai.Tools
+        tools: [{ tool: !ref slowTool, name: wait, description: Waits a while., parameters: { type: object } }]
+store: !ref store
+journal: !ref journal
+blobs: !ref blobs
+detector: { kind: MediaType.Detector }
+---
+# Starts a turn, reports its id, and ends while the turn's tool is still running:
+# the application's own shutdown is what sweeps the pending turn.
+kind: Telo.Sequence
+metadata: { name: run }
+steps:
+  - name: started
+    invoke: { kind: Chat.StartTurn, conversation: !ref replica }
+    inputs: { message: go, attachments: [] }
+  - name: report
+    invoke: { kind: Console.WriteLine }
+    inputs: { output: !cel "steps.started.result.turn" }
+  - { name: running, invoke: { kind: Timer.Delay }, inputs: { duration: 500ms } }

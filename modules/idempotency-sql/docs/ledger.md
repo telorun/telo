@@ -31,7 +31,7 @@ So a key is **committed once**, together with the effects it guards. The guarant
 | --- | --- |
 | `key` | 1–128 printable ASCII characters (`!` to `~`) naming the logical operation — a message id, a request id. |
 | `fingerprint` | Optional, any value: what the work under this key is. The ledger stores a SHA-256 digest of its canonical encoding, so two equal values match whatever order their keys were written in, and a value's type counts (`1` and `"1"` differ). |
-| `inputs` | Forwarded to the body when it runs, and held to the body's own input contract (the instance's `inputType`, else its kind's) — a misspelled input is `CONTRACT_INPUTS_MISMATCH` at `telo check`. A body declaring no contract takes any object. |
+| `inputs` | Forwarded to the body when it runs, and held to the body's own input contract (the instance's `inputType`, else its kind's) — a misspelled input is `CONTRACT_INPUTS_MISMATCH` at `telo check`. A body declaring no contract takes any object. The same contract is checked at the `Once`'s own dispatch (`ERR_INPUT_INVALID`), and a field it marks `x-telo-sensitive` is `[redacted]` in the `Once`'s traced inputs. |
 
 | Output | Meaning |
 | --- | --- |

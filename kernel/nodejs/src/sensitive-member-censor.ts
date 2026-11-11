@@ -52,6 +52,8 @@ export function defineCensoredEntries(
   censor: string,
   /** How an entry is shown before the rule applies, by key. */
   views?: Readonly<Record<string, (value: unknown) => unknown>>,
+  /** Applied to every entry after the rule: a scope run's value redaction. */
+  scrub?: (value: unknown) => unknown,
 ): void {
   for (const [key, raw] of Object.entries(detail)) {
     let read = false;
@@ -62,7 +64,8 @@ export function defineCensoredEntries(
       get: () => {
         if (!read) {
           const view = views?.[key];
-          held = censorSensitiveMembers(view ? view(raw) : raw, censor);
+          const censored = censorSensitiveMembers(view ? view(raw) : raw, censor);
+          held = scrub ? scrub(censored) : censored;
           read = true;
         }
         return held;

@@ -4,6 +4,7 @@ import type {
   EffectOutcome,
   EffectResult,
   Inverse,
+  Logger,
   ResourceInstance,
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
@@ -335,6 +336,8 @@ export async function executeReturnedChain(returned: unknown, scope?: EffectScop
 export interface EffectOwner {
   readonly effects: EffectScope;
   drainDetached(): Promise<void>;
+  /** The resource's logger, where a failure with no caller is reported. */
+  readonly log: Logger;
 }
 
 /**

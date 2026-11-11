@@ -31,11 +31,10 @@ schema:
   properties:
     with:
       title: With
-      # Visibility covers both `/steps` (where steps reference with-resources)
-      # and `/targets` (the run-before-steps references), so a `!ref` in either
-      # resolves against the scoped resources.
-      x-telo-scope: [ "/steps", "/targets" ]
-      description: Resources available during sequence execution; torn down when done
+      # Scoped names resolve in `/steps` and `/targets`; the members'
+      # creation-time fields read the opening invocation's `inputs`.
+      x-telo-scope: { regions: ["/steps", "/targets"], openedBy: dispatch }
+      description: Resources available during sequence execution; their creation-time fields read the invocation's `inputs`. Torn down when done.
     targets:
       title: Targets
       type: array
@@ -656,8 +655,8 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    additionalProperties: true
-    description: Inputs passed through to the wrapped target at dispatch time.
+    description: Inputs passed through to the wrapped target at dispatch time, held to its input contract.
+    x-telo-value-schema-from: /invoke/inputType
 outputType:
   kind: Telo.JsonSchema
   schema:

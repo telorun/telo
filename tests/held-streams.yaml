@@ -1,0 +1,223 @@
+kind: Telo.Application
+metadata:
+  name: HeldStreams
+  version: 1.0.0
+  description: |
+    A stream a `with:` member produces outlives the run that produced it: the scope is
+    torn down once the stream is read to its end, never before — returned as it is,
+    mapped by a module-level stage, typed by an open `outputType`, handed to detached
+    work, or carrying a stream in each item. One nobody reads is cancelled when the
+    call that received it ends, and its scope torn down then.
+imports:
+  Fix: ./__fixtures__/held-streams/kinds
+  Stream: ../modules/stream
+  Run: ../modules/run
+  Timer: ../modules/timer
+  Assert: ../modules/assert
+targets:
+  - !ref returned
+  - !ref mapped
+  - !ref openContract
+  - !ref detached
+  - !ref derived
+  - !ref parts
+  - !ref unread
+  - !ref ignored
+  - !ref expectOrder
+---
+kind: Telo.Sequence
+metadata: { name: reply }
+with:
+  - { kind: Fix.Source, metadata: { name: replyModel } }
+steps:
+  - { name: call, invoke: !ref replyModel }
+outputs:
+  output: !cel "steps.call.result.output"
+  usage: !cel "steps.call.result.usage"
+---
+kind: Telo.Sequence
+metadata: { name: returned }
+steps:
+  - { name: reply, invoke: !ref reply }
+  - name: collect
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.reply.result.output" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.collect.result.items"
+      expected: [item-0, item-1, item-2]
+---
+kind: Stream.Map
+metadata: { name: shout }
+value: !cel "item.upperAscii()"
+---
+kind: Telo.Sequence
+metadata: { name: mappedReply }
+with:
+  - { kind: Fix.Source, metadata: { name: mappedModel } }
+steps:
+  - { name: call, invoke: !ref mappedModel }
+  - name: map
+    invoke: !ref shout
+    inputs: { input: !cel "steps.call.result.output" }
+outputs: { output: !cel "steps.map.result.output" }
+---
+kind: Telo.Sequence
+metadata: { name: mapped }
+steps:
+  - { name: reply, invoke: !ref mappedReply }
+  - name: collect
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.reply.result.output" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.collect.result.items"
+      expected: [ITEM-0, ITEM-1, ITEM-2]
+---
+kind: Telo.Sequence
+metadata: { name: openReply }
+outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: true } }
+with:
+  - { kind: Fix.Source, metadata: { name: openModel } }
+steps:
+  - { name: call, invoke: !ref openModel }
+outputs: { output: !cel "steps.call.result.output" }
+---
+kind: Telo.Sequence
+metadata: { name: openContract }
+steps:
+  - { name: reply, invoke: !ref openReply }
+  - name: collect
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.reply.result.output" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.collect.result.items"
+      expected: [item-0, item-1, item-2]
+---
+kind: Stream.Collect
+metadata: { name: drainCollect }
+---
+kind: Telo.Sequence
+metadata: { name: detachReply }
+with:
+  - { kind: Fix.Source, metadata: { name: detachedModel } }
+  - kind: Run.Detach
+    metadata: { name: handOff }
+    invoke: !ref drainCollect
+steps:
+  - { name: call, invoke: !ref detachedModel }
+  - name: detach
+    invoke: !ref handOff
+    inputs: { input: !cel "steps.call.result.output" }
+outputs: { detached: !cel "steps.detach.result.detached" }
+---
+kind: Telo.Sequence
+metadata: { name: detached }
+steps:
+  - { name: reply, invoke: !ref detachReply }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
+---
+kind: Telo.Sequence
+metadata: { name: decoded }
+steps:
+  - { name: reply, invoke: !ref reply }
+  - name: map
+    invoke: !ref shout
+    inputs: { input: !cel "steps.reply.result.output" }
+outputs: { output: !cel "steps.map.result.output" }
+---
+kind: Telo.Sequence
+metadata: { name: derived }
+steps:
+  - { name: decoded, invoke: !ref decoded }
+  - name: derivedCollect
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.decoded.result.output" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.derivedCollect.result.items"
+      expected: [ITEM-0, ITEM-1, ITEM-2]
+---
+kind: Telo.Sequence
+metadata: { name: partsReply }
+with:
+  - { kind: Fix.Parts, metadata: { name: partsModel } }
+steps:
+  - { name: parse, invoke: !ref partsModel }
+outputs: { parts: !cel "steps.parse.result.parts" }
+---
+kind: Telo.Sequence
+metadata: { name: parts }
+steps:
+  - { name: reply, invoke: !ref partsReply }
+  - name: partList
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.reply.result.parts" }
+  - name: first
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.partList.result.items[0].content" }
+  - name: lastContent
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.partList.result.items[1].content" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: { first: !cel "steps.first.result.items", last: !cel "steps.lastContent.result.items" }
+      expected: { first: [part-0-0, part-0-1], last: [part-1-0, part-1-1] }
+---
+kind: Telo.Sequence
+metadata: { name: usageOnly }
+steps:
+  - { name: reply, invoke: !ref reply }
+outputs: { items: !cel "steps.reply.result.usage.items" }
+---
+kind: Telo.Sequence
+metadata: { name: unread }
+steps:
+  - { name: first, invoke: !ref usageOnly }
+  - { name: second, invoke: !ref usageOnly }
+  - { name: third, invoke: !ref usageOnly }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.third.result.items"
+      expected: 3
+---
+kind: Telo.Sequence
+metadata: { name: ignoringReply }
+with:
+  - { kind: Fix.Source, metadata: { name: ignoredModel } }
+steps:
+  - { name: call, invoke: !ref ignoredModel }
+outputs: { items: !cel "steps.call.result.usage.items" }
+---
+kind: Telo.Sequence
+metadata: { name: ignored }
+steps:
+  - { name: reply, invoke: !ref ignoringReply }
+---
+kind: Assert.Events
+metadata: { name: expectOrder }
+filter:
+  - { type: "*" }
+expect:
+  - { event: SequenceReturnedSteps1Collect.Invoked }
+  - { event: Fix.Source.replyModel.Teardown }
+  - { event: SequenceMappedSteps1Collect.Invoked }
+  - { event: Fix.Source.mappedModel.Teardown }
+  - { event: SequenceOpenContractSteps1Collect.Invoked }
+  - { event: Fix.Source.openModel.Teardown }
+  - { event: drainCollect.Invoked }
+  - { event: Fix.Source.detachedModel.Teardown }
+  - { event: SequenceDerivedSteps1DerivedCollect.Invoked }
+  - { event: Fix.Source.replyModel.Teardown }
+  - { event: SequencePartsSteps3LastContent.Invoked }
+  - { event: Fix.Parts.partsModel.Teardown }
+  - { event: Fix.Source.ignoredModel.Teardown }
+  - { event: ignoringReply.Invoked }
+  - { event: Fix.Source.replyModel.Teardown, times: 5 }

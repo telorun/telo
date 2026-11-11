@@ -1,0 +1,146 @@
+kind: Telo.Application
+metadata:
+  name: HeldStreamsOverHttp
+  version: 1.0.0
+  description: |
+    A route streaming a `with:` member's reply keeps the member alive until the last
+    chunk is written: every body arrives whole, and each request's member is torn
+    down once — after its reply is written, when a route reads only the usage beside
+    the stream, and when the client disconnects mid-reply.
+imports:
+  Fix: ./__fixtures__/held-streams/kinds
+  Server: ../modules/http-server
+  Http: ../modules/http-client
+  PlainText: ../modules/plain-text-codec
+  Stream: ../modules/stream
+  Run: ../modules/run
+  Timer: ../modules/timer
+  Assert: ../modules/assert
+targets:
+  - !ref test
+  - !ref expectTeardowns
+---
+kind: Telo.Sequence
+metadata: { name: chat }
+with:
+  - { kind: Fix.Source, metadata: { name: chatModel } }
+steps:
+  - { name: call, invoke: !ref chatModel }
+outputs: { output: !cel "steps.call.result.output", usage: !cel "steps.call.result.usage" }
+---
+kind: Telo.Sequence
+metadata: { name: usageChat }
+with:
+  - { kind: Fix.Source, metadata: { name: usageModel } }
+steps:
+  - { name: call, invoke: !ref usageModel }
+outputs: { output: !cel "steps.call.result.output", usage: !cel "steps.call.result.usage" }
+---
+kind: Telo.Sequence
+metadata: { name: longChat }
+with:
+  - { kind: Fix.Source, metadata: { name: longModel }, items: 500 }
+steps:
+  - { name: call, invoke: !ref longModel }
+outputs: { output: !cel "steps.call.result.output" }
+---
+kind: PlainText.Encoder
+metadata: { name: plain }
+---
+kind: Server.Api
+metadata: { name: chatApi }
+routes:
+  - request: { path: /chat, method: GET }
+    handler: !ref chat
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          text/plain; charset=utf-8:
+            encoder: !ref plain
+  - request: { path: /usage, method: GET }
+    handler: !ref usageChat
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: { type: object, required: [items], properties: { items: { type: integer } } }
+            body: { items: !cel "result.usage.items" }
+  - request: { path: /long, method: GET }
+    handler: !ref longChat
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          text/plain; charset=utf-8:
+            encoder: !ref plain
+---
+kind: Http.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8976
+---
+kind: Telo.Sequence
+metadata: { name: getUsage }
+steps:
+  - name: get
+    invoke: { kind: Http.Request, client: !ref client }
+    inputs: { url: /usage, method: GET }
+outputs: { items: !cel "steps.get.result.body.items" }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8976 }
+    mounts:
+      - { path: /, mount: !ref chatApi }
+targets:
+  - !ref server
+steps:
+  - name: first
+    invoke: { kind: Http.Request, client: !ref client }
+    inputs: { url: /chat, method: GET, responseType: text }
+  - name: second
+    invoke: { kind: Http.Request, client: !ref client }
+    inputs: { url: /chat, method: GET, responseType: text }
+  - name: checkBodies
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: [!cel "steps.first.result.body", !cel "steps.second.result.body"]
+      expected: [item-0item-1item-2, item-0item-1item-2]
+  - { name: usage1, invoke: !ref getUsage }
+  - { name: usage2, invoke: !ref getUsage }
+  - { name: usage3, invoke: !ref getUsage }
+  - { name: usage4, invoke: !ref getUsage }
+  - name: checkUsage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.usage1.result.items, steps.usage4.result.items]"
+      expected: [3, 3]
+  # The client stops reading after its first chunk and disconnects.
+  - name: abandon
+    try:
+      - name: open
+        invoke: { kind: Http.Request, client: !ref client }
+        inputs: { url: /long, method: GET, responseType: stream }
+      - name: stop
+        invoke: { kind: Stream.FlatMap, values: !cel "index < 1 ? dyn([index]) : dyn('stop')" }
+        inputs: { input: !cel "steps.open.result.body" }
+      - name: drain
+        invoke: { kind: Stream.Collect }
+        inputs: { input: !cel "steps.stop.result.output" }
+    catch:
+      - name: checkStopped
+        invoke: { kind: Assert.Equals }
+        inputs: { actual: !cel "error.code", expected: ERR_INVALID_VALUE }
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
+---
+kind: Assert.Events
+metadata: { name: expectTeardowns }
+filter:
+  - { type: "*" }
+expect:
+  - { event: Fix.Source.chatModel.Teardown, times: 2 }
+  - { event: Fix.Source.usageModel.Teardown, times: 4 }
+  - { event: Fix.Source.longModel.Teardown, times: 1 }

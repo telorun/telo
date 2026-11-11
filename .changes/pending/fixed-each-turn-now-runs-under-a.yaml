@@ -1,0 +1,5 @@
+modules:
+  modules/ai-chat: Fixed
+body: Each turn now runs under a context minted through the runtime and closed when the
+  turn ends, so an agent whose streamed output comes from a with:-scoped resource keeps
+  that resource alive for the whole turn.

@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata: { name: ScopeInputsRunDefaults }
+targets:
+  - !ref greet
+---
+# Started with `run()`, the sequence reads its contract applied to `{}`.
+kind: Telo.Sequence
+metadata: { name: greet }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: { greeting: { type: string, default: hi } } }
+steps:
+  - name: say
+    value: !cel "inputs.greeting + '!'"

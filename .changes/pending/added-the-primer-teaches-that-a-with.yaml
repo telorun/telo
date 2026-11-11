@@ -1,0 +1,5 @@
+modules:
+  apps/authoring-agent: Added
+body: The primer teaches that a with:-scoped resource reads the invocation's inputs,
+  that forwarding kinds type their payload from the target's contract, and how an unread
+  scoped stream is cancelled.
