@@ -5,7 +5,9 @@
 //! - `conformance_value.rs` — `conformance-value.ts`
 //! - `conformance_error.rs` — `conformance-error.ts`
 //! - `language_replay.rs`   — `language-replay.ts`
+//! - `dialect_replay.rs`    — `dialect-replay.ts`
 
 pub mod conformance_error;
 pub mod conformance_value;
+pub mod dialect_replay;
 pub mod language_replay;

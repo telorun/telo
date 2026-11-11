@@ -401,9 +401,10 @@ It does not run Node's catalog-dispatch, literal-guard and RE2-kind gates.
 
 `cel/rust/tests/language_replay.rs`, part of `cargo test -p telorun-cel`, is the Rust twin of the engine's `language.json` replay: every row answered by `telorun-cel` through the two halves of [Language rows](#language-rows) and compared with `expect` by deep equality, under the same gates — a row's keys, the two classes, `divergence` refused, the error shape and its `celCode` vocabulary, `deviation`'s checks, the round trip of every source that reads — and the same pin (`LANGUAGE_ROWS`, 1816). It locates this directory from the crate's manifest directory and fails on a file it does not know. Its codec is its own, standalone as the Node engine replay's is, and reads only the canonical writing of a value; it reads an object in the order the file writes its keys, so a plain map written in another order is refused, where Node's `JSON.parse` moves array-index keys first. Negative controls show its gates fail naming the row.
 
-### The Rust runners to come
+### The Rust engine's projection replay
 
-Two Rust runners complete the set, each answering what its Node twin answers:
+`cel/rust/tests/dialect_replay.rs`, part of `cargo test -p telorun-cel`, is the Rust twin of the engine's `catalog.json` and `types.json` replay: every row through the [projection](#the-engines-projection) after the [input gate](#input-gate), `CATALOG_ROWS` 195 and `TYPES_ROWS` 74 pinned. The runner derives the [host types](#host-types) itself from `sdk/value-types/*.json` and holds no list; the driver (`cel/rust/tests/conformance/dialect_replay.rs`) takes them as a parameter. Negative controls show the gates fail naming the row.
 
-- **`telorun-cel`** drives `catalog.json` / `types.json` through the projection, after the input gate, over host types it derives by the [rule above](#host-types) from `sdk/value-types/*.json`.
+### The Rust runner to come
+
 - **`telo-templating`** drives all five dialect files whole, with the `celCode` gate over the six files and the conformance conversions of [the handler set](#the-conformance-handler-set) registered from the value-type entries. Where the Rust engine lacks a code or a wording Node records, the Rust engine is fixed, never the row.
