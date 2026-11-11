@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 - 2026-11-11
+### Added
+* The Postgres journal replaces a run's entries with a baseline in one transaction (replaceWithBaseline) and deletes a finished run (finishedRuns, deleteFinishedRun) through new nullable workflow and finished_at columns, for the workflow's compactAfter and retainFinished.
+
 ## 0.13.2 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.

@@ -1,5 +1,21 @@
 # @telorun/kernel
 
+## 0.134.0
+
+### Minor Changes
+
+- b1a4cb7: The Node kernel records application startup as one trace span, `startup <application name>`, from the process start `telo run` passes (a kernel started any other way, from its creation) to the end of the init loop. It is exported with its real start time when a trace sink is attached and never created otherwise.
+
+### Patch Changes
+
+- 1a2bc03: Fetch each upstream archive a module stages files from once per kernel instead of once per file, and retry transient download failures (network errors, 5xx, 429) up to three attempts, so a clean checkout no longer times out starting servers or fails on one flaky upstream response.
+- Updated dependencies [292c41f]
+- Updated dependencies [04094d3]
+- Updated dependencies [e74098b]
+  - @telorun/analyzer@0.134.0
+  - @telorun/templating@0.134.0
+  - @telorun/cel@0.134.0
+
 ## 0.133.0
 
 ### Minor Changes

@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: GraphLayersRevisionsPostgres
-  version: 0.6.3
+  version: 0.6.4
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Storage, Data]

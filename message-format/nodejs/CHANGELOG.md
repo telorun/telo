@@ -1,5 +1,7 @@
 # @telorun/message-format
 
+## 0.134.0
+
 ## 0.133.0
 
 ## 0.133.0-rc.0

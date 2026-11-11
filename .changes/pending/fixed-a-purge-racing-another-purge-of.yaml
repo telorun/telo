@@ -1,4 +1,0 @@
-modules:
-  modules/durable-journal-file: Fixed
-body: A purge racing another purge of the same run on Windows now answers false instead
-  of failing with EPERM.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.35.0 - 2026-11-11
+### Added
+* Imports of workspace modules are relative paths in the source tree; the published form is written at release.
+* The agent writes file changes as telo-edit and telo-file blocks in its reply: a reply's blocks are one apply_changes call, decided before anything is written and checked once, and a patch that does not apply names its change, path and section. It also gains move_file and copy_file for files and directories, checkpointed so one revert undoes them, and the primer teaches the blocks and the new tools.
+
 ## 0.34.0 - 2026-11-09
 ### Added
 * The primer teaches search in a filter bar: a collection's query.search and the search= request parameter, the bar's search, the Ui.SearchBoxPlacement search box with its typed filter tokens (status:draft,review, publishedOn>=2026-11-01), and show, controls and summary written on the filter placement.
