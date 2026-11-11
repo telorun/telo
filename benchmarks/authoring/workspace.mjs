@@ -33,23 +33,27 @@ function nodeProject() {
 
 // The repo's implementation imports modules by relative path; a workspace outside the repo imports
 // the published artifact of the same version instead.
-function publishedImports(manifest) {
-  return manifest.replace(/(\s)\.\.\/\.\.\/\.\.\/modules\/([a-z0-9-]+)(\s)/g, (_, before, name, after) => {
-    const module = readFileSync(join(repoRoot, "modules", name, "telo.yaml"), "utf8");
-    const version = /^ {2}version: "?([^"\s]+)"?/m.exec(module)?.[1];
-    if (!version) throw new Error(`modules/${name}/telo.yaml declares no version`);
-    return `${before}oci://ghcr.io/telorun/${name}@${version}${after}`;
-  });
+function publishedImport(name) {
+  const module = readFileSync(join(repoRoot, "modules", name, "telo.yaml"), "utf8");
+  const version = /^ {2}version: "?([^"\s]+)"?/m.exec(module)?.[1];
+  if (!version) throw new Error(`modules/${name}/telo.yaml declares no version`);
+  return `oci://ghcr.io/telorun/${name}@${version}`;
 }
 
-export function prepareWorkspace(task, side, directory) {
+function resolvedImports(manifest, importOf) {
+  return manifest.replace(/(\s)\.\.\/\.\.\/\.\.\/modules\/([a-z0-9-]+)(\s)/g, (_, before, name, after) => `${before}${importOf(name)}${after}`);
+}
+
+// `importOf` names where a module is imported from: its published artifact by default. A version
+// that has not been published yet (a release PR) is not reachable, so a test passes the working copy.
+export function prepareWorkspace(task, side, directory, { importOf = publishedImport } = {}) {
   mkdirSync(directory, { recursive: true });
   cpSync(join(leadIntake, "CONTRACT.md"), join(directory, "CONTRACT.md"));
   if (!TASKS[task].change) return;
   cpSync(join(TASKS[task].directory, "TASK.md"), join(directory, "TASK.md"));
   if (side === "telo") {
     for (const file of ["light.yaml", "medium.yaml", "heavy.yaml"]) cpSync(join(leadIntake, "telo", file), join(directory, file));
-    writeFileSync(join(directory, "telo.yaml"), publishedImports(readFileSync(join(leadIntake, "telo/telo.yaml"), "utf8")));
+    writeFileSync(join(directory, "telo.yaml"), resolvedImports(readFileSync(join(leadIntake, "telo/telo.yaml"), "utf8"), importOf));
   } else {
     cpSync(join(leadIntake, "node/src"), join(directory, "src"), { recursive: true });
     writeFileSync(join(directory, "package.json"), `${JSON.stringify(nodeProject(), null, 2)}\n`);

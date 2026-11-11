@@ -207,11 +207,11 @@ function buildEsmShimSource(specifier: string, module: Record<string, unknown>):
  * reported too, but is settled — nothing this kernel does will change it.
  *
  * **A remembered directory is still looked at.** A bundle directory is the
- * cache's to delete: a build superseding it prunes it — another kernel's
- * sharing the cache, or this one's after an edit — and a later build of the
- * same key writes the bundle back alone. Trusting the memory then imported a
- * bundle whose `node_modules/` was gone, so the memory skips only the writes,
- * never the check that each slot still has its package.
+ * cache's to delete: a build prunes one no index names once it has sat idle —
+ * another kernel's sharing the cache, or this one's after an edit — and a later
+ * build of the same key writes the bundle back alone. Trusting the memory then
+ * imported a bundle whose `node_modules/` was gone, so the memory skips only
+ * the writes, never the check that each slot still has its package.
  */
 const preparedBundleDirs = new Set<string>();
 export async function ensureRealmShims(

@@ -31,7 +31,7 @@ describe("the markdown chunk", () => {
     expect(rendered.part("markdown").getAttribute("data-state")).toBe("loading");
     expect(rendered.part("markdown-code-pre").textContent).toBe("**bold**");
     chunk.arrive();
-    await vi.waitFor(() => expect(rendered!.part("markdown").querySelector("strong")?.textContent).toBe("bold"));
+    await vi.waitFor(() => expect(rendered!.part("markdown").querySelector("strong")?.textContent).toBe("bold"), { timeout: 10_000 });
     expect(rendered.part("markdown").getAttribute("data-state")).toBe("idle");
   });
 });

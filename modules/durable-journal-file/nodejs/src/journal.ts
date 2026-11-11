@@ -170,6 +170,8 @@ class FileJournalController {
    *  well-formed by construction, so re-reading it before every append would
    *  cost a whole-file read per record to answer a question that cannot change. */
   readonly #repaired = new Set<string>();
+  /** The delete in flight per run, so a second purge of the run reads after the first. */
+  readonly #deletes = new Map<string, Promise<boolean>>();
   #ready: Promise<void> | undefined;
 
   constructor(
@@ -364,6 +366,19 @@ class FileJournalController {
    * kept apart by the claim, not by the file system.
    */
   async deleteFinishedRun(run: string, finishedBefore: number): Promise<boolean> {
+    const previous = this.#deletes.get(run);
+    const current = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(() =>
+      this.#deleteFinishedRun(run, finishedBefore),
+    );
+    this.#deletes.set(run, current);
+    try {
+      return await current;
+    } finally {
+      if (this.#deletes.get(run) === current) this.#deletes.delete(run);
+    }
+  }
+
+  async #deleteFinishedRun(run: string, finishedBefore: number): Promise<boolean> {
     const record = await this.readRun(run);
     if (
       !record ||

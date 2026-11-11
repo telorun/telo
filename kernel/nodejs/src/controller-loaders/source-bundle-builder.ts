@@ -1,6 +1,6 @@
 import { DEFAULT_MANIFEST_FILENAME, type LibraryCandidate } from "@telorun/analyzer";
 import { RuntimeError, type Logger } from "@telorun/sdk";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, type Dirent } from "node:fs";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -56,7 +56,7 @@ import { loadEsbuild } from "./esbuild-runtime.js";
  * and each writes through a private temp file before an atomic rename — so a
  * reader sees a whole bundle or no bundle, never a torn one.
  *
- * Superseded bundles are pruned on the build that replaces them, so a long-lived
+ * Unreferenced bundles are pruned once stale on each build, so a long-lived
  * checkout does not accumulate one `.mjs` per save.
  */
 
@@ -313,7 +313,10 @@ export async function buildControllerFromSource(
     const key = await signInputs(index.inputs, externals);
     if (key === index.key) {
       const cached = bundlePath(cacheDir, key);
-      if (await pathExists(cached)) return cached;
+      if (await pathExists(cached)) {
+        await touch(bundleDir(cacheDir, key), log);
+        return cached;
+      }
     }
   }
 
@@ -674,7 +677,6 @@ async function build(
 
   await fs.mkdir(path.dirname(target), { recursive: true });
   const index = indexPath(cacheDir, entryFile);
-  const superseded = (await readIndex(index))?.key;
   const tmp = `${target}.${process.pid}.${tmpCounter++}.tmp`;
   await fs.writeFile(tmp, output.text);
   await fs.rename(tmp, target);
@@ -683,24 +685,111 @@ async function build(
   const tmpIndex = `${index}.${process.pid}.${tmpCounter++}.tmp`;
   await fs.writeFile(tmpIndex, JSON.stringify({ inputs, key } satisfies BuildIndexEntry));
   await fs.rename(tmpIndex, index);
-  await prune(cacheDir, superseded, key);
+  await pruneStale(cacheDir, log);
   return target;
 }
 
+/** How long an unreferenced bundle directory is kept: a kernel that read the index before a newer
+ *  build replaced it is still loading from it, and its generated `node_modules/` must stay. */
+const STALE_BUNDLE_MS = 10 * 60 * 1000;
+
 /**
- * Drop the bundle this build replaced.
+ * Drop the bundle directories no index names any more.
  *
  * Every save mints a new key, so without this a day of editing leaves one bundle
- * directory per save and the cache grows for the life of the checkout. Pruned
- * *after* the new index is in place, so a concurrent reader is already being
- * pointed at the replacement; on Linux a process that opened the old file keeps
- * reading it through the open handle, and on Windows a failed unlink is swallowed
- * — a stale file costs disk, never correctness.
- *
- * The whole directory goes, since it holds the bundle's generated `node_modules/`
- * as well as the bundle.
+ * directory per save and the cache grows for the life of the checkout. Only
+ * directories left alone for `STALE_BUNDLE_MS` go: pruning the replaced bundle at
+ * once removed it under a concurrent kernel (the suite spawns one per manifest)
+ * that had already read the old index and was writing its `node_modules/` or
+ * importing it. A failed removal is logged and left — a stale directory costs disk,
+ * never correctness — and the whole directory goes, since it holds the bundle's
+ * generated `node_modules/` as well as the bundle.
  */
-async function prune(cacheDir: string, superseded: string | undefined, current: string): Promise<void> {
-  if (!superseded || superseded === current) return;
-  await fs.rm(bundleDir(cacheDir, superseded), { force: true, recursive: true }).catch(() => {});
+async function pruneStale(cacheDir: string, log?: Logger): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(cacheDir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+    log?.warn("could not list the controller bundle cache to prune it", { "telo.cache.dir": cacheDir }, { error: err });
+    return;
+  }
+  let keys: (string | undefined)[];
+  try {
+    keys = await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".index.json"))
+        .map((entry) => liveKey(path.join(cacheDir, entry.name))),
+    );
+  } catch (err) {
+    // An index that cannot be read says nothing about what is live: prune nothing this pass.
+    log?.warn("could not read a controller bundle index to prune the cache", { "telo.cache.dir": cacheDir }, { error: err });
+    return;
+  }
+  const live = new Set(keys.filter((key): key is string => key !== undefined));
+  const cutoff = Date.now() - STALE_BUNDLE_MS;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !/^[0-9a-f]{32}$/.test(entry.name) || live.has(entry.name)) continue;
+    const dir = path.join(cacheDir, entry.name);
+    let modified: number;
+    try {
+      modified = (await fs.stat(dir)).mtimeMs;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+      log?.warn("could not read a controller bundle directory to prune it", { "telo.cache.dir": dir }, { error: err });
+      continue;
+    }
+    if (modified > cutoff) continue;
+    try {
+      await fs.rm(dir, { force: true, recursive: true });
+    } catch (err) {
+      log?.warn("could not remove a stale controller bundle directory", { "telo.cache.dir": dir }, { error: err });
+    }
+  }
+}
+
+/** The key an index names, `undefined` for an absent or unparseable one; any other failure throws. */
+async function liveKey(file: string): Promise<string | undefined> {
+  let text: string;
+  try {
+    text = await fs.readFile(file, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw err;
+  }
+  try {
+    const key = (JSON.parse(text) as Partial<BuildIndexEntry>).key;
+    return typeof key === "string" ? key : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Marks a bundle directory as used now: its modification time is what `pruneStale` calls idle,
+ *  and nothing else a load does to a bundle touches the directory itself. A directory pruned
+ *  since the index was read is simply gone, and the load that follows reports it. */
+async function touch(dir: string, log?: Logger): Promise<void> {
+  const now = new Date();
+  try {
+    await fs.utimes(dir, now, now);
+    return;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code ?? "";
+    if (code === "ENOENT" || code === "EROFS") return;
+    // Explicit times need ownership; creating an entry changes the mtime with write access alone.
+    if (code === "EPERM" || code === "EACCES") {
+      const marker = path.join(dir, ".used");
+      try {
+        await fs.writeFile(marker, "");
+        await fs.rm(marker, { force: true });
+        return;
+      } catch (markerErr) {
+        const markerCode = (markerErr as NodeJS.ErrnoException).code ?? "";
+        if (markerCode === "ENOENT" || markerCode === "EACCES" || markerCode === "EPERM" || markerCode === "EROFS") return;
+        log?.warn("could not mark a controller bundle directory as used", { "telo.cache.dir": dir }, { error: markerErr });
+        return;
+      }
+    }
+    log?.warn("could not mark a controller bundle directory as used", { "telo.cache.dir": dir }, { error: err });
+  }
 }

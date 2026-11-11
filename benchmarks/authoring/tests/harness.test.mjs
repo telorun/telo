@@ -120,7 +120,7 @@ describe("a build attempt", unix, () => {
 
   test("passes on the Telo side through telo run", async () => {
     const starter = join(scratch, "telo-starter");
-    prepareWorkspace("add-field", "telo", starter);
+    prepareWorkspace("add-field", "telo", starter, { importOf: (name) => join(repoRoot, "modules", name) });
     const agent = fakeAgent((workspace) => {
       for (const file of ["telo.yaml", "light.yaml", "medium.yaml", "heavy.yaml"]) cpSync(join(starter, file), join(workspace, file));
     });

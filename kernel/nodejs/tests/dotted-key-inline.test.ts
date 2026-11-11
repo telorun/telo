@@ -13,8 +13,8 @@ const APP = path.resolve(here, "__fixtures__/dotted-key-inline/telo.yaml");
 describe("an inline declaration at a property name holding a dot", () => {
   it("is created, injected at that key and identified by its pointer", async () => {
     // A cache of its own: the workspace cache is shared with every other kernel
-    // run in the checkout, and a build there superseding the `ui` or `font`
-    // bundle prunes the directory this load imports it from.
+    // run in the checkout, and a build there prunes an idle bundle directory no
+    // index names, which may be the `ui` or `font` one this load imports.
     // Its real path: a Windows temp directory under an 8.3 short name
     // (`RUNNER~1`) becomes `%7E` in the file URL an emitted module is
     // imported by, which the test runner's loader cannot resolve.

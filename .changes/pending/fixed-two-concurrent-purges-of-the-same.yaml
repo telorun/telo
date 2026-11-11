@@ -1,0 +1,4 @@
+modules:
+  modules/durable-journal-file: Fixed
+body: Two concurrent purges of the same run in one process are serialized, so the second
+  answers false once the first has removed the run.
