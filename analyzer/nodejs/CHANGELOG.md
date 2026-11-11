@@ -1,5 +1,18 @@
 # @telorun/analyzer
 
+## 0.134.0
+
+### Minor Changes
+
+- 292c41f: Inside a release workspace, `telo publish` and `telo release` write a relative import of another workspace module as that module's assigned destination (`oci://ghcr.io/telorun/sql@<version>#<pin>` from a blueprint's `../../modules/sql`), so modules at different depths and registry bases import each other relatively; `telo publish` refuses a destination the workspace does not assign (`destination_mismatch`) and a sibling the registry serves with other bytes than its pin (`import_pin_mismatch`), and `telo release` refuses a relative import of a manifest the workspace does not release (`IMPORT_TARGET_NOT_RELEASED`), replacing `IMPORT_DESTINATION_CONFLICT` and the analyzer's `checkImportDestinations` export.
+- 04094d3: `telo check` warns when a step inside a `replayed` region targets a kind with no declared `outputType` (`DURABLE_CONTRACT_REQUIRED`; a step in an `idempotent` region and a target whose result is typed from its own `outputs:` are exempt). The SDK's step engine can resume a durable body from a baseline: `DurableRunHandle` gains an optional `baseline(capture, completed)` and `executeSteps` an optional `durableBody` argument, so a run's journal can be compacted at a step boundary of the workflow's own steps.
+- e74098b: `telo release status`, `check` and `apply` take `--carried-by <ref>`: a pending fragment of the same path and content at that ref's merge base with `HEAD`, or written on it since, is dropped from the plan, so a fragment a release branch already carries plans nothing a second time. Without the option nothing is dropped. The changed-files reading of `telo release check` is now the plain `base...HEAD` diff: files of commits contained in a `v*`, `modules-*` or `packages-*` tag are no longer left out.
+
+### Patch Changes
+
+- @telorun/templating@0.134.0
+- @telorun/cel@0.134.0
+
 ## 0.133.0
 
 ### Minor Changes

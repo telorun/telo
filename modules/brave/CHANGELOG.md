@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.3 - 2026-11-11
+### Fixed
+* The search engine's template body uses the built-in Telo.Sequence instead of the deprecated Run.Sequence, so using it no longer reports DEPRECATED_KIND.
+
 ## 0.8.2 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.

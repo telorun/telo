@@ -1,5 +1,22 @@
 # @telorun/studio
 
+## 0.36.0
+
+### Minor Changes
+
+- 3a083fe: The agent's panel shows the result of a text call — the change set the agent ran for the `telo-edit` and `telo-file` blocks of one reply — as a tool card, with each file it changed listed with its own line diff.
+
+### Patch Changes
+
+- 292c41f: The starter gallery follows the telo version the workspace is edited against: it loads that release's starters, falls back to the newest older release that publishes a gallery, names the version it shows and reloads when it changes.
+- Updated dependencies [292c41f]
+- Updated dependencies [04094d3]
+- Updated dependencies [e74098b]
+  - @telorun/analyzer@0.134.0
+  - @telorun/sdk@0.134.0
+  - @telorun/ide-support@0.134.0
+  - @telorun/templating@0.134.0
+
 ## 0.35.0
 
 ### Minor Changes

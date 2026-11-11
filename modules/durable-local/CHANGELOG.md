@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0 - 2026-11-11
+### Added
+* DurableLocal.Workflow gains compactAfter (default 1000) — a long run replaces the entries it holds with one baseline at a step boundary of the workflow's own steps and a resume starts there — and retainFinished (default 30d), after which the resumer deletes a finished run. Both need a journal implementing the new operations (replaceWithBaseline, finishedRuns, deleteFinishedRun); one without them runs uncompacted and unpurged. Needs telo >=unreleased.
+### Fixed
+* The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.
+
 ## 0.6.3 - 2026-11-09
 ### Fixed
 * The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.
