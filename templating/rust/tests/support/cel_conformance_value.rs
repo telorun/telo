@@ -1,5 +1,5 @@
 //! The conformance value (`templating/cel-conformance/README.md`): the typed frame held as a
-//! JSON value, plus the `$cel` forms for a type and an optional — the twin of
+//! JSON value, plus the `$cel` forms for a type, an optional and a host value — the twin of
 //! `templating/nodejs/tests/cel-conformance-value.ts`.
 //!
 //! The typed frame is the writer: a row pins exactly what a host is handed, in the
@@ -16,7 +16,12 @@
 #![allow(dead_code)]
 
 use serde_json::{Map, Value};
-use telorun_cel_value::{cel_map_from_entries, cel_none, cel_some, cel_type_value, compare_code_units, CelRecord, CelValue};
+use std::sync::Arc;
+
+use telorun_cel_value::{
+    cel_map_from_entries, cel_none, cel_some, cel_type_value, compare_code_units, CelHostValue, CelRecord, CelValue,
+    PropertyMap, CEL_VALUE_KEYS,
+};
 use telorun_sdk_core::typed_frame::{decode_typed_frame, encode_typed_frame, TYPED_FRAME_TAG};
 
 const CEL_TAG: &str = "$cel";
@@ -92,6 +97,19 @@ fn write(value: &CelValue, path: &[String]) -> Result<Value, String> {
             record.iter().map(|(key, value)| (CelValue::String(key.into()), value.clone())).collect(),
             path,
         )?,
+        CelValue::Host(host) if host.type_name().is_some() => {
+            let mut at = path.to_vec();
+            at.push("value".into());
+            let entries = write_map(
+                host.entries().iter().map(|(key, value)| (CelValue::String(key.into()), value.clone())).collect(),
+                &at,
+            )?;
+            let mut object = Map::new();
+            object.insert(CEL_TAG.into(), Value::String("host".into()));
+            object.insert("type".into(), Value::String(host.type_name().expect("named").into()));
+            object.insert("value".into(), entries);
+            Value::Object(object)
+        }
         CelValue::Error(error) => return Err(refuse(path, format!("is the CEL error '{}', which is not a value", error.message))),
         _ => scalar(value, path)?,
     })
@@ -231,7 +249,25 @@ fn read_cel(object: &Map<String, Value>, path: &[String]) -> Result<CelValue, St
             at.push("value".into());
             Ok(CelValue::Optional(cel_some(read(held, &at)?)))
         }
-        _ => Err(unreadable(path, format!("is not a '{CEL_TAG}' type or optional form"))),
+        (Some("host"), ["$cel", "type", "value"], Some(Value::Object(entries))) => {
+            let name = object.get("type").and_then(Value::as_str);
+            let plain = !entries.contains_key(CEL_TAG) && !entries.contains_key(TYPED_FRAME_TAG);
+            match name {
+                Some(name) if plain && !CEL_VALUE_KEYS.contains(&name) => {
+                    let mut held = PropertyMap::new();
+                    for (key, entry) in entries {
+                        let mut at = path.to_vec();
+                        at.extend(["value".to_string(), key.clone()]);
+                        held.insert(key.clone(), read(entry, &at)?);
+                    }
+                    CelHostValue::with_entries(name, Arc::new(()), held)
+                        .map(CelValue::Host)
+                        .map_err(|refusal| unreadable(path, format!("is a host value ({refusal:?})")))
+                }
+                _ => Err(unreadable(path, "is a host value, which carries a host's type name and a plain map of its entries")),
+            }
+        }
+        _ => Err(unreadable(path, format!("is not a '{CEL_TAG}' type, optional or host form"))),
     }
 }
 

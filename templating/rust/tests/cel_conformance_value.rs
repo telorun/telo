@@ -80,6 +80,23 @@ fn written() -> Vec<(&'static str, CelValue, Value)> {
                 "b": { "$cel": "optional", "value": [{ "$cel": "type", "value": "int" }, { "$cel": "optional" }] }
             }),
         ),
+        (
+            "a host value holding its entries",
+            CelValue::Host(
+                CelHostValue::with_entries(
+                    "Telo.Money",
+                    Arc::new(()),
+                    [("amount", CelValue::Int(5)), ("currency", s("EUR"))].into_iter().collect(),
+                )
+                .unwrap(),
+            ),
+            json!({ "$cel": "host", "type": "Telo.Money", "value": { "amount": { "$telo": "int", "value": "5" }, "currency": "EUR" } }),
+        ),
+        (
+            "a host value holding none",
+            CelValue::Host(CelHostValue::with_entries("Telo.Empty", Arc::new(()), Default::default()).unwrap()),
+            json!({ "$cel": "host", "type": "Telo.Empty", "value": {} }),
+        ),
         ("the null type", CelValue::Type(cel_type_value("null_type")), json!({ "$cel": "type", "value": "null" })),
         (
             "an instant finer than a millisecond",
@@ -115,6 +132,22 @@ fn refuses_to_read_a_node_that_is_not_canonical() {
     for (name, node) in [
         ("a tagged map whose keys are plain", json!({ "$telo": "map", "value": [["a", 1]] })),
         ("a plain map out of key order", json!({ "b": 1, "a": 2 })),
+        ("a host value out of entry order", json!({ "$cel": "host", "type": "Telo.X", "value": { "b": 1, "a": 2 } })),
+    ] {
+        let refused = decode(&node).unwrap_err();
+        assert!(refused.starts_with("Cannot read a conformance value"), "{name}: {refused}");
+    }
+}
+
+#[test]
+fn refuses_a_host_value_naming_a_type_of_the_engine_or_not_a_plain_map() {
+    for (name, node) in [
+        ("an engine type", json!({ "$cel": "host", "type": "uint", "value": {} })),
+        ("another engine type", json!({ "$cel": "host", "type": "google.protobuf.Timestamp", "value": {} })),
+        ("entries that are a list", json!({ "$cel": "host", "type": "Telo.X", "value": [] })),
+        ("entries that are a tagged map", json!({ "$cel": "host", "type": "Telo.X", "value": { "$telo": "map", "value": [] } })),
+        ("entries holding a $cel form", json!({ "$cel": "host", "type": "Telo.X", "value": { "$cel": "optional" } })),
+        ("no type", json!({ "$cel": "host", "value": {} })),
     ] {
         let refused = decode(&node).unwrap_err();
         assert!(refused.starts_with("Cannot read a conformance value"), "{name}: {refused}");
