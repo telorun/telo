@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: InnerLib }
+---
+kind: Telo.Definition
+metadata: { name: Template }
+capability: Telo.Template

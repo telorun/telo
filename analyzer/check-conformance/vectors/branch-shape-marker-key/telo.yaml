@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: MarkerKey }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: Telo.Invocable
+schema: !if { if: true, then: { type: object }, __expand: x }

@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: CapabilityApp }
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invokable
+---
+kind: Telo.Abstract
+metadata: { name: Store }
+capability: Nope

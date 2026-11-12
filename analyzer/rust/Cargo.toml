@@ -4,7 +4,7 @@ version = "0.135.0"
 license-file = "../../LICENSE"
 edition = "2021"
 publish = false
-description = "Telo manifest loading, reference resolution and the schema slot readers, shared between the Rust kernel and future static analysis."
+description = "Telo manifest loading, reference resolution, the schema slot readers and the static analysis of the refusals the Rust kernel makes."
 
 [dependencies]
 # The position index keeps the order fields were written in, as the Node index does.

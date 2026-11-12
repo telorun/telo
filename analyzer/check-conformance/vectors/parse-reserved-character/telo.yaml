@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: ReservedCharacter }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: @Telo.Invocable

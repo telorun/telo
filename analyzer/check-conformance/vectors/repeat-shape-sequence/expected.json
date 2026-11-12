@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "REPEAT_SHAPE_INVALID",
+      "source": "telo-analyzer",
+      "message": "'!for-each' is written on a sequence; it takes a mapping ('{ in, as?, emit }').",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 18
+        },
+        "end": {
+          "line": 6,
+          "character": 21
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: '!for-each' is written on a sequence; it takes a mapping ('{ in, as?, emit }').\n  [REPEAT_SHAPE_INVALID] '!for-each' is written on a sequence; it takes a mapping ('{ in, as?, emit }')."
+}

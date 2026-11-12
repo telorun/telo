@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: KindsLib }
+---
+kind: Telo.Definition
+metadata: { name: Shape }
+capability: Telo.Type

@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: UnresolvedAlias }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: *missing

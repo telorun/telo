@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: CapLib }
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invokable

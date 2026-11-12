@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "BRANCH_POSITION_INVALID",
+      "source": "telo-analyzer",
+      "message": "'!if' at 'metadata' of the Telo.Application document: the loader reads the module's name before anything is expanded, so it cannot be chosen or repeated. Write it plainly.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 14
+        },
+        "end": {
+          "line": 1,
+          "character": 50
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: '!if' at 'metadata' of the Telo.Application document: the loader reads the module's name before anything is expanded, so it cannot be chosen or repeated. Write it plainly.\n  [BRANCH_POSITION_INVALID] '!if' at 'metadata' of the Telo.Application document: the loader reads the module's name before anything is expanded, so it cannot be chosen or repeated. Write it plainly."
+}

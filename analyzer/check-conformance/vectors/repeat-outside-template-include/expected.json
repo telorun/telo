@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "REPEAT_OUTSIDE_TEMPLATE",
+      "source": "telo-analyzer",
+      "message": "'!for-each' at 'include' of the Telo.Application document: the loader reads the files it includes before anything is expanded, so it cannot be chosen or repeated. Write it plainly.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 19
+        },
+        "end": {
+          "line": 2,
+          "character": 60
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: '!for-each' at 'include' of the Telo.Application document: the loader reads the files it includes before anything is expanded, so it cannot be chosen or repeated. Write it plainly.\n  [REPEAT_OUTSIDE_TEMPLATE] '!for-each' at 'include' of the Telo.Application document: the loader reads the files it includes before anything is expanded, so it cannot be chosen or repeated. Write it plainly."
+}

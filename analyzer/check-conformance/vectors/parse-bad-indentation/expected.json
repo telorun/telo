@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MANIFEST_PARSE_FAILED",
+      "source": "telo-analyzer",
+      "message": "This line is not indented to match the entries beside it; align it with its siblings, or indent it under the key it belongs to.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 0
+        },
+        "end": {
+          "line": 6,
+          "character": 1
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: This line is not indented to match the entries beside it; align it with its siblings, or indent it under the key it belongs to.\n  [MANIFEST_PARSE_FAILED] This line is not indented to match the entries beside it; align it with its siblings, or indent it under the key it belongs to."
+}

@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MANIFEST_PARSE_FAILED",
+      "source": "telo-analyzer",
+      "message": "A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 12
+        },
+        "end": {
+          "line": 5,
+          "character": 13
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes.\n  [MANIFEST_PARSE_FAILED] A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes."
+}

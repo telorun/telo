@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "KIND_PREFIX_RESERVED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/Telo: A module may not be named 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. Rename the module.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "Telo"
+        },
+        "filePath": "telo.yaml",
+        "path": "metadata.name"
+      },
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 18
+        },
+        "end": {
+          "line": 1,
+          "character": 22
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [KIND_PREFIX_RESERVED] Telo.Application/Telo: A module may not be named 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. Rename the module."
+}

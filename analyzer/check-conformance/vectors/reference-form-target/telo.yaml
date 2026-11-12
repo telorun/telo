@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: TargetApp }
+targets:
+  - { invoke: { kind: Self.Greeter, name: greeter } }
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invocable
+---
+kind: Self.Greeter
+metadata: { name: greeter }

@@ -1,0 +1,26 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "KIND_PREFIX_RESERVED",
+      "source": "telo-analyzer",
+      "message": "Cannot use import 'Lib' → './lib': './lib' is a Telo.Library named 'Self': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. It cannot be imported until it is renamed.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib",
+        "sourceLine": 2
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 21
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_KIND_PREFIX_RESERVED] './lib' is a Telo.Library named 'Self': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. It cannot be imported until it is renamed.\n  [KIND_PREFIX_RESERVED] Cannot use import 'Lib' → './lib': './lib' is a Telo.Library named 'Self': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. It cannot be imported until it is renamed."
+}

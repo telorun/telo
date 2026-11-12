@@ -1,0 +1,26 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "KIND_PREFIX_RESERVED",
+      "source": "telo-analyzer",
+      "message": "Cannot use import 'Telo' → './lib': An import may not be aliased 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so this import would replace them. Choose another alias.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Telo",
+        "sourceLine": 2
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 17
+        },
+        "end": {
+          "line": 2,
+          "character": 22
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_KIND_PREFIX_RESERVED] An import may not be aliased 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so this import would replace them. Choose another alias.\n  [KIND_PREFIX_RESERVED] Cannot use import 'Telo' → './lib': An import may not be aliased 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so this import would replace them. Choose another alias."
+}

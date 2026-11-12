@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: KindsApp }
+imports: { Lib: ./lib }
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invocable

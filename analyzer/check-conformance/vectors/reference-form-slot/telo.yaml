@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata: { name: SlotApp }
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invocable
+---
+kind: Telo.Definition
+metadata: { name: Router }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { handler: { x-telo-ref: { kind: Telo.Invocable, use: call } } }
+---
+kind: Self.Greeter
+metadata: { name: greeter }
+---
+kind: Self.Router
+metadata: { name: router }
+handler: { kind: Self.Greeter, name: greeter }

@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "BRANCH_SHAPE_INVALID",
+      "source": "telo-analyzer",
+      "message": "'!if' is written on a sequence; it takes a mapping ('{ if, then, else? }').",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 12
+        },
+        "end": {
+          "line": 6,
+          "character": 15
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: '!if' is written on a sequence; it takes a mapping ('{ if, then, else? }').\n  [BRANCH_SHAPE_INVALID] '!if' is written on a sequence; it takes a mapping ('{ if, then, else? }')."
+}

@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MANIFEST_PARSE_FAILED",
+      "source": "telo-analyzer",
+      "message": "This key is already written earlier in the same mapping; a mapping holds each key once, so remove or rename one of the two.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 0
+        },
+        "end": {
+          "line": 6,
+          "character": 1
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: This key is already written earlier in the same mapping; a mapping holds each key once, so remove or rename one of the two.\n  [MANIFEST_PARSE_FAILED] This key is already written earlier in the same mapping; a mapping holds each key once, so remove or rename one of the two."
+}

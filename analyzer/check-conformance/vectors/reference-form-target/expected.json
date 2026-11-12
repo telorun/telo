@@ -1,0 +1,39 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "INVALID_REFERENCE_FORM",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/TargetApp: object reference '{ kind, name }' at 'targets[0].invoke' is not supported; write it as '!ref greeter'",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "TargetApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "targets[0].invoke",
+        "quotedPlace": [
+          {
+            "before": "Telo.Application/TargetApp: object reference '{ kind, name }' at '",
+            "after": "' is not supported; write it as '!ref greeter'",
+            "place": "targets[0].invoke",
+            "from": 0,
+            "path": "targets[0].invoke",
+            "form": "dotted"
+          }
+        ]
+      },
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 14
+        },
+        "end": {
+          "line": 3,
+          "character": 51
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [INVALID_REFERENCE_FORM] Telo.Application/TargetApp: object reference '{ kind, name }' at 'targets[0].invoke' is not supported; write it as '!ref greeter'"
+}

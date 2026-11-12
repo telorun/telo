@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: DeclarableApp }
+---
+kind: Telo.Definition
+metadata: { name: Runner }
+capability: Telo.Executable
+---
+kind: Telo.Abstract
+metadata: { name: Shell }
+capability: Telo.Template
