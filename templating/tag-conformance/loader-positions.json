@@ -513,5 +513,15 @@
         }
       }
     ]
+  },
+  {
+    "name": "a block sequence item dedented between its siblings",
+    "yaml": "a:\n  - 1\n - 2",
+    "rustTree": { "unsupported": "CollectionKey" },
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [2, 0, 2, 1] },
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [2, 1, 2, 2] },
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [2, 1, 2, 4] }
+    ]
   }
 ]
