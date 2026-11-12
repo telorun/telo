@@ -22,7 +22,7 @@ children:
 
 | Field | | |
 | --- | --- | --- |
-| `path` | required | the page's address under the application's mount |
+| `path` | required | the page's address under the application's mount; a `{name}` segment is a [variable](#path-variables) |
 | `title` | | a text, shown above the page as its heading and in the navigation unless an entry says otherwise. Omitted, no heading is drawn, the document is titled by the application alone, an omitted navigation leaves the page out, and a [navigation](navigation.md) entry naming it must give its own `text` |
 | `query` | | the query parameters the page's own nodes read, as [`Ui.QueryParameters`](conditions.md#query-parameters) |
 | `width` | | how wide its content is drawn, a `Ui.PageWidth`: `contained` or `full`; omitted, the application's — see [Width](#width) |
@@ -35,7 +35,7 @@ children:
 - Inside `children`, each node's `when:` and its leaf values may read
   `request` — `request.headers` (lower-case names), `request.ip` and `request.lang` (the language the server negotiated) — and are
   evaluated for every request. A `shown` condition and a `value` or `list`
-  node read `query` in the browser instead, and never `request`
+  node read `query` and `params` in the browser instead, and never `request`
   (`CEL_UNKNOWN_IDENTIFIER`).
 - A `link`'s `href` is an [address](nodes.md#addresses), and is not evaluated per
   request: `href: !cel "request…"` is `CEL_UNKNOWN_IDENTIFIER`; a link that
@@ -45,6 +45,75 @@ children:
 - The tree's structure and its references are literal: a computed list of
   children or a computed `ref` is `REF_SLOT_COMPUTED` at `telo check` and
   `ERR_REF_SLOT_COMPUTED` at creation.
+
+## Path variables
+
+A segment of `path` written exactly `{name}` is a variable: it matches one
+non-empty segment of the address, percent-decoded, and the page reads it as
+`params.<name>`, a string.
+
+```yaml
+kind: Ui.Page
+metadata: { name: plan }
+path: /plans/{id}
+title: Plan
+children:
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref PlanDetail
+      source: { path: "/api/plans/{id}", pathParams: { id: !cel "params.id" } }
+      content: { type: value, value: !cel "data.title" }
+```
+
+- A segment is either wholly literal or exactly `{name}`, the name a Telo name
+  that is not a CEL keyword. A brace anywhere else (`/plans/x{id}`) and a name
+  given twice (`/plans/{id}/revisions/{id}`) are refused by `telo check`
+  (`SCHEMA_VIOLATION`) and when the page is created
+  (`ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`).
+- A literal segment beats a variable one: with `/plans/new` and `/plans/{id}`
+  both listed, `/plans/new` opens the first and `/plans/7` the second. Two
+  pages whose paths differ only in the names of their variables
+  (`/plans/{id}`, `/plans/{key}`) route the same addresses, and an application
+  listing both is refused as for two pages at one path.
+- An address that matches a page only through a malformed percent-encoded
+  segment answers the application's not-found page.
+- A navigation entry cannot name a page with a variable, since it has nothing
+  to fill it with (see [navigation](navigation.md)); a page with a variable is
+  reached by a `link` whose [address](nodes.md#addresses) names it with `!ref`
+  and fills every variable in `pathParams`, which `telo check` holds to the
+  page's `path` (`PATH_PARAMETER_UNBOUND`, `PATH_PARAMETER_UNUSED`):
+
+  ```yaml
+  - type: link
+    text: Open
+    href: { path: !ref plan, pathParams: { id: !cel "row.id" } }
+  ```
+
+- A move to another value of a variable draws the page afresh, since it shows
+  another record; a move that changes only the query keeps its nodes mounted
+  (see below).
+
+### `params`
+
+`params` is a browser root, beside `query`: the variables of the page drawn,
+by name, each a string. It is in scope wherever a page's nodes are — in the
+page's own tree, and in every reader, listing, layout, source, view, filter bar,
+split view and option source the page places, at any depth of placement and
+across an import — read by a `value` or `list` node, a `shown` condition, a
+text's values, an address's parameters, a reader's `source`, a listing's
+`filters`, a row action's `inputs` and a collection source's templated
+`basePath`.
+
+- In the page's own tree `params` holds exactly the page's variables:
+  `params.nope` on `/plans/{id}` is `CEL_UNKNOWN_FIELD`, and on a page with no
+  variable `params` holds none.
+- In a resource the page places, `params` is typed from each page placing it:
+  a view reading `params.id` placed on `/plans/{id}` and on `/` is
+  `CEL_UNKNOWN_FIELD` naming the `/` page. A resource no page places reads
+  `params` as an open map of strings.
+- A variable a page lacks is never sent: a parameter that holds nothing
+  leaves its read unsent and draws the node's `failure`.
 
 ## Created once, invoked per request
 
@@ -62,7 +131,7 @@ provided, and a node an expression made invalid replaced by an `error` node,
 its siblings kept.
 
 A move to the page already shown — a link whose address is the page's own
-path with other query parameters, back or forward — keeps its nodes mounted:
+address with other query parameters, back or forward — keeps its nodes mounted:
 each reader and listing re-reads the parameters it declares instead of being
 drawn again, so a draft, a scroll position and an open surface stay. This is
 how a renderer behaves; `ui` states it so a page can rely on it.

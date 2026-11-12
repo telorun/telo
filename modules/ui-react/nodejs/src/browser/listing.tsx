@@ -1,4 +1,5 @@
 import { segment } from "./address-wire.js";
+import { resolveBasePath, unresolvedFailure, type BasePath } from "./base-path.js";
 import { useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType, type ReactNode, type RefCallback } from "react";
 import { conditionHolds, fillAttribute, ruleStyle, styleAttribute, type Binding, type StyleRule } from "./bindings.js";
 import { boundFilters, send } from "./collection.js";
@@ -22,6 +23,7 @@ import { useRowActions } from "./row-actions.js";
 import { useRowActionsDisplay, type ActionsDisplay, type ActionsSetting } from "./row-actions-display.js";
 import { Confirmation, Surface, type SurfaceSpec } from "./surface.js";
 import { useSay } from "./texts.js";
+import { useReloadEvery } from "./timed-reload.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
 import type { JsonSchema } from "./validation.js";
 
@@ -159,8 +161,10 @@ export function LoadMore({ read, scroll }: { read: ReadView; scroll: boolean }) 
  * Records of a collection, read under the listing's read plan and drawn by its
  * layout — by `compact` below the application's breakpoint, the listing's
  * state kept across the swap. Reading, paging, the viewer's sort, labels of
- * related records, invalidation, openers, row actions, delete and the empty
- * state are the listing's, whatever the layout.
+ * related records, invalidation, a timed reload, openers, row actions, delete
+ * and the empty state are the listing's, whatever the layout. A templated
+ * `basePath` resolves over the roots in scope; one that does not resolve reads
+ * nothing and draws its failure.
  */
 export function Listing({ node, embedded = false }: { node: SpecNode; embedded?: boolean }) {
   const Icon = useControl("Icon");
@@ -171,8 +175,6 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const filterParams = useContext(FilterContext);
   const visible = useContext(VisibleContext);
   const roots = useContext(RootsContext);
-  const basePath = node.basePath as string;
-  const collectionAt = underMount(prefix, basePath);
   const recordKey = node.key as string;
   const relations = node.relations as Record<string, OptionSourceSpec>;
   const spec = (compact && node.compact ? node.compact : node.layout) as LayoutSpec;
@@ -180,6 +182,12 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const mode = readMode(spec.type, plan, node.paging);
   const query = useMemo(() => queryRoot(node.query as Record<string, JsonSchema>, host.location.search), [node.query, host.location.search]);
   const rowRoots = useMemo(() => ({ ...roots, query }), [roots, query]);
+  const base = resolveBasePath(node.basePath as BasePath, rowRoots, "'listing' basePath");
+  const basePath = base.ok ? base.address : undefined;
+  const unresolved = unresolvedFailure(base);
+  // Only drawn once the path resolves: nothing below is reached with none.
+  const collectionPath = basePath ?? "";
+  const collectionAt = underMount(prefix, collectionPath);
   const keyOf = (row: Row) => String(row[recordKey]);
 
   const sorting = node.sort as { sortable: string[]; initial: string | null };
@@ -191,26 +199,40 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const [changes, setChanges] = useState(0);
   // While a filter the listing reads holds nothing, nothing is read.
   const fixed = boundFilters(node.filters as Record<string, Binding> | undefined, rowRoots);
-  const listing: ListingReads | undefined = fixed && {
-    basePath,
-    pageSize: node.pageSize,
-    filters: fixed,
-    bar: filterParams,
-    ...(sort !== undefined ? { sort } : {}),
-  };
-  const groups = useGroupValues(host, prefix, listing, plan, relations, visible, changes);
+  const listing: ListingReads | undefined =
+    fixed && basePath !== undefined
+      ? { basePath, pageSize: node.pageSize, filters: fixed, bar: filterParams, ...(sort !== undefined ? { sort } : {}) }
+      : undefined;
+  const groups = useGroupValues(host, prefix, listing, plan, relations, rowRoots, visible, changes);
   const positions: ReadPosition[] = readPositions(plan, groups, period, expanded);
   const reads = useListingReads({ host, prefix, listing, plan, mode, positions, keyOf, visible });
 
+  // Matched by the path as it resolved: a write under another record's path reloads another listing.
   useEffect(
     () =>
-      host.onChanged(basePath, () => {
-        reads.reload();
-        setChanges((count) => count + 1);
-      }),
+      basePath === undefined
+        ? undefined
+        : host.onChanged(basePath, () => {
+            reads.reload();
+            setChanges((count) => count + 1);
+          }),
     [basePath, reads.reload],
   );
-  useEffect(() => store.onWritten(basePath, (row) => Object.hasOwn(row, recordKey) && reads.patch(row)), [basePath, recordKey, reads.patch]);
+  useEffect(
+    () => (basePath === undefined ? undefined : store.onWritten(basePath, (row) => Object.hasOwn(row, recordKey) && reads.patch(row))),
+    [basePath, recordKey, reads.patch],
+  );
+  // Every read, the values grouped by and the facet requests over the source, on the timer.
+  useReloadEvery(
+    node.reloadEvery as number | undefined,
+    visible && listing !== undefined,
+    () => reads.reads.some((read) => read.loading) || groups?.loading === true,
+    () => {
+      reads.reload();
+      setChanges((count) => count + 1);
+      if (basePath !== undefined) store.reread(basePath);
+    },
+  );
 
   // Every key of every record answered in this turn, by the relation that labels it.
   const records = reads.reads.flatMap((read) => read.records);
@@ -236,6 +258,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   // A record an action or a move answered with is drawn from that answer.
   const rowActions = useRowActions(node.rowActions as RowActionSpec[], rowRoots, (result, key) => succeeded(result, key));
   const succeeded = (result: Record<string, unknown> | undefined, key: string) => {
+    if (basePath === undefined) return;
     if (result && Object.hasOwn(result, recordKey) && String(result[recordKey]) === key) store.written(basePath, result);
     host.notifyChanged(basePath);
   };
@@ -243,7 +266,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const moves = useRowActions(spec.move ? [spec.move as RowActionSpec] : [], rowRoots, succeeded);
   // What a create opened from the layout starts with: a column's value, a day.
   const [createValues, setCreateValues] = useState<Row>();
-  const itemPath = (key: string) => `${basePath}/${segment(key)}`;
+  const itemPath = (key: string) => `${collectionPath}/${segment(key)}`;
   const itemUrl = (key: string) => underMount(prefix, itemPath(key));
   const creates = node.create as Opener | undefined;
   const edits = node.edit as Opener | undefined;
@@ -317,7 +340,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
       setDeleting(false);
     }
     setRemoving(undefined);
-    host.notifyChanged(basePath);
+    host.notifyChanged(collectionPath);
     host.notifyChanged(itemPath(record.key));
   };
 
@@ -433,6 +456,13 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const Layout = layoutOf(spec.type);
   // A plan with no dimension is one read, and its paging is the listing's own.
   const single = plan.groups === undefined && plan.span === undefined && plan.parent === undefined ? reads.reads[0] : undefined;
+  if (unresolved) {
+    return (
+      <div data-telo-part="listing" data-state="error" data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
+        <ErrorNode error={unresolved} />
+      </div>
+    );
+  }
   const pager = single?.pager;
   const showCount = (node.show as { count: boolean }).count;
   const rows = single?.records.length ?? 0;
@@ -455,7 +485,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
       )}
       {above && drawn}
       <div data-telo-part="listing-main" ref={shownActions.container}>
-        {single?.failure ? (
+        {single?.failure && !single.kept ? (
           <ErrorNode error={single.failure} />
         ) : !Layout ? (
           <ErrorNode error={{ type: "error", code: "ERR_UI_NODE_INVALID", message: `This renderer does not draw a '${spec.type}' layout.` }} />
@@ -464,6 +494,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
             <Layout spec={spec} node={node} drawing={drawing} />
           </RelatedContext.Provider>
         )}
+        {single?.failure && single.kept && <ErrorNode error={single.failure} />}
         {Object.values(labels.failures).map((each, index) => (
           <ErrorNode key={index} error={each} />
         ))}

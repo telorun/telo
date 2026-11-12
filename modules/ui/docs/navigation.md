@@ -42,7 +42,7 @@ Tagged by `type`:
 
 | `type` | Keys | |
 | --- | --- | --- |
-| `page` | `page`, `text?`, `icon?`, `when?` | a page the application lists; `text` defaults to the page's title, and is required for a page with none |
+| `page` | `page`, `text?`, `icon?`, `when?` | a page the application lists, with no [variable](page.md#path-variables) in its path; `text` defaults to the page's title, and is required for a page with none |
 | `link` | `text`, `href`, `icon?`, `when?` | any address a [`link` node](nodes.md#addresses) may hold: an app-relative path, or `https://`, `http://`, `mailto:` |
 | `group` | `text`, `items`, `icon?`, `when?` | entries nested to any depth |
 
@@ -75,6 +75,13 @@ naming any other page, at any depth of the tree, leads nowhere: it is
 `RESOURCE_RULE_VIOLATED` with `data.rule: UI_NAVIGATION_PAGE_UNROUTED` at
 `telo check`, anchored at that entry, and `ERR_UI_NAVIGATION_PAGE_UNROUTED`
 when the application is created.
+
+**A page an entry names has no variable in its path.** An entry has nothing
+to fill `/plans/{id}` with, so naming such a page is `RESOURCE_RULE_VIOLATED`
+with `data.rule: UI_NAVIGATION_PAGE_HAS_PARAMETERS` at `telo check`, at that
+entry however deep, and `ERR_UI_NAVIGATION_PAGE_HAS_PARAMETERS` when the
+application is created. Reach the page with a `link` whose `pathParams` fill
+it.
 
 ## Placements
 
@@ -129,7 +136,8 @@ surface's does.
 
 `ui` fills every one, so a renderer reads none of its own:
 
-- no `navigation`: one `page` entry per page the application lists, in order;
+- no `navigation`: one `page` entry per page the application lists with a
+  title and no variable in its path, in order;
 - no `placement`: `{ kind: Ui.HeaderNavigation }`;
 - a header's `compact` omitted: `{ kind: Ui.OverlayNavigation }`;
 - a sidebar's `side` omitted: `start`; its `rail` omitted: no rail, and its

@@ -273,12 +273,12 @@ describe("misplaced and malformed annotations", () => {
     const nullable = where("values", "x-telo-context-nullable-when");
     expect(await misuse(rule("{ at: '0/mode', equals: [a] }"))).toEqual([["SCHEMA_VIOLATION", 1, nullable]]);
     expect(await misuse(rule("{ at: '0/mode', equals: [], absent: false }"))).toEqual([["SCHEMA_VIOLATION", 1, nullable]]);
-    expect(await misuse(rule("{ at: '1/mode', equals: [a], absent: false }"))).toEqual([["CONTEXT_NULLABLE_WHEN_INVALID", 2, nullable]]);
-    expect(await misuse(rule("{ at: '0/mood', equals: [a], absent: false }"))).toEqual([["CONTEXT_NULLABLE_WHEN_INVALID", 2, nullable]]);
-    expect(await misuse(rule("{ at: '0/mode', equals: [c], absent: false }"))).toEqual([["CONTEXT_NULLABLE_WHEN_INVALID", 2, nullable]]);
+    expect(await misuse(rule("{ at: '1/mode', equals: [a], absent: false }"))).toEqual([["CONTEXT_NULLABLE_WHEN_INVALID", 1, nullable]]);
+    expect(await misuse(rule("{ at: '0/mood', equals: [a], absent: false }"))).toEqual([["CONTEXT_NULLABLE_WHEN_INVALID", 1, nullable]]);
+    expect(await misuse(rule("{ at: '0/mode', equals: [c], absent: false }"))).toEqual([["CONTEXT_NULLABLE_WHEN_INVALID", 1, nullable]]);
     expect(await misuse(rule("{ at: '0/mode', equals: [a], absent: true }"))).toEqual([]);
     expect(
       await misuse("          values: { type: string }", "\n    loose: { x-telo-context-nullable-when: { at: '0/mode', equals: [a], absent: true } }"),
-    ).toEqual([["CONTEXT_NULLABLE_WHEN_INVALID", 2, "schema.properties.loose.x-telo-context-nullable-when"]]);
+    ).toEqual([["CONTEXT_NULLABLE_WHEN_INVALID", 1, "schema.properties.loose.x-telo-context-nullable-when"]]);
   });
 });

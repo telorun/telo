@@ -1,0 +1,13 @@
+# A named shape whose slot's completedWhen names a sibling that is no boolean.
+kind: Telo.Library
+metadata: { name: CompletedWhenShapeLib }
+exports: { resources: [Bound] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Bound }
+schema:
+  type: object
+  properties:
+    action: { x-telo-ref: { kind: Telo.Invocable, use: call, inputs: /inputs, completedWhen: /prompt } }
+    inputs: { type: object, default: {} }
+    prompt: { type: string }

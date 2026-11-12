@@ -577,3 +577,51 @@ texts:
   - { text: "Everything", translation: "Hepsi" }
   - { text: "Drafts about releases", translation: "Sürümler hakkında taslaklar" }
   - { text: "Search posts, or filter by author, status or date", translation: "Yazılarda arayın veya yazara, duruma ya da tarihe göre süzün" }
+
+  # The review pages: the inbox, a document's page, the comparison and a
+  # worker's page, with their models' labels.
+  - { text: "Reviews", translation: "İncelemeler" }
+  - { text: "The documents under review. The list reads itself again every thirty seconds and keeps your place; a review waiting past its product's deadline is drawn in red.", translation: "İncelemedeki belgeler. Liste her otuz saniyede bir kendini yeniden okur ve yerinizi korur; ürününün süresini aşarak bekleyen bir inceleme kırmızı gösterilir." }
+  - { text: "Review", translation: "İnceleme" }
+  - { text: "Changes", translation: "Değişiklikler" }
+  - { text: "Worker", translation: "Çalışan" }
+  - { text: "Worker {$name}", translation: "Çalışan {$name}" }
+  - { text: "There is no review '{$id}'.", translation: "'{$id}' diye bir inceleme yok." }
+  - { text: "Review '{$id}' has no revision {$revision}.", translation: "'{$id}' incelemesinin {$revision} sürümü yok." }
+  - { text: "Revision {$latest} has replaced the one you read. Read it before deciding.", translation: "{$latest} sürümü okuduğunuzun yerini aldı. Karar vermeden önce onu okuyun." }
+  - { text: "Revision {$revision} has no item {$item}.", translation: "{$revision} sürümünde {$item} maddesi yok." }
+  - { text: "All", translation: "Tümü" }
+  - { text: "Waiting a day or more", translation: "Bir gün veya daha uzun süredir bekleyenler" }
+  - { text: "{$title}", translation: "{$title}" }
+  - { text: "Compare revisions", translation: "Sürümleri karşılaştır" }
+  - { text: "Its worker", translation: "Çalışanı" }
+  - { text: "Reject this document?", translation: "Bu belge reddedilsin mi?" }
+  - { text: "Timeline", translation: "Zaman çizelgesi" }
+  - { text: "Compare from", translation: "Başlangıç sürümü" }
+  - { text: "Compare to", translation: "Bitiş sürümü" }
+  - { text: "Too large to compare line by line.", translation: "Satır satır karşılaştırmak için çok büyük." }
+  - { text: "Approve", translation: "Onayla" }
+  - { text: "Request changes", translation: "Değişiklik iste" }
+  - { text: "Reject", translation: "Reddet" }
+  - { text: "A document addressed by its ID, read again every thirty seconds. The buttons decide on the revision on screen, and each item the server names in it has a Comment control.", translation: "Kimliğiyle adreslenen ve her otuz saniyede bir yeniden okunan bir belge. Düğmeler ekrandaki sürüm hakkında karar verir ve sunucunun içinde adlandırdığı her maddenin bir yorum denetimi vardır." }
+  - { text: "Two revisions compared line by line. Choose either end from the lists; added lines are green, removed ones red.", translation: "Satır satır karşılaştırılan iki sürüm. Listelerden iki ucu da seçin; eklenen satırlar yeşil, çıkarılanlar kırmızıdır." }
+  - { text: "The commands of the worker the address names, read again every five seconds without losing the pages loaded.", translation: "Adresin adlandırdığı çalışanın komutları; yüklenen sayfalar kaybolmadan her beş saniyede bir yeniden okunur." }
+  - { text: "Document", translation: "Belge" }
+  - { text: "Product", translation: "Ürün" }
+  - { text: "Repository", translation: "Depo" }
+  - { text: "State", translation: "Durum" }
+  - { text: "Revised", translation: "Revize edildi" }
+  - { text: "Overdue", translation: "Gecikmiş" }
+  - { text: "Submitted", translation: "Gönderildi" }
+  - { text: "Changes requested", translation: "Değişiklik istendi" }
+  - { text: "Approved", translation: "Onaylandı" }
+  - { text: "Rejected", translation: "Reddedildi" }
+  - { text: "#", translation: "No." }
+  - { text: "Command", translation: "Komut" }
+  - { text: "Created", translation: "Oluşturuldu" }
+  - { text: "Event", translation: "Olay" }
+  - { text: "By", translation: "Yapan" }
+  - { text: "When", translation: "Ne zaman" }
+  - { text: "Revision", translation: "Sürüm" }
+  - { text: "Your name", translation: "Adınız" }
+  - { text: "Note", translation: "Not" }

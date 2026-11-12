@@ -124,7 +124,7 @@ shape of one option's record) and accessors over `row`, a record of `model` —
 | Key | | |
 | --- | --- | --- |
 | `source` | required | the [`Ui.CollectionSource`](collection-source.md) read: its collection is what the list request is held to, its `basePath` the URL |
-| `filters` | none | property → a fixed value or a path into `values`: equalities sent with every request, each a filter the collection accepts with `eq` and typed against its model property |
+| `filters` | none | property → a fixed value or a path into `values` or the page's [`params`](page.md#params): equalities sent with every request, each a filter the collection accepts with `eq` and typed against its model property — a key the model does not declare is refused by `telo check` (`SCHEMA_VIOLATION`) and when the source is first read (`ERR_UI_SOURCE_FILTER_UNKNOWN_PROPERTY`) |
 | `search` | none | `{ property, operator }`: the filter what the viewer types is sent as |
 | `pageSize` | `25` | options per request, sent as `limit` |
 
@@ -178,6 +178,11 @@ of `address: true` and `store` written — the same record a
   kept.
 - A form starts from the record it edits, else the address, else the store,
   else the model's defaults and each date range's `initialPreset`.
+- Entries sharing a `key` and a place to keep it — the address, or one store —
+  hold each kept property as one value: what one enters, every other mounted
+  in the page follows (one editing a record excepted), and a store write
+  changes only the properties the writer keeps, so a narrower entry leaves a
+  wider one's other properties. Another tab reads it when it next opens.
 - Values read back are held to the interpreted profile, to the current fields
   and to their option source; a store the browser refuses leaves the values in
   memory.
@@ -201,7 +206,7 @@ field's place in `fields`:
 | `UI_DATE_RANGE_PRESET_LABEL_DUPLICATE` | date range | two presets share a label |
 | `UI_OPTION_SEARCH_NOT_ACCEPTED` | collection options | `search` is not a filter pair the source's collection declares |
 | `UI_OPTION_VALUE_NOT_FILTERABLE` | collection options | `value` is not `row.<property>` for a property the collection declares with `in` |
-| `UI_SOURCE_FILTER_UNKNOWN_PROPERTY`, `UI_SOURCE_FILTER_NOT_ACCEPTED` | collection options | a `filters` key names a property the model does not declare, or one the collection does not accept with `eq` |
+| `UI_SOURCE_FILTER_NOT_ACCEPTED` | collection options | a `filters` key names a property the collection does not accept with `eq` |
 
 The form and action rules are listed on [`Ui.Form`](form.md#refused). Each has
 its `ERR_` twin, raised when the form, the action or the option source is first
@@ -229,6 +234,6 @@ preset the field starts at, `null` when none is declared. See
 [Texts and translation](texts.md#what-a-renderer-receives).
 
 An option source is `{ type: collection, schema, value, label, hint?, href?,
-basePath, filters, pageSize, search? }`, each accessor a binding and `href` an address in its wire form (`{ path, pathParams, queryParams }`). The form and
+basePath, filters, pageSize, search? }`, each accessor a binding, `href` an address in its wire form (`{ path, pathParams, queryParams }`) and `basePath` the source's literal path or its [template](collection-source.md#a-templated-base-path). The form and
 action nodes carry `groups` (empty when none) and `state` — `{ key?, address,
 store, fields }`, `store` `{ type: memory }` when none is named.

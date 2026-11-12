@@ -10,35 +10,12 @@ metadata:
   description: >-
     Test fixture exporting forms, actions, a filter bar and option sources that
     each break one rule of field kinds, groups, kept state or option sources.
-imports:
-  Ui: ../../../../
-  DataModel: ../../../../../data-model
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
 exports:
-  resources:
-    - fieldUnknown
-    - fieldDuplicate
-    - requiredNotEntered
-    - groupUnknown
-    - groupDuplicate
-    - groupSplit
-    - stateFieldUnknown
-    - filtersStateFieldUnknown
-    - inputControl
-    - actionInputControl
-    - choiceControl
-    - choiceMismatch
-    - pickerMismatch
-    - rangeProperty
-    - rangeDefault
-    - rangePresetUnknown
-    - rangeLabelDuplicate
-    - searchNotAccepted
-    - valueNotFilterable
-    - optionFilterNotAccepted
+  resources: [fieldUnknown, fieldDuplicate, requiredNotEntered, groupUnknown, groupDuplicate, groupSplit, stateFieldUnknown, filtersStateFieldUnknown, inputControl, actionInputControl, choiceControl, choiceMismatch, pickerMismatch, rangeProperty, rangeDefault, rangePresetUnknown, rangeLabelDuplicate, searchNotAccepted, valueNotFilterable, optionFilterNotAccepted]
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Task
+metadata: { name: Task }
 schema:
   type: object
   properties:
@@ -48,20 +25,14 @@ schema:
     owner: { type: string }
     period:
       type: object
-      properties:
-        from: { type: string, format: date }
-        to: { type: string, format: date }
+      properties: { from: { type: string, format: date }, to: { type: string, format: date } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Person
+metadata: { name: Person }
 schema:
   type: object
   required: [id]
-  properties:
-    id: { type: string }
-    name: { type: string }
-    team: { type: string }
+  properties: { id: { type: string }, name: { type: string }, team: { type: string } }
 ---
 kind: Ui.CollectionSource
 metadata: { name: people }
@@ -88,8 +59,7 @@ source:
     query: { filters: [{ property: text, operator: contains }], sort: [] }
 ---
 kind: Ui.CollectionOptions
-metadata:
-  name: personOptions
+metadata: { name: personOptions }
 model: !ref Person
 value: !cel "row.id"
 label: !cel "row.name"
@@ -97,16 +67,14 @@ source: !ref people
 search: { property: name, operator: contains }
 ---
 kind: Ui.Form
-metadata:
-  name: fieldUnknown
+metadata: { name: fieldUnknown }
 model: !ref Task
 presentation: !ref tasks
 fields:
   - { kind: Ui.InputField, property: title }
 ---
 kind: Ui.Form
-metadata:
-  name: fieldDuplicate
+metadata: { name: fieldDuplicate }
 model: !ref Task
 presentation: !ref tasks
 fields:
@@ -114,30 +82,25 @@ fields:
   - { kind: Ui.InputField, property: text }
 ---
 kind: Ui.Form
-metadata:
-  name: requiredNotEntered
+metadata: { name: requiredNotEntered }
 model:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [owner]
-    properties:
-      owner: { type: string }
-      text: { type: string }
+    properties: { owner: { type: string }, text: { type: string } }
 presentation: !ref tasks
 fields: [text]
 ---
 kind: Ui.Form
-metadata:
-  name: groupUnknown
+metadata: { name: groupUnknown }
 model: !ref Task
 presentation: !ref tasks
 fields:
   - { kind: Ui.InputField, property: text, group: details }
 ---
 kind: Ui.Form
-metadata:
-  name: groupDuplicate
+metadata: { name: groupDuplicate }
 model: !ref Task
 presentation: !ref tasks
 groups:
@@ -146,8 +109,7 @@ groups:
 fields: [text]
 ---
 kind: Ui.Form
-metadata:
-  name: groupSplit
+metadata: { name: groupSplit }
 model: !ref Task
 presentation: !ref tasks
 groups:
@@ -158,34 +120,29 @@ fields:
   - { kind: Ui.InputField, property: count, group: main }
 ---
 kind: Ui.Form
-metadata:
-  name: stateFieldUnknown
+metadata: { name: stateFieldUnknown }
 model: !ref Task
 presentation: !ref tasks
 fields: [text]
 state: { key: task, address: true, fields: [count] }
 ---
 kind: Ui.Filters
-metadata:
-  name: filtersStateFieldUnknown
+metadata: { name: filtersStateFieldUnknown }
 presentation: !ref tasks
 fields:
   - { property: text, operator: contains }
-policy:
-  state: { key: tasks, address: true, fields: [count] }
+policy: { state: { key: tasks, address: true, fields: [count] } }
 content: { type: text, text: Tasks }
 ---
 kind: Ui.Form
-metadata:
-  name: inputControl
+metadata: { name: inputControl }
 model: !ref Task
 presentation: !ref tasks
 fields:
   - { kind: Ui.InputField, property: text, control: toggle }
 ---
 kind: Ui.Action
-metadata:
-  name: actionInputControl
+metadata: { name: actionInputControl }
 inputModel: !ref Task
 request: { target: /api/tasks }
 label: Send
@@ -193,40 +150,35 @@ fields:
   - { kind: Ui.InputField, property: isDone, control: slider }
 ---
 kind: Ui.Form
-metadata:
-  name: choiceControl
+metadata: { name: choiceControl }
 model: !ref Task
 presentation: !ref tasks
 fields:
   - { kind: Ui.ChoiceField, property: owner, options: !ref personOptions, control: tags }
 ---
 kind: Ui.Form
-metadata:
-  name: choiceMismatch
+metadata: { name: choiceMismatch }
 model: !ref Task
 presentation: !ref tasks
 fields:
   - { kind: Ui.ChoiceField, property: count, options: !ref personOptions }
 ---
 kind: Ui.Form
-metadata:
-  name: pickerMismatch
+metadata: { name: pickerMismatch }
 model: !ref Task
 presentation: !ref tasks
 fields:
   - { kind: Ui.PickerField, property: count, options: !ref personOptions }
 ---
 kind: Ui.Form
-metadata:
-  name: rangeProperty
+metadata: { name: rangeProperty }
 model: !ref Task
 presentation: !ref tasks
 fields:
   - { kind: Ui.DateRangeField, property: text, presets: [] }
 ---
 kind: Ui.Form
-metadata:
-  name: rangeDefault
+metadata: { name: rangeDefault }
 model:
   kind: Telo.JsonSchema
   schema:
@@ -235,9 +187,7 @@ model:
       period:
         type: object
         default: { from: "2026-01-01", to: "2026-01-31" }
-        properties:
-          from: { type: string, format: date }
-          to: { type: string, format: date }
+        properties: { from: { type: string, format: date }, to: { type: string, format: date } }
 presentation: !ref tasks
 fields:
   - kind: Ui.DateRangeField
@@ -246,37 +196,32 @@ fields:
     initialPreset: Today
 ---
 kind: Ui.DateRangeField
-metadata:
-  name: startsNowhere
+metadata: { name: startsNowhere }
 property: period
 presets: [{ label: Today, unit: day, offset: 0 }]
 initialPreset: Yesterday
 ---
 kind: Ui.Form
-metadata:
-  name: rangePresetUnknown
+metadata: { name: rangePresetUnknown }
 model: !ref Task
 presentation: !ref tasks
 fields: [!ref startsNowhere]
 ---
 kind: Ui.DateRangeField
-metadata:
-  name: twoMonths
+metadata: { name: twoMonths }
 property: period
 presets:
   - { label: Month, unit: month, offset: 0 }
   - { label: Month, unit: month, offset: -1 }
 ---
 kind: Ui.Form
-metadata:
-  name: rangeLabelDuplicate
+metadata: { name: rangeLabelDuplicate }
 model: !ref Task
 presentation: !ref tasks
 fields: [!ref twoMonths]
 ---
 kind: Ui.CollectionOptions
-metadata:
-  name: searchNotAccepted
+metadata: { name: searchNotAccepted }
 model: !ref Person
 value: !cel "row.id"
 label: !cel "row.name"
@@ -284,18 +229,24 @@ source: !ref people
 search: { property: team, operator: contains }
 ---
 kind: Ui.CollectionOptions
-metadata:
-  name: valueNotFilterable
+metadata: { name: valueNotFilterable }
 model: !ref Person
 value: !cel "row.name"
 label: !cel "row.name"
 source: !ref people
 ---
 kind: Ui.CollectionOptions
-metadata:
-  name: optionFilterNotAccepted
+metadata: { name: optionFilterNotAccepted }
 model: !ref Person
 value: !cel "row.id"
 label: !cel "row.name"
 source: !ref people
 filters: { name: Ada }
+---
+kind: Ui.CollectionOptions
+metadata: { name: optionFilterUnknown }
+model: !ref Person
+value: !cel "row.id"
+label: !cel "row.name"
+source: !ref people
+filters: { nickname: Ada }

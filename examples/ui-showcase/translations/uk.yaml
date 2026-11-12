@@ -602,3 +602,51 @@ texts:
   - { text: "Everything", translation: "Усе" }
   - { text: "Drafts about releases", translation: "Чернетки про релізи" }
   - { text: "Search posts, or filter by author, status or date", translation: "Шукайте дописи або фільтруйте за автором, статусом чи датою" }
+
+  # The review pages: the inbox, a document's page, the comparison and a
+  # worker's page, with their models' labels.
+  - { text: "Reviews", translation: "Рецензії" }
+  - { text: "The documents under review. The list reads itself again every thirty seconds and keeps your place; a review waiting past its product's deadline is drawn in red.", translation: "Документи на рецензії. Список перечитується кожні тридцять секунд і зберігає ваше місце; рецензію, що чекає довше за строк свого продукту, виділено червоним." }
+  - { text: "Review", translation: "Рецензія" }
+  - { text: "Changes", translation: "Зміни" }
+  - { text: "Worker", translation: "Виконавець" }
+  - { text: "Worker {$name}", translation: "Виконавець {$name}" }
+  - { text: "There is no review '{$id}'.", translation: "Рецензії «{$id}» немає." }
+  - { text: "Review '{$id}' has no revision {$revision}.", translation: "Рецензія «{$id}» не має версії {$revision}." }
+  - { text: "Revision {$latest} has replaced the one you read. Read it before deciding.", translation: "Версія {$latest} замінила ту, що ви читали. Прочитайте її, перш ніж вирішувати." }
+  - { text: "Revision {$revision} has no item {$item}.", translation: "Версія {$revision} не має пункту {$item}." }
+  - { text: "All", translation: "Усі" }
+  - { text: "Waiting a day or more", translation: "Чекають день або довше" }
+  - { text: "{$title}", translation: "{$title}" }
+  - { text: "Compare revisions", translation: "Порівняти версії" }
+  - { text: "Its worker", translation: "Його виконавець" }
+  - { text: "Reject this document?", translation: "Відхилити цей документ?" }
+  - { text: "Timeline", translation: "Хронологія" }
+  - { text: "Compare from", translation: "Початкова версія" }
+  - { text: "Compare to", translation: "Кінцева версія" }
+  - { text: "Too large to compare line by line.", translation: "Завеликий для порядкового порівняння." }
+  - { text: "Approve", translation: "Схвалити" }
+  - { text: "Request changes", translation: "Запросити зміни" }
+  - { text: "Reject", translation: "Відхилити" }
+  - { text: "A document addressed by its ID, read again every thirty seconds. The buttons decide on the revision on screen, and each item the server names in it has a Comment control.", translation: "Документ, адресований за його ID і перечитуваний кожні тридцять секунд. Кнопки вирішують долю показаної версії, а кожен пункт, який у ньому називає сервер, має кнопку коментаря." }
+  - { text: "Two revisions compared line by line. Choose either end from the lists; added lines are green, removed ones red.", translation: "Дві версії, порівняні порядково. Виберіть обидва кінці у списках; додані рядки зелені, вилучені червоні." }
+  - { text: "The commands of the worker the address names, read again every five seconds without losing the pages loaded.", translation: "Команди виконавця, названого в адресі, перечитуються кожні п'ять секунд без втрати завантажених сторінок." }
+  - { text: "Document", translation: "Документ" }
+  - { text: "Product", translation: "Продукт" }
+  - { text: "Repository", translation: "Репозиторій" }
+  - { text: "State", translation: "Стан" }
+  - { text: "Revised", translation: "Змінено" }
+  - { text: "Overdue", translation: "Прострочено" }
+  - { text: "Submitted", translation: "Надіслано" }
+  - { text: "Changes requested", translation: "Запрошено зміни" }
+  - { text: "Approved", translation: "Схвалено" }
+  - { text: "Rejected", translation: "Відхилено" }
+  - { text: "#", translation: "№" }
+  - { text: "Command", translation: "Команда" }
+  - { text: "Created", translation: "Створено" }
+  - { text: "Event", translation: "Подія" }
+  - { text: "By", translation: "Хто" }
+  - { text: "When", translation: "Коли" }
+  - { text: "Revision", translation: "Версія" }
+  - { text: "Your name", translation: "Ваше ім'я" }
+  - { text: "Note", translation: "Нотатка" }

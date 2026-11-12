@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { withUnhostedComponentsReplaced } from "../src/component-abi.js";
-import { component, listingNode } from "./spec-nodes.js";
+import { component, listingNode, operation } from "./spec-nodes.js";
 
 describe("a listing's components", () => {
   it("are replaced where this renderer cannot host them: a layout's table cells, its compact layout's and the empty node", () => {
@@ -19,5 +19,21 @@ describe("a listing's components", () => {
     const kept = withUnhostedComponentsReplaced(listingNode({ compact: strip("ui_react_layouts-1") }), hosted, (error) => reported.push(error.code));
     expect([refused.type, refused.code, kept.type, kept.compact.abi]).toEqual(["error", "ERR_UI_COMPONENT_ABI_UNSUPPORTED", "listing", "ui_react_layouts-1"]);
     expect(reported).toEqual(["ERR_UI_COMPONENT_ABI_UNSUPPORTED"]);
+  });
+});
+
+describe("a bound action's components", () => {
+  it("are replaced in the answer and failure trees of a button and of a markdown node's annotations", () => {
+    const foreign = { ...component("StatusPill"), abi: "ui_react-0" };
+    const action = operation("/api/decisions", "Approve", { type: "object", properties: {} }, { result: foreign, failure: foreign });
+    const bound = { action, inputs: {} };
+    const hosted = { abis: ["ui_react-1"], layoutAbis: ["ui_react_layouts-1"], specifiers: ["react"] };
+    const button = withUnhostedComponentsReplaced({ type: "button", ...bound, button: { type: "text" } }, hosted, () => {});
+    const markdown = withUnhostedComponentsReplaced({ type: "markdown", value: { value: "" }, annotations: { rows: { value: [] }, line: { value: 1 }, action: bound } }, hosted, () => {});
+    expect([button.action.result, button.action.failure, markdown.annotations.action.action.result].map((node) => node.code)).toEqual([
+      "ERR_UI_COMPONENT_ABI_UNSUPPORTED",
+      "ERR_UI_COMPONENT_ABI_UNSUPPORTED",
+      "ERR_UI_COMPONENT_ABI_UNSUPPORTED",
+    ]);
   });
 });

@@ -85,6 +85,19 @@ describe("the statements of one list request", () => {
     });
   });
 
+  it("wraps a SELECT as a subquery whose own values come first, and holds the scope in every statement", () => {
+    const rows = modelProperties({ properties: { seq: { type: "integer" }, runner: { type: "string" } } }, "name");
+    const select = { fragments: ["SELECT seq AS seq, runner AS runner FROM commands WHERE day > ", ""], values: ["mon"] };
+    const scoped = planQuery(rows, { filters: [], sort: [] }, { scope: { runner: "a" }, limit: 5 }, "seq");
+    expect(pageStatement(numbered, select, rows.values(), scoped)).toEqual({
+      sql:
+        `SELECT "seq" AS "seq", "runner" AS "runner" FROM (SELECT seq AS seq, runner AS runner FROM commands WHERE day > $1) AS "telo_rows"` +
+        ` WHERE "runner" = $2 ORDER BY "seq" ASC LIMIT $3`,
+      params: ["mon", "a", 6],
+    });
+    expect(countStatement(qmark, select, scoped).params).toEqual(["mon", "a"]);
+  });
+
   it("counts the filtered set, not the page", () => {
     expect(countStatement(qmark, "tasks", query)).toEqual({
       sql: `SELECT COUNT(*) AS "total" FROM tasks WHERE ${filters}`,

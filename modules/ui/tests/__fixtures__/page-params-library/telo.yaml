@@ -1,0 +1,12 @@
+# A view reading a path variable of whichever page places it.
+kind: Telo.Library
+metadata:
+  name: UiPageParamsLibrary
+  version: 1.0.0
+  description: Test fixture exporting a view that shows the `id` variable of the page placing it.
+imports: { Ui: ../../../ }
+exports: { resources: [planId] }
+---
+kind: Ui.View
+metadata: { name: planId }
+content: { type: value, value: !cel "params.id" }

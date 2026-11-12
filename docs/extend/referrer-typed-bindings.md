@@ -155,7 +155,7 @@ in these cases:
 A `request.principal != null` guard proves the read, as with any nullable
 value.
 
-**Misuse.** A malformed value is `SCHEMA_VIOLATION`. The warning
+**Misuse.** A malformed value is `SCHEMA_VIOLATION`. The error
 `CONTEXT_NULLABLE_WHEN_INVALID` is reported at the kind, for the entry's own
 modules, in these cases:
 

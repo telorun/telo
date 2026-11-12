@@ -1,0 +1,397 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseReviewScreensTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/ui-showcase` on a database of its own and reads its review
+    pages: the inbox listing reloading on a timer with a preset relative to
+    now, a document's page addressed by its ID with its Markdown, item
+    controls, decision buttons and timeline, the comparison of two revisions,
+    and a worker's page listing under a path filled from the address. It then
+    calls what those screens call: the inbox list filtered, sorted, paged and
+    faceted and refusing an undeclared filter, a worker's commands scoped by
+    the route, a document, a comparison, decisions on the revision read and on
+    a replaced one, and comments.
+imports:
+  App: ../../../modules/app
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's database goes in; see `serves-the-showcase.yaml`.
+  dbFile:
+    env: UI_SHOWCASE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: browser }
+baseUrl: http://127.0.0.1:8159
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    variables:
+      dbFile: !cel "variables.dbFile.joinPath('ui-showcase-review-' + uuidv4() + '.db')"
+    ports: { http: 8159 }
+targets:
+  - !ref app
+steps:
+  # ── The pages, as a renderer receives them ──
+  - name: application
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+  - name: inbox
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/reviews" }
+  - name: review
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/reviews/r1" }
+  - name: compare
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/reviews/r1/compare" }
+  - name: worker
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/workers/a" }
+  - name: nodes
+    value:
+      bar: !cel "steps.inbox.result.body.children[1]"
+      detail: !cel "steps.review.result.body.children[1]"
+      reviewNodes: !cel "steps.review.result.body.children[1].content.children"
+      compareNodes: !cel "steps.compare.result.body.children[1].content.children"
+      commands: !cel "steps.worker.result.body.children[2]"
+
+  # The four pages, the inbox alone in the navigation; the inbox listing reads
+  # again every thirty seconds and offers a preset relative to now.
+  - name: verifyInbox
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        pages: !cel "steps.application.result.body.pages.filter(p, p.path.startsWith('/reviews') || p.path.startsWith('/workers')).map(p, [p.path, p.title.message[0]])"
+        navigation: !cel "steps.application.result.body.navigation.items.filter(e, e.type == 'page' && e.path.startsWith('/reviews')).map(e, e.path)"
+        source: !cel "[steps.nodes.result.bar.basePath, steps.nodes.result.bar.content.basePath]"
+        reloadEvery: !cel "steps.nodes.result.bar.content.reloadEvery"
+        rowStyle: !cel "steps.nodes.result.bar.content.rowStyle"
+        titleLink: !cel "steps.nodes.result.bar.content.layout.columns[0].href"
+        presets: !cel "steps.nodes.result.bar.presets.map(p, [p.label.message[0], p.values])"
+      expected:
+        pages:
+          - [/reviews, Reviews]
+          - ["/reviews/{id}", Review]
+          - ["/reviews/{id}/compare", Changes]
+          - ["/workers/{name}", Worker]
+        navigation: [/reviews]
+        source: [/api/review/reviews, /api/review/reviews]
+        reloadEvery: 30000
+        rowStyle: { by: { root: row, path: [overdue] }, cases: { "true": danger } }
+        titleLink: { path: { value: "/reviews/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} }
+        presets:
+          - [All, []]
+          - - Waiting a day or more
+            - - { property: state, operator: in, value: [submitted, revised] }
+              - { property: revisedAt, operator: lte, value: [{ unit: day, offset: -1 }] }
+
+  # A document's page reads its record by the ID in the address, again every
+  # thirty seconds; three buttons decide on the revision on screen, and the
+  # Markdown's items each carry a Comment control.
+  - name: verifyReview
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        source: !cel "steps.nodes.result.detail.source"
+        reloadEvery: !cel "steps.nodes.result.detail.reloadEvery"
+        kinds: !cel "steps.nodes.result.reviewNodes.map(n, n.type)"
+        links: !cel "steps.nodes.result.reviewNodes[2].children.map(l, l.href)"
+        buttons: !cel >-
+          steps.nodes.result.reviewNodes[3].children.map(b,
+            [b.inputs.decision, b.action.label.message[0], b.prompt.fields.map(f, f.property), b.action.state.key])
+        annotations: !cel >-
+          cel.bind(a, steps.nodes.result.reviewNodes[4].annotations,
+            [a.rows, a.line, a.count, a.action.inputs, a.action.prompt.fields.map(f, f.property)])
+        timeline: !cel "steps.nodes.result.reviewNodes[5].columns.map(c, has(c.type) ? [c.type, c.relative] : [c.header.message[0]])"
+      expected:
+        source:
+          path: { value: "/api/review/reviews/{id}" }
+          pathParams: { id: { root: params, path: [id] } }
+          queryParams: {}
+        reloadEvery: 30000
+        kinds: [text, time, columns, columns, markdown, list]
+        links:
+          - { path: { value: "/reviews/{id}/compare" }, pathParams: { id: { root: params, path: [id] } }, queryParams: {} }
+          - { path: { value: "/workers/{name}" }, pathParams: { name: { root: data, path: [review, worker] } }, queryParams: {} }
+        buttons:
+          - [{ value: approve }, Approve, [author], reviewer]
+          - [{ value: request_changes }, Request changes, [author, note], reviewer]
+          - [{ value: reject }, Reject, [author, note], reviewer]
+        annotations:
+          - { root: data, path: [review, latestRevision, items] }
+          - { root: row, path: [line] }
+          - { root: row, path: [count] }
+          - id: { root: params, path: [id] }
+            revision: { root: data, path: [review, latestRevision, seq] }
+            item: { root: row, path: [id] }
+          - [author, body]
+        timeline: [[Event], [By], [time, true]]
+
+  # The comparison marks the revisions compared and styles the diff's lines;
+  # the worker's listing reads under a path its page's address fills.
+  - name: verifyCompareAndWorker
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        rowStyles: !cel "steps.nodes.result.compareNodes.filter(n, n.type == 'list').map(l, l.rowStyle)"
+        lineStyle: !cel "steps.nodes.result.compareNodes[3].columns[0].style"
+        basePath: !cel "steps.nodes.result.commands.basePath"
+        reloadEvery: !cel "steps.nodes.result.commands.reloadEvery"
+      expected:
+        rowStyles:
+          - { by: { root: row, path: [base] }, cases: { "true": strong } }
+          - { by: { root: row, path: [target] }, cases: { "true": strong } }
+          - { by: { root: row, path: [op] }, cases: { added: success, removed: danger } }
+        lineStyle: { by: { root: row, path: [op] }, cases: { context: muted } }
+        basePath: { path: "/api/review/workers/{name}/commands", pathParams: { name: { root: params, path: [name] } } }
+        reloadEvery: 5000
+
+  # ── The inbox list: filtered, sorted, paged and faceted ──
+  - name: waiting
+    invoke:
+      kind: HttpClient.Request
+      client: !ref browser
+      url: "/api/review/reviews?state.in=submitted&state.in=revised&revisedAt.lte=2026-11-06T09:00:00Z&sort=-revisedAt&limit=2"
+  - name: waitingNext
+    invoke: { kind: HttpClient.Request, client: !ref browser }
+    inputs:
+      url: !cel >-
+        '/api/review/reviews?state.in=submitted&state.in=revised&revisedAt.lte=2026-11-06T09:00:00Z&sort=-revisedAt&limit=2&cursor='
+        + steps.waiting.result.body.next
+  - name: products
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/review/reviews?facet=product" }
+  - name: undeclared
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/review/reviews?age=24h" }
+  - name: verifyInboxList
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.waiting.result.status"
+        rows: !cel "steps.waiting.result.body.rows"
+        total: !cel "steps.waiting.result.body.total"
+        hasNext: !cel "steps.waiting.result.body.next != null"
+        next: !cel "[steps.waitingNext.result.body.rows.map(r, r.id), steps.waitingNext.result.body.next]"
+        products: !cel "steps.products.result.body"
+        undeclared: !cel "[steps.undeclared.result.status, steps.undeclared.result.body]"
+      expected:
+        status: 200
+        rows:
+          - { id: r7, title: Translate the handbook into Polish, product: handbook, repo: docs, state: submitted, revisedAt: "2026-11-06T07:30:00Z", overdue: true }
+          - { id: r1, title: Rewrite the onboarding chapter, product: handbook, repo: docs, state: revised, revisedAt: "2026-11-05T16:20:00Z", overdue: true }
+        total: 4
+        hasNext: true
+        next: [[r2, r4], null]
+        products:
+          values: [{ value: handbook, count: 4 }, { value: website, count: 3 }]
+          next: null
+        undeclared:
+          - 400
+          - type: about:blank
+            title: Bad Request
+            status: 400
+            detail: The list request is not valid.
+            code: ERR_CRUD_QUERY_INVALID
+            data:
+              issues: [{ pointer: /query/age, keyword: additionalProperties, params: { additionalProperty: age } }]
+
+  # ── A worker's commands, scoped by the route ──
+  - name: workerA
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/review/workers/a/commands?sort=-seq&limit=2" }
+  - name: workerB
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/review/workers/b/commands?sort=-seq" }
+  - name: workerUnknown
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/workers/c/commands }
+  - name: widened
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/review/workers/a/commands?worker=b" }
+  - name: verifyCommands
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        workerA: !cel "[steps.workerA.result.body.rows.map(r, [r.seq, r.worker, r.type, r.state]), steps.workerA.result.body.total]"
+        workerB: !cel "steps.workerB.result.body.rows.map(r, r.seq)"
+        workerUnknown: !cel "[steps.workerUnknown.result.body.rows, steps.workerUnknown.result.body.total]"
+        widened: !cel "[steps.widened.result.status, steps.widened.result.body.data.issues]"
+      expected:
+        workerA: [[[6, a, test, queued], [4, a, publish, running]], 4]
+        workerB: [5, 3]
+        workerUnknown: [[], 0]
+        widened:
+          - 400
+          - [{ pointer: /query/worker, keyword: additionalProperties, params: { additionalProperty: worker } }]
+
+  # ── A document and a comparison of two of its revisions ──
+  - name: document
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r1 }
+  - name: noWorker
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r2 }
+  - name: noDocument
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/nope }
+  - name: changes
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r1/compare }
+  - name: chosenChanges
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/review/reviews/r1/compare?base=2&target=3" }
+  - name: noRevision
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/review/reviews/r1/compare?target=9" }
+  - name: verifyDocument
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        review: !cel "steps.document.result.body.review"
+        events: !cel "steps.document.result.body.events.map(e, [e.type, e.author, e.createdAt])"
+        noWorker: !cel "steps.noWorker.result.body.review.worker"
+        noDocument: !cel "[steps.noDocument.result.status, steps.noDocument.result.body.code]"
+      expected:
+        review:
+          id: r1
+          title: Rewrite the onboarding chapter
+          state: revised
+          worker: a
+          latestRevision:
+            seq: 3
+            hash: 11a4f80d2e3f8a5a990abe6fc56d526bccac598d86a2609fc97a297b0c8bf0bd
+            createdAt: "2026-11-05T16:20:00Z"
+            body: |
+              # Rewrite the onboarding chapter
+
+              ## S1 Split the chapter
+
+              - One page for engineers.
+              - One page for designers.
+              - One page for writers.
+
+              ## S2 Add a first-week checklist
+
+              What a newcomer does each day, as a list:
+
+              ```text
+              ## S9 an example heading, not an item
+              ```
+
+              ## S3 Name a buddy for every newcomer
+            # The heading inside the fenced block is no item.
+            items: [{ id: S1, line: 3, count: 2 }, { id: S2, line: 9, count: 0 }, { id: S3, line: 17, count: 1 }]
+        events:
+          - [submitted, Sofia Rossi, "2026-11-01T10:00:00Z"]
+          - [changes_requested, Liam Carter, "2026-11-02T09:10:00Z"]
+          - [revised, null, "2026-11-03T12:30:00Z"]
+          - [revised, null, "2026-11-05T16:20:00Z"]
+        noWorker: null
+        noDocument: [404, ERR_REVIEW_NOT_FOUND]
+  - name: verifyComparison
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        changes: !cel "steps.changes.result.body"
+        chosen: !cel >-
+          [steps.chosenChanges.result.body.base, steps.chosenChanges.result.body.target,
+           steps.chosenChanges.result.body.lines.filter(l, l.op != 'context')]
+        noRevision: !cel "[steps.noRevision.result.status, steps.noRevision.result.body.code, steps.noRevision.result.body.data]"
+      expected:
+        # Without a choice, from the revision decided on to the latest.
+        changes:
+          base: 1
+          target: 3
+          comparable: true
+          lines:
+            - { op: context, text: "" }
+            - { op: context, text: "## S1 Split the chapter" }
+            - { op: context, text: "" }
+            - { op: removed, text: "- One page for everyone." }
+            - { op: added, text: "- One page for engineers." }
+            - { op: added, text: "- One page for designers." }
+            - { op: added, text: "- One page for writers." }
+            - { op: context, text: "" }
+            - { op: context, text: "## S2 Add a first-week checklist" }
+            - { op: context, text: "" }
+            - { op: removed, text: "What a newcomer does each day, as a list." }
+            - { op: added, text: "What a newcomer does each day, as a list:" }
+            - { op: added, text: "" }
+            - { op: added, text: "```text" }
+            - { op: added, text: "## S9 an example heading, not an item" }
+            - { op: added, text: "```" }
+            - { op: added, text: "" }
+            - { op: added, text: "## S3 Name a buddy for every newcomer" }
+          revisions:
+            - { seq: 1, createdAt: "2026-11-01T10:00:00Z", base: true, target: false }
+            - { seq: 2, createdAt: "2026-11-03T12:30:00Z", base: false, target: false }
+            - { seq: 3, createdAt: "2026-11-05T16:20:00Z", base: false, target: true }
+        chosen:
+          - 2
+          - 3
+          - - { op: added, text: "- One page for writers." }
+            - { op: removed, text: "What a newcomer does each day, as a list." }
+            - { op: added, text: "What a newcomer does each day, as a list:" }
+            - { op: added, text: "" }
+            - { op: added, text: "```text" }
+            - { op: added, text: "## S9 an example heading, not an item" }
+            - { op: added, text: "```" }
+            - { op: added, text: "" }
+            - { op: added, text: "## S3 Name a buddy for every newcomer" }
+        noRevision: [404, ERR_REVISION_NOT_FOUND, { id: r1, revision: 9 }]
+
+  # ── Decisions and comments, by a reviewer of this run's own ──
+  - name: reviewer
+    value: !cel "'Reviewer ' + uuidv4()"
+  - name: stale
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r1/decisions, method: POST }
+    inputs:
+      body:
+        author: !cel "steps.reviewer.result"
+        decision: approve
+        revision: 1
+        hash: b99b8f8ee6e5e64739f7ac9f4d6f792ddf7d3a63ba23ebedb5025f51e1971250
+  - name: noNote
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r1/decisions, method: POST }
+    inputs:
+      body:
+        author: !cel "steps.reviewer.result"
+        decision: request_changes
+        revision: 3
+        hash: 11a4f80d2e3f8a5a990abe6fc56d526bccac598d86a2609fc97a297b0c8bf0bd
+  - name: approve
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r4/decisions, method: POST }
+    inputs:
+      body:
+        author: !cel "steps.reviewer.result"
+        decision: approve
+        revision: 1
+        hash: 80276bccc87c52092ef1d29753334b881b000cef400dc67103e943a3fca73511
+  - name: approved
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r4 }
+  - name: comment
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r1/comments, method: POST }
+    inputs:
+      body: { author: !cel "steps.reviewer.result", body: A checklist per role?, revision: 3, item: S2 }
+  - name: noItem
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r1/comments, method: POST }
+    inputs:
+      body: { author: !cel "steps.reviewer.result", body: Where is this?, revision: 3, item: S7 }
+  - name: commented
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/review/reviews/r1 }
+  - name: verifyWrites
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        stale: !cel "[steps.stale.result.status, steps.stale.result.body.code, steps.stale.result.body.data]"
+        noNote: !cel "[steps.noNote.result.status, steps.noNote.result.body.data.issues]"
+        approve: !cel "[steps.approve.result.status, steps.approve.result.body]"
+        approved: !cel >-
+          cel.bind(e, steps.approved.result.body.events[size(steps.approved.result.body.events) - 1],
+            [steps.approved.result.body.review.state, e.type, e.author == steps.reviewer.result])
+        comment: !cel "[steps.comment.result.status, steps.comment.result.body]"
+        noItem: !cel "[steps.noItem.result.status, steps.noItem.result.body.code]"
+        counts: !cel "steps.commented.result.body.review.latestRevision.items.map(i, [i.id, i.count])"
+      expected:
+        stale: [409, ERR_REVISION_SUPERSEDED, { latest: 3 }]
+        noNote: [400, [{ pointer: /body/note, keyword: required, params: { missingProperty: note } }]]
+        approve: [201, { id: r4, decision: approve, state: approved, revision: 1 }]
+        approved: [approved, approved, true]
+        comment: [201, { id: r1, revision: 3, item: S2, count: 1 }]
+        noItem: [404, ERR_ITEM_NOT_FOUND]
+        counts: [[S1, 2], [S2, 1], [S3, 1]]

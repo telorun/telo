@@ -5,8 +5,10 @@ declared, not programmed: the only browser code is four small components the
 Components and Themes pages place. Each page covers one area, and every
 demonstration carries a muted line saying what it shows. The data is a small
 studio — its team, people, projects, tasks, the requests and bookings its
-forms send, comments on tasks, the authors of its blog with their posts, and
-its reporting lines — in SQLite, served by `crud` and routes of its own, with real sessions behind a sign-in gate. Every text is written in
+forms send, comments on tasks, the authors of its blog with their posts, its
+reporting lines, the documents it reviews and its workers' commands — in
+SQLite, served by `crud` and routes of its own, with real sessions behind a
+sign-in gate. Every text is written in
 English and translated into fourteen languages: German, Spanish, French,
 Italian, Dutch, Polish, Portuguese, Turkish, Russian, Ukrainian, Hindi,
 Japanese, Korean and Chinese (Simplified).
@@ -25,7 +27,7 @@ created and seeded on the first start, and a seeded row edited by hand is
 restored on the next.
 
 The UI modules (`ui-lucide` included), `data-model`, `crud`, `crud-ui`, `font`,
-`i18n`, `http-server`, `sql` and `sqlite` are imported from this workspace by
+`i18n`, `text-diff`, `http-server`, `sql` and `sqlite` are imported from this workspace by
 relative path, so the example runs from a checkout.
 
 ## Four mounts of one design
@@ -108,10 +110,10 @@ brand switch, `/api/brand`, is the root's alone.
 | File | Holds |
 | --- | --- |
 | `telo.yaml` | the application, the four `UiReact.App` mounts with their header and navigation, the navigation's icons, the root's own overview, conditions and themes pages, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
-| `data.yaml` | the SQLite connection, schema, tables with their seed rows (the posts' and the reporting lines' with foreign keys), the projects, tasks, people, authors, posts and employees `Crud.Collection`s, the sources the browser reads them from, and the tasks' and posts' presentations |
-| `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, and the request origin and redirect target rules (`origin`, `sameOriginTarget`) |
+| `data.yaml` | the SQLite connection, schema, tables with their seed rows (the posts' and the reporting lines' with foreign keys), the projects, tasks, people, authors, posts and employees `Crud.Collection`s, the sources the browser reads them from, and the tasks' and posts' presentations; the review tables, the `reviews` and `commands` `DataModel.Collection`s and the inbox's presentation |
+| `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, the request origin and redirect target rules (`origin`, `sameOriginTarget`), and the review routes under `/api/review` |
 | `translations/` | one `Telo.TextTranslations` per language for the example's own texts, listed in the application's `translations:` block after ui's shipped `Ui.*Translations`, each file named by its language tag (`pl.yaml`, `ja.yaml`, …); `en.yaml` covers the one text crud writes with no `lang` |
-| `pages-*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's two task forms and page surface, the filters page's task listing, the forms page's team and project option sources and the requests' presentation, the actions page's assign action, the related-records page's post and employee forms and the reporting lines' presentation) |
+| `pages-*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's two task forms and page surface, the filters page's task listing, the forms page's team and project option sources and the requests' presentation, the actions page's assign action, the related-records page's post and employee forms and the reporting lines' presentation); `pages-review.yaml` holds the four review pages with their trees written in the pages themselves, every application listing the same four |
 | `showcase.css` | the `/` and `/sidebar` applications' stylesheet |
 | `components/` | a library of the example's own: four browser components written in TSX (`nodejs/src/components.tsx`, with the stylesheet they import) against the `ui_react-1` host, built by the kernel and published as `Ui.ComponentExport`s — `taskDesk`, `priorityMeter`, `tokenSheet` and `typefaceSamples`. Its `nodejs/package.json` exists only to type-check the sources |
 | `brand/` | a library of the example's own exporting the `/brand` theme: `brand.css`, which styles every part of the styling contract, the token values, and Radix's controls |
@@ -134,6 +136,10 @@ brand switch, `/api/brand`, is the root's alone.
 | `/crud` | a `CrudUi.Admin` over the tasks collection: a filter bar beside the listing showing chosen filters as chips and sharing its state key with a bar on `/filters`, create in a drawer kept open for the next record, edit in an addressed panel asking before unsaved input is dropped |
 | `/records` | posts naming their author by key, the author shown by name: a table with a bar offering every author and a post form picking one; cards, a list on a narrow screen loading more at the end, with filters offering only the authors and statuses present, with counts; a board by status whose cards move by drag or menu; a calendar by publication day; the authors' generated screen; and the reporting lines as a tree |
 | `/search`, `/search-beside`, `/search-releases` | three bars over the posts that turn typed text into filters: one drawn as a search box with presets, typed tokens (`status:draft,review`, `publishedOn>=2026-11-01`) and an author picked by name; one beside the table, with the search pinned and only the chosen filters shown as chips, folding into a collapsible bar on a phone; and one opening with a search already typed, applied by a button. The first two keep their state under one key, so one address opens either. Not in the navigation |
+| `/reviews` | the documents under review in a listing read again every thirty seconds, behind a filter bar whose "Waiting a day or more" preset is relative to now (`{ unit: day, offset: -1 }`, kept in the address as `now-1day`); a review past its product's deadline drawn `danger`; each title a link to the document's page |
+| `/reviews/{id}` | one document by the ID in its address (`params.id`), read again every thirty seconds: its latest revision's time relative to now, a link to the comparison and one to its worker — drawn as text for a document no worker writes; Approve, Request changes and Reject buttons bound to the revision on screen, their prompts asking only for what the binding leaves (`author`, and `note`), the name entered once for every prompt (`state` key `reviewer` in local storage); its Markdown with a Comment control and count on each item the server names; the timeline |
+| `/reviews/{id}/compare` | two revisions compared line by line: the revisions to compare from and to, the pair compared drawn `strong`, and the diff's lines styled `success`, `danger` and `muted` |
+| `/workers/{name}` | the commands of the worker the address names, under a listing whose `basePath` is filled from `params.name`, read again every five seconds keeping the pages loaded; not in the navigation |
 | `/themes` | what the four mounts are; every design token as the mount's theme and brand give it, read live with a sample; the body and heading typefaces in each face, with the faces the application serves — Inter's four on `/brand`; on `/`, links to the other two mounts and the brand switch |
 
 ## Related records
@@ -150,6 +156,30 @@ posts, each with its count from the collection's facet request — and the post
 form picks the author from a list. The reporting lines relate the employees to
 themselves (`managerId`), which a tree layout reads as its `parent`: the roots
 with `managerId.absent=true`, a person's reports with `managerId=<id>`.
+
+## Document review
+
+The review pages are the screens of a review application, and their backend is
+the router at `/api/review`. Only the inbox is in the navigation: a page whose
+path has a variable (`/reviews/{id}`, `/workers/{name}`) is reached by a link
+whose `pathParams` fill it, and its tree reads the variable as `params`. The
+two lists speak the collection contract through `Crud.Reader`, each over one
+fixed SELECT rather than a table: the inbox's joins every review to its latest
+revision and its product, computing `revisedAt` and `overdue`, and a worker's
+commands are held to that worker by the route's `scope`, so a client filter on
+`worker` is a 400. Every filter, sort, page and facet is the reader's, bound
+as a value; neither SELECT holds a clause built from the request.
+
+A revision is stored whole with the SHA-256 of its text, and its items with the
+line each starts on: which blocks are items is the server's grammar, so the
+Markdown node parses none, and a `## <ID>` heading inside a fenced block is no
+item. A decision restates the revision and hash it was made on and is refused
+with `409 ERR_REVISION_SUPERSEDED` once another revision has replaced it; the
+decisions route requires `note` for `request_changes` with `if` / `then` in its
+body schema, answering a 400 on that field. The comparison is
+`TextDiff.lineDiff` over two stored revisions. A document no worker writes
+answers its `worker` as an empty string, which leaves the link's address
+unresolved, so it is drawn as text.
 
 ## Routes
 
@@ -195,6 +225,12 @@ with `managerId.absent=true`, a person's reports with `managerId=<id>`.
 | `GET` `POST` | `/api/comments` | the ten latest comments, pinned first; a comment added, 404 for an unknown task |
 | `POST` | `/api/comments/pin`, `/api/comments/delete` | pins or deletes a comment; 404 for an unknown one |
 | `POST` | `/api/comments/edit` | rewrites a comment; 400 on `body` when the new text is left out |
+| `GET` | `/api/review/reviews` | the inbox (`Crud.Reader` over a SELECT): filtered by `product`, `repo`, `state.in` and `revisedAt.lte`, sorted by `revisedAt`, paged by cursor with a total; `facet=product` or `facet=repo` answers the values present with counts; an undeclared filter is a 400 problem whose issues point into `/query` |
+| `GET` | `/api/review/reviews/{id}` | one document: its latest revision with its body, hash and items (`{ id, line, count }`, `count` the comments on the item in that revision), and its timeline; 404 for an unknown one |
+| `GET` | `/api/review/reviews/{id}/compare?base=&target=` | two revisions compared line by line (`{ base, target, comparable, lines, revisions }`), from the revision last decided on to the latest when not chosen; 404 for an unknown document or revision |
+| `POST` | `/api/review/reviews/{id}/decisions` | approves, requests changes on or rejects the revision named by `revision` and `hash`: 201; 400 on `note` for a change request without one; 409 `ERR_REVISION_SUPERSEDED` when another revision has replaced it |
+| `POST` | `/api/review/reviews/{id}/comments` | a comment on a revision, on one of its items or the whole text: 201 with the item's new count; 404 for an unknown revision or item |
+| `GET` | `/api/review/workers/{name}/commands` | a worker's commands (`Crud.Reader`, scoped by the route): sorted by `seq`, filtered by `state.in`; an unknown worker answers an empty page, a `worker` filter a 400 |
 
 ## Tests
 
@@ -210,6 +246,7 @@ Each test that runs the application gives it a database file of its own under
 | `tests/forms-and-actions.yaml` | 8154 | the routes the forms and actions call: both forms' writes with the server's refusals, the option sources paged, narrowed by a field, searched and labelling by `in`, every action's success, 400 validation problem and other problems, the answer the days action refuses, and each row action's route |
 | `tests/brand-theme.yaml` | none — it starts no application | the `/brand` theme meets the renderer's contract (`UiReactConformance.CheckTheme`): every part styled, no reserved property set, every token given a value and read, every scene drawn with its controls |
 | `tests/related-records.yaml` | 8157 | the related-records page: the author relation behind the table's column, the bar's field and the form's picker, the layouts and their read plans — present values, cards with a compact list, the board's columns and move, the calendar's span, the tree's parent — and the routes they call: the facet request with counts, the batched label lookup, the tree's roots and children, a board move, and a post the foreign key refuses |
+| `tests/review-screens.yaml` | 8159 | the review pages as a renderer receives them — the inbox listing's reload, row style, link and relative preset, the document reader's address and reload, the decision buttons' bindings, prompts and shared state, the Markdown's annotations, the comparison's styles and the worker listing's templated `basePath` — and the routes they call: the inbox filtered, paged by cursor and faceted with an undeclared filter refused, a worker's commands scoped by the route, a document with its items and timeline, comparisons chosen and by default, a decision on a replaced revision, a change request without a note, an approval, and comments |
 | `tests/components-crud-themes.yaml` | 8156 | the routes the last pages added: the handbook and mirror addresses, the route that never answers, and pausing a project — 401 without a session, 403 with no body for a member who is no manager, the pause, a 404, and a 409 in English and in Polish with `Content-Language` |
 
 The application itself defaults to port 8150.

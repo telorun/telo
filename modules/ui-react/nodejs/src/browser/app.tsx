@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { BUILT_IN, ControlsContext, loadControls, type ControlsField, type EffectiveControls } from "./effective-controls.js";
 import { HostContext, HostStore, type Host } from "./host.js";
 import { pageAddress } from "./link-address.js";
+import { matchPage } from "./page-route.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
 import { PressQueueContext, PressQueues } from "./operation.js";
 import { SiteNavigation, type NavigationSpec } from "./site-navigation.js";
@@ -19,7 +20,7 @@ interface AppDocument {
   title: TranslatedText;
   /** The language the documents are in: a catalog's, else the application's own. */
   lang?: string;
-  /** Every page the application serves: what a move within it may reach. */
+  /** Every page the application serves, by its declared path: what a move within it may reach. */
   pages: { path: string; title?: TranslatedText }[];
   /** The navigation tree and how it is drawn. */
   navigation: NavigationSpec;
@@ -155,7 +156,9 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   const [styled, setStyled] = useState(false);
   const held = useRef<{ app?: AppDocument; page?: PageDocument }>({});
   const path = host.location.path;
-  const declared = app?.pages.find((candidate) => candidate.path === path);
+  // The page the address opens, and the variables it fills.
+  const matched = useMemo(() => (app ? matchPage(app.pages.map((candidate) => candidate.path), path) : undefined), [app, path]);
+  const declared = matched && app?.pages.find((candidate) => candidate.path === matched.path);
 
   const accept = <T extends { bundle: string }>(document: T): T | undefined => {
     if (document.bundle === bundle) return document;
@@ -198,10 +201,11 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     };
   }, [prefix, refreshes]);
 
+  // One document per declared page: a move to another value of its variables fetches none.
   useEffect(() => {
     if (!declared) return;
     let current = true;
-    const holding = held.current.page?.path === path ? held.current.page : undefined;
+    const holding = held.current.page?.path === declared.path ? held.current.page : undefined;
     if (!holding) setPage(undefined);
     fetchDocument(host, `${prefix}/_telo/ui/page?path=${encodeURIComponent(path)}`, holding).then(
       (fetched) => {
@@ -216,7 +220,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     return () => {
       current = false;
     };
-  }, [prefix, path, declared !== undefined, refreshes]);
+  }, [prefix, declared?.path, refreshes]);
 
   const sets = JSON.stringify(app?.controls.sets ?? null);
   useEffect(() => {
@@ -254,8 +258,14 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     host.navigate(to);
   };
 
-  const shown = page?.path === path ? page : undefined;
-  const pageRoots = useMemo(() => ({ query: queryRoot(shown?.query, host.location.search) }), [shown?.query, host.location.search]);
+  const shown = declared !== undefined && page?.path === declared.path ? page : undefined;
+  const paramsKey = JSON.stringify(matched?.params ?? {});
+  const pageRoots = useMemo(
+    () => ({ query: queryRoot(shown?.query, host.location.search), params: matched?.params ?? {} }),
+    [shown?.query, host.location.search, paramsKey],
+  );
+  // Another value of a variable is another record: the page is drawn afresh.
+  const drawing = `${declared?.path ?? ""}\u0000${paramsKey}`;
   // Serial presses are ordered within one page.
   const queues = useMemo(() => new PressQueues(), [path]);
   const state = failure ? "error" : !app ? "loading" : !declared ? "empty" : shown ? "idle" : "loading";
@@ -310,7 +320,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
                   <PageSlotContext.Provider value={slot}>
                     <div ref={setSlotElement} style={{ display: "contents" }} />
                     <div style={{ display: claims > 0 ? "none" : "contents" }}>{shown ? (
-                      <PressQueueContext.Provider value={queues}>
+                      <PressQueueContext.Provider key={drawing} value={queues}>
                         <RootsContext.Provider value={pageRoots}>
                           <Nodes nodes={shown.children} />
                         </RootsContext.Provider>

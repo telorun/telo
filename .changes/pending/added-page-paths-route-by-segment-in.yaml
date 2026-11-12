@@ -1,0 +1,20 @@
+modules:
+  modules/ui-react: Added
+body: "Page paths route by segment in the server's document lookup and in the browser: a
+  {name} segment matches one percent-decoded segment, a literal one wins over it, and an
+  address holding a malformed percent-escape opens the not-found page. A page's nodes
+  read its variables as params, and a collection source's templated basePath resolves
+  over them. reloadEvery reads a reader or a listing again on a timer, keeping loaded
+  pages, scroll and open forms, never while the document is hidden or a read is in
+  flight. A relative filter value stays now-1day in the bar, the address and the store
+  and is resolved when a first page is read. Forms, actions and prompts sharing a state
+  key hold each kept property as one value, merged into the store property by property
+  and followed by every entry mounted. A markdown node's annotations draw a control
+  running a bound action, with its count as a badge, on the block holding each item's
+  line and after the text for a line past it, in the new parts markdown-annotations,
+  markdown-annotation and markdown-unplaced-annotations. A button node, the new button
+  part, runs a bound action as a row action does. A time node and a list's time column
+  draw a date relative to now, redrawn every minute while shown, or absolute in the
+  viewer's language and zone, as the new time part. A list node draws its rowStyle and
+  each column's style. A prompt holds the bound and entered record whole to the input
+  model, so a required value left empty sends nothing."

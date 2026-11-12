@@ -21,7 +21,8 @@
  * supplied by the caller.
  */
 import { listRequests, type DeclarationRequests } from "./declaration-requests.js";
-import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { isCompiledValue, type ResourceDefinition, type ResourceManifest } from "@telorun/sdk";
+import { isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
@@ -45,6 +46,8 @@ import { isKindDocument } from "./kind-declaration.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import {
   describeValueSchemaLocation,
+  keyedMapAt,
+  keyedMapSchema,
   memberNameAt,
   memberTypeOf,
   resolveScopeValues,
@@ -90,6 +93,9 @@ export interface CallSite {
    *  property declares, and `path` the reference — the slot, or the step's
    *  invoke field — since no map exists to point at. */
   readonly omitted?: { readonly inputsPath: string };
+  /** Set where the slot's `completedWhen` sibling holds `true`: the target
+   *  obtains every input the map leaves unbound, so none is missing. */
+  readonly completed?: true;
 }
 
 /** An `x-telo-value-schema-from` slot and the type it must satisfy. */
@@ -226,17 +232,37 @@ export function slotCallSites(
     const invoke = site.data;
     if (!invoke || typeof invoke !== "object" || Array.isArray(invoke)) continue;
     const values = navigateConcretePath(manifest, inputsPath);
+    const completed = slotCompleted(site, manifest);
     if (values === undefined) {
       const omitted = omittedSlotCallSite(site, manifest, ctx);
-      if (omitted) out.push(omitted);
+      if (omitted) out.push(completed ? { ...omitted, completed } : omitted);
       continue;
     }
     if (!values || typeof values !== "object" || Array.isArray(values)) continue;
-    out.push(
-      callSiteAt("slot", inputsPath, values as Record<string, any>, invoke as Record<string, any>, manifest, ctx),
-    );
+    const call = callSiteAt("slot", inputsPath, values as Record<string, any>, invoke as Record<string, any>, manifest, ctx);
+    out.push(completed ? { ...call, completed } : call);
   }
   return out;
+}
+
+/** The concrete path of the sibling a reference slot's `completedWhen` names,
+ *  relative to the object enclosing the slot; undefined for a slot naming
+ *  none. */
+export function slotCompletedWhenPath(site: ReachSite): string | undefined {
+  if (site.refs.length === 0) return undefined;
+  const completedWhen = siteRefEntry(site).completedWhen;
+  const pointer = completedWhen ? pointerSegments(completedWhen) : undefined;
+  if (!pointer) return undefined;
+  const enclosing = site.path.slice(0, Math.max(0, site.path.lastIndexOf(".")));
+  return [enclosing, ...pointer].filter(Boolean).join(".");
+}
+
+/** `true` where the sibling a slot's `completedWhen` names holds a literal
+ *  `true` in `manifest`; anything else there — absent, `false`, an
+ *  expression — completes nothing. */
+function slotCompleted(site: ReachSite, manifest: Record<string, any>): true | undefined {
+  const path = slotCompletedWhenPath(site);
+  return path !== undefined && navigateConcretePath(manifest, path) === true ? true : undefined;
 }
 
 /** What the property a reference slot's `inputs:` pointer names declares about
@@ -386,15 +412,26 @@ export function valueSchemaSites(
   if (!defSchema) return [];
   const host = ctx.valueSchemaHost ?? resourceLocalHost(ctx.types);
   const out: ValueSchemaSite[] = [];
-  for (const { scope, from } of valueSchemaSlots(defSchema)) {
+  for (const slot of valueSchemaSlots(defSchema)) {
+    const { scope, from } = slot;
     const label = describeValueSchemaLocation(from);
     for (const { schema: type, member } of valueSchemaTypes(manifest, from, host)) {
+      const keyedMaps = new Set<string>();
       for (const { path, value } of resolveScopeValues(manifest, scope)) {
         if (!member) {
           out.push({ path, value, schema: type, from: label });
           continue;
         }
-        // A key the type does not declare contributes nothing.
+        // A map keyed by the type's properties refuses a key naming none.
+        const keyed = keyedMapAt(slot, path, member);
+        if (keyed && !keyedMaps.has(keyed.path)) {
+          keyedMaps.add(keyed.path);
+          const map = navigateConcretePath(manifest, keyed.path);
+          const keys = keyedMapSchema(type, keyed.map.node, keyed.map.pattern, () => ({}));
+          if (keys && isWrittenMap(map)) out.push({ path: keyed.path, value: map, schema: keys, from: label });
+        }
+        // A key the kind's schema fixes, and the type does not declare,
+        // contributes nothing.
         const name = memberNameAt(manifest, path, member);
         const schema = name === undefined ? undefined : memberTypeOf(type, name);
         if (schema) out.push({ path, value, schema, from: label });
@@ -402,6 +439,17 @@ export function valueSchemaSites(
     }
   }
   return out;
+}
+
+/** A map written as one, never an expression standing for one. */
+function isWrittenMap(value: unknown): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    !isTaggedSentinel(value) &&
+    !isCompiledValue(value)
+  );
 }
 
 /**

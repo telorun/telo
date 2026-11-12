@@ -17,6 +17,7 @@ import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guar
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import { stampDeclaredDisplayMessages } from "../../declared-display-messages.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
+import { refuseInvalidCompletedWhen } from "./completed-when-guard.js";
 import { refuseInvalidCallsCoReferrers } from "./calls-co-referrers-guard.js";
 import {
   forgetRegisteredDefinition,
@@ -117,6 +118,7 @@ class ResourceAbstract implements ResourceInstance {
         | undefined,
       resolveDef,
     );
+    refuseInvalidCompletedWhen(this.resource, this.resource.schema, ctx);
     refuseInvalidCallsCoReferrers(
       this.resource as unknown as ResourceDefinition,
       this.resource.schema as Record<string, unknown> | undefined,

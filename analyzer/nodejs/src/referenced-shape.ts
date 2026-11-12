@@ -23,7 +23,7 @@
  * recursive shape finite and reads as a node that says nothing.
  */
 import { valueTypeOf } from "@telorun/sdk";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { resolveSchemaReference } from "./schema-reference.js";
 import { deepEquals } from "./migrations/match.js";
 import { REFERENCE_KEYS, type ExternalSchemaResolver } from "./schema-compat.js";
 
@@ -115,13 +115,9 @@ function referenced(
   external: ExternalSchemaResolver | undefined,
 ): Declared | undefined {
   const ref = node.$ref as string;
-  if (!ref.startsWith("#")) {
-    const target = external?.(ref);
-    return target ? { schema: target, root: target } : undefined;
-  }
-  if (!root) return { schema: besideReference(node), root };
-  const target = resolveSchemaPointer(root, ref);
-  return isSchema(target) ? { schema: target, root } : undefined;
+  if (ref.startsWith("#") && !root) return { schema: besideReference(node), root };
+  const target = resolveSchemaReference(ref, root, external);
+  return target ? { schema: target.node, root: target.document } : undefined;
 }
 
 /** `at` with every reference it IS followed, and whether each one could be:

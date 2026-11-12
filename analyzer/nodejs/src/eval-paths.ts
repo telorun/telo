@@ -26,7 +26,11 @@ import {
   inheritedCapability,
   type DefResolver,
 } from "./extends-resolution.js";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
+import {
+  resolveSchemaReference,
+  schemaReferenceParts,
+  type NamedShapeLookup,
+} from "./schema-reference.js";
 import { isStepSlot } from "./step-slot.js";
 import { bindingExistsAt } from "./context-eval.js";
 
@@ -176,14 +180,7 @@ export function evalPathsCover(evalPaths: readonly string[], exprPath: string): 
   return evalPaths.some((p) => evalPathCovers(p, exprPath));
 }
 
-/**
- * Resolves a named shape — a `$ref` that is not document-local, in its canonical
- * `telo:<Module>/<Type>` spelling — to the shape's schema, its own document. The
- * one lookup every eval-site walk takes: the analyzer and the kernel each hand it
- * their shared registry's `schemaForId`, so the sites `telo check` reads and the
- * sites the kernel expands are one set.
- */
-export type NamedShapeLookup = (id: string) => Record<string, any> | undefined;
+export type { NamedShapeLookup };
 
 /** The lookup for a schema read with no named shapes in reach. */
 export const NO_NAMED_SHAPES: NamedShapeLookup = () => undefined;
@@ -340,6 +337,17 @@ export function matchForSitesOf(
   }));
 }
 
+/** Every union the walk reaches whose branches give one property two eval
+ *  meanings — the one reader of `EVAL_MODE_BRANCH_CONFLICT` and its kernel
+ *  twin, so the unions judged are exactly the unions whose sites are merged. */
+export function evalModeBranchConflicts(
+  schema: Record<string, any> | undefined,
+  shapes: NamedShapeLookup = NO_NAMED_SHAPES,
+): EvalModeBranchConflict[] {
+  if (!schema || typeof schema !== "object") return [];
+  return collectedOf(schema, shapes).conflicts.map((found) => ({ ...found, path: evalPathOf(found.path) }));
+}
+
 /** An eval path from the walk's spelling, which keeps a leading `.` on every
  *  property so a site found inside a shape composes at any depth. */
 function evalPathOf(path: string): string {
@@ -362,15 +370,44 @@ interface AccessorNames {
 
 const NO_NAMES: AccessorNames = { present: [], hidden: [] };
 
+/**
+ * Two branches of one `oneOf` / `anyOf` giving a property they both declare
+ * different eval sites. The walk reads every branch at one path with no value
+ * to choose between them, so the union of their sites would hold for every
+ * branch — the conflict is refused instead (`EVAL_MODE_BRANCH_CONFLICT`).
+ */
+export interface EvalModeBranchConflict {
+  /** The union, in the eval-path grammar ("" at the schema root). */
+  readonly path: string;
+  /** The schema node holding the union, and the schema document it is in. */
+  readonly union: Record<string, any>;
+  readonly document: Record<string, any>;
+  readonly keyword: "oneOf" | "anyOf";
+  /** The branch whose sites differ, and the branch it differs from. */
+  readonly branch: number;
+  readonly other: number;
+  /** The property both declare (`.text`, `[*]`, `.*`), or "" for the union's
+   *  own value. */
+  readonly segment: string;
+  /** Where beneath the union the two differ, in the walk's spelling. */
+  readonly place: string;
+  readonly mode: CelEvalMode | undefined;
+  readonly otherMode: CelEvalMode | undefined;
+  /** The named shape whose document holds the union; none for the kind's own
+   *  schema. */
+  readonly shape?: string;
+}
+
 /** Everything one walk of a schema finds, paths in the walk's spelling. */
 interface Collected {
   eval: EvalSite[];
   regions: string[];
   contexts: Array<{ path: string; schema: Record<string, any> }>;
   matchFor: Array<{ path: string; pointer: string }>;
+  conflicts: EvalModeBranchConflict[];
 }
 
-const emptyCollected = (): Collected => ({ eval: [], regions: [], contexts: [], matchFor: [] });
+const emptyCollected = (): Collected => ({ eval: [], regions: [], contexts: [], matchFor: [], conflicts: [] });
 
 interface Frame {
   readonly node: object;
@@ -480,27 +517,11 @@ function walk(
     underEval = true;
   }
   if (typeof schema.$ref === "string") {
-    const ref = schema.$ref;
-    const local = ref.startsWith("#");
-    const target = local ? resolveSchemaPointer(document, ref) : state.shapes(ref);
-    if (!local) {
-      state.resolved.set(
-        ref,
-        target && typeof target === "object" && !Array.isArray(target) ? (target as object) : undefined,
-      );
-    }
-    if (!target || typeof target !== "object" || Array.isArray(target)) return;
-    enter(
-      target as Record<string, any>,
-      local ? document : (target as Record<string, any>),
-      !local,
-      path,
-      frames,
-      out,
-      state,
-      bindings,
-      underEval,
-    );
+    const { shape } = schemaReferenceParts(schema.$ref);
+    const target = resolveSchemaReference(schema.$ref, document, state.shapes);
+    if (shape !== undefined) state.resolved.set(shape, target?.document);
+    if (!target) return;
+    enter(target.node, target.document, target.shape, path, frames, out, state, bindings, underEval);
     return;
   }
   if (schema.properties && typeof schema.properties === "object") {
@@ -534,12 +555,146 @@ function descendBeyondProperties(
     walk(schema.items, `${path}[*]`, document, frames, out, state, bindings, underEval);
   }
   for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-    if (Array.isArray(schema[key])) {
+    if (!Array.isArray(schema[key])) continue;
+    // A conjunction is not judged: every member holds at once.
+    if (key === "allOf" || underEval) {
       for (const branch of schema[key]) {
         walk(branch, path, document, frames, out, state, bindings, underEval);
       }
+      continue;
+    }
+    const branches: Collected[] = schema[key].map((branch: unknown) => {
+      const found = emptyCollected();
+      walk(branch, path, document, frames, found, state, bindings, underEval);
+      return found;
+    });
+    out.conflicts.push(...branchConflicts(schema, key, path, document, branches, state.shapes));
+    for (const found of branches) {
+      out.eval.push(...found.eval);
+      out.regions.push(...found.regions);
+      out.contexts.push(...found.contexts);
+      out.matchFor.push(...found.matchFor);
+      out.conflicts.push(...found.conflicts);
     }
   }
+}
+
+/**
+ * The conflicts between a union's branches: a site at the union's own path
+ * with another mode (or none) in another branch, and a property two branches
+ * declare whose sites at and beneath it differ. Once per property.
+ */
+function branchConflicts(
+  union: Record<string, any>,
+  keyword: "oneOf" | "anyOf",
+  path: string,
+  document: Record<string, any>,
+  branches: readonly Collected[],
+  shapes: NamedShapeLookup,
+): EvalModeBranchConflict[] {
+  if (branches.length < 2) return [];
+  const sitesBySegment = branches.map((found) => {
+    const bySegment = new Map<string, Map<string, CelEvalMode>>();
+    for (const site of found.eval) {
+      const place = site.path.slice(path.length);
+      const segment = firstSegment(place);
+      let sites = bySegment.get(segment);
+      if (!sites) bySegment.set(segment, (sites = new Map()));
+      sites.set(place, site.mode);
+    }
+    return bySegment;
+  });
+  const declared = (union[keyword] as unknown[]).map((branch) =>
+    declaredSegments(branch, document, shapes, new Set()),
+  );
+  const conflicts: EvalModeBranchConflict[] = [];
+  const judged = new Set<string>();
+  const conflict = (i: number, j: number, segment: string, place: string): void => {
+    judged.add(segment);
+    const a = sitesBySegment[i]!.get(segment)?.get(place);
+    const b = sitesBySegment[j]!.get(segment)?.get(place);
+    const [branch, other] = a !== undefined && b === undefined ? [i, j] : [j, i];
+    conflicts.push({
+      path,
+      union,
+      document,
+      keyword,
+      branch,
+      other,
+      segment,
+      place,
+      mode: branch === i ? a : b,
+      otherMode: branch === i ? b : a,
+    });
+  };
+  for (let i = 0; i < branches.length; i++) {
+    for (let j = i + 1; j < branches.length; j++) {
+      const own = sitesBySegment[i]!.get("")?.get("");
+      const theirs = sitesBySegment[j]!.get("")?.get("");
+      if (!judged.has("") && own !== theirs) conflict(i, j, "", "");
+      for (const segment of declared[i]!) {
+        if (segment === "" || judged.has(segment) || !declared[j]!.has(segment)) continue;
+        const mine = sitesBySegment[i]!.get(segment) ?? new Map<string, CelEvalMode>();
+        const yours = sitesBySegment[j]!.get(segment) ?? new Map<string, CelEvalMode>();
+        const differing =
+          [...mine].find(([place, mode]) => yours.get(place) !== mode)?.[0] ??
+          [...yours].find(([place, mode]) => mine.get(place) !== mode)?.[0];
+        if (differing !== undefined) conflict(i, j, segment, differing);
+      }
+    }
+  }
+  return conflicts;
+}
+
+/** The first segment of a place beneath a union — past a leading repeated
+ *  group, which is read at its zero depth. */
+function firstSegment(place: string): string {
+  let rest = place;
+  while (rest.startsWith("(")) {
+    let depth = 0;
+    let end = 0;
+    for (; end < rest.length; end++) {
+      if (rest[end] === "(") depth++;
+      else if (rest[end] === ")" && --depth === 0) break;
+    }
+    rest = rest.slice(end + 2);
+  }
+  return /^(\[\*\]|\.[^.[(]+)/.exec(rest)?.[1] ?? "";
+}
+
+/** The first segments a branch gives a value — its properties, a map's values
+ *  and a list's items — through references and nested unions, as the walk
+ *  reads them. */
+function declaredSegments(
+  node: unknown,
+  document: Record<string, any>,
+  shapes: NamedShapeLookup,
+  seen: Set<object>,
+): Set<string> {
+  const out = new Set<string>();
+  if (!node || typeof node !== "object" || Array.isArray(node) || seen.has(node)) return out;
+  seen.add(node);
+  const schema = node as Record<string, any>;
+  if (typeof schema.$ref === "string") {
+    const target = resolveSchemaReference(schema.$ref, document, shapes);
+    return target ? declaredSegments(target.node, target.document, shapes, seen) : out;
+  }
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const key of Object.keys(schema.properties)) out.add(`.${key}`);
+  }
+  const mapValues = [
+    schema.additionalProperties,
+    ...Object.values((schema.patternProperties ?? {}) as Record<string, unknown>),
+  ];
+  if (mapValues.some((value) => value && typeof value === "object")) out.add(".*");
+  if (schema.items && typeof schema.items === "object" && !Array.isArray(schema.items)) out.add("[*]");
+  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
+    if (!Array.isArray(schema[key])) continue;
+    for (const branch of schema[key]) {
+      for (const segment of declaredSegments(branch, document, shapes, seen)) out.add(segment);
+    }
+  }
+  return out;
 }
 
 /**
@@ -551,7 +706,7 @@ function descendBeyondProperties(
 function enter(
   target: Record<string, any>,
   document: Record<string, any>,
-  isShape: boolean,
+  shape: string | undefined,
   path: string,
   frames: readonly Frame[],
   out: Collected,
@@ -568,6 +723,7 @@ function enter(
   // Everything found inside is relative to the entry and owes its bindings to
   // what the target itself declares; the bindings above it join on the way out.
   // Remembered only while every shape it reached still resolves as it did.
+  const isShape = shape !== undefined;
   const known = isShape && !underEval ? shapeMemos.get(target) : undefined;
   const memo = known?.shapes.every(([id, node]) => state.shapes(id) === node) ? known : undefined;
   let loop: string;
@@ -588,6 +744,11 @@ function enter(
       regions: absolute.regions.map(relative),
       contexts: absolute.contexts.map((context) => ({ ...context, path: relative(context.path) })),
       matchFor: absolute.matchFor.map((site) => ({ ...site, path: relative(site.path) })),
+      conflicts: absolute.conflicts.map((found) => ({
+        ...found,
+        path: relative(found.path),
+        shape: found.shape ?? shape,
+      })),
     };
     if (isShape && !underEval && !frame.dirty) {
       shapeMemos.set(target, {
@@ -604,6 +765,7 @@ function enter(
   for (const region of inside.regions) out.regions.push(at(region));
   for (const context of inside.contexts) out.contexts.push({ ...context, path: at(context.path) });
   for (const site of inside.matchFor) out.matchFor.push({ ...site, path: at(site.path) });
+  for (const found of inside.conflicts) out.conflicts.push({ ...found, path: at(found.path) });
 }
 
 /**

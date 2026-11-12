@@ -22,6 +22,7 @@
  *     kind: [Telo.Invocable, Telo.Runnable]
  *     use: call
  *     inputs: /inputs
+ *     completedWhen: /prompt                    # optional: a boolean sibling; true, the target obtains what the map leaves out
  *     outputType: { … }                         # optional: what the target must return
  *     outputTo: { slot: /verifier, member: x }  # optional: where the target's output goes
  *     observes: [version, features]             # optional: need constraints it reports
@@ -111,6 +112,12 @@ export interface RefSlot {
    *  that carries this call's arguments. Replaces
    *  `x-telo-topology-role: inputs`. */
   inputs?: string;
+  /** JSON Pointer (same anchoring as {@link RefUseCases.by}) naming a boolean
+   *  sibling: where it holds a literal `true`, the target obtains every input
+   *  the {@link RefSlot.inputs} map leaves unbound before it runs, so a
+   *  required input missing from the map is not refused at the call site.
+   *  `completed-when-slot.ts` reports a misdirected one. */
+  completedWhen?: string;
   /** Throws raised by the target — or by anything the target drives — surface
    *  through the DECLARING resource, so its own throws union includes the
    *  target's and its catch scope encloses the target's.
@@ -337,6 +344,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   const uses = new Set<RefUse>();
   let useCases: RefUseCases | undefined;
   let inputs: string | undefined;
+  let completedWhen: string | undefined;
   let throwsThrough = false;
   let outputType: Record<string, any> | undefined;
   let outputTo: RefOutputTo | undefined;
@@ -353,6 +361,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
     for (const use of normalizeUses(obj.use)) uses.add(use);
     useCases ??= readUseCases(obj.use);
     if (typeof obj.inputs === "string") inputs ??= obj.inputs;
+    if (typeof obj.completedWhen === "string") completedWhen ??= obj.completedWhen;
     if (obj.throwsThrough === true) throwsThrough = true;
     if (isSchemaObject(obj.outputType)) outputType ??= obj.outputType;
     outputTo ??= readOutputTo(obj.outputTo);
@@ -370,6 +379,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   };
   if (useCases) slot.useCases = useCases;
   if (inputs !== undefined) slot.inputs = inputs;
+  if (completedWhen !== undefined) slot.completedWhen = completedWhen;
   if (throwsThrough) slot.throwsThrough = true;
   if (outputType) slot.outputType = outputType;
   if (outputTo) slot.outputTo = outputTo;
@@ -404,6 +414,7 @@ export function refSlotAnnotation(slot: RefSlot): Record<string, unknown> {
   else if (slot.uses.length === 1) annotation.use = slot.uses[0];
   else if (slot.uses.length > 1) annotation.use = slot.uses;
   if (slot.inputs !== undefined) annotation.inputs = slot.inputs;
+  if (slot.completedWhen !== undefined) annotation.completedWhen = slot.completedWhen;
   if (slot.throwsThrough) annotation.throwsThrough = true;
   if (slot.outputType) annotation.outputType = slot.outputType;
   if (slot.outputTo) annotation.outputTo = { ...slot.outputTo };
@@ -462,14 +473,15 @@ export function rewriteCoReferrerKinds(
 }
 
 /** What `x-telo-ref` reads: the reference at the slot, its target held as its
- *  identity, the call's argument map its `inputs` pointer names, the sibling a
- *  case map's `by` selects on, and the sibling slot `outputTo` feeds, all from
- *  the enclosing object. */
+ *  identity, the call's argument map its `inputs` pointer names, the sibling
+ *  `completedWhen` names, the sibling a case map's `by` selects on, and the
+ *  sibling slot `outputTo` feeds, all from the enclosing object. */
 export const refSlotReads: ReadReporter = ({ value, at }) => {
   const out: ReadPlace[] = [{ kind: "reference", keys: at, transitive: false, reads: READS_IDENTITY }];
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    const { inputs, use } = value as { inputs?: unknown; use?: unknown };
+    const { inputs, use, completedWhen } = value as { inputs?: unknown; use?: unknown; completedWhen?: unknown };
     if (typeof inputs === "string") out.push({ kind: "value", keys: placeAt(enclosingKeys(at), inputs) });
+    if (typeof completedWhen === "string") out.push({ kind: "value", keys: placeAt(enclosingKeys(at), completedWhen) });
     const by = (use as { by?: unknown } | undefined)?.by;
     if (typeof by === "string") out.push({ kind: "value", keys: placeAt(enclosingKeys(at), by) });
     const outputTo = readOutputTo((value as { outputTo?: unknown }).outputTo);

@@ -115,9 +115,10 @@ once counts as missing, and a value its declaration refuses is missing.
 `Ui.Enablement` is a condition plus the reason shown while it does not hold:
 `{ at, matches, disabledText }`, all three required. On a
 [`Ui.Action`](action.md) it decides whether the button can be pressed, over the
-form's `values`; on a [row action](action.md#row-actions), whether that row's
-button can be, over `row` and the roots in scope — the action's own `enabled`
-never governs a row.
+form's `values`; on a [bound action](action.md#bound-actions), whether its
+button can be — a row's or a `button` node's — over the roots in
+scope, `row` among them where there is one; the action's own `enabled` never
+governs it.
 
 ```yaml
 enabled:

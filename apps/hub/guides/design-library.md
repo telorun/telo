@@ -394,8 +394,7 @@ throws:
 
 - An implementation `extends: <Alias>.Notifier` (`Self.Notifier` in the same
   library) and is a templated kind, a specialization of a concrete kind, or a
-  controller-backed kind in another module. The contract never names its
-  implementations.
+  controller-backed kind in another module. The contract names none of them.
 - The `throws.codes` list is a **ceiling**: a descendant that declares a
   `throws:` list of its own may name only codes within it
   (`THROWS_NOT_SUBSTITUTABLE`), so a caller's `catches:` / `try:` written
@@ -406,8 +405,8 @@ throws:
   only REQUIRED string or number properties of the code's `data` schema
   (`displayMessage: "The channel refused {$to}."` with `data: { type: object,
   required: [to], properties: { to: { type: string } } }`). Every failure
-  under that code leaving the kind carries it as `error.displayMessage`, and
-  data the schema refuses is refused instead, so it always formats.
+  under that code leaving the kind carries it as `error.displayMessage`; data
+  the schema refuses is refused, so it always formats.
 - A kind that renders failures through a catch list (`x-telo-outcome-list:
   catches`) marks, in that list's `x-telo-context`, which members carry the
   caught code and data: `code: { type: string, x-telo-caught-member: code }`
@@ -415,8 +414,8 @@ throws:
   bindings it offers. A `when:` comparing a marked code chain with code
   literals proves coverage, and every marked data member is typed inside each
   entry from the codes it matches; a list marking no code proves nothing.
-- A feature that must reach every running instance (a cache to drop, a screen to
-  refresh, a configuration to reload) is not a transport of your own: publish on
+- A feature that must reach every running instance (a cache to drop, a
+  configuration to reload) is not a transport of your own: publish on
   a `Broadcast.Channel` and subscribe with `Broadcast.Subscription`. A backend
   is its own module implementing the `@telorun/broadcast` interface (`settings`,
   `publish`, `subscribe`), recognised by those methods alone.
@@ -441,11 +440,9 @@ throws:
   consumer names), its kind must not name its consumers, so the claimant states
   the check on itself: a RESOURCE rule with `coReferrers: /store` binds the
   other resources of its kind whose `store` names the same declaration
-  (`!coReferrers.exists(o, o.name == self.name)`), and its controller keeps the
-  runtime twin keyed on the store instance.
-- A rule's binding is read narrowly: a member of a declaration the condition
-  does not read cannot fail the binding, so one unresolved neighbour does not
-  disable a rule about another member.
+  (`!coReferrers.exists(o, o.name == self.name)`); its controller keeps the
+  runtime twin.
+- A rule's binding is read narrowly: an unread member can't fail it.
 - A mount kind of your own that refuses callers itself (a login wall) declares
   the codes it raises: `x-telo-raises: [<CODE>…]` on the field whose presence
   raises them, `x-telo-catches-for: { slot, raises: [<CODE>…] }` on each catch
@@ -454,12 +451,17 @@ throws:
 - A kind whose resources are referenced from another (a route's inputs) can
   take a binding's type from whoever references it:
   `x-telo-context-from-referrer: <binding>[/<member>]` on the binding or a
-  member. Add `x-telo-context-nullable-when: { at, equals, absent }` to make it
-  nullable only where the holder's own field says so (anonymous callers
-  allowed), so an unguarded read is refused exactly where it can be null.
-- `x-telo-ref: { …, outputTo: { slot, member } }` says a slot's target output
-  feeds a member of the input of the target in a sibling slot (a credential
-  source feeding a verifier); a source that cannot fit is refused at the source.
+  member; `x-telo-context-from-path-template: "0/path"` types one as a path's
+  variables. Add `x-telo-context-nullable-when: { at, equals, absent }` to
+  make it nullable only where the holder's own field says so, so an unguarded
+  read is refused where it can be null.
+- `x-telo-ref: { …, outputTo: { slot, member } }` feeds a slot's target output
+  to a member of the sibling slot target's input.
+- `x-telo-ref: { …, inputs: /inputs, completedWhen: /prompt }`: where the
+  boolean sibling `prompt` is `true`, the target obtains the inputs the map
+  leaves unbound.
+- To reuse a closed shape's members, point at them
+  (`$ref: "telo://Self/Bound#/properties/inputs"`); never copy annotations.
 - A verifier backed by an authorization server declares `issuer`, typed from
   `Auth.Issuer`. The key is reserved: a transport reads it from the reading to
   derive discovery metadata, so write it once, never on the transport.

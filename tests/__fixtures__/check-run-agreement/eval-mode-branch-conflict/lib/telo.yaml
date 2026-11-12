@@ -1,0 +1,18 @@
+# One property an accessor in one union branch and a literal in the other.
+kind: Telo.Library
+metadata: { name: EvalModeBranchConflictLib }
+imports: { Run: ../../../../../modules/run }
+exports: { kinds: [Card] }
+---
+kind: Telo.Definition
+metadata: { name: Card, description: A card whose union branches disagree about one field. }
+extends: Run.Value
+schema:
+  type: object
+  properties:
+    content:
+      oneOf:
+        - type: object
+          properties: { type: { const: bound }, text: { x-telo-eval: accessor } }
+        - { type: object, properties: { type: { const: plain }, text: { type: string } } }
+base: { value: card }

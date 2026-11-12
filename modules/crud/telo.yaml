@@ -9,16 +9,16 @@ metadata:
     Serves a REST API over a database table from one declaration: paginated
     lists with cursor paging and a total count, filtering, sorting and
     per-value counts limited to what the data model declares, plus read one,
-    create, update and delete in parameterized SQL. Each operation has its own
-    record shape, and the model is checked against the table's columns,
-    primary key and foreign keys before the app runs.
+    create, update and delete in parameterized SQL. The same lists run over a
+    fixed SELECT with joined or computed columns, restricted by route-fixed
+    values.
 requires:
   # 0.122.0 refuses the reader's `throws:` `displayMessage` as SCHEMA_VIOLATION
   # (verified by execution); 0.125.1 reads and runs this file.
   telo: ">=0.133.0"
 lang: en
 imports: { Http: ../http-server, Sql: ../sql, DataModel: ../data-model }
-exports: { kinds: [Collection, Api] }
+exports: { kinds: [Collection, Api, Reader] }
 ---
 # The rules below are mirrored by `shapeProblems` and `tableProblems` in
 # `nodejs/src/collection-controller.ts`: keep the two alike. The filter, sort,
@@ -241,16 +241,14 @@ resources:
   - kind: Self.Reader
     metadata: { name: lister }
     connection: !cel "self.connection"
+    collection: !cel "self.collection"
     table: !cel "self.collection.table.table"
-    model: !cel "self.collection.model"
     row: !cel "self.collection.schemas.list"
-    query: !cel "self.collection.query"
   - kind: Self.Reader
     metadata: { name: reader }
     connection: !cel "self.connection"
+    collection: !cel "self.collection"
     table: !cel "self.collection.table.table"
-    model: !cel "self.collection.model"
-    row: !cel "self.collection.model"
     query:
       filters: [{ property: id, operator: eq }]
       sort: []
@@ -457,19 +455,19 @@ resources:
             when: !cel "result.rowCount > 0"
           - { status: 404, content: { application/json: { body: { error: not_found } } } }
 ---
-# Crud-internal handlers, not exported. They render through the connection's
-# dialect; the reader's contract names properties and operators, never
-# query-string keys, so the route's `inputs:` is what knows HTTP.
+# The reader renders through the connection's dialect; its contract names
+# properties and operators, never query-string keys, so the route's `inputs:`
+# is what knows HTTP. The other handlers below are crud-internal.
 kind: Telo.Definition
 metadata:
   name: Reader
   description: >-
-    Reads a database table as a collection, one page at a time: rows matching a
-    list of property filters, ordered by one property with nulls last, after an
-    opaque cursor, with the count of every match; or one property's present
-    values, each with its count, optionally narrowed by a text search over
-    declared properties. Refuses a request using a filter, sort, facet or search
-    it was not configured to accept.
+    Lists the records of a collection over a database table or one fixed
+    SELECT with joined or computed columns, a page at a time: filters, one sort
+    with nulls last, an opaque cursor, the count of every match, and one
+    property's present values with counts. Accepts only the declared filter,
+    sort, facet and search pairs, and a route can fix property values no client
+    can filter by or widen.
 capability: Telo.Invocable
 controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#ReaderController]
 throws:
@@ -532,6 +530,13 @@ inputType:
       search: { type: [string, "null"] }
       limit: { type: integer }
       cursor: { type: [string, "null"] }
+      # Equalities the caller fixes, which no client can send or widen: a client
+      # filter on a scoped property is refused.
+      scope:
+        type: object
+        additionalProperties:
+          type: [string, number, integer, boolean]
+          x-telo-value-schema-from: { from: /collection/model, member: "0#" }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -553,13 +558,31 @@ outputType:
 schema:
   type: object
   additionalProperties: false
-  required: [connection, table, model, row, query]
+  required: [connection, collection]
+  oneOf: [{ required: [table] }, { required: [select] }]
   properties:
     connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
-    table: { type: string }
-    # The types of the values a request filters by.
-    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
-    # What a request may filter, sort and facet by: nothing else is accepted.
+    collection:
+      title: Collection
+      description: What a row holds, its key, and the filters, sorts, facets and search a request may use.
+      x-telo-ref: { kind: DataModel.Collection, use: dependency }
+    table:
+      title: Table
+      description: The table rows are read from, each property in the snake_case column of its name.
+      type: string
+    select:
+      title: Select
+      description: >-
+        One fixed SELECT rows are read from, written without a trailing
+        semicolon, its columns aliased to the model's property names (quoted
+        where the database folds case). It is wrapped as a subquery, so every
+        filter, sort, count and facet reads its columns; a `!sql` value binds
+        its holes.
+      type: string
+      contentMediaType: application/sql
+      x-telo-widget: code
+      x-telo-eval: runtime
+    # What a request may filter, sort and facet by, instead of the collection's.
     query:
       type: object
       additionalProperties: false
@@ -593,7 +616,7 @@ schema:
             additionalProperties: false
             required: [property]
             properties: { property: { type: string } }
-    # What a returned row holds.
+    # What a returned row holds, instead of the model.
     row: { x-telo-ref: { kind: Telo.Type, use: schema } }
 ---
 kind: Telo.Definition

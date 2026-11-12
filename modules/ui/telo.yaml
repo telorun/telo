@@ -15,7 +15,7 @@ metadata:
 requires:
   # 0.128.0 refuses this file: it knows neither `Telo.KeyedTranslations`, which
   # declares `ui`'s own texts, nor `x-telo-text-keys`. Verified by execution.
-  telo: ">=0.133.0"
+  telo: ">=unreleased"
 lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
 # which control fits which property, what a listing's read plan requests, and how
@@ -26,7 +26,7 @@ include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml
 imports: { Font: ../font, DataModel: ../data-model, Conversation: ../conversation }
 exports:
   kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, SidebarNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, RowAction, Command, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -223,7 +223,7 @@ schema:
             scope, or a fixed value. One that holds nothing leaves the address unresolved.
           type: object
           x-telo-path-params-for: { template: /path, through: path }
-          additionalProperties: { type: [string, integer], x-telo-eval: accessor }
+          additionalProperties: { type: [string, integer, "null"], x-telo-eval: accessor }
         queryParams:
           title: Query parameters
           description: >-
@@ -235,8 +235,8 @@ schema:
           patternProperties:
             "^(?!_telo)(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)$)[A-Za-z_][A-Za-z0-9_]*$":
               x-telo-eval: accessor
-              type: [string, integer, number, boolean, array]
-              items: { type: [string, integer, number, boolean] }
+              type: [string, integer, number, boolean, "null", array]
+              items: { type: [string, integer, number, boolean, "null"] }
 ---
 # Where a request goes: as an address, but app-relative and never a page.
 kind: Telo.JsonSchema
@@ -264,7 +264,7 @@ schema:
             scope, or a fixed value. One that holds nothing leaves the request unsent.
           type: object
           x-telo-path-params-for: { template: /path }
-          additionalProperties: { type: [string, integer], x-telo-eval: accessor }
+          additionalProperties: { type: [string, integer, "null"], x-telo-eval: accessor }
         queryParams:
           title: Query parameters
           description: >-
@@ -276,8 +276,8 @@ schema:
           patternProperties:
             "^(?!_telo)(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)$)[A-Za-z_][A-Za-z0-9_]*$":
               x-telo-eval: accessor
-              type: [string, integer, number, boolean, array]
-              items: { type: [string, integer, number, boolean] }
+              type: [string, integer, number, boolean, "null", array]
+              items: { type: [string, integer, number, boolean, "null"] }
 ---
 # Which requests to read again: as a request target, except that a whole
 # segment of a literal path may be `*` (any one segment) or `**` (any number,
@@ -308,7 +308,7 @@ schema:
             scope, or a fixed value. One that holds nothing leaves the refresh out.
           type: object
           x-telo-path-params-for: { template: /path }
-          additionalProperties: { type: [string, integer], x-telo-eval: accessor }
+          additionalProperties: { type: [string, integer, "null"], x-telo-eval: accessor }
         queryParams:
           title: Query parameters
           description: >-
@@ -320,8 +320,8 @@ schema:
           patternProperties:
             "^(?!_telo)(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)$)[A-Za-z_][A-Za-z0-9_]*$":
               x-telo-eval: accessor
-              type: [string, integer, number, boolean, array]
-              items: { type: [string, integer, number, boolean] }
+              type: [string, integer, number, boolean, "null", array]
+              items: { type: [string, integer, number, boolean, "null"] }
 ---
 # How a value is entered: derived from what the model says it is (`auto`), a
 # `select` list, `options` side by side, a `toggle`, a `slider`, or typed
@@ -427,7 +427,7 @@ schema:
         label: { $ref: "#/$defs/Binding" }
         hint: { $ref: "#/$defs/Binding" }
         href: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
-        basePath: { type: string }
+        basePath: { $ref: "telo:Ui/SpecNode#/$defs/BasePath" }
         filters: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         # Sent as `limit` on every request, a label lookup's batches included.
         pageSize: { type: integer }
@@ -594,7 +594,7 @@ schema:
       properties:
         type: { const: board }
         content: { $ref: "telo:Ui/SpecNode" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
         reads: { $ref: "#/$defs/Reads" }
     # Records placed on the days of `period`, the initial one shown, over
     # `reads.span`.
@@ -604,7 +604,7 @@ schema:
         type: { const: calendar }
         period: { enum: [month, week, day] }
         content: { $ref: "telo:Ui/SpecNode" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
         reads: { $ref: "#/$defs/Reads" }
     # Records as bars along time at `scale`, over `reads.span`, in a lane per
     # group of `reads.groups` when it is present.
@@ -614,7 +614,7 @@ schema:
         type: { const: timeline }
         scale: { enum: [day, week, month, quarter] }
         content: { $ref: "telo:Ui/SpecNode" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
         reads: { $ref: "#/$defs/Reads" }
     # Root records, and a record's children under it when it is expanded,
     # over `reads.parent`.
@@ -623,7 +623,7 @@ schema:
       properties:
         type: { const: tree }
         content: { $ref: "telo:Ui/SpecNode" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
         reads: { $ref: "#/$defs/Reads" }
     # A browser component drawing the records the plan reads; each prop a
     # fixed value, or a path into `row` delivered per record.
@@ -639,7 +639,7 @@ schema:
         props:
           type: object
           additionalProperties: { $ref: "telo:Ui/SpecNode#/$defs/Binding" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
         reads: { $ref: "#/$defs/Reads" }
   $defs:
     # Three dimensions composing as a product; none of them is pages alone.
@@ -771,11 +771,12 @@ body: !cel >-
       : control == 'tags' ? (operator == null ? listed : operator == 'in')
       : control == 'none' && operator != null)))))))
 ---
-# An operation a row offers: the action run, what of the row it is sent, and
-# how a press is asked and allowed. Shared by a listing's records and a list node's;
-# `row` and the other roots its accessors read are bound where it is used.
+# An operation run with inputs bound from the data in scope: the action, what
+# it is sent, and how a press is asked and allowed. Used by a listing's and a
+# list node's rows, a `button` node and a layout's move; the roots its
+# accessors read — `row` among them — are bound where it is used.
 kind: Telo.JsonSchema
-metadata: { name: RowAction }
+metadata: { name: BoundAction }
 schema:
   type: object
   additionalProperties: false
@@ -787,13 +788,13 @@ schema:
         The operation run. Its path, input model, label, answer trees and
         `onSuccess` are used, and its fields where `prompt` asks for them; its
         own `enabled` governs its own form only.
-      x-telo-ref: { kind: Self.Action, use: dependency, inputs: /inputs }
+      x-telo-ref: { kind: Self.Action, use: dependency, inputs: /inputs, completedWhen: /prompt }
     inputs:
       title: Inputs
       description: >-
-        What the operation receives, by input property: a path into the row or
-        another root in scope, or a fixed value. Every input the action
-        requires is bound. Read when the row's button is pressed.
+        What the operation receives, by input property: a path into a root in
+        scope, or a fixed value. Every input the action requires is bound, unless
+        `prompt` asks the person for the rest. Read when the button is pressed.
       type: object
       minProperties: 1
       additionalProperties: { x-telo-eval: accessor }
@@ -808,17 +809,17 @@ schema:
     prompt:
       title: Prompt
       description: >-
-        Whether a press opens a dialog that asks for the action's fields the
-        row's `inputs` do not bind — a reason, a note — and sends them with the
-        row's values. The dialog is titled with `confirm`, or with the action's
-        label.
+        Whether a press opens a dialog asking for the action's fields `inputs`
+        does not bind — a reason, a note — sent with the bound values, so a
+        required input left unbound is entered there. The dialog is titled with
+        `confirm`, or with the action's label.
       type: boolean
       default: false
     enabled:
       title: Enabled
       description: >-
-        When the row's button can be pressed, over the row and the roots in
-        scope, and the reason shown while it cannot. Omitted, it always can.
+        When the button can be pressed, over the roots in scope, and the reason
+        shown while it cannot. Omitted, it always can.
       $ref: "telo:Ui/Enablement"
 ---
 # A command a root of a region offers to the nodes drawn over it: a chat's
@@ -958,6 +959,62 @@ schema:
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
         fill: { type: boolean, default: false }
+    # A date or a date-time: relative to now ("3 hours ago", the exact time on
+    # hover), or the absolute date or time in the viewer's language and zone.
+    - additionalProperties: false
+      required: [type, value]
+      properties:
+        type: { const: time }
+        value:
+          x-telo-eval: accessor
+          type: string
+          anyOf: [{ type: string, format: date }, { type: string, format: date-time }]
+        relative: { type: boolean, default: false }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
+    # Markdown text — CommonMark with tables and task lists, raw HTML drawn as
+    # text. `annotations` puts a control on each item the server names in it.
+    - additionalProperties: false
+      required: [type, value]
+      properties:
+        type: { const: markdown }
+        value: { x-telo-eval: accessor, type: string }
+        annotations:
+          type: object
+          additionalProperties: false
+          required: [rows, line, action]
+          properties:
+            # The items, each element `row`.
+            rows: { type: array, x-telo-eval: accessor }
+            # The 1-based source line starting the item.
+            line:
+              type: integer
+              x-telo-eval: accessor
+              x-telo-context:
+                type: object
+                properties:
+                  row: { x-telo-context-element-from-item: "0/rows", x-telo-context-eval: accessor }
+            # Shown on the item's control as a badge.
+            count:
+              type: integer
+              x-telo-eval: accessor
+              x-telo-context:
+                type: object
+                properties:
+                  row: { x-telo-context-element-from-item: "0/rows", x-telo-context-eval: accessor }
+            # The item's control, labelled with the action's label, over `row` and the roots in scope.
+            action:
+              $ref: "telo:Ui/BoundAction"
+              x-telo-context:
+                type: object
+                properties:
+                  row: { x-telo-context-element-from-item: "0/rows", x-telo-context-eval: accessor }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     # The rows of a list one answer holds, a column per value. Bounded by the
     # answer: it never pages — an unbounded set is a listing's.
     - additionalProperties: false
@@ -971,25 +1028,46 @@ schema:
           minItems: 1
           items:
             type: object
-            additionalProperties: false
-            required: [value]
+            # A value presented as its schema says (`type: value`, the default), or a time.
+            oneOf:
+              - additionalProperties: false
+                required: [value]
+                properties:
+                  type: { const: value }
+                  header: { $ref: "#/$defs/ListColumn/properties/header" }
+                  value:
+                    x-telo-eval: accessor
+                    x-telo-context:
+                      type: object
+                      properties:
+                        row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
+                  href: { $ref: "#/$defs/ListColumn/properties/href" }
+                  shown: { $ref: "#/$defs/ListColumn/properties/shown" }
+                  style: { $ref: "#/$defs/ListColumn/properties/style" }
+              - additionalProperties: false
+                required: [type, value]
+                properties:
+                  type: { const: time }
+                  header: { $ref: "#/$defs/ListColumn/properties/header" }
+                  value:
+                    x-telo-eval: accessor
+                    type: string
+                    anyOf: [{ type: string, format: date }, { type: string, format: date-time }]
+                    x-telo-context:
+                      type: object
+                      properties:
+                        row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
+                  relative: { type: boolean, default: false }
+                  href: { $ref: "#/$defs/ListColumn/properties/href" }
+                  shown: { $ref: "#/$defs/ListColumn/properties/shown" }
+                  style: { $ref: "#/$defs/ListColumn/properties/style" }
+        # Styles of each row chosen by a value of `row`.
+        rowStyle:
+          $ref: "#/$defs/StyleRule"
+          x-telo-context:
+            type: object
             properties:
-              header: { $ref: "telo:Ui/BoundText" }
-              value:
-                x-telo-eval: accessor
-                x-telo-context:
-                  type: object
-                  properties:
-                    row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
-              # Draws the value as the text of a link, over `row` and the roots the list is drawn under.
-              href:
-                $ref: "telo:Ui/Address"
-                x-telo-context:
-                  type: object
-                  properties:
-                    row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
-              # Reads the roots the list is drawn under, never `row`.
-              shown: { $ref: "telo:Ui/Condition" }
+              row: { x-telo-context-element-from-item: "0/rows", x-telo-context-eval: accessor }
         # Operations each row offers, over `row` and the roots the list is
         # drawn under. A pressed one draws its own answer in place of its
         # button.
@@ -999,9 +1077,28 @@ schema:
             type: object
             properties:
               row: { x-telo-context-element-from-item: "0/rows", x-telo-context-eval: accessor }
-          items: { $ref: "telo:Ui/RowAction" }
+          items: { $ref: "telo:Ui/BoundAction" }
         # How the row actions are drawn: `auto` measures the room.
         rowActionsDisplay: { $ref: "telo:Ui/RowActionsDisplay" }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
+    # A button running an action with inputs bound from the roots in scope —
+    # `params`, `query`, a reader's `data`: a bound action's members. Labelled
+    # with the action's label; a pressed one draws its action's answer in place
+    # of the button.
+    - additionalProperties: false
+      required: [type, action, inputs]
+      properties:
+        type: { const: button }
+        action: { $ref: "telo:Ui/BoundAction#/properties/action" }
+        inputs: { $ref: "telo:Ui/BoundAction#/properties/inputs" }
+        confirm: { $ref: "telo:Ui/BoundAction#/properties/confirm" }
+        prompt: { $ref: "telo:Ui/BoundAction#/properties/prompt" }
+        enabled: { $ref: "telo:Ui/BoundAction#/properties/enabled" }
+        # Draws the button by its text, or by a glyph with the label as its name.
+        button: { x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
@@ -1048,6 +1145,36 @@ schema:
       anyOf:
         - { $ref: "#/$defs/StyleName" }
         - { type: array, items: { $ref: "#/$defs/StyleName" } }
+    # Styles chosen by a value: `cases` keyed by its plain text, else `default`.
+    StyleRule:
+      type: object
+      additionalProperties: false
+      required: [by, cases]
+      properties:
+        by: { x-telo-eval: accessor }
+        cases: { type: object, additionalProperties: { $ref: "#/$defs/Style" } }
+        default: { $ref: "#/$defs/Style" }
+    # The members every kind of `list` column takes but `header`, each column naming them.
+    ListColumn:
+      type: object
+      properties:
+        header: { $ref: "telo:Ui/BoundText" }
+        # Draws the value as the text of a link, over `row` and the roots the list is drawn under.
+        href:
+          $ref: "telo:Ui/Address"
+          x-telo-context:
+            type: object
+            properties:
+              row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
+        # Reads the roots the list is drawn under, never `row`.
+        shown: { $ref: "telo:Ui/Condition" }
+        # Styles of the cell chosen by a value of `row`.
+        style:
+          $ref: "#/$defs/StyleRule"
+          x-telo-context:
+            type: object
+            properties:
+              row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
 ---
 # What a renderer receives: the same structural nodes with every condition
 # decided and every composite replaced by what it provides. Carries no resource
@@ -1130,7 +1257,7 @@ schema:
       properties:
         type: { const: listing }
         schema: { type: object }
-        basePath: { type: string }
+        basePath: { $ref: "#/$defs/BasePath" }
         # The property identifying a record, in item URLs and across reloads.
         key: { type: string }
         # The declared query parameters its row actions read, by name; empty
@@ -1178,7 +1305,7 @@ schema:
         delete: { type: boolean }
         # What each record offers beyond edit and delete, in order: an
         # operation run with values of the record.
-        rowActions: { type: array, items: { $ref: "#/$defs/RowAction" } }
+        rowActions: { type: array, items: { $ref: "#/$defs/BoundAction" } }
         rowActionsDisplay: { $ref: "telo:Ui/RowActionsDisplay" }
         # The related records each property with a relation is labelled from,
         # by property: read with its key under `in`, one batch per page.
@@ -1187,6 +1314,8 @@ schema:
         empty: { $ref: "#" }
         layout: { $ref: "telo:Ui/ListingLayoutSpec" }
         compact: { $ref: "telo:Ui/ListingLayoutSpec" }
+        # Present when the loaded records are read again on a timer: the interval in milliseconds.
+        reloadEvery: { type: integer, minimum: 5000 }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
@@ -1195,7 +1324,7 @@ schema:
       properties:
         type: { const: form }
         schema: { type: object }
-        basePath: { type: string }
+        basePath: { $ref: "#/$defs/BasePath" }
         fields: { type: array, items: { $ref: "#/$defs/Field" } }
         groups: { type: array, items: { $ref: "#/$defs/Group" } }
         state: { $ref: "#/$defs/State" }
@@ -1210,7 +1339,7 @@ schema:
         # The presentation's source `basePath` as written: where a `values:
         # present` field's facet request goes, and the path whose changes
         # reload its values.
-        basePath: { type: string }
+        basePath: { $ref: "#/$defs/BasePath" }
         fields:
           type: array
           items:
@@ -1232,7 +1361,7 @@ schema:
               # or the field's own option source.
               options: { $ref: "telo:Ui/OptionSourceSpec" }
               # What the filter holds until the user changes it: always a list.
-              default: { type: array, items: { type: [string, number, boolean] } }
+              default: { type: array, items: { $ref: "#/$defs/FilterValue" } }
         content: { $ref: "#" }
         # Present when the bar has a search: whether it stays outside whatever
         # the bar folds into, and the text it holds until the viewer changes it.
@@ -1263,7 +1392,7 @@ schema:
                   properties:
                     property: { type: string }
                     operator: { enum: [eq, contains, gt, gte, lt, lte, in, absent] }
-                    value: { type: array, items: { type: [string, number, boolean] } }
+                    value: { type: array, items: { $ref: "#/$defs/FilterValue" } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
@@ -1295,6 +1424,19 @@ schema:
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
+    # A date or a date-time: relative to now with the exact time beside it, or
+    # absolute in the viewer's language and zone. `present` is what the schema
+    # it reads says; a value that is no date is drawn as text.
+    - additionalProperties: false
+      required: [type, value, relative, fill]
+      properties:
+        type: { const: time }
+        value: { $ref: "#/$defs/Binding" }
+        relative: { type: boolean }
+        present: { type: object }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     - additionalProperties: false
       required: [type, rows, columns, rowActionsDisplay, fill]
       properties:
@@ -1305,19 +1447,55 @@ schema:
           type: array
           items:
             type: object
-            additionalProperties: false
-            required: [header, value, labels]
-            properties:
-              header: { $ref: "#/$defs/NodeText" }
-              value: { $ref: "#/$defs/Binding" }
-              labels: { $ref: "#/$defs/Labels" }
-              # The model's own description of the value.
-              present: { type: object }
-              # Present when the value is drawn as a link.
-              href: { $ref: "#/$defs/Address" }
-              shown: { $ref: "#/$defs/Shown" }
-        rowActions: { type: array, items: { $ref: "#/$defs/RowAction" } }
+            oneOf:
+              # A value, presented as its schema says.
+              - additionalProperties: false
+                required: [header, value, labels]
+                properties:
+                  header: { $ref: "#/$defs/NodeText" }
+                  value: { $ref: "#/$defs/Binding" }
+                  labels: { $ref: "#/$defs/Labels" }
+                  # The model's own description of the value.
+                  present: { type: object }
+                  # Present when the value is drawn as a link.
+                  href: { $ref: "#/$defs/Address" }
+                  shown: { $ref: "#/$defs/Shown" }
+                  style: { $ref: "#/$defs/StyleRule" }
+              # A date or a date-time, drawn as the `time` node draws one.
+              - additionalProperties: false
+                required: [type, header, value, relative]
+                properties:
+                  type: { const: time }
+                  header: { $ref: "#/$defs/NodeText" }
+                  value: { $ref: "#/$defs/Binding" }
+                  relative: { type: boolean }
+                  present: { type: object }
+                  href: { $ref: "#/$defs/Address" }
+                  shown: { $ref: "#/$defs/Shown" }
+                  style: { $ref: "#/$defs/StyleRule" }
+        rowStyle: { $ref: "#/$defs/StyleRule" }
+        rowActions: { type: array, items: { $ref: "#/$defs/BoundAction" } }
         rowActionsDisplay: { $ref: "telo:Ui/RowActionsDisplay" }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    # A button running its action with the bound inputs, labelled with the
+    # action's label: a bound action with how the button is drawn.
+    - additionalProperties: false
+      required: [type, action, inputs, button, fill]
+      properties:
+        type: { const: button }
+        action: { $ref: "#/$defs/Action" }
+        inputs: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
+        confirm: { $ref: "#/$defs/NodeText" }
+        # Present when the press opens a dialog entering these fields first.
+        prompt:
+          type: object
+          additionalProperties: false
+          required: [fields]
+          properties: { fields: { type: array, items: { $ref: "#/$defs/Field" } } }
+        enabled: { $ref: "#/$defs/Enablement" }
+        button: { $ref: "telo:Ui/ButtonDisplaySpec" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
@@ -1336,6 +1514,8 @@ schema:
         loading: { $ref: "#" }
         failure: { $ref: "#" }
         reloadOn: { type: array, items: { enum: [focus, unauthorized] } }
+        # Present when the record is read again on a timer: the interval in milliseconds.
+        reloadEvery: { type: integer, minimum: 5000 }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
@@ -1363,10 +1543,21 @@ schema:
         fill: { type: boolean }
     # Markdown text: CommonMark with tables and task lists, raw HTML drawn as text.
     - additionalProperties: false
-      required: [type, text, fill]
+      required: [type, value, fill]
       properties:
         type: { const: markdown }
-        text: { $ref: "#/$defs/Binding" }
+        value: { $ref: "#/$defs/Binding" }
+        # Present when items of the text carry a control: each element of
+        # `rows` is `row`, `line` its 1-based source line, `count` its badge.
+        annotations:
+          type: object
+          additionalProperties: false
+          required: [rows, line, action]
+          properties:
+            rows: { $ref: "#/$defs/Binding" }
+            line: { $ref: "#/$defs/Binding" }
+            count: { $ref: "#/$defs/Binding" }
+            action: { $ref: "#/$defs/BoundAction" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
@@ -1481,6 +1672,18 @@ schema:
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
   $defs:
+    # Where a collection's list endpoint is: a literal app-relative path, or a
+    # template whose `{name}` segments `pathParams` fills, resolved in the
+    # browser; one that holds nothing sends no request.
+    BasePath:
+      anyOf:
+        - { type: string }
+        - type: object
+          additionalProperties: false
+          required: [path, pathParams]
+          properties:
+            path: { type: string }
+            pathParams: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
     # A `link` node, and each item of a `menu`.
     Link:
       type: object
@@ -1593,9 +1796,9 @@ schema:
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
-    # An operation a row offers: the action, what of the row it sends, and how
-    # a press is asked and allowed. The action's own `enabled` is its form's.
-    RowAction:
+    # An operation run with bound inputs: the action, what it sends, and how a
+    # press is asked and allowed. The action's own `enabled` is its form's.
+    BoundAction:
       type: object
       additionalProperties: false
       required: [action, inputs]
@@ -1751,6 +1954,21 @@ schema:
           additionalProperties: false
           required: [value]
           properties: { value: {} }
+    # A value a filter holds: a plain one, or one relative to now.
+    FilterValue:
+      anyOf:
+        - { type: [string, number, boolean] }
+        - { $ref: "#/$defs/RelativeValue" }
+    # Now moved by `offset` units in the viewer's time zone, resolved when a
+    # listing reads its first page: the instant for a `date-time` filter, that
+    # moment's date for a `date` one.
+    RelativeValue:
+      type: object
+      additionalProperties: false
+      required: [unit, offset]
+      properties:
+        unit: { enum: [minute, hour, day, week, month, year] }
+        offset: { type: integer }
     StyleRule:
       type: object
       additionalProperties: false
@@ -3196,9 +3414,15 @@ schema:
       description: >-
         The page's address under the application's mount: `/` followed by
         anything but `/` or `\`, holding no control character, and not under
-        `/_telo`.
+        `/_telo`. A segment written exactly `{name}` is a variable matching one
+        non-empty segment, read as `params.<name>`; a brace anywhere else, or a
+        name given twice, is refused.
       $ref: "telo://Self/AppRelativeReference"
-      not: { pattern: "^/_telo(/|$)" }
+      pattern: "^(/([^/{}]*|\\{(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)\\})[A-Za-z_][A-Za-z0-9_]*\\}))*$"
+      not:
+        anyOf:
+          - { pattern: "^/_telo(/|$)" }
+          - { pattern: "\\{([A-Za-z_][A-Za-z0-9_]*)\\}.*\\{\\1\\}" }
     title:
       title: Title
       description: >-
@@ -3226,7 +3450,7 @@ schema:
       description: >-
         The page's nodes, top to bottom. Each node's `when:` and text values
         may read the request, evaluated per request; a `shown` condition and a
-        `value` or `list` node read `query` in the browser.
+        `value` or `list` node read `query` and `params` in the browser.
       type: array
       items: { $ref: "telo://Self/Node" }
       x-telo-context:
@@ -3245,6 +3469,7 @@ schema:
             type: object
             properties: {}
             additionalProperties: false
+          params: { x-telo-context-eval: accessor, x-telo-context-from-path-template: "0/path" }
 ---
 kind: Telo.Definition
 metadata:
@@ -3264,8 +3489,12 @@ schema:
   properties:
     content:
       title: Content
-      description: The node this view stands for.
+      description: The node this view stands for, over the placing page's `params`.
       $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
 ---
 kind: Telo.Definition
 metadata:
@@ -3274,8 +3503,9 @@ metadata:
     Loads a record when a page is drawn and shows content built from it: an
     account panel, a sign-in gate, a context card over one API answer. Draws a
     loading state before the first answer and a failure state for a refused
-    read, reloads on window focus or when a request inside answers 401, and
-    passes declared page query parameters to the read.
+    read, reloads on window focus, on a timer or when a request inside answers
+    401, and fills the read from the page's query parameters and path
+    variables.
 capability: Telo.Provider
 extends: Self.Composite
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DataController]
@@ -3316,22 +3546,24 @@ schema:
       title: Source
       description: >-
         Where the record is read from with `GET`: an app-relative path, or a
-        path template filled from `query` with query parameters appended. A
-        value that holds nothing leaves the read unsent.
+        path template filled from `query` and `params` with query parameters
+        appended. A value that holds nothing leaves the read unsent.
       $ref: "telo://Self/RequestTarget"
       x-telo-context:
         type: object
         properties:
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     content:
       title: Content
-      description: What is drawn once an answer is in, over `data` and `query`.
+      description: What is drawn once an answer is in, over `data`, `query` and `params`.
       $ref: "telo://Self/Node"
       x-telo-context:
         type: object
         properties:
           data: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     loading:
       title: Loading
       description: What is drawn before the first answer. Omitted, the muted text `loading`.
@@ -3340,10 +3572,12 @@ schema:
         type: object
         properties:
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     failure:
       title: Failure
       description: >-
-        What is drawn when the read does not succeed, over `error` and `query`.
+        What is drawn when the read does not succeed, over `error`, `query`
+        and `params`.
         Omitted, the error's code and message.
       $ref: "telo://Self/Node"
       x-telo-context:
@@ -3351,6 +3585,7 @@ schema:
         properties:
           error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     reloadOn:
       title: Reload on
       description: >-
@@ -3360,6 +3595,12 @@ schema:
       type: array
       uniqueItems: true
       items: { enum: [focus, unauthorized] }
+    reloadEvery:
+      title: Reload every
+      description: >-
+        How often the record is read again while it is shown, at least `5s`.
+        Omitted, it is not read on a timer.
+      x-telo-type: { name: Telo.Duration, minimum: 5s }
 ---
 # A collection as the browser reaches it: what it is and where its list
 # endpoint is. It carries no relations, so an option source reading it can
@@ -3370,8 +3611,9 @@ metadata:
   description: >-
     Where a browser reads a collection of records from: the declared
     collection — its record shape, key, accepted filters, sort orders and
-    facets — and the app-relative URL of its list endpoint. Written once and
-    used by every screen, filter and picker reading those records.
+    facets — and the app-relative URL of its list endpoint, optionally filled
+    from the page's path variables. Written once and used by every screen,
+    filter and picker reading those records.
 capability: Telo.Provider
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionSourceController]
 schema:
@@ -3389,8 +3631,33 @@ schema:
       title: Base path
       description: >-
         App-relative URL of the collection: `/` followed by anything but `/`
-        or `\`, holding no control character.
-      $ref: "telo://Self/AppRelativeReference"
+        or `\`, holding no control character — a literal, or a path template
+        whose `{name}` segments `pathParams` fills from `params` and `query`.
+      anyOf:
+        - { type: string, pattern: "^[^{}]*$", $ref: "telo://Self/AppRelativeReference" }
+        - type: object
+          additionalProperties: false
+          required: [path, pathParams]
+          properties:
+            path:
+              title: Path
+              description: The app-relative path template.
+              type: string
+              $ref: "telo://Self/AppRelativeReference"
+            pathParams:
+              title: Path parameters
+              description: >-
+                The value of each `{name}` segment of `path`: a path into
+                `params` or `query`, or a fixed value. One that holds nothing
+                sends no request.
+              type: object
+              x-telo-path-params-for: { template: /path }
+              additionalProperties: { type: [string, integer, "null"], x-telo-eval: accessor }
+      x-telo-context:
+        type: object
+        properties:
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+          query: { x-telo-context-eval: accessor, x-telo-context-from-referrer: query }
 ---
 kind: Telo.Definition
 metadata:
@@ -3623,8 +3890,13 @@ schema:
     aside:
       title: Aside
       description: >-
-        What is drawn beside the content. It stays mounted while folded away.
+        What is drawn beside the content, over the placing page's `params`. It
+        stays mounted while folded away.
       type: object
+      x-telo-context:
+        type: object
+        properties:
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
       additionalProperties: false
       required: [content]
       properties:
@@ -3644,8 +3916,12 @@ schema:
           $ref: "telo://Self/Node"
     content:
       title: Content
-      description: What the aside sits beside.
+      description: What the aside sits beside, over the placing page's `params`.
       $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     collapse:
       title: Collapse
       description: Lets the viewer fold the aside away. Omitted, it never folds on a wide viewport.
@@ -3718,6 +3994,11 @@ schema:
       title: Source
       description: Where the collection's records are read from.
       x-telo-ref: { kind: Self.CollectionSource, use: dependency }
+      x-telo-context:
+        type: object
+        properties:
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+          query: { x-telo-context-eval: accessor, x-telo-context-from-referrer: query }
     relations:
       title: Relations
       description: >-
@@ -3819,8 +4100,8 @@ metadata:
     Records of a REST collection read page by page with a cursor — a pager,
     "load more" or infinite scroll — sortable by the viewer, with related
     records shown by name, create, edit and delete forms, row actions,
-    conditional row styling and an empty state. Drawn by a layout, a table
-    unless another is chosen, with another below a breakpoint.
+    conditional row styling, an empty state and reload on a timer. Drawn by a
+    layout, a table unless another is chosen, with another below a breakpoint.
 capability: Telo.Provider
 extends: Self.Composite
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ListingController]
@@ -3836,6 +4117,11 @@ schema:
         The collection shown and how its related records are labelled. The
         viewer sorts by what its collection lists under `query.sort`.
       x-telo-ref: { kind: Self.CollectionPresentation, use: dependency }
+      x-telo-context:
+        type: object
+        properties:
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     model:
       title: Model
       description: The shape of one record.
@@ -3844,13 +4130,14 @@ schema:
       title: Filters
       description: >-
         Equalities applied to every request, keyed by model property: a fixed
-        value, or a path into `query`. Each is a filter the collection accepts
+        value, or a path into `query` or `params`. Each is a filter the collection accepts
         with `eq`. While one holds nothing, the listing reads nothing.
       type: object
       x-telo-context:
         type: object
         properties:
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
       additionalProperties:
         type: [string, number, integer, boolean]
         x-telo-eval: accessor
@@ -3880,6 +4167,13 @@ schema:
         end (`scroll`). Both layouts follow it.
       enum: [pages, more, scroll]
       default: pages
+    reloadEvery:
+      title: Reload every
+      description: >-
+        How often the loaded records are read again while shown, at least `5s`,
+        keeping the pages loaded, the scroll and open forms. Omitted, they are
+        not read on a timer.
+      x-telo-type: { name: Telo.Duration, minimum: 5s }
     sort:
       title: Sort
       description: >-
@@ -3999,7 +4293,7 @@ schema:
       title: Row actions
       description: >-
         Operations each record offers, in order, drawn before edit and delete,
-        over `row` and `query`. A pressed one draws its action's answer in
+        over `row`, `query` and `params`. A pressed one draws its action's answer in
         place of its button, kept while that record is shown.
       type: array
       x-telo-context:
@@ -4007,7 +4301,8 @@ schema:
         properties:
           row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
-      items: { $ref: "telo://Self/RowAction" }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+      items: { $ref: "telo://Self/BoundAction" }
     rowActionsDisplay:
       title: Row actions display
       description: >-
@@ -4033,6 +4328,7 @@ schema:
         properties:
           row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     compact:
       title: Compact
       description: >-
@@ -4044,6 +4340,7 @@ schema:
         properties:
           row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
   $defs:
     StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
@@ -4051,13 +4348,6 @@ schema:
         - { $ref: "#/$defs/StyleName" }
         - { type: array, items: { $ref: "#/$defs/StyleName" } }
   x-telo-resource-rules:
-    - resolve: [/model]
-      in: /filters
-      condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && key in (has(self.model.schema) ? self.model.schema : self.model).properties"
-      code: UI_SOURCE_FILTER_UNKNOWN_PROPERTY
-      message: >-
-        filters its source by a property the row model does not declare. Use a
-        property of `model`, or add this one to it.
     - resolve: [/presentation/source/collection]
       in: /filters
       condition: !cel >-
@@ -4147,14 +4437,18 @@ schema:
             x-telo-eval: accessor
             x-telo-context:
               type: object
-              properties: { row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor } }
+              properties:
+                row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+                params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
           href:
             title: Link
-            description: Draws the value as the text of a link, an address over `row`.
+            description: Draws the value as the text of a link, an address over `row` and `params`.
             $ref: "telo://Self/Address"
             x-telo-context:
               type: object
-              properties: { row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor } }
+              properties:
+                row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+                params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
           cell:
             title: Cell
             description: A component drawn in place of a value.
@@ -4214,7 +4508,7 @@ schema:
     content:
       title: Content
       description: >-
-        What is drawn for each record, over `row` and `query`. Omitted, the
+        What is drawn for each record, over `row`, `query` and `params`. Omitted, the
         record's values, one per model property but the key.
       $ref: "telo://Self/Node"
       x-telo-context:
@@ -4222,6 +4516,7 @@ schema:
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
 ---
 kind: Telo.Definition
 metadata:
@@ -4240,7 +4535,7 @@ schema:
     content:
       title: Content
       description: >-
-        What is drawn for each record, over `row` and `query`. Omitted, the
+        What is drawn for each record, over `row`, `query` and `params`. Omitted, the
         record's values, one per model property but the key.
       $ref: "telo://Self/Node"
       x-telo-context:
@@ -4248,6 +4543,7 @@ schema:
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
     size:
       title: Size
       description: How wide each card is drawn.
@@ -4280,7 +4576,7 @@ schema:
     content:
       title: Content
       description: >-
-        What is drawn for each record, over `row` and `query`. Omitted, the
+        What is drawn for each record, over `row`, `query` and `params`. Omitted, the
         record's values, one per model property but the key.
       $ref: "telo://Self/Node"
       x-telo-context:
@@ -4288,6 +4584,7 @@ schema:
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
     move:
       title: Move
       description: >-
@@ -4295,13 +4592,14 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/RowAction"
+      $ref: "telo://Self/BoundAction"
       x-telo-context:
         type: object
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
   x-telo-referrer-rules:
     - referrer: Self.Listing
       resolve: [/model]
@@ -4393,7 +4691,7 @@ schema:
     content:
       title: Content
       description: >-
-        What is drawn for each record, over `row` and `query`. Omitted, the
+        What is drawn for each record, over `row`, `query` and `params`. Omitted, the
         record's values, one per model property but the key.
       $ref: "telo://Self/Node"
       x-telo-context:
@@ -4401,6 +4699,7 @@ schema:
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
     move:
       title: Move
       description: >-
@@ -4408,13 +4707,14 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/RowAction"
+      $ref: "telo://Self/BoundAction"
       x-telo-context:
         type: object
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
   x-telo-referrer-rules:
     - referrer: Self.Listing
       resolve: [/model]
@@ -4490,7 +4790,7 @@ schema:
     content:
       title: Content
       description: >-
-        What is drawn for each record, over `row` and `query`. Omitted, the
+        What is drawn for each record, over `row`, `query` and `params`. Omitted, the
         record's values, one per model property but the key.
       $ref: "telo://Self/Node"
       x-telo-context:
@@ -4498,6 +4798,7 @@ schema:
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
     move:
       title: Move
       description: >-
@@ -4505,13 +4806,14 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/RowAction"
+      $ref: "telo://Self/BoundAction"
       x-telo-context:
         type: object
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
   x-telo-referrer-rules:
     - referrer: Self.Listing
       resolve: [/model]
@@ -4630,7 +4932,7 @@ schema:
     content:
       title: Content
       description: >-
-        What is drawn for each record, over `row` and `query`. Omitted, the
+        What is drawn for each record, over `row`, `query` and `params`. Omitted, the
         record's values, one per model property but the key.
       $ref: "telo://Self/Node"
       x-telo-context:
@@ -4638,6 +4940,7 @@ schema:
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
     move:
       title: Move
       description: >-
@@ -4645,13 +4948,14 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/RowAction"
+      $ref: "telo://Self/BoundAction"
       x-telo-context:
         type: object
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
   x-telo-referrer-rules:
     - referrer: Self.Listing
       resolve: [/model]
@@ -4720,6 +5024,7 @@ schema:
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
       additionalProperties: { x-telo-eval: accessor }
     groups:
       title: Groups
@@ -4745,13 +5050,14 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/RowAction"
+      $ref: "telo://Self/BoundAction"
       x-telo-context:
         type: object
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+          params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
   x-telo-referrer-rules:
     - referrer: Self.Listing
       resolve: [/model]
@@ -5455,11 +5761,13 @@ schema:
           default:
             title: Default
             description: >-
-              What the filter holds until the viewer changes it: one value, or a
-              list of them under `in`.
+              What the filter holds until the viewer changes it: one value, a
+              list of them under `in`, or a time relative to now on a `date` or
+              `date-time` filter.
             anyOf:
               - { type: [string, number, boolean] }
               - { type: array, items: { type: [string, number, boolean] } }
+              - { $ref: "#/$defs/RelativeValue" }
     presets:
       title: Presets
       description: >-
@@ -5493,6 +5801,7 @@ schema:
                   anyOf:
                     - { type: [string, number, boolean] }
                     - { type: array, items: { type: [string, number, boolean] } }
+                    - { $ref: "#/$defs/RelativeValue" }
     policy:
       title: Policy
       description: >-
@@ -5501,8 +5810,26 @@ schema:
       $ref: "telo://Self/FilterPolicy"
     content:
       title: Content
-      description: The node the filters apply to.
+      description: The node the filters apply to, over the placing page's `params`.
       $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+  $defs:
+    RelativeValue:
+      title: Relative to now
+      description: >-
+        Now moved by `offset` units in the viewer's time zone, resolved when a
+        listing reads its first page: the instant for a `date-time` filter,
+        that moment's date for a `date` one. Legal with `eq`, `gt`, `gte`,
+        `lt` and `lte`.
+      type: object
+      additionalProperties: false
+      required: [unit, offset]
+      properties:
+        unit: { title: Unit, enum: [minute, hour, day, week, month, year] }
+        offset: { title: Offset, description: Units to move by, negative into the past., type: integer }
   x-telo-resource-rules:
     - resolve: [/presentation/source/collection]
       in: /fields
@@ -5556,10 +5883,14 @@ schema:
       in: /fields
       condition: !cel >-
         !('default' in this)
-        || ((!(('control' in this && this.control == 'toggle') || this.operator == 'absent') || type(this.default) != bool || this.default != false)
+        || cel.bind(m, (has(self.presentation.source.collection.model.schema) ? self.presentation.source.collection.model.schema : self.presentation.source.collection.model),
+          type(this.default) == map
+          ? this.operator in ['eq', 'gt', 'gte', 'lt', 'lte']
+            && (!has(m.properties) || !(this.property in m.properties)
+                || ('format' in m.properties[this.property] && m.properties[this.property].format in ['date', 'date-time']))
+          : ((!(('control' in this && this.control == 'toggle') || this.operator == 'absent') || type(this.default) != bool || this.default != false)
         && (this.operator == 'absent' ? type(this.default) == bool
-        : cel.bind(m, (has(self.presentation.source.collection.model.schema) ? self.presentation.source.collection.model.schema : self.presentation.source.collection.model),
-          !has(m.properties) || !(this.property in m.properties)
+        : (!has(m.properties) || !(this.property in m.properties)
           || ((type(this.default) == list) == (this.operator == 'in')
               && [m.properties[this.property]].all(p,
                  (type(this.default) == list ? this.default : [this.default]).all(v,
@@ -5569,14 +5900,15 @@ schema:
                      || (p.type == 'string' && type(v) == string)
                      || (p.type == 'boolean' && type(v) == bool)
                      || (p.type == 'integer' && (type(v) == int || (type(v) == double && double(int(v)) == v)))
-                     || (p.type == 'number' && (type(v) == int || type(v) == double)))))))))
+                     || (p.type == 'number' && (type(v) == int || type(v) == double))))))))))
       code: UI_FILTER_DEFAULT_INVALID
       message: >-
         declares a default its filter cannot hold: a value that is not of the
         property's type or not one of its `enum`, a list without the `in`
         operator, a single value with it, anything but `true` under `absent`,
-        or `false` for a filter entered with a `toggle`, which holds true or
-        nothing.
+        `false` for a filter entered with a `toggle`, which holds true or
+        nothing, or a relative value on a filter that is not a `date` or
+        `date-time` one with `eq`, `gt`, `gte`, `lt` or `lte`.
     # The one fit predicate every control rule reads, over the filter's operator.
     - resolve: [/presentation/source/collection, /presentation/source/collection/model]
       in: /fields
@@ -5608,7 +5940,11 @@ schema:
       condition: !cel >-
         cel.bind(m, (has(self.presentation.source.collection.model.schema) ? self.presentation.source.collection.model.schema : self.presentation.source.collection.model),
         this.values.all(e,
-          (type(e.value) != bool || e.value != false || (e.operator != 'absent' && (!has(self.fields)
+          type(e.value) == map
+          ? e.operator in ['eq', 'gt', 'gte', 'lt', 'lte']
+            && (!has(m.properties) || !(e.property in m.properties)
+                || ('format' in m.properties[e.property] && m.properties[e.property].format in ['date', 'date-time']))
+          : (type(e.value) != bool || e.value != false || (e.operator != 'absent' && (!has(self.fields)
            || !self.fields.exists(f, f.property == e.property && f.operator == e.operator && 'control' in f && f.control == 'toggle'))))
           && (e.operator == 'absent' ? type(e.value) == bool
           : (!has(m.properties) || !(e.property in m.properties)
@@ -5626,8 +5962,10 @@ schema:
       message: >-
         sets a value its filter cannot hold: one that is not of the property's
         type or not one of its `enum`, a list without the `in` operator, a
-        single value with it, anything but `true` under `absent`, or `false`
-        for a filter entered with a `toggle`, which holds true or nothing.
+        single value with it, anything but `true` under `absent`, `false` for a
+        filter entered with a `toggle`, which holds true or nothing, or a
+        relative value on a filter that is not a `date` or `date-time` one with
+        `eq`, `gt`, `gte`, `lt` or `lte`.
     # One rule for both cases, since a code names one rule.
     - resolve: [/presentation/source/collection]
       condition: !cel >-
@@ -6133,18 +6471,23 @@ schema:
         Where the options are read from: `value` is filtered with `in`,
         `search` and every filter are filters its collection lists.
       x-telo-ref: { kind: Self.CollectionSource, use: dependency }
+      x-telo-context:
+        type: object
+        properties:
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     filters:
       title: Filters
       description: >-
         Equalities applied to every request, keyed by model property: a fixed
-        value, or a path into the form's `values`. While one holds nothing,
-        nothing is read or offered; when one changes, the options are read
-        again.
+        value, or a path into the form's `values` or the page's `params`. While
+        one holds nothing, nothing is read or offered; when one changes, the
+        options are read again.
       type: object
       x-telo-context:
         type: object
         properties:
           values: { x-telo-context-from-referrer: values, x-telo-context-eval: accessor }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
       additionalProperties:
         type: [string, number, integer, boolean]
         x-telo-eval: accessor
@@ -6170,13 +6513,6 @@ schema:
         property: { title: Property, type: string }
         operator: { title: Operator, enum: [eq, contains, gt, gte, lt, lte, in] }
   x-telo-resource-rules:
-    - resolve: [/model]
-      in: /filters
-      condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && key in (has(self.model.schema) ? self.model.schema : self.model).properties"
-      code: UI_SOURCE_FILTER_UNKNOWN_PROPERTY
-      message: >-
-        filters its source by a property the option model does not declare.
-        Use a property of `model`, or add this one to it.
     - resolve: [/source/collection]
       in: /filters
       condition: !cel >-

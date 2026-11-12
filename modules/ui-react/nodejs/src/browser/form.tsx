@@ -1,10 +1,11 @@
 import { useContext, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { resolveBasePath, unresolvedFailure, type BasePath } from "./base-path.js";
 import { fillAttribute, styleAttribute } from "./bindings.js";
 import { useHost, useHostStore, type HostLocation, type UnsavedGuard } from "./host.js";
 import { ErrorNode, type SpecNode } from "./nodes.js";
 import { useRecordEntry, type EntrySpec } from "./record-entry.js";
 import { Fields, refusalOf, sameValues, type EnteredValues } from "./record-fields.js";
-import { RendererContext } from "./renderer-context.js";
+import { RendererContext, RootsContext, underMount } from "./renderer-context.js";
 import { useSay } from "./texts.js";
 import { networkError, responseError, type ErrorSpec, errorSpec } from "./ui-error.js";
 
@@ -15,7 +16,8 @@ export interface FormTarget {
 
 interface FormProps {
   node: SpecNode;
-  target: FormTarget;
+  /** Where the record is sent; a `POST` to the form's own `basePath` when not given. */
+  target?: FormTarget;
   /** The record being edited. Given, the form sends back what it held: its
    *  model properties with each field's entered value over them. */
   initial?: Record<string, unknown>;
@@ -39,13 +41,18 @@ interface FormProps {
 /**
  * A form over a model: checked in the page against the model's own rules
  * before anything is sent, then sent; the fields the API refuses are marked
- * where they are.
+ * where they are. Its `basePath` — what a save announces — resolves over the
+ * roots in scope; one that does not resolve is drawn as its failure, and
+ * nothing is sent.
  */
-export function Form({ node, target, initial, afterSubmit = "again", shownAt, onUnsaved, onBusy, onSaved, onDone, onCancel }: FormProps) {
+export function Form({ node, target: given, initial, afterSubmit = "again", shownAt, onUnsaved, onBusy, onSaved, onDone, onCancel }: FormProps) {
   const host = useHost();
   const store = useHostStore();
   const say = useSay();
   const { prefix } = useContext(RendererContext);
+  const base = resolveBasePath(node.basePath as BasePath, useContext(RootsContext), "'form' basePath");
+  const unresolved = unresolvedFailure(base);
+  const target: FormTarget | undefined = given ?? (base.ok ? { method: "POST", url: underMount(prefix, base.address) } : undefined);
   const id = useId();
   const spec = node as unknown as EntrySpec;
   const { schema, fields } = spec;
@@ -100,6 +107,7 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
     for (const field of fields) if (!shown.includes(field)) delete held[field.property];
     const checked = entry.check(held);
     if (!checked.ok) return setState("error");
+    if (!target || !base.ok) return setState("error");
     setState("submitting");
     let answered: unknown;
     try {
@@ -123,8 +131,8 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
     }
     setState("idle");
     release();
-    if (answered !== null && typeof answered === "object" && !Array.isArray(answered)) store.written(node.basePath, answered as Record<string, unknown>);
-    host.notifyChanged(node.basePath);
+    if (answered !== null && typeof answered === "object" && !Array.isArray(answered)) store.written(base.address, answered as Record<string, unknown>);
+    host.notifyChanged(base.address);
     // A write to one record is a change to the record's own address too.
     if (target.method === "PUT") host.notifyChanged(target.url.startsWith(prefix) ? target.url.slice(prefix.length) : target.url);
     onSaved?.();
@@ -134,9 +142,10 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
     entry.reset(next);
   };
 
+  const shownFailure = unresolved ?? failure;
   return (
     <form data-telo-part="form" autoComplete="off" data-state={state} data-dirty={dirty ? "true" : undefined} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)} noValidate onSubmit={submit}>
-      {failure && <ErrorNode error={failure} />}
+      {shownFailure && <ErrorNode error={shownFailure} />}
       <Fields id={id} schema={schema} fields={shown} groups={spec.groups} values={values} roots={entry.roots} errors={entry.errors} onChange={entry.change} />
       {entry.formError && (
         <div data-telo-part="form-error" role="alert">

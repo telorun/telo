@@ -10,10 +10,11 @@ layout. How records are drawn is [the layout's](listing-layouts.md).
 | --- | --- | --- |
 | `presentation` | required | the [`Ui.CollectionPresentation`](collection-presentation.md) shown, `!ref` or inline |
 | `model` | required | the shape of one record: a `!ref` to a `Telo.JsonSchema`, or one inline |
-| `filters` | | property → a fixed value or a path into `query`: equalities applied to every request, each a filter the collection accepts with `eq` and typed against its model property; while one holds nothing the listing reads nothing |
+| `filters` | | property → a fixed value or a path into `query` or [`params`](page.md#params): equalities applied to every request, each a filter the collection accepts with `eq` and typed against its model property — a key the model does not declare is refused by `telo check` (`SCHEMA_VIOLATION`); while one holds nothing the listing reads nothing |
 | `query` | none | the page query parameters its filters and row actions read, a [`Ui.QueryParameters`](conditions.md); read as `query` |
 | `pageSize` | `25` | records per read, 1–100, sent as `limit` |
 | `paging` | `pages` | how further pages are reached: [`pages`, `more` or `scroll`](#paging) |
+| `reloadEvery` | none | how often the records are [read again on a timer](#timed-reload), a duration of at least `5s` |
 | `sort` | the collection's order, chosen by the viewer | [the order the records start in and whether the viewer may change it](#sorting): `{ by?: { property, direction? }, choosable? }` |
 | `show` | `{ count: true }` | [what is shown beside the records](#the-count): `{ count? }` |
 | `rowStyle` | | a [style rule](nodes.md#style-rules) for the record's element in every layout: a table row, a card, an event |
@@ -189,9 +190,9 @@ The object is the only spelling: `create: !ref todoForm` is refused
 ## Row actions
 
 `rowActions` puts buttons on every record, in the order written, before edit
-and delete. Each is a [`Ui.RowAction`](action.md#row-actions) running a
-[`Ui.Action`](action.md) with values of that record and of the listing's
-declared `query`:
+and delete. Each is a [`Ui.BoundAction`](action.md#bound-actions) running a
+[`Ui.Action`](action.md) with values of that record, of the listing's
+declared `query` and of the page's [`params`](page.md#params):
 
 ```yaml
 rowActions:
@@ -205,13 +206,13 @@ rowActions:
 | Field | | |
 | --- | --- | --- |
 | `action` | required | the [`Ui.Action`](action.md) run, `!ref` or inline |
-| `inputs` | required, at least one | the record sent, by input property: a path into `row` or `query`, or a fixed value |
+| `inputs` | required, at least one | the record sent, by input property: a path into `row`, `query` or `params`, or a fixed value |
 | `confirm` | | a question asked first; left out, a press runs the action at once, unless `prompt` opens a dialog |
 | `prompt` | `false` | whether a press opens a dialog that [asks for more](#asking-for-more) before the action is sent |
-| `enabled` | always | when the record's button can be pressed, over `row` and `query`, and why not; the action's own `enabled` does not govern it |
+| `enabled` | always | when the record's button can be pressed, over `row`, `query` and `params`, and why not; the action's own `enabled` does not govern it |
 
 The button shows the action's `label` and sends
-[its request](action-contract.md#from-a-row) to its `request.target`, filled from the inputs. Every
+[its request](action-contract.md#from-bound-inputs) to its `request.target`, filled from the inputs. Every
 property the action's `inputModel` requires is bound here. A record takes no
 press while its last is pending or queued. Once the operation succeeds, the
 listings whose collection source has the same `basePath` reload, the action's
@@ -244,11 +245,12 @@ rowActions:
   draws it.
 - The record sent is what the dialog entered with the record's `inputs` over
   it. A field left empty is left out.
-- What is entered is checked in the page against the input model before
-  anything is sent, as a form's is.
-- `inputs` still binds every property the input model requires, so a prompted
-  field is one the model leaves optional. An operation that needs one answers
-  with a 400 naming it, and the dialog shows that on the field.
+- What is entered is checked in the page, with the bound values, against the
+  whole input model before anything is sent, as a form's is: a required field
+  left empty blocks sending.
+- With `prompt: true`, a property the input model requires may be left unbound
+  for the person to enter; without it, `inputs` binds every one. A 400 the
+  operation answers is shown on the dialog's fields.
 - With every field of the action bound by the record, the dialog holds none and
   is a confirmation.
 
@@ -258,7 +260,7 @@ names that model "the declared inputType" of the action:
 
 | Written | Reported |
 | --- | --- |
-| a key a closed input model does not declare, a required input left out, a fixed value of the wrong type | `CONTRACT_INPUTS_MISMATCH` |
+| a key a closed input model does not declare, a required input left out by an entry that does not prompt, a fixed value of the wrong type | `CONTRACT_INPUTS_MISMATCH` |
 | `!cel "row.<name>"` for a property the row model does not declare, `query.<name>` for a parameter the listing does not declare | `CEL_UNKNOWN_FIELD` |
 | a path whose type the input property does not take (`row.name`, a string, for an integer `id`) | `CEL_TYPE_ERROR` |
 | anything but a plain path (`!cel "row.id + 1"`) | `ACCESSOR_NOT_PLAIN_CHAIN` |
@@ -266,7 +268,7 @@ names that model "the declared inputType" of the action:
 | a `confirm` naming a placeholder it does not bind (`{ text, values }` binds them) | `MESSAGE_PLACEHOLDER_UNBOUND` |
 
 The listing refuses a record's inputs itself when it is first read, as
-`ERR_UI_ROW_ACTION_INPUTS_INVALID`: a key a closed input model does not
+`ERR_UI_BOUND_ACTION_INPUTS_INVALID`: a key a closed input model does not
 declare, a required input left unbound, or a fixed value its property refuses.
 
 ## Reloading
@@ -286,7 +288,7 @@ it announces the listing's own `basePath` too, and a listing's own item write
 well. A `Ui.Data`, `Ui.Listing` or `Ui.Chat` reads again exactly when the
 resolved, encoded, app-relative path of its request equals an announced one;
 the query is not compared. A `Ui.Data.source` and a `Ui.CollectionSource.basePath`
-are matched this way.
+— a templated one as it resolves — are matched this way.
 
 One rule for every reload, whatever causes it:
 
@@ -301,23 +303,43 @@ One rule for every reload, whatever causes it:
   keeps its element, so its focus, its open inline surface, its expanded tree
   state and an edit form's entered values stay. A changed record is updated in
   place, records that left the answer go, and new ones appear in order.
+- A reload that fails keeps what is drawn and shows the failure beside it.
 - A filter or sort change is not a reload: it returns each read to its first
   page.
 
 The requests a reload sends are pinned by
 [`conformance/listing-reads.json`](../conformance/README.md).
 
+## Timed reload
+
+`reloadEvery: 30s` reads the listing again every interval while it is shown,
+under the reload rule above: the loaded pages refetched in order — the first
+page only past ten — and records matched by `key`, so focus, open surfaces,
+expanded state and entered values stay. Every group, period and loaded level
+is read again, and the facet requests over its source with it.
+
+- A tick is skipped while a read of the listing is in flight, and is not run
+  while the document is hidden; coming back to visibility reads once if an
+  interval has passed. A listing hidden by `shown` reads nothing.
+- A tick that fails keeps what is drawn and shows the failure beside it; the
+  next tick tries again.
+- It is a literal: a value below `5s` is refused by `telo check`
+  (`SCHEMA_VIOLATION`) and when the listing is created
+  (`ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`).
+
 ## Refused
 
 | Rule (`RESOURCE_RULE_VIOLATED`, in `data.rule`) | When |
 | --- | --- |
-| `UI_SOURCE_FILTER_UNKNOWN_PROPERTY` | `filters` names a property the model does not declare |
 | `UI_SOURCE_FILTER_NOT_ACCEPTED` | `filters` names a property the collection's `query.filters` does not declare with operator `eq` |
 | `UI_LISTING_SORT_NOT_ACCEPTED` | `sort.by.property` is not a property of the collection's `query.sort` |
 
 What a layout needs of the listing — a grouping, a span or a parent the
 collection can filter by — is refused at the listing too, by the layout's
 [`UI_LAYOUT_*` rules](listing-layouts.md#refused).
+
+A `filters` key naming a property the model does not declare is refused by
+the key's own type (`SCHEMA_VIOLATION`).
 
 The listing refuses the same things itself when it is first read
 (`ERR_UI_SOURCE_FILTER_UNKNOWN_PROPERTY`, `ERR_UI_SOURCE_FILTER_NOT_ACCEPTED`,
@@ -332,6 +354,8 @@ What the listing provides is a `type: listing` node carrying `schema`,
 (`{ sortable, initial }`: the properties the viewer may sort by — none when the
 order is fixed — and the order sent until they choose, `-` leading a descending
 one, or null), `show` (`{ count }`), `rowStyle`, `create`, `edit`, `delete`,
-`rowActions`, `rowActionsDisplay`, `relations`, `empty`, `layout` and `compact` — every default filled by `ui`.
+`rowActions`, `rowActionsDisplay`, `relations`, `empty`, `layout`, `compact` and `reloadEvery` (the
+interval in milliseconds, present when set) — every default filled by `ui`.
+`basePath` is the source's literal path or its [template](collection-source.md#a-templated-base-path).
 `layout` and `compact` are [`Ui.ListingLayoutSpec`](listing-layouts.md#the-layout-spec)
 values.

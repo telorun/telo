@@ -30,6 +30,7 @@ import {
   type SchemaIssue,
 } from "./schema-error-report.js";
 import { effectiveAuthorSchema } from "./extends-resolution.js";
+import { withReachedFragmentDefs } from "./pointer-base-fragments.js";
 
 /** Pure kind → ResourceDefinition map. No controller loading, no lifecycle. */
 /** What `ajv.compile` hands back: a predicate carrying its own `errors`. */
@@ -271,7 +272,7 @@ export class DefinitionRegistry {
     if (layer && !layer.shared(id)) {
       if (layer.registered.has(id)) return true;
       const store = this.layerStore(layer);
-      const registered = schemaWithTagsAsText(schema) as object;
+      const registered = schemaWithTagsAsText(this.withFragments(schema)) as object;
       try {
         store.ajv.addSchema(registered, id, undefined, true);
       } catch {
@@ -326,6 +327,12 @@ export class DefinitionRegistry {
       this.namedShapes.set(id, schema);
     }
     this.clearReaches();
+  }
+
+  /** `schema` carrying the hoisted fragments of every named shape it reaches,
+   *  announced or registered, which a pointer `$ref` based in it needs. */
+  private withFragments(schema: Record<string, any>): Record<string, any> {
+    return withReachedFragmentDefs(schema, (id) => this.namedShapeFor(id));
   }
 
   /** The announced or registered shape at `id`: the open layer's first. */
@@ -409,7 +416,7 @@ export class DefinitionRegistry {
    * which wraps `compile` for this same reason.
    */
   private tryAddSchema(schema: Record<string, any>, id: string, trusted = false): boolean {
-    const registered = schemaWithTagsAsText(schema) as object;
+    const registered = schemaWithTagsAsText(this.withFragments(schema)) as object;
     try {
       // `trusted` skips meta-validation; only for the built-ins, whose validity
       // their own test asserts.
@@ -438,7 +445,7 @@ export class DefinitionRegistry {
       for (const { schema, id } of this.registeredSchemas) ajv.addSchema(schema, id, undefined, false);
       if (store !== this.sharedStore) {
         for (const [id, schema] of this.layer!.registered) {
-          ajv.addSchema(schemaWithTagsAsText(schema) as object, id, undefined, false);
+          ajv.addSchema(schemaWithTagsAsText(this.withFragments(schema)) as object, id, undefined, false);
         }
       }
       const validator = new SchemaNodeValidator(ajv, {
@@ -539,7 +546,7 @@ export class DefinitionRegistry {
     const cached = store.compiled.get(schema);
     if (cached) return cached;
     try {
-      const validate = store.ajv.compile(schemaWithTagsAsText(schema) as object);
+      const validate = store.ajv.compile(schemaWithTagsAsText(this.withFragments(schema)) as object);
       store.compiled.set(schema, validate);
       return validate;
     } catch (err) {
@@ -557,7 +564,7 @@ export class DefinitionRegistry {
    *  resource of that kind. */
   schemaCompileError(schema: Record<string, any>): string | undefined {
     try {
-      this.ajv.compile(schemaWithTagsAsText(schema) as object);
+      this.ajv.compile(schemaWithTagsAsText(this.withFragments(schema)) as object);
       return undefined;
     } catch (err) {
       this.refuseWithheld(missingSchemaOf(err));

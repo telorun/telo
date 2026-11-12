@@ -299,7 +299,8 @@ trace. Members appear in this order.
 - **A failure with no code** — a crash, or the framework refusing a malformed request (an
   unparseable body `400`, an unsupported media type `415`) — exactly `{ type, title,
   status }`: `500`, or the framework's own 4xx.
-- **A request no route matches**, when the server declares no `notFoundHandler` — `404`,
+- **A request no route matches**, including one whose path holds a percent-escape that
+  does not decode (`/items/%ZZ`), when the server declares no `notFoundHandler` — `404`,
   exactly `{ type, title, status }`.
 
 `detail` is the text in its source language; a module with no `lang:` writes in `und`.
@@ -381,6 +382,8 @@ Regardless of encoder, a mid-stream failure is logged server-side through the se
 ## `notFoundHandler`
 
 `Http.Server.notFoundHandler` accepts the same `returns:` and `catches:` split as a route handler — same `content:` map shape, same Accept-header negotiation, same stream-mode rules. The `invoke:` resource runs when Fastify can't match any mounted route; its return value flows through `returns:`, its `InvokeError` throws through `catches:`, and a throw its own entries decline falls through to the server's list like any other.
+
+A request whose path holds a percent-escape that does not decode (`%ZZ`, a truncated `%A`, bytes that are not UTF-8) is such a request too, even where a route such as `/items/:id` would fit: no route handler runs, and the handler governing the path's prefix answers — a mount's own not-found handler where it has one, else this one. It passes the request log, span, `unknownHosts` and mount access hooks as an unknown path does, and sees the target as sent: `request.path` holds `/items/%ZZ`, undecoded. Nothing in the request marks the case.
 
 Its handler receives exactly the evaluated `inputs:` map — `{}` when none is written, as for a route.
 

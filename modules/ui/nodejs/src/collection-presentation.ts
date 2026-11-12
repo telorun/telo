@@ -1,5 +1,5 @@
 import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
-import { isCollectionSource, sameCollection, type CollectionFacts, type Operator } from "./collection-source.js";
+import { isCollectionSource, sameCollection, type BasePath, type CollectionFacts, type Operator } from "./collection-source.js";
 import { addressSpec, type AddressConfig } from "./address-spec.js";
 import type { OptionSourceSpec } from "./option-source.js";
 import type { Binding } from "./row-binding.js";
@@ -22,7 +22,7 @@ type CollectionPresentationResource = RuntimeResource & {
 /** A collection as one set of screens shows it: where it is read from, what it
  *  is, and where each related record is read and labelled from, by property. */
 export interface Presentation {
-  basePath: string;
+  basePath: BasePath;
   collection: CollectionFacts;
   relations: Record<string, OptionSourceSpec>;
 }

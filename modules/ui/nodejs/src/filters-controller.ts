@@ -14,6 +14,15 @@ import { filledProvided } from "./fill-marking.js";
 
 type Scalar = string | number | boolean;
 
+/** Now moved by `offset` units in the viewer's time zone, resolved in the browser. */
+export interface RelativeValue {
+  unit: "minute" | "hour" | "day" | "week" | "month" | "year";
+  offset: number;
+}
+
+/** One value a filter holds. */
+export type FilterValue = Scalar | RelativeValue;
+
 /** One filter as listed. A member holding nothing is one left out. */
 interface FieldConfig {
   property: string;
@@ -63,13 +72,13 @@ export interface FilterField {
   control: Control;
   values: "all" | "present";
   options?: OptionSourceSpec;
-  default?: Scalar[];
+  default?: FilterValue[];
 }
 
 export interface FilterPreset {
   label: TextRecord;
   search?: string;
-  values: { property: string; operator: Operator; value: Scalar[] }[];
+  values: { property: string; operator: Operator; value: FilterValue[] }[];
 }
 
 /** A declared value as plain data: an integer an expression computed arrives wide. */
@@ -93,10 +102,29 @@ function valueFits(property: JsonSchema, value: unknown): boolean {
   }
 }
 
+const isRelative = (declared: unknown): declared is RelativeValue =>
+  typeof declared === "object" && declared !== null && !Array.isArray(declared);
+
+/** The operators a relative value is compared with. */
+const RELATIVE_OPERATORS: readonly Operator[] = ["eq", "gt", "gte", "lt", "lte"];
+
+/** Whether a relative value fits the filter: a `date` or `date-time` property under a comparison. */
+const relativeFits = (property: JsonSchema | undefined, operator: Operator): boolean =>
+  RELATIVE_OPERATORS.includes(operator) && (property?.format === "date" || property?.format === "date-time");
+
+/** Why a relative value does not fit the filter, in the words a refusal uses. */
+const relativeMisfit = (property: string, operator: Operator): string =>
+  `a relative value fits a date or date-time filter with eq, gt, gte, lt or lte, not ${property} with ${operator}`;
+
 /** What a filter holds for a declared value — always a list — or nothing when
- *  the filter cannot hold it: a list without `in`, one value with it, or a
- *  value its property refuses. */
-export function heldValues(property: JsonSchema, operator: Operator, declared: unknown): Scalar[] | undefined {
+ *  the filter cannot hold it: a list without `in`, one value with it, a value
+ *  its property refuses, or a relative value on a filter that is not a date or
+ *  date-time comparison. */
+export function heldValues(property: JsonSchema, operator: Operator, declared: unknown): FilterValue[] | undefined {
+  if (isRelative(declared)) {
+    if (!relativeFits(property, operator)) return undefined;
+    return [{ unit: declared.unit, offset: Number(plain(declared.offset)) }];
+  }
   if (operator === "absent") return typeof declared === "boolean" ? [declared] : undefined;
   if (Array.isArray(declared) !== (operator === "in")) return undefined;
   const values = [declared].flat().map(plain);
@@ -105,7 +133,7 @@ export function heldValues(property: JsonSchema, operator: Operator, declared: u
 
 /** Whether a value asks a switch to be off: it is on, or it holds nothing.
  *  A filter under `absent` is entered with a switch whatever its control. */
-const switchedOff = (control: Control, operator: Operator, held: Scalar[]): boolean =>
+const switchedOff = (control: Control, operator: Operator, held: FilterValue[]): boolean =>
   (control === "toggle" || operator === "absent") && held.includes(false);
 
 /** Where a field's choices come from, when they are records: its own option
@@ -129,7 +157,7 @@ export function filterFields(
   choices: FieldChoices = NO_CHOICES,
 ): FilterField[] {
   const properties = (schema.properties ?? {}) as Record<string, JsonSchema>;
-  const field = ({ property, operator, pinned, control, values }: FieldConfig, index: number | undefined, held?: Scalar[]): FilterField => {
+  const field = ({ property, operator, pinned, control, values }: FieldConfig, index: number | undefined, held?: FilterValue[]): FilterField => {
     const options = (index === undefined ? undefined : choices.overrides.get(index)) ?? choices.relations[property];
     return {
       property,
@@ -181,6 +209,12 @@ export function filterFields(
     }
     if (config.default == null) return field(config, index);
     const held = heldValues(properties[property], operator, config.default);
+    if (!held && isRelative(config.default)) {
+      throw new RuntimeError(
+        "ERR_UI_FILTER_DEFAULT_INVALID",
+        `${owner}: 'fields[${index}].default' declares a default its filter cannot hold: ${relativeMisfit(property, operator)}.`,
+      );
+    }
     if (!held || switchedOff(control, operator, held)) {
       throw new RuntimeError(
         "ERR_UI_FILTER_DEFAULT_INVALID",
@@ -216,7 +250,7 @@ export function filterPresets(
         `${owner}: 'presets[${index}]' has the label of another preset (${quotedText(preset.label)}). A preset is chosen by its label: give each its own.`,
       );
     }
-    const values = preset.values.map(({ property, operator, value }) => {
+    const values = preset.values.map(({ property, operator, value }, at) => {
       const shown = fields.find((field) => field.property === property && field.operator === operator);
       if (!shown) {
         throw new RuntimeError(
@@ -225,6 +259,12 @@ export function filterPresets(
         );
       }
       const held = heldValues(shown.schema, operator, value);
+      if (!held && isRelative(value)) {
+        throw new RuntimeError(
+          "ERR_UI_FILTER_PRESET_VALUE_INVALID",
+          `${owner}: 'presets[${index}].values[${at}].value' sets a value its filter cannot hold: ${relativeMisfit(property, operator)}.`,
+        );
+      }
       if (!held || switchedOff(shown.control, operator, held)) {
         throw new RuntimeError(
           "ERR_UI_FILTER_PRESET_VALUE_INVALID",

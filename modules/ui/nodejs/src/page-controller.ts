@@ -2,6 +2,7 @@ import type { InvokeContext, ResourceContext, ResourceInstance, RuntimeResource,
 import type { AssetFile, SpecNode } from "./composite.js";
 import { RequestNodes } from "./delivered-nodes.js";
 import { modelShape } from "./model-schema.js";
+import { pagePathVariables } from "./page-path.js";
 import { resolvedPageWidth, type PageWidth } from "./page-width.js";
 import type { HeaderReads } from "./request-header-reads.js";
 
@@ -96,6 +97,13 @@ export async function create(resource: PageResource, ctx: ResourceContext): Prom
   // The page's own browser root: what its declared query parameters say about
   // the values its `value` and `list` nodes name.
   const queryShape = modelShape({ type: "object", properties: query, additionalProperties: false }, { ctx, owner: where }, "query");
-  const nodes = await RequestNodes.prepare(resource.children, { query: queryShape }, ctx, `${where} children`);
+  // And its variables: one string per `{name}` segment of its path.
+  const variables = pagePathVariables(resource.path);
+  const paramsShape = modelShape(
+    { type: "object", properties: Object.fromEntries(variables.map((name) => [name, { type: "string" }])), required: variables, additionalProperties: false },
+    { ctx, owner: where },
+    "params",
+  );
+  const nodes = await RequestNodes.prepare(resource.children, { query: queryShape, params: paramsShape }, ctx, `${where} children`);
   return new Page({ path: resource.path, ...(resource.title == null ? {} : { title: resource.title }), query }, resource.width ?? undefined, nodes);
 }

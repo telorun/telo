@@ -1,0 +1,20 @@
+# A reader drawing a time from a string with no date format, which `telo check`
+# refuses here; a consumer's own check does not see it, so the reader is
+# refused when it is first read.
+kind: Telo.Library
+metadata:
+  name: UiInvalidMarkdownTime
+  version: 1.0.0
+  description: Test fixture exporting a reader that draws a plain string as a time.
+imports: { Ui: ../../../../../ }
+exports: { resources: [timeNoFormat] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Plan }
+schema: { type: object, required: [title], properties: { title: { type: string } } }
+---
+kind: Ui.Data
+metadata: { name: timeNoFormat }
+model: !ref Plan
+source: /api/plan
+content: { type: time, value: !cel "data.title" }

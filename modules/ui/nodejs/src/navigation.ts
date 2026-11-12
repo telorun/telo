@@ -1,6 +1,7 @@
 import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource, type TextRecord } from "@telorun/sdk";
 import { isIcon, type IconFile } from "./icon.js";
 import { isPage, type PageInstance } from "./page-controller.js";
+import { pagePathVariables } from "./page-path.js";
 import { sourceKeys } from "./source-keys.js";
 import { isStateStore, memoryStore } from "./state-store.js";
 import { drawerSpec, isSurface, type SurfaceSpec } from "./surface-spec.js";
@@ -149,7 +150,7 @@ export interface PreparedNavigation {
 
 /**
  * The navigation a renderer draws, every default filled: with no `navigation`,
- * one page entry per titled page in order; with no placement, the header, behind
+ * one page entry per titled page with no variable in its path, in order; with no placement, the header, behind
  * a menu button on a narrow viewport. A page entry carries its page's path, and
  * its title unless it says otherwise — a page with no title needs the entry's
  * own text; an entry naming an icon carries the address `iconAddress` serves
@@ -169,6 +170,12 @@ export async function preparedNavigation(
       throw new RuntimeError(
         "ERR_UI_NAVIGATION_PAGE_UNTITLED",
         `${owner}: '${where}' names a page with no title ('${reading.path}') and gives no text of its own, so it has no label. Write the entry's text, or give the page a title.`,
+      );
+    }
+    if (pagePathVariables(reading.path).length > 0) {
+      throw new RuntimeError(
+        "ERR_UI_NAVIGATION_PAGE_HAS_PARAMETERS",
+        `${owner}: '${where}' names a page with a variable in its path ('${reading.path}'), which a navigation entry cannot fill. Reach the page with a link whose pathParams fill it, or remove the entry.`,
       );
     }
     return { type: "page", path: reading.path, text: label };
@@ -195,7 +202,8 @@ export async function preparedNavigation(
     return { type: "group", text: entry.text, items, ...extra };
   };
   const items: Unkeyed[] = [];
-  if (declared?.items == null) items.push(...pages.filter((page) => page.snapshot().title !== undefined).map((page, index) => pageEntry(page, `pages[${index}]`)));
+  const listed = (page: PageInstance) => page.snapshot().title !== undefined && pagePathVariables(page.snapshot().path).length === 0;
+  if (declared?.items == null) items.push(...pages.filter(listed).map((page, index) => pageEntry(page, `pages[${index}]`)));
   else for (const [index, entry] of declared.items.entries()) items.push(await prepare(entry, `navigation.items[${index}]`));
   const placement =
     declared?.placement == null

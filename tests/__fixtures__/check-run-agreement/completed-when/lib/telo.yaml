@@ -1,0 +1,16 @@
+# A slot whose completedWhen names a sibling that is no boolean.
+kind: Telo.Library
+metadata: { name: CompletedWhenLib }
+imports: { Run: ../../../../../modules/run }
+exports: { kinds: [Button] }
+---
+kind: Telo.Definition
+metadata: { name: Button, description: A button whose prompt flag is declared as text. }
+extends: Run.Value
+schema:
+  type: object
+  properties:
+    action: { x-telo-ref: { kind: Telo.Invocable, use: call, inputs: /inputs, completedWhen: /prompt } }
+    inputs: { type: object, default: {} }
+    prompt: { type: string }
+base: { value: button }

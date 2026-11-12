@@ -72,6 +72,11 @@ export function withUnhostedComponentsReplaced(
     if (Array.isArray(current.rowActions)) {
       next.rowActions = current.rowActions.map((entry: Record<string, any>) => ({ ...entry, action: down(entry.action) }));
     }
+    // A bound action's answer and failure trees: a button's own, and a markdown annotation's.
+    if (current.type === "button") next.action = down(current.action);
+    if (current.type === "markdown" && current.annotations !== undefined) {
+      next.annotations = { ...current.annotations, action: { ...current.annotations.action, action: down(current.annotations.action.action) } };
+    }
     return next;
   };
   return visit(node);

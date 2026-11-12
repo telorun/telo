@@ -18,6 +18,7 @@ import {
   type ResourceDefinition,
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { CONTEXT_FROM_PATH_TEMPLATE, pathTemplateParams } from "./context-from-path-template.js";
 import { CONTEXT_FROM_REFERRER, fromReferrerOwnKeywords, TYPING_ANNOTATIONS } from "./context-from-referrer.js";
 import { ELEMENT_FROM_ITEM } from "./element-from-item.js";
 import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
@@ -626,6 +627,10 @@ export function resolveContextAnnotations(
   // Typed by the scope rule from each referrer's scope (`cel-scope.ts`); with no
   // referrer it is what it declares itself.
   if (schema[CONTEXT_FROM_REFERRER] !== undefined) return fromReferrerOwnKeywords(schema);
+
+  // Typed by the scope rule from the template its holder holds (`cel-scope.ts`);
+  // reached directly it has none, so it is an open map of strings.
+  if (schema[CONTEXT_FROM_PATH_TEMPLATE] !== undefined) return pathTemplateParams(schema, undefined);
 
   const fromRoot = schema["x-telo-context-from-root"] as string | undefined;
   const fromRefKindRaw = schema["x-telo-context-from-ref-kind"] as

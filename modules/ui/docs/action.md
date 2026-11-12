@@ -77,8 +77,9 @@ as a failure, naming the parameter). A `GET`, an absolute target and a page
 reference are refused: a read is a [`Ui.Data`](data.md).
 
 An action is a [composite](composite.md): it is placed on a page with
-`{ type: composite, ref: !ref generateReports }`, or
-[offered on each record](#row-actions) of a listing or a `list` node.
+`{ type: composite, ref: !ref generateReports }`, or run with inputs bound from
+the data in scope as a [bound action](#bound-actions): on each record of a
+listing or a `list` node, or from a [`button` node](nodes.md#buttons).
 
 ## Fields
 
@@ -171,29 +172,59 @@ alike — run one after another, in the order they were made on this page; with
 the button was pressed. `serial` orders the presses of one page and promises
 nothing about the operation itself.
 
-## Row actions
+## Bound actions
 
-A [`Ui.Listing`](listing.md#row-actions) and a [`list` node](nodes.md#values-and-lists) offer
-an action on every record through `rowActions`, each entry a `Ui.RowAction`:
+A `Ui.BoundAction` runs an action with inputs bound from the data in scope. It
+is each entry of `rowActions` on a [`Ui.Listing`](listing.md#row-actions) and a
+[`list` node](nodes.md#values-and-lists), a layout's
+[`move`](listing-layouts.md), a markdown node's
+[`annotations.action`](nodes.md#markdown), and the members of a [`button`
+node](nodes.md#buttons):
 
 | Field | | |
 | --- | --- | --- |
 | `action` | required | the action run: a `!ref`, or one inline |
-| `inputs` | required, at least one | what the action receives, by input property: a path into `row` or another root in scope, or a fixed value |
+| `inputs` | required, at least one | what the action receives, by input property: a path into a root in scope — `row` among them where there is one — or a fixed value |
 | `confirm` | | a question asked before it runs |
-| `prompt` | `false` | whether a press opens a dialog for the action's fields `inputs` does not bind |
-| `enabled` | always | when the row's button can be pressed, over `row` and the roots in scope; the action's own `enabled` does not govern it |
+| `prompt` | `false` | whether a press opens a dialog for the action's fields `inputs` does not bind, where the person completes the record |
+| `enabled` | always | when the button can be pressed, over the roots in scope; the action's own `enabled` does not govern it |
 
 `inputs` is judged against the action's input model as a call's arguments are
 (`CONTRACT_INPUTS_MISMATCH`, `CEL_UNKNOWN_FIELD`, `CEL_TYPE_ERROR`,
-`ACCESSOR_NOT_PLAIN_CHAIN`), over `row` plus what is in scope where the rows
-are drawn: in a listing, the listing's declared `query`; in a list, the roots of
-the tree the list sits in — `result`, `input` and `values` in an answer, `data`
-and `query` in a reader. A root nothing binds there is `CEL_UNKNOWN_IDENTIFIER`.
-Every required input is bound there, and the inputs are read when the button is
-pressed.
+`ACCESSOR_NOT_PLAIN_CHAIN`), over what is in scope where it is written: in a
+listing, `row`, the listing's declared `query` and the page's `params`; in a
+list, `row` and the roots of the tree it sits in; on a button,
+the roots of that tree — `result`, `input` and `values` in an answer, `data`,
+`query` and `params` in a reader. A root nothing binds there is
+`CEL_UNKNOWN_IDENTIFIER`. The inputs are read when the button is pressed.
 
-A row is one entry: it takes no press while its last is pending or queued. A
+Every required input is bound there unless `prompt: true`. A prompt asks for
+the action's fields the inputs do not bind, and the person completes the
+record: the dialog holds the bound values and the entered ones together against
+the whole input model, so a required field left empty blocks sending, as it
+does on the action's own form. The input model states what the operation
+truly requires — `author` on a decision is required and entered in the prompt:
+
+```yaml
+- type: button
+  inputs: { id: !cel "params.id", decision: approve, revision: !cel "data.plan.latestRevision.seq", hash: !cel "data.plan.latestRevision.hash" }
+  prompt: true
+  action:
+    kind: Ui.Action
+    inputModel: !ref PlanDecision # required: [id, decision, revision, hash, author]
+    request: { target: { path: "/api/plans/{id}/decisions", pathParams: { id: !cel "input.id" } } }
+    label: Approve
+    fields: [id, decision, revision, hash, author]
+```
+
+The prompt asks for `author` alone. The same button with `prompt: false` is
+`CONTRACT_INPUTS_MISMATCH` (`/ is missing required property 'author'`), and a
+key the action does not take (`hsh`) is refused whether it prompts or not. The
+action is still a complete form of its own: a required property its `fields`
+leave out is `UI_FIELD_REQUIRED_NOT_ENTERED`, whatever binds it.
+
+A row and a button are each one entry: it takes no press while
+its last is pending or queued. A
 pressed action draws its own `result` tree — over its own `result`, `input`
 and `values`, the last being the record sent — in place of its button, and its
 `failure` tree beside the button, unless a confirmation was open, where the
@@ -212,7 +243,7 @@ list is drawn from.
 | `rows: !cel "size(result.files)"`, or any other expression | `ACCESSOR_NOT_PLAIN_CHAIN` |
 | `navigate: ftp://…`, `refreshes: [api/reports]` | `SCHEMA_VIOLATION` |
 | `source:` (now `request.target`), `method: GET`, an absolute `target`, a page reference as a `target`, a key the kind does not take (`lists`) | `SCHEMA_VIOLATION` |
-| a row action's input the action does not take, or a required one left out | `CONTRACT_INPUTS_MISMATCH` |
+| a bound action's input the action does not take, or a required one left out by an entry that does not prompt | `CONTRACT_INPUTS_MISMATCH` |
 
 ## Refused
 
@@ -224,8 +255,10 @@ list is drawn from.
 
 The action refuses the same things itself when it is first read, as
 `ERR_<code>` — each field kind answering for its own fit — for a manifest that never passed
-`telo check`; a listing or a list refuses row inputs that make no record of the
-action's input model as `ERR_UI_ROW_ACTION_INPUTS_INVALID`.
+`telo check`; a listing, a list, a markdown node's annotations and a button
+refuse inputs that make no record of the action's input model — a key it does
+not take, a fixed value its property refuses, a required input left unbound by
+an entry that does not prompt — as `ERR_UI_BOUND_ACTION_INPUTS_INVALID`.
 
 A reference on the way to a member a `value` or `list` node names that names
 nothing, or leads back to itself, is `ERR_REF_UNRESOLVED` when the action is
@@ -251,6 +284,6 @@ An `action` node:
 | `concurrency` | `parallel` or `serial` |
 | `clearAnswerOn` | the listed properties; empty when none |
 
-A row action is `{ action, inputs, confirm?, prompt?, enabled? }`: `action` the
+A bound action is `{ action, inputs, confirm?, prompt?, enabled? }`: `action` the
 action's own node, `inputs` bindings, `prompt` — present when the press
 prompts — `{ fields }`, the action's fields `inputs` does not bind.

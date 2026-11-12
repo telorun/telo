@@ -71,6 +71,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-context-item-fills",
   "x-telo-context-from",
   "x-telo-context-from-ref-kind",
+  "x-telo-context-from-path-template",
   "x-telo-context-from-referrer",
   "x-telo-context-from-root",
   "x-telo-context-nullable-when",

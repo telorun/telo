@@ -436,6 +436,74 @@
       "url": "/list"
     },
     {
+      "name": "a path parameter bound to a chain reading null is unresolved",
+      "address": {
+        "path": {
+          "value": "/items/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "root": "row",
+            "path": [
+              "id"
+            ]
+          }
+        },
+        "queryParams": {}
+      },
+      "roots": {
+        "row": {
+          "id": null
+        }
+      },
+      "unresolved": "id"
+    },
+    {
+      "name": "a query parameter bound to a chain reading null is left out",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "tag": {
+            "root": "row",
+            "path": [
+              "tag"
+            ]
+          },
+          "x": {
+            "value": "1"
+          }
+        }
+      },
+      "roots": {
+        "row": {
+          "tag": null
+        }
+      },
+      "url": "/list?x=1"
+    },
+    {
+      "name": "a null item of a query list is left out",
+      "address": {
+        "path": {
+          "value": "/list"
+        },
+        "pathParams": {},
+        "queryParams": {
+          "tag": {
+            "value": [
+              "a",
+              null,
+              "b"
+            ]
+          }
+        }
+      },
+      "url": "/list?tag=a&tag=b"
+    },
+    {
       "name": "an empty string is kept",
       "address": {
         "path": {

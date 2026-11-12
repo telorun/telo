@@ -3,7 +3,7 @@ metadata:
   name: UiSpecShapesTest
   version: 1.0.0
   description: |
-    A shape of the vocabulary that holds another checks it: a markdown node's text binding, a surface spec's
+    A shape of the vocabulary that holds another checks it: a markdown node's value binding, a surface spec's
     compact surface, whether the surface floats or sits in the page, and the
     surface of a listing node's opener, a filter placement's overlay and its
     compact placement, and the placement and the store of a filters node. A
@@ -195,14 +195,14 @@ steps:
   - name: markdown
     invoke:
       kind: Probe.Read
-      source: { kind: Echo.AnyNode, node: { type: markdown, fill: false, text: { value: "# Heading" } } }
+      source: { kind: Echo.AnyNode, node: { type: markdown, fill: false, value: { value: "# Heading" } } }
   - name: markdownIs
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "steps.markdown.result.node"
-      expected: { type: markdown, fill: false, text: { value: "# Heading" } }
+      expected: { type: markdown, fill: false, value: { value: "# Heading" } }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "[steps.overlayCompactRefusal.result, steps.panelCompactRefusal.result, steps.listingSurfaceRefusal.result, steps.placementSurfaceRefusal.result, steps.placementCompactRefusal.result, steps.filtersPlacementRefusal.result, steps.filtersStoreRefusal.result]"
-      expected: ["ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected another shape", "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'size'", "ERR_OUTPUT_INVALID Error: /node/create/surface must match exactly one schema in oneOf", "ERR_OUTPUT_INVALID Error: /surface matches no alternative — expected one with 'modal', or one with 'align'", "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'open', or one with 'surface'", "ERR_OUTPUT_INVALID Error: /node/placement matches no alternative — expected one with 'show', or one with 'side', or one with 'open', or one with 'surface', or one with 'placeholder'", "ERR_OUTPUT_INVALID Error: /node matches no alternative — expected one with 'children', or one with 'text', or one with 'tabs', or one with 'src', or one with 'markup', or one with 'schema', or one with 'module', or one with 'value', or one with 'rows', or one with 'start', or one with 'command', or one with 'spec', or one with 'side', or one with 'code'"]
+      expected: ["ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected another shape", "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'size'", "ERR_OUTPUT_INVALID Error: /node/create/surface must match exactly one schema in oneOf", "ERR_OUTPUT_INVALID Error: /surface matches no alternative — expected one with 'modal', or one with 'align'", "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'open', or one with 'surface'", "ERR_OUTPUT_INVALID Error: /node/placement matches no alternative — expected one with 'show', or one with 'side', or one with 'open', or one with 'surface', or one with 'placeholder'", "ERR_OUTPUT_INVALID Error: /node matches no alternative — expected one with 'children', or one with 'text', or one with 'tabs', or one with 'src', or one with 'markup', or one with 'schema', or one with 'module', or one with 'value', or one with 'rows', or one with 'action', or one with 'start', or one with 'command', or one with 'spec', or one with 'side', or one with 'code'"]

@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: CompletedWhenPointerApp }
+imports: { Lib: ./pointer-lib }

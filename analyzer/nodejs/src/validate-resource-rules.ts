@@ -53,11 +53,13 @@ import {
   pointerToPath,
   readRawResourceRules,
   readResourceRules,
+  resolvePointersIn,
   resolveRuleSubjects,
   type ResourceRule,
   type RulePointerStep,
+  unfoldOnce,
 } from "./resource-rule.js";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { resolveSchemaReference } from "./schema-reference.js";
 
 /** Published name for the shared budget — see `rule-condition.ts`. */
 export const RESOURCE_RULE_BUDGET_MS = RULE_BUDGET_MS;
@@ -125,6 +127,18 @@ interface SchemaPlace {
   readonly module: string | undefined;
 }
 
+/** The place `ref`, written at `at`, names: a local pointer in `at`'s document,
+ *  a named shape or a pointer into one, which is then the root and module. */
+function referencedPlace(ref: string, at: SchemaPlace, shapes: RuleShapeLookup | undefined): SchemaPlace | undefined {
+  let module = at.module;
+  const target = resolveSchemaReference(ref, at.root, (id) => {
+    const shape = shapes?.(id, at.module);
+    if (shape) module = shape.module;
+    return shape?.schema;
+  });
+  return target ? { node: target.node, root: target.document, module } : undefined;
+}
+
 /** The deepest a repeated group is followed through a schema. */
 const MAX_SCHEMA_REPEAT = 16;
 
@@ -154,13 +168,8 @@ export function ruleCollectionSchemas(
       seen.add(current.node);
       const ref = current.node.$ref;
       if (typeof ref === "string") {
-        if (ref.startsWith("#")) {
-          const target = resolveSchemaPointer(current.root, ref);
-          if (isObject(target)) visit({ ...current, node: target });
-        } else {
-          const shape = shapes?.(ref, current.module);
-          if (shape) visit({ node: shape.schema, root: shape.schema, module: shape.module });
-        }
+        const target = referencedPlace(ref, current, shapes);
+        if (target) visit(target);
       }
       out.push(current);
       for (const key of ["anyOf", "oneOf", "allOf"] as const) {
@@ -261,16 +270,9 @@ export function rulePointerReaches(
     const ref = node.$ref;
     if (typeof ref === "string" && !following.has(node)) {
       following.add(node);
-      if (ref.startsWith("#")) {
-        const target = resolveSchemaPointer(at.root, ref);
-        if (isObject(target)) verdicts.push(walk(at, target, rest));
-      } else if (shapes) {
-        const shape = shapes(ref, at.module);
-        if (shape) verdicts.push(walk({ node: shape.schema, root: shape.schema, module: shape.module }, shape.schema, rest));
-        else verdicts.push("unknown");
-      } else {
-        verdicts.push("unknown");
-      }
+      const target = referencedPlace(ref, at, shapes);
+      if (target) verdicts.push(walk(target, target.node, rest));
+      else if (!ref.startsWith("#")) verdicts.push("unknown");
       following.delete(node);
     }
     const [segment, ...tail] = rest;
@@ -289,6 +291,74 @@ export function rulePointerReaches(
     return verdicts.includes("ok") ? "ok" : verdicts.includes("unknown") ? "unknown" : "absent";
   };
   return walk(isObject(schema) ? { node: schema, root: schema, module: reading?.module } : undefined, schema, segments);
+}
+
+/** Whether walking `segments` through the schema meets a reference slot at any
+ *  node along the way, the last included. */
+function slotAlong(
+  schema: unknown,
+  segments: readonly string[],
+  reading: { module: string | undefined; shapes?: RuleShapeLookup },
+): boolean {
+  const following = new Set<object>();
+  const walk = (place: SchemaPlace, rest: readonly string[]): boolean => {
+    const node = place.node;
+    if (readRefSlot(node)) return true;
+    const ref = node.$ref;
+    if (typeof ref === "string" && !following.has(node)) {
+      following.add(node);
+      const target = referencedPlace(ref, place, reading.shapes);
+      const met = target !== undefined && walk(target, rest);
+      following.delete(node);
+      if (met) return true;
+    }
+    for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+      const branches = node[key];
+      if (Array.isArray(branches) && branches.some((branch) => isObject(branch) && walk({ ...place, node: branch }, rest))) {
+        return true;
+      }
+    }
+    if (rest.length === 0) return false;
+    const [segment, ...tail] = rest;
+    const properties = isObject(node.properties) ? node.properties : undefined;
+    const additional = isObject(node.additionalProperties) ? node.additionalProperties : undefined;
+    const next =
+      segment === "*"
+        ? (node.items ?? additional)
+        : (properties?.[segment!] ?? (node.type === "array" ? node.items : undefined) ?? additional);
+    return isObject(next) && walk({ ...place, node: next }, tail);
+  };
+  return isObject(schema) && walk({ node: schema, root: schema, module: reading.module }, segments);
+}
+
+/**
+ * Whether a repeated group of a `resolve:` pointer meets a reference slot on its
+ * way or at its end: a group repeats over the resource's own data, which stops
+ * at a reference, so a level beyond one would be silently left unresolved.
+ */
+function groupMeetsReference(
+  schema: unknown,
+  pointer: string,
+  reading: { module: string | undefined; shapes?: RuleShapeLookup },
+): boolean {
+  const steps = parseRulePointer(pointer);
+  if (!steps) return false;
+  const plain = (path: readonly RulePointerStep[]): string[] =>
+    path.flatMap((step) => (step.kind === "key" ? [step.key] : step.kind === "any" ? ["*"] : []));
+  const meets = (path: readonly RulePointerStep[], before: readonly string[]): boolean => {
+    let prefix = [...before];
+    for (const step of path) {
+      if (step.kind === "repeat") {
+        for (const alternative of step.alternatives) {
+          if (slotAlong(schema, [...prefix, ...plain(alternative)], reading) || meets(alternative, prefix)) return true;
+        }
+        continue;
+      }
+      prefix = [...prefix, ...plain([step])];
+    }
+    return false;
+  };
+  return meets(steps, []);
 }
 
 /** True when a schema node describes something a rule can iterate. Unknown or
@@ -443,15 +513,22 @@ export function validateResourceRuleDeclarations(
       if (!Array.isArray(entry.resolve)) {
         issue(`${at}.resolve`, "'resolve' must be a list of JSON Pointers to this kind's reference slots.");
       } else {
+        const reading = { module: (manifest.metadata as { module?: string } | undefined)?.module, shapes };
         entry.resolve.forEach((pointer: unknown, i: number) => {
-          if (typeof pointer !== "string" || !pointerSegments(pointer)) {
-            issue(`${at}.resolve[${i}]`, "Each 'resolve' entry must be a JSON Pointer starting with '/'.");
-          } else if (
-            rulePointerReaches(schema, pointer, kindSchemas, {
-              module: (manifest.metadata as { module?: string } | undefined)?.module,
-              shapes,
-            }) === "absent"
-          ) {
+          const unfolded = typeof pointer === "string" ? unfoldOnce(pointer) : undefined;
+          if (!unfolded) {
+            issue(
+              `${at}.resolve[${i}]`,
+              "Each 'resolve' entry must be a JSON Pointer starting with '/', optionally with '*' and repeated groups '(…)*'.",
+            );
+          } else if (groupMeetsReference(schema, pointer as string, reading)) {
+            issue(
+              `${at}.resolve[${i}]`,
+              `'resolve' names '${pointer}', whose repeated group steps over a reference slot. A group repeats ` +
+                "over this resource's own fields only; repeat it up to the reference, and continue past the " +
+                "reference after the group.",
+            );
+          } else if (unfolded.some((each) => rulePointerReaches(schema, each, kindSchemas, reading) === "absent")) {
             issue(
               `${at}.resolve[${i}]`,
               `'resolve' names '${pointer}', which this kind's schema does not declare. It must ` +
@@ -716,7 +793,8 @@ export function resolvedRuleView(
   kind: string,
 ): { ok: true; self: Record<string, unknown> } | { ok: false; failure: PeerBindingFailure } {
   let self = (binder?.view(manifest) ?? manifest) as unknown as Record<string, unknown>;
-  for (const pointer of resolve ?? []) {
+  const written = self;
+  for (const pointer of (resolve ?? []).flatMap((each) => resolvePointersIn(written, each) ?? [each])) {
     if (!binder) return { ok: false, failure: { reason: "unknown-shape", at: pointer } };
     // A pointer may continue past a reference into what it names, a hop at a
     // time, and range over a collection with `*`.

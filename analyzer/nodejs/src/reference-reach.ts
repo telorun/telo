@@ -14,10 +14,12 @@
  * - it stops at `x-telo-scope`, at `x-telo-schema-from` and at a step body —
  *   except that a step list whose `items` node is itself a reference slot
  *   (directly or through a local `$ref`) has its items walked as any slot is;
- * - a non-local `$ref` is a stop too: the id is recorded, and a consumer that
- *   can resolve a NAMED SHAPE ({@link ShapeResolver}) walks the shape's own
- *   reach there, against the shape's own document — so a shape recursing with
- *   `$ref: "#"` records its back-edge in its own reach;
+ * - a non-local `$ref` is a stop too: the reference is recorded, and a consumer
+ *   that can resolve a NAMED SHAPE ({@link ShapeResolver}) walks the reach of
+ *   what it names there — the whole shape, or the member a JSON Pointer into it
+ *   names — against the shape's own document, so a shape recursing with
+ *   `$ref: "#"` records its back-edge in its own reach. A slot at the root of
+ *   such a reach takes its siblings from the object the `$ref` is written in;
  * - a pattern keeps EVERY slot any branch declares there, and each slot keeps
  *   its non-reference alternatives there as value branches.
  *
@@ -48,7 +50,7 @@
  * Browser-safe: no Node built-ins.
  */
 import { isRefSentinel } from "@telorun/templating";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { followSchemaReferences, resolveSchemaReference, type NamedShapeLookup } from "./schema-reference.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { isSchemaOnlySlot, readRefSlot, type RefSlot } from "./ref-slot.js";
 import { readStepSlot, type StepSlot } from "./step-slot.js";
@@ -126,8 +128,10 @@ export interface ReachStop {
   pattern: Pattern;
   scopes: ScopeFieldEntry[];
   schemaFrom: SchemaFromFieldEntry[];
-  /** The ids of the non-local `$ref`s written here. */
+  /** The non-local `$ref`s written here, as written. */
   shapes: string[];
+  /** Per reference, the declarations of the nodes writing it here. */
+  shapeDeclarations: Map<string, Declaration[]>;
 }
 
 /** One schema's reach, entered at `node` and resolving `$ref` against `document`. */
@@ -195,9 +199,10 @@ export type SchemaFromResolver = (
   document: Record<string, any>,
 ) => ResolvedSchemaNode | undefined;
 
-/** Resolves a non-local `$ref` written in `document` to the schema of the named
- *  shape it names, or undefined when it names none. A shape is its own
- *  document. */
+/** Resolves a named shape's id — a non-local `$ref`'s part before any `#` —
+ *  written in `document` to the shape's schema, or undefined when it names none.
+ *  A shape is its own document; a pointer into it is resolved against it by
+ *  {@link resolveSchemaReference}. */
 export type ShapeResolver = (
   ref: string,
   document: Record<string, any>,
@@ -215,9 +220,8 @@ export function resolveLocalReference(
 ): ResolvedSchemaNode | undefined {
   const ref = node.$ref;
   if (typeof ref !== "string" || !ref.startsWith("#")) return undefined;
-  const target = resolveSchemaPointer(document, ref);
-  if (!target || typeof target !== "object" || Array.isArray(target)) return undefined;
-  return { document, node: target as Record<string, any> };
+  const target = resolveSchemaReference(ref, document, undefined);
+  return target ? { document: target.document, node: target.node } : undefined;
 }
 
 /** The reference field entry a ref-slot node records at `path`. */
@@ -233,6 +237,7 @@ export function refFieldEntryOf(
   };
   if (slot.useCases) entry.useCases = slot.useCases;
   if (slot.inputs !== undefined) entry.inputs = slot.inputs;
+  if (slot.completedWhen !== undefined) entry.completedWhen = slot.completedWhen;
   if (slot.valueBranches.length > 0) entry.valueBranches = slot.valueBranches;
   if (node["x-telo-context"]) entry.context = node["x-telo-context"] as Record<string, any>;
   if (slot.inline) entry.inline = true;
@@ -254,6 +259,7 @@ export function refSlotOfEntry(entry: RefFieldEntry): RefSlot {
   };
   if (entry.useCases) slot.useCases = entry.useCases;
   if (entry.inputs !== undefined) slot.inputs = entry.inputs;
+  if (entry.completedWhen !== undefined) slot.completedWhen = entry.completedWhen;
   if (entry.throwsThrough) slot.throwsThrough = true;
   if (entry.outputType) slot.outputType = entry.outputType;
   if (entry.outputTo) slot.outputTo = entry.outputTo;
@@ -520,7 +526,10 @@ function stopAt(walk: Walk, path: Pattern): ReachStop {
   const key = patternKey(path);
   let entry = walk.reach.stops.get(key);
   if (!entry) {
-    walk.reach.stops.set(key, (entry = { pattern: path, scopes: [], schemaFrom: [], shapes: [] }));
+    walk.reach.stops.set(
+      key,
+      (entry = { pattern: path, scopes: [], schemaFrom: [], shapes: [], shapeDeclarations: new Map() }),
+    );
   }
   return entry;
 }
@@ -648,6 +657,10 @@ function followRef(node: Record<string, any>, path: Pattern, walk: Walk): void {
   }
   const stop = stopAt(walk, path);
   if (!stop.shapes.includes(ref)) stop.shapes.push(ref);
+  let declarations = stop.shapeDeclarations.get(ref);
+  if (!declarations) stop.shapeDeclarations.set(ref, (declarations = []));
+  const declaration = walk.reach.declarations.get(patternKey(path))?.find((d) => d.node === node);
+  if (declaration && !declarations.includes(declaration)) declarations.push(declaration);
 }
 
 function shapeRefOfSentinel(sentinel: unknown): string | undefined {
@@ -700,8 +713,8 @@ function expansionsAt(
   reach: SchemaReach,
   schemaFrom: SchemaFromResolver | undefined,
   shapes: ShapeResolver | undefined,
-): { reach: SchemaReach; anchor: boolean }[] {
-  const out: { reach: SchemaReach; anchor: boolean }[] = [];
+): { reach: SchemaReach; anchor: boolean; ref?: string }[] {
+  const out: { reach: SchemaReach; anchor: boolean; ref?: string }[] = [];
   if (schemaFrom) {
     for (const { schemaFrom: expression } of stop.schemaFrom) {
       const anchor = schemaFrom(expression, reach.document);
@@ -709,12 +722,48 @@ function expansionsAt(
     }
   }
   if (shapes) {
-    for (const id of stop.shapes) {
-      const shape = shapes(id, reach.document);
-      if (shape) out.push({ reach: reachOfNode(shape, shape), anchor: false });
+    for (const ref of stop.shapes) {
+      const target = resolveSchemaReference(ref, reach.document, shapeLookupIn(shapes, reach.document));
+      if (target) out.push({ reach: reachOfNode(target.document, target.node), anchor: false, ref });
     }
   }
   return out;
+}
+
+/** `shapes` as the reader's lookup, for references written in `document`. */
+function shapeLookupIn(shapes: ShapeResolver | undefined, document: Record<string, any>): NamedShapeLookup | undefined {
+  return shapes ? (id) => shapes(id, document) : undefined;
+}
+
+/** The object a slot's siblings are read from: its conjunct declarations, the
+ *  document they are written in, and the lookup a reference beneath them
+ *  resolves through. */
+interface Enclosing {
+  nodes: Record<string, any>[];
+  document: Record<string, any>;
+  lookup: NamedShapeLookup | undefined;
+}
+
+/** True when a pattern relative to a reach's root names the root or its items —
+ *  a slot there is no property of an object inside the reach. */
+const atReachRoot = (pattern: Pattern): boolean => pattern.every((segment) => isWildcard(segment, "[]"));
+
+/** The object enclosing the `$ref` `ref` written at `stop`: the conjunct
+ *  declarations one pattern up from the nodes writing it, or — where the stop
+ *  itself is at its reach's root — the object enclosing that reach. */
+function stopEnclosing(
+  reach: SchemaReach,
+  stop: ReachStop,
+  ref: string,
+  outer: Enclosing | undefined,
+  shapes: ShapeResolver | undefined,
+): Enclosing {
+  if (atReachRoot(stop.pattern) && outer) return outer;
+  const writers = stop.shapeDeclarations.get(ref) ?? [];
+  const nodes = (reach.declarations.get(patternKey(enclosingPattern(stop.pattern))) ?? [])
+    .filter((d) => writers.length === 0 || writers.some((writer) => !areAlternatives(d, writer)))
+    .map((d) => d.node);
+  return { nodes, document: reach.document, lookup: shapeLookupIn(shapes, reach.document) };
 }
 
 // --- the declared-slot view -------------------------------------------------
@@ -895,8 +944,14 @@ export interface ReachRef {
   /** The schema node declaring the slot. */
   node: Record<string, any>;
   /** The conjunct declarations of the object enclosing the slot, in the order
-   *  the reach entered them — never a branch alternative to the slot's own. */
+   *  the reach entered them — never a branch alternative to the slot's own. For
+   *  a slot at the root of a reach a `$ref` led into, the object that `$ref` is
+   *  written in. */
   enclosing: readonly Record<string, any>[];
+  /** The document those declarations are written in, and the lookup a named
+   *  shape referenced beneath them resolves through. */
+  enclosingIn: Record<string, any>;
+  enclosingLookup?: NamedShapeLookup;
   /** The slot's value alternatives at this site: each alternative's declaration
    *  at the slot's pattern and, per union it was entered through where the slot
    *  was not, that union's member with the value at the union's position here.
@@ -938,13 +993,14 @@ export interface EnclosedProperty {
 /** The property `pointer` names relative to the object enclosing `ref`'s slot,
  *  or undefined when the pointer is not a JSON Pointer. */
 export function enclosingProperty(ref: ReachRef, pointer: string): EnclosedProperty | undefined {
-  return propertyOfEnclosing(ref.enclosing, ref.declaredIn.document, pointer);
+  return propertyOfEnclosing(ref.enclosing, ref.enclosingIn, pointer, ref.enclosingLookup);
 }
 
 function propertyOfEnclosing(
   enclosing: readonly Record<string, any>[],
   document: Record<string, any>,
   pointer: string,
+  lookup?: NamedShapeLookup,
 ): EnclosedProperty | undefined {
   if (!pointer.startsWith("/")) return undefined;
   const segments = pointer
@@ -959,6 +1015,7 @@ function propertyOfEnclosing(
   }
   for (const declaration of enclosing) {
     let current: Record<string, any> | undefined = declaration;
+    let at: Record<string, any> | undefined = document;
     let value: unknown;
     let required = true;
     let declaredNode: Record<string, any> | undefined;
@@ -970,10 +1027,13 @@ function propertyOfEnclosing(
         break;
       }
       const node = written as Record<string, any>;
-      const target = typeof node.$ref === "string" ? resolveLocalReference(node, document)?.node : undefined;
-      value = node.default !== undefined ? node.default : target?.default;
+      const target: { node: Record<string, any>; document: Record<string, any> | undefined } | undefined =
+        typeof node.$ref === "string" ? followSchemaReferences(node, at, lookup) : undefined;
+      const reached = target && target.node !== node ? target.node : undefined;
+      value = node.default !== undefined ? node.default : reached?.default;
       declaredNode = node;
-      current = target ?? node;
+      current = reached ?? node;
+      if (reached) at = target!.document;
     }
     if (!current) continue;
     out.declared = true;
@@ -1079,6 +1139,7 @@ export function siteRefEntry(site: ReachSite): RefFieldEntry {
     for (const use of slot.uses) if (!entry.uses.includes(use)) entry.uses.push(use);
     if (slot.useCases && !entry.useCases) entry.useCases = slot.useCases;
     if (slot.inputs !== undefined && entry.inputs === undefined) entry.inputs = slot.inputs;
+    if (slot.completedWhen !== undefined && entry.completedWhen === undefined) entry.completedWhen = slot.completedWhen;
     if (context && !entry.context) entry.context = context;
     if (slot.inline) entry.inline = true;
     if (slot.throwsThrough) entry.throwsThrough = true;
@@ -1176,6 +1237,7 @@ function enumerateSites(
     baseKeys: (string | number)[],
     patternBase: Pattern,
     anchored: boolean,
+    outer: Enclosing | undefined,
   ): void => {
     for (const at of reach.paths.values()) {
       const declaredPath = at.pattern;
@@ -1195,6 +1257,14 @@ function enumerateSites(
             if (site.from.has(entry)) continue;
             site.from.add(entry);
             const fieldKeys = [...patternBase, ...declaredPath];
+            const enclosing: Enclosing =
+              atReachRoot(declaredPath) && outer
+                ? outer
+                : {
+                    nodes: enclosingDeclarations(reach, declaredPath, entry),
+                    document: reach.document,
+                    lookup: shapeLookupIn(shapes, reach.document),
+                  };
             const ref: ReachRef = {
               slot: refSlotOfEntry(entry),
               fieldPath: patternText(fieldKeys),
@@ -1203,7 +1273,9 @@ function enumerateSites(
               declaredPath,
               viaAnchor: anchored,
               node: entryDeclarations.get(entry)!.node,
-              enclosing: enclosingDeclarations(reach, declaredPath, entry),
+              enclosing: enclosing.nodes,
+              enclosingIn: enclosing.document,
+              ...(enclosing.lookup ? { enclosingLookup: enclosing.lookup } : {}),
               alternatives: siteAlternatives(entry, reach, prefix, at0, found),
             };
             if (entry.context) ref.context = entry.context;
@@ -1213,7 +1285,7 @@ function enumerateSites(
         if (at.recurse.length === 0) continue;
         if (!found.value || typeof found.value !== "object" || onData.has(found.value)) continue;
         onData.add(found.value);
-        for (const to of at.recurse) walk(reach, to, found, path, keys, patternBase, anchored);
+        for (const to of at.recurse) walk(reach, to, found, path, keys, patternBase, anchored, outer);
         onData.delete(found.value);
       }
     }
@@ -1258,13 +1330,14 @@ function enumerateSites(
             keys,
             [...patternBase, ...declaredPath],
             anchored || next.anchor,
+            next.ref === undefined ? undefined : stopEnclosing(reach, stop, next.ref, outer, shapes),
           );
           entered.delete(next.reach);
         }
       }
     }
   };
-  walk(root, [], { value: data, path: "", keys: [] }, "", [], [], false);
+  walk(root, [], { value: data, path: "", keys: [] }, "", [], [], false, undefined);
 
   return [...sites.values()].map(({ from, ...site }) => site);
 }

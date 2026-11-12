@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: UiNullableAddressesTest
+  version: 1.0.0
+  description: |
+    A link whose path parameter or query parameter reads a property that may be
+    null passes `telo check` and loads; null is a value an address takes, where
+    only the renderer decides what it leaves out.
+imports: { Assert: ../../assert }
+targets:
+  - !ref nullableLink
+---
+kind: Assert.Manifest
+metadata: { name: nullableLink }
+source: ./__fixtures__/nullable-address/telo.yaml
+expect: { errors: [] }

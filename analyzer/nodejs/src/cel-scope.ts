@@ -57,6 +57,7 @@ import {
   plainChainOf,
 } from "@telorun/templating";
 import { bindingExistsAt, bindingsAbsentAt } from "./context-eval.js";
+import { pathTemplateParams, readFromPathTemplate, valueFromHolder } from "./context-from-path-template.js";
 import { fromReferrerOwnKeywords, readFromReferrer } from "./context-from-referrer.js";
 import {
   nullableWhenHolds,
@@ -681,8 +682,17 @@ export interface ReferrerVariant {
   readonly bindings: Readonly<Record<string, Record<string, any>>>;
   /** Who gives this typing: `label` the resource whose scope declares it (the
    *  outermost of a chain), `manifest` / `path` the slot referencing the
-   *  resource directly. */
-  readonly referrers: ReadonlyArray<{ manifest: ResourceManifest; path: string; label: string }>;
+   *  resource directly, `via` the referrers typing that slot's scope in turn —
+   *  the next link out of the chain, absent where the scope typed it itself. */
+  readonly referrers: ReadonlyArray<ReferrerLink>;
+}
+
+/** One slot referencing a resource, and the referrers its own typing came from. */
+export interface ReferrerLink {
+  readonly manifest: ResourceManifest;
+  readonly path: string;
+  readonly label: string;
+  readonly via?: ReadonlyArray<ReferrerLink>;
 }
 
 /** Joins the steps of a context node's location in {@link ReferrerVariant.bindings}. */
@@ -952,8 +962,14 @@ export class CelScopeResolver {
           const json = typed ? stableJson(typed) : "";
           let entry = distinct.get(json);
           if (!entry) distinct.set(json, (entry = { ...(typed ? { schema: typed } : {}), referrers: [] }));
-          const labels = variant.referrers.length > 0 ? [...new Set(variant.referrers.map((r) => r.label))] : [label];
-          for (const each of labels) entry.referrers.push({ manifest: referrer, path: slot, label: each });
+          if (variant.referrers.length === 0) {
+            entry.referrers.push({ manifest: referrer, path: slot, label });
+            continue;
+          }
+          for (const each of new Set(variant.referrers.map((r) => r.label))) {
+            const via = variant.referrers.filter((r) => r.label === each);
+            entry.referrers.push({ manifest: referrer, path: slot, label: each, via });
+          }
         }
       }
       const out = [...distinct.values()];
@@ -1378,6 +1394,16 @@ export class CelScopeResolver {
         resolved = replacedAt(resolved, location.split(LOCATION_SEPARATOR), () => schema);
       }
     }
+    // A node typed from a path template is the variables of the template its
+    // holder holds.
+    for (const { location, schema } of this.pathTemplateTypings(
+      [...outer, { scope: site.matchedScope, schema: declaredInnermost }],
+      localPath,
+      rootManifest,
+      localScopeOf,
+    )) {
+      resolved = replacedAt(resolved, location, () => schema);
+    }
     const absent = bindingsAbsentAt([...outer.map((ctx) => ctx.schema), matched], site.mode);
     if (absent.length > 0 && resolved.properties) {
       const properties = { ...resolved.properties };
@@ -1421,6 +1447,47 @@ export class CelScopeResolver {
         ),
       ),
     );
+  }
+
+  /**
+   * The type of every node the regions mark `x-telo-context-from-path-template`,
+   * at its location in the context — each binding as the innermost region
+   * declaring its name declares it, the template read from that region's holder.
+   */
+  private pathTemplateTypings(
+    regions: ReadonlyArray<{ scope: string | undefined; schema: Record<string, any> | undefined }>,
+    localPath: string,
+    root: Record<string, any>,
+    localScopeOf: (scope: string | undefined) => string | undefined,
+  ): Array<{ location: string[]; schema: Record<string, any> }> {
+    const owners = new Map<string, { binding: unknown; scope: string | undefined }>();
+    for (const region of regions) {
+      const properties = region.schema?.properties;
+      if (!properties || typeof properties !== "object") continue;
+      for (const [name, binding] of Object.entries(properties as Record<string, unknown>)) {
+        owners.set(name, { binding, scope: region.scope });
+      }
+    }
+    const out: Array<{ location: string[]; schema: Record<string, any> }> = [];
+    for (const [name, { binding, scope }] of owners) {
+      const local = localScopeOf(scope);
+      const holderPath = local === undefined ? "" : getContextHolderPath(localPath, local);
+      if (holderPath === undefined) continue;
+      const holder = tokensOfPath(holderPath);
+      const visit = (node: unknown, location: string[]): void => {
+        if (!node || typeof node !== "object" || Array.isArray(node)) return;
+        const pointer = readFromPathTemplate(node);
+        if (pointer) {
+          out.push({ location, schema: pathTemplateParams(node as Record<string, any>, valueFromHolder(root, holder, pointer)) });
+          return;
+        }
+        const properties = (node as { properties?: unknown }).properties;
+        if (!properties || typeof properties !== "object") return;
+        for (const [key, child] of Object.entries(properties as Record<string, unknown>)) visit(child, [...location, key]);
+      };
+      visit(binding, [name]);
+    }
+    return out;
   }
 
   /**

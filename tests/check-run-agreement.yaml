@@ -346,6 +346,7 @@ targets:
   - !ref valueSchemaMemberKeyInvalidAtRuntime
   - !ref valueSchemaMemberPointerInvalid
   - !ref valueSchemaMemberPointerInvalidAtRuntime
+  - !ref valueSchemaMemberKeyComputed
   - !ref valueSchemaFromShape
   - !ref valueSchemaFromShapeAtRuntime
   - !ref valueSchemaOwnDefsLiteralRefused
@@ -457,6 +458,12 @@ targets:
   - !ref observesOnSinkAtRuntime
   - !ref observesOnTemplate
   - !ref observesOnTemplateAtRuntime
+  - !ref completedWhenNotBoolean
+  - !ref completedWhenNotBooleanAtRuntime
+  - !ref completedWhenNotBooleanInShape
+  - !ref completedWhenNotBooleanInShapeAtRuntime
+  - !ref completedWhenPointerNotBoolean
+  - !ref completedWhenPointerNotBooleanAtRuntime
   - !ref callsCoReferrersMalformed
   - !ref callsCoReferrersMalformedAtRuntime
   - !ref coReferrerScoped
@@ -653,6 +660,8 @@ targets:
   - !ref pathParamsThroughClean
   - !ref pathParamsForInvalid
   - !ref pathParamsForInvalidAtRuntime
+  - !ref evalModeBranchConflict
+  - !ref evalModeBranchConflictAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -3295,6 +3304,15 @@ expect:
   errors: []
   runFails: "[ERR_VALUE_SCHEMA_FROM_INVALID] RuntimeError: Telo.Definition 'Caller' at 'schema.properties.entry.properties.value.x-telo-value-schema-from': `member` names 'size'"
 ---
+# A map keyed by a type's properties refuses a key naming none: a computed map
+# has no key before dispatch, where the bound contract refuses it.
+kind: Assert.Manifest
+metadata: { name: valueSchemaMemberKeyComputed }
+source: ./__fixtures__/check-run-agreement/value-schema-member-computed/telo.yaml
+expect:
+  errors: []
+  runFails: "App.Scoped/scoped: inputs do not satisfy the declared inputType: Invalid value passed: {\"scope\":{\"runnr\":\"a\"}}. Error: /scope must NOT have additional properties ('runnr' is not allowed)"
+---
 # The same refusal for an annotation written in the NAMED SHAPE a contract field
 # names: the annotation is the kind's wherever its contract is written.
 kind: Assert.Manifest
@@ -4368,6 +4386,61 @@ kind: Assert.Manifest
 metadata: { name: observesInheritedBySinkAtRuntime }
 source: ./__fixtures__/needs/consume/consumers/abstract-sink.yaml
 expect: { errors: [], runFails: "ERR_X_TELO_REF_INVALID_OBSERVES" }
+---
+# `completedWhen` names a boolean sibling of a slot pairing an `inputs:` map —
+# refused statically at the kind or named shape, a dependency's at the import
+# reaching it, and when the kernel registers it.
+kind: Assert.Manifest
+metadata: { name: completedWhenNotBoolean }
+source: ./__fixtures__/check-run-agreement/completed-when/lib/telo.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_COMPLETED_WHEN
+      message: "Telo.Definition 'Button': x-telo-ref at 'schema.properties.action' declares 'completedWhen: /prompt', but '/prompt' is not declared 'type: boolean'."
+---
+kind: Assert.Manifest
+metadata: { name: completedWhenNotBooleanAtRuntime }
+source: ./__fixtures__/check-run-agreement/completed-when/telo.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_COMPLETED_WHEN
+      message: "Imported library 'CompletedWhenLib', reached through import 'Lib': Telo.Definition 'Button': x-telo-ref at 'schema.properties.action' declares 'completedWhen: /prompt'"
+  runFails: "[X_TELO_REF_INVALID_COMPLETED_WHEN] Imported library 'CompletedWhenLib', reached through import 'Lib': Telo.Definition 'Button': x-telo-ref at 'schema.properties.action' declares 'completedWhen: /prompt'"
+---
+kind: Assert.Manifest
+metadata: { name: completedWhenNotBooleanInShape }
+source: ./__fixtures__/check-run-agreement/completed-when/shape-lib/telo.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_COMPLETED_WHEN
+      message: "Telo.JsonSchema 'Bound': x-telo-ref at 'schema.properties.action' declares 'completedWhen: /prompt', but '/prompt' is not declared 'type: boolean'."
+---
+kind: Assert.Manifest
+metadata: { name: completedWhenNotBooleanInShapeAtRuntime }
+source: ./__fixtures__/check-run-agreement/completed-when/shape.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_COMPLETED_WHEN
+      message: "Imported library 'CompletedWhenShapeLib', reached through import 'Lib': Telo.JsonSchema 'Bound': x-telo-ref at 'schema.properties.action' declares 'completedWhen: /prompt'"
+  runFails: "[X_TELO_REF_INVALID_COMPLETED_WHEN] Imported library 'CompletedWhenShapeLib', reached through import 'Lib': Telo.JsonSchema 'Bound': x-telo-ref at 'schema.properties.action' declares 'completedWhen: /prompt'"
+---
+# The sibling is read through a JSON Pointer into another named shape.
+kind: Assert.Manifest
+metadata: { name: completedWhenPointerNotBoolean }
+source: ./__fixtures__/check-run-agreement/completed-when/pointer-lib/telo.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_COMPLETED_WHEN
+      message: "Telo.JsonSchema 'Bound': x-telo-ref at 'schema.properties.action' declares 'completedWhen: /prompt', but '/prompt' is not declared 'type: boolean'."
+---
+kind: Assert.Manifest
+metadata: { name: completedWhenPointerNotBooleanAtRuntime }
+source: ./__fixtures__/check-run-agreement/completed-when/pointer.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_COMPLETED_WHEN
+      message: "Imported library 'CompletedWhenPointerLib', reached through import 'Lib': Telo.JsonSchema 'Bound': x-telo-ref at 'schema.properties.action' declares 'completedWhen: /prompt'"
+  runFails: "[X_TELO_REF_INVALID_COMPLETED_WHEN] Imported library 'CompletedWhenPointerLib', reached through import 'Lib': Telo.JsonSchema 'Bound': x-telo-ref at 'schema.properties.action' declares 'completedWhen: /prompt'"
 ---
 # `callsCoReferrers` names a kind and a reference slot of it able to hold this
 # slot's target — refused at the kind, and at the import reaching a dependency's.
@@ -6354,3 +6427,24 @@ expect:
     - code: PATH_PARAMS_FOR_INVALID
       message: "reached through import 'Lib': Telo.Definition 'Link' declares 'schema.properties.id.x-telo-path-params-for' on a property that holds no object"
   runFails: "[PATH_PARAMS_FOR_INVALID] Imported library 'PathParamsForInvalidLib', reached through import 'Lib': Telo.Definition 'Link' declares 'schema.properties.id.x-telo-path-params-for' on a property that holds no object"
+---
+# One property an accessor in one union branch and a literal in the other: the
+# eval-site walk reads both branches at one path, so it is refused at the kind…
+kind: Assert.Manifest
+metadata: { name: evalModeBranchConflict }
+source: ./__fixtures__/check-run-agreement/eval-mode-branch-conflict/lib/telo.yaml
+expect:
+  errors:
+    - code: EVAL_MODE_BRANCH_CONFLICT
+      message: "Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'text' two eval modes: oneOf[0] makes it an accessor (`x-telo-eval: accessor`), and oneOf[1] makes it a literal (no `x-telo-eval`)."
+---
+# …and at the import reaching it, since the kernel refuses the kind when the
+# import registers it.
+kind: Assert.Manifest
+metadata: { name: evalModeBranchConflictAtRuntime }
+source: ./__fixtures__/check-run-agreement/eval-mode-branch-conflict/telo.yaml
+expect:
+  errors:
+    - code: EVAL_MODE_BRANCH_CONFLICT
+      message: "reached through import 'Lib': Telo.Definition 'Card' declares a union at 'schema.properties.content'"
+  runFails: "[EVAL_MODE_BRANCH_CONFLICT] Imported library 'EvalModeBranchConflictLib', reached through import 'Lib': Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'text' two eval modes"

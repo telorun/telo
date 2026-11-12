@@ -11,12 +11,13 @@ metadata:
     property, an operator, a facet, a starting sort or an option source their data model or
     their collection does not support, surfaces and split views whose compact surface is addressed or has a
     compact surface of its own, a form and actions whose fields their model
-    cannot answer for or no control can enter, an action clearing its answer on
+    cannot answer for or no control can enter, filter values relative to now
+    on a property that holds no date or under `in`, an action clearing its answer on
     a property its input model does not declare, and a listing and a list whose
     row action is given inputs that make no record of its input model.
 imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
 exports:
-  resources: [sourceFilter, sourceFilterNotAccepted, sortNotAccepted, formField, formFieldUnsupported, filterNotAccepted, filterValuesNotFaceted, filterOptionValueMismatch, compactAddressed, compactNested, splitCompactAddressed, splitCompactNested, filterDuplicate, filterDefaultInvalid, filterControlUnsupported, presetUnknownFilter, searchUndeclared, presetSearchUnset, presetValueInvalid, presetLabelDuplicate, toggleOverText, toggleUntyped, toggleDefaultOff, togglePresetOff, actionFieldUnknown, actionFieldUnsupported, actionRequiredNotEntered, actionRequiredNotEnterable, actionClearUnknown, rowActionInputs, listRowActionInputs]
+  resources: [sourceFilter, sourceFilterNotAccepted, sortNotAccepted, formField, formFieldUnsupported, filterNotAccepted, filterValuesNotFaceted, filterOptionValueMismatch, compactAddressed, compactNested, splitCompactAddressed, splitCompactNested, filterDuplicate, filterDefaultInvalid, filterControlUnsupported, presetUnknownFilter, searchUndeclared, presetSearchUnset, presetValueInvalid, presetRelativeInvalid, defaultRelativeInvalid, presetLabelDuplicate, toggleOverText, toggleUntyped, toggleDefaultOff, togglePresetOff, actionFieldUnknown, actionFieldUnsupported, actionRequiredNotEntered, actionRequiredNotEnterable, actionClearUnknown, rowActionInputs, listRowActionInputs]
 ---
 kind: Telo.JsonSchema
 metadata: { name: Todo }
@@ -204,6 +205,49 @@ presets:
     values:
       - { property: isDone, operator: eq, value: [true] }
 content: { type: text, text: Todos }
+---
+# Reviewed waits on a date-time; `state` is no date, and is filtered with `in`.
+kind: Ui.CollectionPresentation
+metadata: { name: reviews }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/reviews
+  collection:
+    kind: DataModel.Collection
+    model:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [id]
+        properties:
+          id: { type: integer }
+          state: { type: string, enum: [submitted, revised] }
+          revisedAt: { type: string, format: date-time }
+    query:
+      filters:
+        - { property: state, operator: in }
+        - { property: revisedAt, operator: lte }
+        - { property: revisedAt, operator: in }
+      sort: []
+---
+kind: Ui.Filters
+metadata: { name: presetRelativeInvalid }
+presentation: !ref reviews
+fields:
+  - { property: state, operator: in }
+  - { property: revisedAt, operator: lte }
+presets:
+  - label: Waiting a day or more
+    values:
+      - { property: state, operator: in, value: { unit: day, offset: -1 } }
+content: { type: text, text: Reviews }
+---
+kind: Ui.Filters
+metadata: { name: defaultRelativeInvalid }
+presentation: !ref reviews
+fields:
+  - { property: revisedAt, operator: in, default: { unit: day, offset: -1 } }
+content: { type: text, text: Reviews }
 ---
 kind: Ui.Filters
 metadata: { name: presetLabelDuplicate }

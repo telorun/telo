@@ -50,15 +50,15 @@ listing using it is a referrer rule on that listing, so `telo check` reports
 what the call refuses — and a layout kind from another module is checked with
 no change to `ui`.
 
-Both `layout` and `compact` bind `row` (typed from the listing's `model`) and
-`query` for the layout's accessors; a layout kind types its own bindings from
+Both `layout` and `compact` bind `row` (typed from the listing's `model`),
+`query` and the page's [`params`](page.md#params) for the layout's accessors; a layout kind types its own bindings from
 them with `x-telo-context-from-referrer`. A layout kind carries no `compact` of
 its own, so a compact layout cannot be nested.
 
 ## Shared keys
 
-- **`content`** — one [node](nodes.md) tree drawn per record, over `row` and
-  `query`; the same key on every layout drawing records with it. Omitted, a
+- **`content`** — one [node](nodes.md) tree drawn per record, over `row`,
+  `query` and `params`; the same key on every layout drawing records with it. Omitted, a
   stack of the record's values, one `value` node per model property but the
   collection's key, in declaration order. A `value` node over `row.<property>`
   where the presentation presents that property's relation shows the related
@@ -78,7 +78,7 @@ its own, so a compact layout cannot be nested.
 - **`parent`** — the property holding the key of a record's parent, a relation
   of the collection to itself. The roots are read with `<parent>.absent=true`,
   an expanded record's children with `<parent>=<key>`.
-- **`move`** — a [`Ui.RowAction`](action.md#row-actions) over `row`, the record
+- **`move`** — a [`Ui.BoundAction`](action.md#bound-actions) over `row`, the record
   as read, and `to`, the record as the gesture leaves it (typed from `row`).
 
 `groups.property`, `span.start` / `end` and `parent` are property names, as a
@@ -107,7 +107,7 @@ layout:
 - `inputs` is checked as a call site of the action, as a row action's is:
   `CONTRACT_INPUTS_MISMATCH`, `CEL_UNKNOWN_FIELD`, `CEL_TYPE_ERROR` and
   `ACCESSOR_NOT_PLAIN_CHAIN` at `telo check`, and
-  `ERR_UI_ROW_ACTION_INPUTS_INVALID` when the listing is first read.
+  `ERR_UI_BOUND_ACTION_INPUTS_INVALID` when the listing is first read.
 - A 2xx answer is a change to the collection: every listing over its source's
   `basePath` [reloads](listing.md#reloading).
 - Every move has a keyboard path: each record's "Move to" menu (the renderer's
@@ -144,7 +144,8 @@ columns:
 ```
 
 `row` is typed from the listing's `model`, so a property the model does not
-declare is `CEL_UNKNOWN_FIELD` at `telo check`. A value column's `href` is an
+declare is `CEL_UNKNOWN_FIELD` at `telo check`; a value and an `href` may read
+the page's [`params`](page.md#params) too. A value column's `href` is an
 [address](nodes.md#addresses) drawing the value as the text of a link; a cell
 column takes none.
 

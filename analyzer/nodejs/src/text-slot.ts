@@ -35,7 +35,7 @@
  * values a resource is created with. Browser-safe: no Node built-ins.
  */
 import { manifestFragmentOf } from "./manifest-schemas.js";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { resolveSchemaReference } from "./schema-reference.js";
 
 export const MESSAGE_FRAGMENT = "Message";
 export const TEXT_FRAGMENT = "Text";
@@ -97,7 +97,7 @@ export function isTextOrRecordUnion(
   for (const branch of branches) {
     let node: unknown = branch;
     if (isPlainObject(node) && typeof node.$ref === "string" && textFragmentOf(node) === undefined && !isTextRecordSchema(node)) {
-      node = node.$ref.startsWith("#") ? resolveSchemaPointer(root, node.$ref) : resolveRef?.(node.$ref)?.schema;
+      node = referenceTarget(node.$ref, root, resolveRef)?.schema;
     }
     if (textFragmentOf(node) === TEXT_FRAGMENT) text = true;
     if (isTextRecordSchema(node)) record = true;
@@ -114,9 +114,7 @@ export function producesTextRecord(
 ): boolean {
   const resolved = (node: unknown): unknown =>
     isPlainObject(node) && typeof node.$ref === "string" && !isTextRecordSchema(node)
-      ? node.$ref.startsWith("#")
-        ? resolveSchemaPointer(root, node.$ref)
-        : resolveRef?.(node.$ref)?.schema
+      ? referenceTarget(node.$ref, root, resolveRef)?.schema
       : node;
   const node = resolved(schema);
   if (isTextRecordSchema(node)) return true;
@@ -194,6 +192,18 @@ export interface TextWalk {
   readonly expressions: TextExpressionSite[];
 }
 
+/** What `ref`, written in the document `root`, names — a named shape and a
+ *  pointer into one read through `resolveRef`'s document — and that node's
+ *  document. */
+export function referenceTarget(
+  ref: string,
+  root: Record<string, any>,
+  resolveRef: TextWalkOptions["resolveRef"],
+): { schema: Record<string, any>; root: Record<string, any> } | undefined {
+  const target = resolveSchemaReference(ref, root, resolveRef && ((id) => resolveRef(id)?.root));
+  return target ? { schema: target.node, root: target.document } : undefined;
+}
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
@@ -220,7 +230,7 @@ function declaresText(schema: Record<string, any>, root: Record<string, any> = s
       const ref = (node as Record<string, unknown>).$ref;
       if (typeof ref === "string") {
         if (!ref.startsWith("#")) return true;
-        if (scan(resolveSchemaPointer(root, ref))) return true;
+        if (scan(referenceTarget(ref, root, undefined)?.schema)) return true;
       }
       return Object.values(node).some(scan);
     };
@@ -266,12 +276,8 @@ export function fragmentAdmits(
     if (!isPlainObject(node) || seen.has(node)) return false;
     seen.add(node);
     if (typeof node.$ref === "string") {
-      if (node.$ref.startsWith("#")) {
-        if (admits(resolveSchemaPointer(at, node.$ref), at)) return true;
-      } else {
-        const named = resolveRef?.(node.$ref);
-        if (named && admits(named.schema, named.root)) return true;
-      }
+      const target = referenceTarget(node.$ref, at, resolveRef);
+      if (target && admits(target.schema, target.root)) return true;
     }
     for (const union of ["anyOf", "oneOf"] as const) {
       if (Array.isArray(node[union]) && node[union].some((branch: unknown) => admits(branch, at))) return true;
@@ -314,9 +320,7 @@ function branchExcludes(
     ancestry.add(node);
     try {
       if (typeof node.$ref === "string") {
-        const target = node.$ref.startsWith("#")
-          ? { schema: resolveSchemaPointer(at, node.$ref), root: at }
-          : resolveRef?.(node.$ref);
+        const target = referenceTarget(node.$ref, at, resolveRef);
         if (target && excludes(target.schema, target.root)) return true;
       }
       const required: unknown[] = Array.isArray(node.required) ? node.required : [];
@@ -456,12 +460,8 @@ export function textSites(
     if (typeof declared.$ref === "string") {
       const carried = declaredTextValuesOf(declared) ?? inheritedValues;
       const carriedFrom = declared[TEXT_VALUES_FROM_ANNOTATION] ?? inheritedFrom;
-      if (declared.$ref.startsWith("#")) {
-        walk(resolveSchemaPointer(root, declared.$ref), root, value, path, holder, carried, carriedFrom);
-      } else {
-        const named = options.resolveRef?.(declared.$ref);
-        if (named) walk(named.schema, named.root, value, path, holder, carried, carriedFrom);
-      }
+      const target = referenceTarget(declared.$ref, root, options.resolveRef);
+      if (target) walk(target.schema, target.root, value, path, holder, carried, carriedFrom);
     }
     for (const union of ["oneOf", "anyOf", "allOf"] as const) {
       if (Array.isArray(declared[union])) {
@@ -533,12 +533,8 @@ function reachesTextCatalog(
       if (textFragmentOf(node) === TEXT_CATALOG_FRAGMENT) return true;
       const ref = (node as Record<string, unknown>).$ref;
       if (typeof ref === "string") {
-        if (ref.startsWith("#")) {
-          if (scan(resolveSchemaPointer(at, ref), at)) return true;
-        } else {
-          const named = resolveRef?.(ref);
-          if (named && scan(named.schema, named.root)) return true;
-        }
+        const target = referenceTarget(ref, at, resolveRef);
+        if (target && scan(target.schema, target.root)) return true;
       }
       return Object.values(node).some((child) => scan(child, at));
     };

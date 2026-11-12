@@ -1,0 +1,195 @@
+kind: Telo.Application
+metadata:
+  name: UiPageActionsTest
+  version: 1.0.0
+  description: |
+    A page's data runs actions in place: a `button` node bound to the page's
+    variables and a reader's data, prompting for the required input it leaves
+    unbound — its action declared inline or one resource two buttons name by
+    reference — and a `list` node with row and cell styles — each as a renderer
+    receives it. Refused by `telo check`: a button that does not prompt leaving
+    a required input unbound, binding a key the action does not take or
+    reading a member the data does not declare, an action whose form leaves a
+    required property out whatever binds it, and a style chosen by anything but
+    a plain chain; a button's inputs that make no record of its action are
+    refused again when the reader is first read.
+imports: { Ui: ../, Assert: ../../assert }
+targets:
+  - !ref main
+  - !ref refused
+  - !ref stylesRefused
+  - !ref buttonInputsAtRuntime
+---
+kind: Telo.JsonSchema
+metadata: { name: PlanDetail }
+schema:
+  type: object
+  required: [plan, lines]
+  properties:
+    plan:
+      type: object
+      required: [title, latestRevision]
+      properties:
+        title: { type: string }
+        latestRevision:
+          type: object
+          required: [seq, hash]
+          properties: { seq: { type: integer }, hash: { type: string } }
+    lines:
+      type: array
+      items:
+        type: object
+        required: [op, text]
+        properties:
+          op: { type: string, enum: [added, removed, context] }
+          text: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: PlanDecision }
+schema:
+  type: object
+  required: [id, decision, revision, hash, author]
+  properties:
+    id: { type: string }
+    decision: { type: string, enum: [approve, request_changes, reject] }
+    revision: { type: integer }
+    hash: { type: string }
+    author: { type: string, title: Your name }
+    note: { type: string, title: Note }
+---
+kind: Ui.Page
+metadata: { name: plan }
+path: /plans/{id}
+children:
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref PlanDetail
+      source:
+        path: "/api/plans/{id}"
+        pathParams: { id: !cel "params.id" }
+      content:
+        type: stack
+        children:
+          - type: button
+            inputs:
+              id: !cel "params.id"
+              decision: approve
+              revision: !cel "data.plan.latestRevision.seq"
+              hash: !cel "data.plan.latestRevision.hash"
+            prompt: true
+            action:
+              kind: Ui.Action
+              inputModel: !ref PlanDecision
+              request:
+                target: { path: "/api/plans/{id}/decisions", pathParams: { id: !cel "input.id" } }
+              label: Approve
+              fields: [id, decision, revision, hash, author]
+          - type: list
+            rows: !cel "data.lines"
+            rowStyle: { by: !cel "row.op", cases: { added: success, removed: danger } }
+            columns:
+              - value: !cel "row.text"
+                style: { by: !cel "row.op", cases: { context: muted }, default: strong }
+          - type: button
+            inputs:
+              id: !cel "params.id"
+              decision: request_changes
+              revision: !cel "data.plan.latestRevision.seq"
+              hash: !cel "data.plan.latestRevision.hash"
+            prompt: true
+            action: !ref decide
+          - type: button
+            inputs:
+              id: !cel "params.id"
+              decision: reject
+              revision: !cel "data.plan.latestRevision.seq"
+              hash: !cel "data.plan.latestRevision.hash"
+            prompt: true
+            action: !ref decide
+---
+kind: Ui.Action
+metadata: { name: decide }
+inputModel: !ref PlanDecision
+request:
+  target: { path: "/api/plans/{id}/decisions", pathParams: { id: !cel "input.id" } }
+label: Decide
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: page
+    invoke: !ref plan
+    inputs: { request: { headers: {} } }
+  - name: buttonIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        cel.bind(b, steps.page.result.children[0].content.children[0], {
+          'members': sort(keys(b)),
+          'inputs': b.inputs,
+          'prompted': b.prompt.fields.map(f, f.property),
+          'button': b.button,
+          'action': [b.action.type, b.action.label]
+        })
+      expected:
+        members: [action, button, fill, inputs, prompt, type]
+        inputs:
+          id: { root: params, path: [id] }
+          decision: { value: approve }
+          revision: { root: data, path: [plan, latestRevision, seq] }
+          hash: { root: data, path: [plan, latestRevision, hash] }
+        prompted: [author]
+        button: { type: text }
+        action: [action, { text: Approve, context: null, lang: und, computed: false }]
+  - name: referencedActionIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        steps.page.result.children[0].content.children.filter(c, c.type == 'button').map(b, [b.inputs.decision, b.action.label.text, b.prompt.fields.map(f, f.property)])
+      expected:
+        - [{ value: approve }, Approve, [author]]
+        - [{ value: request_changes }, Decide, [author, note]]
+        - [{ value: reject }, Decide, [author, note]]
+  - name: listIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        cel.bind(l, steps.page.result.children[0].content.children[1], {
+          'rowStyle': l.rowStyle,
+          'style': l.columns[0].style
+        })
+      expected:
+        rowStyle: { by: { root: row, path: [op] }, cases: { added: success, removed: danger } }
+        style: { by: { root: row, path: [op] }, cases: { context: muted }, default: strong }
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/invalid/page-actions/lib/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Data/authorUnprompted: inputs at 'content.inputs' do not satisfy decide's declared inputType: / is missing required property 'author'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Data/hashMisspelled: inputs at 'content.inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/commentIncomplete: leaves a property the input model requires with no field"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Data/revisionTypo: !cel: 'data.plan.latestRevison' is not defined (available: id, title, latestRevision)"
+---
+kind: Assert.Manifest
+metadata: { name: stylesRefused }
+source: ./__fixtures__/invalid/list-styles/telo.yaml
+expect:
+  errors:
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Ui.Data/rowStyleComputed: 'content.rowStyle.by: !cel \"row.op + 's'\"' is not a plain chain"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Ui.Data/cellStyleComputed: 'content.columns[0].style.by: !cel \"size(row.op)\"' is not a plain chain"
+---
+kind: Assert.Manifest
+metadata: { name: buttonInputsAtRuntime }
+source: ./__fixtures__/invalid/page-actions/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Data 'authorUnprompted' content: 'inputs' cannot make a record of the action's input model: required input 'author' is not bound."

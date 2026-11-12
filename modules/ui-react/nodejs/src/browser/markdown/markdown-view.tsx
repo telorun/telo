@@ -78,7 +78,7 @@ import { ErrorNode } from "../nodes.js";
 import { useSay } from "../texts.js";
 import { errorSpec, type ErrorSpec } from "../ui-error.js";
 import { tokenize } from "./code-tokens.js";
-import type { MarkdownImages } from "./markdown-node.js";
+import type { MarkdownAnnotation, MarkdownImages } from "./markdown-node.js";
 
 const ABSOLUTE_WEB = /^https?:\/\//;
 
@@ -101,6 +101,8 @@ interface Scope {
   /** Whether an image is drawn only from an app-relative address; any other is its alt text. */
   localImagesOnly: boolean;
   definitions: ReadonlyMap<string, Definition>;
+  /** The controls each block holding an annotated line draws, in order. */
+  marks: ReadonlyMap<Nodes, ReactNode[]>;
 }
 
 function definitionsOf(root: Root): Map<string, Definition> {
@@ -111,6 +113,54 @@ function definitionsOf(root: Root): Map<string, Definition> {
   };
   visit(root);
   return found;
+}
+
+/** The item of a list, or of a list nested in it, holding a line. */
+function itemAt(item: ListItem, line: number): Nodes {
+  for (const child of item.children) {
+    if (child.type !== "list" || !child.position || child.position.start.line > line || child.position.end.line < line) continue;
+    const inner = child.children.find((each) => each.position && each.position.start.line <= line && each.position.end.line >= line);
+    if (inner) return itemAt(inner, line);
+  }
+  return item;
+}
+
+/**
+ * The block an annotated line is drawn on: the list item holding it, else the
+ * block holding it — a quote's own block inside it — or, for a line between
+ * blocks, the block after it. Nothing for a line past the text.
+ */
+function blockAt(blocks: readonly RootContent[], line: number): Nodes | undefined {
+  for (const block of blocks) {
+    // A definition draws nothing to hold a control.
+    if (block.type === "definition" || !block.position || block.position.end.line < line) continue;
+    if (block.position.start.line > line) return block;
+    if (block.type === "list") {
+      const item = block.children.find((each) => each.position && each.position.end.line >= line);
+      return item ? (item.position!.start.line > line ? item : itemAt(item, line)) : block;
+    }
+    if (block.type === "blockquote") return blockAt(block.children, line) ?? block;
+    return block;
+  }
+  return undefined;
+}
+
+/** Where each annotation is drawn: on the block holding its line, in order, or after the text. */
+function placeAnnotations(root: Root, annotations: readonly MarkdownAnnotation[]): { marks: Map<Nodes, ReactNode[]>; unplaced: ReactNode[] } {
+  const marks = new Map<Nodes, ReactNode[]>();
+  const unplaced: ReactNode[] = [];
+  for (const { line, control } of annotations) {
+    const block = typeof line === "number" && Number.isInteger(line) && line >= 1 ? blockAt(root.children, line) : undefined;
+    if (block === undefined) unplaced.push(control);
+    else marks.set(block, [...(marks.get(block) ?? []), control]);
+  }
+  return { marks, unplaced };
+}
+
+/** The controls a block holds, in the element holding them; nothing when it holds none. */
+function marksOf(node: Nodes, scope: Scope): ReactNode {
+  const controls = scope.marks.get(node);
+  return controls ? <span data-telo-part="markdown-annotations">{controls}</span> : null;
 }
 
 /** The plain text a node stands for, for an image that cannot be drawn. */
@@ -158,7 +208,9 @@ function listItem(item: ListItem, scope: Scope, place: Place): ReactNode {
       {task ? (
         <span data-telo-part="markdown-task" role="checkbox" aria-checked={item.checked as boolean} aria-readonly="true" aria-label={textOf(item)} />
       ) : null}
-      {children(item.children, scope, place)}
+      {children(item.children.slice(0, 1), scope, place)}
+      {marksOf(item, scope)}
+      {children(item.children.slice(1), scope, place)}
     </li>
   );
 }
@@ -174,32 +226,68 @@ function cell(node: TableCell, header: boolean, align: AlignType, scope: Scope):
 function draw(node: RootContent, scope: Scope, place: Place): ReactNode {
   switch (node.type) {
     case "paragraph":
-      return place === "tight" ? children(node.children, scope) : <p data-telo-part="markdown-paragraph">{children(node.children, scope)}</p>;
+      return place === "tight" ? (
+        <>
+          {children(node.children, scope)}
+          {marksOf(node, scope)}
+        </>
+      ) : (
+        <p data-telo-part="markdown-paragraph">
+          {children(node.children, scope)}
+          {marksOf(node, scope)}
+        </p>
+      );
     case "heading":
       return createElement(
         `h${node.depth}`,
         { "data-telo-part": "markdown-heading", "data-level": String(node.depth) },
         children(node.children, scope),
+        marksOf(node, scope),
       );
     case "thematicBreak":
-      return <hr data-telo-part="markdown-rule" />;
+      return (
+        <>
+          <hr data-telo-part="markdown-rule" />
+          {marksOf(node, scope)}
+        </>
+      );
     case "blockquote":
-      return <blockquote data-telo-part="markdown-quote">{children(node.children, scope, "block")}</blockquote>;
+      return (
+        <blockquote data-telo-part="markdown-quote">
+          {children(node.children, scope, "block")}
+          {marksOf(node, scope)}
+        </blockquote>
+      );
     case "list": {
       const items = node.children.map((item, index) => <Fragment key={index}>{listItem(item, scope, item.spread ?? node.spread ?? false ? "block" : "tight")}</Fragment>);
-      return node.ordered ? (
-        <ol data-telo-part="markdown-list" start={node.start ?? undefined}>
-          {items}
-        </ol>
-      ) : (
-        <ul data-telo-part="markdown-list">{items}</ul>
+      return (
+        <>
+          {node.ordered ? (
+            <ol data-telo-part="markdown-list" start={node.start ?? undefined}>
+              {items}
+            </ol>
+          ) : (
+            <ul data-telo-part="markdown-list">{items}</ul>
+          )}
+          {marksOf(node, scope)}
+        </>
       );
     }
     case "code":
-      return <CodeBlock code={node.value} language={node.lang ?? undefined} />;
+      return <CodeBlock code={node.value} language={node.lang ?? undefined} marks={marksOf(node, scope)} />;
     case "html":
       // Raw markup is text: the renderer builds elements and inserts none.
-      return place === "block" ? <p data-telo-part="markdown-paragraph">{node.value}</p> : node.value;
+      return place === "block" ? (
+        <p data-telo-part="markdown-paragraph">
+          {node.value}
+          {marksOf(node, scope)}
+        </p>
+      ) : (
+        <>
+          {node.value}
+          {marksOf(node, scope)}
+        </>
+      );
     case "table":
       return (
         <div data-telo-part="markdown-table-frame">
@@ -223,6 +311,7 @@ function draw(node: RootContent, scope: Scope, place: Place): ReactNode {
               ))}
             </tbody>
           </table>
+          {marksOf(node, scope)}
         </div>
       );
     case "text":
@@ -254,7 +343,12 @@ function draw(node: RootContent, scope: Scope, place: Place): ReactNode {
       return null;
     default:
       // A node the profile does not include is drawn as the text it holds.
-      return textOf(node);
+      return (
+        <>
+          {textOf(node)}
+          {marksOf(node, scope)}
+        </>
+      );
   }
 }
 
@@ -289,7 +383,7 @@ function CopyCode({ code }: { code: string }) {
   );
 }
 
-function CodeBlock({ code, language }: { code: string; language: string | undefined }) {
+function CodeBlock({ code, language, marks }: { code: string; language: string | undefined; marks: ReactNode }) {
   const tokens = useMemo(() => tokenize(code, language), [code, language]);
   const named = language?.trim().split(/\s+/)[0];
   return (
@@ -311,18 +405,37 @@ function CodeBlock({ code, language }: { code: string; language: string | undefi
           )}
         </code>
       </pre>
+      {marks}
     </div>
   );
 }
 
-/** The markdown renderer: the text drawn as elements this module builds. */
-export default function MarkdownView({ source, style, images = "any", fill = false }: { source: string; style?: Style; images?: MarkdownImages; fill?: boolean }) {
+/**
+ * The markdown renderer: the text drawn as elements this module builds, each
+ * annotation's control on the block holding its line, and those whose line is
+ * past the text after it.
+ */
+export default function MarkdownView({
+  source,
+  style,
+  images = "any",
+  fill = false,
+  annotations = [],
+}: {
+  source: string;
+  style?: Style;
+  images?: MarkdownImages;
+  fill?: boolean;
+  annotations?: readonly MarkdownAnnotation[];
+}) {
   const store = useHostStore();
   const tree = useMemo(() => parseMarkdown(source), [source]);
   const definitions = useMemo(() => definitionsOf(tree), [tree]);
+  const { marks, unplaced } = placeAnnotations(tree, annotations);
   return (
     <div data-telo-part="markdown" data-state="idle" data-fill={fill ? "true" : undefined} data-style={styleAttribute(style)}>
-      {children(tree.children, { store, definitions, localImagesOnly: images === "app-relative" }, "block")}
+      {children(tree.children, { store, definitions, marks, localImagesOnly: images === "app-relative" }, "block")}
+      {unplaced.length > 0 && <div data-telo-part="markdown-unplaced-annotations">{unplaced}</div>}
     </div>
   );
 }

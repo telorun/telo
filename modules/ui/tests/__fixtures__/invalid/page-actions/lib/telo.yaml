@@ -1,0 +1,98 @@
+# Readers whose button writes something `telo check` refuses on the line it was
+# written: a required input left unbound by a button that does not prompt, a
+# key the action does not take, an action whose form leaves a required
+# property out, and a read of a member the data does not declare. A consumer's
+# own check sees none, so the button is refused when it is first read.
+kind: Telo.Library
+metadata:
+  name: UiInvalidPageActions
+  version: 1.0.0
+  description: >-
+    Test fixture exporting readers whose buttons each read what their data or
+    their action cannot answer for.
+imports: { Ui: ../../../../../ }
+exports: { resources: [authorUnprompted, hashMisspelled, revisionTypo] }
+---
+kind: Telo.JsonSchema
+metadata: { name: PlanDetail }
+schema:
+  type: object
+  required: [plan]
+  properties:
+    plan:
+      type: object
+      required: [id, title, latestRevision]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        latestRevision:
+          type: object
+          required: [seq, hash]
+          properties: { seq: { type: integer }, hash: { type: string } }
+---
+kind: Ui.Action
+metadata: { name: decide }
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [revision, hash, author]
+    properties: { revision: { type: integer }, hash: { type: string }, author: { type: string } }
+request: { target: /api/decisions }
+label: Decide
+---
+kind: Ui.Data
+metadata: { name: authorUnprompted }
+model: !ref PlanDetail
+source: /api/plan
+content:
+  type: button
+  action: !ref decide
+  inputs: { revision: !cel "data.plan.latestRevision.seq", hash: !cel "data.plan.latestRevision.hash" }
+  prompt: false
+---
+kind: Ui.Data
+metadata: { name: hashMisspelled }
+model: !ref PlanDetail
+source: /api/plan
+content:
+  type: button
+  action: !ref decide
+  inputs: { revision: !cel "data.plan.latestRevision.seq", hsh: !cel "data.plan.latestRevision.hash" }
+  prompt: true
+---
+# Its form enters `author` alone, so `id` could never be sent, whatever binds it.
+kind: Ui.Action
+metadata: { name: commentIncomplete }
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id, author]
+    properties: { id: { type: string }, author: { type: string } }
+request: { target: /api/comments }
+label: Comment
+fields: [author]
+---
+kind: Ui.Data
+metadata: { name: commentBound }
+model: !ref PlanDetail
+source: /api/plan
+content:
+  type: button
+  action: !ref commentIncomplete
+  inputs: { id: !cel "data.plan.id" }
+  prompt: true
+---
+kind: Ui.Data
+metadata: { name: revisionTypo }
+model: !ref PlanDetail
+source: /api/plan
+content:
+  type: button
+  action: !ref decide
+  inputs:
+    revision: !cel "data.plan.latestRevison.seq"
+    hash: !cel "data.plan.latestRevision.hash"
+  prompt: true

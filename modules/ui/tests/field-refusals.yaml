@@ -60,6 +60,8 @@ expect:
       message: "Ui.CollectionOptions/valueNotFilterable: yields a value no request can look options up by: `value` must be a property of the record, read as `row.<property>`, that the collection accepts with operator `in`, so a chosen value is labelled by one request"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.CollectionOptions/optionFilterNotAccepted at 'filters.name': filters its source by a property the collection does not accept an equality on"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.CollectionOptions/optionFilterUnknown: `filters` does not satisfy the type declared at `{ from: /model, member: 0# }`: / must NOT have additional properties ('nickname' is not allowed)"
     - code: REFERRER_RULE_VIOLATED
       message: "Ui.Form/inputControl at 'fields[0]': required by Ui.InputField — asks for a control its property cannot be entered with"
     - code: REFERRER_RULE_VIOLATED

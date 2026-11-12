@@ -45,16 +45,17 @@ function admitsNull(property: JsonSchema): boolean {
 
 /**
  * Every property a shape declares, by API name, in declaration order. Nothing
- * else ever becomes a column.
+ * else ever becomes a column. A property is stored in its snake_case column,
+ * or, over a SELECT, in the column aliased to its own name.
  */
-export function modelProperties(schema: JsonSchema): Map<string, ModelProperty> {
+export function modelProperties(schema: JsonSchema, naming: "column" | "name" = "column"): Map<string, ModelProperty> {
   const properties = new Map<string, ModelProperty>();
   const required: unknown[] = Array.isArray(schema.required) ? schema.required : [];
   for (const [name, declared] of Object.entries((schema.properties ?? {}) as Record<string, JsonSchema>)) {
     const type = declared?.type;
     properties.set(name, {
       name,
-      column: columnOf(name),
+      column: naming === "name" ? name : columnOf(name),
       types: declaredTypes(declared ?? {}),
       nullable: admitsNull(declared ?? {}),
       required: required.includes(name),

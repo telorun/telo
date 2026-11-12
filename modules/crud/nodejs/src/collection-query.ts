@@ -40,6 +40,8 @@ export interface QueryInputs {
   search?: unknown;
   limit?: unknown;
   cursor?: unknown;
+  /** Equalities the caller fixes: model property → value. */
+  scope?: Record<string, unknown>;
 }
 
 export interface Filter {
@@ -62,6 +64,8 @@ export interface Search {
 
 /** A request every part of which is a declared filter or sort with a typed value. */
 export interface CollectionQuery {
+  /** The property identifying a row: the order's tie-break and the cursor's seek. */
+  key: ModelProperty;
   filters: Filter[];
   search?: Search;
   sort: Sort;
@@ -105,13 +109,15 @@ const PRESENCE: ModelProperty = { name: "", column: "", types: ["boolean"], null
 function readFilter(
   properties: Map<string, ModelProperty>,
   accepted: AcceptedQuery,
+  scoped: ReadonlySet<string>,
   input: { property: string; operator?: string; value: unknown },
 ): Filter | ValueIssue {
   const parameter = parameterOf(input.property, input.operator);
   const notAccepted = () => issueAt(parameter, "additionalProperties", { additionalProperty: parameter });
   const property = properties.get(input.property);
   // A spelled `eq` is no parameter: equality is the bare property name.
-  if (!property || (input.operator !== undefined && !(OPERATORS as readonly string[]).includes(input.operator))) {
+  // What the route fixed is no client's to filter by.
+  if (!property || scoped.has(property.name) || (input.operator !== undefined && !(OPERATORS as readonly string[]).includes(input.operator))) {
     return notAccepted();
   }
   const operator = (input.operator ?? "eq") as Operator;
@@ -145,14 +151,22 @@ function readFilter(
 }
 
 /** Every declared filter of a request, and an issue for each that is not one. */
-function readFilters(properties: Map<string, ModelProperty>, accepted: AcceptedQuery, inputs: QueryInputs, issues: ValueIssue[]): Filter[] {
+function readFilters(
+  properties: Map<string, ModelProperty>,
+  accepted: AcceptedQuery,
+  scope: Filter[],
+  inputs: QueryInputs,
+  issues: ValueIssue[],
+): Filter[] {
+  const scoped = new Set(scope.map((filter) => filter.property.name));
   const filters: Filter[] = [];
   for (const input of inputs.filters ?? []) {
-    const filter = readFilter(properties, accepted, input);
+    const filter = readFilter(properties, accepted, scoped, input);
     if ("pointer" in filter) issues.push(filter);
     else filters.push(filter);
   }
-  return filters;
+  // The scope holds the request in, whatever it asked for.
+  return [...scope, ...filters];
 }
 
 /** The request's `search`, refused where the collection declares none. */
@@ -199,6 +213,29 @@ function refuseIfAny(issues: ValueIssue[]): void {
 }
 
 /**
+ * The equalities a scope fixes. A scope is the route's own, never a client's:
+ * a property the model lacks or a value its type does not read is the
+ * author's mistake, refused as an invalid input and not as a bad query.
+ */
+export function readScope(properties: Map<string, ModelProperty>, scope: Record<string, unknown> | undefined): Filter[] {
+  return Object.entries(scope ?? {}).map(([name, raw]) => {
+    const property = properties.get(name);
+    if (!property) throw new InvokeError("ERR_INPUT_INVALID", `scope: '${name}' is not a property of the model.`);
+    const value = readValue(property, raw);
+    if (value === undefined) {
+      throw new InvokeError("ERR_INPUT_INVALID", `scope: the value of '${name}' is not of the property's type (${property.types.join(", ") || "any"}).`);
+    }
+    return { property, operator: "eq", values: [value] } satisfies Filter;
+  });
+}
+
+function keyOf(properties: Map<string, ModelProperty>, name: string): ModelProperty {
+  const key = properties.get(name);
+  if (!key) throw new InvokeError("ERR_INPUT_INVALID", `the model declares no key property '${name}'.`);
+  return key;
+}
+
+/**
  * Judge a request against what the collection accepts, with value types from
  * the model. Everything wrong with it is reported at once, one issue per
  * parameter that carried it, its pointer naming the parameter.
@@ -207,12 +244,13 @@ export function planQuery(
   properties: Map<string, ModelProperty>,
   accepted: AcceptedQuery,
   inputs: QueryInputs,
+  keyName: string = KEY,
 ): CollectionQuery {
   const issues: ValueIssue[] = [];
-  const filters = readFilters(properties, accepted, inputs, issues);
+  const filters = readFilters(properties, accepted, readScope(properties, inputs.scope), inputs, issues);
   const search = readSearch(properties, accepted, inputs, issues);
 
-  const key = properties.get(KEY)!;
+  const key = keyOf(properties, keyName);
   let sort: Sort = { property: key, descending: false };
   const keys = inputs.sort ?? [];
   if (keys.length > 1) {
@@ -243,7 +281,7 @@ export function planQuery(
   }
 
   refuseIfAny(issues);
-  return { filters, ...(search ? { search } : {}), sort, limit, ...(after ? { after } : {}) };
+  return { key, filters, ...(search ? { search } : {}), sort, limit, ...(after ? { after } : {}) };
 }
 
 /**
@@ -257,7 +295,7 @@ export function planFacet(
   inputs: QueryInputs,
 ): FacetQuery {
   const issues: ValueIssue[] = [];
-  const filters = readFilters(properties, accepted, inputs, issues);
+  const filters = readFilters(properties, accepted, readScope(properties, inputs.scope), inputs, issues);
   const search = readSearch(properties, accepted, inputs, issues);
 
   const named = typeof inputs.facet === "string" ? inputs.facet : undefined;

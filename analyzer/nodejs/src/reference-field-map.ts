@@ -34,6 +34,8 @@ export interface RefFieldEntry {
   /** JSON Pointer (relative to the object enclosing the slot) naming the field
    *  carrying this call's arguments. */
   inputs?: string;
+  /** See {@link RefSlot.completedWhen}. */
+  completedWhen?: string;
   /** True when the field path traversed through at least one array (path contains "[]"). */
   isArray: boolean;
   /** The slot's non-reference alternatives: the node's own union branches (see

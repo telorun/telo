@@ -286,25 +286,28 @@ export function resolveContractValueSchemas(
     $ref: `#/$defs/${pointerSegment(entryOf(type))}${pointer}`,
   });
   // What one reached type requires of the node: the type itself, or with a
-  // `member`, the property its key names — at a fixed key that property, at a
-  // map's values each declared property under its own name. A member any other
-  // place names is data, unknown to a contract, and contributes nothing.
+  // `member`, the property its key names — at a fixed key that property. A map's
+  // values are typed on the map (`mapConjuncts`); a member any other place names
+  // is data, unknown to a contract, and contributes nothing.
   const conjunct = (
     type: Record<string, any>,
     member: ValueSchemaMember | undefined,
     key: string | undefined,
   ): Record<string, any> | undefined => {
     if (!member) return refTo(type);
-    if (!("key" in member) || member.up !== 0 || key === undefined) return undefined;
-    if (key !== MAP_VALUE) {
-      const pointer = memberPointerOf(type, key);
-      return pointer === undefined ? undefined : refTo(type, pointer);
-    }
-    const names = memberNamesOf(type);
-    return names.length === 0
-      ? undefined
-      : { properties: Object.fromEntries(names.map((name) => [name, refTo(type, memberPointerOf(type, name))])) };
+    if (!("key" in member) || member.up !== 0 || key === undefined || key === MAP_VALUE) return undefined;
+    const pointer = memberPointerOf(type, key);
+    return pointer === undefined ? undefined : refTo(type, pointer);
   };
+  // What a map's values keyed by their own key require of the map: each key is
+  // a property of every reached type, its value that property.
+  const mapConjuncts = (map: Record<string, any>): Record<string, any>[] =>
+    mapValueSchemas(map).flatMap(({ value, pattern }) =>
+      valueSchemaTypes(declaration, value[VALUE_SCHEMA_ANNOTATION], host)
+        .filter(({ member }) => member !== undefined && "key" in member && member.up === 0)
+        .map(({ schema: type }) => keyedMapSchema(type, map, pattern, (name) => refTo(type, memberPointerOf(type, name))))
+        .filter((c): c is Record<string, any> => c !== undefined),
+    );
   const typed = (node: Record<string, any>, key?: string): Record<string, any> => {
     let walked = node;
     for (const child of schemaChildren(node)) {
@@ -326,9 +329,12 @@ export function resolveContractValueSchemas(
       }
       walked[child.keyword][child.at] = next;
     }
-    const conjuncts = valueSchemaTypes(declaration, node[VALUE_SCHEMA_ANNOTATION], host)
-      .map(({ schema: type, member }) => conjunct(type, member, key))
-      .filter((c): c is Record<string, any> => c !== undefined);
+    const conjuncts = [
+      ...valueSchemaTypes(declaration, node[VALUE_SCHEMA_ANNOTATION], host)
+        .map(({ schema: type, member }) => conjunct(type, member, key))
+        .filter((c): c is Record<string, any> => c !== undefined),
+      ...mapConjuncts(node),
+    ];
     if (conjuncts.length === 0) return walked;
     const { [VALUE_SCHEMA_ANNOTATION]: _dropped, ...rest } = walked;
     return {
@@ -345,6 +351,67 @@ export function resolveContractValueSchemas(
 }
 
 const pointerSegment = (key: string): string => key.replace(/~/g, "~0").replace(/\//g, "~1");
+
+/** The value schemas of a map node carrying the annotation: its
+ *  `additionalProperties`, and each `patternProperties` entry with its pattern. */
+function mapValueSchemas(map: Record<string, any>): Array<{ value: Record<string, any>; pattern?: string }> {
+  const out: Array<{ value: Record<string, any>; pattern?: string }> = [];
+  if (isSchemaNode(map.additionalProperties) && map.additionalProperties[VALUE_SCHEMA_ANNOTATION] !== undefined) {
+    out.push({ value: map.additionalProperties });
+  }
+  for (const [pattern, value] of Object.entries(isSchemaNode(map.patternProperties) ? map.patternProperties : {})) {
+    if (isSchemaNode(value) && value[VALUE_SCHEMA_ANNOTATION] !== undefined) out.push({ value, pattern });
+  }
+  return out;
+}
+
+/** Whether `name` matches a JSON Schema `pattern`; one no engine reads matches
+ *  nothing. */
+function matchesPattern(pattern: string, name: string): boolean {
+  try {
+    return new RegExp(pattern, "u").test(name);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What a map's values keyed by their own key require of the map `map`: the
+ * values one of its value schemas governs — `additionalProperties`, or the
+ * `patternProperties` entry at `pattern` — are each keyed by a property of
+ * `type` and hold `valueOf(name)`; a governed key naming no property is
+ * refused. A key the map's own schema fixes keeps its own reading. Undefined
+ * for a type declaring no properties at its root, whose keys name nothing.
+ */
+export function keyedMapSchema(
+  type: Record<string, any>,
+  map: Record<string, any>,
+  pattern: string | undefined,
+  valueOf: (name: string) => Record<string, any>,
+): Record<string, any> | undefined {
+  const declared = typeRootOf(type).node?.properties;
+  if (!isSchemaNode(declared)) return undefined;
+  const fixed = Object.keys(isSchemaNode(map.properties) ? map.properties : {});
+  const patterns = Object.keys(isSchemaNode(map.patternProperties) ? map.patternProperties : {});
+  const governs = (name: string) =>
+    !fixed.includes(name) &&
+    (pattern === undefined
+      ? !patterns.some((each) => matchesPattern(each, name))
+      : matchesPattern(pattern, name));
+  const names = Object.keys(declared).filter(governs);
+  const properties = Object.fromEntries(names.map((name) => [name, valueOf(name)]));
+  if (pattern !== undefined) {
+    return {
+      properties,
+      propertyNames: { anyOf: [{ not: { pattern } }, { enum: [...fixed, ...names] }] },
+    };
+  }
+  return {
+    properties: { ...Object.fromEntries(fixed.map((name) => [name, {}])), ...properties },
+    ...(patterns.length > 0 ? { patternProperties: Object.fromEntries(patterns.map((each) => [each, {}])) } : {}),
+    additionalProperties: false,
+  };
+}
 
 /** A reached type as the entry `key` of the contract's `$defs`: every `#…`
  *  reference inside it names the entry rather than the contract (`#` is the
@@ -532,31 +599,88 @@ function localTarget(node: unknown, root: Record<string, any>): Record<string, a
 export interface ValueSchemaSlot {
   readonly scope: string;
   readonly from: unknown;
+  /** The map each `.*` segment of the scope is a value of, in order, and the
+   *  `patternProperties` entry that reached it (none for
+   *  `additionalProperties`). */
+  readonly maps: ReadonlyArray<ValueSchemaMap>;
+}
+
+/** A map a slot's scope ranges over, and the value schema reaching the slot. */
+export interface ValueSchemaMap {
+  readonly node: Record<string, any>;
+  readonly pattern?: string;
 }
 
 /** Every `x-telo-value-schema-from` slot a kind's schema declares. */
-export function valueSchemaSlots(schema: Record<string, any>, path = "$"): ValueSchemaSlot[] {
+export function valueSchemaSlots(
+  schema: Record<string, any>,
+  path = "$",
+  maps: ReadonlyArray<ValueSchemaMap> = [],
+): ValueSchemaSlot[] {
   if (!schema || typeof schema !== "object") return [];
   const out: ValueSchemaSlot[] = [];
   const from = schema[VALUE_SCHEMA_ANNOTATION];
   if ((typeof from === "string" && from.length > 0) || (from !== null && typeof from === "object")) {
-    out.push({ scope: path, from });
+    out.push({ scope: path, from, maps });
   }
   if (schema.properties) {
     for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
-      out.push(...valueSchemaSlots(value, `${path}.${key}`));
+      out.push(...valueSchemaSlots(value, `${path}.${key}`, maps));
     }
   }
-  for (const map of [schema.additionalProperties, ...Object.values(schema.patternProperties ?? {})]) {
-    if (map && typeof map === "object") out.push(...valueSchemaSlots(map as Record<string, any>, `${path}.*`));
+  if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+    out.push(...valueSchemaSlots(schema.additionalProperties, `${path}.*`, [...maps, { node: schema }]));
+  }
+  for (const [pattern, value] of Object.entries((schema.patternProperties ?? {}) as Record<string, unknown>)) {
+    if (value && typeof value === "object") {
+      out.push(...valueSchemaSlots(value as Record<string, any>, `${path}.*`, [...maps, { node: schema, pattern }]));
+    }
   }
   if (schema.items && typeof schema.items === "object") {
-    out.push(...valueSchemaSlots(schema.items, `${path}[*]`));
+    out.push(...valueSchemaSlots(schema.items, `${path}[*]`, maps));
   }
   for (const key of ["oneOf", "anyOf", "allOf"] as const) {
     if (Array.isArray(schema[key])) {
-      for (const sub of schema[key]) out.push(...valueSchemaSlots(sub, path));
+      for (const sub of schema[key]) out.push(...valueSchemaSlots(sub, path, maps));
     }
+  }
+  return out;
+}
+
+/**
+ * Where a slot's key member names its property by a MAP's key: the concrete
+ * path of that map and the map it is a value of, for a value at `path` of the
+ * slot — undefined where the keyed node is a property the kind's schema fixes,
+ * or the member is no key.
+ */
+export function keyedMapAt(
+  slot: ValueSchemaSlot,
+  path: string,
+  member: ValueSchemaMember,
+): { path: string; map: ValueSchemaMap } | undefined {
+  if (!("key" in member)) return undefined;
+  const tokens = scopeTokens(slot.scope);
+  const segments = concreteSegments(path);
+  if (tokens.length !== segments.length) return undefined;
+  const keyed = tokens.length - 1 - member.up;
+  if (keyed < 0 || tokens[keyed] !== "*") return undefined;
+  const map = slot.maps[tokens.slice(0, keyed + 1).filter((token) => token === "*").length - 1];
+  if (!map) return undefined;
+  const mapPath = segments
+    .slice(0, keyed)
+    .map((segment, i) => (tokens[i] === "[*]" ? `[${segment}]` : i === 0 ? segment : `.${segment}`))
+    .join("");
+  return { path: mapPath, map };
+}
+
+/** A scope's steps (`$.a[*].m.*` → `a`, `[*]`, `m`, `*`). */
+function scopeTokens(scope: string): string[] {
+  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope === "$" ? "" : scope;
+  if (!stripped) return [];
+  const out: string[] = [];
+  for (const part of stripped.split(".")) {
+    if (part.endsWith("[*]")) out.push(part.slice(0, -3), "[*]");
+    else out.push(part);
   }
   return out;
 }
@@ -687,11 +811,6 @@ function memberPointerOf(type: Record<string, any>, name: string): string | unde
   return property && typeof property === "object" ? `${at}/properties/${pointerSegment(name)}` : undefined;
 }
 
-/** The property names `type` declares at its root. */
-function memberNamesOf(type: Record<string, any>): string[] {
-  const properties = typeRootOf(type).node?.properties;
-  return properties && typeof properties === "object" ? Object.keys(properties) : [];
-}
 
 const schemaFromTargetReads = new Map<string, ReferentReads>();
 

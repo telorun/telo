@@ -282,6 +282,10 @@ steps:
           - [ /search, Search posts ]
           - [ /search-beside, Posts beside their filters ]
           - [ /search-releases, Release posts ]
+          - [ /reviews, Reviews ]
+          - [ "/reviews/{id}", Review ]
+          - [ "/reviews/{id}/compare", Changes ]
+          - [ "/workers/{name}", Worker ]
           - [ /themes, Themes ]
         compactBelow: [ 48rem, 48rem, 48rem, 48rem ]
         samePages: true
@@ -299,6 +303,7 @@ steps:
             - [ /crud, list-checks.svg ]
             - [ /records, network.svg ]
             - [ Search, search.svg, [ [ /search, text-search.svg ], [ /search-beside, panel-left.svg ], [ /search-releases, rocket.svg ] ] ]
+            - [ /reviews, inbox.svg ]
             - [ /themes, palette.svg ]
           - *tree
           - *tree
@@ -436,7 +441,7 @@ steps:
       expected:
         polish:
           lang: pl
-          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Motywy ]
+          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
           logo: { lang: pl, message: [ Logo pokazu interfejsu ] }
           menus: [ Język, Motyw ]
         english: { lang: en, title: { lang: en, message: [UI showcase] } }
@@ -501,7 +506,7 @@ steps:
       expected:
         lang: pl
         title: { lang: pl, message: [ Pokaz interfejsu ] }
-        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Motywy ]
+        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
         save: { lang: pl, message: [ Zapisz ] }
         heading: { lang: pl, message: [ Każdy rodzaj węzła ] }
 

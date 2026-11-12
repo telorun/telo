@@ -14,6 +14,8 @@ import { basename } from "node:path";
 import {
   deliveredNavigation,
   isPage,
+  pagePathVariables,
+  pageRouteKey,
   preparedNavigation,
   resolvedPageWidth,
   RequestNodes,
@@ -30,6 +32,7 @@ import abi from "./contract/abi.json" with { type: "json" };
 import layoutsContract from "./contract/layouts.json" with { type: "json" };
 import { AssetStore, entryAssets, type AssetRef } from "./asset-store.js";
 import { CONTROL_MECHANICS, mechanicsFileName } from "./browser/controls/mechanics.js";
+import { matchPage } from "./browser/page-route.js";
 import { HostedNodes, type SpecNode } from "./component-abi.js";
 import { holdsCurrent, servedDocument, SPEC_VERSION } from "./documents.js";
 import { EventStreams } from "./event-streams.js";
@@ -175,20 +178,28 @@ export class UiReactApp {
       const instance = ctx.resolveRef(page, isPage, () => `'pages[${index}]' of ${this.owner}`, "Ui.Page");
       return { instance, reading: instance.snapshot() };
     });
-    const seen = new Set<string>();
+    const seen = new Map<string, { path: string; index: number }>();
     for (const [index, { reading }] of this.pages.entries()) {
-      if (seen.has(reading.path)) {
+      const key = pageRouteKey(reading.path);
+      const other = seen.get(key);
+      if (other && other.path === reading.path) {
         throw new RuntimeError(
           "ERR_UI_PAGE_PATH_DUPLICATE",
           `${this.owner}: 'pages[${index}]' declares a path another page already has ('${reading.path}'). Give each page a path of its own.`,
         );
       }
-      seen.add(reading.path);
+      if (other) {
+        throw new RuntimeError(
+          "ERR_UI_PAGE_PATH_DUPLICATE",
+          `${this.owner}: 'pages[${index}]' (${reading.path}) routes the same addresses as ${other.path} ('pages[${other.index}]'): the two paths differ only in the names of their variables. Give each page a path of its own.`,
+        );
+      }
+      seen.set(key, { path: reading.path, index });
     }
     this.refuseUnroutedEntries(resource.navigation?.items ?? [], "navigation.items");
   }
 
-  /** Every entry naming a page, at any depth, names one `pages` lists, and a label for it. */
+  /** Every entry naming a page, at any depth, names one `pages` lists, a label for it, and no variable in its path. */
   private refuseUnroutedEntries(entries: NavigationConfig["items"], at: string): void {
     for (const [index, entry] of (entries ?? []).entries()) {
       const where = `${at}[${index}]`;
@@ -205,6 +216,12 @@ export class UiReactApp {
         throw new RuntimeError(
           "ERR_UI_NAVIGATION_PAGE_UNTITLED",
           `${this.owner}: '${where}' names a page with no title ('${page.snapshot().path}') and gives no text of its own, so it has no label. Write the entry's text, or give the page a title.`,
+        );
+      }
+      if (pagePathVariables(page.snapshot().path).length > 0) {
+        throw new RuntimeError(
+          "ERR_UI_NAVIGATION_PAGE_HAS_PARAMETERS",
+          `${this.owner}: '${where}' names a page with a variable in its path ('${page.snapshot().path}'), which a navigation entry cannot fill. Reach the page with a link whose pathParams fill it, or remove the entry.`,
         );
       }
     }
@@ -532,7 +549,7 @@ export class UiReactApp {
   /** `requestScope` is the one of the server this request reached: one App may be mounted on several. */
   private async servePage(started: Started, requestScope: RequestScope<FastifyRequest> | undefined, request: FastifyRequest, reply: FastifyReply) {
     const path = (request.query as Record<string, unknown>).path;
-    const index = this.pages.findIndex(({ reading }) => reading.path === path);
+    const index = typeof path === "string" ? this.pageAt(path) : -1;
     const page = this.pages[index];
     if (!page) {
       return notFound(reply.header("cache-control", "private, no-cache"));
@@ -562,6 +579,15 @@ export class UiReactApp {
     );
   }
 
+  /** The index of the page an address opens, matched by segments; -1 for none. */
+  private pageAt(address: string): number {
+    const matched = matchPage(
+      this.pages.map(({ reading }) => reading.path),
+      address,
+    );
+    return matched === undefined ? -1 : this.pages.findIndex(({ reading }) => reading.path === matched.path);
+  }
+
   /** Nodes as a request is sent them: every component this renderer cannot
    *  host replaced, every text translated. */
   private shown(started: Started, nodes: SpecNode[], language: InLanguage): SpecNode[] {
@@ -584,7 +610,7 @@ export class UiReactApp {
     if (path === "/_telo" || path.startsWith("/_telo/")) {
       return notFound(reply);
     }
-    const declared = this.pages.some(({ reading }) => reading.path === path);
+    const declared = this.pageAt(path) >= 0;
     const language = this.inLanguage(started, this.languageOf(request, requestScope));
     return reply
       .code(declared ? 200 : 404)

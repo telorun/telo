@@ -1,0 +1,71 @@
+kind: Telo.Application
+metadata:
+  name: UiRelativeFilterValuesTest
+  version: 1.0.0
+  description: |
+    A date-time filter's default and a preset's value may be a time relative to
+    now, `{ unit, offset }`; the bar a page places carries each as written in
+    the filter's list of held values, for the renderer to resolve.
+imports: { Ui: ../, DataModel: ../../data-model, Assert: ../../assert }
+targets: [!ref main]
+---
+kind: Ui.Page
+metadata: { name: inbox }
+path: /
+children:
+  - type: composite
+    ref:
+      kind: Ui.Filters
+      presentation:
+        kind: Ui.CollectionPresentation
+        source:
+          kind: Ui.CollectionSource
+          basePath: /api/plans
+          collection:
+            kind: DataModel.Collection
+            model:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: { type: string }
+                  state: { type: string, enum: [submitted, revised] }
+                  revisedAt: { type: string, format: date-time }
+                  dueOn: { type: string, format: date }
+            query:
+              filters:
+                - { property: state, operator: in }
+                - { property: revisedAt, operator: lte }
+                - { property: dueOn, operator: gte }
+              sort: []
+      fields:
+        - { property: state, operator: in }
+        - { property: revisedAt, operator: lte }
+        - { property: dueOn, operator: gte, default: { unit: week, offset: 0 } }
+      presets:
+        - label: Waiting a day or more
+          values:
+            - { property: state, operator: in, value: [submitted, revised] }
+            - { property: revisedAt, operator: lte, value: { unit: day, offset: -1 } }
+      content: { type: text, text: Plans }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: page
+    invoke: !ref inbox
+    inputs: { request: { headers: {} } }
+  - name: barIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        cel.bind(bar, steps.page.result.children[0], {
+          'type': bar.type,
+          'default': bar.fields[2].default,
+          'preset': bar.presets[0].values.map(v, v.value)
+        })
+      expected:
+        type: filters
+        default: [{ unit: week, offset: 0 }]
+        preset: [[submitted, revised], [{ unit: day, offset: -1 }]]

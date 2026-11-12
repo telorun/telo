@@ -47,6 +47,12 @@ describe("a listed filter", () => {
     ]);
   });
 
+  it("refuses a value relative to now on a filter that is no date comparison, naming the filter", () => {
+    expect(() =>
+      filterFields(schema, query, [{ property: "authorId", operator: "eq", default: { unit: "day", offset: -1 } }], "f"),
+    ).toThrow("f: 'fields[0].default' declares a default its filter cannot hold: a relative value fits a date or date-time filter with eq, gt, gte, lt or lte, not authorId with eq.");
+  });
+
   it("holds only true under absent, as a switch does", () => {
     expect(filterFields(schema, query, [{ property: "dueOn", operator: "absent", default: true }], "f")[0].default).toEqual([true]);
     expect(() => filterFields(schema, query, [{ property: "dueOn", operator: "absent", default: false }], "f")).toThrow(

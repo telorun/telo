@@ -1,10 +1,17 @@
 import { filterParam, type Operator, type Param } from "./collection.js";
 import { FILTER_KEYS } from "./open-address.js";
 import type { OptionSourceSpec } from "./option-source.js";
+import { isRelativeValue, readRelative, relativeFormat, spellRelative, type RelativeValue } from "./relative-time.js";
 import type { ValueLabel, WireText } from "./texts.js";
 import { plainTypes, type JsonSchema } from "./validation.js";
 
 type Scalar = string | number | boolean;
+
+/** A value a default or a preset declares: a scalar, or one relative to now. */
+type Declared = Scalar | RelativeValue;
+
+/** A declared value as a bar holds it: a scalar's text, a relative value's spelling. */
+const heldValue = (value: Declared): string => (isRelativeValue(value) ? spellRelative(value) : String(value));
 
 export type Control = "auto" | "select" | "options" | "toggle" | "slider" | "tags" | "none";
 
@@ -22,14 +29,14 @@ export interface FilterField {
   values: "all" | "present";
   /** Where the choices are records: the property's relation, or the field's own source. */
   options?: OptionSourceSpec;
-  default?: Scalar[];
+  default?: Declared[];
 }
 
 export interface FilterPreset {
   label: WireText;
   /** The search the preset sets, where it sets one. */
   search?: string;
-  values: { property: string; operator: Operator; value: Scalar[] }[];
+  values: { property: string; operator: Operator; value: Declared[] }[];
 }
 
 /** The reserved query name the bar's search is held and sent under. */
@@ -70,6 +77,8 @@ function holds(field: FilterField, value: string): boolean {
   if (field.operator === "absent") return value === "true";
   // A switch is on or holds nothing.
   if (field.control === "toggle" && value === "false") return false;
+  // A date or a date-time compared holds a value relative to now as it is spelled.
+  if (readRelative(value) !== undefined) return relativeFormat(field.schema, field.operator) !== undefined;
   const listed = Array.isArray(field.schema.enum) && (field.operator === "eq" || field.operator === "in");
   if (listed && !field.schema.enum.some((allowed: unknown) => String(allowed) === value)) return false;
   const declared = plainTypes(field.schema);
@@ -104,17 +113,22 @@ export function admitted(fields: FilterField[], read: unknown): { values: Values
 /** What every filter holds before the user changes anything. */
 export function declaredDefaults(fields: FilterField[]): Values {
   const values: Values = {};
-  for (const field of fields) if (field.default) values[filterKey(field)] = field.default.map(String);
+  for (const field of fields) if (field.default) values[filterKey(field)] = field.default.map(heldValue);
   return values;
 }
 
-/** The parameters a bar's values send. */
+/** The parameters a bar's values send; a value relative to now carries its
+ *  format, resolved by the read that sends it. */
 export function paramsOf(fields: FilterField[], values: Values): Param[] {
   return fields.flatMap((field) =>
     (values[filterKey(field)] ?? [])
       .map((value) => value.trim())
       .filter((value) => value !== "")
-      .map((value) => filterParam(field.property, field.operator, value)),
+      .map((value): Param => {
+        const param = filterParam(field.property, field.operator, value);
+        const format = readRelative(value) === undefined ? undefined : relativeFormat(field.schema, field.operator);
+        return format === undefined ? param : [param[0], param[1], format];
+      }),
   );
 }
 
@@ -138,7 +152,7 @@ export function withPreset(presets: FilterPreset[], chosen: FilterPreset, values
   const next = { ...values };
   for (const key of presetKeys(presets)) next[key] = [];
   if (chosen.search) next[SEARCH] = [chosen.search];
-  for (const entry of chosen.values) next[filterKey(entry)] = entry.value.map(String);
+  for (const entry of chosen.values) next[filterKey(entry)] = entry.value.map(heldValue);
   return next;
 }
 

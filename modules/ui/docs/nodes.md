@@ -19,7 +19,10 @@ expression selects nothing.
 | `image` | `src`, `alt` | an image |
 | `svg` | `markup`, `alt` | SVG markup, drawn as an image |
 | `value` | `value`, `text?`, `href?` | one value of a data scope, presented as its schema says |
-| `list` | `rows`, `columns`, `heading?` | the rows of a list one answer holds, a column per value |
+| `time` | `value`, `relative?` | a [date or a date-time](#times), relative to now or absolute |
+| `list` | `rows`, `columns`, `heading?`, `rowStyle?` | the rows of a list one answer holds, a column per value |
+| `markdown` | `value`, `annotations?` | [Markdown text](#markdown), with a control on each item the server names |
+| `button` | `action`, `inputs`, `confirm?`, `prompt?`, `enabled?`, `button?` | a [button running an action](#buttons) with inputs bound from the data in scope |
 | `bar` | `start?`, `center?`, `end?` | a [bar](#bars): nodes at its start, its centre and its end |
 | `command` | `command`, `text`, `button?` | a button running a [command](#commands) of the place it is written in |
 | `composite` | `ref` | a [composite](composite.md): a `!ref`, or an inline declaration |
@@ -188,9 +191,11 @@ tabs is delivered is left out, as a node whose `when` is false is.
 
 A `value` and a `list` name what they draw with [accessors](https://telo.run/docs/extend/accessor-fields)
 over the roots in scope — `data` inside a [`Ui.Data`](data.md), `query` where
-query parameters are declared, `error` in a reader's or an action's `failure`,
+query parameters are declared, `params` — the page's [path
+variables](page.md#params) — wherever a page's nodes are, `error` in a reader's or an action's `failure`,
 `result`, `input` and `values` in an [action's answer](action.md#the-answer),
-`row` in a list column and its row actions:
+`row` in a list column and its row actions, and in a markdown node's
+[annotations](#markdown):
 
 ```yaml
 - type: value
@@ -217,14 +222,112 @@ drawn under, and its `shown` reads the roots the list is drawn under, never
 `row`. `row` is typed as an
 element of what `rows` names, so `row.nmae` is refused by `telo check`.
 
+A column is a value unless it says `type: time`: `{ type: time, header?, value,
+relative?, href?, shown?, style? }` draws its value as a [`time` node](#times)
+does, and takes every other member a value column takes.
+
+A list's `rowStyle` and a column's `style` are [style rules](#style-rules) over
+`row`, as a listing's are: the first styles each row, the second each cell of
+its column.
+
 A list's `rowActions` offers an action on every row, each entry a
-[`Ui.RowAction`](action.md#row-actions) whose `inputs` and `enabled` read `row`
+[`Ui.BoundAction`](action.md#bound-actions) whose `inputs` and `enabled` read `row`
 and the roots the list is drawn under; a pressed one draws its action's answer
 in place of its button, which lasts as long as the answer the list is drawn
 from. `rowActionsDisplay` (`auto`, the default, `inline` or `menu`) says how
 they are drawn, as a [listing's](listing.md#how-the-actions-are-drawn) are —
 buttons, or one menu button — here with the row actions alone, a list having no
 edit or delete.
+
+## Times
+
+A `time` draws a date or a date-time. `value` is an
+[accessor](https://telo.run/docs/extend/accessor-fields) to a string of
+`format: date` or `date-time`; `relative: true` draws it relative to now in the
+viewer's language ("3 hours ago"), the exact time as its tooltip and as the
+element's machine-readable time, and `relative: false`, the default, draws the
+absolute date or time in the viewer's language and time zone:
+
+```yaml
+- { type: time, value: !cel "data.plan.latestRevision.createdAt", relative: true }
+```
+
+A chain to a string with no such format is `CEL_TYPE_ERROR` (`'data.plan.title'
+is a string with no format; the field takes a string of format date or
+date-time`), and so is any other type. A tree `telo check` did not judge — a
+reader in an imported library — is refused when it is first read
+(`ERR_UI_TIME_VALUE_NOT_DATE`). A value that turns out not to be a date at run
+time is drawn as plain text. `relative` belongs to `time` alone: on a `value`
+node it is `SCHEMA_VIOLATION`.
+
+## Markdown
+
+A `markdown` node draws Markdown text — CommonMark with tables and task lists,
+raw HTML drawn as text, links and images held to the [address
+rule](#addresses). `value` is an
+[accessor](https://telo.run/docs/extend/accessor-fields) to a string (a chain to
+anything else is `CEL_TYPE_ERROR`), or a fixed text.
+
+`annotations` puts a control on each item the server names in the text. Which
+blocks are items, and their IDs, are the server's grammar: the node parses
+none.
+
+| Member | |
+| --- | --- |
+| `rows` | required: an accessor to a list, each element being `row` |
+| `line` | required: an accessor over `row` to the 1-based source line starting the item, an integer |
+| `count` | an accessor over `row` to an integer, shown on the control as a badge |
+| `action` | required: a [`Ui.BoundAction`](action.md#bound-actions) whose `inputs` and `enabled` read `row` beside the roots in scope; the control is labelled with the action's `label` |
+
+```yaml
+- type: markdown
+  value: !cel "data.plan.latestRevision.body"
+  annotations:
+    rows: !cel "data.plan.latestRevision.items"
+    line: !cel "row.line"
+    count: !cel "row.count"
+    action:
+      inputs: { id: !cel "params.id", revision: !cel "data.plan.latestRevision.seq", item: !cel "row.id" }
+      prompt: true
+      action: !ref comment
+```
+
+`row` is typed as an element of what `rows` names, so `row.lnie` is
+`CEL_UNKNOWN_FIELD` (`not defined (available: id, line, count)`). The control is
+drawn on the block containing `line` — a list item for an item's line, a
+heading for a heading's — two annotations on one block drawing two controls in
+order, and an annotation whose line is past the text is drawn after it, so
+none is lost. A pressed control draws its action's answer as a row action does.
+
+## Buttons
+
+A `button` runs a [`Ui.Action`](action.md) with its inputs bound from the data
+in scope — the page's `params` and `query`, and the roots of the tree it sits
+in, `data` inside a reader. Its members are a
+[`Ui.BoundAction`](action.md#bound-actions)'s, plus `button`, a
+[`Ui.ButtonDisplay`](#links-drawn-as-buttons) (a text button when left out),
+and it is labelled with the action's `label`:
+
+```yaml
+- type: button
+  inputs:
+    id: !cel "params.id"
+    decision: approve
+    revision: !cel "data.plan.latestRevision.seq"
+  prompt: true
+  action: !ref decide
+```
+
+`inputs` is judged against the action's `inputModel` as a row action's is: a
+key the action does not take, a member the data does not declare, or a value of
+the wrong type is refused by `telo check`, and so is a required input left
+unbound unless `prompt: true`; inputs that make no record of the input model are
+refused again when the node is first read (`ERR_UI_BOUND_ACTION_INPUTS_INVALID`).
+`prompt: true` opens a dialog asking for the action's fields the inputs do not
+bind, where the person completes the record — see [bound
+actions](action.md#bound-actions). A pressed button draws its action's answer in
+place of itself and its `failure` beside it, or in the open dialog; it takes no
+press while one is pending.
 
 ## Texts
 
@@ -252,11 +355,10 @@ check`. See [Texts and translation](texts.md).
 Each `type` is a closed shape: a key it does not take is an error naming the
 key, and a `type` outside the list is an error listing the valid ones.
 
-Spacing is not a field — no gap, alignment, width or image size — and no
-button runs anything. How nodes are spaced is the renderer's styling contract;
-a button that runs an operation is a composite — a [`Ui.Action`](action.md),
-or what a listing offers on its records — and a `menu`'s button only opens its
-links.
+Spacing is not a field — no gap, alignment, width or image size. How nodes are
+spaced is the renderer's styling contract. A button runs an operation only as a
+[`button` node](#buttons), a [`Ui.Action`](action.md) or what a listing offers
+on its records; a `menu`'s button only opens its links.
 
 ## Addresses
 
@@ -272,8 +374,8 @@ links.
   | Member | |
   | --- | --- |
   | `path` | a literal app-relative path, or starting with `https://`, `http://` or `mailto:`, with `{name}` for a whole segment — after the host, for an absolute address; a path into data holding a whole address (`!cel "row.url"`), used as it is; or a `!ref` to a `Ui.Page`, which is that page's `path` |
-  | `pathParams` | the value of each `{name}`: a path into a root in scope, or a fixed value, a string or an integer |
-  | `queryParams` | the parameters appended, in the order written: a path into a root in scope, or a fixed value — a string, an integer, a number, a boolean, or a list of them, which repeats its key |
+  | `pathParams` | the value of each `{name}`: a path into a root in scope, or a fixed value, a string or an integer; a path whose value may be null is accepted, and null leaves the address unresolved |
+  | `queryParams` | the parameters appended, in the order written: a path into a root in scope, or a fixed value — a string, an integer, a number, a boolean, or a list of them, which repeats its key; the value may be null, and null is left out |
 
   ```yaml
   - type: link
@@ -288,11 +390,12 @@ links.
 
   A bare string is a literal path with no `{` or `}`. Quote a template in flow
   style: `{` starts a mapping in YAML. The address binds no root: the place it
-  is written does — a page's `query`, a reader's `data`, a list's and a
+  is written does — a page's `query` and `params`, a reader's `data`, a list's and a
   listing's `row`, a relation's related `row` — so `row.nmae` is refused by
   `telo check` like any other read. Every `{name}` has exactly one entry in
   `pathParams` and every entry names a `{name}` (`PATH_PARAMETER_UNBOUND`,
-  `PATH_PARAMETER_UNUSED`, with a `!ref` checked against the page's own `path`);
+  `PATH_PARAMETER_UNUSED`, with a `!ref` checked against the page's own `path`,
+  its [variables](page.md#path-variables) included);
   a path read from data is never expanded, so it takes no `pathParams`.
   [Path templates](https://telo.run/extend/path-templates) has the rules.
 
@@ -332,7 +435,8 @@ links.
   It is one exported shape, `Ui.AppRelativeReference`, named by every field
   holding an address — a navigation entry's `href`, a page's `path`, an
   address's and a request target's `path`, an action's `request.target`,
-  `onSuccess.navigate` and `refreshes`, and a collection source's `basePath` —
+  `onSuccess.navigate` and `refreshes`, and a collection source's `basePath`
+  and its template's `path` —
   so a kind of another module holding one references it too. A literal one is
   refused by `telo check`; a computed `src` that breaks it is replaced by an
   `error` node for that request, and an address read from data that breaks it is
@@ -411,10 +515,12 @@ and gone — a menu's items and a `tabs` node's tabs included, so a `menu` carri
 every composite replaced by the node it provides (`listing`, `form`, `action`,
 `filters`, `data`, `component`), and `error` for a node that could not be
 produced. Every node carries `fill`, `true` exactly where it or a node in the
-room it passes on was written filling. A `value` node carries `present` — what the schema it reads says
-(`type`, `format`) — and each `list` column its `header` and `present`, both
-resolved on the server; both carry `labels`, the label of each value an
-enumeration offers (`[]` when none). Every text is a text record, a
+room it passes on was written filling. A `value` and a `time` node carry
+`present` — what the schema it reads says (`type`, `format`) — and each `list`
+column its `header` and `present`, all resolved on the server, a time column
+`type: time` and a value column no `type`; a `value` node and a value column carry `labels`, the label of
+each value an enumeration offers (`[]` when none), and a `time` node and a time
+column `relative`, `false` when not written. Every text is a text record, a
 `{ text, values }` text is the record with its `values` beside it, and a text
 `ui` fills itself is a keyed text `{ set: Ui.Translations, key }` — see
 [what a renderer receives](texts.md#what-a-renderer-receives). A composite placed with a `shown` of its own around a
@@ -435,12 +541,19 @@ A `listing` node always carries `query` (its declared parameters, empty when
 none), `rowActions` (an empty list when the listing declares none),
 `rowActionsDisplay`, `sort` (`{ sortable, initial }`), `show` (`{ count }`),
 `relations`, `empty` and its `layout`; a `list` node always carries
-`rowActionsDisplay` and carries `rowActions` when it declares them. An entry is
+`rowActionsDisplay` and carries `rowActions` when it declares them, and
+`rowStyle` and a column's `style` — each `{ by, cases, default? }`, `by` a
+binding — when declared. A bound action is
 `{ action, inputs, confirm?, prompt?, enabled? }`: `action` is the action's
 own node, `inputs` maps each input property to a binding, `confirm` is present
 exactly when the entry asks a question, `prompt` — `{ fields }`, the fields its
 dialog enters — exactly when the entry declares `prompt: true`, and `enabled`
-exactly when the entry declares one.
+exactly when the entry declares one. A `button` node is a bound action's
+members plus `button` (a `Ui.ButtonDisplaySpec`, `{ type: text }` when none is
+written), `style?`, `shown?` and `fill`. A `markdown` node is `{ value,
+annotations?, style?, shown?, fill }`, `value` a binding and `annotations`
+`{ rows, line, count?, action }` exactly when written, the first three bindings
+and `action` a bound action.
 
 An `action` node always carries its input model, its `request` (method, target and the consumed input properties), the
 button's text, one `{ property, label, shown? }` per field, its `failure` tree
@@ -459,7 +572,8 @@ there are none, a preset carrying `search` only when it sets one. `search`
 (`{ pinned, default }`, `default` null when none is written) is present exactly
 when [the bar has a search](filters.md#search). Each of its `fields` carries `pinned` and `control`, and
 `default` only when one is declared. A default and a preset value are always a
-list, whatever was written: one value is a list of one.
+list, whatever was written: one value is a list of one, a [value relative to
+now](filters.md#values-relative-to-now) a list of one `{ unit, offset }`.
 
 ## Nodes a renderer receives
 
@@ -468,6 +582,5 @@ not written by hand in a page's tree:
 
 | `type` | Members | Is |
 | --- | --- | --- |
-| `markdown` | `text`, `style?`, `shown?` | Markdown text — CommonMark with tables and task lists, raw HTML drawn as text — where `text` is a binding: `{ value }` for a fixed string or `{ root, path }` for a path into a root in scope |
 | `chat` | `spec`, `basePath`, `header`, `placeholder`, `starters`, `show`, `buttons`, `composer`, `conversation`, `refreshes`, `style?`, `shown?` | the node [`Ui.Chat`](chat.md) provides, every member present |
 | `split` | `side`, `size`, `label`, `aside` (`{ actions, content }`), `content`, `collapse`, `compact`, `style?`, `shown?` | the node [`Ui.SplitView`](split-view.md) provides, every member present |

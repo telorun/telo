@@ -60,6 +60,25 @@ its own and each one above it. An accessor field inside a named shape
 the kind's schema `$ref`s, recursive ones included, is an accessor field at every
 depth the data goes, with the bindings the regions on the way to it declare.
 
+A JSON Pointer `$ref` reads a member as if it were written in place: a member
+of a named shape (`$ref: "telo://Self/BoundAction#/properties/inputs"`) or of a
+local `$defs` entry (`$ref: "#/$defs/Column/properties/href"`) keeps every
+annotation it declares — its eval mode, its regions, a reference slot with its
+`inputs` and `completedWhen` siblings, its texts. That is how one closed shape's
+members are reused in another closed shape: point at them, never copy the
+annotations. A relative pointer written inside a named shape resolves within the
+shape and is refused where it climbs above the shape's root, since nothing there
+says what holds the shape.
+
+Inside a `oneOf` / `anyOf`, a property two branches declare must have the same
+eval mode in each — the same `x-telo-eval`, at the same paths beneath it — though
+its type may differ. Every branch is read at one path before any value says
+which one applies, so an accessor `text` in one branch would make `text` an
+accessor in every branch. `telo check` refuses such a union where it is declared
+and the kernel refuses every kind reaching it when it registers the kind, naming
+both branches and both modes. Give the other meaning another property name.
+`allOf` is a conjunction and is not judged.
+
 ## Where a binding exists
 
 `x-telo-context-eval` on a binding names the eval modes it exists at —
@@ -141,7 +160,10 @@ rowStyle: muted
 Nothing else. The chain is checked against the binding's type, so a member the
 model does not declare is `CEL_UNKNOWN_FIELD`, a name nothing binds is
 `CEL_UNKNOWN_IDENTIFIER`, and a chain whose type does not fit the field is
-`CEL_TYPE_ERROR` — all before the application runs. One rule is relaxed: reading
+`CEL_TYPE_ERROR` — all before the application runs. A field declaring a `format`
+(or a union whose every branch declares one) takes only a declared string of one
+of those formats: `'data.plan.title' is a string with no format; the field takes a
+string of format date or date-time` is `CEL_TYPE_ERROR` too. One rule is relaxed: reading
 through a member that may be null needs no guard (`row.owner.name`), because no
 evaluation happens here; the consumer resolves the path and a missing step yields
 nothing.

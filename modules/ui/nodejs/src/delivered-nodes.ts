@@ -3,7 +3,7 @@ import { mergeAssets, type AssetFile, type SpecNode } from "./composite.js";
 import { filledNode } from "./fill-marking.js";
 import { deliveredMenu, deliveredTabs, nodeLists, placed, presented, withLinkButtons, type AuthoredNode, type AuthoredTab, type RootShapes } from "./node-resolution.js";
 import { headerReads, type HeaderReads } from "./request-header-reads.js";
-import { placedRowAction } from "./row-actions.js";
+import { boundActionsOf, placedBoundAction, withBoundActions } from "./bound-actions.js";
 import { uiText } from "./spec-texts.js";
 
 /** The node standing where one could not be produced. */
@@ -26,7 +26,7 @@ export interface EvaluatedNode {
  *  judge it again. */
 const JUDGED: SpecNode = { type: "stack", children: [], fill: false };
 
-/** Stands where an action already judged sits inside a row action. */
+/** Stands where an action already judged sits inside a bound action. */
 const JUDGED_ACTION: SpecNode = {
   type: "action",
   schema: {},
@@ -52,8 +52,8 @@ type Invalid = (node: SpecNode, reason: string) => void;
  * are, and is left out when none does, a composite stands as the node it
  * provided at start — placed as `ui`
  * places it, the placement's style and `shown` over it — or is left out when
- * it provided none, a list's row action carries the node its action provided
- * at start, and every node that is not a valid `Ui.SpecNode` once
+ * it provided none, a bound action of a list or a button carries the node
+ * its action provided at start, and every node that is not a valid `Ui.SpecNode` once
  * evaluated is replaced — itself, not its container — by an error node.
  * `invalid` is told about each replacement.
  *
@@ -106,17 +106,18 @@ export function producedNode(
     const reason = refusalOf({ ...rest, tabs: judged } as SpecNode, validator);
     return reason === undefined ? produced : refuse(produced, reason, invalid);
   }
-  if (Array.isArray(node.rowActions)) {
-    // A row action's action stands as the node it provided at start, judged
-    // there; the list is judged around it.
-    const entries = node.rowActions as Record<string, unknown>[];
+  const entries = boundActionsOf(rest as EvaluatedNode);
+  if (entries.length > 0) {
+    // A bound action's action stands as the node it provided at start, judged
+    // there; the node is judged around it.
     const actions = entries.map((entry) => provided(entry.action));
     if (actions.some((action) => !action)) {
-      return refuse(rest as SpecNode, "a row action's 'action' names nothing this application resolved", invalid);
+      return refuse(rest as SpecNode, "a bound action's 'action' names nothing this application resolved", invalid);
     }
-    const reason = refusalOf({ ...rest, rowActions: entries.map((entry) => placedRowAction(entry as never, JUDGED_ACTION)) } as SpecNode, validator);
+    const judged = withBoundActions(rest as EvaluatedNode, entries.map((entry) => placedBoundAction(entry as never, JUDGED_ACTION)));
+    const reason = refusalOf(judged as SpecNode, validator);
     if (reason !== undefined) return refuse(rest as SpecNode, reason, invalid);
-    return { ...rest, rowActions: entries.map((entry, index) => placedRowAction(entry as never, actions[index]!)) } as SpecNode;
+    return withBoundActions(rest as EvaluatedNode, entries.map((entry, index) => placedBoundAction(entry as never, actions[index]!))) as SpecNode;
   }
   const lists = nodeLists(node);
   if (lists.length === 0) {
@@ -171,7 +172,7 @@ const provides = (candidate: unknown): candidate is Providing =>
   typeof (candidate as Providing | null)?.provide === "function";
 
 /**
- * Nodes with each composite's `ref`, and each list row action's `action`,
+ * Nodes with each composite's `ref`, and each bound action's `action`,
  * replaced by its index in `placed`, where the instance is appended. A tree's
  * structure and references are literal — only leaf values are evaluated per
  * request — so the numbering made once holds for every request, and no
@@ -181,7 +182,7 @@ const provides = (candidate: unknown): candidate is Providing =>
 function withCompositesNumbered(node: unknown, placed: unknown[], composite: (ref: unknown, where: string) => Providing, where: string): unknown {
   if (Array.isArray(node)) return node.map((child, at) => withCompositesNumbered(child, placed, composite, `${where}[${at}]`));
   if (node === null || typeof node !== "object") return node;
-  const { type, ref, rowActions, tabs } = node as EvaluatedNode;
+  const { type, ref, tabs } = node as EvaluatedNode;
   if (type === "composite") return { ...node, ref: placed.push(composite(ref, where)) - 1 };
   if (type === "tabs" && Array.isArray(tabs)) {
     return {
@@ -197,15 +198,12 @@ function withCompositesNumbered(node: unknown, placed: unknown[], composite: (re
     for (const list of lists) numbered[list] = withCompositesNumbered((node as EvaluatedNode)[list], placed, composite, `${where}.${list}`);
     return numbered;
   }
-  if (type === "list" && Array.isArray(rowActions)) {
-    return {
-      ...node,
-      rowActions: (rowActions as Record<string, unknown>[]).map((entry) =>
-        provides(entry.action) ? { ...entry, action: placed.push(entry.action) - 1 } : entry,
-      ),
-    };
-  }
-  return node;
+  const entries = boundActionsOf(node as EvaluatedNode);
+  if (entries.length === 0) return node;
+  return withBoundActions(
+    node as EvaluatedNode,
+    entries.map((entry) => (provides(entry.action) ? { ...entry, action: placed.push(entry.action) - 1 } : entry)),
+  );
 }
 
 /**

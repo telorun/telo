@@ -1,0 +1,5 @@
+modules:
+  modules/ui: Fixed
+body: "An address's pathParams and queryParams accept a path into data whose value may
+  be null, as documented: null leaves the address unresolved or the parameter out, where
+  telo check refused it with CEL_TYPE_ERROR."

@@ -479,22 +479,30 @@ describe("a contract typed by the declaration it is bound to", () => {
     });
   });
 
-  it("types a member by its own key: a fixed property, and every value of a map", () => {
+  it("types a member by its own key: a fixed property, and on a map each key and its value", () => {
     const member = { "x-telo-value-schema-from": { from: "contextType", member: "0#" } };
     const contract = {
       type: "object",
-      properties: { turnId: { ...member }, rest: { type: "object", additionalProperties: { ...member } } },
+      properties: {
+        turnId: { ...member },
+        rest: { type: "object", properties: { note: { type: "string" } }, additionalProperties: { ...member } },
+      },
     };
     const entry = "#/$defs/telo:value-schema-from:0";
     const resolved = resolveContractValueSchemas(contract, declaration, host) as Record<string, any>;
     expect(resolved.properties.turnId).toEqual({ allOf: [{ $ref: `${entry}/properties/turnId` }] });
-    expect(resolved.properties.rest.additionalProperties).toEqual({
+    expect(resolved.properties.rest).toEqual({
+      type: "object",
+      properties: { note: { type: "string" } },
+      additionalProperties: { ...member },
       allOf: [
         {
           properties: {
+            note: {},
             turnId: { $ref: `${entry}/properties/turnId` },
             parent: { $ref: `${entry}/properties/parent` },
           },
+          additionalProperties: false,
         },
       ],
     });
@@ -804,5 +812,54 @@ outputs:
     expect(await analyzeEntry(SHAPES.replace("!ref Inner", "!ref Nowhere"))).toEqual([
       ["SCHEMA_VIOLATION", "outputs"],
     ]);
+  });
+});
+
+describe("a contract map keyed by the reached type's properties", () => {
+  const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
+  const scopedKind = {
+    kind: "Telo.Definition",
+    metadata: { name: "Scoped", module: "test-fx" },
+    capability: "Telo.Invocable",
+    schema: { type: "object", properties: { model: TYPE_FIELD } },
+    inputType: {
+      kind: "Telo.JsonSchema",
+      schema: {
+        type: "object",
+        properties: {
+          scope: {
+            type: "object",
+            properties: { fixed: { type: "boolean" } },
+            additionalProperties: { "x-telo-value-schema-from": { from: "/model", member: "0#" } },
+          },
+        },
+      },
+    },
+  } as unknown as ResourceDefinition;
+  const commands = app("commands", "Fx.Scoped", {
+    model: {
+      kind: "Telo.JsonSchema",
+      schema: { type: "object", properties: { seq: { type: "integer" }, runner: { type: "string" } } },
+    },
+  });
+  const calling = (scope: Record<string, unknown>) =>
+    analyze([commands, call({ kind: "Fx.Scoped", name: "commands" }, { scope })], [scopedKind, HOST]).map(
+      (d) => [d.code, d.data?.path, d.message] as const,
+    );
+
+  it("refuses a literal key naming no property of the type", () => {
+    const found = calling({ runnr: "a" });
+    expect(found.map(([code, path]) => [code, path])).toEqual([["CONTRACT_INPUTS_MISMATCH", "inputs.scope"]]);
+    expect(found[0]![2]).toContain("'runnr'");
+  });
+
+  it("holds a value expression to the property its key names", () => {
+    expect(calling({ seq: cel("'a' + 'b'") }).map(([code, path]) => [code, path])).toEqual([
+      ["CEL_TYPE_ERROR", "inputs.scope.seq"],
+    ]);
+  });
+
+  it("keeps a key the kind's own schema fixes, beside the type's", () => {
+    expect(calling({ fixed: true, runner: "a", seq: cel("1 + 1") })).toEqual([]);
   });
 });

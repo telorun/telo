@@ -17,6 +17,7 @@ import { catchesForReads, outcomeListReads } from "./catch-scope.js";
 import { caughtMemberReads } from "./caught-member.js";
 import { bindingsFromReads } from "./cel-bindings.js";
 import { itemFillsReads } from "./context-fill-cycle.js";
+import { fromPathTemplateReads } from "./context-from-path-template.js";
 import { fromReferrerReads } from "./context-from-referrer.js";
 import { nullableWhenReads } from "./context-nullable-when.js";
 import { elementFromItemReads } from "./element-from-item.js";
@@ -68,6 +69,7 @@ export const ANNOTATION_READS: AnnotationReadTable = {
   "x-telo-context-item-fills": itemFillsReads,
   "x-telo-context-from": contextFromReads,
   "x-telo-context-from-ref-kind": contextFromRefKindReads,
+  "x-telo-context-from-path-template": fromPathTemplateReads,
   "x-telo-context-from-referrer": fromReferrerReads,
   "x-telo-context-from-root": contextFromRootReads,
   "x-telo-context-nullable-when": nullableWhenReads,

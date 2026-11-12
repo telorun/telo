@@ -143,10 +143,11 @@ result:
     - value: !cel "row.url"
 ```
 
-## From a row
+## From bound inputs
 
-[A row action](action.md#row-actions) sends the same request, its input built
-from the row instead of a form: each input the entry binds, a path that
+[A bound action](action.md#bound-actions) — a row's or a button's — sends the
+same request, its input built from the data in scope
+instead of a form: each input the entry binds, a path that
 resolves to nothing left out — and, where the entry declares `prompt`, each
 field its dialog entered. That input fills the action's `target`, so a bound
 `id` that the target consumes goes in the path and leaves the body: renaming a

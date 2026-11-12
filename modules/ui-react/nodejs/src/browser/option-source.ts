@@ -1,6 +1,7 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { resolveAddress, type AddressWire } from "./address-wire.js";
 import { readBinding, type Binding } from "./bindings.js";
+import { resolveBasePath, unresolvedFailure, type BasePath } from "./base-path.js";
 import { boundFilters, fetchPage, filterParam, type Operator, type Param } from "./collection.js";
 import { useHost } from "./host.js";
 import { RendererContext, underMount } from "./renderer-context.js";
@@ -15,7 +16,7 @@ export interface OptionSourceSpec {
   label: Binding;
   hint?: Binding;
   href?: AddressWire;
-  basePath: string;
+  basePath: BasePath;
   filters: Record<string, Binding>;
   pageSize: number;
   search?: { property: string; operator: Operator };
@@ -65,15 +66,18 @@ export interface OptionPages {
 /**
  * The options a source offers over the roots in scope, read page by page.
  * Nothing is read, and nothing offered, while a filter the source reads holds
- * nothing; a change of filters or search starts again from the first page, and
- * an answer to an older one is discarded.
+ * nothing, or while its path does not resolve — that is its failure; a change
+ * of filters, search or path starts again from the first page, and an answer
+ * to an older one is discarded.
  */
 export function useOptionPages(spec: OptionSourceSpec, roots: Readonly<Record<string, unknown>>, search = "", active = true): OptionPages {
   const host = useHost();
-  const collectionAt = underMount(useContext(RendererContext).prefix, spec.basePath);
-  const filters = boundFilters(spec.filters, roots);
+  const prefix = useContext(RendererContext).prefix;
+  const base = resolveBasePath(spec.basePath, roots, "option source basePath");
+  const collectionAt = base.ok ? underMount(prefix, base.address) : "";
+  const filters = base.ok ? boundFilters(spec.filters, roots) : undefined;
   const searched: Param[] = search !== "" && spec.search ? [filterParam(spec.search.property, spec.search.operator, search)] : [];
-  const key = filters === undefined ? undefined : JSON.stringify([...filters, ...searched]);
+  const key = filters === undefined ? undefined : JSON.stringify([collectionAt, ...filters, ...searched]);
   const [state, setState] = useState<{ key?: string; options: ChoiceOption[]; cursor: string | null; loading: boolean; failure?: ErrorSpec }>({
     options: [],
     cursor: null,
@@ -115,10 +119,11 @@ export function useOptionPages(spec: OptionSourceSpec, roots: Readonly<Record<st
   }, [key, active]);
 
   const current = state.key === key && key !== undefined;
+  const unresolved = unresolvedFailure(base);
   return {
     options: current ? state.options : [],
     loading: current && state.loading,
-    ...(current && state.failure ? { failure: state.failure } : {}),
+    ...(unresolved ? { failure: unresolved } : current && state.failure ? { failure: state.failure } : {}),
     more: current && state.cursor !== null,
     next: () => {
       if (!current || inFlight.current || state.cursor === null) return;
@@ -143,9 +148,11 @@ export function useChosenOptions(
   onDropped: (kept: unknown[]) => void,
 ): ChoiceOption[] {
   const host = useHost();
-  const collectionAt = underMount(useContext(RendererContext).prefix, spec.basePath);
-  const filters = boundFilters(spec.filters, roots);
-  const filtersKey = filters === undefined ? undefined : JSON.stringify(filters);
+  const prefix = useContext(RendererContext).prefix;
+  const base = resolveBasePath(spec.basePath, roots, "option source basePath");
+  const collectionAt = base.ok ? underMount(prefix, base.address) : "";
+  const filters = base.ok ? boundFilters(spec.filters, roots) : undefined;
+  const filtersKey = filters === undefined ? undefined : JSON.stringify([collectionAt, ...filters]);
   const [known, setKnown] = useState<{ filters?: string; options: Map<string, ChoiceOption> }>({ options: new Map() });
   const latest = useRef(0);
   const dropped = useRef(onDropped);

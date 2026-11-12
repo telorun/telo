@@ -268,6 +268,8 @@ export function checkCallSite(
     (path) => filled.push(path),
   );
   for (const issue of defs.validateResourceConfig(effective, contract.schema, standIns)) {
+    // A target that obtains what the map leaves unbound is missing none of it.
+    if (site.completed && missingRequired(issue) && containerOf(issue.path) === "") continue;
     // A missing-required issue names the property that ISN'T there, so anchoring
     // on it finds no node. Anchor on the container that should have held it —
     // and, for a finding inside a filled default, on the map the author wrote.

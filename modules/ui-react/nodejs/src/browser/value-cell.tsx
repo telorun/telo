@@ -3,6 +3,7 @@ import { CurrentAnchor } from "./current-location.js";
 import { presentValue } from "./bindings.js";
 import { useHostStore } from "./host.js";
 import { applicationPath, linkAddress } from "./link-address.js";
+import { matchPage } from "./page-route.js";
 import { RecordLinkContext, RendererContext } from "./renderer-context.js";
 import { labelFor, useSay, useText, type ValueLabel } from "./texts.js";
 
@@ -31,21 +32,29 @@ export function presentedAddress(value: unknown, present: PresentedProps["presen
  * origin serves, another site — opens beside the application.
  */
 export function Presented({ value, present, labels, text, href: given }: PresentedProps): ReactNode {
-  const store = useHostStore();
-  const { prefix, pages } = useContext(RendererContext);
-  const ofRecord = useContext(RecordLinkContext);
   const format = useText();
   const say = useSay();
   const label = labelFor(labels, value);
   const shown = label ? format(label) : presentValue(value, present, say);
-  const address = presentedAddress(value, present, labels, given);
+  return (
+    <ValueLink address={presentedAddress(value, present, labels, given)} plain={shown}>
+      {text ?? shown}
+    </ValueLink>
+  );
+}
+
+/** A link to `address` drawing `children`, where it is an address a link may hold; `plain` otherwise, else `children`. */
+export function ValueLink({ address, plain, children }: { address: string | undefined; plain?: ReactNode; children: ReactNode }): ReactNode {
+  const store = useHostStore();
+  const { prefix, pages } = useContext(RendererContext);
+  const ofRecord = useContext(RecordLinkContext);
   const href = address === undefined ? undefined : linkAddress(store, address);
-  if (href === undefined) return shown;
+  if (href === undefined) return plain ?? children;
   const path = address?.startsWith("/") ? applicationPath(prefix, href) : undefined;
-  const page = path !== undefined && pages.includes(path);
+  const page = path !== undefined && matchPage(pages, path) !== undefined;
   return (
     <CurrentAnchor address={address} data-telo-part="link" data-record={ofRecord ? "true" : undefined} href={href} target={page ? undefined : "_blank"} rel={page ? undefined : "noopener"}>
-      {text ?? shown}
+      {children}
     </CurrentAnchor>
   );
 }

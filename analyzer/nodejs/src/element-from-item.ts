@@ -16,7 +16,7 @@
  * Browser-safe: no Node built-ins.
  */
 import { declaredEvalMode, scopeMatchOf, type NamedShapeLookup } from "./eval-paths.js";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { followSchemaReferences } from "./schema-reference.js";
 import { dispatchReads } from "./invocation-contract.js";
 import { placeAt, type ReadReporter } from "./read-place.js";
 
@@ -150,18 +150,8 @@ export function relativePointerRefusal(
 /** A schema node read through its `$ref`s, with the document its own local
  *  references resolve against. */
 function deref(node: Schema, document: Schema, shapes: NamedShapeLookup): [Schema, Schema] {
-  const seen = new Set<object>();
-  let current = node;
-  let doc = document;
-  while (typeof current.$ref === "string" && !seen.has(current)) {
-    seen.add(current);
-    const local = current.$ref.startsWith("#");
-    const target = local ? resolveSchemaPointer(doc, current.$ref) : shapes(current.$ref);
-    if (!isSchema(target)) break;
-    if (!local) doc = target;
-    current = target;
-  }
-  return [current, doc];
+  const reached = followSchemaReferences(node, document, shapes);
+  return [reached.node, reached.document ?? document];
 }
 
 /** The schema a member name or list index reaches from `node`. */

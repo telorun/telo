@@ -152,6 +152,8 @@ above. `telo check`
 follows a pointer past a slot into every kind the slot may hold, and refuses one
 that names nothing in any of them (`RESOURCE_RULE_INVALID`).
 
+A pointer may repeat a group as `in:` does — `/navigation/items(/*/items)*/*/page` reads the page every entry names, however deep its group. The group is taken as many times as the resource's own data holds another level; it repeats over the resource's own fields only, so a group stepping over a reference slot is refused (`RESOURCE_RULE_INVALID`).
+
 **A pointer that resolves to nothing contributes nothing.** An optional field a
 resource leaves out stays *absent* in what the rule reads — never a key that
 exists and holds nothing — so `self.?relationships.orValue([])` on a store

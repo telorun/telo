@@ -1293,7 +1293,7 @@ entries:
       integrity pin), then each asked kind's `Telo.Definition` document as its
       module wrote it: `schema`, `inputType`, `outputType`, `throws`,
       `status`, plus the kinds it extends (in other modules too). The named
-      shapes those documents reach (`!ref Node`, `Self.RowAction`) are NOT
+      shapes those documents reach (`!ref Node`, `Self.BoundAction`) are NOT
       included: a trailing `# Reached, not included:` line lists each with its
       size, and you fetch only the ones you need by naming them in `kinds` in
       a later call. Pass `closure: true` to get every reached shape at once

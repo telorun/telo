@@ -35,6 +35,7 @@
  *
  * Browser-safe.
  */
+import { resolveSchemaReference } from "./schema-reference.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { expansionTagLabel, isTaggedSentinel } from "@telorun/templating";
 import { assignmentKey, type Assignment } from "./configuration-dimensions.js";
@@ -149,16 +150,6 @@ interface Conjunct {
  *  relates members or a reference does not resolve. */
 type InForce = { readonly conjuncts: readonly Conjunct[]; readonly related: boolean };
 
-function resolvePointer(root: unknown, pointer: string): unknown {
-  let node = root;
-  for (const raw of pointer.split("/").slice(1)) {
-    const segment = raw.replace(/~1/g, "/").replace(/~0/g, "~");
-    if (node === null || typeof node !== "object") return undefined;
-    node = (node as Record<string, unknown>)[segment];
-  }
-  return node;
-}
-
 /** `node` and everything it brings in: its references and `allOf` members. */
 function expand(node: unknown, document: Record<string, any>, schemas: OwnSiteSchemas, seen: Set<object>): InForce {
   if (node === true || node === undefined) return { conjuncts: [], related: false };
@@ -181,10 +172,10 @@ function expand(node: unknown, document: Record<string, any>, schemas: OwnSiteSc
   }
   if (typeof schema.$ref === "string") {
     const ref = schema.$ref as string;
-    const target = ref.startsWith("#") ? resolvePointer(document, ref.slice(1)) : schemas.sharedShape(ref);
+    const target = resolveSchemaReference(ref, document, (id) => schemas.sharedShape(id) as Record<string, any> | undefined);
     if (target === undefined) related = true;
     else {
-      const inner = expand(target, ref.startsWith("#") ? document : (target as Record<string, any>), schemas, seen);
+      const inner = expand(target.node, target.document, schemas, seen);
       conjuncts.push(...inner.conjuncts);
       related ||= inner.related;
     }

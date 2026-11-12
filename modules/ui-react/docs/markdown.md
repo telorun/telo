@@ -2,7 +2,7 @@
 
 A [`markdown` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) draws a string as formatted text,
 and so does the chat renderer for a conversation's text: one renderer, shared.
-Its `text` is a binding, read like any other bound leaf — `{ value }` for a
+Its `value` is a binding, read like any other bound leaf — `{ value }` for a
 fixed string, `{ root, path }` for a path into a root in scope. A path that
 reads nothing draws an empty `markdown` part; one that reads a value that is
 not a string draws the `error` node `ERR_UI_NODE_INVALID`.
@@ -37,6 +37,28 @@ else is parsed — footnotes, for one, stay literal text.
   language. A browser that refuses the copy shows the `error` node
   `ERR_UI_COPY_FAILED` beside the button.
 
+## Annotations
+
+A node's `annotations` put a control on the items of the text the server
+names: each element of `rows` is `row`, `line` reads the 1-based source line
+starting its item, `count` a number drawn as a `badge`, and `action` is the
+bound action the control runs — labelled with the action's `label`, run as a
+[row action](app.md#row-actions) is, its answer drawn in place of its button
+and lasting as long as the rows it was pressed on. The renderer draws exactly
+the rows it is given: it finds no item in the text itself.
+
+- A control is drawn on the block holding its line, read from the parser's
+  source positions: the list item holding it (the innermost, in a nested
+  list), a heading, a paragraph, a quote's own block, a fenced code block, a
+  table. A line between two blocks lands on the block after it.
+- The controls of one block are drawn together, in the order of `rows`, in a
+  `markdown-annotations` element inside the block: at its end, or after the
+  first block of a list item, before a nested list.
+- A row whose line is past the text, or is not a positive integer, is drawn in
+  `markdown-unplaced-annotations` after the text, so none is lost.
+- Until the chunk arrives every control is in `markdown-unplaced-annotations`
+  under the preformatted text.
+
 ## The lazy chunk
 
 The parser and the highlighter are a chunk of the renderer's browser entry of
@@ -58,7 +80,9 @@ exposes no Markdown to custom components.
 
 ## Styling
 
-Every element carries a `markdown-…` [part](styling.md#markdown), and the two
+Every element carries a `markdown-…` [part](styling.md#markdown) — an
+annotation's control is a `markdown-annotation` holding a `row-action`, its
+`badge` and what a press drew — and the two
 attributes `data-level` (a heading's depth) and `data-token` (the kind of a
 highlighted run) are listed [states](styling.md#state). Both built-in themes
 style them with the existing design tokens alone — the syntax colours are mixed

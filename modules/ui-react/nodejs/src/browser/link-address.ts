@@ -1,4 +1,5 @@
 import type { HostStore } from "./host.js";
+import { matchPage } from "./page-route.js";
 
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;
 const ABSOLUTE = /^(https:\/\/|http:\/\/|mailto:)/;
@@ -28,12 +29,12 @@ export function linkAddress(store: HostStore, address: string): string | undefin
 
 /**
  * Where following an address moves within the application: the path, query and
- * fragment of one of its declared pages — exact equality with a page's path —
- * or nothing, when following it is an ordinary load.
+ * fragment of an address one of its declared pages opens — matched segment by
+ * segment — or nothing, when following it is an ordinary load.
  */
 export function pageAddress(prefix: string, pages: readonly string[], href: string): string | undefined {
   const target = applicationPath(prefix, href);
-  if (target === undefined || !pages.includes(target)) return undefined;
+  if (target === undefined || matchPage(pages, target) === undefined) return undefined;
   const url = new URL(href, window.location.href);
   return target + url.search + url.hash;
 }

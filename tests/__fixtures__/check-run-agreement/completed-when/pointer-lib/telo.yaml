@@ -1,0 +1,21 @@
+# A named shape whose slot's completedWhen sibling is reached by a JSON Pointer
+# into another shape, and is no boolean there.
+kind: Telo.Library
+metadata: { name: CompletedWhenPointerLib }
+exports: { resources: [Bound] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Flags }
+schema:
+  type: object
+  properties:
+    label: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Bound }
+schema:
+  type: object
+  properties:
+    action: { x-telo-ref: { kind: Telo.Invocable, use: call, inputs: /inputs, completedWhen: /prompt } }
+    inputs: { type: object, default: {} }
+    prompt: { $ref: "telo://Self/Flags#/properties/label" }

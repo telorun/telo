@@ -1,10 +1,11 @@
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { resolveBasePath } from "./base-path.js";
 import { boundFilters, fetchRequest, filterParam, type Param } from "./collection.js";
 import { CurrentAnchor } from "./current-location.js";
 import { useHost, useHostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
 import { optionKey, optionOf, type ChoiceOption, type OptionSourceSpec } from "./option-source.js";
-import { RendererContext } from "./renderer-context.js";
+import { RendererContext, RootsContext } from "./renderer-context.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
 
 /** What one source has labelled: an option per value asked for, or `null`
@@ -30,16 +31,19 @@ export const heldValues = (value: unknown): unknown[] =>
  * The label engine: the values wanted from each source, as one render turn
  * collected them, looked up with `in` in batches of the source's `pageSize`,
  * a value already labelled — or already asked — never asked again. A change
- * announced for a source's `basePath` forgets its labels, so the values still
- * wanted are looked up again.
+ * announced for a source's `basePath` — as it resolves over `roots`, the roots
+ * in scope when none are given — forgets its labels, so the values still
+ * wanted are looked up again. A source whose path does not resolve labels nothing.
  */
 export function useRelatedLabels(
   sources: Readonly<Record<string, OptionSourceSpec>>,
   wanted: Readonly<Record<string, readonly unknown[]>>,
-  roots: Readonly<Record<string, unknown>> = {},
+  given?: Readonly<Record<string, unknown>>,
 ): RelatedLabels {
   const host = useHost();
   const { prefix } = useContext(RendererContext);
+  const inScope = useContext(RootsContext);
+  const roots = given ?? inScope;
   const [known, setKnown] = useState<Readonly<Record<string, Known>>>({});
   const [failures, setFailures] = useState<Readonly<Record<string, ErrorSpec>>>({});
   const [forgotten, setForgotten] = useState(0);
@@ -47,7 +51,11 @@ export function useRelatedLabels(
   const asked = useRef(new Map<string, Set<string>>());
   const generation = useRef(new Map<string, number>());
 
-  const basePaths = Object.entries(sources).map(([name, spec]) => [name, spec.basePath] as const);
+  const basePaths = Object.entries(sources).flatMap(([name, spec]) => {
+    const base = resolveBasePath(spec.basePath, roots, `relation '${name}' basePath`);
+    return base.ok ? [[name, base.address] as const] : [];
+  });
+  const resolvedPaths = new Map(basePaths);
   useEffect(() => {
     const stops = basePaths.map(([name, basePath]) =>
       host.onChanged(basePath, () => {
@@ -84,7 +92,8 @@ export function useRelatedLabels(
       const spec = sources[name];
       const property = valueProperty(spec);
       const filters = boundFilters(spec.filters, roots);
-      if (property === undefined || filters === undefined) continue;
+      const basePath = resolvedPaths.get(name);
+      if (property === undefined || filters === undefined || basePath === undefined) continue;
       const inFlight = asked.current.get(name) ?? new Set<string>();
       asked.current.set(name, inFlight);
       const fresh = values.filter((value) => !inFlight.has(optionKey(value)));
@@ -94,7 +103,7 @@ export function useRelatedLabels(
       for (let start = 0; start < fresh.length; start += spec.pageSize) {
         const batch = fresh.slice(start, start + spec.pageSize);
         const params: Param[] = [["limit", String(spec.pageSize)], ...filters, ...batch.map((value) => filterParam(property, "in", String(value)))];
-        fetchRequest(host, prefix, { path: spec.basePath, params }).then(
+        fetchRequest(host, prefix, { path: basePath, params }).then(
           (page) => {
             if ((generation.current.get(name) ?? 0) !== at) return;
             setKnown((current) => {

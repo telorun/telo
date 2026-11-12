@@ -6,6 +6,7 @@
  *
  * Browser-safe.
  */
+import { resolveSchemaReference } from "./schema-reference.js";
 
 export type ReadKeys = readonly (string | number)[];
 
@@ -136,15 +137,6 @@ type Schema = Record<string, any>;
 
 const isSchema = (node: unknown): node is Schema => !!node && typeof node === "object" && !Array.isArray(node);
 
-function localTarget(root: Schema, ref: string): unknown {
-  let node: unknown = root;
-  for (const raw of ref.slice(1).split("/").slice(1)) {
-    if (!isSchema(node)) return undefined;
-    node = node[raw.replace(/~1/g, "/").replace(/~0/g, "~")];
-  }
-  return node;
-}
-
 /**
  * The places of a referent whose value its kind's schema says may hold a node
  * `holds` accepts: the members, by fixed property names, on the way to each
@@ -163,12 +155,10 @@ export function kindPlaces(referent: Referent, holds: (node: Schema) => boolean)
     }
     out.push(keys);
   };
-  const resolved = (node: Schema, document: Schema): { node: unknown; document: Schema } | undefined => {
-    if (typeof node.$ref !== "string") return undefined;
-    if (node.$ref.startsWith("#")) return { node: localTarget(document, node.$ref), document };
-    const shape = referent.shapeOf(node.$ref);
-    return shape ? { node: shape, document: shape } : undefined;
-  };
+  const resolved = (node: Schema, document: Schema): { node: unknown; document: Schema } | undefined =>
+    typeof node.$ref === "string"
+      ? resolveSchemaReference(node.$ref, document, (id) => referent.shapeOf(id))
+      : undefined;
   const reaching = new Map<object, boolean>();
   const reaches = (node: unknown, document: Schema, seen: Set<object>): boolean => {
     if (!isSchema(node) || seen.has(node)) return false;

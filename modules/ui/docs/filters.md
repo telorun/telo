@@ -11,7 +11,7 @@ page when that changes.
 | `fields` | every filter the collection accepts | the filters, in order — [below](#fields) |
 | `presets` | none | named sets of values — [below](#presets) |
 | `policy` | every default | how the bar behaves — [below](#policy) |
-| `content` | required | one [node](nodes.md) |
+| `content` | required | one [node](nodes.md), over the placing page's [`params`](page.md#params) |
 
 ```yaml
 kind: Ui.Filters
@@ -78,7 +78,7 @@ pair.
 | `control` | `auto` | how the value is entered — [below](#controls) |
 | `values` | `all` | which choices are offered — [below](#related-records-and-present-values) |
 | `options` | none | any [`Ui.OptionSource`](field-kinds.md#option-sources): where the choices and their labels come from, in place of the property's relation or `enum` |
-| `default` | none | what the filter holds until the viewer changes it: one value, or a list under `in`; only `true` under `absent` |
+| `default` | none | what the filter holds until the viewer changes it: one value, or a list under `in`; only `true` under `absent`; a [value relative to now](#values-relative-to-now) on a `date` or `date-time` comparison |
 
 ```yaml
 fields:
@@ -174,7 +174,36 @@ Which preset is active is read off the bar's values, never stored: it is the
 first whose values the bar holds exactly — and, if it carries a `search`, whose
 search the bar holds — however they came to be — chosen,
 typed, restored from the address. A value is written as a field's `default`
-is: one value, or a list under `in`.
+is: one value, a list under `in`, or a value relative to now.
+
+## Values relative to now
+
+A `default` and a preset's value on a `date` or `date-time` filter may be
+`{ unit, offset }`: now moved by `offset` units — `minute`, `hour`, `day`,
+`week`, `month` or `year`, a negative offset into the past — in the viewer's
+time zone. It is the instant for a `date-time` filter and that moment's date for
+a `date` one, and is legal with `eq`, `gt`, `gte`, `lt` and `lte`, not `in`:
+
+```yaml
+fields:
+  - { property: state, operator: in }
+  - { property: revisedAt, operator: lte }
+presets:
+  - label: Waiting a day or more
+    values:
+      - { property: state, operator: in, value: [submitted, revised] }
+      - { property: revisedAt, operator: lte, value: { unit: day, offset: -1 } }
+```
+
+A value that came from a relative default or preset stays relative while the
+viewer leaves it: the active preset is still read off the bar's values, and the
+address and the store keep it as `now`, a sign, a count and a unit —
+`now-1day`, `now+2week`, `now+0hour` — the sign always written and `now` alone
+no value. It is resolved when a listing reads its first page; every later
+page of that sequence, and every page of one reload, sends the same resolved
+value, since the next page's cursor was issued for it, and the next first-page
+read, reload or filter change resolves it again. Typing a value replaces it with
+an absolute one.
 
 ## Policy
 
@@ -239,7 +268,7 @@ back.
 | `UI_FILTER_VALUES_NOT_FACETED` | `values: present` on a property the collection does not list under `query.facets` |
 | `UI_FILTER_OPTION_VALUE_MISMATCH` | a field's `options` yields values of another type than its property holds |
 | `UI_FILTER_DUPLICATE` | two fields share a property and an operator |
-| `UI_FILTER_DEFAULT_INVALID` | a `default` is not of the property's type or not one of its `enum`; or is a list without `in`; or one value with `in`; or anything but `true` under `absent`; or `false` for a filter entered with a `toggle`, which holds true or nothing |
+| `UI_FILTER_DEFAULT_INVALID` | a `default` is not of the property's type or not one of its `enum`; or is a list without `in`; or one value with `in`; or anything but `true` under `absent`; or `false` for a filter entered with a `toggle`, which holds true or nothing; or is relative to now on a filter that is not a `date` or `date-time` one with `eq`, `gt`, `gte`, `lt` or `lte` |
 | `UI_FILTER_CONTROL_UNSUPPORTED` | a `control` its filter cannot be entered with — the *Needs* column [above](#controls) |
 | `UI_FILTER_PRESET_UNKNOWN_FILTER` | a preset value names a property and operator the bar does not show |
 | `UI_FILTER_PRESET_VALUE_INVALID` | a preset value fails what a `default` is held to, or is `false` for a filter entered with a `toggle`, which holds true or nothing |

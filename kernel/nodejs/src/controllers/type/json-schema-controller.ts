@@ -4,8 +4,10 @@ import type {
   ResourceManifest,
   TypeRule,
 } from "@telorun/sdk";
+import { withReachedFragmentDefs } from "@telorun/analyzer";
 import { canonicalTypeSchemaId, mergeTypeSchemas, RuntimeError } from "@telorun/sdk";
 import { ruleCondition } from "../../type-rule-condition.js";
+import { refuseInvalidCompletedWhen } from "../resource-definition/completed-when-guard.js";
 
 /**
  * `Telo.JsonSchema` — a named data shape.
@@ -67,6 +69,7 @@ export async function create(
 ): Promise<ResourceInstance | null> {
   const qualifiedName = `${resource.metadata.module}.${resource.metadata.name}`;
   const ownSchema = resource.schema as Record<string, unknown>;
+  refuseInvalidCompletedWhen(resource, ownSchema, ctx);
 
   let schema: Record<string, unknown> = ownSchema;
 
@@ -87,6 +90,11 @@ export async function create(
     // left in the result.
     schema = mergeTypeSchemas([...parentSchemas, ownSchema]);
   }
+
+  // A pointer `$ref` based in this shape — its own, or one into it — compiles a
+  // shape it reaches against this document, so that shape's hoisted fragments
+  // are carried here.
+  schema = withReachedFragmentDefs(schema, (id) => ctx.lookupSchema(id) as Record<string, any> | undefined);
 
   const rules = (Array.isArray(resource.rules) ? resource.rules : []) as TypeRule[];
 

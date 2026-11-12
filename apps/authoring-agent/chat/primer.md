@@ -247,10 +247,17 @@ The path after the reference may cross further references
 (`"source/collection/model"`: the model of the collection the sibling `source`
 reads, each map entry from its own `source`).
 
+In a `oneOf` / `anyOf`, a property two branches declare carries the same
+`x-telo-eval` in each (its type may differ): an accessor `text` in one branch
+and a plain `text` in another is `EVAL_MODE_BRANCH_CONFLICT` — give the other
+meaning another name.
+
 A resource writes a PLAIN CHAIN there (`rowStyle: !cel "row.status"`) or a
 literal (`rowStyle: muted`). The chain is type-checked against the binding
 (`CEL_UNKNOWN_FIELD`, `CEL_UNKNOWN_IDENTIFIER`, `CEL_TYPE_ERROR`) and NEVER
-evaluated, so a read through a nullable member needs no guard — and a call, an
+evaluated, so a read through a nullable member needs no guard; where the field
+declares a `format` (or a union whose every branch does), a chain naming a
+declared string of another format, or of none, is `CEL_TYPE_ERROR` — and a call, an
 operator, an index, `!interpolate`, a tag beneath the field or a chain rooted
 outside the field's bindings (`variables.x`) is `ACCESSOR_NOT_PLAIN_CHAIN`. The
 controller receives a plain map: `{ root: "row", path: ["status"] }` for a
@@ -273,6 +280,15 @@ fields inside a named shape are found at every depth of its recursion. Only the
 accessor field itself is left unevaluated at creation — an expression beside it
 under a provider's compile-eval root is still evaluated.
 
+To reuse members of a closed shape in another closed shape, point at them with a
+JSON Pointer `$ref` (`$ref: "telo://Self/BoundAction#/properties/inputs"`, or
+`#/$defs/Column/properties/href` within one schema) — never copy their
+annotations. A member reached that way keeps every annotation it declares: a
+reference slot with its `inputs` / `completedWhen` siblings (read from the object
+holding the `$ref`), its eval mode, its regions, its texts. A relative pointer
+inside a named shape stays within it; one climbing above the shape's root is
+refused there.
+
 A binding names the eval modes it exists at with `x-telo-context-eval:
 <mode> | [<mode>…]` (`compile`, `runtime`, `accessor`; absent, every mode). A
 binding only the consumer has (a row a page renders in the browser) is marked
@@ -285,6 +301,10 @@ from another (a form's field) may take its type from whoever references it:
 beneath one (`request/principal`), types it from what that path names in scope at
 each referencing slot, at the site's own eval mode, judged once per distinct type;
 with no referrer the node keeps its own keywords.
+`x-telo-context-from-path-template: "<relative pointer>"` (`0/path`) types a
+binding as the variables of the path template the resource holds there — one
+required string per `{name}` segment, closed, so a variable the template lacks
+is `CEL_UNKNOWN_FIELD`; with no template there, an open map of strings.
 `x-telo-context-nullable-when: { at, equals, absent }` makes a binding or member
 nullable only where the resource's own value at the relative pointer `at` is one of
 `equals` (or, with `absent: true`, missing), so an unguarded read is
@@ -292,6 +312,11 @@ nullable only where the resource's own value at the relative pointer `at` is one
 `x-telo-ref: { …, outputTo: { slot, member } }` says the slot's target output (null
 removed) feeds input member `member` of the target in the sibling slot `slot`; one
 that cannot fit is `CONTRACT_INPUTS_MISMATCH` at the source.
+`x-telo-ref: { …, inputs: /inputs, completedWhen: /prompt }` says the target
+obtains every input the map leaves unbound wherever the boolean sibling `prompt`
+is `true`, so a required input missing from the map is not refused there (an
+unknown key and a wrong type still are); a pointer naming no `type: boolean`
+sibling, or no `inputs:` beside it, is `X_TELO_REF_INVALID_COMPLETED_WHEN`.
 A kind that renders failures through a catch list (`x-telo-outcome-list: catches`)
 and raises codes itself (a transport's refusals) declares `x-telo-raises:
 [<CODE>…]` on the field whose presence raises them, and `x-telo-catches-for: {
@@ -2235,8 +2260,9 @@ when several may combine; each reached type keeps its own `$defs`; when
 nothing is reached the node stays as written. The object form
 `{ from: <location>, member: "0#" }` holds the value to the property of each
 reached type that its own map key names — a map of filters typed key by key by
-a model; on a configuration slot every expression there, accessors included,
-must fit that property's type (`CEL_TYPE_ERROR`). A location ending at
+a model, refusing a key the model does not declare (one the kind's own schema
+fixes keeps its own type); on a configuration slot every expression there,
+accessors included, must fit that property's type (`CEL_TYPE_ERROR`). A location ending at
 `inputType` / `outputType` past a reference (`/invoke/outputType`) reads the
 called resource's contract as a contract resolves — its own, else its kind's
 along `extends` — so a wrapper's `result` is typed by whatever it calls. A call whose argument does not
@@ -4490,7 +4516,7 @@ them before writing any resource from a module you did not author yourself:
     fields you must produce. Read the `schema`, `inputType` and `outputType` —
     never invent a field from a kind name alone. The parent a kind `extends`
     and takes fields from is included, even when it lives in another module.
-    The named shapes a definition references (`Node`, `RowAction`) are NOT:
+    The named shapes a definition references (`Node`, `BoundAction`) are NOT:
     a final `# Reached, not included:` line lists each with its size — read
     only the ones you need to write the resource, by naming them in one later
     `get_kinds` call, and never fetch one you already have. A name the
@@ -4681,7 +4707,7 @@ Where to start:
     (any number, none included, so `/api/projects/{id}/**` covers
     `/api/projects/7` and its subtree), refused in any other address, and a
     computed path or `pathParams` value is exact. `Ui.Data.source` is a request target
-    over `query` (`{ path, pathParams, queryParams }`; `params` is gone).
+    over `query` and `params` (`{ path, pathParams, queryParams }`).
     `Ui.SplitView` (a composite) draws an `aside` beside `content`, the aside being
     `{ actions?, content }` (`actions`: `link` nodes with `button`, drawn under the
     toggle's bar and kept as stacked glyphs in the folded rail): `side`,
@@ -4715,7 +4741,7 @@ Where to start:
     `Ui.BoardLayout` (`groups`), `Ui.CalendarLayout` and `Ui.TimelineLayout`
     (`span`), `Ui.TreeLayout` (`parent`), or `Ui.ComponentLayout` for a
     component of your own; `compact` is the layout below the narrow-screen
-    breakpoint, and a layout's `move` is a row action running when a card,
+    breakpoint, and a layout's `move` is a bound action running when a card,
     event or tree item is dragged. `telo check` refuses a layout whose filter
     the collection does not accept. `Ui.Collection`, `Ui.Table` and `Crud.Ui`
     no longer exist.
@@ -4740,6 +4766,43 @@ Where to start:
     `MultiSelect`, `Combobox`, `Dialog`, `Drawer`, `Popover`, `Confirmation`,
     `Menu`, `Tooltip`, `Navigation`) implements all ten, built for the
     `ui_react_controls-4` generation.
+  - A page `path` may hold variables: a segment `{id}` (`/reviews/{id}`)
+    matches one percent-decoded segment, a literal segment winning over it, and
+    the page's nodes, readers, views and sources read it as `params.id` (a
+    string; `telo check` refuses a variable the placing page lacks). A
+    navigation entry cannot name such a page (refused); a `link` reaches it with
+    `href: { path: !ref review, pathParams: { id: !cel "row.id" } }`, and a path
+    parameter may read a nullable value: null leaves the address unresolved (a
+    link is drawn as text). A `Ui.CollectionSource.basePath` may be
+    `{ path, pathParams }` over `params` / `query`. `Ui.Data` and `Ui.Listing`
+    take `reloadEvery` (a duration, at least `5s`): a timer read that keeps
+    loaded pages, scroll and open forms, skipped while the document is hidden or
+    a read is in flight. A `markdown` node (`value`, an accessor to a string)
+    draws CommonMark, never inserting raw HTML; `annotations: { rows, line,
+    count?, action }` puts a control, running the `action` (a `Ui.BoundAction`
+    over `row`), on the block holding each item's source `line` the server
+    names, with `count` as a badge. A `time` node (`value` an accessor to a
+    `date` / `date-time` string, `relative?`) and a `list` column
+    `{ type: time, value, relative? }` draw a time, relative ("3 hours ago")
+    with `relative: true`; `relative` is not a key of `value`. A `list` takes
+    `rowStyle` and each column `style`. A date or date-time filter's `default`
+    and a preset's value may be relative, `{ unit, offset }` (the address keeps
+    `now-1day`; `eq`, `gt`, `gte`, `lt`, `lte`). `Ui.BoundAction` is
+    `{ action, inputs, confirm?, prompt?, enabled? }` — the entry of
+    `rowActions`, a layout's `move` and `annotations.action`; a `button` node
+    (`{ type: button, action, inputs, confirm?, prompt?, enabled?, button? }`)
+    runs one on a page, its `inputs` reading `params`, `query` and `data`. With
+    `prompt: true` a required input the person enters may stay unbound: the
+    prompt asks for the fields the inputs do not bind and checks the whole
+    record, so a required field left empty blocks sending. Entries sharing a
+    `state` key hold each kept property as one value. For a list over a join or
+    computed columns, `Crud.Reader` is a route handler over a
+    `DataModel.Collection` and a table or one fixed `select: !sql` (columns
+    aliased to the model's properties), speaking the collection contract; its
+    `scope: { worker: !cel "request.params.name" }` fixes equalities no client
+    can send (a client filter on a scoped property is a 400), and a
+    member-form map (`scope`, a listing's `filters`) refuses a key the model
+    does not declare.
   - `ui-react` renders it: `UiReact.App` is a mount holding the pages — each
     a `Ui.Page`, inline or `!ref` — and their `navigation` tree, which names
     pages by `!ref`, never by path, and is drawn by a placement kind: a

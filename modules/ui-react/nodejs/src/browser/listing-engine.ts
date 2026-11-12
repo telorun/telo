@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchFacet, fetchRequest, type CollectionPage, type CollectionRequest } from "./collection.js";
+import { resolveBasePath } from "./base-path.js";
+import { fetchFacet, fetchRequest, resolveParams, type CollectionPage, type CollectionRequest, type Param } from "./collection.js";
 import type { Host } from "./host.js";
 import { pageRequest, positionKey, RELOAD_PAGE_LIMIT, valuesRequest, type ListingReads, type ReadPlan, type ReadPosition, type RelatedSource } from "./listing-reads.js";
 import { optionOf, type ChoiceOption, type OptionSourceSpec } from "./option-source.js";
@@ -32,8 +33,13 @@ interface ReadState {
   index: number;
   cursors: (string | undefined)[];
   starts: number[];
+  /** The bars' filters as this sequence of pages sends them, each value relative
+   *  to now resolved at its first page: a later page's cursor was issued for them. */
+  bar: Param[];
   loading: boolean;
   failure?: ErrorSpec;
+  /** The failure is a reload's: what was read stays drawn beside it. */
+  kept?: boolean;
 }
 
 /** A record as a layout draws it: its key, and the row as read. */
@@ -56,6 +62,8 @@ export interface ReadView {
   answered: boolean;
   loading: boolean;
   failure?: ErrorSpec;
+  /** Whether the failure is a reload's, drawn beside the records it kept rather than in their place. */
+  kept: boolean;
   /** Whether a further page exists. */
   hasMore: boolean;
   /** Read the next page and append it; nothing while one is in flight. */
@@ -66,7 +74,7 @@ export interface ReadView {
 
 const EMPTY: CollectionPage = { rows: [], total: 0, next: null };
 
-const blank = (): ReadState => ({ pages: [], index: 0, cursors: [undefined], starts: [0], loading: true });
+const blank = (bar: Param[]): ReadState => ({ pages: [], index: 0, cursors: [undefined], starts: [0], bar, loading: true });
 
 interface ReadsInput {
   host: Host;
@@ -128,47 +136,53 @@ export function useListingReads({ host, prefix, listing, plan, mode, positions, 
     generations.current.set(key, at);
     return at;
   };
-  const request = (position: ReadPosition, cursor?: string): CollectionRequest => pageRequest(listing!, plan, position, cursor);
-  const failed = (key: string, at: number) => (error: unknown) =>
-    write(key, at, (state) => ({ ...state, loading: false, failure: errorSpec(error, "ERR_UI_REQUEST_FAILED") }));
+  const request = (position: ReadPosition, bar: Param[], cursor?: string): CollectionRequest => pageRequest({ ...listing!, bar }, plan, position, cursor);
+  /** The bars' filters as a first page sends them: each value relative to now resolved now. */
+  const resolvedBar = () => resolveParams(listing!.bar, new Date());
+  const failed = (key: string, at: number, reloading = false) => (error: unknown) =>
+    write(key, at, (state) => ({ ...state, loading: false, failure: errorSpec(error, "ERR_UI_REQUEST_FAILED"), kept: reloading && state.pages.length > 0 }));
+  const settled = { loading: false, failure: undefined, kept: false };
 
   /** Under `all`, read the pages after `page` and append each. */
-  const readOn = (key: string, position: ReadPosition, at: number, page: CollectionPage) => {
-    if (mode !== "all" || page.next === null) return write(key, at, (state) => ({ ...state, loading: false, failure: undefined }));
-    fetchRequest(host, prefix, request(position, page.next)).then((next) => {
+  const readOn = (key: string, position: ReadPosition, at: number, bar: Param[], page: CollectionPage) => {
+    if (mode !== "all" || page.next === null) return write(key, at, (state) => ({ ...state, ...settled }));
+    fetchRequest(host, prefix, request(position, bar, page.next)).then((next) => {
       write(key, at, (state) => ({ ...state, pages: [...state.pages, next] }));
-      readOn(key, position, at, next);
+      readOn(key, position, at, bar, next);
     }, failed(key, at));
   };
 
   const open = (key: string, position: ReadPosition) => {
     const at = begin(key);
     if (!listing) {
-      setHeld((current) => ({ ...current, reads: new Map(current.reads).set(key, { ...blank(), pages: [EMPTY], loading: false }) }));
+      setHeld((current) => ({ ...current, reads: new Map(current.reads).set(key, { ...blank([]), pages: [EMPTY], loading: false }) }));
       return;
     }
-    setHeld((current) => ({ ...current, reads: new Map(current.reads).set(key, blank()) }));
-    fetchRequest(host, prefix, request(position)).then((page) => {
+    const bar = resolvedBar();
+    setHeld((current) => ({ ...current, reads: new Map(current.reads).set(key, blank(bar)) }));
+    fetchRequest(host, prefix, request(position, bar)).then((page) => {
       write(key, at, (state) => ({ ...state, pages: [page], cursors: [undefined, page.next ?? undefined], starts: [0, page.rows.length] }));
-      readOn(key, position, at, page);
+      readOn(key, position, at, bar, page);
     }, failed(key, at));
   };
 
-  const show = (key: string, position: ReadPosition, index: number) => {
+  /** Under `pages`, read the page at `index`: the first resolves the bars' filters anew, a later one sends what its cursor was issued for. */
+  const show = (key: string, position: ReadPosition, index: number, reloading = false) => {
     const state = latest.current.reads.get(key);
     if (!state || !listing) return;
+    const bar = index === 0 ? resolvedBar() : state.bar;
     const at = begin(key);
     write(key, at, (current) => ({ ...current, index, loading: true }));
-    fetchRequest(host, prefix, request(position, state.cursors[index])).then(
+    fetchRequest(host, prefix, request(position, bar, state.cursors[index])).then(
       (page) =>
         write(key, at, (current) => {
           const cursors = [...current.cursors];
           const starts = [...current.starts];
           cursors[index + 1] = page.next ?? undefined;
           starts[index + 1] = (starts[index] ?? 0) + page.rows.length;
-          return { ...current, pages: [page], cursors, starts, loading: false, failure: undefined };
+          return { ...current, pages: [page], cursors, starts, bar, ...settled };
         }),
-      failed(key, at),
+      failed(key, at, reloading),
     );
   };
 
@@ -178,8 +192,8 @@ export function useListingReads({ host, prefix, listing, plan, mode, positions, 
     if (!state || !listing || state.loading || !last || last.next === null) return;
     const at = generations.current.get(key) ?? 0;
     write(key, at, (current) => ({ ...current, loading: true }));
-    fetchRequest(host, prefix, request(position, last.next)).then(
-      (page) => write(key, at, (current) => ({ ...current, pages: [...current.pages, page], loading: false, failure: undefined })),
+    fetchRequest(host, prefix, request(position, state.bar, last.next)).then(
+      (page) => write(key, at, (current) => ({ ...current, pages: [...current.pages, page], ...settled })),
       failed(key, at),
     );
   };
@@ -187,27 +201,30 @@ export function useListingReads({ host, prefix, listing, plan, mode, positions, 
   const reloadOne = (key: string, position: ReadPosition) => {
     const state = latest.current.reads.get(key);
     if (!state || !listing) return open(key, position);
-    if (mode === "pages") return show(key, position, state.index);
+    if (mode === "pages") return show(key, position, state.index, true);
     const loaded = state.pages.length;
     if (loaded === 0) return open(key, position);
     const at = begin(key);
     write(key, at, (current) => ({ ...current, loading: true }));
     if (loaded > RELOAD_PAGE_LIMIT) {
-      fetchRequest(host, prefix, request(position)).then(
-        (page) => write(key, at, (current) => ({ ...current, pages: [page, ...current.pages.slice(1)], loading: false, failure: undefined })),
-        failed(key, at),
+      // The later pages stay as drawn, so the first is read with what their cursors were issued for.
+      fetchRequest(host, prefix, request(position, state.bar)).then(
+        (page) => write(key, at, (current) => ({ ...current, pages: [page, ...current.pages.slice(1)], ...settled })),
+        failed(key, at, true),
       );
       return;
     }
-    // Every loaded page again, in order, each with the cursor the one before answered.
+    // Every loaded page again, in order, each with the cursor the one before
+    // answered, and every one with the bars' filters resolved once for the cycle.
+    const bar = resolvedBar();
     const refetched: CollectionPage[] = [];
     const step = (cursor: string | undefined): Promise<void> =>
-      fetchRequest(host, prefix, request(position, cursor)).then((page): Promise<void> | void => {
+      fetchRequest(host, prefix, request(position, bar, cursor)).then((page): Promise<void> | void => {
         refetched.push(page);
         const further = page.next !== null && (mode === "all" || refetched.length < loaded);
         if (further) return step(page.next as string);
-        write(key, at, (current) => ({ ...current, pages: refetched, loading: false, failure: undefined }));
-      }, failed(key, at));
+        write(key, at, (current) => ({ ...current, pages: refetched, bar, ...settled }));
+      }, failed(key, at, true));
     void step(undefined);
   };
 
@@ -263,6 +280,7 @@ export function useListingReads({ host, prefix, listing, plan, mode, positions, 
           answered: pages.length > 0,
           loading: state?.loading ?? true,
           ...(state?.failure ? { failure: state.failure } : {}),
+          kept: state?.kept === true,
           hasMore: mode !== "pages" && last !== undefined && last.next !== null,
           loadMore: () => more(key, position),
           ...(mode === "pages" && state
@@ -331,7 +349,8 @@ export interface GroupValues {
  * The values a grouping reads a group for: its listed values, or — paged —
  * the present values the facet request answers under the listing's and the
  * bars' filters, or the related records of its relation. A change announced
- * for the listing's collection reads the facet again.
+ * for the listing's collection reads the facet again. A relation's path is
+ * resolved over `roots`; one that does not resolve is the values' failure.
  */
 export function useGroupValues(
   host: Host,
@@ -339,27 +358,38 @@ export function useGroupValues(
   listing: ListingReads | undefined,
   plan: ReadPlan,
   relations: Readonly<Record<string, OptionSourceSpec>>,
+  roots: Readonly<Record<string, unknown>>,
   visible: boolean,
   changes: number,
 ): GroupValues | undefined {
   const groups = plan.groups;
+  const resolved = Object.entries(relations).map(([name, spec]) => [name, spec, resolveBasePath(spec.basePath, roots, `relation '${name}' basePath`)] as const);
+  const relatedKey = JSON.stringify(resolved.map(([name, spec, base]) => [name, base.ok ? base.address : null, spec.pageSize]));
   const related = useMemo(() => {
     const sources: Record<string, RelatedSource> = {};
-    for (const [name, spec] of Object.entries(relations)) sources[name] = { basePath: spec.basePath, pageSize: spec.pageSize };
+    for (const [name, spec, base] of resolved) if (base.ok) sources[name] = { basePath: base.address, pageSize: spec.pageSize };
     return sources;
-  }, [relations]);
-  const query = JSON.stringify([listing ?? null, groups ?? null, groups?.values === "present" ? changes : 0]);
-  const [state, setState] = useState<{ query?: string; values: GroupValue[]; next: string | null; loading: boolean; failure?: ErrorSpec }>({
+  }, [relatedKey]);
+  const unresolved = groups?.relation === undefined ? undefined : resolved.find(([name]) => name === groups.relation)?.[2];
+  const query = JSON.stringify([listing ?? null, groups ?? null, relatedKey, groups?.values === "present" ? changes : 0]);
+  const [state, setState] = useState<{ query?: string; values: GroupValue[]; next: string | null; bar: Param[]; loading: boolean; failure?: ErrorSpec }>({
     values: [],
     next: null,
+    bar: [],
     loading: false,
   });
   const generation = useRef(0);
 
-  const read = (cursor: string | undefined, append: boolean) => {
+  /** One page of values: the first resolves the bars' filters anew, a later one sends what its cursor was issued for. */
+  const read = (cursor: string | undefined, append: boolean, held: Param[] = []) => {
     if (!groups || !listing) return;
+    if (groups.values !== "present" && unresolved !== undefined && !unresolved.ok) {
+      setState({ query, values: [], next: null, bar: [], loading: false, failure: errorSpec(unresolved.error, "ERR_UI_ADDRESS_UNRESOLVED") });
+      return;
+    }
     const at = ++generation.current;
-    const asked = valuesRequest(listing, plan, related, cursor);
+    const bar = append ? held : resolveParams(listing.bar, new Date());
+    const asked = valuesRequest({ ...listing, bar }, plan, related, cursor);
     if (!asked) return;
     setState((held) => ({ ...held, query, loading: true }));
     const spec = groups.relation === undefined ? undefined : relations[groups.relation];
@@ -379,7 +409,7 @@ export function useGroupValues(
     answered.then(
       (page) => {
         if (at !== generation.current) return;
-        setState((held) => ({ query, values: append ? [...held.values, ...page.values] : page.values, next: page.next, loading: false }));
+        setState((held) => ({ query, values: append ? [...held.values, ...page.values] : page.values, next: page.next, bar, loading: false }));
       },
       (error) => {
         if (at !== generation.current) return;
@@ -403,7 +433,7 @@ export function useGroupValues(
     ...(current && state.failure ? { failure: state.failure } : {}),
     hasMore: current && state.next !== null,
     more: () => {
-      if (current && !state.loading && state.next !== null) read(state.next, true);
+      if (current && !state.loading && state.next !== null) read(state.next, true, state.bar);
     },
   };
 }
