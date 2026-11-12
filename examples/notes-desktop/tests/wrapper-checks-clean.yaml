@@ -5,7 +5,7 @@ metadata:
   description: >-
     `examples/notes-desktop` passes the static check. How the host returns an external
     sign-in to the window is covered by the CLI's desktop sign-in tests.
-imports: { Assert: ../../../modules/assert }
+imports: { Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI }
 targets:
   - !ref check
 ---

@@ -22,19 +22,19 @@ metadata:
     and DB_NAME, never a developer's database. Run only by the hub's own suite
     through that command.
 imports:
-  Run: ../../../../modules/run
-  Http: ../../../../modules/http-server
-  Sql: ../../../../modules/sql
-  Postgres: ../../../../modules/postgres
+  Run: oci://ghcr.io/telorun/run@0.34.0#sha256-CAD9OrhfOUR7l1-qwT-RErF4JzghRngKLEd-7J8j9YI
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.4#sha256-CsWk9ZmHFz7CUumvp9A0trpYqJY-qVfWrgmzSZXDEZo
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Shell: ../../../../modules/shell
-  Embedding: ../../../../modules/embedding
-  OpenAI: ../../../../modules/openai
-  HttpClient: ../../../../modules/http-client
-  VectorStore: ../../../../modules/vector-store
-  VectorStorePgvector: ../../../../modules/vector-store-pgvector
-  Timer: ../../../../modules/timer
-  Assert: ../../../../modules/assert
+  Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.2#sha256-XHN0qwYwQm_Lk2OaYZEiqRzEyvIHdhd6u29bfYkvT64
+  OpenAI: oci://ghcr.io/telorun/openai@0.23.0#sha256-PUhbF45PvUAAUvBgvv7phBPeZDde3suzZC694rdEaxw
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.2#sha256-X_V4hFmjTZsOvGlvV9N7kIdpQ-vsnduMukV8jNXpt8A
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.4#sha256-_zLE304dCuwBpnc6oJFGoAuUcKhJf-JeGoAXdjEYudE
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
   Schema:
     source: ../../hub-schema.yaml
     resources:

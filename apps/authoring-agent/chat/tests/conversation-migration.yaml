@@ -14,15 +14,15 @@ metadata:
     `files: null` and `revert: null`, and reverting it is refused 409
     ERR_TURN_NOT_CHECKPOINTED.
 imports:
-  App: ../../../../modules/app
-  Fs: ../../../../modules/fs
-  HttpClient: ../../../../modules/http-client
-  Stream: ../../../../modules/stream
-  Sql: ../../../../modules/sql
-  SQLite: ../../../../modules/sqlite
-  RecordStream: ../../../../modules/record-stream
-  RecordStreamSql: ../../../../modules/record-stream-sql
-  Assert: ../../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.4#sha256-iLCP1uoF4CymIEP-0-qkDtfCSEippGAMuzxh0w0nvqI
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.1#sha256-xVX2OlLHL9AhE3Q2C5c2BxnDutWOM4ReNLu2TUJdo04
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.4#sha256-gkL_4cu80hqH0aTvtWenQ7yyaUjqB6KtxmQpeLrlmvo
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
     env: CHAT_TEST_CONVERSATION_MIGRATION_SCRATCH

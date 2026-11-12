@@ -13,12 +13,12 @@ metadata:
     spans are `debug` log records, so the agent boots to its startup warning
     at the default level without writing one.
 imports:
-  Run: ../../../../modules/run
-  App: ../../../../modules/app
-  Fs: ../../../../modules/fs
-  HttpClient: ../../../../modules/http-client
-  Shell: ../../../../modules/shell
-  Assert: ../../../../modules/assert
+  Run: oci://ghcr.io/telorun/run@0.34.0#sha256-CAD9OrhfOUR7l1-qwT-RErF4JzghRngKLEd-7J8j9YI
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
     env: CHAT_TEST_TURN_TRACING_SCRATCH

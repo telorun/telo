@@ -40,12 +40,12 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  OAuth: ../../modules/oauth-client
-  HttpClient: ../../modules/http-client
-  KvStoreSql: ../../modules/kv-store-sql
-  Sql: ../../modules/sql
-  SQLite: ../../modules/sqlite
-  Console: ../../modules/console
+  OAuth: oci://ghcr.io/telorun/oauth-client@0.12.3#sha256-iPpBFi79VXGMlMby_7yTBD6rBv0z0bO0K0LwH8RpjQo
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.4#sha256-Arb3DUHLMlXdzBAzr1j8HiLFPtb4JrbZZA8xOHMAkwQ
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.4#sha256-iLCP1uoF4CymIEP-0-qkDtfCSEippGAMuzxh0w0nvqI
+  Console: oci://ghcr.io/telorun/console@0.19.4#sha256-MvM9cXMpqGm7PEORPdqrs-fUoD0jmrudthsmfXY3ATk
 targets:
   - !ref migrate
   - !ref signInIfNeeded

@@ -9,10 +9,10 @@ metadata:
     row action sends completes it. The home page and the expense page are read as the
     UI documents the browser draws.
 imports:
-  App: ../../../modules/app
-  HttpClient: ../../../modules/http-client
-  Timer: ../../../modules/timer
-  Assert: ../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # The directory each run's journal goes in; a run keeps a subdirectory of its own.
   stateRoot:

@@ -18,35 +18,35 @@ metadata:
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
 imports:
-  Ai: ../../../modules/ai
-  Anthropic: ../../../modules/anthropic
-  HttpClient: ../../../modules/http-client
-  AiMcp: ../../../modules/ai-mcp
-  Mcp: ../../../modules/mcp-client
-  Fs: ../../../modules/fs
-  TextDiff: ../../../modules/text-diff
-  Shell: ../../../modules/shell
-  Sql: ../../../modules/sql
-  SQLite: ../../../modules/sqlite
-  RecordStream: ../../../modules/record-stream
-  RecordStreamSql: ../../../modules/record-stream-sql
-  Stream: ../../../modules/stream
-  Run: ../../../modules/run
-  Lease: ../../../modules/lease
-  KvStoreMemory: ../../../modules/kv-store-memory
-  Cache: ../../../modules/cache
-  CacheMemory: ../../../modules/cache-memory
-  RateLimit: ../../../modules/rate-limit
-  Idempotency: ../../../modules/idempotency
-  KvStoreSql: ../../../modules/kv-store-sql
-  SecretScan: ../../../modules/secret-scan
-  Log: ../../../modules/log
-  Timer: ../../../modules/timer
-  Blob: ../../../modules/blob
-  BlobFs: ../../../modules/blob-fs
-  MediaType: ../../../modules/media-type
-  Multipart: ../../../modules/multipart
-  Octet: ../../../modules/octet-codec
+  Ai: oci://ghcr.io/telorun/ai@0.37.0#sha256-dVG1T3WkaKdJKnpT_rMrmcaLPjavu_vcQbtcZZPW8AA
+  Anthropic: oci://ghcr.io/telorun/anthropic@0.12.0#sha256-RFiaHJ7XvIjDzeausducn7mwbdRV0qHoqj5Zl6zP9ac
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.33.0#sha256-nsRfrbq8kl73-xej6DaJz0HOgrYK-NNZ5kqfRTT2yMM
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  TextDiff: oci://ghcr.io/telorun/text-diff@0.4.0#sha256-UsX0jWC_nz8VXvfw7l_xL9CAMeB5jXZAxxigu9XaBH0
+  Shell: oci://ghcr.io/telorun/shell@0.13.2#sha256-Kn6rjKno79QZjBSMbjgQNNEAeg4AR7bPnchryZ4sOYk
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.4#sha256-iLCP1uoF4CymIEP-0-qkDtfCSEippGAMuzxh0w0nvqI
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.1#sha256-xVX2OlLHL9AhE3Q2C5c2BxnDutWOM4ReNLu2TUJdo04
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.4#sha256-gkL_4cu80hqH0aTvtWenQ7yyaUjqB6KtxmQpeLrlmvo
+  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
+  Run: oci://ghcr.io/telorun/run@0.34.0#sha256-CAD9OrhfOUR7l1-qwT-RErF4JzghRngKLEd-7J8j9YI
+  Lease: oci://ghcr.io/telorun/lease@0.16.0#sha256-j29rkS1MQSLhYik73BXaKXRPDHzAS-u3ycyY51gPAJc
+  KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.2#sha256-6rdybdNY4ZhJ8BpoZa-LkcCb5yjOt8ptBygzURK8PWA
+  Cache: oci://ghcr.io/telorun/cache@0.15.0#sha256-sIlaY630y4mWTILJcrawFZv9ecMLdxWjufvuoujz52U
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.12.0#sha256-uapZM9oqZOsbiJrRU7grQbVCCCb9gjTnwzfY4_uRuMI
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.15.0#sha256-tCXuuEN3D0entDPS2RIJdf-kfSEM9URF0J4GhMtK5s0
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.13.0#sha256-ZelLnTYRMTyovs-9nrLcpRLholexdvz11LS71bMsc58
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.4#sha256-Arb3DUHLMlXdzBAzr1j8HiLFPtb4JrbZZA8xOHMAkwQ
+  SecretScan: oci://ghcr.io/telorun/secret-scan@0.3.1#sha256-TfSJDbWQ629YoFDVGffeOtC_TVrcM0gN2HAF0XrJBoQ
+  Log: oci://ghcr.io/telorun/log@0.3.1#sha256-FJAHRqUCHHlXRJJxwojW1u6E7z8o-jOuvKJ0rbTlaxs
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  Blob: oci://ghcr.io/telorun/blob@0.2.2#sha256-lJvbxbd_NbxN0Ye3CYsT_FI6yCAAaohHcJuzOgf079c
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.3#sha256-OPq2Dm4qX_Usehcs3gtwRe7sm9-arog58Ev_dUOdmdQ
+  MediaType: oci://ghcr.io/telorun/media-type@0.3.1#sha256-DvbExYG8Gf6tmaZfLfaSziKcEAY2bQiDZeqXut3ihhs
+  Multipart: oci://ghcr.io/telorun/multipart@0.5.0#sha256-HYqZbfzXOf-YAU7TMyZEFFDBDxeMdyRAoNf4_lAj-Zo
+  Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
 resources:
   # The Telo hub the agent discovers modules through. An input rather than a
   # client declared here, so the application names the hub it uses and a test

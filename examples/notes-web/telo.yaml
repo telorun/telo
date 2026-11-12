@@ -18,14 +18,14 @@ metadata:
 lang: en
 requires: { telo: ">=0.133.0" }
 imports:
-  App: ../../modules/app
-  Http: ../../modules/http-server
-  HttpDispatch: ../../modules/http-dispatch
-  HttpClient: ../../modules/http-client
-  Session: ../../modules/session
-  KvStoreMemory: ../../modules/kv-store-memory
-  Ui: ../../modules/ui
-  UiReact: ../../modules/ui-react
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  HttpDispatch: oci://ghcr.io/telorun/http-dispatch@0.19.2#sha256-Cw8rzRLrbnWWd2OaKNNDDO6V0ojGUec69fcLRhVhcdM
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Session: oci://ghcr.io/telorun/session@0.2.4#sha256-W31UPc-jR6p1ALqOx4WZl7TFYG9JSL0aZab013dxASc
+  KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.2#sha256-6rdybdNY4ZhJ8BpoZa-LkcCb5yjOt8ptBygzURK8PWA
+  Ui: oci://ghcr.io/telorun/ui@0.12.0#sha256-PmVFuNKEaL--ks4yTJaB41A7GaD_vZSROyE9FvJiDJ8
+  UiReact: oci://ghcr.io/telorun/ui-react@0.13.0#sha256-YUbh4dD6sLER8KHV4yFPHjD4B4ez4xdut-bpobAIqrQ
 variables:
   providerUrl:
     env: PROVIDER_URL

@@ -23,15 +23,15 @@ requires:
   # 0.133.0: `Telo.OpenUrl`.
   telo: ">=0.133.0"
 imports:
-  App: ../../modules/app
-  Http: ../../modules/http-server
-  Jose: ../../modules/jose
-  AuthBearer: ../../modules/auth-bearer
-  Authz: ../../modules/authz
-  ApiKey: ../../modules/api-key
-  Keys: ../../modules/api-key-sqlite
-  SQLite: ../../modules/sqlite
-  KvStoreSql: ../../modules/kv-store-sql
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  Jose: oci://ghcr.io/telorun/jose@0.3.1#sha256-kood2LsQsX4SIXmLwShBEm8P0x5Q-AwXq72UWq6uTHo
+  AuthBearer: oci://ghcr.io/telorun/auth-bearer@0.3.0#sha256-pVqrRRy_hfOB8b6XCOA2Syg-0EM45-IPAyx14F1F-Bs
+  Authz: oci://ghcr.io/telorun/authz@0.2.1#sha256-_i3lmD7IiXTFl3VLHGV2_iymR1vzJJaOVTNefPmS9z4
+  ApiKey: oci://ghcr.io/telorun/api-key@0.2.1#sha256-3Xy6gcshcHngbQYTqjLq3chOoERJVzA8jW6V335HP_4
+  Keys: oci://ghcr.io/telorun/api-key-sqlite@0.2.4#sha256-hsDQvrCFqijBPMuYjbKGK8ADkEmGQ7qZzrxrBFH2JBI
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.4#sha256-iLCP1uoF4CymIEP-0-qkDtfCSEippGAMuzxh0w0nvqI
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.4#sha256-Arb3DUHLMlXdzBAzr1j8HiLFPtb4JrbZZA8xOHMAkwQ
 variables:
   jwksUrl:
     env: JWKS_URL

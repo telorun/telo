@@ -10,9 +10,9 @@ metadata:
     query or as a self-submitting form, as the request's `response_mode` asks; `/token`
     redeems a code exactly once.
 imports:
-  Http: ../../../modules/http-server
-  Idempotency: ../../../modules/idempotency
-  KvStoreMemory: ../../../modules/kv-store-memory
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.13.0#sha256-ZelLnTYRMTyovs-9nrLcpRLholexdvz11LS71bMsc58
+  KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.2#sha256-6rdybdNY4ZhJ8BpoZa-LkcCb5yjOt8ptBygzURK8PWA
 variables:
   subject: { env: IDP_SUBJECT, type: string, default: alice, description: The user `/token` answers for. }
 ports: { http: { env: IDP_PORT, default: 9000 } }

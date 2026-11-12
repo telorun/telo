@@ -67,17 +67,17 @@ imports:
       maxCheckpointBytes: !cel "variables.maxCheckpointBytes"
       maxCheckpointFiles: !cel "variables.maxCheckpointFiles"
       maxAttachmentBytes: !cel "variables.maxAttachmentBytes"
-  Http: ../../modules/http-server
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
   # `Mcp` and `Run` come from where the chat library takes them, so every
   # module in this graph has one origin. The hub's `retry:` needs the next
   # release; the import sync moves this pin to it.
-  Mcp: ../../modules/mcp-client
-  Octet: ../../modules/octet-codec
-  Sse: ../../modules/sse-codec
-  Stream: ../../modules/stream
-  Scheduler: ../../modules/scheduler
-  Log: ../../modules/log
-  Otlp: ../../modules/otlp
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
+  Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
+  Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
+  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.3#sha256-X9B94U2W__mzKWfSG9FusG3JuIRk63tsFCr94inxL-k
+  Log: oci://ghcr.io/telorun/log@0.3.1#sha256-FJAHRqUCHHlXRJJxwojW1u6E7z8o-jOuvKJ0rbTlaxs
+  Otlp: oci://ghcr.io/telorun/otlp@0.8.0#sha256-IO4SbkcLNoCVKH89dBQuPJ-u6ZESWWOBeYKM5ELY9WI
 ports: { http: { env: PORT, default: 8080 } }
 # Where the agent keeps its own state: `agent.sqlite`, the turns' checkpoints
 # and the attachments. Outside the workspace, so nothing syncs it and SQLite

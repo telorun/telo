@@ -8,7 +8,7 @@ metadata:
 imports:
   # The workspace copy, like the library's own: importing a published copy
   # beside the library's workspace one is refused with DUPLICATE_IMPORT_ALIAS.
-  Http: ../../../../../modules/http-server
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
   English:
     source: ../..
     variables:

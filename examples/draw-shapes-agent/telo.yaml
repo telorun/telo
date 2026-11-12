@@ -28,15 +28,15 @@ lang: en
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.133.0" }
 imports:
-  Http: ../../modules/http-server
-  Ai: ../../modules/ai
-  OpenAI: ../../modules/openai
-  HttpClient: ../../modules/http-client
-  Image: ../../modules/image
-  Fs: ../../modules/fs
-  Run: ../../modules/run
-  Ui: ../../modules/ui
-  UiReact: ../../modules/ui-react
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  Ai: oci://ghcr.io/telorun/ai@0.37.0#sha256-dVG1T3WkaKdJKnpT_rMrmcaLPjavu_vcQbtcZZPW8AA
+  OpenAI: oci://ghcr.io/telorun/openai@0.23.0#sha256-PUhbF45PvUAAUvBgvv7phBPeZDde3suzZC694rdEaxw
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Image: oci://ghcr.io/telorun/image@0.11.0#sha256-LdrwY-c56ZrCXcI3oONOfaaZxhYird3B3XhyTp7r8Ug
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  Run: oci://ghcr.io/telorun/run@0.34.0#sha256-CAD9OrhfOUR7l1-qwT-RErF4JzghRngKLEd-7J8j9YI
+  Ui: oci://ghcr.io/telorun/ui@0.12.0#sha256-PmVFuNKEaL--ks4yTJaB41A7GaD_vZSROyE9FvJiDJ8
+  UiReact: oci://ghcr.io/telorun/ui-react@0.13.0#sha256-YUbh4dD6sLER8KHV4yFPHjD4B4ez4xdut-bpobAIqrQ
 targets:
   - !ref server
   - { name: openUi, invoke: !ref openUi, inputs: { url: !cel "resources.server.status.localUrl" } }

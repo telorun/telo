@@ -7,9 +7,9 @@ metadata:
     way a parent application starts it, and the source that wins over the command
     line — and checks what it printed.
 imports:
-  App: ../../../modules/app
-  Channel: ../../../modules/channel
-  Assert: ../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Channel: oci://ghcr.io/telorun/channel@0.4.0#sha256-nD_0ZsyaVddeihAxep3t4y7Di0V0wSRrscxi5Pb5uuE
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref app
   - !ref test

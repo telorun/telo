@@ -33,18 +33,18 @@ metadata:
 requires: { telo: ">=0.128.0" }
 lang: en
 imports:
-  Http: ../../../modules/http-server
-  Ui: ../../../modules/ui
-  UiReact: ../../../modules/ui-react
-  HttpClient: ../../../modules/http-client
-  Sql: ../../../modules/sql
-  SQLite: ../../../modules/sqlite
-  Cache: ../../../modules/cache
-  CacheMemory: ../../../modules/cache-memory
-  RateLimit: ../../../modules/rate-limit
-  Schedule: ../../../modules/scheduler
-  Run: ../../../modules/run
-  Console: ../../../modules/console
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  Ui: oci://ghcr.io/telorun/ui@0.12.0#sha256-PmVFuNKEaL--ks4yTJaB41A7GaD_vZSROyE9FvJiDJ8
+  UiReact: oci://ghcr.io/telorun/ui-react@0.13.0#sha256-YUbh4dD6sLER8KHV4yFPHjD4B4ez4xdut-bpobAIqrQ
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.4#sha256-iLCP1uoF4CymIEP-0-qkDtfCSEippGAMuzxh0w0nvqI
+  Cache: oci://ghcr.io/telorun/cache@0.15.0#sha256-sIlaY630y4mWTILJcrawFZv9ecMLdxWjufvuoujz52U
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.12.0#sha256-uapZM9oqZOsbiJrRU7grQbVCCCb9gjTnwzfY4_uRuMI
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.15.0#sha256-tCXuuEN3D0entDPS2RIJdf-kfSEM9URF0J4GhMtK5s0
+  Schedule: oci://ghcr.io/telorun/scheduler@0.12.3#sha256-X9B94U2W__mzKWfSG9FusG3JuIRk63tsFCr94inxL-k
+  Run: oci://ghcr.io/telorun/run@0.34.0#sha256-CAD9OrhfOUR7l1-qwT-RErF4JzghRngKLEd-7J8j9YI
+  Console: oci://ghcr.io/telorun/console@0.19.4#sha256-MvM9cXMpqGm7PEORPdqrs-fUoD0jmrudthsmfXY3ATk
 targets:
   - !ref migrate
   - name: firstSync

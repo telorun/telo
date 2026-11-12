@@ -19,7 +19,7 @@ metadata:
 requires: { telo: ">=0.128.0" }
 imports:
   Lambda: oci://ghcr.io/telorun/aws/lambda@0.12.0#sha256-m6AEJNfJguLIFgbZuNmO06pdUathLclu3dMHpgqXreQ
-  Run: ../../../modules/run
+  Run: oci://ghcr.io/telorun/run@0.34.0#sha256-CAD9OrhfOUR7l1-qwT-RErF4JzghRngKLEd-7J8j9YI
 targets:
   - !ref main
 ---

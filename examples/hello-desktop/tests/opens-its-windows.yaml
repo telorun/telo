@@ -6,7 +6,7 @@ metadata:
     Runs `examples/hello-desktop` against a fixture desktop host: the main window at
     `/`, the settings window hidden at `/settings`, the tray with its menu, and Quit
     ending in a `Host.Quit` request.
-imports: { Test: ../../../modules/test }
+imports: { Test: oci://ghcr.io/telorun/test@0.14.1#sha256-XLWIbdY4Hzp6jRAXgBfPJXC8KBR72jTHolAAxdhA_ZM }
 targets:
   - !ref wrapperUnderHost
 ---

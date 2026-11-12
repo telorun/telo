@@ -23,13 +23,13 @@ metadata:
 requires: { telo: ">=0.121.0" }
 lang: en
 imports:
-  Http: ../../../modules/http-server
-  Sql: ../../../modules/sql
-  SQLite: ../../../modules/sqlite
-  Crud: ../../../modules/crud
-  CrudUi: ../../../modules/crud-ui
-  Ui: ../../../modules/ui
-  UiReact: ../../../modules/ui-react
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  SQLite: oci://ghcr.io/telorun/sqlite@0.14.4#sha256-iLCP1uoF4CymIEP-0-qkDtfCSEippGAMuzxh0w0nvqI
+  Crud: oci://ghcr.io/telorun/crud@0.37.0#sha256-ePMDiGLuDPY4iU9DREB21kuPcG5HF42BdslkECJM2U8
+  CrudUi: oci://ghcr.io/telorun/crud-ui@0.6.0#sha256-4BauqFfhLuPZ2KdNHR8_F800rByehswZxmggy6lxS2c
+  Ui: oci://ghcr.io/telorun/ui@0.12.0#sha256-PmVFuNKEaL--ks4yTJaB41A7GaD_vZSROyE9FvJiDJ8
+  UiReact: oci://ghcr.io/telorun/ui-react@0.13.0#sha256-YUbh4dD6sLER8KHV4yFPHjD4B4ez4xdut-bpobAIqrQ
 targets:
   - !ref migrate
   - !ref server

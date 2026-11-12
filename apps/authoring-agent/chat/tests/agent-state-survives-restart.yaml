@@ -11,10 +11,10 @@ metadata:
     Also pins what lands on disk: `agent.sqlite` in the state directory, and
     nothing in the workspace — no `.telo-agent` there. Offline and key-free.
 imports:
-  App: ../../../../modules/app
-  Fs: ../../../../modules/fs
-  HttpClient: ../../../../modules/http-client
-  Assert: ../../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # This test's own directory, emptied before each run, holding the agent's
   # workspace and its state directory side by side. Resolved against the

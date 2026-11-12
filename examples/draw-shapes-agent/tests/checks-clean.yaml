@@ -5,7 +5,7 @@ metadata:
   description: >-
     `examples/draw-shapes-agent` passes the static check. Running it needs a model and
     an object store, so the page and the route it calls are held to their shapes here.
-imports: { Assert: ../../../modules/assert }
+imports: { Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI }
 targets:
   - !ref check
 ---

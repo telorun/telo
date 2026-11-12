@@ -9,7 +9,7 @@ metadata:
     model received — keeps its first 32768 bytes and ends with the truncation
     marker, and its `output` still holds the file whole.
 imports:
-  Mcp: ../../../../modules/mcp-client
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
   Chat:
     source: ../
     resources:
@@ -20,9 +20,9 @@ imports:
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18533/v1
-  App: ../../../../modules/app
-  Stream: ../../../../modules/stream
-  Assert: ../../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratch:
     env: CHAT_TEST_TOOL_RESULT_BOUND_SCRATCH
