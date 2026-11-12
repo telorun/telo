@@ -266,7 +266,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          crate=$(sed -n '/^\[package\]/,/^\[/{s/^version = "\(.*\)"$/\1/p}' cli/rust/desktop-host/Cargo.toml)
+          crate=$(awk '/^\[package\]/ { in_package = 1; next } /^\[/ { in_package = 0 } in_package && /^version = / { gsub(/^version = "|"$/, ""); print; exit }' cli/rust/desktop-host/Cargo.toml)
           [ "$crate" = "${{ inputs.version }}" ] || { echo "cli/rust/desktop-host is $crate, the release is ${{ inputs.version }}" >&2; exit 1; }
 
       - name: Build the helper
