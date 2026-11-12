@@ -4,9 +4,9 @@
 //! the two sentences that say what such a document is — and the release an
 //! archive is the vocabulary of, which a CLI prints as its identity.
 
-use telo_templating::{compose_first_yaml_document, ReadFailure, YamlDocument, YamlNodeKind};
+use telo_templating::{compose_first_yaml_document, YamlDocument, YamlNodeKind};
 
-use crate::parse_loaded_file::parse_error_message;
+use crate::parse_loaded_file::{parse_error_kind, parse_error_message};
 
 /// The kind of the archive's root document.
 pub const BUILTIN_VOCABULARY_KIND: &str = "Telo.Builtins";
@@ -32,10 +32,7 @@ pub fn builtin_vocabulary_import_message(source: &str, version: Option<&str>) ->
 pub fn builtin_vocabulary_version(archive: &str) -> Result<String, String> {
     let stream = compose_first_yaml_document(archive);
     if let Some(error) = stream.errors.first() {
-        let message = match &error.failure {
-            ReadFailure::Yaml(kind) => parse_error_message(*kind).to_string(),
-            ReadFailure::Unsupported(construct) => construct.message(),
-        };
+        let message = parse_error_message(parse_error_kind(error.code, &error.message));
         return Err(format!("document 1 does not parse: {message}"));
     }
     let root = stream.documents.first();

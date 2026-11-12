@@ -1,7 +1,7 @@
 import type { CelEnvironment } from "@telorun/cel";
 import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
-import { defaultCustomTags, siteEnvironment, type CelProgramSite } from "@telorun/templating";
-import { parseAllDocuments, visit, type Document } from "yaml";
+import { siteEnvironment, type CelProgramSite } from "@telorun/templating";
+import { visit, type Document } from "yaml";
 import { buildCelEnvironment } from "./cel-environment.js";
 import type { LoadedFile, ParseError } from "./loaded-types.js";
 import { migrateManifests, NO_MIGRATIONS } from "./migrations/driver.js";
@@ -11,7 +11,7 @@ import { buildDocumentPositions, buildLineOffsets, offsetToPosition } from "./po
 import { expandManifestFragments } from "./manifest-schemas.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
 import { precompileDoc } from "./precompile.js";
-import { documentToAst } from "./yaml-ast.js";
+import { documentToAst, parseManifestDocuments } from "./yaml-ast.js";
 import type { CachedYamlParse } from "./yaml-parse-cache.js";
 
 export interface ParseOptions {
@@ -156,7 +156,7 @@ export interface ParsedYaml {
 }
 
 export function parseYamlText(text: string): ParsedYaml {
-  const documents = parseAllDocuments(text, { customTags: defaultCustomTags() });
+  const documents = parseManifestDocuments(text);
   const astDocuments = documents.map((doc) => documentToAst(doc, text));
   const positions = buildDocumentPositions(text, astDocuments);
 

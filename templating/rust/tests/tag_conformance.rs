@@ -2,7 +2,7 @@
 //! `../../nodejs/tests/tag-conformance.test.ts`.
 
 use serde_json::Value;
-use telo_templating::{compose_yaml, document_to_json, parse_ref_source, JsonRefusal};
+use telo_templating::{compose_yaml, document_to_json, expansion_tag_misuse, parse_ref_source};
 
 fn vectors(file: &str) -> Vec<Value> {
     let path = format!("{}/../tag-conformance/{file}", env!("CARGO_MANIFEST_DIR"));
@@ -32,14 +32,12 @@ fn sentinels() {
     for row in vectors("sentinels.json") {
         let stream = compose_yaml(row["yaml"].as_str().unwrap());
         assert_eq!(stream.errors, vec![], "{}", row["name"]);
-        let loaded = document_to_json(&stream.documents[0]);
+        let misuse: Vec<&str> = expansion_tag_misuse(&stream.documents[0]).iter().map(|m| m.code).collect();
         match row.get("refusal") {
-            Some(refusal) => match loaded {
-                Err(JsonRefusal::Tag(err)) => assert_eq!(err.code(), refusal["code"].as_str(), "{}", row["name"]),
-                other => panic!("{}: expected a tag refusal, got {other:?}", row["name"]),
-            },
+            Some(refusal) => assert_eq!(misuse, vec![refusal["code"].as_str().unwrap()], "{}", row["name"]),
             None => {
-                let json = loaded
+                assert_eq!(misuse, Vec::<&str>::new(), "{}", row["name"]);
+                let json = document_to_json(&stream.documents[0])
                     .unwrap_or_else(|err| panic!("{}: {err:?}", row["name"]))
                     .unwrap_or(Value::Null);
                 // Compared as text, so key order is part of the answer.

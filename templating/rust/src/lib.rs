@@ -1,8 +1,9 @@
 //! Telo templating for the Rust kernel: the tag layer.
 //!
 //! Mirrors `templating/nodejs` file for file: the tagged-sentinel shape and the YAML tag
-//! configuration the kernel reads a manifest with, over the YAML composer
-//! (`yaml_composer.rs`, which stands in for the `yaml` package the Node half composes with),
+//! configuration the kernel reads a manifest with, over the YAML reader (`yaml_lexer.rs`,
+//! `yaml_cst_parser.rs`, `yaml_composer.rs` and their helpers — a twin of the `yaml` package
+//! the Node half composes with),
 //! the engine contract (`engine.rs`), and
 //! every tag engine over `telorun-cel` — `!cel`, `!interpolate`, `!sql` and `!literal`, the
 //! `!ref`, `!include-*` and `!module-path` markers, and the closed table and registry that
@@ -20,6 +21,11 @@ pub mod expansion_tags;
 pub mod registry;
 pub mod sentinel;
 pub mod yaml_composer;
+pub mod yaml_cst;
+pub mod yaml_cst_parser;
+pub mod yaml_errors;
+pub mod yaml_lexer;
+pub mod yaml_resolve;
 pub mod yaml_tags;
 
 pub use builtins::{
@@ -59,7 +65,7 @@ pub use engines::r#ref::{parse_ref_source, ParsedRef, RefEngine, RefIndex, RefVe
 pub use engines::sql::{SqlEngine, SQL_ENGINE};
 pub use registry::TemplatingEngineRegistry;
 pub use expansion_tags::{
-    expansion_shape_code, expansion_tag_of, is_expansion_tag, EXPANSION_MARKER, EXPANSION_TAGS,
+    expansion_shape_code, expansion_tag_misuse, expansion_tag_of, is_expansion_tag, ExpansionTagMisuse, EXPANSION_MARKER, EXPANSION_TAGS,
     SPLICE_KEY,
 };
 pub use sentinel::{
@@ -67,7 +73,8 @@ pub use sentinel::{
     tagged_sentinel_parts, REF_ENGINE,
 };
 pub use yaml_composer::{
-    compose_first_yaml_document, compose_yaml, NodeId, ReadFailure, ScalarValue, YamlDocument, YamlEntry, YamlError, YamlErrorKind,
-    YamlNode, YamlNodeKind, YamlScalar, YamlScalarStyle, YamlStream, YamlTag,
+    compose_first_yaml_document, compose_yaml, NodeId, ScalarValue, YamlDocument, YamlEntry, YamlNode, YamlNodeKind,
+    YamlScalar, YamlScalarStyle, YamlStream, YamlTag,
 };
+pub use yaml_errors::{LinePos, YamlError};
 pub use yaml_tags::{document_to_json, JsonRefusal, TagError, TagRefusal, UnsupportedConstruct, NESTING_REFUSAL};

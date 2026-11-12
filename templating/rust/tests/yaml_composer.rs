@@ -2,20 +2,19 @@
 //! refusal is the Rust reader's alone, and the bounds that keep it off the stack.
 
 use serde_json::{json, Value};
-use telo_templating::{
-    compose_yaml, document_to_json, JsonRefusal, ReadFailure, TagRefusal, UnsupportedConstruct, YamlErrorKind,
-};
+use telo_templating::{compose_yaml, document_to_json, JsonRefusal, TagRefusal, UnsupportedConstruct};
 
-fn load(text: &str) -> (Vec<ReadFailure>, Result<Option<Value>, JsonRefusal>) {
+/// `yaml`'s error codes for `text`, and its first document's tree.
+fn load(text: &str) -> (Vec<&'static str>, Result<Option<Value>, JsonRefusal>) {
     let stream = compose_yaml(text);
-    let kinds = stream.errors.iter().map(|error| error.failure.clone()).collect();
-    (kinds, document_to_json(&stream.documents[0]))
+    let codes = stream.errors.iter().map(|error| error.code).collect();
+    (codes, document_to_json(&stream.documents[0]))
 }
 
 #[test]
 fn a_key_written_twice_keeps_its_first_place_and_its_last_value() {
     let (errors, json) = load("a: 1\nb: 2\na: 3\n");
-    assert_eq!(errors, vec![ReadFailure::Yaml(YamlErrorKind::DuplicateKey)]);
+    assert_eq!(errors, vec!["DUPLICATE_KEY"]);
     assert_eq!(serde_json::to_string(&json.unwrap().unwrap()).unwrap(), r#"{"a":3,"b":2}"#);
 }
 
@@ -23,9 +22,9 @@ fn a_key_written_twice_keeps_its_first_place_and_its_last_value() {
 fn keys_are_duplicates_by_value_not_by_spelling() {
     // `yaml` compares key scalars with `===`: `1` and `1.0` are one number, `1` and `"1"`
     // a number and a string.
-    assert_eq!(load("1: a\n1.0: b\n").0, vec![ReadFailure::Yaml(YamlErrorKind::DuplicateKey)]);
-    assert_eq!(load("1: a\n\"1\": b\n").0, vec![]);
-    assert_eq!(load("~: a\nnull: b\n").0, vec![ReadFailure::Yaml(YamlErrorKind::DuplicateKey)]);
+    assert_eq!(load("1: a\n1.0: b\n").0, vec!["DUPLICATE_KEY"]);
+    assert_eq!(load("1: a\n\"1\": b\n").0, Vec::<&str>::new());
+    assert_eq!(load("~: a\nnull: b\n").0, vec!["DUPLICATE_KEY"]);
 }
 
 #[test]
@@ -59,28 +58,22 @@ fn an_alias_inside_its_own_anchor_is_refused() {
 
 #[test]
 fn nesting_of_any_depth_composes_and_a_tree_past_the_bound_is_refused() {
+    // Indentation, flow brackets and block indicators on one line each nest a collection:
+    // the lexer, the parser and the composer hold them on their own stacks.
     let mut block = String::new();
     for level in 0..2_000 {
         block.push_str(&" ".repeat(level));
         block.push_str("k:\n");
     }
-    let (errors, json) = load(&block);
-    assert_eq!(errors, vec![]);
-    assert!(matches!(json, Err(JsonRefusal::Tag(error)) if error.refusal == TagRefusal::Unsupported(UnsupportedConstruct::TreeDepth)));
-
-    let flow = format!("a: {}{}\n", "[".repeat(200), "]".repeat(200));
-    let (errors, json) = load(&flow);
-    assert_eq!(errors, vec![]);
-    assert!(matches!(json, Err(JsonRefusal::Tag(error)) if error.refusal == TagRefusal::Unsupported(UnsupportedConstruct::TreeDepth)));
-}
-
-#[test]
-fn flow_nesting_past_the_parser_s_bound_is_refused_as_too_deep() {
-    let flow = format!("a: {}{}\n", "[".repeat(200_000), "]".repeat(200_000));
-    assert_eq!(
-        compose_yaml(&flow).errors.iter().map(|error| error.failure.clone()).collect::<Vec<_>>(),
-        vec![ReadFailure::Unsupported(UnsupportedConstruct::FlowDepth)]
-    );
+    for text in [
+        block,
+        format!("a: {}{}\n", "[".repeat(200_000), "]".repeat(200_000)),
+        format!("{}x\n", "- ".repeat(200_000)),
+    ] {
+        let (errors, json) = load(&text);
+        assert_eq!(errors, Vec::<&str>::new());
+        assert!(matches!(json, Err(JsonRefusal::Tag(error)) if error.refusal == TagRefusal::Unsupported(UnsupportedConstruct::TreeDepth)));
+    }
 }
 
 #[test]

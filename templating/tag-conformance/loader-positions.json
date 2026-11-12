@@ -252,5 +252,266 @@
     "refusals": [
       { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 12, 1, 13] }
     ]
+  },
+  {
+    "name": "an alias written with a tag",
+    "yaml": "kind: A\nfirst: &y 1\nsecond: !t *y\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [2, 11, 2, 13] }
+    ]
+  },
+  {
+    "name": "an anchor with no name",
+    "yaml": "kind: A\nname: & x\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 6, 1, 7] }
+    ]
+  },
+  {
+    "name": "a directive of the wrong shape",
+    "yaml": "%YAML\n---\nkind: A\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [0, 0, 0, 5] }
+    ]
+  },
+  {
+    "name": "an anchor before an explicit key's indicator",
+    "yaml": "kind: A\n&k ? key\n: value\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 3, 1, 4] }
+    ]
+  },
+  {
+    "name": "a block sequence inside a flow sequence",
+    "yaml": "kind: A\nlist: [\n  - x\n]\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [2, 2, 3, 0] }
+    ]
+  },
+  {
+    "name": "a key past 1024 characters",
+    "yaml": "kind: A\n\"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\": 1\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 0, 1, 1102] }
+    ]
+  },
+  {
+    "name": "a key written over two lines",
+    "yaml": "kind: A\nname\nmore: 1\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 0, 2, 4] }
+    ]
+  },
+  {
+    "name": "a node with two anchors",
+    "yaml": "kind: A\nname: &a &b x\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 9, 1, 11] }
+    ]
+  },
+  {
+    "name": "a node with two tags",
+    "yaml": "kind: A\nname: !!str !!str x\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 12, 1, 17] }
+    ]
+  },
+  {
+    "name": "an escape past the last code point",
+    "yaml": "kind: A\nname: \"\\U00110000\"\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [0, 0, 0, 1] }
+    ]
+  },
+  {
+    "name": "a tag through a handle no directive declares",
+    "yaml": "kind: A\nname: !x!y z\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 6, 1, 10] }
+    ]
+  },
+  {
+    "name": "a closing bracket with nothing open",
+    "yaml": "kind: A\nname: ]\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 6, 1, 7] }
+    ]
+  },
+  {
+    "name": "a flow sequence never closed at the root",
+    "yaml": "[a, b\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A bracketed list or map ('[…]' or '{…}') is not closed, or a line inside it is not indented past the key holding it; close it with the matching ']' or '}', and indent its continuation lines.", "range": [1, 0, 1, 1] }
+    ]
+  },
+  {
+    "name": "a key with no value",
+    "yaml": "kind: A\nname: |\nloose\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [2, 0, 2, 5] }
+    ]
+  },
+  {
+    "name": "a tab in a block scalar's indentation",
+    "yaml": "- >\n\t\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 0, 1, 1] }
+    ]
+  },
+  {
+    "name": "a plain value starting with a flow indicator",
+    "yaml": "kind: A\nname: , x\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 6, 1, 7] }
+    ]
+  },
+  {
+    "name": "a tab after a scalar value",
+    "yaml": "a: 1\n\tb: 2\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A tab indents this line; YAML indents with spaces only.", "range": [1, 0, 1, 1] }
+    ]
+  },
+  {
+    "name": "a tab before a key in a nested mapping",
+    "yaml": "a:\n  b: 1\n\tc: 2\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A tab indents this line; YAML indents with spaces only.", "range": [2, 0, 2, 1] }
+    ]
+  },
+  {
+    "name": "a tab before a key after a flow mapping",
+    "yaml": "kind: A\nmetadata: { name: Thing }\n\tkey: 1\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A tab indents this line; YAML indents with spaces only.", "range": [2, 0, 2, 1] }
+    ]
+  },
+  {
+    "name": "a quote left open before the next document",
+    "yaml": "a: \"open\n---\nb: 1\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A quoted value is never closed; end it with the quote character it opens with.", "range": [3, 0, 3, 1] }
+    ]
+  },
+  {
+    "name": "an undefined hex escape",
+    "yaml": "x: \"a\\xZZ\"\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A double-quoted value holds an escape sequence YAML does not define; write the backslash itself as `\\\\`, or use single quotes, inside which a backslash is literal.", "range": [0, 5, 0, 6] }
+    ]
+  },
+  {
+    "name": "a flow sequence left open as the document goes on",
+    "yaml": "items: [a, b\nother: 1\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A bracketed list or map ('[…]' or '{…}') is not closed, or a line inside it is not indented past the key holding it; close it with the matching ']' or '}', and indent its continuation lines.", "range": [1, 0, 1, 1] }
+    ]
+  },
+  {
+    "name": "a flow mapping left open as the document goes on",
+    "yaml": "m: {a: 1\nother: 2\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A bracketed list or map ('[…]' or '{…}') is not closed, or a line inside it is not indented past the key holding it; close it with the matching ']' or '}', and indent its continuation lines.", "range": [1, 0, 1, 1] }
+    ]
+  },
+  {
+    "name": "a sequence followed by a key at its column",
+    "yaml": "- a\nb: 1\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 0, 1, 1] },
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 1, 1, 2] },
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 3, 1, 4] }
+    ]
+  },
+  {
+    "name": "an anchored value followed by a key indented past it",
+    "yaml": "x: &an 1\n   yy: 2\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A plain (unquoted) value cannot contain ': ' (a colon followed by a space), which the parser reads as a nested mapping; wrap the value in quotes, e.g. `description: \"… encoding: base64 …\"`.", "range": [0, 3, 0, 4] },
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [0, 7, 1, 5] }
+    ]
+  },
+  {
+    "name": "two errors in one document",
+    "yaml": "kind: A\nname: @x\nother: \"bad \\q\"\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes.", "range": [1, 6, 1, 7] },
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A double-quoted value holds an escape sequence YAML does not define; write the backslash itself as `\\\\`, or use single quotes, inside which a backslash is literal.", "range": [2, 12, 2, 13] }
+    ]
+  },
+  {
+    "name": "errors in two documents, an alias naming no anchor first",
+    "yaml": "a: *nope\n---\nb: @x\n---\nc: 1\n",
+    "refusals": [
+      { "documentIndex": 1, "code": "MANIFEST_PARSE_FAILED", "message": "A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes.", "range": [2, 3, 2, 4] },
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This alias names no anchor written before it in the document; write the anchor (`&name`) on an earlier value, or write the value out in place of the alias.", "range": [0, 3, 0, 8] }
+    ],
+    "documents": [
+      {
+        "sourceLine": 0,
+        "positions": {
+          "@key:a": [0, 0, 0, 1]
+        }
+      },
+      {
+        "sourceLine": 2,
+        "positions": {
+          "@key:b": [2, 0, 2, 1],
+          "b": [2, 3, 2, 5]
+        }
+      },
+      {
+        "sourceLine": 4,
+        "positions": {
+          "@key:c": [4, 0, 4, 1],
+          "c": [4, 3, 4, 4]
+        }
+      }
+    ]
+  },
+  {
+    "name": "an explicit key before a sequence at its column",
+    "yaml": "? key\n- y\n",
+    "refusals": [],
+    "documents": [
+      {
+        "sourceLine": 0,
+        "positions": {
+          "@key:key": [0, 2, 0, 5]
+        }
+      }
+    ]
+  },
+  {
+    "name": "a leading ... holds no document",
+    "yaml": "...\nkind: A\nname: @x\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes.", "range": [2, 6, 2, 7] }
+    ],
+    "documents": [
+      {
+        "sourceLine": 0,
+        "positions": {
+          "@key:kind": [1, 0, 1, 4],
+          "kind": [1, 6, 1, 7],
+          "@key:name": [2, 0, 2, 4],
+          "name": [2, 6, 2, 8]
+        }
+      }
+    ]
+  },
+  {
+    "name": "comments before a ... hold no document",
+    "yaml": "# a comment\n...\nkind: A\n",
+    "refusals": [],
+    "documents": [
+      {
+        "sourceLine": 0,
+        "positions": {
+          "@key:kind": [2, 0, 2, 4],
+          "kind": [2, 6, 2, 7]
+        }
+      }
+    ]
   }
 ]
