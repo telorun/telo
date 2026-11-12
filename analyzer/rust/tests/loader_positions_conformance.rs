@@ -19,16 +19,25 @@ fn loader_positions() {
     let rows: Vec<Value> = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     for row in rows {
         let loaded = parse_loaded_file("/row.yaml", "/row.yaml", row["yaml"].as_str().unwrap());
+        // `rustTree` names the one construct Rust refuses here because it holds no tree for it.
+        let tolerated = row["rustTree"]["unsupported"].as_str();
+        let mut refused_unsupported = false;
         let found: Vec<Value> = loaded
             .parse_errors
             .iter()
-            .map(|error| {
+            .filter_map(|error| {
                 let code = match &error.origin {
                     ParseErrorOrigin::Yaml(_) => "MANIFEST_PARSE_FAILED",
                     ParseErrorOrigin::Loader { code, .. } => code,
-                    // A row is a refusal both loaders make; this reader's own limits are none.
+                    // A row is a refusal both loaders make; only its `rustTree` construct is tolerated.
                     ParseErrorOrigin::Unsupported(construct) => {
-                        panic!("{}: refused as unsupported: {}", row["name"], construct.message())
+                        let debug = format!("{construct:?}");
+                        let variant = debug.split([' ', '(']).next().unwrap();
+                        if tolerated != Some(variant) {
+                            panic!("{}: refused as unsupported: {}", row["name"], construct.message())
+                        }
+                        refused_unsupported = true;
+                        return None;
                     }
                 };
                 let mut refusal = Map::new();
@@ -38,9 +47,15 @@ fn loader_positions() {
                 if let Some(range) = &error.range {
                     refusal.insert("range".into(), compact(range));
                 }
-                Value::Object(refusal)
+                Some(Value::Object(refusal))
             })
             .collect();
+        assert_eq!(
+            refused_unsupported,
+            tolerated.is_some(),
+            "{}: `rustTree` must name a construct Rust refuses",
+            row["name"]
+        );
         assert_eq!(Value::Array(found), row["refusals"], "{}", row["name"]);
         if let Some(documents) = row.get("documents") {
             let found: Vec<Value> = loaded

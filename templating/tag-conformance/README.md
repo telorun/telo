@@ -60,7 +60,7 @@ document.
 
 ## `loader-positions.json` — what a loader refuses, and where every field is
 
-Each row is `{ name, yaml }` (a whole file), `refusals` and optionally `documents`.
+Each row is `{ name, yaml }` (a whole file), `refusals` and optionally `documents` and `rustTree`.
 
 `refusals` is every error the loader reports for the file, in its order, each
 `{ documentIndex, code, message, range? }`; `range` is `[startLine, startCharacter,
@@ -90,6 +90,13 @@ loader places none. Two families:
   bracket left open as the document continues, a tab after a value). The alias
   bound's row sits exactly one alias past it, so a loader moving the bound by one
   fails it.
+
+`rustTree`, when present, is `{ unsupported: <Construct> }`: the one construct the Rust
+loader refuses for that row because Rust holds no tree for it (a permanent reader
+limit, not a gap). The Rust runner then requires its `Unsupported` refusals to be that
+construct, at least one and no other, sets them aside and still compares every YAML
+error and loader refusal; on any other row an `Unsupported` refusal fails. The Node
+runner ignores the field.
 
 `documents`, when present, is each document's `{ sourceLine, positions }`: the
 0-based line it starts on, and its position index — every field value's range
