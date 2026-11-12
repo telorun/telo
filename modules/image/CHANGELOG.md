@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-11-12
+### Added
+* The controllers ship inside the module's own artifact instead of the npm package @telorun/image, and Skia's addon is downloaded for the running platform on first use, so the module runs with no package manager and from the standalone telo binary.
+
 ## 0.10.2 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

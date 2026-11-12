@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.0 - 2026-11-12
+### Deprecated
+* Run.Value is deprecated in favour of the built-in Telo.Value, which needs no import; declaring one reports DEPRECATED_KIND.
+
 ## 0.32.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

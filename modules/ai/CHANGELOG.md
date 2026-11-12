@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.36.0 - 2026-11-12
+### Added
+* Adds telo check refusals for an agent's textTools: an argument a static tool's parameters refuse (AI_TEXT_TOOL_ARGUMENT_UNKNOWN) and a required parameter left unmapped (AI_TEXT_TOOL_ARGUMENT_MISSING), on Ai.Agent and Ai.AgentStream; the runtime twins stay for tools a provider only discovers at run time.
+
 ## 0.35.0 - 2026-11-09
 ### Added
 * Adds textTools to Ai.Agent and Ai.AgentStream: every fenced block of an entry's tags in one model reply is gathered into one call of a tool a provider advertises, its arguments mapped from the blocks by CEL, run after the reply's JSON tool calls one at a time through the same approval, tracing, cancellation, onToolError and result bound, and answered in the follow-up. A reply that ends inside a listed block, or holds a listed fence whose attributes are not name=value, runs none of its blocks and says so; a text call's block_ id is a content address, so an interrupted run resumes from its recorded messages; steps gain textCalls and toolResults gain origin: text. A text content part may carry kind: text-tool-result with the toolCallId it answers. telo check refuses a text tool no static provider declares (AI_TEXT_TOOL_UNKNOWN) and a tag two entries list (AI_TEXT_TOOL_TAG_DUPLICATE); the agent also refuses, when it first lists its tools, arguments the tool's advertised schema refuses or leaves unmapped.

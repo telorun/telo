@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.5 - 2026-11-12
+### Fixed
+* A failure to load the canvas, pdf.js or its assets no longer makes every later call in the process fail with it; the next call tries again.
+* The README and manifest no longer claim that every @napi-rs/canvas wrapper in the process opens this module's Skia addon.
+
 ## 0.11.4 - 2026-11-06
 ### Fixed
 * Windows: stage Skia's icudtl.dat beside the canvas addon, so laying out text no longer aborts the process with an illegal instruction.

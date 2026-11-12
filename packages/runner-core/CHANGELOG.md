@@ -1,5 +1,16 @@
 # @telorun/runner-core
 
+## 0.25.0
+
+### Minor Changes
+
+- 2189641: A session's event stream now carries an `openUrl` event when an app asks for a page to be opened with `Telo.OpenUrl`: `{ app, generation, url, reach, port? }`, derived from the app's `Kernel.OpenUrlRequested` debug frame. Core accepts only an absolute http or https URL without credentials, re-serializes it, and says whether it points at a port the session routes (`port`), a loopback port it does not (`unrouted`) or another address (`external`); each URL is published once per app generation, at most 16 per generation. Clients ignore event types they do not know.
+
+### Patch Changes
+
+- Updated dependencies [2189641]
+  - @telorun/debug-wire@0.4.9
+
 ## 0.24.2
 
 ### Patch Changes

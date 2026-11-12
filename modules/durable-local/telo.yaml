@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: DurableLocal
-  version: 0.7.0
+  version: 0.7.1
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Reliability, Coordination]
@@ -14,7 +14,7 @@ requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.131.0" }
     reason: "Needs the SDK's `durationMs` (0.129.0), which an older runtime lacks so the controller fails to load, and a `d` / `w` duration literal at a `Telo.Duration` slot (0.130.0); also its controllers return revertible effect chains from `init()` / `run()`, which kernels before 0.82.0 do not unwind."
-  - requires: { telo: ">=unreleased" }
+  - requires: { telo: ">=0.135.0" }
     reason: "Compacts a long run through the step engine's durable-body baselines, which an older runtime's engine ignores: it would never compact, and would replay a run another runtime compacted from the top."
 imports: { Durable: ../durable }
 exports:

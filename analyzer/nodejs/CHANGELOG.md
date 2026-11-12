@@ -1,5 +1,21 @@
 # @telorun/analyzer
 
+## 0.135.0
+
+### Minor Changes
+
+- 07c52fa: `Telo.Value` is a built-in kind: an invocable that returns a value shaped from its inputs and optional named bindings, checked against its `inputType` and `outputType`, with no import. It answers exactly as `Run.Value` does, listed by `telo builtins`. The Rust kernel refuses it as it does the other CEL-evaluating built-ins.
+- 2189641: A module read from a plain `http(s)://` URL now has its files: a file claimed with `!module-path`, `!include-text` or `!include-bytes` (and `ctx.resolveModuleFile`) is fetched from beside the module's `telo.yaml` on first use and kept beside its cached manifest, or in a scratch directory private to the user when it has none (a pinned import reuses it, an unpinned one fetches it again each run), so `telo https://…/examples/chat/telo.yaml` runs an app that embeds a file instead of failing with `ERR_MODULE_FILES_UNAVAILABLE`. A claim names a file, never a directory, and the fetched file is not verified beyond the manifest's own pin. `telo check` now reports a claimed file the origin does not serve (`INCLUDE_FILE_NOT_FOUND` / `MODULE_PATH_NOT_FOUND`), in the entry and in any module imported by URL, as it does for a local module, and `MODULE_FILE_UNREADABLE` — located at the claim — for one the origin could not answer for.
+
+### Patch Changes
+
+- 8e04ab6: A resource or referrer rule that iterates a map or tests membership with `in` reads only the map's keys, so it is judged on a resource whose map values are `!cel` instead of being reported as `RESOURCE_RULE_SKIPPED`; over a list the elements are still read.
+- Updated dependencies [d036bfa]
+- Updated dependencies [8e04ab6]
+- Updated dependencies [d036bfa]
+  - @telorun/cel@0.135.0
+  - @telorun/templating@0.135.0
+
 ## 0.134.0
 
 ### Minor Changes
