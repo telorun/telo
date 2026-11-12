@@ -2,7 +2,8 @@
 //! marker, never by a `name`: a resource of a kind declaring a `name` field is
 //! accepted, while `{ kind, name }` at a reference slot, for a kind declaring
 //! none, is the legacy object form of a reference — refused in the entry's own
-//! module, read as the reference it means in an imported library.
+//! module by the load's analysis, read as the reference it means in an imported
+//! library.
 
 use std::path::PathBuf;
 
@@ -24,27 +25,37 @@ fn runs_a_resource_whose_kind_declares_a_name_field() {
     assert_eq!(kernel.run_targets().expect("targets run"), vec![serde_json::json!("named")]);
 }
 
+/// The entry's own reference forms are the load's analysis's: one
+/// `ERR_MANIFEST_VALIDATION_FAILED` carrying each as `telo check` reports it.
+fn refusal_findings(name: &str) -> Vec<(String, String)> {
+    let err = Kernel::new().load(&fixture(name)).expect_err("load must fail");
+    assert_eq!(err.code, "ERR_MANIFEST_VALIDATION_FAILED", "{err}");
+    assert_eq!(err.message, "Manifest validation failed");
+    err.diagnostics
+        .iter()
+        .map(|d| (d.code.clone().unwrap_or_default(), d.message.clone()))
+        .collect()
+}
+
 #[test]
 fn refuses_the_object_form_at_a_reference_slot() {
-    let err = Kernel::new()
-        .load(&fixture("object-reference-form"))
-        .expect_err("load must fail");
-    assert_eq!(err.code, "ERR_INVALID_REFERENCE_FORM", "{err}");
     assert_eq!(
-        err.message,
-        "Self.Server/server: object reference '{ kind, name }' at 'mounts[0].mount' is not supported; write it as '!ref usersApi'"
+        refusal_findings("object-reference-form"),
+        [(
+            "INVALID_REFERENCE_FORM".to_string(),
+            "Self.Server/server: object reference '{ kind, name }' at 'mounts[0].mount' is not supported; write it as '!ref usersApi'".to_string()
+        )]
     );
 }
 
 #[test]
 fn refuses_a_target_written_as_the_object_form() {
-    let err = Kernel::new()
-        .load(&fixture("bare-target-object-form"))
-        .expect_err("load must fail");
-    assert_eq!(err.code, "ERR_INVALID_REFERENCE_FORM", "{err}");
     assert_eq!(
-        err.message,
-        "Telo.Application/BareTargetObjectForm: object reference '{ kind, name }' at 'targets[0]' is not supported; write it as '!ref greeter'"
+        refusal_findings("bare-target-object-form"),
+        [(
+            "INVALID_REFERENCE_FORM".to_string(),
+            "Telo.Application/BareTargetObjectForm: object reference '{ kind, name }' at 'targets[0]' is not supported; write it as '!ref greeter'".to_string()
+        )]
     );
 }
 

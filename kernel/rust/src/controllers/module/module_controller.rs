@@ -16,21 +16,15 @@ use telo_templating::{
     expansion_tag_of, parse_ref_source, ref_sentinel_source, ref_sentinel_verdict, ParsedRef, RefVerdict,
     SPLICE_KEY,
 };
-use telo_analyzer::builtin_vocabulary::{
-    builtin_vocabulary_import_message, BUILTIN_VOCABULARY_KIND, BUILTIN_VOCABULARY_NOT_A_MODULE,
-};
-use telo_analyzer::reserved_kind_prefix::{
-    is_reserved_kind_prefix, reserved_import_alias_message, reserved_library_name_message,
-    reserved_module_name_message,
-};
+use telo_analyzer::builtin_vocabulary::{BUILTIN_VOCABULARY_KIND, BUILTIN_VOCABULARY_NOT_A_MODULE};
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::system_kinds::{
     is_module_document, skips_ref_resolution, APPLICATION, DEFINITION, JSON_SCHEMA, LIBRARY,
 };
 use telo_analyzer::{
-    authored_object_form, declares_name_field, find_invalid_reference_forms,
-    find_unresolved_sentinels, kind_of, name_of, reference_form_message, resolve_ref_sentinels,
-    InvalidReferenceForm, RefTargets, ReferenceForm, RESOLVED_REFERENCE_MARKER,
+    declares_name_field, find_invalid_reference_forms, find_unresolved_sentinels, kind_of, name_of,
+    reference_form_message, resolve_ref_sentinels, target_reference_forms, RefTargets, ReferenceForm,
+    RESOLVED_REFERENCE_MARKER,
 };
 
 use crate::controllers::module::import_controller::parse_import;
@@ -77,7 +71,7 @@ pub fn load_module(
     policy: ControllerPolicy,
     role: ModuleRole,
 ) -> Result<LoadedModule, KernelError> {
-    let loaded = env.loader.load(path)?;
+    let loaded = env.file(path)?;
     reject_expansion_constructs(&loaded.manifests, &loaded.text, &loaded.source)?;
     let documents: Vec<Value> = loaded.documents().cloned().collect();
 
@@ -86,24 +80,10 @@ pub fn load_module(
     })?;
     let module_kind = kind_of(module_doc).unwrap_or("");
     // The built-in vocabulary is read, never run or imported; the refusal says
-    // what it is, in the words `telo check` uses, and an import of it is the
-    // runtime twin of that import's `INVALID_IMPORT_TARGET`.
-    if module_kind == BUILTIN_VOCABULARY_KIND {
-        return Err(match role {
-            ModuleRole::Root => {
-                KernelError::manifest_validation_failed(BUILTIN_VOCABULARY_NOT_A_MODULE)
-            }
-            ModuleRole::Import => KernelError::new(
-                "ERR_INVALID_IMPORT_TARGET",
-                builtin_vocabulary_import_message(
-                    path,
-                    module_doc
-                        .get("metadata")
-                        .and_then(|metadata| metadata.get("version"))
-                        .and_then(Value::as_str),
-                ),
-            ),
-        });
+    // what it is, in the words `telo check` uses. An import of it is refused by
+    // the load's graph walk, as its import's `INVALID_IMPORT_TARGET`.
+    if role == ModuleRole::Root && module_kind == BUILTIN_VOCABULARY_KIND {
+        return Err(KernelError::manifest_validation_failed(BUILTIN_VOCABULARY_NOT_A_MODULE));
     }
     let expected = match role {
         ModuleRole::Root => APPLICATION,
@@ -119,20 +99,13 @@ pub fn load_module(
             ),
         }));
     }
+    // A reserved name is refused before anything is created: the entry's by the
+    // load's analysis, a library's by the graph walk at the import reaching it.
     let module_name = name_of(module_doc)
         .ok_or_else(|| {
             KernelError::manifest_validation_failed(format!("'{path}' has no metadata.name"))
         })?
         .to_string();
-    if is_reserved_kind_prefix(&module_name) {
-        return Err(KernelError::new(
-            "ERR_KIND_PREFIX_RESERVED",
-            match role {
-                ModuleRole::Root => reserved_module_name_message(&module_name),
-                ModuleRole::Import => reserved_library_name_message(path, &module_name),
-            },
-        ));
-    }
     reject_unsupported_module_fields(module_doc, &loaded.source)?;
 
     if let Some(second) = documents.iter().skip(1).find(|document| {
@@ -377,20 +350,20 @@ fn reject_keyed_translations(documents: &[Value], source: &str) -> Result<(), Ke
     Ok(())
 }
 
-/// Read the objects an author wrote as a reference at a reference slot, before
-/// `!ref` resolution writes the marker itself, at reference slots only — so a
-/// resource whose own kind declares a `name` field is no reference at all.
-///
-/// The entry's own module is refused for both spellings, as the Node kernel's
-/// load analysis and `telo check` refuse them: the legacy `{ kind, name }` form
-/// of a kind declaring no `name` field, and the `__ref` key. An imported
-/// library's `{ kind, name }` — what published artifacts carry — is marked as
-/// the reference it means, and only its `__ref` key is refused.
+/// Mark an imported library's legacy `{ kind, name }` at its reference slots as
+/// the reference it means, before `!ref` resolution writes the marker itself, and
+/// refuse an author-written `__ref` key there — what the Node kernel's import
+/// does with a library's documents. The entry's own module is refused for both
+/// spellings by the load's analysis (`INVALID_REFERENCE_FORM`), before any
+/// module is created.
 fn read_reference_forms(
     context: &ModuleContext,
     documents: &mut [Value],
     role: ModuleRole,
 ) -> Result<(), KernelError> {
+    if role == ModuleRole::Root {
+        return Ok(());
+    }
     let kind_declares_name = |written: &str| {
         context
             .resolve_kind(written)
@@ -418,7 +391,7 @@ fn read_reference_forms(
             find_invalid_reference_forms(document, &schema, &kind_declares_name, &value_branch_accepts)
         };
         for invalid in found {
-            if role == ModuleRole::Import && invalid.form == ReferenceForm::Object {
+            if invalid.form == ReferenceForm::Object {
                 if let Some(Value::Object(object)) = document.pointer_mut(&invalid.pointer) {
                     object.insert(RESOLVED_REFERENCE_MARKER.to_string(), Value::Bool(true));
                 }
@@ -433,35 +406,10 @@ fn read_reference_forms(
     Ok(())
 }
 
-/// The objects written as a reference among a module document's `targets:` —
-/// an entry that is itself a reference, or an inline step's `invoke:`, the
-/// boot-step grammar this kernel runs.
-fn target_reference_forms(
-    document: &Value,
-    kind_declares_name: &dyn Fn(&str) -> Option<bool>,
-) -> Vec<InvalidReferenceForm> {
-    let Some(targets) = document.get("targets").and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    let mut found = Vec::new();
-    for (index, target) in targets.iter().enumerate() {
-        let (value, path, pointer) = match target.get("invoke") {
-            Some(invoke) if target.get("kind").is_none() => {
-                (invoke, format!("targets[{index}].invoke"), format!("/targets/{index}/invoke"))
-            }
-            _ => (target, format!("targets[{index}]"), format!("/targets/{index}")),
-        };
-        if let Some((form, name)) = authored_object_form(value, kind_declares_name) {
-            found.push(InvalidReferenceForm { path, pointer, form, name });
-        }
-    }
-    found
-}
-
 /// Whether a value branch of a union accepts `value`, validated against the
 /// branch with the `$defs` of the document it was written in. A branch that
 /// does not compile accepts nothing.
-fn value_branch_accepts(branch: &Value, root: &Value, value: &Value) -> bool {
+pub fn value_branch_accepts(branch: &Value, root: &Value, value: &Value) -> bool {
     let mut schema = branch.clone();
     if let Some(object) = schema.as_object_mut() {
         for key in ["$defs", "definitions"] {
@@ -546,12 +494,6 @@ fn load_imports(
         return Ok(imports);
     };
     for (alias, entry) in entries {
-        if is_reserved_kind_prefix(alias) {
-            return Err(KernelError::new(
-                "ERR_KIND_PREFIX_RESERVED",
-                reserved_import_alias_message(alias),
-            ));
-        }
         let spec = parse_import(alias, entry, base_source, from_artifact)?;
         let child = env.load_import(&spec.source, spec.policy)?;
         imports.insert(alias.clone(), child);

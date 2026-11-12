@@ -21,6 +21,7 @@ pub mod directory_lock;
 pub mod error;
 pub mod evaluation_context;
 pub mod host_paths;
+pub mod import_load_failure;
 pub mod invocation_contract_binding;
 pub mod failure_trace;
 pub mod invoke_dispatch;

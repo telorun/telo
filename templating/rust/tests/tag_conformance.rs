@@ -35,7 +35,7 @@ fn sentinels() {
         let loaded = document_to_json(&stream.documents[0]);
         match row.get("refusal") {
             Some(refusal) => match loaded {
-                Err(JsonRefusal::Tag(err)) => assert_eq!(err.code, refusal["code"].as_str(), "{}", row["name"]),
+                Err(JsonRefusal::Tag(err)) => assert_eq!(err.code(), refusal["code"].as_str(), "{}", row["name"]),
                 other => panic!("{}: expected a tag refusal, got {other:?}", row["name"]),
             },
             None => {

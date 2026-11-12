@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Loader } from "../src/manifest-loader.js";
-import { PARSE_ERROR_MESSAGES } from "../src/parse-loaded-file.js";
+import { PARSE_ERROR_MESSAGES, parseLoadedFile } from "../src/parse-loaded-file.js";
 import { DiagnosticSeverity, type ManifestSource } from "../src/types.js";
 
 /** In-memory ManifestSource backed by a flat path → text map. */
@@ -54,6 +54,28 @@ describe("Loader.loadGraph — parseDiagnostics", () => {
     expect(d.range?.start.line).toBe(8);
     // Telo's sentence for the kind, with the quoting fix — never the parser's own text.
     expect(d.message).toBe(PARSE_ERROR_MESSAGES.plainValueColon);
+  });
+
+  it("reports an unresolved alias on its own document and still reads the file's other documents", () => {
+    const text = [
+      "kind: Telo.Application",
+      "metadata: { name: App }",
+      "value: *missing",
+      "---",
+      "kind: A",
+      "name: 1",
+      "name: 2",
+      "---",
+      "kind: B",
+    ].join("\n");
+
+    const loaded = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text);
+
+    expect(loaded.parseErrors).toEqual([
+      expect.objectContaining({ documentIndex: 1, message: PARSE_ERROR_MESSAGES.duplicateKey }),
+      expect.objectContaining({ documentIndex: 0, message: PARSE_ERROR_MESSAGES.unresolvedAlias }),
+    ]);
+    expect(loaded.manifests).toEqual([null, { kind: "A", name: 2 }, { kind: "B" }]);
   });
 
   it("reports no parse diagnostics for a well-formed manifest", async () => {

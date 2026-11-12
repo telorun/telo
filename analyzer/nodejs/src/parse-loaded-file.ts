@@ -63,6 +63,12 @@ export const PARSE_ERROR_MESSAGES = {
 
 export type ParseErrorKind = keyof typeof PARSE_ERROR_MESSAGES;
 
+/** How far a document's aliases may multiply its data before the load refuses it
+ *  (`aliasLimit`). One bound with the Rust composer's `MAX_ALIAS_COUNT`
+ *  (`templating/rust/src/yaml_tags.rs`): handed to `yaml` by name rather than left to
+ *  its default, so the two change together. */
+const MAX_ALIAS_COUNT = 100;
+
 /** The kind of one of the `yaml` package's errors, read from its code and, where one code
  *  covers several causes, its message. */
 function parseErrorKind(err: import("yaml").YAMLError): ParseErrorKind {
@@ -95,7 +101,7 @@ function parseErrorKind(err: import("yaml").YAMLError): ParseErrorKind {
   }
 }
 
-/** The kind of a failure `doc.toJSON()` throws, which is how `yaml` refuses an alias:
+/** The kind of a failure `doc.toJS()` throws, which is how `yaml` refuses an alias:
  *  undefined for anything else, which is not the parser's to report. */
 function aliasFailureKind(error: unknown): "unresolvedAlias" | "aliasLimit" | undefined {
   if (!(error instanceof ReferenceError)) return undefined;
@@ -168,7 +174,7 @@ export function parseYamlText(text: string): ParsedYaml {
   const manifests = documents.map((doc, documentIndex) => {
     let raw: unknown;
     try {
-      raw = doc.toJSON();
+      raw = doc.toJS({ json: true, mapAsMap: false, maxAliasCount: MAX_ALIAS_COUNT });
     } catch (error) {
       const kind = aliasFailureKind(error);
       if (!kind) throw error;

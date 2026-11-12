@@ -12,13 +12,13 @@ What a `capability:` value on a `Telo.Definition` / `Telo.Abstract` means, froze
 - `code` — the refusal: `CAPABILITY_UNKNOWN` or `CAPABILITY_NOT_DECLARABLE`, or `null` when the value is accepted.
 - `message` — the refusal's text, exactly; `null` when accepted.
 
-A kernel raises the refusal as `ERR_<code>`, its message `Telo.Definition '<name>': <message>` (`Telo.Abstract` for an abstract).
+A load refuses it through its analysis, as one `ERR_MANIFEST_VALIDATION_FAILED` carrying the diagnostic, whose message is `Telo.Definition '<name>': <message>` (`Telo.Abstract` for an abstract); the Node kernel's registration guard, the backstop for a definition no analysis read, raises it as `ERR_<code>` with the same message.
 
 ## Runners
 
 - `analyzer/nodejs/tests/capability-roster.test.ts` — the roster's reader, `telo check`'s half.
 - `kernel/nodejs/tests/capability-roster.test.ts` — the Node kernel's registration guard.
 - `analyzer/rust/src/capability_roster.rs` (tests) — the Rust analyzer's reader.
-- `kernel/rust/src/controllers/resource_definition/resource_definition_controller.rs` (tests) — the Rust kernel's registration. It refuses every `extends:` on its own (`ERR_UNSUPPORTED_MANIFEST_FEATURE`), after the roster, so an accepted row with `extends: true` is held only to raising no `ERR_CAPABILITY_*`.
+- `kernel/rust/tests/capability_roster.rs` — the Rust kernel's load, which refuses a definition's `capability:` through its analysis, as one `ERR_MANIFEST_VALIDATION_FAILED` carrying the row's code and `Telo.Definition '<name>': <message>`. It refuses every `extends:` on its own (`ERR_UNSUPPORTED_MANIFEST_FEATURE`), after the analysis, so an accepted row with `extends: true` is held only to carrying no capability diagnostic.
 
 The vectors are not built-in vocabulary: nothing under `sdk/builtins/` reads them, and no runtime ships them.
