@@ -1,0 +1,12 @@
+---
+---
+kind: Telo.Library
+metadata:
+  name: Lib
+---
+kind: Telo.Definition
+metadata:
+  name: Thing
+capability: Telo.Invokable
+schema:
+  type: object

@@ -14,7 +14,7 @@ use indexmap::IndexMap;
 use serde_json::Value;
 use telo_templating::expansion_tag_of;
 
-use crate::builtin_vocabulary::{builtin_vocabulary_import_message, BUILTIN_VOCABULARY_KIND};
+use crate::builtin_vocabulary::{builtin_vocabulary_import_message, BUILTIN_VOCABULARY_KIND, BUILTIN_VOCABULARY_NOT_A_MODULE};
 use crate::loaded_types::{
     GraphLoadError, ImportEdge, ImportFailureReason, LoadedFile, LoadedGraph, LoadedModule, ParseErrorOrigin,
 };
@@ -91,6 +91,18 @@ pub fn collect_parse_diagnostics<'a>(files: impl IntoIterator<Item = &'a LoadedF
     diagnostics
 }
 
+/// The refusal of an entry whose first document is the built-in vocabulary archive: one
+/// `UNDEFINED_KIND` at its `kind:` value, since `Telo.Builtins` is registered nowhere.
+fn builtin_vocabulary_entry_refusal(file: &LoadedFile) -> AnalysisDiagnostic {
+    let mut diagnostic = AnalysisDiagnostic::error(
+        "UNDEFINED_KIND",
+        BUILTIN_VOCABULARY_NOT_A_MODULE.to_string(),
+        DiagnosticData { file_path: Some(file.source.clone()), ..Default::default() },
+    );
+    diagnostic.range = file.positions.first().and_then(|position| position.position_index.get("kind")).copied();
+    diagnostic
+}
+
 /// The identity an import target contributes to its importer — its library's
 /// `metadata.name` — or why it contributes none, judged per import.
 pub fn import_target_identity(
@@ -161,6 +173,9 @@ pub fn load_graph<P: ImportTargetPort>(port: &P, entry_url: &str) -> Result<Load
         walk_imports(port, &mut graph)?;
     }
     graph.parse_diagnostics = collect_parse_diagnostics(graph.modules.values().map(|module| &module.owner));
+    if builtin_vocabulary {
+        graph.parse_diagnostics.push(builtin_vocabulary_entry_refusal(&graph.modules[&root_source].owner));
+    }
     Ok(graph)
 }
 

@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "UNDEFINED_KIND",
+      "source": "telo-analyzer",
+      "message": "Telo.Builtins is the published built-in vocabulary of a telo release; it is read, never declared, run or imported.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 6
+        },
+        "end": {
+          "line": 1,
+          "character": 19
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: Telo.Builtins is the published built-in vocabulary of a telo release; it is read, never declared, run or imported.\n  [UNDEFINED_KIND] Telo.Builtins is the published built-in vocabulary of a telo release; it is read, never declared, run or imported."
+}

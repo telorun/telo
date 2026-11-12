@@ -368,6 +368,7 @@ fn read_reference_forms(
         context
             .resolve_kind(written)
             .ok()
+            .filter(|definition| definition.manifest.get("extends").is_none())
             .map(|definition| declares_name_field(definition.manifest.get("schema").unwrap_or(&Value::Null)))
     };
     for document in documents.iter_mut() {

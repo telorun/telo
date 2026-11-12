@@ -10,3 +10,10 @@ metadata:
   name: Service
 capability: Telo.Service
 declarable: true
+
+---
+kind: Telo.Abstract
+metadata:
+  name: Template
+capability: Telo.Template
+declarable: false

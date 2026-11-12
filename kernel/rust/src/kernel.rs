@@ -206,11 +206,11 @@ fn refuse_static_findings(graph: &LoadedGraph) -> Result<(), KernelError> {
             let place = match error.range {
                 Some(range) => format!(
                     "document {}, line {}, column {}",
-                    error.document_index,
+                    error.document_index + 1,
                     range.start.line + 1,
                     range.start.character + 1
                 ),
-                None => format!("document {}", error.document_index),
+                None => format!("document {}", error.document_index + 1),
             };
             return Err(KernelError::new(
                 "ERR_UNSUPPORTED_MANIFEST_FEATURE",
