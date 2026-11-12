@@ -34,7 +34,7 @@ variables:
     description: The word `/hello` greets with.
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
-imports: { Http: ../../../modules/http-server, Run: ../../../modules/run }
+imports: { Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs, Run: oci://ghcr.io/telorun/run@0.33.0#sha256-2J-N_ZkFaVdrC61YdHLWFSBWK4tlj0Zu2jdY2pBaViM }
 exports: { resources: [api] }
 ---
 kind: Http.Api

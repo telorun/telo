@@ -8,7 +8,7 @@ metadata:
     the application mounts — not a copy of it.
 imports:
   Cart: ../cart
-  Assert: ../../../modules/assert
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref test
 ---

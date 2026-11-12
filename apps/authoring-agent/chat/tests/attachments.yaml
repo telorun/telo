@@ -17,7 +17,7 @@ metadata:
     upload. A branch holds its own copy, so deleting the source removes the
     source's bytes and leaves the branch's readable.
 imports:
-  Mcp: ../../../../modules/mcp-client
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
   Chat:
     source: ../
     resources:
@@ -31,14 +31,14 @@ imports:
       maxAttachmentBytes: 2000
       maxToolResultBytes: 1200
       maxConversationAttachments: 2
-  App: ../../../../modules/app
-  Stream: ../../../../modules/stream
-  Assert: ../../../../modules/assert
-  HttpClient: ../../../../modules/http-client
-  Multipart: ../../../../modules/multipart
-  Octet: ../../../../modules/octet-codec
-  Blob: ../../../../modules/blob
-  BlobFs: ../../../../modules/blob-fs
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Multipart: oci://ghcr.io/telorun/multipart@0.5.0#sha256-HYqZbfzXOf-YAU7TMyZEFFDBDxeMdyRAoNf4_lAj-Zo
+  Octet: oci://ghcr.io/telorun/octet-codec@0.12.1#sha256-dpNOhhLrA0g6r6I8yGZ5zB6MaZfac00F2pAwEh5_V2o
+  Blob: oci://ghcr.io/telorun/blob@0.2.2#sha256-lJvbxbd_NbxN0Ye3CYsT_FI6yCAAaohHcJuzOgf079c
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.3#sha256-OPq2Dm4qX_Usehcs3gtwRe7sm9-arog58Ev_dUOdmdQ
 variables:
   scratch:
     env: CHAT_TEST_ATTACHMENTS_SCRATCH

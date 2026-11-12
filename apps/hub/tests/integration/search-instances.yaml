@@ -15,16 +15,16 @@ metadata:
     developer's database. Run only by the hub's own suite through that command. The embedder is a local stand-in returning a fixed
     three-dimension vector, since this test is about the lexical instance arm.
 imports:
-  Run: ../../../../modules/run
-  Http: ../../../../modules/http-server
-  Sql: ../../../../modules/sql
-  Postgres: ../../../../modules/postgres
-  Embedding: ../../../../modules/embedding
-  OpenAI: ../../../../modules/openai
-  HttpClient: ../../../../modules/http-client
-  VectorStore: ../../../../modules/vector-store
-  VectorStorePgvector: ../../../../modules/vector-store-pgvector
-  Assert: ../../../../modules/assert
+  Run: oci://ghcr.io/telorun/run@0.33.0#sha256-2J-N_ZkFaVdrC61YdHLWFSBWK4tlj0Zu2jdY2pBaViM
+  Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  Postgres: oci://ghcr.io/telorun/postgres@0.12.4#sha256-CsWk9ZmHFz7CUumvp9A0trpYqJY-qVfWrgmzSZXDEZo
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.2#sha256-XHN0qwYwQm_Lk2OaYZEiqRzEyvIHdhd6u29bfYkvT64
+  OpenAI: oci://ghcr.io/telorun/openai@0.22.0#sha256-rVz1c0B43uzk466plwxYsEG3LH4QJqrZFDIqF8suOmA
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.2#sha256-X_V4hFmjTZsOvGlvV9N7kIdpQ-vsnduMukV8jNXpt8A
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.20.4#sha256-_zLE304dCuwBpnc6oJFGoAuUcKhJf-JeGoAXdjEYudE
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
   Schema:
     source: ../../hub-schema.yaml
     resources:

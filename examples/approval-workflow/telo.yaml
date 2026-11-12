@@ -46,12 +46,12 @@ requires:
   # 0.133.0: `Telo.OpenUrl`.
   telo: ">=0.133.0"
 imports:
-  Durable: ../../modules/durable
-  Local: ../../modules/durable-local
-  Journal: ../../modules/durable-journal-file
-  Http: ../../modules/http-server
-  Console: ../../modules/console
-  Timer: ../../modules/timer
+  Durable: oci://ghcr.io/telorun/durable@0.4.4#sha256-pyKeKy8LL6RaVPxTFrkf9kys9bFIhpQQNUFaenhpiGY
+  Local: oci://ghcr.io/telorun/durable-local@0.7.1#sha256-9woBr2RjcnO98yGyN3HUmGYv4PFX5RCmVEkDbRD9wVY
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.9.1#sha256-mi8BzF3plf0QLuBZFOxzm6pnPxswvfNoMYr4QSZFFvQ
+  Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs
+  Console: oci://ghcr.io/telorun/console@0.19.4#sha256-MvM9cXMpqGm7PEORPdqrs-fUoD0jmrudthsmfXY3ATk
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
 targets:
   - !ref server
   - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }

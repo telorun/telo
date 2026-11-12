@@ -11,7 +11,7 @@ metadata:
     Run, then:
         curl 'http://localhost:8845/v1/hello?name=World'
 requires: { telo: ">=0.133.0" }
-imports: { Http: ../../modules/http-server, Run: ../../modules/run }
+imports: { Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs, Run: oci://ghcr.io/telorun/run@0.33.0#sha256-2J-N_ZkFaVdrC61YdHLWFSBWK4tlj0Zu2jdY2pBaViM }
 targets:
   - !ref exampleServer
   - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }

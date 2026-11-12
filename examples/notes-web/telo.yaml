@@ -14,12 +14,12 @@ metadata:
         redirect address: http://127.0.0.1:8080/auth/callback
 lang: en
 imports:
-  Http: ../../modules/http-server
-  HttpDispatch: ../../modules/http-dispatch
-  HttpClient: ../../modules/http-client
-  Session: ../../modules/session
-  KvStoreMemory: ../../modules/kv-store-memory
-  Html: ../../modules/html
+  Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs
+  HttpDispatch: oci://ghcr.io/telorun/http-dispatch@0.19.2#sha256-Cw8rzRLrbnWWd2OaKNNDDO6V0ojGUec69fcLRhVhcdM
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Session: oci://ghcr.io/telorun/session@0.2.4#sha256-W31UPc-jR6p1ALqOx4WZl7TFYG9JSL0aZab013dxASc
+  KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.2#sha256-6rdybdNY4ZhJ8BpoZa-LkcCb5yjOt8ptBygzURK8PWA
+  Html: oci://ghcr.io/telorun/html@0.3.2#sha256-eCNKey2eqUT9Dh6RmcOOZfCF3YpACFAP-FO7h-5fDrA
 variables:
   providerUrl:
     env: PROVIDER_URL

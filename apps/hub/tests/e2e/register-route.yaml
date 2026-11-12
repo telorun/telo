@@ -20,12 +20,12 @@ metadata:
     honestly claim. `GET /register/status?ref=` is what says when the module is
     actually searchable.
 imports:
-  Run: ../../../../modules/run
-  McpClient: ../../../../modules/mcp-client
-  Yaml: ../../../../modules/yaml
-  Timer: ../../../../modules/timer
-  HttpClient: ../../../../modules/http-client
-  Assert: ../../../../modules/assert
+  Run: oci://ghcr.io/telorun/run@0.33.0#sha256-2J-N_ZkFaVdrC61YdHLWFSBWK4tlj0Zu2jdY2pBaViM
+  McpClient: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
+  Yaml: oci://ghcr.io/telorun/yaml@0.11.1#sha256-s7o7ypsk5oWGomn3BQpnfbfH_j61uOwn3ZqkPNU24yg
+  Timer: oci://ghcr.io/telorun/timer@0.10.0#sha256-mwYLYOutKn1x3NOElOfgGc5_WZwwlnTRvgKo1XeQcfA
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref register_ValidRefSucceeds
   - !ref register_StatusReachesReady

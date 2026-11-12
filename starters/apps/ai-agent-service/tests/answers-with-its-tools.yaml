@@ -9,11 +9,11 @@ metadata:
     tools reach their tables, that each conversation keeps its own history, and
     that an empty message is refused.
 imports:
-  Run: ../../../../modules/run
-  App: ../../../../modules/app
-  Http: ../../../../modules/http-server
-  HttpClient: ../../../../modules/http-client
-  Assert: ../../../../modules/assert
+  Run: oci://ghcr.io/telorun/run@0.33.0#sha256-2J-N_ZkFaVdrC61YdHLWFSBWK4tlj0Zu2jdY2pBaViM
+  App: oci://ghcr.io/telorun/app@0.7.0#sha256-Za_YCZXHwq1xIPS6-J_O5SdMw6HAYxd-s8gUBZMg9II
+  Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratchDir:
     env: AI_AGENT_SERVICE_TEST_SCRATCH_DIR

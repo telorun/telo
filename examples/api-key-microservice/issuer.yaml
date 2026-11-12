@@ -13,9 +13,9 @@ metadata:
         curl -s localhost:9100/token -H 'content-type: application/json' \
           -d '{"subject":"alice","audience":"http://localhost:8080/api","scope":"orders:read"}'
 imports:
-  Http: ../../modules/http-server
-  Jose: ../../modules/jose
-  KvStoreMemory: ../../modules/kv-store-memory
+  Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs
+  Jose: oci://ghcr.io/telorun/jose@0.3.1#sha256-kood2LsQsX4SIXmLwShBEm8P0x5Q-AwXq72UWq6uTHo
+  KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.2#sha256-6rdybdNY4ZhJ8BpoZa-LkcCb5yjOt8ptBygzURK8PWA
 variables:
   issuer:
     env: ISSUER_URL

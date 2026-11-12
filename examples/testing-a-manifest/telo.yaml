@@ -25,7 +25,7 @@ metadata:
     between them:
         telo ./examples/testing-a-manifest/test-suite.yaml
 requires: { telo: ">=0.133.0" }
-imports: { Api: ./api, Http: ../../modules/http-server }
+imports: { Api: ./api, Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs }
 targets:
   - !ref server
   - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }

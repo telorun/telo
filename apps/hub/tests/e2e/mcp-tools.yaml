@@ -14,10 +14,10 @@ metadata:
     `find_implementations` / `find_instances` / `list_categories` / `suggest_module_refs` mirror
     the hub's keyed-read HTTP routes as tools.
 imports:
-  Run: ../../../../modules/run
-  McpClient: ../../../../modules/mcp-client
-  Assert: ../../../../modules/assert
-  Yaml: ../../../../modules/yaml
+  Run: oci://ghcr.io/telorun/run@0.33.0#sha256-2J-N_ZkFaVdrC61YdHLWFSBWK4tlj0Zu2jdY2pBaViM
+  McpClient: oci://ghcr.io/telorun/mcp-client@0.18.1#sha256-7IT8wpOmbgqWG9IUz_d4yYPwF0IzcuuH-SkF16UALKo
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
+  Yaml: oci://ghcr.io/telorun/yaml@0.11.1#sha256-s7o7ypsk5oWGomn3BQpnfbfH_j61uOwn3ZqkPNU24yg
 targets:
   - !ref searchResources_ReturnsKindHits
   - !ref searchResources_OmitsWhatSaysNothing

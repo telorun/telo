@@ -25,13 +25,13 @@ metadata:
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.133.0" }
 imports:
-  Http: ../../modules/http-server
-  Ai: ../../modules/ai
-  OpenAI: ../../modules/openai
-  HttpClient: ../../modules/http-client
-  Image: ../../modules/image
+  Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs
+  Ai: oci://ghcr.io/telorun/ai@0.36.0#sha256-leXbczQNRjfmhvdhWBvMa6w3cPk36izqBJSDN_2zQqU
+  OpenAI: oci://ghcr.io/telorun/openai@0.22.0#sha256-rVz1c0B43uzk466plwxYsEG3LH4QJqrZFDIqF8suOmA
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Image: oci://ghcr.io/telorun/image@0.11.0#sha256-LdrwY-c56ZrCXcI3oONOfaaZxhYird3B3XhyTp7r8Ug
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Run: ../../modules/run
+  Run: oci://ghcr.io/telorun/run@0.33.0#sha256-2J-N_ZkFaVdrC61YdHLWFSBWK4tlj0Zu2jdY2pBaViM
 targets:
   - !ref server
   - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }

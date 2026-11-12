@@ -23,7 +23,7 @@ restrictions:
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
-  Http: ../../modules/http-server
+  Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs
 exports: { kinds: [App] }
 ---
 kind: Telo.Definition

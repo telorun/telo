@@ -8,7 +8,7 @@ metadata:
 
     Run, then:
         curl http://localhost:8080/
-imports: { Http: ../../modules/http-server }
+imports: { Http: oci://ghcr.io/telorun/http-server@0.44.1#sha256-0eFkBJRNr4r2hyQCBHcmTKEJU24Fy76Zw5ajQMUZyEs }
 ports: { http: { env: PORT, default: 8080 } }
 targets:
   - !ref helloServer
