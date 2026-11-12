@@ -44,7 +44,8 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { celExpressionsOf, isTaggedSentinel, writtenCalls } from "@telorun/templating";
 import { resolveSignature } from "./callable-signature.js";
 import { parseCelSource } from "./cel-environment.js";
-import { effectiveAuthorSchema, hasOwnControllerOrTemplate, textKeysDeclarer } from "./extends-resolution.js";
+import { hasOwnControllerOrTemplate, textKeysDeclarer } from "./extends-resolution.js";
+import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   isKeyedTranslationsDoc,
   judgeKeyedCatalog,
@@ -120,6 +121,8 @@ export interface TextPassOptions {
   readonly manifests: readonly ResourceManifest[];
   readonly rootModules: ReadonlySet<string>;
   readonly resolveDef: DefResolver;
+  /** What each kind means along `extends`. */
+  readonly kinds: Pick<DefinitionRegistry, "effectiveSchemaOf">;
   /** Every imported library's full documents. */
   readonly moduleDocuments: readonly ModuleDocuments[];
   /** The CEL names of each module (`moduleCallNamesByModule`). */
@@ -282,8 +285,8 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
     if (typeof kind !== "string") return undefined;
     const definition = resolveDef.in(kind, module === ROOT_MODULE_KEY ? undefined : module);
     if (!definition) return undefined;
-    const schema = effectiveAuthorSchema(definition, (k) => resolveDef.in(k, definition.metadata?.module));
-    return schema && typeof schema === "object" ? schema : undefined;
+    const schema = options.kinds.effectiveSchemaOf(definition);
+    return schema && typeof schema === "object" ? (schema as Record<string, any>) : undefined;
   };
   const walkOptions = { isExpression, resolveRef: resolveNamed };
   const resolveFrom = (kind: string, from: ResourceDefinition) => resolveDef.in(kind, from.metadata?.module);
@@ -346,7 +349,7 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
       definition = resolveDef.in(parentKind, definition.metadata?.module);
     }
     if (!mapped || !definition || links.length === 0) return undefined;
-    const schema = effectiveAuthorSchema(definition, (k) => resolveDef.in(k, definition!.metadata?.module));
+    const schema = options.kinds.effectiveSchemaOf(definition) as Record<string, any> | undefined;
     if (!schema || typeof schema !== "object") return undefined;
     const walk = walkOf(schema, value);
     const consumerPath = (path: ValuePath): ValuePath | undefined => {

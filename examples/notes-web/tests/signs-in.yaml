@@ -4,9 +4,10 @@ metadata:
   version: 1.0.0
   description: >-
     Runs `examples/notes-web` unmodified with the stand-in identity provider it starts itself, once with
-    the provider returning the code in the redirect's query and once as a form POST. A
+    the provider returning the code in the redirect's query and once as a form POST, and once reached
+    through `localhost`. A
     client plays the browser: sign-in through the provider ends with the session naming the
-    user, which the home page reads; a returned state that is not the browser's, and a replayed return, are refused.
+    user, which the home page reads, even beside a stale state cookie a browser still holds; a returned state that is not the browser's, and a replayed return, are refused.
 imports:
   App: ../../../modules/app
   HttpClient: ../../../modules/http-client
@@ -32,8 +33,8 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    required: [notes, idp, notesPort, mode, shown]
-    properties: { notes: { type: string }, idp: { type: string }, notesPort: { type: integer }, mode: { type: string }, shown: { type: string } }
+    required: [notes, idp, mode, shown]
+    properties: { notes: { type: string }, idp: { type: string }, mode: { type: string }, shown: { type: string } }
 steps:
   - name: page
     invoke: !ref visit
@@ -60,7 +61,7 @@ steps:
         invoke: !ref visit
         inputs:
           url: !cel "steps.authorize.result.headers['location']"
-          headers: { cookie: !cel "steps.stateCookie.result" }
+          headers: { cookie: !cel "'notes-state=stale; ' + steps.stateCookie.result" }
     else:
       - name: code
         value: !cel "steps.authorize.result.body.split('name=\"code\" value=\"')[1].split('\"')[0]"
@@ -69,7 +70,7 @@ steps:
         inputs:
           url: !cel "inputs.notes + '/auth/callback'"
           method: POST
-          headers: { cookie: !cel "steps.stateCookie.result", content-type: application/x-www-form-urlencoded }
+          headers: { cookie: !cel "'notes-state=stale; ' + steps.stateCookie.result", content-type: application/x-www-form-urlencoded }
           body: { code: !cel "steps.code.result", state: !cel "steps.state.result" }
   - name: sessionCookie
     value: !cel "'notes-session=' + steps.callback.result.headers['set-cookie'].split('notes-session=')[1].split(';')[0]"
@@ -115,7 +116,7 @@ steps:
         anonymous: { status: !cel "steps.anonymous.result.status", user: !cel "steps.anonymous.result.body.user" }
         login:
           status: !cel "steps.login.result.status"
-          sendsToProvider: !cel "steps.login.result.headers['location'].startsWith(inputs.idp + '/authorize?response_type=code&client_id=notes-example&redirect_uri=http%3A%2F%2F127.0.0.1%3A' + string(inputs.notesPort) + '%2Fauth%2Fcallback&state=' + steps.state.result + '&response_mode=' + inputs.mode)"
+          sendsToProvider: !cel "steps.login.result.headers['location'].startsWith(inputs.idp + '/authorize?response_type=code&client_id=notes-example&redirect_uri=' + urlEncode(inputs.notes + '/auth/callback') + '&state=' + steps.state.result + '&response_mode=' + inputs.mode)"
         callback: { status: !cel "steps.callback.result.status", location: !cel "steps.callback.result.headers['location']" }
         signedIn: { status: !cel "steps.signedIn.result.status", names: !cel "steps.signedIn.result.body.user == inputs.shown" }
         forgedState: { status: !cel "steps.forgedState.result.status", setsSession: !cel "steps.forgedState.result.headers['set-cookie'].contains('notes-session=')" }
@@ -141,7 +142,7 @@ targets: [!ref notes]
 steps:
   - name: flow
     invoke: !ref signInFlow
-    inputs: { notes: "http://127.0.0.1:8861", idp: "http://127.0.0.1:8862", notesPort: 8861, mode: query, shown: alice }
+    inputs: { notes: "http://127.0.0.1:8861", idp: "http://127.0.0.1:8862", mode: query, shown: alice }
 ---
 kind: Telo.Sequence
 metadata: { name: formPostMode }
@@ -155,9 +156,10 @@ targets: [!ref notes]
 steps:
   - name: flow
     invoke: !ref signInFlow
-    inputs: { notes: "http://127.0.0.1:8863", idp: "http://127.0.0.1:8864", notesPort: 8863, mode: form_post, shown: alice }
+    inputs: { notes: "http://127.0.0.1:8863", idp: "http://127.0.0.1:8864", mode: form_post, shown: alice }
 ---
-# A user name carrying markup is handed over as data; the page draws it as text.
+# A user name carrying markup is handed over as data; the page draws it as text. Signs in
+# through `localhost`, as a runner opens the page, while the app listens as 127.0.0.1.
 kind: Telo.Sequence
 metadata: { name: hostileName }
 with:
@@ -170,4 +172,4 @@ targets: [!ref notes]
 steps:
   - name: flow
     invoke: !ref signInFlow
-    inputs: { notes: "http://127.0.0.1:8865", idp: "http://127.0.0.1:8866", notesPort: 8865, mode: query, shown: "<script>alert(1)</script>" }
+    inputs: { notes: "http://localhost:8865", idp: "http://127.0.0.1:8866", mode: query, shown: "<script>alert(1)</script>" }

@@ -51,7 +51,6 @@ import {
   type ContractDirection,
   type DefResolver,
   ancestorChain,
-  effectiveAuthorSchema,
   effectiveContractField,
   inheritedCapability,
   inheritedRequiredFields,
@@ -1227,17 +1226,11 @@ function namedDeclarationDefinition(
     | undefined;
 }
 
-const authorSchemas = new WeakMap<object, Record<string, any>>();
+const NO_AUTHOR_SCHEMA: Record<string, any> = {};
 
-/** A definition's author schema, inheritance folded — read once. */
-function authorSchemaOf(definition: ResourceDefinition, scope: Pick<RelationReaderScope, "defs" | "aliases">): Record<string, any> {
-  let known = authorSchemas.get(definition as unknown as object);
-  if (!known) {
-    const { defs, aliases } = scope;
-    known = effectiveAuthorSchema(definition, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k));
-    authorSchemas.set(definition as unknown as object, known);
-  }
-  return known;
+/** A definition's author schema along `extends`, the registry's answer. */
+function authorSchemaOf(definition: ResourceDefinition, scope: Pick<RelationReaderScope, "defs">): Record<string, any> {
+  return (scope.defs.effectiveSchemaOf(definition) as Record<string, any> | undefined) ?? NO_AUTHOR_SCHEMA;
 }
 
 /** Each of `anchors` at or beneath `at`, once. */
@@ -1354,13 +1347,9 @@ function definitionEvalSites(
   definition: ResourceDefinition | undefined,
   scope: Pick<RelationReaderScope, "defs" | "aliases">,
 ): CelEvalSites | undefined {
-  const { defs, aliases } = scope;
-  const resolveDef: DefResolver = (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
   // Only a runtime resource instance's kind says where its values are
   // evaluated; the capability is inherited along `extends`.
-  const capability = definition ? inheritedCapability(definition, resolveDef) : undefined;
-  if (!definition?.schema || capability === undefined || capability === "Telo.Template") return undefined;
-  return kindCelEvalSites(definition, resolveDef, defs.shapeLookup);
+  return governedCelEvalSites(definition, scope.defs, scope.defs.shapeLookup);
 }
 
 /** A slot rule's kind schema, for a declaration of the entry's own modules. */
@@ -1606,7 +1595,7 @@ function dispatchContractReads(
       : undefined;
     const slot = direction === "outputType" ? valueDerivedSlot(referent.schema, "outputType") : undefined;
     return [
-      ...contractReads(direction, referent.value, kindContract, referent.definition).map((place) => {
+      ...contractReads(direction, referent.value, kindContract, referent.definition, referent.projectionDeclarer).map((place) => {
         if (place.kind === "referrers") throw new Error("internal: a contract read lists every referrer, which a dispatch never reads.");
         return place;
       }),
@@ -1662,7 +1651,13 @@ function templateDispatchRead(identity: DeclarationIdentity, scope: ContractScop
       }).in(target.kind, identity.metadata.module as string | undefined);
       const kindContract = definition ? effectiveContractField(definition, rootDefResolver(scope), "inputType") : undefined;
       return declaredReads(
-        contractReads("inputType", target.entry, kindContract, definition as Record<string, any> | undefined),
+        contractReads(
+          "inputType",
+          target.entry,
+          kindContract,
+          definition as Record<string, any> | undefined,
+          scope.defs.effectiveKindOf(definition)?.projectionDeclarer,
+        ),
         ["resources", index],
       );
     }
@@ -1680,6 +1675,7 @@ function contractInstanceReads(
 ): { places: (readonly (string | number)[])[]; targets: RelationTarget[] } {
   const { identity } = region;
   const definition = contractDefinitionOf(identity, scope);
+  const declarer = scope.defs.effectiveKindOf(definition)?.projectionDeclarer as Record<string, any> | undefined;
   const read: ReadPlace[] = [];
   const kindContract = (direction: ContractDirection) =>
     definition ? effectiveContractField(definition, rootDefResolver(scope), direction) : undefined;
@@ -1687,12 +1683,12 @@ function contractInstanceReads(
     const md = region.valueAt([]) as Record<string, any>;
     for (const direction of CONTRACT_DIRECTIONS) {
       if (md[direction] !== undefined && md[direction] !== null) continue;
-      read.push(...contractReads(direction, md, kindContract(direction), definition as Record<string, any> | undefined));
+      read.push(...contractReads(direction, md, kindContract(direction), definition as Record<string, any> | undefined, declarer));
     }
   } else {
     const direction = instance.anchor[0] as ContractDirection;
     read.push(
-      ...contractReads(direction, { [direction]: region.valueAt(instance.anchor) }, kindContract(direction), definition as Record<string, any> | undefined),
+      ...contractReads(direction, { [direction]: region.valueAt(instance.anchor) }, kindContract(direction), definition as Record<string, any> | undefined, declarer),
     );
   }
   const found = declaredReads(read);
@@ -1736,8 +1732,9 @@ const RELATION_READERS: RelationReaderTable = {
   nested: {
     instances: (region, scope) => {
       const declared = scope.declared(region.identity);
-      if (declared.status !== "ok" || !declared.definition.schema) return [];
-      return nestedInlineAnchors(region.holder, declared.definition.schema as Record<string, any>)
+      const schema = declared.status === "ok" ? scope.defs.effectiveSchemaOf(declared.definition) : undefined;
+      if (!schema) return [];
+      return nestedInlineAnchors(region.holder, schema as Record<string, any>)
         .filter(({ keys }) => isAtOrAbove(region.at, keys))
         .map(({ keys }) => ({ anchor: keys }));
     },
@@ -1950,7 +1947,9 @@ const RELATION_READERS: RelationReaderTable = {
   bindings: {
     instances: (region, scope) => {
       const definition = namedDeclarationDefinition(region.identity, scope);
-      const sites = definition && findBindingSites(definition.schema as Record<string, any>, scope.defs.shapeLookup);
+      const sites =
+        definition &&
+        findBindingSites(scope.defs.effectiveSchemaOf(definition) as Record<string, any>, scope.defs.shapeLookup);
       if (!sites) return [];
       const out: RelationInstance[] = [];
       if (sites.fields.length > 1 && isAtOrAbove(region.at, ["kind"])) out.push({ anchor: ["kind"] });
@@ -2479,7 +2478,7 @@ function bindingChecks(instance: RelationInstance, { identity, value, door }: Re
   const ambiguity = instance.anchor[0] === "kind";
   // Whether the declaration has a step body: what puts `steps` in scope.
   const stepContext = !ambiguity && stepBodyPlaces(identity, door).some((keys) => Array.isArray(door.place(keys)));
-  const celBindingSites = findBindingSites(definition?.schema as Record<string, any>, defs.shapeLookup);
+  const celBindingSites = findBindingSites(effectiveSchema as Record<string, any>, defs.shapeLookup);
   if (celBindingSites) {
     const declared = ambiguity ? undefined : value;
     const bindingsName = (m.metadata as any)?.name as string | undefined;
@@ -3090,14 +3089,14 @@ const validationSchemas = new WeakMap<object, Record<string, any>>();
 /** What a declaration's configuration is validated against: its kind's author
  *  schema, `kind` and `metadata` admitted where it is closed. */
 function validationSchemaOfDefinition(definition: ResourceDefinition, scope: Pick<RelationReaderScope, "defs" | "aliases">): Record<string, any> {
-  let known = validationSchemas.get(definition as unknown as object);
+  const author = authorSchemaOf(definition, scope);
+  let known = validationSchemas.get(author);
   if (!known) {
-    const author = authorSchemaOf(definition, scope);
     known =
       author.additionalProperties === false
         ? { ...author, properties: { kind: { type: "string" }, metadata: { type: "object" }, ...author.properties } }
         : author;
-    validationSchemas.set(definition as unknown as object, known);
+    validationSchemas.set(author, known);
   }
   return known;
 }
@@ -3438,12 +3437,13 @@ function ownFindingAt(m: ResourceManifest, code: string, message: string, path: 
  *  kind, whether it can be instantiated, and its config, recursively. */
 function nestedInlineChecks(instance: RelationInstance, { identity, value, door }: RelationRuleInput): RelationFinding[] {
   const declared = door.declared(identity);
-  if (declared.status !== "ok" || !declared.definition.schema) return [];
+  if (declared.status !== "ok" || !door.defs.effectiveSchemaOf(declared.definition)) return [];
   const { scopeResolver } = declared;
   const { defs, aliases } = door;
   // An inline kind resolves in the parent resource's scope: directly, through
-  // the owning module's aliases, then through the root's.
-  const lookup = (kind: string) => {
+  // the owning module's aliases, then through the root's — read with the
+  // schema its instances are written against.
+  const definitionOf = (kind: string) => {
     const direct = defs.resolve(kind);
     if (direct) return direct;
     const viaScope = scopeResolver?.resolveKind(kind);
@@ -3453,6 +3453,16 @@ function nestedInlineChecks(instance: RelationInstance, { identity, value, door 
     }
     const viaRoot = aliases.resolveKind(kind);
     return viaRoot ? defs.resolve(viaRoot) : undefined;
+  };
+  const lookup = (kind: string) => {
+    const definition = definitionOf(kind);
+    return (
+      definition && {
+        kind: definition.kind,
+        metadata: definition.metadata,
+        schema: defs.effectiveSchemaOf(definition) as Record<string, any> | undefined,
+      }
+    );
   };
   return validateNestedInline(
     value as Record<string, any>,
@@ -3834,10 +3844,7 @@ function ruleIssueDiagnostic(issue: ResourceRuleIssue | ReferrerRuleIssue): Anal
  * definition, not a belief about controllers.
  */
 function isExecutableKind(kind: string, defs: DefinitionRegistry, aliases: AliasResolver): boolean {
-  const canonical = aliases.resolveKind(kind) ?? kind;
-  const def = defs.resolve(canonical);
-  if (!def) return true;
-  const capability = def.capability as string | undefined;
+  const capability = defs.effectiveKind(aliases.resolveKind(kind) ?? kind)?.capability;
   if (!capability) return true;
   if (capabilityExtendsExecutable(capability, defs)) return true;
   return !NO_ENTRY_POINT_CAPABILITIES.has(capability);
@@ -4008,7 +4015,7 @@ withQuotedPath({
     const kind = (value as Record<string, unknown>).kind;
     if (typeof kind !== "string") return;
     if (!isExecutableKind(kind, defs, aliases)) {
-      const capability = defs.resolve(aliases.resolveKind(kind) ?? kind)?.capability;
+      const capability = defs.effectiveKind(aliases.resolveKind(kind) ?? kind)?.capability;
       diagnostics.push(
 withQuotedPath({
         severity: DiagnosticSeverity.Error,
@@ -4029,8 +4036,7 @@ withQuotedPath({
       isForwardedDeclaration(m)
     )
       continue;
-    const def = defs.resolve(aliases.resolveKind(m.kind) ?? m.kind);
-    const defSchema = def?.schema as Record<string, any> | undefined;
+    const defSchema = defs.effectiveSchema(aliases.resolveKind(m.kind) ?? m.kind) as Record<string, any> | undefined;
     if (!defSchema?.properties) continue;
     const resource = { kind: m.kind, name: meta.name };
     const filePath = typeof meta.source === "string" ? meta.source : undefined;
@@ -4650,6 +4656,9 @@ export class StaticAnalyzer {
                 | undefined,
             definitionOf: (declaration, within) =>
               definitionOf(declaration, within) as unknown as Record<string, any> | undefined,
+            projectionDeclarerOf: (definition) =>
+              scopeRegistry._context().definitions!.effectiveKindOf(definition as ResourceDefinition | undefined)
+                ?.projectionDeclarer as Record<string, any> | undefined,
             shapeOf: (ref, witness) =>
               parseCanonicalTypeSchemaId(ref) && !sharedShape(ref)
                 ? shapeAtWitness(ref, witness)
@@ -4671,7 +4680,7 @@ export class StaticAnalyzer {
             mayReportObservedState: (kind, within) => {
               const definition = definitionOf({ kind }, within);
               if (!definition) return false;
-              const reports = analyzedKind(scopedDefinitions, kind, within.metadata?.module as string | undefined);
+              const reports = analyzedKind(scopedDefinitions, scopeRegistry._context().definitions!, kind, within.metadata?.module as string | undefined);
               if (reports.status || reports.reading) return true;
               // A template body may stand up a resource that reports.
               return [definition, ...ancestorChain(definition, registeredDefinition)].some((d) =>
@@ -4685,7 +4694,7 @@ export class StaticAnalyzer {
             ownSchemas: {
               rootOf: (value, within) => {
                 const definition = definitionOf(value, within);
-                return definition ? effectiveAuthorSchema(definition, registeredDefinition) : undefined;
+                return definition ? (scopeDefs.effectiveSchemaOf(definition) as Record<string, any> | undefined) : undefined;
               },
               sharedShape: (ref) =>
                 parseCanonicalTypeSchemaId(ref) && sharedShape(ref)
@@ -6109,17 +6118,14 @@ export class StaticAnalyzer {
       (definition) => templateVariants.get(templateKeyOf(definition))?.variant.expansion.families,
     );
     const scopedMemberNames = new Set(scopeMembers.all.map((member) => member.address.member));
-    const scopedDefs = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, moduleScopes);
     const bodySites = new Map<ResourceManifest, Array<{ prefix: string; sites: CelEvalSites }>>();
     const bodyReadingAt = (host: ResourceManifest, path: string): { sites: CelEvalSites; localPath: string } | undefined => {
       if (host.kind !== "Telo.Definition") return undefined;
       let bodies = bodySites.get(host);
       if (!bodies) {
-        const module = host.metadata?.module as string | undefined;
-        const resolve: DefResolver = (kind) => scopedDefs.in(kind, module);
         bodies = templateBodies(host, defs, aliases, moduleScopes).map((body) => ({
           prefix: body.prefix,
-          sites: kindCelEvalSites(body.definition, resolve, shapes),
+          sites: kindCelEvalSites(body.definition, defs, shapes),
         }));
         bodySites.set(host, bodies);
       }
@@ -6287,9 +6293,7 @@ export class StaticAnalyzer {
       validationSchemaFor: (definition) => {
         const cached = authorSchemas.get(definition as unknown as object);
         if (cached) return cached;
-        const authorSchema = effectiveAuthorSchema(definition, (k) =>
-          defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
-        );
+        const authorSchema = (defs.effectiveSchemaOf(definition) ?? {}) as Record<string, any>;
         const schema =
           authorSchema.additionalProperties === false
             ? {
@@ -6803,7 +6807,7 @@ export class StaticAnalyzer {
       validationSchemaFor: (definition) => {
         const known = validationSchemas.get(definition as unknown as object);
         if (known) return known;
-        const author = effectiveAuthorSchema(definition, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k));
+        const author = (defs.effectiveSchemaOf(definition) ?? {}) as Record<string, any>;
         const schema =
           author.additionalProperties === false
             ? { ...author, properties: { kind: { type: "string" }, metadata: { type: "object" }, ...author.properties } }
@@ -7414,25 +7418,6 @@ export class StaticAnalyzer {
             },
           });
         }
-        for (const problem of valueSchemaFromProblems(
-          m as Record<string, any>,
-          effectiveAuthorSchema(m as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)) as
-            | Record<string, any>
-            | undefined,
-          (typeField) => resolveNamedShape(typeField, m as Record<string, any>, namedShapes),
-        )) {
-          scopeSlotDiagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "VALUE_SCHEMA_FROM_INVALID",
-            source: SOURCE,
-            message: `${m.kind} ${problem.message}`,
-            data: {
-              resource: { kind: m.kind, name: def.metadata?.name as string },
-              filePath: (def.metadata as { source?: string } | undefined)?.source,
-              path: problem.path,
-            },
-          });
-        }
         zoneSlotIssues.push(...validateZoneSlotDeclarations(m as unknown as ResourceManifest));
         // Both rule families are checked after the registration loop: a
         // resource rule against the MERGED schema, whose parent may be declared
@@ -7498,7 +7483,11 @@ export class StaticAnalyzer {
         valueTypeSlotIssues.push(...validateValueTypeSlots(m as unknown as ResourceManifest));
         // A derivation is written wherever a schema is — an instance's own
         // contract or a named shape as much as a definition's.
-        projectionIssues.push(...validateSchemaProjection(m as unknown as ResourceManifest));
+        projectionIssues.push(
+          ...validateSchemaProjection(m as unknown as ResourceManifest, (document) =>
+            defs.effectiveSchemaOf(document as unknown as ResourceDefinition),
+          ),
+        );
       }
     }
 
@@ -7625,6 +7614,30 @@ export class StaticAnalyzer {
     };
     // A code raised into a catch list is read off the kind's effective
     // `throws.codes`, whose parent may be registered after the kind.
+    // A location may name a field an ancestor declares: judged over the
+    // registry's effective schema, once it holds every definition.
+    for (const declarer of ownRuleDeclarers) {
+      const name = declarer.metadata?.name as string;
+      const module = (declarer.metadata as { module?: string } | undefined)?.module;
+      const registered = defs.resolve(module ? `${module}.${name}` : name) ?? (declarer as unknown as ResourceDefinition);
+      for (const problem of valueSchemaFromProblems(
+        declarer as Record<string, any>,
+        defs.effectiveSchemaOf(registered) as Record<string, any> | undefined,
+        (typeField) => resolveNamedShape(typeField, declarer as Record<string, any>, namedShapes),
+      )) {
+        scopeSlotDiagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "VALUE_SCHEMA_FROM_INVALID",
+          source: SOURCE,
+          message: `${declarer.kind} ${problem.message}`,
+          data: {
+            resource: { kind: declarer.kind, name },
+            filePath: (declarer.metadata as { source?: string } | undefined)?.source,
+            path: problem.path,
+          },
+        });
+      }
+    }
     for (const declarer of ownRuleDeclarers) {
       const name = declarer.metadata?.name as string;
       const module = (declarer.metadata as { module?: string } | undefined)?.module;
@@ -7661,7 +7674,7 @@ export class StaticAnalyzer {
       resourceRuleIssues.push(
         ...validateResourceRuleDeclarations(
           declarer,
-          effectiveAuthorSchema(declarer as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
+          ((defs.effectiveSchemaOf(declarer as any) ?? {}) as Record<string, any>),
           moduleCallNamesOf(moduleCallNames, declarer),
           kindSchemas,
           ruleShapes,
@@ -7691,7 +7704,7 @@ export class StaticAnalyzer {
         for (const problem of observesProblems(
           registered,
           (declarer as Record<string, unknown>).schema as Record<string, unknown> | undefined,
-          effectiveAuthorSchema(declarer as any, resolveDef) as Record<string, unknown> | undefined,
+          defs.effectiveSchemaOf(declarer as any) as Record<string, unknown> | undefined,
           resolveDef,
         ).problems) {
           refSlotIssues.push({ ...problem, manifest: declarer });
@@ -7722,7 +7735,7 @@ export class StaticAnalyzer {
             referrerSlot,
             selfDeclares: (pointer) =>
               rulePointerReaches(
-                effectiveAuthorSchema(declarer as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
+                ((defs.effectiveSchemaOf(declarer as any) ?? {}) as Record<string, any>),
                 pointer,
                 kindSchemas,
                 { module: (declarer.metadata as { module?: string } | undefined)?.module, shapes: ruleShapes },
@@ -7735,11 +7748,10 @@ export class StaticAnalyzer {
       // A topology role outside the vocabulary, and a `matcher` nothing reads.
       // Judged once every kind is registered, since a trigger slot the kind
       // inherits makes a top-level matcher legal.
-      const resolveDef = (k: string) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
       for (const declarer of ownRuleDeclarers) {
         for (const problem of topologyRoleProblems(
           declarer as unknown as ResourceDefinition,
-          effectiveAuthorSchema(declarer as any, resolveDef),
+          defs.effectiveSchemaOf(declarer as any) as Record<string, any> | undefined,
         )) {
           diagnostics.push({
             severity: DiagnosticSeverity.Warning,
@@ -8196,6 +8208,7 @@ export class StaticAnalyzer {
         ...validateZoneViolations({
           graph: getCallGraph(),
           resolveDef: resolveRegionDef,
+          schemaOf: (def) => defs.effectiveSchemaOf(def) as Record<string, any> | undefined,
           reportModules: rootModules,
         }),
       );
@@ -8385,7 +8398,6 @@ export class StaticAnalyzer {
     // n-entry collection from re-resolving that collection once per entry.
     // A rule reads an accessor field as its binding: each bound declaration
     // through its own kind's sites, in its declaring module's scope.
-    const ruleDef: DefResolver = (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
     const ruleSites = new WeakMap<object, CelEvalSites | undefined>();
     // A template body's entry, with the module of the definition that wrote it:
     // its kind is spelled through that module's aliases, and an expression there
@@ -8456,7 +8468,7 @@ export class StaticAnalyzer {
       ) as unknown as ResourceDefinition | undefined;
       if (!definition) return bodyEntry && { bodyEntry: true };
       if (!ruleSites.has(definition)) {
-        ruleSites.set(definition, governedCelEvalSites(definition, ruleDef, defs.shapeLookup));
+        ruleSites.set(definition, governedCelEvalSites(definition, defs, defs.shapeLookup));
       }
       return { sites: ruleSites.get(definition), bodyEntry: bodyEntry !== undefined };
     }, forwardedReference, forwardedKind, (module) => !rootModules.has(module));
@@ -8625,7 +8637,6 @@ export class StaticAnalyzer {
       (definition) => templateVariants.get(templateKeyOf(definition))?.variant.expansion.families,
     );
     const scopedMemberNames = new Set(scopeMembers.all.map((member) => member.address.member));
-    const scopedDefs = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, moduleScopes);
     /** How the kind of a resource declared inline below `host` evaluates the
      *  field `path` crosses into — `undefined` when the path crosses none. */
     // Whether a path inside a template body's entry is an accessor field's value,
@@ -8638,11 +8649,9 @@ export class StaticAnalyzer {
       if (host.kind !== "Telo.Definition") return undefined;
       let bodies = bodyAccessorSites.get(host);
       if (!bodies) {
-        const module = host.metadata?.module as string | undefined;
-        const resolve: DefResolver = (kind) => scopedDefs.in(kind, module);
         bodies = templateBodies(host, defs, aliases, moduleScopes).map((body) => ({
           prefix: body.prefix,
-          sites: kindCelEvalSites(body.definition, resolve, defs.shapeLookup),
+          sites: kindCelEvalSites(body.definition, defs, defs.shapeLookup),
         }));
         bodyAccessorSites.set(host, bodies);
       }
@@ -8755,6 +8764,7 @@ export class StaticAnalyzer {
       ...validateDurableRegions({
         graph: getCallGraph(),
         resolveDef: regionDefResolver(defs, aliases, aliasesByModule),
+        schemaOf: (def) => defs.effectiveSchemaOf(def) as Record<string, any> | undefined,
         reportModules: rootModules,
         moduleCallNames,
         moduleCallFlags: (caller, qualified) => callableFlags.ofCall(caller, qualified),
@@ -8914,9 +8924,7 @@ export class StaticAnalyzer {
     const validationSchemaFor = (def: ResourceDefinition): Record<string, any> => {
       const cached = authorSchemaCache.get(def as unknown as object);
       if (cached) return cached;
-      const authorSchema = effectiveAuthorSchema(def, (k) =>
-        defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
-      );
+      const authorSchema = (defs.effectiveSchemaOf(def) ?? {}) as Record<string, any>;
       // `kind` and `metadata` are implicit on every resource — inject them so
       // module authors don't have to repeat them under `additionalProperties:
       // false`.
@@ -9822,6 +9830,7 @@ export class StaticAnalyzer {
           rootModules,
         }),
         shapes: defs.shapeLookup,
+        kinds: defs,
         sitesOf: (manifest) => defs.referenceSites(manifest, aliases, aliasesByModule),
         scope: resourceProjectionScope,
         libraries,
@@ -10051,6 +10060,7 @@ export class StaticAnalyzer {
           aliasesByModule,
           rootModules,
         }),
+        kinds: defs,
         moduleDocuments: options?.moduleDocuments ?? [],
         moduleCallNames,
         schemaForId: (id) => defs.schemaForId(id),

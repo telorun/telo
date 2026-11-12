@@ -19,6 +19,9 @@ export interface Referent {
   readonly schema: Record<string, any> | undefined;
   readonly shapeOf: (ref: string) => Record<string, any> | undefined;
   readonly definition: Record<string, any> | undefined;
+  /** The document declaring the kind's projection, nearest along `extends`
+   *  (the registry's effective-kind answer). */
+  readonly projectionDeclarer: Record<string, any> | undefined;
 }
 
 /** A declaration referencing the one read, as a reporter reads it: a referent
@@ -76,6 +79,9 @@ export interface AnnotatedNode {
   readonly delegate: (node: Record<string, any>) => readonly ReadPlace[];
   /** The definition the kind of the declaration holding the node resolves to. */
   readonly definition: Record<string, any> | undefined;
+  /** The document declaring that kind's projection, nearest along `extends`
+   *  (the registry's effective-kind answer). */
+  readonly projectionDeclarer: Record<string, any> | undefined;
 }
 
 export type ReadReporter = (annotated: AnnotatedNode) => readonly ReadPlace[];

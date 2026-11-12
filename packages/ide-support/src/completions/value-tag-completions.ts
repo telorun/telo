@@ -44,7 +44,7 @@ export function valueTagCompletions(
 
 function tagsAt(site: ValueTagSite, registry: AnalysisRegistry | undefined): ValueTag[] {
   const { kind } = site;
-  const schema = kind ? registry?.resolveDefinition(kind)?.schema : undefined;
+  const schema = kind ? registry?.effectiveKind(kind)?.schema : undefined;
   if (!registry || !kind || !schema) return [...offeredValueTags(undefined, undefined), REF_TAG];
   const schemaFrom = (from: string) => registry.resolveSchemaFrom(from, kind);
   if (lookupRefConstraints(schema as Record<string, any>, site.yamlPath, schemaFrom).length > 0) {

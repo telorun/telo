@@ -51,8 +51,8 @@ export function callInputsAt(
   if (!registry || !analysis || !concretePath) return undefined;
   const resource = analysis.resourceFor(docKind, resourceName);
   if (!resource) return undefined;
-  const definition = registry.resolveDefinition(docKind);
-  if (!definition?.schema) return undefined;
+  const kindSchema = registry.effectiveKind(docKind)?.schema;
+  if (!kindSchema) return undefined;
 
   const segments = concretePath.split(".").map((seg) => seg.replace(/\[\d+\]$/, ""));
 
@@ -65,7 +65,7 @@ export function callInputsAt(
     const enclosing = segments.slice(0, depth);
     const tail = segments.slice(depth);
     const enclosingSchema = navigateSchema(
-      definition.schema as Record<string, any>,
+      kindSchema,
       // Schema navigation is index-free; the concrete path is not.
       enclosing.filter(Boolean),
       (from) => registry.resolveSchemaFrom(from, docKind),

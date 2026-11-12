@@ -67,12 +67,7 @@ import {
   type DataToken,
 } from "./context-nullable-when.js";
 import { capabilityExtendsExecutable } from "./executable-capability.js";
-import {
-  type ContractDirection,
-  type DefResolver,
-  effectiveAuthorSchema,
-  inheritedCapability,
-} from "./extends-resolution.js";
+import { type ContractDirection } from "./extends-resolution.js";
 import {
   analyzerContractScope,
   PERMISSIVE_CONTRACT,
@@ -131,20 +126,12 @@ import {
  *  property the user declared in `schema:` plus synthetic `name` / `kind` and
  *  the metadata sub-object (kept open since metadata legitimately carries
  *  arbitrary user-added fields). */
-export function buildSelfSchema(
-  definition: Record<string, any>,
-  defs?: DefinitionRegistry,
-  aliases?: AliasResolver,
-): Record<string, any> {
+export function buildSelfSchema(definition: Record<string, any>, defs?: DefinitionRegistry): Record<string, any> {
   // The author-facing schema resolves inheritance: with `base:` the child's own
   // schema (the parent's config is internal); without it, `merge(parent, own)`.
-  const userSchema = (
-    defs
-      ? effectiveAuthorSchema(definition as unknown as ResourceDefinition, (k) =>
-          defs.resolve(aliases?.resolveKind(k) ?? k) ?? defs.resolve(k),
-        )
-      : (definition.schema ?? {})
-  ) as Record<string, any>;
+  const userSchema = ((defs
+    ? defs.effectiveSchemaOf(definition as unknown as ResourceDefinition)
+    : definition.schema) ?? {}) as Record<string, any>;
   const userProps = (userSchema.properties ?? {}) as Record<string, any>;
   const userRequired = Array.isArray(userSchema.required) ? userSchema.required : [];
   return {
@@ -209,7 +196,7 @@ export function manifestRootForResolver(
   const inputs = lookupTemplateInputsSchema(m, defs, aliases, declarations, scopes);
   return {
     ...m,
-    schema: buildSelfSchema(m, defs, aliases),
+    schema: buildSelfSchema(m, defs),
     ...(inputs ? { inputType: inputs } : {}),
   };
 }
@@ -477,13 +464,13 @@ interface StepProducer {
 function callArgumentSites(
   definition: ResourceDefinition | undefined,
   defs: DefinitionRegistry,
-  resolveDef: DefResolver,
   shapes: NamedShapeLookup,
 ): CelEvalSites | undefined {
   if (!definition) return undefined;
-  const capability = inheritedCapability(definition, resolveDef);
+  const effective = defs.effectiveKindOf(definition);
+  const capability = effective ? effective.capability : (definition.capability as string | undefined);
   if (capability === undefined || !capabilityExtendsExecutable(capability, defs)) return undefined;
-  return kindCelEvalSites(definition, resolveDef, shapes);
+  return kindCelEvalSites(definition, defs, shapes);
 }
 
 export function collectErrorContextScopes(
@@ -1037,9 +1024,8 @@ export class CelScopeResolver {
     this.kindContexts = authorSchema ? extractContextsFromSchema(authorSchema, shapes) : [];
     this.kindSites = celEvalSites(authorSchema, shapes);
     const contractScope = analyzerContractScope(defs, aliases, scopes, declarations);
-    const resolveDef = contractScope.resolveDefinition;
     this.argumentSites = this.stepContext
-      ? callArgumentSites(definition, defs, resolveDef, shapes)
+      ? callArgumentSites(definition, defs, shapes)
       : undefined;
     this.inputsSchema = this.argumentSites
       ? resolveContract("inputType", m as Record<string, any>, definition, contractScope)?.schema
@@ -1056,7 +1042,7 @@ export class CelScopeResolver {
         )?.schema ?? { type: "object", additionalProperties: true })
       : undefined;
     this.selfSchema =
-      m.kind === "Telo.Definition" ? buildSelfSchema(m as Record<string, any>, defs, aliases) : undefined;
+      m.kind === "Telo.Definition" ? buildSelfSchema(m as Record<string, any>, defs) : undefined;
     const declaringModule = (m.metadata as { module?: string } | undefined)?.module;
     this.bodyScopes = templateBodies(m, defs, aliases, scopes).map((template) => {
       // A body entry is authoring data, so a named contract is still a `!ref`;
@@ -1087,7 +1073,7 @@ export class CelScopeResolver {
           )
         : undefined;
       const argumentSites = stepContext
-        ? callArgumentSites(body.definition, defs, resolveDef, shapes)
+        ? callArgumentSites(body.definition, defs, shapes)
         : undefined;
       return {
         prefix: body.prefix,

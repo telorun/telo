@@ -65,7 +65,8 @@ const ajv = new Ajv({ allErrors: true, strict: false });
 registerTeloKeywords(ajv);
 // Compiling a status schema costs ~ms and a resource may report repeatedly, so
 // keep the validator keyed on the schema object it came from. The kind's folded
-// `status:` is stamped once at registration, so this hits.
+// `status:` is the registry's effective-kind answer, one object until a
+// registration changes it, so this hits.
 const validators = new WeakMap<object, ReturnType<typeof ajv.compile>>();
 
 function validatorFor(schema: Record<string, any>): ReturnType<typeof ajv.compile> {

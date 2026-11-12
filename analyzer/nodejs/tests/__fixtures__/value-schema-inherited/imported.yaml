@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata: { name: ValueSchemaImported, version: 1.0.0 }
+imports: { Lib: ./lib }
+---
+kind: Telo.Definition
+metadata: { name: Middle }
+extends: Lib.Shaped
+---
+kind: Telo.Definition
+metadata: { name: Child }
+extends: Self.Middle
+schema:
+  type: object
+  properties:
+    sample: { x-telo-value-schema-from: shape }
+---
+kind: Self.Child
+metadata: { name: x }
+shape: { type: string }
+sample: hello

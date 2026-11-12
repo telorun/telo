@@ -2,7 +2,7 @@
 
 Control flow for Telo manifests beyond a plain list of steps: iteration and mapping over collections, loops, decision tables and background dispatch.
 
-An ordered list of steps — `if`, `while`, `switch`, `try`/`catch` over invocable steps — is the built-in `Telo.Sequence`, which needs no import. `Run.Sequence` is deprecated: it behaves identically and reports `DEPRECATED_KIND` naming `Telo.Sequence`. Write `kind: Telo.Sequence`, and drop the `run` import when nothing else uses it. Shaping a value with CEL is likewise the built-in `Telo.Value`; `Run.Value` is deprecated and reports `DEPRECATED_KIND` naming it.
+An ordered list of steps — `if`, `while`, `switch`, `try`/`catch` over invocable steps — is the built-in `Telo.Sequence`, which needs no import. `Run.Sequence` is deprecated: it is a pure alias of it, so it behaves identically and reports `DEPRECATED_KIND` naming `Telo.Sequence`. Write `kind: Telo.Sequence`, and drop the `run` import when nothing else uses it. Shaping a value with CEL is likewise the built-in `Telo.Value`; `Run.Value` is deprecated and reports `DEPRECATED_KIND` naming it.
 
 ## Why use this
 
@@ -15,7 +15,7 @@ An ordered list of steps — `if`, `while`, `switch`, `try`/`catch` over invocab
 
 | Kind | Purpose |
 | --- | --- |
-| `Run.Sequence` | **Deprecated** — identical to the built-in `Telo.Sequence`, which needs no import. |
+| `Run.Sequence` | **Deprecated** — an alias of the built-in `Telo.Sequence` (it extends it and declares nothing of its own), which needs no import. |
 | `Run.Value` | **Deprecated** — identical to the built-in `Telo.Value`, which needs no import. See [Composing behaviour](https://telo.run/learn/composing-behaviour). |
 | `Run.Choice` | A first-match decision table — pick one typed value from ordered `when → value` rows. See [Run.Choice](docs/choice.md). |
 

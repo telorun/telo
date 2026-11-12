@@ -629,7 +629,7 @@ export async function create(
             target.kind,
             name,
             target.instance,
-            childCtx.getDefinition,
+            childCtx.effectiveKind,
           );
         }
       }
@@ -733,7 +733,7 @@ function borrowSharedLibrary(
             target.kind,
             name,
             target.instance,
-            childCtx.getDefinition,
+            childCtx.effectiveKind,
           );
         }
       }

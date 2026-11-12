@@ -249,7 +249,7 @@ describe("an accessor field of a template body's entry", () => {
       },
     ],
   }) as ResourceManifest & { schema: Record<string, unknown> };
-  const sites = kindCelEvalSites(sorted as never, () => undefined);
+  const sites = kindCelEvalSites(sorted as never, { effectiveKindOf: () => undefined, resolve: () => undefined });
   const views = new RuleDeclarationViews(() => ({ sites, bodyEntry: true }));
   const binder = new PeerBinder({
     declarationOf: () => undefined,

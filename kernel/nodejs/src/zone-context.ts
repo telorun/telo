@@ -34,10 +34,10 @@ import {
   refSentinelTarget,
 } from "@telorun/sdk";
 import {
-  effectiveAuthorSchema,
   isResolvedReference,
   readProvidesZone,
   readRequiresZone,
+  type EffectiveKind,
   type RequiresZoneSlot,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
@@ -58,6 +58,8 @@ export interface ZoneHost {
   readonly manifest: Record<string, unknown>;
   /** The definition registered for a kind, resolved globally. */
   resolveDefinition(kind: string): ResourceDefinition | undefined;
+  /** What a registered kind means along `extends`, resolved globally. */
+  effectiveKind(kind: string): EffectiveKind | undefined;
   /** The definition for a kind resolved in `module`'s alias scope. */
   resolveDefinitionIn(kind: string, module?: string): ResourceDefinition | undefined;
   /** A sibling instance by name, scope-local first. */
@@ -186,7 +188,7 @@ export class ZoneContext {
     // Resolved along `extends`, so a child that inherits its parent's
     // zone-providing slot reports the attributes that slot declares. Reading the
     // own schema alone would have a child's zone silently constrain nothing.
-    const properties = (effectiveAuthorSchema(def, (k) => this.#host.resolveDefinition(k)) as
+    const properties = (this.#host.effectiveKind(kind)?.schema as
       | { properties?: Record<string, unknown> }
       | undefined)?.properties;
     const merged: Record<string, string> = {};
@@ -273,17 +275,21 @@ export class ZoneContext {
     return undefined;
   }
 
-  /** The schema node for one of this kind's own top-level fields — the site the
-   *  zone annotations live on. */
+  /** The schema node for one of this kind's top-level fields, inherited ones
+   *  included — the site the zone annotations live on. */
   private slotSchema(field: string): Record<string, any> | undefined {
-    const def = this.ownDefinition();
-    return (def.schema as { properties?: Record<string, Record<string, any>> } | undefined)
+    return (this.effectiveSchema() as { properties?: Record<string, Record<string, any>> } | undefined)
       ?.properties?.[field];
   }
 
-  /** The kind's own schema root — where an unconditional requirement lives. */
+  /** The kind's schema root — where an unconditional requirement lives. */
   private rootSchema(): Record<string, any> | undefined {
-    return this.ownDefinition().schema as Record<string, any> | undefined;
+    return this.effectiveSchema();
+  }
+
+  private effectiveSchema(): Record<string, any> | undefined {
+    this.ownDefinition();
+    return this.#host.effectiveKind(this.#host.resolvedKind)?.schema as Record<string, any> | undefined;
   }
 
   private ownDefinition(): ResourceDefinition {

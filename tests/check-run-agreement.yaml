@@ -647,6 +647,7 @@ targets:
   - !ref durationBound
   - !ref durationBoundAtRuntime
   - !ref abstractExtendsChain
+  - !ref extendsThreeModules
   - !ref pathParameterUnbound
   - !ref pathParameterUnboundAtRuntime
   - !ref pathParameterOmitted
@@ -6307,6 +6308,15 @@ expect: { runFails: "/steps/0/timeout must be a Telo.Duration greater than 0s, n
 kind: Assert.Manifest
 metadata: { name: abstractExtendsChain }
 source: ./__fixtures__/check-run-agreement/abstract-extends-chain/app.yaml
+expect: { errors: [], runs: true }
+---
+# A templated kind extending a kind that only extends a controller-bearing kind
+# of a third library: each hop's `extends` alias is its own file's, so the
+# capability the template's `targets:` is judged against is the third library's,
+# and the kernel reaches the same answer by resolving each hop in its module.
+kind: Assert.Manifest
+metadata: { name: extendsThreeModules }
+source: ./__fixtures__/check-run-agreement/extends-three-modules/app.yaml
 expect: { errors: [], runs: true }
 ---
 # A map of path variables annotated `x-telo-path-params-for` is held to the

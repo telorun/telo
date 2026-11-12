@@ -1,0 +1,156 @@
+kind: Telo.Application
+metadata:
+  name: NotesWebKeepsNotesApartTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/notes-web` twice over one database, one signing in `alice` and one
+    `bob`. Alice writes, lists, edits and deletes a note; bob can neither read, edit,
+    delete nor list it, and a caller with no session is answered 401.
+imports:
+  App: ../../../modules/app
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets: [!ref notesApart]
+---
+kind: HttpClient.Client
+metadata: { name: browser }
+followRedirects: false
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: visit }
+client: !ref browser
+---
+# Signs in through the stand-in provider and answers the session cookie.
+kind: Telo.Sequence
+metadata: { name: signIn }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [notes], properties: { notes: { type: string } } }
+outputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [cookie], properties: { cookie: { type: string } } }
+steps:
+  - name: login
+    invoke: !ref visit
+    inputs: { url: !cel "inputs.notes + '/auth/login'" }
+  - name: authorize
+    invoke: !ref visit
+    inputs: { url: !cel "steps.login.result.headers['location']" }
+  - name: callback
+    invoke: !ref visit
+    inputs:
+      url: !cel "steps.authorize.result.headers['location']"
+      headers: { cookie: !cel "steps.login.result.headers['set-cookie'].split(';')[0]" }
+outputs:
+  cookie: !cel "'notes-session=' + steps.callback.result.headers['set-cookie'].split('notes-session=')[1].split(';')[0]"
+---
+kind: Telo.Sequence
+metadata: { name: notesApart }
+with:
+  - kind: App.Instance
+    metadata: { name: alicesNotes }
+    source: ../telo.yaml
+    ports: { http: 8867, provider: 8868 }
+    variables: { standInUser: alice }
+  - kind: App.Instance
+    metadata: { name: bobsNotes }
+    source: ../telo.yaml
+    ports: { http: 8869, provider: 8870 }
+    variables: { standInUser: bob }
+targets: [!ref alicesNotes, !ref bobsNotes]
+steps:
+  - name: alice
+    invoke: !ref signIn
+    inputs: { notes: http://127.0.0.1:8867 }
+  - name: bob
+    invoke: !ref signIn
+    inputs: { notes: http://127.0.0.1:8869 }
+  # A write carries the page's origin, as a browser's does: the session cookie is
+  # refused on a write from any other. The database outlives the test, so this run's note is told apart by its text.
+  - name: tag
+    value: !cel "uuidv4()"
+  - name: created
+    invoke: !ref visit
+    inputs:
+      url: http://127.0.0.1:8867/api/notes
+      method: POST
+      headers: { cookie: !cel "steps.alice.result.cookie", origin: http://127.0.0.1:8867 }
+      body: { text: !cel "'buy milk ' + steps.tag.result" }
+  - name: id
+    value: !cel "string(steps.created.result.body.id)"
+  - name: alicesList
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8867/api/notes?text.contains=' + steps.tag.result"
+      headers: { cookie: !cel "steps.alice.result.cookie" }
+  - name: edited
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8867/api/notes/' + steps.id.result"
+      method: PUT
+      headers: { cookie: !cel "steps.alice.result.cookie", origin: http://127.0.0.1:8867 }
+      body: { text: !cel "'buy oat milk ' + steps.tag.result" }
+  - name: bobReads
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8869/api/notes/' + steps.id.result"
+      headers: { cookie: !cel "steps.bob.result.cookie" }
+  - name: bobEdits
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8869/api/notes/' + steps.id.result"
+      method: PUT
+      headers: { cookie: !cel "steps.bob.result.cookie", origin: http://127.0.0.1:8869 }
+      body: { text: mine now }
+  - name: bobDeletes
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8869/api/notes/' + steps.id.result"
+      method: DELETE
+      headers: { cookie: !cel "steps.bob.result.cookie", origin: http://127.0.0.1:8869 }
+  - name: bobsList
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8869/api/notes?text.contains=' + steps.tag.result"
+      headers: { cookie: !cel "steps.bob.result.cookie" }
+  - name: anonymous
+    invoke: !ref visit
+    inputs: { url: http://127.0.0.1:8867/api/notes }
+  - name: aliceReads
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8867/api/notes/' + steps.id.result"
+      headers: { cookie: !cel "steps.alice.result.cookie" }
+  - name: deleted
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8867/api/notes/' + steps.id.result"
+      method: DELETE
+      headers: { cookie: !cel "steps.alice.result.cookie", origin: http://127.0.0.1:8867 }
+  - name: gone
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8867/api/notes/' + steps.id.result"
+      headers: { cookie: !cel "steps.alice.result.cookie" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        created: { status: !cel "steps.created.result.status", owner: !cel "steps.created.result.body.owner" }
+        alicesList: { total: !cel "steps.alicesList.result.body.total", text: !cel "steps.alicesList.result.body.rows[0].text.split(' ')[1]" }
+        edited: { status: !cel "steps.edited.result.status", text: !cel "steps.edited.result.body.text.split(' ')[1]" }
+        bob: { reads: !cel "steps.bobReads.result.status", edits: !cel "steps.bobEdits.result.status", deletes: !cel "steps.bobDeletes.result.status", lists: !cel "steps.bobsList.result.body.total" }
+        anonymous: !cel "steps.anonymous.result.status"
+        aliceReads: { status: !cel "steps.aliceReads.result.status", text: !cel "steps.aliceReads.result.body.text.split(' ')[1]" }
+        deleted: !cel "steps.deleted.result.status"
+        gone: !cel "steps.gone.result.status"
+      expected:
+        created: { status: 201, owner: alice }
+        alicesList: { total: 1, text: milk }
+        edited: { status: 200, text: oat }
+        bob: { reads: 404, edits: 404, deletes: 404, lists: 0 }
+        anonymous: 401
+        aliceReads: { status: 200, text: oat }
+        deleted: 204
+        gone: 404

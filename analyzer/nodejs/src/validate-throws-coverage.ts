@@ -389,7 +389,7 @@ function checkRetriedDispatches(
     if (module && rootModules.size > 0 && !rootModules.has(module)) continue;
     if (isKindDocument(manifest)) continue;
     const definition = ladder.definitionOf(manifest);
-    if (!definition?.schema) continue;
+    if (!definition || !ladder.resolveCtx.defs.effectiveSchemaOf(definition)) continue;
     const enclosing = ladder.scopedBy.get(manifest);
     const anchor = enclosing?.owner ?? manifest;
     const pathPrefix = enclosing ? `${enclosing.path}.` : "";

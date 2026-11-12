@@ -41,7 +41,6 @@ import {
   type CelEvalSites,
   type NamedShapeLookup,
 } from "./eval-paths.js";
-import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isTypeLevelName } from "./identifier-name.js";
 import type { KernelGlobalsIndex } from "./kernel-globals.js";
@@ -216,15 +215,16 @@ export class CelJudge {
     // definition) carry CEL the kernel evaluates by other rules. The
     // capability is INHERITED along `extends` — an inheritance kind writes
     // none of its own.
-    const resolveDef: DefResolver = (k) => w.defs.resolve(w.aliases.resolveKind(k) ?? k) ?? w.defs.resolve(k);
-    const capability = definition ? inheritedCapability(definition, resolveDef) : undefined;
-    this.ruleApplies = !!definition?.schema && capability !== undefined && capability !== "Telo.Template";
+    const effective = w.defs.effectiveKindOf(definition);
+    const capability = effective ? effective.capability : definition?.capability;
+    const schema = effective ? effective.schema : definition?.schema;
+    this.ruleApplies = !!schema && capability !== undefined && capability !== "Telo.Template";
     // The INHERITANCE-RESOLVED schema, not the kind's own: without `base:`, an
     // `extends` child is authored against merge(parent, own), so a CEL-bearing
     // field the parent declares is a legal field on the child and the kernel
     // expands it. A `Telo.Provider`'s fields are implicitly compile-eval, and
     // a base-form child's own fields are too (`implicitEvalSites`).
-    this.sites = this.ruleApplies ? kindCelEvalSites(definition!, resolveDef, w.shapes) : NO_CEL_EVAL_SITES;
+    this.sites = this.ruleApplies ? kindCelEvalSites(definition!, w.defs, w.shapes) : NO_CEL_EVAL_SITES;
     // An accessor field holds a plain chain or a literal; a chain rooted at a
     // name the field does not bind is left to the expression's own verdict.
     this.accessorsByPath = new Map();

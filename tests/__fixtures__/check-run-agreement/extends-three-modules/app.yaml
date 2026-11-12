@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata: { name: ChainTemplate, version: 1.0.0 }
+imports: { Middle: ./b }
+targets: [!ref wrapper]
+---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+extends: Middle.Job
+resources:
+  - kind: Middle.Task
+    metadata: { name: inner }
+    label: hi
+targets: [!ref inner]
+---
+kind: Self.Wrapper
+metadata: { name: wrapper }

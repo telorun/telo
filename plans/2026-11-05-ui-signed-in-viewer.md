@@ -13,6 +13,22 @@ A screen cannot tailor itself to the signed-in person. A node's `when`, a naviga
 
 Home Assistant gates a card with a `user` condition. In Telo inbound authentication delivers `authentication:` on `Http.Server.mounts[]` and a typed `request.principal` (`Auth.Principal`) in route contexts; screens do not yet read it.
 
+## Surface
+
+**Added**
+
+- `request.principal` — nullable `Auth.Principal` in every per-request screen context: node and navigation `when`, leaf values, `UiReact.App.header`, `tokens` entries' `when`.
+- `when` — key on `Ui.Page`, a per-request condition withholding the page.
+
+**Changed**
+
+- `UiReact.App` documents — one reading `request.principal` is built per request with `Vary` naming the mount's credential headers (`Cookie`, `Authorization`), never served from the per-language copy.
+- Application document page list and navigation — a withheld page and every entry naming it are left out for that request; its path answers not-found.
+
+**Removed**
+
+- None.
+
 ## Solution
 
 **`request.principal` in every per-request screen context.** The `request` that `UiReact.App`'s per-request expressions read gains `principal`, typed `Auth.Principal` and nullable: the principal the serving mount's verifiers produced, null exactly when none accepted the request — including an unauthenticated request through a mount with `anonymous: allow` and every request through a mount with no `authentication:`. It is readable wherever `request` is today — a page's own nodes' `when` and leaf values, `UiReact.App.header`, navigation entries' `when`, `tokens` entries' `when` — and nowhere a composite is resolved once at creation (`CEL_UNKNOWN_FIELD` there). Reading a member without a null guard is `CEL_NULLABLE_ACCESS`, so "signed in" is written `request.principal != null` and a role test `request.principal != null && 'admin' in request.principal.roles`. An App reached through several mounts reads, per request, the principal of the mount that served it.

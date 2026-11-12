@@ -5,7 +5,6 @@ import { OBSERVED_STATE_KEY } from "@telorun/sdk";
 import { celExpressionsOf, INDEX_SEGMENT } from "@telorun/templating";
 import { accessChains } from "./cel-access-chains.js";
 import { celEvalModeAt, governedCelEvalSites, type CelEvalSites } from "./eval-paths.js";
-import { effectiveStatusSchema, inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { parseExportEntry } from "./flatten-for-analyzer.js";
 import {
@@ -224,7 +223,7 @@ export function forwardedResourceKey(module: string, name: string): string {
  */
 export function buildObservedStateIndex(
   declarations: DeclarationRequests,
-  defs: { resolve(kind: string): ResourceDefinition | undefined },
+  defs: Pick<DefinitionRegistry, "resolve" | "effectiveKindOf">,
   aliases?: { resolveKind(kind: string): string | undefined; moduleForAlias?(alias: string): string | undefined },
   scopes?: ModuleScopes,
 ): Map<string, AnalyzedResource> {
@@ -299,8 +298,6 @@ export function celScopeHolderOf(
     aliases,
     aliasesByModule,
   );
-  const resolveDef: DefResolver = (kind, from) =>
-    definitionInScope(defs, kind, from?.metadata ?? m.metadata, aliases, aliasesByModule);
   const sites = defs.referenceSites(m, aliases, aliasesByModule);
   return {
     sites,
@@ -308,7 +305,7 @@ export function celScopeHolderOf(
       m,
       sites,
       defs.effectiveSchemaOf(definition) as Record<string, any> | undefined,
-      governedCelEvalSites(definition, resolveDef, defs.shapeLookup),
+      governedCelEvalSites(definition, defs, defs.shapeLookup),
     ),
   };
 }
@@ -395,14 +392,16 @@ export function analyzedKind(
     in(kind: string, module?: string): ResourceDefinition | undefined;
     (kind: string, from?: { metadata?: { module?: string } }): ResourceDefinition | undefined;
   },
+  kinds: Pick<DefinitionRegistry, "effectiveKindOf">,
   kind: string,
   module?: string,
   optionalNeed = false,
   optionalInput = false,
 ): AnalyzedResource {
   const definition = resolve.in(kind, module);
-  const status = effectiveStatusSchema(definition, resolve);
-  const capability = inheritedCapability(definition, resolve);
+  const effective = kinds.effectiveKindOf(definition);
+  const status = effective ? effective.status : (definition?.status as Record<string, any> | undefined);
+  const capability = effective ? effective.capability : (definition?.capability as string | undefined);
   const needType = needTypeOf(definition);
   const reading = needType
     ? needReadingSchema(needType, optionalNeed)
@@ -420,7 +419,7 @@ export function analyzedKind(
 /** Every resource a CEL `resources.…` read can name, in index order. */
 export function* observedDeclarations(
   declarations: DeclarationRequests,
-  defs: { resolve(kind: string): ResourceDefinition | undefined },
+  defs: Pick<DefinitionRegistry, "resolve" | "effectiveKindOf">,
   aliases?: { resolveKind(kind: string): string | undefined; moduleForAlias?(alias: string): string | undefined },
   scopes?: ModuleScopes,
 ): Generator<ObservedDeclaration> {
@@ -437,7 +436,7 @@ export function* observedDeclarations(
     optionalNeed = false,
     optionalInput = false,
   ): AnalyzedResource => {
-    const read = analyzedKind(resolve, kind, module, optionalNeed, optionalInput);
+    const read = analyzedKind(resolve, defs, kind, module, optionalNeed, optionalInput);
     return {
       ...read,
       ...(scope ? { scoped: true, scope } : {}),

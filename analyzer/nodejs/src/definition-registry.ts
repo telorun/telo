@@ -29,8 +29,46 @@ import {
   type AjvErrorLike,
   type SchemaIssue,
 } from "./schema-error-report.js";
-import { effectiveAuthorSchema } from "./extends-resolution.js";
+import {
+  authorSchemaChain,
+  effectiveAuthorSchema,
+  effectiveStatusSchema,
+  inheritedCapability,
+  publishedOwnFields,
+  type DefResolver,
+} from "./extends-resolution.js";
 import { withReachedFragmentDefs } from "./pointer-base-fragments.js";
+import { kindProjectionDeclarer } from "./schema-projection.js";
+import {
+  declaredDisplayMessageEntries,
+  effectiveThrows,
+  type DeclaredDisplayMessageEntry,
+  type ThrowsBlock,
+} from "./throws-ceiling.js";
+
+/**
+ * Everything a kind means once its `extends` chain is folded, as one answer —
+ * the definition itself stays as its author wrote it. Each field is the same
+ * object on every read until a registration changes what it is built from.
+ */
+export interface EffectiveKind {
+  /** The author-facing schema: a merge-form child's parent's merged with its
+   *  own, a `base:` child's own. Undefined when nothing folded declares one. */
+  readonly schema: Record<string, any> | undefined;
+  /** The observed state the kind reports, `status:` folded along `extends`. */
+  readonly status: Record<string, any> | undefined;
+  /** The `throws:` block governing the kind, nearest along `extends`. */
+  readonly throws: ThrowsBlock | undefined;
+  /** The fields a merge-form delegating child publishes over its parent's reading. */
+  readonly publishedOwnFields: readonly string[];
+  /** Per code, the display message the nearest declaration gives it. */
+  readonly displayMessages: Readonly<Record<string, DeclaredDisplayMessageEntry>>;
+  /** The capability, the kind's own or the nearest along `extends`. */
+  readonly capability: string | undefined;
+  /** The definition declaring the kind's projection (`x-telo-schema-projection`
+   *  or `-from`), nearest along merge-form `extends`; undefined for none. */
+  readonly projectionDeclarer: ResourceDefinition | undefined;
+}
 
 /** Pure kind → ResourceDefinition map. No controller loading, no lifecycle. */
 /** What `ajv.compile` hands back: a predicate carrying its own `errors`. */
@@ -114,7 +152,15 @@ export class DefinitionRegistry {
   /** Per-instance AJV for cross-module $ref resolution. Isolated so each registry
    *  (and thus each AnalysisContext) has its own schema store — no stale schemas
    *  across analyze() calls and no unbounded growth across the process lifetime. */
-  private readonly sharedStore: SchemaStore = { ajv: createAjv(), compiled: new WeakMap() };
+  private sharedStore: SchemaStore = { ajv: createAjv(), compiled: new WeakMap() };
+  /** Each kind's claimed `telo://<module>/<Kind>` id, by kind key. */
+  private readonly kindIdByKey = new Map<string, string>();
+  /** Claimed kind ids not yet registered, with the kind each addresses. */
+  private readonly pendingKindIds = new Map<string, string>();
+  /** Registered kind ids, with whether AJV accepted the schema. */
+  private readonly materializedKindIds = new Map<string, boolean>();
+  /** The built-in kinds, whose schemas are not meta-validated. */
+  private readonly trustedKinds = new Set<string>();
   /** The run's named-shape layer, while one is open. */
   private layer: ShapeLayer | undefined;
   /** The named shapes some configuration varies: never shared, so read outside
@@ -144,10 +190,9 @@ export class DefinitionRegistry {
   private readonly defs = new Map<string, ResourceDefinition>();
   /** Reverse inheritance index: parent kind → direct child kinds. */
   private readonly extendedBy = new Map<string, string[]>();
-  /** Memoized inheritance-resolved schemas. `null` records "resolved to
-   *  nothing", so a kind with no schema is not re-walked on every resource. */
-  private readonly effectiveSchemas = new Map<string, Record<string, unknown> | null>();
-  /** Per kind key, per owner alias scope — cleared with `effectiveSchemas`. */
+  /** Each kind's {@link EffectiveKind}, until a registration. */
+  private readonly effectiveKinds = new Map<string, EffectiveKind>();
+  /** Per kind key, per owner alias scope — cleared with `effectiveKinds`. */
   private readonly kindReaches = new Map<string, WeakMap<object, KindReach>>();
   /** The reaches read through a configuration's own named shapes, by lookup. */
   private configuredReaches = new WeakMap<NamedShapeLookup, Map<string, WeakMap<object, KindReach>>>();
@@ -186,10 +231,10 @@ export class DefinitionRegistry {
     const key = mod ? `${mod}.${name}` : name;
     this.defs.set(key, definition);
     this.registrations++;
-    // The AUTHOR-FACING (inheritance-resolved) schema depends on the parent —
-    // possibly registered after this child — so it recomputes lazily against the
+    // What a kind means along `extends` depends on its parent — possibly
+    // registered after this child — so it recomputes lazily against the
     // now-larger def set.
-    this.effectiveSchemas.clear();
+    this.effectiveKinds.clear();
     this.clearReaches();
     // ROLE MEMBERSHIP, not inheritance: a kind playing `Telo.Invocable` is accepted
     // wherever the role's abstract is, and transitively wherever its parent is
@@ -217,14 +262,32 @@ export class DefinitionRegistry {
     if (definition.kind === "Telo.Abstract" && mod === "Telo") {
       this.identityMap.set("telo", "Telo");
     }
-    if (mod && definition.schema) {
-      this.tryRegisterSchema(
-        mod,
-        name as string,
-        definition.schema as Record<string, any>,
-        trustedSchema,
-      );
+    if (trustedSchema) this.trustedKinds.add(key);
+    else this.trustedKinds.delete(key);
+    // A kind's id addresses what its descendants mean as much as itself.
+    let replaced = false;
+    for (const affected of [key, ...this.descendantKeys(key)]) {
+      const id = this.kindIdByKey.get(affected);
+      if (id !== undefined && this.dematerializeKindSchema(id, affected)) replaced = true;
     }
+    if (replaced) this.rebuildStores();
+    if (mod && (definition.schema || definition.extends)) this.claimKindSchemaId(mod, name as string, key);
+  }
+
+  /** The keys of every kind extending `key`, to any depth. */
+  private descendantKeys(key: string): string[] {
+    const out: string[] = [];
+    const queue = [key];
+    const seen = new Set(queue);
+    while (queue.length > 0) {
+      for (const child of this.extendedBy.get(queue.shift()!) ?? []) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        out.push(child);
+        queue.push(child);
+      }
+    }
+    return out;
   }
 
   private addExtendedBy(parent: string, child: string): void {
@@ -480,6 +543,7 @@ export class DefinitionRegistry {
    *  or a definition `$id`). Used to flag schema `$ref`s that resolve to nothing. */
   hasSchemaId(id: string): boolean {
     this.refuseWithheld(id);
+    this.materializeKindSchema(id);
     return (
       this.registeredSchemaIds.has(id) || !!this.layer?.registered.has(id) || this.ajv.getSchema(id) !== undefined
     );
@@ -499,6 +563,7 @@ export class DefinitionRegistry {
 
   schemaForId(id: string): Record<string, any> | undefined {
     this.refuseWithheld(id);
+    this.materializeKindSchema(id);
     let entry = this.ajv.schemas[id] ?? this.ajv.refs[id];
     while (typeof entry === "string") entry = this.ajv.schemas[entry] ?? this.ajv.refs[entry];
     const schema = entry ? entry.schema : this.ajv.getSchema(id)?.schema;
@@ -546,8 +611,10 @@ export class DefinitionRegistry {
     const cached = store.compiled.get(schema);
     if (cached) return cached;
     try {
-      const validate = store.ajv.compile(schemaWithTagsAsText(this.withFragments(schema)) as object);
-      store.compiled.set(schema, validate);
+      const validate = this.compileResolvingKinds(() =>
+        this.store.ajv.compile(schemaWithTagsAsText(this.withFragments(schema)) as object),
+      );
+      this.store.compiled.set(schema, validate);
       return validate;
     } catch (err) {
       this.refuseWithheld(missingSchemaOf(err));
@@ -564,7 +631,7 @@ export class DefinitionRegistry {
    *  resource of that kind. */
   schemaCompileError(schema: Record<string, any>): string | undefined {
     try {
-      this.ajv.compile(schemaWithTagsAsText(this.withFragments(schema)) as object);
+      this.compileResolvingKinds(() => this.ajv.compile(schemaWithTagsAsText(this.withFragments(schema)) as object));
       return undefined;
     } catch (err) {
       this.refuseWithheld(missingSchemaOf(err));
@@ -572,31 +639,83 @@ export class DefinitionRegistry {
     }
   }
 
-  /** Registers a definition schema under the same module-scoped `telo://` id a
-   *  named `Telo.Type` uses, so a kind schema and a type schema are addressable
-   *  the same way and a `$ref` between them resolves at AJV compile time. One id
-   *  space per module: a kind and a named type may not share a name, which
-   *  `registerNamedTypeSchema` reports rather than resolving silently. */
-  private tryRegisterSchema(
-    moduleName: string,
-    typeName: string,
-    schema: Record<string, any>,
-    trusted: boolean,
-  ): void {
+  /**
+   * Claims a kind's id in the module-scoped `telo://` space a named `Telo.Type`
+   * uses, so a kind schema and a type schema are addressable the same way and a
+   * `$ref` between them resolves at AJV compile time. One id space per module: a
+   * kind and a named type may not share a name, which `registerNamedTypeSchema`
+   * reports rather than resolving silently.
+   *
+   * The id addresses the kind's EFFECTIVE schema, which its parent decides, so
+   * it is registered on its first lookup ({@link materializeKindSchema}) rather
+   * than here, where the parent may not be registered yet.
+   */
+  private claimKindSchemaId(moduleName: string, typeName: string, key: string): void {
     const id = canonicalTypeSchemaId(moduleName, typeName);
-    if (this.registeredSchemaIds.has(id)) {
-      this.definitionSchemaIds.add(id);
-      return;
-    }
+    this.definitionSchemaIds.add(id);
+    if (this.kindIdByKey.get(key) === id && this.pendingKindIds.has(id)) return;
+    // A named type registered first keeps the id; the collision is reported.
+    if (this.registeredSchemaIds.has(id)) return;
     if (this.sharedStore.ajv.getSchema(id)) {
       throw new Error(`Duplicate definition schema $id: "${id}" is already registered`);
     }
-    // A schema AJV refuses is left unregistered rather than aborting the pass —
-    // see {@link tryAddSchema}. The id stays claimed either way, so a later
-    // named type cannot quietly take a kind's place.
-    this.tryAddSchema(schema, id, trusted);
-    this.registeredSchemaIds.add(id);
-    this.definitionSchemaIds.add(id);
+    this.kindIdByKey.set(key, id);
+    this.pendingKindIds.set(id, key);
+  }
+
+  /** Registers a claimed kind id's effective schema, once it is looked up. A
+   *  schema AJV refuses is left unregistered rather than aborting the pass — see
+   *  {@link tryAddSchema}; the id stays claimed either way. */
+  private materializeKindSchema(id: string): boolean {
+    const key = this.pendingKindIds.get(id);
+    if (key === undefined) return false;
+    this.pendingKindIds.delete(id);
+    const schema = this.effectiveKind(key)?.schema;
+    const added = !!schema && this.tryAddSchema(schema, id, this.trustedKinds.has(key));
+    this.materializedKindIds.set(id, added);
+    if (added) this.registeredSchemaIds.add(id);
+    return true;
+  }
+
+  /** Returns a registered kind id to its claim, with whether AJV held it. */
+  private dematerializeKindSchema(id: string, key: string): boolean {
+    const added = this.materializedKindIds.get(id);
+    if (added === undefined) return false;
+    this.materializedKindIds.delete(id);
+    this.pendingKindIds.set(id, key);
+    if (!added) return false;
+    this.registeredSchemaIds.delete(id);
+    const at = this.registeredSchemas.findIndex((entry) => entry.id === id);
+    if (at !== -1) this.registeredSchemas.splice(at, 1);
+    return true;
+  }
+
+  /** Fresh AJV instances holding every registration but no compiled validator:
+   *  a compiled one embeds the schemas it referenced when it was compiled. */
+  private rebuildStores(): void {
+    const ajv = createAjv();
+    for (const { schema, id } of this.registeredSchemas) ajv.addSchema(schema, id, undefined, false);
+    this.sharedStore = { ajv, compiled: new WeakMap() };
+    const layer = this.layer;
+    if (layer?.store) {
+      layer.store = undefined;
+      const store = this.layerStore(layer);
+      for (const [id, schema] of layer.registered) {
+        store.ajv.addSchema(schemaWithTagsAsText(this.withFragments(schema)) as object, id, undefined, false);
+      }
+    }
+  }
+
+  /** `compile` over the current store, registering each claimed kind id it
+   *  misses and compiling again. */
+  private compileResolvingKinds<T>(compile: () => T): T {
+    for (;;) {
+      try {
+        return compile();
+      } catch (err) {
+        if (!this.materializeKindSchema(missingSchemaOf(err) ?? "")) throw err;
+      }
+    }
   }
 
   /** Resolves an `x-telo-ref` constraint to a canonical registry kind key.
@@ -628,41 +747,54 @@ export class DefinitionRegistry {
   }
 
   /**
-   * The kind's AUTHOR-FACING schema — its own merged with everything it
-   * inherits along `extends` — memoized per kind.
+   * What the registered kind means along `extends` — the one answer every
+   * reader interpreting an instance, or treating the kind as a slot or a
+   * target, reads. A reader judging the declaration itself reads the
+   * definition as written.
    *
-   * This is what every consumer reading a kind's schema to interpret an
-   * INSTANCE must use, because that is the schema the instance was authored
-   * against and the one the kernel stamps at definition registration. Reading
-   * `resolve(kind).schema` instead sees only what the leaf declared, so an
-   * annotation on a parent — a CEL context region, a step body, an error
-   * context — is invisible on every child, silently and per consumer. Sharing
-   * one memo is what keeps those consumers from drifting apart.
-   *
-   * Lazy so a child registered before its parent still sees the inherited
-   * half once both are present.
+   * Resolved through this registry's own definitions, whose `extends` names the
+   * canonical kind. Lazy, so a child registered before its parent sees the
+   * inherited half once both are present; the same object until a registration.
    */
-  effectiveSchema(kind: string): Record<string, unknown> | undefined {
-    const cached = this.effectiveSchemas.get(kind);
-    if (cached !== undefined) return cached ?? undefined;
+  effectiveKind(kind: string): EffectiveKind | undefined {
+    const cached = this.effectiveKinds.get(kind);
+    if (cached) return cached;
     const def = this.defs.get(kind);
     if (!def) return undefined;
-    const schema = effectiveAuthorSchema(def, (k) => this.resolve(k)) as
-      | Record<string, unknown>
-      | undefined;
-    this.effectiveSchemas.set(kind, schema ?? null);
-    return schema;
+    const resolve: DefResolver = (k) => this.defs.get(k);
+    const declaresSchema = authorSchemaChain(def, resolve).some((d) => d.schema !== undefined);
+    const effective: EffectiveKind = {
+      schema: declaresSchema ? effectiveAuthorSchema(def, resolve) : undefined,
+      status: effectiveStatusSchema(def, resolve),
+      throws: effectiveThrows(def, resolve),
+      publishedOwnFields: publishedOwnFields(def, resolve),
+      displayMessages: declaredDisplayMessageEntries(def, resolve),
+      capability: inheritedCapability(def, resolve),
+      projectionDeclarer: kindProjectionDeclarer(def, (k) => this.defs.get(k)),
+    };
+    this.effectiveKinds.set(kind, effective);
+    return effective;
   }
 
-  /** The effective schema for a definition, by the kind it is registered under.
-   *  Falls back to the definition's own schema when it is not in this registry
-   *  (a synthesized or not-yet-registered kind), which is the pre-inheritance
-   *  behaviour and the safe direction: it types less, never wrongly. */
-  effectiveSchemaOf(definition: ResourceDefinition | undefined): Record<string, unknown> | undefined {
+  /** {@link effectiveKind} for a definition, by the kind it is registered
+   *  under. Undefined for one this registry does not hold. */
+  effectiveKindOf(definition: ResourceDefinition | undefined): EffectiveKind | undefined {
     if (!definition) return undefined;
     const { name, module: mod } = definition.metadata;
-    const resolved = this.effectiveSchema(mod ? `${mod}.${name}` : name);
-    return resolved ?? (definition.schema as Record<string, unknown> | undefined);
+    return this.effectiveKind(mod ? `${mod}.${name}` : name);
+  }
+
+  /** The kind's effective author schema ({@link EffectiveKind.schema}). */
+  effectiveSchema(kind: string): Record<string, unknown> | undefined {
+    return this.effectiveKind(kind)?.schema;
+  }
+
+  /** The effective author schema of a definition, by the kind it is registered
+   *  under; for one this registry does not hold (a synthesized kind), its own. */
+  effectiveSchemaOf(definition: ResourceDefinition | undefined): Record<string, unknown> | undefined {
+    if (!definition) return undefined;
+    const effective = this.effectiveKindOf(definition);
+    return effective ? effective.schema : (definition.schema as Record<string, unknown> | undefined);
   }
 
   /** The registry key a resource's kind resolves to — the kind as written
@@ -856,8 +988,8 @@ export class DefinitionRegistry {
     const targetKind = ownerScope ? ownerScope.resolveKind(anchorName) : anchorName;
     if (!targetKind) return undefined;
     const targetDef = this.resolve(targetKind);
-    if (!targetDef?.schema) return undefined;
-    const document = targetDef.schema as Record<string, any>;
+    const document = this.effectiveSchemaOf(targetDef) as Record<string, any> | undefined;
+    if (!targetDef || !document) return undefined;
     const subSchema = navigateJsonPointer(document, jsonPointer);
     if (!subSchema || typeof subSchema !== "object") return undefined;
     return { node: subSchema as Record<string, any>, document, definition: targetDef };

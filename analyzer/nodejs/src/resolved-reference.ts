@@ -106,9 +106,9 @@ export function carriesReferenceMarker(value: unknown): boolean {
 
 /**
  * True when the kind declares a top-level `name` property in its author schema
- * — the schema an instance is written against, folded along `extends` exactly
- * as the kernel stamps it at registration (`base:` children their own schema
- * only, every other child `merge(parent, own)`). The root's own `properties`
+ * — the schema an instance is written against, folded along `extends`
+ * (`base:` children their own schema only, every other child
+ * `merge(parent, own)`). The root's own `properties`
  * count, and so do those of every node the root is through a local `$ref`, an
  * `allOf` conjunct or a union branch, as `gatherPropertySchemas` reads them.
  *

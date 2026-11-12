@@ -22,11 +22,6 @@
 
 import type { ResourceDefinition } from "@telorun/sdk";
 import {
-  effectiveAuthorSchema,
-  inheritedCapability,
-  type DefResolver,
-} from "./extends-resolution.js";
-import {
   resolveSchemaReference,
   schemaReferenceParts,
   type NamedShapeLookup,
@@ -883,44 +878,64 @@ export function mergeCelEvalSites(...sites: CelEvalSites[]): CelEvalSites {
   };
 }
 
+/** What a kind means along `extends` — the definition registry's answer. */
+export interface KindMeanings {
+  effectiveKindOf(
+    definition: ResourceDefinition | undefined,
+  ): { readonly schema?: Record<string, any>; readonly capability?: string } | undefined;
+  resolve(kind: string): ResourceDefinition | undefined;
+}
+
+/** A definition's effective schema and capability; a definition the registry
+ *  does not hold, as written. */
+function meaningOf(
+  definition: ResourceDefinition,
+  kinds: KindMeanings,
+): { readonly schema?: Record<string, any>; readonly capability?: string } {
+  return (
+    kinds.effectiveKindOf(definition) ?? {
+      schema: definition.schema as Record<string, any> | undefined,
+      capability: definition.capability as string | undefined,
+    }
+  );
+}
+
 /**
  * Every place a RESOURCE OF THIS KIND has its values evaluated: the kind's
- * inheritance-resolved schema (an `extends` child is authored against
- * merge(parent, own), and the kernel expands what the merged schema marks), its
- * capability abstract's (a `Telo.Provider`'s implicit root compile-eval), and a
- * base-form child's implicit compile-eval.
+ * effective schema (an `extends` child is authored against merge(parent, own),
+ * and the kernel expands what the merged schema marks), its capability
+ * abstract's (a `Telo.Provider`'s implicit root compile-eval), and a base-form
+ * child's implicit compile-eval.
  */
 export function kindCelEvalSites(
   definition: ResourceDefinition | undefined,
-  resolveDef: DefResolver,
+  kinds: KindMeanings,
   shapes: NamedShapeLookup,
 ): CelEvalSites {
   if (!definition) return NO_CEL_EVAL_SITES;
-  const capability = inheritedCapability(definition, resolveDef);
+  const { schema, capability } = meaningOf(definition, kinds);
+  const role = capability ? kinds.resolve(capability) : undefined;
   return mergeCelEvalSites(
-    celEvalSites(effectiveAuthorSchema(definition, resolveDef), shapes),
-    celEvalSites(
-      (capability ? resolveDef(capability)?.schema : undefined) as Record<string, any> | undefined,
-      shapes,
-    ),
+    celEvalSites(schema, shapes),
+    celEvalSites(role ? meaningOf(role, kinds).schema : undefined, shapes),
     implicitEvalSites(definition as { base?: unknown }),
   );
 }
 
 /**
  * The CEL field rule's sites for a resource of this kind, or undefined when no
- * such rule governs the kind: no definition or schema, or a structural
- * `Telo.Template` kind whose CEL the kernel evaluates by other rules.
+ * such rule governs the kind: no definition or effective schema, or a
+ * structural `Telo.Template` kind whose CEL the kernel evaluates by other rules.
  */
 export function governedCelEvalSites(
   definition: ResourceDefinition | undefined,
-  resolveDef: DefResolver,
+  kinds: KindMeanings,
   shapes: NamedShapeLookup,
 ): CelEvalSites | undefined {
-  if (!definition?.schema) return undefined;
-  const capability = inheritedCapability(definition, resolveDef);
-  if (capability === undefined || capability === "Telo.Template") return undefined;
-  return kindCelEvalSites(definition, resolveDef, shapes);
+  if (!definition) return undefined;
+  const { schema, capability } = meaningOf(definition, kinds);
+  if (!schema || capability === undefined || capability === "Telo.Template") return undefined;
+  return kindCelEvalSites(definition, kinds, shapes);
 }
 
 /**

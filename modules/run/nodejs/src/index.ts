@@ -6,5 +6,4 @@ export * as Detach from "./detach.js";
 export * as Iteration from "./iteration.js";
 export * as Loop from "./loop.js";
 export * as Projection from "./projection.js";
-export * as Sequence from "./sequence.js";
 export * as Value from "./value.js";

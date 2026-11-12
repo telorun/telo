@@ -10,9 +10,6 @@ import { RuntimeError } from "@telorun/sdk";
 import {
   controllerBearingAncestor,
   effectiveAuthorSchema,
-  publishedOwnFields,
-  effectiveStatusSchema,
-  effectiveThrows,
   hasOwnControllerOrTemplate,
   inheritedCapability,
   nearestName,
@@ -29,7 +26,6 @@ import type { BundlePreparations } from "../../controller-loaders/bundle-prepara
 import { ControllerLoader } from "../../controller-loader.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
-import { stampDeclaredDisplayMessages } from "../../declared-display-messages.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
 import { refuseInvalidCompletedWhen } from "./completed-when-guard.js";
 import { refuseInvalidCallsCoReferrers } from "./calls-co-referrers-guard.js";
@@ -49,9 +45,6 @@ type ResourceDefinitionResource = RuntimeResource & {
   };
   schema: Record<string, any>;
   status?: Record<string, any>;
-  /** Derived stamp: the fields a merge-form inheriting child publishes over the
-   *  parent instance's reading (see `publishedOwnFields`). */
-  publishedOwnFields?: string[];
   capability?: string;
   extends?: string;
   base?: Record<string, any>;
@@ -65,10 +58,6 @@ type ResourceDefinitionResource = RuntimeResource & {
  */
 class ResourceDefinition implements ResourceInstance {
   readonly kind: "ResourceDefinition" = "ResourceDefinition";
-
-  /** The schema the kind writes itself, before registration stamps the
-   *  inheritance-resolved one over it — kept across a deferred attempt. */
-  private ownSchema?: Record<string, any>;
 
   constructor(readonly resource: ResourceDefinitionResource) {}
 
@@ -84,20 +73,16 @@ class ResourceDefinition implements ResourceInstance {
   }
 
   private async registerKind(ctx: ResourceContext) {
-    this.ownSchema ??= this.resource.schema;
-    const definingCtx = ctx.moduleContext;
-    // Resolve an `extends`/kind target (alias or canonical form) to its
-    // definition against the DEFINING library's scope — where the `extends`
-    // alias was declared.
-    const resolveDef: DefResolver = (kind) => {
-      let canonical = kind;
-      try {
-        canonical = definingCtx.resolveKind(kind);
-      } catch {
-        // ungated / unqualified — fall back to the raw kind below
-      }
-      return definingCtx.getDefinition?.(canonical) ?? definingCtx.getDefinition?.(kind);
-    };
+    // Every hop resolves in the module that declared the definition it was read
+    // off: an ancestor's `extends` alias is its own library's, which this module
+    // may never have imported. A kind named by no definition (a slot's) resolves
+    // in this definition's module.
+    const resolveDef: DefResolver = (kind, from) =>
+      (
+        ctx as unknown as {
+          resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinitionManifest | undefined;
+        }
+      ).resolveDefinitionIn(kind, (from ?? this.resource).metadata?.module);
 
     // Parent not loaded yet — defer rather than silently merging nothing, which
     // would cache a schema missing every inherited field. Answered BEFORE the
@@ -111,79 +96,41 @@ class ResourceDefinition implements ResourceInstance {
       );
     }
 
-    // What a callable kind may declare — refused BEFORE the schema stamp, so the
-    // walk sees the kind's OWN schema rather than merge(parent, own) and each
-    // kind answers for what it wrote. The rules are the analyzer's
-    // (`validate-callable-kinds.ts`), read rather than restated: a guard here
-    // with no static twin is a manifest that passes `telo check` and fails at
-    // boot, and two copies of the guard is the same defect with a way to drift.
-    //
-    // Enforced here for a DEPENDENCY's kind too, which is the point: the
-    // analyzer's pass is entry-module-scoped, so a library's own `telo check`
-    // is what catches this for its author and this is what catches it for
-    // everyone who imports the library.
+    // What a callable kind may declare, judged on what the kind wrote itself. The
+    // rules are the analyzer's (`validate-callable-kinds.ts`), read rather than
+    // restated, so a dependency's kind — outside the consumer's entry-scoped
+    // `telo check` — is refused here for everyone who imports it.
     refuseInvalidCallable(
       this.resource as ResourceDefinitionManifest,
       ctx as unknown as DefinitionScopeHost,
     );
     refuseThrowsOutsideCeiling(this.resource as ResourceDefinitionManifest, resolveDef);
 
-    // Stamp the inheritance-resolved author schema, mirroring the capability
-    // stamping below: without `base:`, an `extends` child is authored against
-    // merge(parent, own), so a field the parent declares is legal on the child.
-    // Every consumer validating a resource against `definition.schema` must see
-    // that merged view — otherwise the analyzer accepts an inherited field and
-    // the kernel rejects it at create(). Shares `effectiveAuthorSchema` with the
-    // analyzer so `telo check` and the runtime cannot drift.
-    // Which of the child's fields publish over the parent's reading. Derived here
-    // for the reason `status:` is: an `extends` alias belongs to the file that
-    // declared it, so the set must be derived in the DEFINING scope — a consumer
-    // importing only the backend has no alias for the parent's library. Derived
-    // before the schema stamp only because it reads the same resolver, not
-    // because it reads the pre-stamp value. Stamped only as the kind registers:
-    // the field is no part of the `Telo.Definition` schema, so a manifest
-    // carrying it from a refused attempt would be refused for it when the
-    // instance is created again.
-    const ownFields = this.resource.extends
-      ? publishedOwnFields(this.resource as ResourceDefinitionManifest, resolveDef)
+    // The declaration stays as written; what it means along `extends` is the
+    // analysis registry's answer, folded through the canonical kind `extends`
+    // names in THIS (the declaring) module's scope — an alias belongs to the file
+    // that wrote it. The guards below that judge the combination read the same
+    // fold, computed here because the kind is not registered yet.
+    const ownSchema = this.resource.schema as Record<string, unknown> | undefined;
+    const effectiveSchema = this.resource.extends
+      ? (effectiveAuthorSchema(this.resource as ResourceDefinitionManifest, resolveDef) as
+          | Record<string, unknown>
+          | undefined)
+      : ownSchema;
+    const canonicalExtends = this.resource.extends
+      ? registeredKindOf(resolveDef(this.resource.extends))
       : undefined;
     const register = (): void => {
-      if (ownFields) this.resource.publishedOwnFields = ownFields;
-      stampDeclaredDisplayMessages(this.resource as ResourceDefinitionManifest, resolveDef);
-      ctx.registerDefinition(this.resource);
+      kernelContext(ctx).registerDefinition(this.resource, canonicalExtends);
     };
-    if (this.resource.extends) {
-      this.resource.schema = effectiveAuthorSchema(
-        this.resource as ResourceDefinitionManifest,
-        resolveDef,
-      );
-      // Same for the observed-state contract: a child without `base:` merges its
-      // parent's `status:`, one with `base:` publishes the parent's unchanged.
-      // Stamped here, in the DEFINING library's scope, because an `extends` alias
-      // belongs to the file that declared it — a consumer that imports only the
-      // backend (the sanctioned "one import instead of two") has no alias for the
-      // abstract's library and would resolve the parent to nothing. Stamping also
-      // makes the folded schema a stable object, so the publication path's AJV
-      // validator cache hits instead of recompiling on every snapshot.
-      this.resource.status = effectiveStatusSchema(
-        this.resource as ResourceDefinitionManifest,
-        resolveDef,
-      );
-      // And the `throws:` block, which resolves to the nearest declaration along
-      // `extends` rather than merging — what the dispatch exit judges a code by.
-      if ((this.resource as { throws?: unknown }).throws === undefined) {
-        const inherited = effectiveThrows(this.resource as ResourceDefinitionManifest, resolveDef);
-        if (inherited) (this.resource as { throws?: unknown }).throws = inherited;
-      }
-    }
 
     // `telo check`'s twin is `VALUE_SCHEMA_FROM_INVALID`, through the same
     // reader — refused here so a dependency's kind, which the entry-scoped check
-    // never reports, fails at registration. After the schema stamp: a location
+    // never reports, fails at registration. Over the effective schema: a location
     // may name a field an ancestor declares.
     const [valueSchemaProblem] = valueSchemaFromProblems(
       this.resource as unknown as Record<string, any>,
-      this.resource.schema as Record<string, any> | undefined,
+      effectiveSchema as Record<string, any> | undefined,
       declaredContractShape(
         ctx as unknown as ContractShapeHost,
         this.resource as unknown as Record<string, any>,
@@ -197,14 +144,14 @@ class ResourceDefinition implements ResourceInstance {
     }
     refuseInvalidObserves(
       this.resource as ResourceDefinitionManifest,
-      this.ownSchema as Record<string, unknown> | undefined,
-      this.resource.schema as Record<string, unknown> | undefined,
+      ownSchema,
+      effectiveSchema,
       resolveDef,
     );
-    refuseInvalidCompletedWhen(this.resource, this.ownSchema, ctx);
+    refuseInvalidCompletedWhen(this.resource, ownSchema, ctx);
     refuseInvalidCallsCoReferrers(
       this.resource as ResourceDefinitionManifest,
-      this.ownSchema as Record<string, unknown> | undefined,
+      ownSchema,
       (kind, module) =>
         (
           ctx as unknown as {
@@ -242,14 +189,6 @@ class ResourceDefinition implements ResourceInstance {
     if (this.resource.extends && !hasOwnControllerOrTemplate(this.resource as ResourceDefinitionManifest)) {
       const ancestor = controllerBearingAncestor(this.resource as ResourceDefinitionManifest, resolveDef);
       if (ancestor) {
-        // Capability is inherited and immutable — stamp the resolved capability
-        // so every consumer that reads `definition.capability` (compile-CEL eval
-        // paths, `capabilityOf`, lifecycle role) sees the effective role without
-        // re-walking `extends`.
-        if (!this.resource.capability) {
-          const inherited = inheritedCapability(this.resource as ResourceDefinitionManifest, resolveDef);
-          if (inherited) this.resource.capability = inherited;
-        }
         register();
         kernelContext(ctx).registerDelegatedController(
           this.resource.metadata.module!,
@@ -277,9 +216,13 @@ class ResourceDefinition implements ResourceInstance {
         this.resource as unknown as Record<string, unknown>,
         inheritedCapability(this.resource as ResourceDefinitionManifest, resolveDef),
         nearestName,
-        (kind) =>
-          (ctx as unknown as { resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinitionManifest | undefined })
-            .resolveDefinitionIn(kind, this.resource.metadata.module)?.capability,
+        (kind) => {
+          const host = ctx as unknown as {
+            resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinitionManifest | undefined;
+            effectiveKindOf(definition: ResourceDefinitionManifest | undefined): { capability?: string } | undefined;
+          };
+          return host.effectiveKindOf(host.resolveDefinitionIn(kind, this.resource.metadata.module))?.capability;
+        },
       );
       if (targetProblem) {
         throw new RuntimeError(
@@ -405,6 +348,14 @@ interface KernelResourceContext {
     load: () => Promise<void>,
   ): void;
   registerDelegatedController(moduleName: string, kindName: string, ancestorKind: string): void;
+  registerDefinition(definition: unknown, canonicalExtends?: string): void;
+}
+
+/** The registry key a resolved definition is registered under. */
+export function registeredKindOf(definition: ResourceDefinitionManifest | undefined): string | undefined {
+  if (!definition) return undefined;
+  const { module, name } = definition.metadata;
+  return module ? `${module}.${name}` : name;
 }
 
 /** Narrow a `ResourceContext` to the kernel-internal surface its concrete

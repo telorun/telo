@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata: { name: ChainMiddle, version: 1.0.0 }
+imports: { Base: ../c }
+exports: { kinds: [Job, Base.Task] }
+---
+kind: Telo.Definition
+metadata: { name: Job }
+extends: Base.Task

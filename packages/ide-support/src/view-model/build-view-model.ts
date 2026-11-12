@@ -151,9 +151,9 @@ function ownerModuleGraph({ graph, registry, analysis, configuration }: ViewMode
 }
 
 /** Every reference slot an analysed kind declares — each registered
- *  definition's schema as registered, and each kind document's as analysed. */
+ *  kind's effective schema, and each kind document's as analysed. */
 function declaredRefSlots(registry: AnalysisRegistry, manifests: readonly ResourceManifest[]): RefSlot[] {
-  const schemas: unknown[] = registry.allKinds().map((kind) => registry.resolveDefinition(kind)?.schema);
+  const schemas: unknown[] = registry.allKinds().map((kind) => registry.effectiveKind(kind)?.schema);
   for (const m of manifests) schemas.push(kindDeclarationOf(m)?.schema);
   const slots: RefSlot[] = [];
   const seen = new WeakSet<object>();

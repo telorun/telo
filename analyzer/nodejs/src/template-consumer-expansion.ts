@@ -717,11 +717,12 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
     if (refusals === 0 && env.judgesTargets(runner)) {
       const problems = templateTargetProblems(
         expansion.definition as unknown as Record<string, unknown>,
-        (runner as { capability?: string }).capability,
+        registry.effectiveKindOf(runner)?.capability ?? (runner as { capability?: string }).capability,
         undefined,
         (kind) =>
-          definitionInScope<ResourceDefinition>(registry, kind, runner.metadata, aliases, aliasesByModule)
-            ?.capability as string | undefined,
+          registry.effectiveKindOf(
+            definitionInScope<ResourceDefinition>(registry, kind, runner.metadata, aliases, aliasesByModule),
+          )?.capability,
       ).filter((p) => p.code === "TEMPLATE_TARGET_UNKNOWN" || p.code === "TEMPLATE_TARGETS_CAPABILITY");
       for (const problem of problems) {
         report(problem.code, { holder: consumer, keys: [] },

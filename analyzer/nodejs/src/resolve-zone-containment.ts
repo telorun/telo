@@ -97,6 +97,9 @@ export interface ZoneRegion {
  *  rebuilt so both walks agree about what a kind means. */
 export type DefinitionLookup = (kind: string, module?: string) => ResourceDefinition | undefined;
 
+/** A definition's author schema along `extends` — what its instances are written against. */
+export type KindSchemaOf = (definition: ResourceDefinition) => Record<string, any> | undefined;
+
 const moduleOf = (node: ResourceGraphNode): string | undefined =>
   (node.manifest.metadata as { module?: string } | undefined)?.module;
 
@@ -223,13 +226,14 @@ export type ZoneProvider = Omit<ZoneRegion, "attribute" | "reason">;
 export function findZoneProviders(
   graph: CallGraph,
   resolveDef: DefinitionLookup,
+  schemaOf: KindSchemaOf,
 ): ZoneProvider[] {
   const regions: ZoneProvider[] = [];
 
   for (const node of graph.nodes.values()) {
     if (node.type !== "resource") continue;
     const def = resolveDef(node.kind, moduleOf(node));
-    const rootSchema = def?.schema as Record<string, any> | undefined;
+    const rootSchema = def ? schemaOf(def) : undefined;
     if (!rootSchema) continue;
 
     // The providing slots of this kind, found by walking its own declared
@@ -311,10 +315,11 @@ export function findZoneRegions(
   graph: CallGraph,
   resolveDef: DefinitionLookup,
   attribute: string,
+  schemaOf: KindSchemaOf,
 ): ZoneRegion[] {
   let providers = providersByGraph.get(graph);
   if (!providers) {
-    providers = findZoneProviders(graph, resolveDef);
+    providers = findZoneProviders(graph, resolveDef, schemaOf);
     providersByGraph.set(graph, providers);
   }
   const out: ZoneRegion[] = [];

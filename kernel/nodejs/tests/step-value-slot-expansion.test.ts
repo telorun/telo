@@ -43,6 +43,7 @@ const templateHost = {
   analysisContext: () => {
     throw new Error("a body with no construct is not expanded");
   },
+  effectiveKindOf: (definition: any) => definition && { schema: definition.schema, capability: definition.capability },
 } as any;
 
 describe("template body expansion of a step's `value:`", () => {

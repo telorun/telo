@@ -1,4 +1,5 @@
 export { AnalysisRegistry } from "./analysis-registry.js";
+export type { EffectiveKind } from "./definition-registry.js";
 export {
   listRequests,
   type DeclarationRequests,
@@ -278,7 +279,14 @@ export {
 } from "./template-targets.js";
 export { nearestName } from "./nearest-name.js";
 // An ancestor's `throws:` as a ceiling, read once for `telo check` and the kernel.
-export { codesOutsideCeiling, dispatchesThrows, effectiveThrows, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
+export {
+  codesOutsideCeiling,
+  declaredDisplayMessageEntries,
+  dispatchesThrows,
+  effectiveThrows,
+  throwsNotSubstitutableMessage,
+  type DeclaredDisplayMessageEntry,
+} from "./throws-ceiling.js";
 export { builtinDocumentSchema } from "./builtins.js";
 // The closed capability roster, read from the built-in entries for `telo check`,
 // the kernel and the editor support alike.
@@ -972,6 +980,7 @@ export {
   regionManifests,
   type ContainedNode,
   type DefinitionLookup,
+  type KindSchemaOf,
   type RegionBoundary,
   type ZoneRegion,
 } from "./resolve-zone-containment.js";

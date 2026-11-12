@@ -50,13 +50,15 @@ function typeName(t: string | Record<string, any> | undefined): string | undefin
   return undefined;
 }
 
-function kindHover(kind: string, def: Definition | undefined): string {
+function kindHover(kind: string, def: Definition | undefined, registry: AnalysisRegistry | undefined): string {
   if (!def) return `\`${kind}\``;
   const lines: string[] = [`### ${kind}`];
-  const role = def.capability ? `\`${def.capability}\`` : "resource";
+  const effective = registry?.effectiveKindOf(def);
+  const capability = effective ? effective.capability : def.capability;
+  const role = capability ? `\`${capability}\`` : "resource";
   const module = def.metadata?.module ? ` · module \`${def.metadata.module}\`` : "";
   lines.push(`${role}${module}`);
-  const schema = def.schema as Record<string, any> | undefined;
+  const schema = (effective ? effective.schema : def.schema) as Record<string, any> | undefined;
   const desc = schema?.description ?? schema?.title;
   if (typeof desc === "string" && desc) lines.push("", desc);
   if (def.extends) lines.push("", `Extends \`${def.extends}\``);
@@ -97,9 +99,9 @@ function fieldSchemaFor(
   registry: AnalysisRegistry | undefined,
 ): Record<string, any> | undefined {
   if (!resourceKind || !registry) return undefined;
-  const def = registry.resolveDefinition(resourceKind);
-  if (!def?.schema) return undefined;
-  return navigateSchema(def.schema as Record<string, any>, relativePath, (from) =>
+  const schema = registry.effectiveKind(resourceKind)?.schema;
+  if (!schema) return undefined;
+  return navigateSchema(schema, relativePath, (from) =>
     registry.resolveSchemaFrom(from, resourceKind),
   );
 }
@@ -198,7 +200,7 @@ function hoverForValue(
   const range = resolved.replaceRange;
 
   if (key === "kind" && value) {
-    return { contents: kindHover(value, registry?.resolveDefinition(value)), range };
+    return { contents: kindHover(value, registry?.resolveDefinition(value), registry), range };
   }
   if (key === "capability" && resolved.docKind === "Telo.Definition" && value) {
     // A declarable role's own description, read from the roster.

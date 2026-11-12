@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 priority: high
 depends-on: []
 packages: [analyzer, kernel, modules/run]
@@ -48,7 +48,7 @@ A declaration always means what its author wrote, in every host. Everything deri
 - After analysis and after `kernel.load()`, every `Telo.Definition`'s `schema`, `status` and `throws` deep-equal what the loader produced.
 - A merge-form child's status validator compiles once however often the status is published.
 - A `$ref` to `telo://<module>/<Child>` enforces the parent's `required`.
-- Editing a parent in a running reconcile changes what its descendants accept, with no re-stamp.
+- Re-registering a parent changes what its descendants accept, with no re-stamp. (A running reconcile that edits a kind document halts with a restart, so no live edit reaches this path today.)
 - The `run` module's suite passes unchanged, and a `Run.Sequence` manifest reports `DEPRECATED_KIND` naming `Telo.Sequence`.
 
 ## Decisions

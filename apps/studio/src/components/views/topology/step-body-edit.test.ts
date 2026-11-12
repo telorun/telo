@@ -17,14 +17,14 @@ const diskSource: ManifestSource = {
 describe("creating a step", () => {
   let variants: VariantMeta[];
 
-  // Against the REAL `Run.Sequence` schema, for the reason the step-list model
+  // Against the REAL `Run.Iteration` schema, for the reason the step-list model
   // test gives: the control-flow vocabulary is a shared manifest fragment, and a
   // hand-written schema would assert against a shape nothing ships.
   beforeAll(async () => {
     const loaded = await new Loader([diskSource]).loadModule(`${repoRoot}/modules/run/telo.yaml`);
     const sequence = loaded.owner.manifests.find(
       (m) =>
-        m?.kind === "Telo.Definition" && (m.metadata as { name?: string })?.name === "Sequence",
+        m?.kind === "Telo.Definition" && (m.metadata as { name?: string })?.name === "Iteration",
     ) as Record<string, unknown> | undefined;
     const schema = sequence!.schema as Record<string, unknown>;
     variants = getVariants(getStepSchema(schema)!, schema);

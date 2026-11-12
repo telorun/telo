@@ -1,0 +1,16 @@
+# Run.Sequence is a deprecated alias of Telo.Sequence: it warns, naming the
+# replacement, and runs as one.
+kind: Telo.Application
+metadata: { name: RunSequenceAlias, version: 1.0.0 }
+imports: { Assert: ../../assert }
+targets:
+  - !ref aliasWarnsAndRuns
+---
+kind: Assert.Manifest
+metadata: { name: aliasWarnsAndRuns }
+source: ./__fixtures__/sequence-alias.yaml
+expect:
+  errors: []
+  warnings:
+    - { code: DEPRECATED_KIND, message: "Telo.Sequence" }
+  runs: true

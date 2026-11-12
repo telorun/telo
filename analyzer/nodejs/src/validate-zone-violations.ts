@@ -45,7 +45,7 @@ import {
 import type { CallGraph } from "./call-graph.js";
 import { RetryPolicySchema } from "./manifest-schemas.js";
 import { decodePlainLiterals } from "./plain-literal-decoding.js";
-import { findZoneRegions, type DefinitionLookup } from "./resolve-zone-containment.js";
+import { findZoneRegions, type DefinitionLookup, type KindSchemaOf } from "./resolve-zone-containment.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { readViolatesZone } from "./zone-slot.js";
 
@@ -54,13 +54,14 @@ const SOURCE = "telo";
 export interface ZoneViolationArgs {
   graph: CallGraph;
   resolveDef: DefinitionLookup;
+  schemaOf: KindSchemaOf;
   /** Only report against modules the entry owns — a published dependency's
    *  placement is not the consumer's to fix. */
   reportModules: ReadonlySet<string>;
 }
 
 export function validateZoneViolations(args: ZoneViolationArgs): AnalysisDiagnostic[] {
-  const { graph, resolveDef, reportModules } = args;
+  const { graph, resolveDef, schemaOf, reportModules } = args;
   const diagnostics: AnalysisDiagnostic[] = [];
   const reported = new Set<string>();
 
@@ -72,14 +73,14 @@ export function validateZoneViolations(args: ZoneViolationArgs): AnalysisDiagnos
     let found = violationsOf.get(key);
     if (!found) {
       const def = resolveDef(kind, module);
-      found = readViolatesZone(def?.schema as Record<string, any> | undefined);
+      found = readViolatesZone(def ? schemaOf(def) : undefined);
       violationsOf.set(key, found);
     }
     return found;
   };
 
   for (const attribute of ZONE_ATTRIBUTES.keys()) {
-    for (const region of findZoneRegions(graph, resolveDef, attribute)) {
+    for (const region of findZoneRegions(graph, resolveDef, attribute, schemaOf)) {
       for (const contained of region.contents.values()) {
         // The one step-level rule, and it is separate because it is a property
         // of the STEP rather than of its target: a retry whose backoff is long

@@ -32,22 +32,13 @@ export function ruleIdentity(annotation: RuleAnnotation, entry: unknown): string
 }
 
 /**
- * `inherited` followed by `own`, each identity once with the first kept. An
- * entry already present (a schema stamped with its merged rules and merged
- * again) is not repeated. A non-array side contributes nothing; with no array
- * on either side `own` is returned as written.
+ * `inherited` followed by `own`. A non-array side contributes nothing; with no
+ * array on either side `own` is returned as written. Each ancestor's rules are
+ * joined once by construction: an `inherited` side is its parent's rules
+ * already joined along its own chain, and no definition holds a folded schema.
  */
-export function joinInheritedRules(annotation: RuleAnnotation, inherited: unknown, own: unknown): unknown {
+export function joinInheritedRules(inherited: unknown, own: unknown): unknown {
   if (!Array.isArray(own)) return Array.isArray(inherited) ? inherited : own;
   if (!Array.isArray(inherited)) return own;
-  const seen = new Set<unknown>();
-  const out: unknown[] = [];
-  for (const entry of [...inherited, ...own]) {
-    const identity = ruleIdentity(annotation, entry);
-    if (seen.has(entry) || (identity !== undefined && seen.has(identity))) continue;
-    seen.add(entry);
-    if (identity !== undefined) seen.add(identity);
-    out.push(entry);
-  }
-  return out;
+  return [...inherited, ...own];
 }

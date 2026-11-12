@@ -622,6 +622,9 @@ export interface ModuleGraphDeps {
   refPositions(resource: ResourceManifest): { path: string; fieldPath: string; value: unknown }[];
   /** The resource's definition, resolved in its declaring module's scope. */
   definition(kind: string, module?: string): ResourceDefinition | undefined;
+  /** What a definition means along `extends`. Optional: without it a
+   *  definition is read as written. */
+  effectiveKind?(definition: ResourceDefinition): { schema?: Record<string, any>; capability?: string } | undefined;
   /** Where the resource holds inline declarations and how its fields are
    *  evaluated — what decides where its CEL sees a scope's members. */
   celScopeHolder(resource: ResourceManifest): CelScopeHolder;
@@ -671,6 +674,13 @@ const isDeclarationDocument = (manifest: ResourceManifest): boolean =>
 
 const moduleOf = (manifest: ResourceManifest): string | undefined =>
   (manifest.metadata as { module?: string } | undefined)?.module;
+
+/** A definition's schema as its instances are written against it. */
+const kindSchemaOf = (
+  deps: ModuleGraphDeps,
+  definition: ResourceDefinition | undefined,
+): Record<string, any> | undefined =>
+  definition && (deps.effectiveKind?.(definition) ?? (definition as { schema?: Record<string, any> })).schema;
 
 /** The canonical id of a resolved kind definition — where it was declared plus
  *  what it is called there, which is the one spelling every module agrees on. */
@@ -1026,7 +1036,11 @@ export function buildModuleGraph(
   // containment walk rather than re-derived, so what the editor draws and what
   // `telo check` enforces are the same region — including one declaring no
   // attributes, which is still a zone.
-  for (const zone of findZoneProviders(callGraph, (kind, module) => deps.definition(kind, module))) {
+  for (const zone of findZoneProviders(
+    callGraph,
+    (kind, module) => deps.definition(kind, module),
+    (definition) => kindSchemaOf(deps, definition),
+  )) {
     const owner = projectedId.get(zone.provider.id) ?? zone.provider.id;
     if (!byId.has(owner)) continue;
     const members: string[] = [];
@@ -1079,7 +1093,7 @@ export function buildModuleGraph(
     const manifest = node.root ? options.root : manifestById.get(node.id);
     if (!manifest) continue;
     const definition = deps.definition(node.kind, node.module);
-    const schema = definition?.schema as Record<string, any> | undefined;
+    const schema = kindSchemaOf(deps, definition);
     // The root's rows are its BOOT LIST and nothing else. `targets` carries the
     // step grammar, so the call graph mints a step node for every entry that is
     // not a bare `!ref` — and `targetRows` already renders every shape an entry
@@ -1150,9 +1164,7 @@ export function buildModuleGraph(
     if (labels.has(nodeId)) return labels.get(nodeId);
     const node = byId.get(nodeId);
     const manifest = manifestById.get(nodeId);
-    const schema = node && manifest
-      ? (deps.definition(node.kind, node.module)?.schema as Record<string, any> | undefined)
-      : undefined;
+    const schema = node && manifest ? kindSchemaOf(deps, deps.definition(node.kind, node.module)) : undefined;
     const matchers = rootMatchersOf(schema).map((p) => p.name);
     const found =
       manifest && matchers.length > 0
@@ -1536,7 +1548,8 @@ function projectResource(
     rows: [],
     rowArrays: [],
   };
-  if (definition?.capability) node.capability = definition.capability as string;
+  const capability = definition && (deps.effectiveKind?.(definition) ?? definition).capability;
+  if (capability) node.capability = capability as string;
   const canonical = canonicalKindOf(definition);
   if (canonical && canonical !== kind) node.canonicalKind = canonical;
   if (!definition) node.unknownKind = true;

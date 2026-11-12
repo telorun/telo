@@ -131,17 +131,19 @@ export function readExpansionSites(
   };
   const own = manifests.filter(isOwn);
 
-  const definitionOf = (kind: string, from: unknown): ResourceDefinition | undefined =>
-    definitionInScope<ResourceDefinition>(
-      registry,
-      kind,
-      (from as { metadata?: { module?: unknown } } | undefined)?.metadata,
-      aliases,
-      aliasesByModule,
-    );
+  const schemaOf = (kind: string, from: unknown): Record<string, any> | undefined =>
+    registry.effectiveSchemaOf(
+      definitionInScope<ResourceDefinition>(
+        registry,
+        kind,
+        (from as { metadata?: { module?: unknown } } | undefined)?.metadata,
+        aliases,
+        aliasesByModule,
+      ),
+    ) as Record<string, any> | undefined;
 
   for (const holder of own) {
-    const walker = new Walker(holder, sites, diagnostics, refused, (kind) => definitionOf(kind, holder));
+    const walker = new Walker(holder, sites, diagnostics, refused, (kind) => schemaOf(kind, holder));
     walker.holderDocument();
   }
 
@@ -158,7 +160,7 @@ export function readExpansionSites(
     firstLines.set(source, Math.min(firstLines.get(source) ?? Infinity, line));
   }
   for (const document of documents.filter(isOwn)) {
-    const walker = new Walker(document, sites, diagnostics, refused, (kind) => definitionOf(kind, document));
+    const walker = new Walker(document, sites, diagnostics, refused, (kind) => schemaOf(kind, document));
     const source = sourceOf(document);
     const line = (document.metadata as { sourceLine?: unknown } | undefined)?.sourceLine;
     const first =
@@ -192,7 +194,8 @@ class Walker {
     private readonly sites: ExpansionSite[],
     private readonly diagnostics: AnalysisDiagnostic[],
     private readonly refused: { holder: ResourceManifest; path: string }[],
-    private readonly definitionOf: (kind: string) => ResourceDefinition | undefined,
+    /** A kind's effective author schema. */
+    private readonly schemaOf: (kind: string) => Record<string, any> | undefined,
   ) {}
 
   /** A top-level document that is not itself a tag. */
@@ -507,11 +510,8 @@ class Walker {
 
   private cursorOf(kind: string | undefined): Cursor {
     if (typeof kind !== "string") return NO_CURSOR;
-    const definition = this.definitionOf(kind);
-    const schema = (definition as { schema?: unknown } | undefined)?.schema;
-    return schema && typeof schema === "object"
-      ? { schema: schema as Record<string, any>, root: schema as Record<string, any> }
-      : NO_CURSOR;
+    const schema = this.schemaOf(kind);
+    return schema && typeof schema === "object" ? { schema, root: schema } : NO_CURSOR;
   }
 
   /** The named top-level properties a kind marks `x-telo-scope`. */

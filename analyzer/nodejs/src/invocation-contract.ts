@@ -79,6 +79,7 @@ export function projectionModules(
         ? (table as AliasResolver).moduleForAlias(alias)
         : undefined;
     },
+    effectiveKind: (definition) => defs.effectiveKindOf(definition as ResourceDefinition),
     referenceSlots(declaration, module) {
       const view = { ...declaration, metadata: { ...declaration.metadata, module } };
       if (!defs.declaredReachOf(view as ResourceManifest, aliases, byModule)) return undefined;
@@ -968,13 +969,15 @@ function scalarFormOf(declared: unknown): DeclaredScalarForm | undefined {
  * the one its kind declares (`kindContract`, the field resolved along
  * `extends`) derives a part of the contract from the declaration it binds to,
  * what each such derivation reads, `definition` being the definition the
- * declaration's kind resolves to.
+ * declaration's kind resolves to and `projectionDeclarer` the document
+ * declaring that kind's projection.
  */
 export function contractReads(
   direction: ContractDirection,
   manifest: Record<string, any>,
   kindContract: unknown,
   definition: Record<string, any> | undefined,
+  projectionDeclarer: Record<string, any> | undefined,
 ): ReadPlace[] {
   const out: ReadPlace[] = [{ kind: "reference", keys: [direction], transitive: false, reads: READS_IDENTITY }];
   const visit = (value: unknown): void => {
@@ -984,7 +987,7 @@ export function contractReads(
       return;
     }
     const node = value as Record<string, any>;
-    const annotated = { node, at: [], item: [], delegate: () => [], definition };
+    const annotated = { node, at: [], item: [], delegate: () => [], definition, projectionDeclarer };
     if (node["x-telo-schema-projection-from"] !== undefined) {
       out.push(...projectionFromReads({ ...annotated, value: node["x-telo-schema-projection-from"] }));
     }

@@ -219,14 +219,8 @@ export class CelScopeQuery {
   /** The eval sites of `resource` — read off the gate the analysis pass applies
    *  to the resource's kind. */
   private evalSites(resource: ResourceManifest) {
-    const { defs, aliases, aliasesByModule } = this.ctx;
-    const scope = moduleAliasScope(resource.metadata, aliases, aliasesByModule);
-    const sites = governedCelEvalSites(
-      this.definitionFor(resource),
-      (kind) => defs.resolve(scope.resolveKind(kind) ?? kind) ?? defs.resolve(kind),
-      defs.shapeLookup,
-    );
-    return sites;
+    const { defs } = this.ctx;
+    return governedCelEvalSites(this.definitionFor(resource), defs, defs.shapeLookup);
   }
 
   /**

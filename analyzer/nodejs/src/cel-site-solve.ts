@@ -270,6 +270,9 @@ export interface CelSiteSolveInput {
   /** The definition `declaration`'s kind resolves to, read in the module
    *  `within` was written in. */
   readonly definitionOf: (declaration: Record<string, any>, within: ResourceManifest) => Record<string, any> | undefined;
+  /** The document declaring the projection of a kind `definitionOf` answered,
+   *  nearest along `extends` (the registry's effective-kind answer). */
+  readonly projectionDeclarerOf: (definition: Record<string, any> | undefined) => Record<string, any> | undefined;
   /** A named shape, by its `$ref`, as `witness` holds it. */
   readonly shapeOf: (ref: string, witness: Witness) => Record<string, any> | undefined;
   /** The name of the declaration a named shape's `$ref` names, when one does. */
@@ -1336,7 +1339,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       value,
       schema: input.schemaOf(value, target.manifest),
       shapeOf: (ref) => input.shapeOf(ref, wit),
-      definition: input.definitionOf(value, target.manifest),
+      ...kindOfReferent(input, value, target.manifest),
     };
   };
 
@@ -1467,7 +1470,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
           value,
           schema: input.schemaOf(value, found.holder.manifest),
           shapeOf: (shape) => input.shapeOf(shape, wit),
-          definition: input.definitionOf(value, found.holder.manifest),
+          ...kindOfReferent(input, value, found.holder.manifest),
         });
         readIn(
           found.holder,
@@ -1538,7 +1541,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
             value,
             schema: input.schemaOf(value, holder.manifest),
             shapeOf: (shape) => input.shapeOf(shape, wit),
-            definition: input.definitionOf(value, holder.manifest),
+            ...kindOfReferent(input, value, holder.manifest),
           });
           readIn(
             holder,
@@ -2471,7 +2474,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
           if (!keyword.startsWith("x-telo-")) continue;
           const reporter = readReporterOf(keyword);
           if (!reporter) continue;
-          places.push(...reporter({ value, node: target, at: local, item, delegate: annotated, definition }));
+          places.push(...reporter({ value, node: target, at: local, item, delegate: annotated, definition, projectionDeclarer: input.projectionDeclarerOf(definition) }));
         }
         return places;
       };
@@ -2661,7 +2664,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       } else if (head === "inputs") {
         const holder = (valueAt(projected, root) ?? {}) as Record<string, any>;
         const kindContract = input.kindContractOf(holder, site.declaration.manifest, "inputType");
-        for (const place of contractReads("inputType", holder, kindContract, input.definitionOf(holder, site.declaration.manifest))) {
+        for (const place of contractReads("inputType", holder, kindContract, ...contractKindArgs(input, holder, site.declaration.manifest))) {
           if (place.kind !== "referrers") reads.push([...root, ...place.keys]);
           classes.push(
             ...placeClasses(
@@ -3333,7 +3336,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
             if (!keyword.startsWith("x-telo-")) continue;
             const reporter = readReporterOf(keyword);
             if (!reporter) continue;
-            places.push(...reporter({ value: annotation, node: target, at: local, item, delegate: annotated, definition }));
+            places.push(...reporter({ value: annotation, node: target, at: local, item, delegate: annotated, definition, projectionDeclarer: input.projectionDeclarerOf(definition) }));
           }
           return places;
         };
@@ -3513,7 +3516,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     for (const direction of ["inputType", "outputType"] as const) {
       const kindContract = input.kindContractOf(projected, declaration.manifest, direction);
       if (kindContract === undefined && projected[direction] === undefined) continue;
-      for (const place of contractReads(direction, projected, kindContract, input.definitionOf(projected, declaration.manifest))) {
+      for (const place of contractReads(direction, projected, kindContract, ...contractKindArgs(input, projected, declaration.manifest))) {
         if (place.kind !== "referrers") readKeys.push(place.keys);
         classes.push(...placeClasses(declaration, place, wit, { own: declaration, reads: readKeys }));
       }
@@ -3915,7 +3918,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         value,
         schema: input.schemaOf(value, declaration.manifest),
         shapeOf: (shape) => input.shapeOf(shape, wit),
-        definition: input.definitionOf(value, declaration.manifest),
+        ...kindOfReferent(input, value, declaration.manifest),
       });
       // A referrers read keeps no member of the declaration it reads at.
       const keyed = places.filter((place) => place.kind !== "referrers");
@@ -4471,4 +4474,25 @@ function valueAt(root: unknown, keys: ReadKeys): unknown {
     node = (node as Record<string | number, unknown>)[key as string];
   }
   return node;
+}
+
+/** A referent's kind, as a read reporter reads it: the definition and the
+ *  document declaring its projection. */
+function kindOfReferent(
+  input: Pick<CelSiteSolveInput, "definitionOf" | "projectionDeclarerOf">,
+  declaration: Record<string, any>,
+  within: ResourceManifest,
+): { definition: Record<string, any> | undefined; projectionDeclarer: Record<string, any> | undefined } {
+  const definition = input.definitionOf(declaration, within);
+  return { definition, projectionDeclarer: input.projectionDeclarerOf(definition) };
+}
+
+/** {@link kindOfReferent} as `contractReads`' trailing arguments. */
+function contractKindArgs(
+  input: Pick<CelSiteSolveInput, "definitionOf" | "projectionDeclarerOf">,
+  declaration: Record<string, any>,
+  within: ResourceManifest,
+): [Record<string, any> | undefined, Record<string, any> | undefined] {
+  const { definition, projectionDeclarer } = kindOfReferent(input, declaration, within);
+  return [definition, projectionDeclarer];
 }

@@ -44,9 +44,9 @@ describe("Run step schema reaches the editor resolved", () => {
     const loaded = await loader.loadModule(`${repoRoot}/modules/run/telo.yaml`);
 
     const sequence = loaded.owner.manifests.find(
-      (m) => m?.kind === "Telo.Definition" && (m.metadata as { name?: string })?.name === "Sequence",
+      (m) => m?.kind === "Telo.Definition" && (m.metadata as { name?: string })?.name === "Iteration",
     ) as Record<string, any> | undefined;
-    expect(sequence, "Run.Sequence definition").toBeDefined();
+    expect(sequence, "Run.Iteration definition").toBeDefined();
 
     const stepSchema = getStepSchema(sequence!.schema);
     expect(stepSchema, "step schema behind the steps slot").toBeDefined();

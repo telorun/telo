@@ -491,7 +491,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
           ? dottedPattern(from.array.replace(/\[\d+\].*$/, ""))
           : (edge.slotKeys ?? dottedPattern(edge.slot));
       const slotSchema = schemaNodeAt(
-        callerDef?.schema as Record<string, any> | undefined,
+        defs.effectiveSchemaOf(callerDef) as Record<string, any> | undefined,
         bodySlot,
       );
       const provides = readProvidesZone(slotSchema);
@@ -692,7 +692,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     // that no longer holds the library's internals.
     if (isForwardedDeclaration(node.manifest)) continue;
     const def = resolveDef(node.kind, meta?.module);
-    const schema = def?.schema as Record<string, any> | undefined;
+    const schema = defs.effectiveSchemaOf(def) as Record<string, any> | undefined;
     if (!def || !schema) continue;
     // A requirement at the SCHEMA ROOT is unconditional: every instance of the
     // kind must be inside the zone, whatever it is configured with. A parking

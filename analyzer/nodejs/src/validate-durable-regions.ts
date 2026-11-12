@@ -17,7 +17,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import type { ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
 import { auditCalls, buildCelEnvironment, isTaggedSentinel, celExpressionsOf } from "@telorun/templating";
 import type { CallGraph, CallGraphNode, StepGraphNode } from "./call-graph.js";
@@ -26,11 +26,12 @@ import { renderChain, type CallableFlags } from "./callable-flags.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { liveValueIn } from "./serializable-slot.js";
-import { effectiveAuthorSchema, effectiveContractField } from "./extends-resolution.js";
+import { effectiveContractField } from "./extends-resolution.js";
 import { valueDerivedContract } from "./value-derived-contract.js";
 import {
   findZoneRegions,
   type DefinitionLookup,
+  type KindSchemaOf,
   type ZoneRegion,
 } from "./resolve-zone-containment.js";
 
@@ -322,6 +323,7 @@ function checkMissingContracts(
   region: ZoneRegion,
   collapsed: ReadonlySet<string>,
   resolveDef: DefinitionLookup,
+  schemaOf: KindSchemaOf,
   graph: CallGraph,
   reportModules: ReadonlySet<string>,
   diagnostics: AnalysisDiagnostic[],
@@ -345,9 +347,7 @@ function checkMissingContracts(
         "outputType",
       );
       if (declared !== undefined && declared !== null) continue;
-      const resolveKind = (kind: string, from?: ResourceDefinition) =>
-        resolveDef(kind, (from?.metadata as { module?: string } | undefined)?.module);
-      const authorSchema = effectiveAuthorSchema(def, resolveKind);
+      const authorSchema = schemaOf(def) ?? {};
       if (valueDerivedContract(target.manifest, authorSchema, "outputType")) continue;
       const owner = graph.nodes.get((node as StepGraphNode).owner);
       const manifest = owner?.type === "resource" ? owner.manifest : target.manifest;
@@ -426,6 +426,7 @@ function owned(manifest: ResourceManifest, reportModules: ReadonlySet<string>): 
 export interface DurableRegionArgs {
   graph: CallGraph;
   resolveDef: DefinitionLookup;
+  schemaOf: KindSchemaOf;
   /** Only report against modules the entry owns — a published dependency's body
    *  is not the consumer's to fix, the `X_TELO_REF_UNRESOLVED` precedent. */
   reportModules: ReadonlySet<string>;
@@ -441,15 +442,16 @@ export interface DurableRegionArgs {
 export function validateDurableRegions(args: DurableRegionArgs): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
 
-  const idempotent = findZoneRegions(args.graph, args.resolveDef, "idempotent");
+  const idempotent = findZoneRegions(args.graph, args.resolveDef, "idempotent", args.schemaOf);
   const collapsed = new Set(idempotent.flatMap((r) => [...r.contents.keys()]));
 
-  for (const region of findZoneRegions(args.graph, args.resolveDef, "replayed")) {
+  for (const region of findZoneRegions(args.graph, args.resolveDef, "replayed", args.schemaOf)) {
     checkDetach(region, args.reportModules, diagnostics);
     checkMissingContracts(
       region,
       collapsed,
       args.resolveDef,
+      args.schemaOf,
       args.graph,
       args.reportModules,
       diagnostics,

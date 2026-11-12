@@ -123,13 +123,21 @@ describe("an extends child's rules", () => {
     ).toEqual(["schema.x-telo-referrer-rules[0].code"]);
   });
 
-  it("are joined once when the child's schema already holds them", () => {
-    const resolve = (kind: string) => (kind === "Self.Parent" ? parentDef : undefined);
-    const parentDef = parent({ "x-telo-resource-rules": [rule("NEEDS_A", "has(self.a)")] }) as any;
-    const childDef = child({ "x-telo-resource-rules": [rule("NEEDS_B", "has(self.b)")] }) as any;
-    const stamped = { ...childDef, schema: effectiveAuthorSchema(childDef, resolve) };
+  it("join each ancestor's rule once along a three-level chain", () => {
+    const grandparentDef = {
+      ...(parent({ "x-telo-resource-rules": [rule("NEEDS_A", "has(self.a)")] }) as any),
+      metadata: { name: "Grandparent", module: "own", source: "grandparent.yaml" },
+    };
+    const parentDef = {
+      ...(child({ "x-telo-resource-rules": [rule("NEEDS_B", "has(self.b)")] }) as any),
+      metadata: { name: "Parent", module: "own", source: "parent.yaml" },
+      extends: "Self.Grandparent",
+    };
+    const childDef = child({ "x-telo-resource-rules": [rule("NEEDS_C", "has(self.c)")] }) as any;
+    const resolve = (kind: string) =>
+      kind === "Self.Parent" ? parentDef : kind === "Self.Grandparent" ? grandparentDef : undefined;
     expect(
-      (effectiveAuthorSchema(stamped, resolve)["x-telo-resource-rules"] as { code: string }[]).map((r) => r.code),
-    ).toEqual(["NEEDS_A", "NEEDS_B"]);
+      (effectiveAuthorSchema(childDef, resolve)["x-telo-resource-rules"] as { code: string }[]).map((r) => r.code),
+    ).toEqual(["NEEDS_A", "NEEDS_B", "NEEDS_C"]);
   });
 });

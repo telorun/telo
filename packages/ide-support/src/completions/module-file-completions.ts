@@ -12,7 +12,7 @@ export function moduleFileEntry(
   registry: AnalysisRegistry | undefined,
 ): "file" | "directory" | undefined {
   const { kind } = site;
-  const schema = kind ? registry?.resolveDefinition(kind)?.schema : undefined;
+  const schema = kind ? registry?.effectiveKind(kind)?.schema : undefined;
   if (!registry || !kind || !schema) return undefined;
   const field = fieldSchemaAt(schema as Record<string, any>, site.yamlPath, site.isItem, (from) =>
     registry.resolveSchemaFrom(from, kind),
