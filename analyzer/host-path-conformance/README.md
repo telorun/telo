@@ -26,7 +26,7 @@ Two passes, in this order over the resource's whole configuration:
 - `kernel/nodejs/tests/host-path-conformance.test.ts` — the Node kernel's creation-time checks.
 - `kernel/rust/src/host_paths.rs` (tests) — the Rust kernel's.
 
-A relative literal never reaches the Node kernel's creation-time check: the analysis it runs at load refuses it first (`HOST_PATH_RELATIVE`). The Rust kernel runs no analysis, so for a literal this row is the refusal it raises.
+A relative literal never reaches the Node kernel's creation-time check: the analysis it runs at load refuses it first (`HOST_PATH_RELATIVE`). The Rust kernel's analysis has no host-path pass, so for a literal this row is the refusal it raises.
 
 A row holds at most one refusal of each kind: the Node kernel walks an object's keys in the order they were written and the Rust kernel in sorted order, so which of two would be reported first is not pinned.
 

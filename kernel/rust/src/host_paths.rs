@@ -236,7 +236,7 @@ pub fn refuse_mismatched_host_paths(resource: &Value, schema: &Value, label: &st
 }
 
 /// Refuse a relative host path a resource holds (`ERR_HOST_PATH_RELATIVE`). This
-/// kernel runs no analysis and its schema validator does not read `x-telo-type`,
+/// kernel's analysis has no host-path pass and its schema validator does not read `x-telo-type`,
 /// so a relative literal is refused here, where the Node kernel's load-time
 /// analysis refuses it first.
 pub fn refuse_relative_host_paths(resource: &Value, schema: &Value, label: &str) -> Result<(), KernelError> {
