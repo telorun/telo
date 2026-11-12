@@ -1,6 +1,0 @@
-modules:
-  modules/http-server: Fixed
-body: A request whose path holds a percent-escape that does not decode is answered as a
-  request no route matches — by the mount's not-found handler, notFoundHandler, or the
-  bare 404 problem — and passes the request log, span, unknownHosts and mount access
-  like any request, instead of Fastify's own 400 FST_ERR_BAD_URL body.

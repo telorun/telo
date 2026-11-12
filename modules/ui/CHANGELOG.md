@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 - 2026-11-12
+### Added
+* Page paths take variables: a {name} segment stands for one segment, read on the page and by every reader, listing, view and source it places as params, a read of a variable the page lacks refused by telo check; breaking: a brace in a page path is now a variable, and anywhere else in a segment it is refused. A collection source's basePath may be a template filled from params. Ui.Data and Ui.Listing take reloadEvery, at least 5s, reading again on a timer and keeping what is loaded. A markdown node draws Markdown text read through value, and its annotations put a control running a bound action, with a count badge, on each item of rows at its line. A time node, and a list column of type time, draws a date or date-time relative to now with relative: true, or absolute in the viewer's language and zone; a string with no date format is refused. A button node runs an action with inputs bound from params, query and the data in scope, judged against the action's input model; with prompt: true a bound action leaves unbound the required inputs the person enters in its prompt. The button node's action, inputs, confirm, prompt and enabled share Ui.BoundAction's declaration. Breaking: Ui.RowAction is renamed Ui.BoundAction, used by rowActions, a layout's move, a markdown node's annotations and a button, and its controller code is now ERR_UI_BOUND_ACTION_INPUTS_INVALID. A list node takes rowStyle and a column style. A date or date-time filter's default and a preset's value may be relative to now, { unit, offset }, under eq, gt, gte, lt or lte. Breaking: a filter key a model does not declare in a listing's or an option source's filters is now SCHEMA_VIOLATION rather than UI_SOURCE_FILTER_UNKNOWN_PROPERTY.
+### Fixed
+* An address's pathParams and queryParams accept a path into data whose value may be null, as documented: null leaves the address unresolved or the parameter out, where telo check refused it with CEL_TYPE_ERROR.
+
 ## 0.11.0 - 2026-11-09
 ### Added
 * A Ui.Page's title is optional: a page without one draws no heading, is left out of an omitted navigation, and a navigation entry naming it must give its own text. The page's reading and document carry no title then, and preparedNavigation refuses such an entry with ERR_UI_NAVIGATION_PAGE_UNTITLED.

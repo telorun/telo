@@ -1,5 +1,43 @@
 # @telorun/kernel
 
+## 0.136.0
+
+### Minor Changes
+
+- 4f3d623: `x-telo-context-from-path-template: "<relative pointer>"` on a binding (or a member beneath one) of an `x-telo-context` types it as the variables of the path template the resource holds at the pointer (`0/path`): a closed object with one required string per `{name}` segment, so a read of a variable the template lacks is `CEL_UNKNOWN_FIELD`, and an open map of strings where the field holds no template. It composes with `x-telo-context-from-referrer`, and a finding in an imported library's exported resource typed through a chain of referrers is now reported at the entry's slot the chain starts from. A misplaced or malformed annotation is `CONTEXT_FROM_PATH_TEMPLATE_INVALID` (`SCHEMA_VIOLATION` for a value that is no relative pointer).
+
+  The member form of `x-telo-value-schema-from` (`{ from, member: "0#" }`) on a map's values now types the map: each key must name a property of the reached type and its value is held to that property, so an unknown key is refused — `CONTRACT_INPUTS_MISMATCH` at a call site, `SCHEMA_VIOLATION` at a configuration slot, `ERR_INPUT_INVALID` for a computed map at dispatch — where it used to contribute nothing, and inside a contract a map value is no longer checked against an object conjunct it could never meet. A key the kind's own schema fixes keeps its own reading.
+
+  A `oneOf` / `anyOf` whose branches give one property different `x-telo-eval` sites — an accessor `text` in one branch and a literal `text` in another, or different modes beneath a property both declare — is refused, since every branch is read at one path with no value to choose between them and the sites merged into every branch: `EVAL_MODE_BRANCH_CONFLICT` once at the document declaring the union (the kind's `schema:` or the named shape it reaches, a dependency's at the `imports:` entry), and `ERR_EVAL_MODE_BRANCH_CONFLICT` when the kernel registers a kind whose schema reaches it. A difference of type alone, a property only one branch declares, and `allOf` are not refused.
+
+  An accessor field declaring a `format` — or a union every branch of which declares one — now takes only a chain whose declared source is a string of one of those formats: a declared string with no format, or of another format, is `CEL_TYPE_ERROR` at the accessor (`'data.title' is a string with no format; the field takes a string of format date or date-time`), at resources, `with:` members, template-body entries and forward views alike. A source's `null` branch is ignored; an open, `dyn` or non-string source, a literal, and evaluated CEL are judged as before.
+
+  `x-telo-ref` takes `completedWhen: <pointer>` beside `inputs:`, naming a `type: boolean` sibling of the slot: where that sibling is literally `true`, the target obtains the inputs its argument map leaves unbound, so `CONTRACT_INPUTS_MISMATCH` no longer reports a required input missing from the map there — an undeclared key and a value of the wrong type are still refused. A `completedWhen` that is no pointer, names no boolean sibling or sits on a slot with no `inputs:` is `X_TELO_REF_INVALID_COMPLETED_WHEN` at the kind or named shape, and `ERR_X_TELO_REF_INVALID_COMPLETED_WHEN` when the kernel registers it.
+
+  A JSON Pointer `$ref` — into a local `$defs` member (`#/$defs/Column/properties/href`) or into a named shape (`telo://Self/BoundAction#/properties/action`, canonicalized like the whole-shape spelling) — is read as the member written inline by every schema walk: a reference slot reached through it is a slot of the kind, with its `inputs` / `completedWhen` siblings and argument-map default read from the object holding the `$ref`, so its call site is checked (`CONTRACT_INPUTS_MISMATCH`) and its `!ref` injected; its eval sites, accessors, regions, contexts, `x-telo-match-for`, texts and resource-rule `resolve:` paths are found as they are inline, and a local pointer beneath it resolves in the shape's own document. A `completedWhen` sibling reached by any `$ref` counts. A schema reached through such a pointer whose target is itself a reference to a shape holding a recursive fragment (a `Text`'s `Message`) now compiles in both halves, where it failed with `can't resolve reference #/$defs/telo:Message`. An `x-telo-text-values-from` climbing above the resource or the named shape it is written in is `TEXT_VALUES_INVALID` (`ERR_TEXT_VALUES_INVALID` at registration) instead of naming nothing silently.
+
+  `x-telo-context-nullable-when` misdirected — outside a binding's subtree, climbing above the resource or a named shape, naming a member the schema does not declare, or holding an `equals` literal its target refuses — is now an error (`CONTEXT_NULLABLE_WHEN_INVALID`), not a warning: the binding was otherwise typed non-null where the kind says null is possible.
+
+  A resource rule's `resolve:` pointer may repeat a group as `in:` does (`/navigation/items(/*/items)*/*/page`), taken as many times as the resource's own data holds another level; a group stepping over a reference slot is refused. A dependency's malformed `completedWhen` is reported at the `imports:` entry reaching it, and the eval-mode branch guard also judges need types.
+
+- 330c28e: A `with:` scope's resources read the inputs of the call that opened the scope. A kind declares it with `x-telo-scope: { regions: [...], openedBy: dispatch }` (`Telo.Sequence` does); the members' creation-time fields then read `inputs`, typed by the holder's `inputType` under `telo check` (an undeclared field is `CEL_UNKNOWN_FIELD`, refused at load too) and offered by the editor's completion, while a scope in the string or list form binds nothing (`CEL_UNKNOWN_IDENTIFIER`). `openedBy: dispatch` on a kind nothing dispatches, or a malformed object form, is `SCOPE_OPENED_BY_INVALID` / `ERR_SCOPE_OPENED_BY_INVALID`.
+
+  `ScopeHandle.run` now takes the opening inputs as its first, required argument — an object on a scope opened by dispatch, `null` on any other; a legacy one-argument open reads as `null`, and a disagreement is `ERR_SCOPE_OPENING_INVALID`. Every run registers its own copy of the member declarations, so a run after the first no longer reuses the first run's injected instances.
+
+  A run is its contract applied to `{}`: the kernel fills an instance's input-contract defaults, validates them (`ERR_INPUT_INVALID`) and hands them to `run(ctx, inputs)` (`Controller.Run` gains `inputs`), so a sequence started as a boot target reads its defaults; `CONTRACT_INPUTS_AT_RUN_SITE` now refuses any contract `{}` fails.
+
+  Each scope run owns a redaction set — the opening inputs at the holder's `x-telo-sensitive` paths, matched by substring — applied to the logs, `Created` properties and trace payloads of the resources created in the run, to the trace payloads of the dispatches the holder issues inside it (`InvokeContext.scopeRun`, the step engine's per-dispatch identity from `ScopeContext.runIdentity`) and of the opening dispatch, and to an error that left the run. The module context's set never grows with call count.
+
+  A scope run lives until the streams leaving it settle. What `ScopeHandle.run`'s callback returns is handed back with every stream in it held, and the run is torn down once each has been read to its end, failed or been cancelled — in the background, a teardown failure logged on the holder as `scope.teardown.failed`; a run nothing leaves is torn down before `run` returns, as before. `Telo.Sequence` produces its `outputs` inside the scope, so a scoped resource's stream it returns, maps or hands to detached work keeps the resource alive. Every dispatch now carries its own `InvokeContext.owner` (inherited by `deriveContext`, `owner` on the controller protocol's dispatch contexts, additive within `telo-10`), which owns a held stream returned to it and cancels one it never reads when it ends; a source from `ctx.createCancellationSource()` is a root owner until it is disposed or cancelled, the boot runner one owner for its whole `targets:` run, and a context with no owner — `ctx.rootContext()` alone, the free `createCancellationSource()` — owns nothing, so a held stream reaching it is cancelled at once and a later pull raises `ERR_INVOKE_CANCELLED` naming the fix. A `Telo.Service`'s `run()` now runs with no ambient invocation context.
+
+### Patch Changes
+
+- Updated dependencies [4f3d623]
+- Updated dependencies [330c28e]
+  - @telorun/analyzer@0.136.0
+  - @telorun/templating@0.136.0
+  - @telorun/cel@0.136.0
+
 ## 0.135.0
 
 ### Minor Changes
