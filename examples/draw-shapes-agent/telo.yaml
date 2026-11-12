@@ -1,27 +1,30 @@
 # Draw-shapes agent — an HTTP API where an AI vision agent draws shapes on an image.
 #
 #   POST /v1/drawings  { "prompt": "a red square top-left and a blue circle box centered" }
-#   → 201 { "url": "<presigned S3 GET url>", "expiresAt": "...", "summary": "..." }
+#   → 201 { "url": "/drawings/<id>.png", "summary": "..." }
+#
+# The same route backs a page on `/`: a prompt box, and the summary with a link to the
+# drawing once the agent has converged.
 #
 # How it works: the handler mints a document id, then invokes one Ai.Agent. The agent
 # has a single tool, `draw`, that renders rectangles onto a blank 1024×768 canvas,
-# stores the PNG in S3 under the document id, and returns the rendered image straight
-# back to the model as an image tool result. The model looks at what it drew, adjusts,
-# and redraws until the layout matches the request — the visual feedback loop that the
-# multimodal tool-result support makes possible. After the agent converges, the handler
-# presigns the (overwritten) object and returns the link. The model only ever passes the
-# document id and the shape list; the bytes never ride through it.
+# saves the PNG under the document id in the drawings directory, and returns the
+# rendered image straight back to the model as an image tool result. The model looks
+# at what it drew, adjusts, and redraws until the layout matches the request — the
+# visual feedback loop that the multimodal tool-result support makes possible. The
+# drawings directory is also served at `/drawings`, so once the agent converges the
+# handler returns that link. The model only ever passes the document id and the shape
+# list; the bytes never ride through it.
 #
-# Run it (needs a vision-capable OpenAI model and an S3-compatible store, e.g. MinIO):
-#   OPENAI_API_KEY=sk-...  S3_ACCESS_KEY_ID=...  S3_SECRET_ACCESS_KEY=...  \
-#   S3_ENDPOINT=http://localhost:9000  S3_BUCKET=telo-draw  \
-#   pnpm run telo ./examples/draw-shapes-agent
+# Run it (needs a vision-capable OpenAI model and nothing else):
+#   OPENAI_API_KEY=sk-...  pnpm run telo ./examples/draw-shapes-agent
 kind: Telo.Application
 metadata:
   name: DrawShapesAgent
-  categories: [ AI, Transport ]
+  categories: [ AI, Transport, UI ]
   version: 1.0.0
-  description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
+  description: HTTP API and a web page where an AI vision agent draws shapes on a canvas and returns a link to the saved picture.
+lang: en
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.133.0" }
 imports:
@@ -30,21 +33,23 @@ imports:
   OpenAI: ../../modules/openai
   HttpClient: ../../modules/http-client
   Image: ../../modules/image
-  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Fs: ../../modules/fs
   Run: ../../modules/run
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 targets:
   - !ref server
-  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
+  - { name: openUi, invoke: !ref openUi, inputs: { url: !cel "resources.server.status.localUrl" } }
 ports: { http: { env: PORT, default: 8080 } }
 variables:
   modelId: { env: MODEL, type: string, default: gpt-5.2 }
-  s3Bucket: { env: S3_BUCKET, type: string, default: telo-draw }
-  s3Endpoint: { env: S3_ENDPOINT, type: string, default: http://localhost:9000 }
-  s3ForcePathStyle: { env: S3_FORCE_PATH_STYLE, type: boolean, default: true }
-secrets:
-  openaiApiKey: { env: OPENAI_API_KEY, type: string }
-  s3AccessKeyId: { env: S3_ACCESS_KEY_ID, type: string }
-  s3SecretAccessKey: { env: S3_SECRET_ACCESS_KEY, type: string }
+  drawingsDir:
+    env: DRAWINGS_DIR
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: ./drawings
+    description: Where the drawings are saved and served from, resolved against the working directory.
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string } }
 ---
 # The account: base URL and credential on the client, so the model kind carries
 # no key and inherits the 401 re-acquire-and-retry from `http-client`.
@@ -67,15 +72,6 @@ model: !cel "variables.modelId"
 request: !ref openaiRequest
 options: { temperature: 0.2 }
 ---
-kind: S3.Bucket
-metadata: { name: store }
-bucketName: !cel "variables.s3Bucket"
-endpoint: !cel "variables.s3Endpoint"
-accessKeyId: !cel "secrets.s3AccessKeyId"
-secretAccessKey: !cel "secrets.s3SecretAccessKey"
-forcePathStyle: !cel "variables.s3ForcePathStyle"
-createIfMissing: true
----
 # Blank canvas seed — regenerated deterministically on every draw, so the field set
 # (the shapes) is the only state that changes between turns.
 kind: Image.Blank
@@ -87,28 +83,22 @@ metadata: { name: drawBoxes }
 stroke: { color: "#1D4ED8", width: 3 }
 label: { color: "#FFFFFF", background: "#1D4ED8", placement: top-left }
 ---
-kind: S3.Put
-metadata: { name: putObject }
-bucketRef: !ref store
----
-kind: S3.PresignedUrl
-metadata: { name: presignGet }
-bucketRef: !ref store
-operation: get
-expiresIn: 3600
+kind: Fs.FileWrite
+metadata: { name: saveDrawing }
+cwd: !cel "variables.drawingsDir"
 ---
 # The unique object key for one request. uuidv4() (a CEL function) supplies the
-# randomness; the script only shapes it into a key, captured as a step result so the
-# handler can hand the SAME id to the agent and later presign it.
+# randomness; the value only shapes it into a file name, captured as a step result so
+# the handler can hand the SAME id to the agent and later link to it.
 kind: Run.Value
 metadata: { name: makeId }
 inputType:
   kind: Telo.JsonSchema
   schema: { type: object, properties: { seed: { type: string } } }
 value:
-  documentId: !cel "'drawings/' + inputs.seed + '.png'"
+  documentId: !cel "inputs.seed + '.png'"
 ---
-# The composite tool the agent calls: render shapes → store → return the image. A
+# The composite tool the agent calls: render shapes → save → return the image. A
 # Telo.Sequence (a Telo.Runnable) wrapped as a single tool — the widened Ai.Tools slot.
 kind: Telo.Sequence
 metadata: { name: drawTool }
@@ -140,11 +130,11 @@ steps:
       image: !cel "steps.blank.result.image"
       shapes: !cel "inputs.shapes"
   - name: store
-    invoke: !ref putObject
+    invoke: !ref saveDrawing
     inputs:
-      key: !cel "inputs.documentId"
-      body: !cel "steps.mark.result.image"
-      contentType: !cel "steps.mark.result.mediaType"
+      path: !cel "inputs.documentId"
+      content: !cel "steps.mark.result.image"
+      createParents: true
 outputs:
   image: !cel "steps.mark.result.image"
   mediaType: !cel "steps.mark.result.mediaType"
@@ -294,7 +284,7 @@ maxSteps: 16
 toolProviders:
   - provider: !ref drawTools
 ---
-# HTTP handler: mint an id → run the agent (id carried in the prompt) → presign the key.
+# HTTP handler: mint an id → run the agent (id carried in the prompt) → link to the file.
 kind: Telo.Sequence
 metadata: { name: handleDraw }
 inputType:
@@ -309,13 +299,8 @@ steps:
     invoke: !ref shapeArtist
     inputs:
       prompt: !cel "'Document id: ' + steps.genId.result.documentId + '. Drawing request: ' + inputs.prompt"
-  - name: link
-    invoke: !ref presignGet
-    inputs:
-      key: !cel "steps.genId.result.documentId"
 outputs:
-  url: !cel "steps.link.result.url"
-  expiresAt: !cel "steps.link.result.expiresAt"
+  url: !cel "'/drawings/' + steps.genId.result.documentId"
   summary: !cel "steps.draw.result.text"
 ---
 kind: Http.Server
@@ -327,6 +312,12 @@ mounts:
   - path: /v1
     mount: !ref drawRoutes
   - { path: /docs, mount: { kind: Http.Reference } }
+  - { path: /drawings, mount: !ref drawingFiles }
+  - { path: /, mount: !ref ui }
+---
+kind: Http.Static
+metadata: { name: drawingFiles }
+root: !cel "variables.drawingsDir"
 ---
 kind: Http.Api
 metadata: { name: drawRoutes }
@@ -348,7 +339,6 @@ routes:
           application/json:
             body:
               url: !cel "result.url"
-              expiresAt: !cel "result.expiresAt"
               summary: !cel "result.summary"
     catches:
       # Catch-all: covers the handler's declared throws and the agent's runtime
@@ -360,5 +350,51 @@ routes:
               error: !cel "error.message"
               code: !cel "error.code"
 ---
+# What the form sends and what comes back; the route says the same.
+kind: Telo.JsonSchema
+metadata: { name: DrawingRequest }
+schema:
+  type: object
+  required: [prompt]
+  additionalProperties: false
+  properties: { prompt: { type: string, title: What should be drawn, minLength: 1 } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Drawing }
+schema:
+  type: object
+  required: [url, summary]
+  properties:
+    url: { type: string, format: uri, title: Drawing }
+    summary: { type: string, title: What was drawn }
+---
+# The agent converges over several model calls, so a press takes a while.
+kind: Ui.Action
+metadata: { name: drawAction }
+inputModel: !ref DrawingRequest
+outputModel: !ref Drawing
+request: { target: /v1/drawings }
+label: Draw
+concurrency: serial
+result:
+  type: stack
+  children:
+    - { type: value, value: !cel "result.summary" }
+    - { type: value, value: !cel "result.url", text: Open the drawing }
+---
+kind: UiReact.App
+metadata: { name: ui }
+title: Draw shapes
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Draw
+    width: contained
+    children:
+      - { type: text, text: Describe a layout, style: heading }
+      - { type: text, text: "For example: a red square top-left and a blue circle centered. The agent draws, reviews its own picture and redraws until it matches.", style: muted }
+      - { type: composite, ref: !ref drawAction }
+---
 kind: Telo.OpenUrl
-metadata: { name: openDocs }
+metadata: { name: openUi }

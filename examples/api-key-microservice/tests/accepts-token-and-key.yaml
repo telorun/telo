@@ -43,19 +43,12 @@ kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
-    metadata: { name: issuer }
-    source: ../issuer.yaml
-    ports: { http: 8602 }
-    secrets: { wrapKey: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef }
-  - kind: App.Instance
     metadata: { name: service }
     source: ../telo.yaml
-    ports: { http: 8601 }
+    ports: { http: 8601, issuer: 8602 }
     variables:
-      jwksUrl: http://127.0.0.1:8602/.well-known/jwks.json
       dbFile: !cel "variables.dbFile"
 targets:
-  - !ref issuer
   - !ref service
 steps:
   - name: adminToken

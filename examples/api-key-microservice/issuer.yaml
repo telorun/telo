@@ -7,9 +7,10 @@ metadata:
     accepts: it publishes its public keys at `/.well-known/jwks.json` and mints
     a signed token for whatever subject, audience and scope it is asked for at
     `POST /token`. It authenticates nobody, so run it only on a developer's
-    machine to get a token to call the API with.
+    machine to get a token to call the API with. `telo.yaml` starts it itself; run
+    it on its own with:
 
-        ISSUER_WRAP_KEY=$(openssl rand -hex 32) pnpm run telo examples/api-key-microservice/issuer.yaml
+        pnpm run telo examples/api-key-microservice/issuer.yaml
         curl -s localhost:9100/token -H 'content-type: application/json' \
           -d '{"subject":"alice","audience":"http://localhost:8080/api","scope":"orders:read"}'
 imports:
@@ -20,13 +21,14 @@ variables:
   issuer:
     env: ISSUER_URL
     type: string
-    default: https://issuer.example.test
-    description: The `iss` claim of every token; `telo.yaml` accepts the issuer `https://issuer.example.test`.
+    default: http://127.0.0.1:9100
+    description: The `iss` claim of every token; `telo.yaml` accepts the issuer `http://127.0.0.1:9100`.
 secrets:
   wrapKey:
     env: ISSUER_WRAP_KEY
     type: string
-    description: High-entropy secret the signing keys are sealed under in the store.
+    default: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    description: Secret the signing keys are sealed under in the store. The default is a development value; set one of your own outside a developer's machine.
 ports: { http: { env: ISSUER_PORT, protocol: tcp, default: 9100 } }
 targets:
   - !ref server

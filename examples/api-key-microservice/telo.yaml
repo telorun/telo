@@ -10,9 +10,10 @@ metadata:
     and writes need their own scopes, and an admin mount issues and revokes API
     keys and revokes a token by its id.
 
-    Start the stand-in issuer (`issuer.yaml`) for a token to call it with:
+    It starts a stand-in issuer (`issuer.yaml`) itself, so there is a token to call
+    it with from the first run; set `JWKS_URL` to verify against a real issuer's
+    keys instead:
 
-        ISSUER_WRAP_KEY=$(openssl rand -hex 32) pnpm run telo examples/api-key-microservice/issuer.yaml
         pnpm run telo examples/api-key-microservice/telo.yaml
         curl -s localhost:9100/token -H 'content-type: application/json' \
           -d '{"subject":"alice","audience":"http://localhost:8080/api","scope":"orders:read"}'
@@ -22,6 +23,7 @@ requires:
   # 0.133.0: `Telo.OpenUrl`.
   telo: ">=0.133.0"
 imports:
+  App: ../../modules/app
   Http: ../../modules/http-server
   Jose: ../../modules/jose
   AuthBearer: ../../modules/auth-bearer
@@ -34,18 +36,27 @@ variables:
   jwksUrl:
     env: JWKS_URL
     type: string
-    default: http://127.0.0.1:9100/.well-known/jwks.json
-    description: Where that issuer publishes its public keys.
+    default: ""
+    description: Where the issuer publishes its public keys. Empty means the bundled stand-in issuer.
   dbFile:
     env: DB_FILE
     type: string
     x-telo-type: { name: Telo.HostPath, entry: file }
     default: ./tmp/orders-api.db
-ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
+ports:
+  http: { env: PORT, protocol: tcp, default: 8080 }
+  issuer: { env: ISSUER_PORT, protocol: tcp, default: 9100 }
 targets:
+  - !ref devIssuer
   - !ref schema
   - !ref server
   - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
+---
+# The issuer the tokens come from when `JWKS_URL` names none.
+kind: App.Instance
+metadata: { name: devIssuer }
+source: ./issuer.yaml
+ports: { http: !cel "ports.issuer" }
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -78,8 +89,10 @@ table: revoked_tokens
 ---
 kind: AuthBearer.Jwt
 metadata: { name: accessTokens }
-keys: { kind: Jose.RemoteKeySet, url: !cel "variables.jwksUrl" }
-issuer: https://issuer.example.test
+keys:
+  kind: Jose.RemoteKeySet
+  url: !cel "variables.jwksUrl != '' ? variables.jwksUrl : 'http://127.0.0.1:' + string(ports.issuer) + '/.well-known/jwks.json'"
+issuer: http://127.0.0.1:9100
 algorithms: [ES256]
 audience: !cel "[resource]"
 revocation: { store: !ref revokedTokens }

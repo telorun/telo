@@ -1,16 +1,18 @@
 kind: Telo.Application
 metadata:
-  name: FixtureIdentityProvider
+  name: StandInIdentityProvider
   version: 1.0.0
   description: |
-    Test fixture: an identity provider that signs "alice" in at once. `/authorize`
+    A stand-in identity provider for `notes-web`, which starts it itself: it signs a
+    fixed user (`alice`) in at once and authenticates nobody, so it is for trying the
+    sign-in flow on a developer's machine only. `/authorize`
     answers with the authorization code and the caller's `state`, in the redirect's
     query or as a self-submitting form, as the request's `response_mode` asks; `/token`
     redeems a code exactly once.
 imports:
-  Http: ../../../../../modules/http-server
-  Idempotency: ../../../../../modules/idempotency
-  KvStoreMemory: ../../../../../modules/kv-store-memory
+  Http: ../../../modules/http-server
+  Idempotency: ../../../modules/idempotency
+  KvStoreMemory: ../../../modules/kv-store-memory
 variables:
   subject: { env: IDP_SUBJECT, type: string, default: alice, description: The user `/token` answers for. }
 ports: { http: { env: IDP_PORT, default: 9000 } }

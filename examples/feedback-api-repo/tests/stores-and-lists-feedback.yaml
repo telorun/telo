@@ -3,7 +3,7 @@ metadata:
   name: FeedbackApiExampleTest
   version: 1.0.0
   description: >-
-    Runs `examples/feedback-api-repo` and posts, lists and rejects feedback. The
+    Runs `examples/feedback-api-repo` and posts, lists and rejects feedback, then reads the list and the page the screen draws. The
     rejected rating is the assertion worth having: the request schema is what keeps
     an out-of-range value from ever reaching the database.
 imports:
@@ -62,3 +62,26 @@ steps:
         text: !cel "steps.list.result.body[0].text"
         rating: !cel "steps.list.result.body[0].rating"
       expected: { status: 200, text: the docs made sense, rating: 5 }
+
+  # The screen reads the list as an object and draws it beside a form.
+  - name: recent
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8844/v1/feedback/recent
+      method: GET
+  - name: page
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs: { url: "http://127.0.0.1:8844/_telo/ui/page", query: { path: / } }
+  - name: verifyScreen
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        recentStatus: !cel "steps.recent.result.status"
+        recentText: !cel "steps.recent.result.body.entries[0].text"
+        page: !cel "steps.page.result.body.children.map(c, c.type)"
+        formPosts: !cel "steps.page.result.body.children[1].request.target.path.value"
+      expected:
+        recentStatus: 200
+        recentText: the docs made sense
+        page: [text, action, text, data]
+        formPosts: /v1/feedback

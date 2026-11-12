@@ -2,7 +2,7 @@ kind: Telo.Application
 metadata:
   name: ApprovalWorkflow
   version: 1.0.0
-  categories: [ Reliability, Coordination, Transport ]
+  categories: [ Reliability, Coordination, Transport, UI ]
   description: |
     An expense that needs a manager's approval before it is paid — so the work
     stops for as long as a human takes, and the process is free to go away while
@@ -16,20 +16,22 @@ metadata:
     "waiting for two days" costs nothing here and why the app can be restarted
     mid-approval.
 
-    The demo is the restart:
+    A small web UI sits on top: submit an expense on `/`, and its page shows
+    the run's status and offers the approval while the run is parked. The same
+    thing over the API (mounted under `/api`), which is also the restart demo:
 
         telo ./examples/approval-workflow &
-        curl -s -XPOST localhost:8081/expenses -H 'content-type: application/json' \
+        curl -s -XPOST localhost:8081/api/expenses -H 'content-type: application/json' \
           -d '{"employee":"ada","amountCents":250000,"reason":"conference"}'
         # → {"runId":"expense:...","token":"approve:...","status":"running"}
 
-        curl -s localhost:8081/expenses/expense:ada:1        # parked, waiting
+        curl -s localhost:8081/api/expenses/expense:ada:1        # parked, waiting
         kill %1                                              # stop the app entirely
         telo ./examples/approval-workflow &                  # start it again
 
-        curl -s -XPOST localhost:8081/approvals -H 'content-type: application/json' \
+        curl -s -XPOST localhost:8081/api/approvals -H 'content-type: application/json' \
           -d '{"token":"approve:expense:ada:1","approvedBy":"grace","note":"ok"}'
-        curl -s localhost:8081/expenses/expense:ada:1        # completed, and paid once
+        curl -s localhost:8081/api/expenses/expense:ada:1        # completed, and paid once
 
     Two supporting pieces make that work. `DurableLocal.Resumer` polls for runs
     whose process died and continues them, claiming each one first so two
@@ -40,6 +42,7 @@ metadata:
 
     The modules of this workspace are imported by relative path; a release tag
     pins them to `oci://` refs.
+lang: en
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
@@ -50,11 +53,13 @@ imports:
   Local: ../../modules/durable-local
   Journal: ../../modules/durable-journal-file
   Http: ../../modules/http-server
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
   Console: ../../modules/console
   Timer: ../../modules/timer
 targets:
   - !ref server
-  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
+  - { name: openUi, invoke: !ref openUi, inputs: { url: !cel "resources.server.status.localUrl" } }
   - !ref resumer
 ports: { http: { env: PORT, protocol: tcp, default: 8081 } }
 variables:
@@ -212,9 +217,9 @@ listen:
   port: !cel "ports.http"
 openapi: { info: { title: Expense approvals, version: 1.0.0 } }
 mounts:
-  - path: /
-    mount: !ref routes
+  - { path: /api, mount: !ref routes }
   - { path: /docs, mount: { kind: Http.Reference } }
+  - { path: /, mount: !ref ui }
 ---
 kind: Http.Api
 metadata: { name: routes }
@@ -295,6 +300,26 @@ routes:
         content:
           application/json:
             body: !cel "result"
+
+  # The same status as the one row the screen draws, with the token an approval
+  # quotes so a row action can send it.
+  - request:
+      path: /expenses/{runId}/screen
+      method: GET
+      schema:
+        params: { type: object, required: [runId], properties: { runId: { type: string } } }
+    handler: !ref runStatus
+    inputs:
+      run: !cel "request.params.runId"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              expenses:
+                - run: !cel "result.run"
+                  status: !cel "result.status"
+                  token: !cel "'approve:' + result.run"
 ---
 kind: Local.Deliver
 metadata: { name: approve }
@@ -309,5 +334,118 @@ kind: Local.Status
 metadata: { name: runStatus }
 journal: !ref expenses
 ---
+# What an expense is submitted with; the route's body schema says the same.
+kind: Telo.JsonSchema
+metadata: { name: NewExpense }
+schema:
+  type: object
+  required: [employee, amountCents, reason]
+  additionalProperties: false
+  properties:
+    employee: { type: string, title: Employee, minLength: 1 }
+    amountCents: { type: integer, title: Amount (cents), minimum: 1 }
+    reason: { type: string, title: Reason, minLength: 1 }
+---
+kind: Telo.JsonSchema
+metadata: { name: Submitted }
+schema:
+  type: object
+  required: [runId, status, token]
+  properties: { runId: { type: string }, status: { type: string }, token: { type: string } }
+---
+# What the screen route answers: the run, where it is, and the token an approval quotes.
+kind: Telo.JsonSchema
+metadata: { name: ExpenseScreen }
+schema:
+  type: object
+  required: [expenses]
+  properties:
+    expenses:
+      type: array
+      items:
+        type: object
+        required: [run, status, token]
+        properties:
+          run: { type: string, title: Expense }
+          status: { type: string, title: Status }
+          token: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Approval }
+schema:
+  type: object
+  required: [token]
+  additionalProperties: false
+  properties:
+    token: { type: string }
+    # Optional here because the row dialog asks for it; the route refuses an empty one.
+    approvedBy: { type: string, title: Approved by }
+    note: { type: string, title: Note }
+---
+kind: Telo.JsonSchema
+metadata: { name: Delivered }
+schema: { type: object, required: [delivered], properties: { delivered: { type: boolean } } }
+---
+# Submitting starts the run and moves to its page.
+kind: Ui.Action
+metadata: { name: submitExpenseAction }
+inputModel: !ref NewExpense
+outputModel: !ref Submitted
+request: { target: /api/expenses }
+label: Submit expense
+onSuccess: { navigate: { path: /expense, queryParams: { run: !cel "result.runId" } } }
+---
+# The approval, offered on the run's row only while it is parked on the wait.
+kind: Ui.Action
+metadata: { name: approveAction }
+inputModel: !ref Approval
+outputModel: !ref Delivered
+request: { target: /api/approvals }
+label: Approve
+result:
+  type: stack
+  children:
+    - { type: text, text: Approved. The run continues and pays., style: success, shown: { at: !cel "result.delivered", matches: { const: true } } }
+    - { type: text, text: Nobody is waiting on this expense any more., style: warning, shown: { at: !cel "result.delivered", matches: { const: false } } }
+---
+kind: UiReact.App
+metadata: { name: ui }
+title: Expense approvals
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: New expense
+    width: contained
+    children:
+      - { type: text, text: Submit an expense, style: heading }
+      - { type: text, text: "Under the threshold it is paid at once; above it the run waits for a manager.", style: muted }
+      - { type: composite, ref: !ref submitExpenseAction }
+  - kind: Ui.Page
+    path: /expense
+    title: Expense
+    width: contained
+    children:
+      - { type: text, text: Where the expense stands, style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Data
+          model: !ref ExpenseScreen
+          query: { run: { type: string } }
+          source: { path: "/api/expenses/{run}/screen", pathParams: { run: !cel "query.run" } }
+          reloadOn: [focus]
+          content:
+            type: list
+            rows: !cel "data.expenses"
+            columns:
+              - { header: Expense, value: !cel "row.run" }
+              - { header: Status, value: !cel "row.status" }
+            rowActions:
+              - action: !ref approveAction
+                inputs: { token: !cel "row.token" }
+                prompt: true
+                enabled: { at: !cel "row.status", matches: { const: parked }, disabledText: Waiting for the run to reach its approval step. }
+          failure: { type: text, text: Open an expense by submitting one., style: muted }
+---
 kind: Telo.OpenUrl
-metadata: { name: openDocs }
+metadata: { name: openUi }

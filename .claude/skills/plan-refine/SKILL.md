@@ -6,7 +6,9 @@ argument-hint: Plan path (optional; defaults to the selected file)
 
 Refine one plan in `plans/` until it is ready for implementation. Invoking this skill authorizes
 edits to **that plan file only**. Never edit any other file, never commit, never change the plan's
-`status:` — approving a plan is the user's call.
+`status:` — approving a plan is the user's call. The skill owns the plan's `refinement:` key: set
+it to `in-progress` before the first round, and at the end to `ready` or `not-ready` — the verdict
+of the **Final report**.
 
 The plan is the argument, else the file selected in the editor. If neither names a file under
 `plans/`, ask for it and stop.

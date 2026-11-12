@@ -2,30 +2,36 @@ kind: Telo.Application
 metadata:
   name: NotesWeb
   version: 1.0.0
+  categories: [Transport, UI]
   description: |
     A web app that signs users in through an OIDC-style provider (authorization code
     flow): `/auth/login` sends the browser to the provider, `/auth/callback` checks
     the returned `state`, exchanges the `code` at the provider's token endpoint and
-    starts a session, and `/` shows who is signed in. The provider answers either in
+    starts a session, and `/`, a declared UI page, shows who is signed in or offers the sign-in. The provider answers either in
     the redirect's query or with a form POST (`responseMode`).
 
-    Run, with a provider registered for the redirect address below:
-        PROVIDER_URL=https://id.example.com CLIENT_ID=notes telo run ./examples/notes-web
-        redirect address: http://127.0.0.1:8080/auth/callback
+    It brings its own provider, `identity-provider/`, a stand-in that signs `alice` in
+    at once, so there is nothing to register or start:
+        telo run ./examples/notes-web
+    To sign in through a real provider, set `PROVIDER_URL` and `CLIENT_ID` and register
+    the redirect address http://127.0.0.1:8080/auth/callback with it.
 lang: en
+requires: { telo: ">=0.133.0" }
 imports:
+  App: ../../modules/app
   Http: ../../modules/http-server
   HttpDispatch: ../../modules/http-dispatch
   HttpClient: ../../modules/http-client
   Session: ../../modules/session
   KvStoreMemory: ../../modules/kv-store-memory
-  Html: ../../modules/html
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 variables:
   providerUrl:
     env: PROVIDER_URL
     type: string
-    default: https://id.example.com
-    description: Origin of the identity provider, serving `/authorize` and `/token`.
+    default: ""
+    description: Origin of the identity provider, serving `/authorize` and `/token`. Empty means the bundled stand-in.
   clientId:
     env: CLIENT_ID
     type: string
@@ -37,9 +43,25 @@ variables:
     enum: [query, form_post]
     default: query
     description: How the provider returns the code, in the redirect's query or as a form POST.
-ports: { http: { env: PORT, default: 8080 } }
+  standInUser:
+    env: STAND_IN_USER
+    type: string
+    default: alice
+    description: The user the bundled stand-in provider signs in.
+ports:
+  http: { env: PORT, default: 8080 }
+  provider: { env: PROVIDER_PORT, default: 8081 }
 targets:
+  - !ref identityProvider
   - !ref server
+  - { name: openUi, invoke: !ref openUi, inputs: { url: !cel "resources.server.status.localUrl" } }
+---
+# The provider the sign-in goes through when `PROVIDER_URL` names none.
+kind: App.Instance
+metadata: { name: identityProvider }
+source: ./identity-provider
+ports: { http: !cel "ports.provider" }
+variables: { subject: !cel "variables.standInUser" }
 ---
 kind: Http.Server
 metadata: { name: server }
@@ -50,13 +72,14 @@ mounts:
   - path: /auth
     mount: !ref auth
     authentication: { anonymous: allow }
-  - path: /
-    mount: !ref pages
+  - path: /api
+    mount: !ref api
     authentication:
       anonymous: allow
       verifiers:
         - verifier: { kind: Session.Verifier, sessions: !ref sessions }
           from: { kind: Http.FromCookie, cookie: !ref sessionCookie, scheme: Session }
+  - { path: /, mount: !ref ui, authentication: { anonymous: allow } }
 ---
 kind: Session.Sessions
 metadata: { name: sessions }
@@ -94,7 +117,10 @@ steps:
       - name: token
         invoke:
           kind: HttpClient.Request
-          client: { kind: HttpClient.Client, baseUrl: !cel "variables.providerUrl", throwOnHttpError: false }
+          client:
+            kind: HttpClient.Client
+            baseUrl: !cel "variables.providerUrl != '' ? variables.providerUrl : 'http://127.0.0.1:' + string(ports.provider)"
+            throwOnHttpError: false
           method: POST
           url: /token
         inputs:
@@ -147,7 +173,7 @@ routes:
     returns:
       - status: 302
         headers:
-          Location: !interpolate "${{ variables.providerUrl }}/authorize?response_type=code&client_id=${{ urlEncode(variables.clientId) }}&redirect_uri=${{ urlEncode('http://127.0.0.1:' + string(ports.http) + '/auth/callback') }}&state=${{ result.state }}&response_mode=${{ variables.responseMode }}"
+          Location: !interpolate "${{ variables.providerUrl != '' ? variables.providerUrl : 'http://127.0.0.1:' + string(ports.provider) }}/authorize?response_type=code&client_id=${{ urlEncode(variables.clientId) }}&redirect_uri=${{ urlEncode('http://127.0.0.1:' + string(ports.http) + '/auth/callback') }}&state=${{ result.state }}&response_mode=${{ variables.responseMode }}"
         cookies: [{ cookie: !ref stateCookie, value: !cel "result.state" }]
         content: { text/html: { body: "<p>Redirecting to the provider</p>" } }
   - request: { path: /callback, method: GET }
@@ -175,10 +201,11 @@ routes:
       expectedState: !cel "'cookie' in request.headers ? request.headers.cookie.split('; ').filter(p, p.startsWith('notes-state=')).map(p, p.substring(12)).join('') : ''"
     returns: *signInReturns
 ---
+# Who is signed in, for the page to read; an empty `user` means nobody.
 kind: Http.Api
-metadata: { name: pages }
+metadata: { name: api }
 routes:
-  - request: { path: /, method: GET }
+  - request: { path: /session, method: GET }
     inputs: { user: !cel "request.principal != null ? request.principal.subject : ''" }
     handler:
       kind: Telo.Value
@@ -186,7 +213,47 @@ routes:
       value: !cel "{'user': inputs.user}"
     returns:
       - status: 200
-        when: !cel "result.user != ''"
-        content: { text/html: { body: !interpolate "<h1>Notes</h1><p>Signed in as ${{ Html.escape(result.user) }}</p>" } }
-      - status: 200
-        content: { text/html: { body: '<h1>Notes</h1><p><a href="/auth/login">Sign in</a></p>' } }
+        content:
+          application/json:
+            schema: { type: object, required: [user], properties: { user: { type: string } } }
+            body: !cel "{'user': result.user}"
+---
+kind: Telo.JsonSchema
+metadata: { name: Whoami }
+schema: { type: object, required: [user], properties: { user: { type: string, title: User } } }
+---
+# The home page reads the session and shows either the user or the way in. The
+# user's name is drawn as text, whatever it holds.
+kind: UiReact.App
+metadata: { name: ui }
+title: Notes
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Notes
+    width: contained
+    children:
+      - { type: text, text: Notes, style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Data
+          model: !ref Whoami
+          source: /api/session
+          reloadOn: [focus]
+          content:
+            type: stack
+            children:
+              - type: stack
+                shown: { at: !cel "data.user", matches: { minLength: 1 } }
+                children:
+                  - { type: text, text: Signed in as, style: muted }
+                  - { type: value, value: !cel "data.user", style: strong }
+              - type: stack
+                shown: { at: !cel "data.user", matches: { maxLength: 0 } }
+                children:
+                  - { type: text, text: Sign in to see your notes., style: muted }
+                  - { type: link, text: Sign in, href: /auth/login, button: { kind: Ui.TextButton }, style: accent }
+---
+kind: Telo.OpenUrl
+metadata: { name: openUi }

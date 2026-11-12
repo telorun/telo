@@ -3,8 +3,10 @@
 `notes-web` in a desktop window. Sign-in goes through an OIDC-style provider: the window's navigation to the provider opens in the system browser, and when the provider sends the browser back to `/auth/callback` (a path named in `callbackPaths`) the desktop host shows the return page there and replays the request in the window, which ends signed in. A provider answering with `form_post` is handled the same way.
 
 ```
-PROVIDER_URL=https://id.example.com CLIENT_ID=notes telo run ./examples/notes-desktop
+telo run ./examples/notes-desktop
 ```
+
+It signs in through the stand-in provider `notes-web` starts itself. To use a real one, add `PROVIDER_URL=… CLIENT_ID=…` in front.
 
 Things to know:
 

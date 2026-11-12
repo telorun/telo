@@ -8,8 +8,8 @@ metadata:
     runtime. The handler echoes the configured upstream URL and a masked
     hint of the secret so you can verify both values made it end-to-end.
 
-    Set the inputs in a sibling `.env.local`:
-        API_BASE_URL=https://api.example.com
+    It runs as is, on demo values. Set your own in a sibling `.env.local`:
+        API_BASE_URL=https://api.stripe.com
         STRIPE_SECRET_KEY=sk_test_demo_value
     Run, then:
         curl -X POST http://localhost:4444/v1/charge
@@ -19,8 +19,10 @@ targets:
   - !ref paymentServer
   - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
 ports: { http: { env: PORT, default: 4444 } }
-variables: { apiBaseUrl: { env: API_BASE_URL, type: string } }
-secrets: { stripeSecretKey: { env: STRIPE_SECRET_KEY, type: string } }
+variables:
+  apiBaseUrl: { env: API_BASE_URL, type: string, default: https://api.stripe.com }
+secrets:
+  stripeSecretKey: { env: STRIPE_SECRET_KEY, type: string, default: sk_test_demo_value }
 ---
 kind: Http.Api
 metadata: { name: paymentApi }

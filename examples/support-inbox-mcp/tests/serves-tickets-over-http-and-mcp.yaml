@@ -5,13 +5,20 @@ metadata:
   description: >-
     Runs `examples/support-inbox-mcp` and reaches the same tickets through both of
     its front doors — the HTTP route a browser uses and the MCP tool an assistant
-    calls. Asserting both is the point of the example: the handlers know nothing
+    calls, then closes a ticket through the route the page's Close button uses. Asserting both is the point of the example: the handlers know nothing
     about MCP, so a change that serves one door and breaks the other is exactly
     what this catches.
 imports:
   App: ../../../modules/app
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
+variables:
+  # The directory each run's database goes in; closing a ticket must not carry over.
+  stateRoot:
+    env: SUPPORT_INBOX_EXAMPLE_TEST_DIR
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: ./.telo
 targets:
   - !ref test
 ---
@@ -22,6 +29,7 @@ with:
     metadata: { name: app }
     source: ../telo.yaml
     ports: { http: 8066 }
+    variables: { dbFile: !cel "variables.stateRoot.joinPath('tickets-' + uuidv4() + '.db')" }
 targets:
   - !ref app
 steps:
@@ -53,3 +61,37 @@ steps:
     inputs:
       actual: !cel "steps.tools.result.status"
       expected: 200
+
+  # The third door: a page reads the inbox as an object and closes a ticket
+  # through the same `closeTicket` the assistant calls.
+  - name: inbox
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8066/api/tickets/inbox
+      method: GET
+  - name: page
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs: { url: "http://127.0.0.1:8066/_telo/ui/page", query: { path: / } }
+  - name: close
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8066/api/tickets/2/close
+      method: POST
+  - name: inboxAfter
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8066/api/tickets/inbox
+      method: GET
+  - name: verifyPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        before: !cel "steps.inbox.result.body.tickets.map(t, t.status)"
+        page: !cel "steps.page.result.body.children.map(c, c.type)"
+        closed: !cel "steps.close.result.body"
+        after: !cel "steps.inboxAfter.result.body.tickets.map(t, t.status)"
+      expected:
+        before: [open, open, open]
+        page: [text, data]
+        closed: { closed: true, id: 2 }
+        after: [open, closed, open]

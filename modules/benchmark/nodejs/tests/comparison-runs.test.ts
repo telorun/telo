@@ -154,7 +154,11 @@ describe.skipIf(!linux)("Benchmark.Comparison on this host", () => {
         {
           whileRunning: (child) => {
             const timer = setInterval(() => {
-              const subjects = descendants(child.pid!).filter((pid) => cmdline(pid).includes("server.mjs"));
+              // `taskset` carries the subject's arguments until it sets its own affinity and execs.
+              const subjects = descendants(child.pid!).filter((pid) => {
+                const argv = cmdline(pid).split("\0");
+                return argv[0] !== "taskset" && argv.some((arg) => arg.endsWith("server.mjs"));
+              });
               if (subjects.length === 0) return; // pinning applies while a subject runs
               // The comparison is the process that started the subject.
               const comparison = parentOf(subjects[0]);
