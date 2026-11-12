@@ -10,7 +10,6 @@ import {
 } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { governedCelEvalSites } from "./eval-paths.js";
-import type { DefResolver } from "./extends-resolution.js";
 import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
@@ -653,14 +652,12 @@ function addStartupStatusReadEdges(
     [...nodes].filter(([, node]) => node.kind !== "Telo.Import"),
     KEYED_NODE_READING,
   );
-  const resolveDef: DefResolver = (kind, from) =>
-    definitionInScope(registry, kind, from?.metadata, aliases, aliasesByModule);
 
   for (const [key, node] of nodes) {
     if (node.kind === "Telo.Import") continue;
     const sites = governedCelEvalSites(
       definitionInScope(registry, node.kind, node.manifest.metadata, aliases, aliasesByModule),
-      resolveDef,
+      registry,
       registry.shapeLookup,
     );
     if (!sites) continue;

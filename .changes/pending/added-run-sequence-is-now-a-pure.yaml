@@ -1,0 +1,6 @@
+modules:
+  modules/run: Added
+body: "Run.Sequence is now a pure alias of the built-in Telo.Sequence: it extends it,
+  declares no schema, throws or controller of its own, and still reports DEPRECATED_KIND
+  naming Telo.Sequence. Behaviour is unchanged for manifests that already used the
+  built-in semantics; the module no longer ships a separate sequence controller."

@@ -85,7 +85,6 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /** The binder a rule resolves its references through, over the door's requests. */
 function binderOf(door: RuleDoor): PeerBinder {
   const { defs, aliases, aliasesByModule, requests, libraries, rootModules } = door;
-  const ruleDef: DefResolver = (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
   const sites = new WeakMap<object, CelEvalSites | undefined>();
   const writing = analyzerWritingModules(rootModules, aliasesByModule, requests.names, libraries);
   const forwardedKind = (kind: string, owner: string): string | undefined =>
@@ -103,7 +102,7 @@ function binderOf(door: RuleDoor): PeerBinder {
     (declaration, module) => {
       const definition = definitionInScope(defs, declaration.kind, { module }, aliases, aliasesByModule) as unknown as ResourceDefinition | undefined;
       if (!definition) return undefined;
-      if (!sites.has(definition)) sites.set(definition, governedCelEvalSites(definition, ruleDef, defs.shapeLookup));
+      if (!sites.has(definition)) sites.set(definition, governedCelEvalSites(definition, defs, defs.shapeLookup));
       return { sites: sites.get(definition) };
     },
     forwardedReference,

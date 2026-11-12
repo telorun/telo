@@ -2,7 +2,6 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { BUILTIN_DOCUMENT_FILES } from "./builtin-entries/index.js";
 import { refuseRosterMarkers } from "./builtin-entry-markers.js";
 import { declarableCapabilities } from "./capability-roster.js";
-import { effectiveAuthorSchema } from "./extends-resolution.js";
 import { expandManifestFragments } from "./manifest-schemas.js";
 import { needTypeDefinition } from "./need-type.js";
 
@@ -16,8 +15,9 @@ import { needTypeDefinition } from "./need-type.js";
  * module `Telo`), carries its fragment references unexpanded, declares only its
  * own fields where it `extends` another built-in, and carries no `controllers:`.
  * Registration supplies what a loader would: the module name, the expanded
- * fragments, a need type's synthesized kind, the author-facing schema of an
- * `extends` child, and the marker saying the kernel implements the kind.
+ * fragments, a need type's synthesized kind and the marker saying the kernel
+ * implements the kind. An `extends` child keeps its own fields alone: what it
+ * means along the chain is the registry's answer, as for any module's kind.
  */
 
 /** The marker a kernel-implemented built-in carries: the kind reads as
@@ -60,16 +60,6 @@ export function builtinDefinitions(
     return doc as ResourceDefinition;
   });
 
-  // An `extends` child declares only its own fields; what every reader validates
-  // an instance against is merge(parent, own), stamped here exactly as the
-  // kernel stamps it when a module's definition registers.
-  const byKind = new Map<string, ResourceDefinition>(
-    definitions.map((def) => [`${def.metadata.module}.${def.metadata.name}`, def]),
-  );
-  for (const def of definitions) {
-    if (def.kind !== "Telo.Definition" || typeof def.extends !== "string") continue;
-    def.schema = effectiveAuthorSchema(def, (kind) => byKind.get(kind));
-  }
   return definitions;
 }
 

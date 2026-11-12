@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: ChainDelegation, version: 1.0.0 }
+imports: { Middle: ../b }
+targets: [!ref job]
+---
+kind: Middle.Job
+metadata: { name: job }
+label: hi

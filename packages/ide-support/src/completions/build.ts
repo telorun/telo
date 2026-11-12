@@ -112,10 +112,10 @@ function refConstrainedKinds(
   parentDocKind: string,
   parentYamlPath: string[],
 ): string[] | undefined {
-  const definition = registry.resolveDefinition(parentDocKind);
-  if (!definition?.schema) return undefined;
+  const kindSchema = registry.effectiveKind(parentDocKind)?.schema;
+  if (!kindSchema) return undefined;
   const slot = lookupRefSlot(
-    definition.schema as Record<string, any>,
+    kindSchema,
     parentYamlPath,
     (from) => registry.resolveSchemaFrom(from, parentDocKind),
   );
@@ -170,9 +170,9 @@ function valueSuggestions(
   yamlPath: string[],
   replaceRange: ReplaceRange,
 ): CompletionResult[] {
-  const definition = registry?.resolveDefinition(docKind);
-  if (!registry || !definition?.schema || yamlPath.length === 0) return [];
-  const field = navigateSchema(definition.schema as Record<string, any>, yamlPath, (from) =>
+  const kindSchema = registry?.effectiveKind(docKind)?.schema;
+  if (!registry || !kindSchema || yamlPath.length === 0) return [];
+  const field = navigateSchema(kindSchema, yamlPath, (from) =>
     registry.resolveSchemaFrom(from, docKind),
   );
   if (!field) return [];
@@ -248,10 +248,10 @@ export async function buildCompletions(
     );
   }
   if (ctx.type === "ref-name") {
-    const definition = registry?.resolveDefinition(ctx.docKind);
+    const kindSchema = registry?.effectiveKind(ctx.docKind)?.schema;
     const slot =
-      registry && definition?.schema
-        ? lookupRefSlot(definition.schema as Record<string, any>, ctx.yamlPath, (from) =>
+      registry && kindSchema
+        ? lookupRefSlot(kindSchema, ctx.yamlPath, (from) =>
             registry.resolveSchemaFrom(from, ctx.docKind),
           )
         : undefined;

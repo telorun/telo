@@ -44,6 +44,7 @@ describe("`self` in a template body", () => {
         analysisContext: () => {
           throw new Error("a body with no construct is not expanded");
         },
+        effectiveKindOf: (definition: any) => definition && { schema: definition.schema, capability: definition.capability },
       } as any,
     );
 

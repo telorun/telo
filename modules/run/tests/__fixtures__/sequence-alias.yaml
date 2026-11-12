@@ -1,0 +1,13 @@
+# Not a runnable test — an `Assert.Manifest` fixture. Run.Sequence is a
+# deprecated alias of Telo.Sequence and still runs as one.
+kind: Telo.Application
+metadata: { name: SequenceAliasFixture, version: 1.0.0 }
+imports: { Run: ../../ }
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: noop
+    value: !cel "1"

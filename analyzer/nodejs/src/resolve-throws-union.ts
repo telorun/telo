@@ -8,7 +8,7 @@ import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { isInjectedDeclaration } from "./resource-input.js";
-import { dispatchesThrows, effectiveThrows, kindThrowsDeclarer } from "./throws-ceiling.js";
+import { dispatchesThrows, kindThrowsDeclarer, type ThrowsBlock } from "./throws-ceiling.js";
 import { controllerConfiguration, type ControllerConfiguration } from "./controller-configuration.js";
 import {
   hasDeclaredUse,
@@ -243,12 +243,19 @@ function defResolverFor(ctx: ResolveCtx): DefResolver {
     );
 }
 
+/** The `throws:` block governing `definition` along `extends`; one the registry
+ *  does not hold, as written. */
+function governingThrows(definition: ResourceDefinition, ctx: ResolveCtx): ThrowsBlock | undefined {
+  const effective = ctx.defs.effectiveKindOf(definition);
+  return effective ? effective.throws : (definition as { throws?: ThrowsBlock }).throws;
+}
+
 /** The codes a definition contributes to a union: none for a kind no caller
  *  dispatches and catches, whose `throws.codes` only name what it answers with. */
 function codesFromDefinition(definition: ResourceDefinition, ctx: ResolveCtx): Map<string, ThrowsCodeMeta> {
   const out = new Map<string, ThrowsCodeMeta>();
   if (!dispatchesThrows(definition, defResolverFor(ctx))) return out;
-  const raw = effectiveThrows(definition, defResolverFor(ctx))?.codes ?? {};
+  const raw = governingThrows(definition, ctx)?.codes ?? {};
   for (const [code, meta] of Object.entries(raw)) {
     out.set(code, { data: (meta as { data?: Record<string, any> }).data });
   }
@@ -300,7 +307,7 @@ export function resolveThrowsUnion(
     return u;
   }
 
-  const throws = effectiveThrows(definition, defResolverFor(ctx));
+  const throws = governingThrows(definition, ctx);
   if (!throws) {
     const u = emptyUnion();
     if (name) ctx.memo.set(name, u);
@@ -464,7 +471,7 @@ export function resolveScopeUnion(
 /** The `throws:` block that governs `definition` — the nearest declaration
  *  along `extends`, itself first. */
 export function throwsBlockOf(definition: ResourceDefinition, ctx: ResolveCtx) {
-  return effectiveThrows(definition, defResolverFor(ctx));
+  return governingThrows(definition, ctx);
 }
 
 /**
@@ -565,7 +572,7 @@ export function forEachRetriedDispatch(
     }
   });
   const fields = manifest as unknown as Record<string, unknown>;
-  for (const { field, retryFor } of retryForSites(definition.schema)) {
+  for (const { field, retryFor } of retryForSites(ctx.defs.effectiveSchemaOf(definition))) {
     const policy = fields[field];
     if (!policy || typeof policy !== "object" || Array.isArray(policy)) continue;
     const target = retryForTargetField(retryFor);
@@ -771,7 +778,7 @@ function resolveRefTargetThrows(
   const definition = definitionFor(invokedKind, ctx.defs, ctx.aliases, scopeResolver);
   if (!definition) return { codes: new Map(), unbounded: true };
 
-  const block = effectiveThrows(definition, defResolverFor(ctx));
+  const block = governingThrows(definition, ctx);
   if (block?.passthrough) {
     return onPassthrough ? onPassthrough() : { codes: new Map(), unbounded: true };
   }

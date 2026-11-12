@@ -84,21 +84,22 @@ function scopeFieldsOf(
   kind: string,
   seen: Set<object> = new Set(),
 ): string[] {
+  let definition: { schema?: unknown; extends?: unknown; base?: unknown } | undefined;
+  let module = mod;
   if (kind.startsWith("Telo.")) {
     const name = kind.slice("Telo.".length);
-    const builtin = KERNEL_BUILTINS.find((d) => d.kind === "Telo.Definition" && d.metadata.name === name);
-    return scopeFieldsOfSchema(builtin?.schema);
+    definition = KERNEL_BUILTINS.find((d) => d.kind === "Telo.Definition" && d.metadata.name === name);
+  } else {
+    const found = kindDocumentIn(graph, mod, kind);
+    if (!found) return [];
+    definition = kindDeclarationOf(found.doc) as typeof definition;
+    module = found.module;
   }
-  const found = kindDocumentIn(graph, mod, kind);
-  if (!found || seen.has(found.doc)) return [];
-  seen.add(found.doc);
-  const definition = kindDeclarationOf(found.doc) as
-    | { schema?: unknown; extends?: unknown; base?: unknown }
-    | undefined;
-  if (!definition) return [];
+  if (!definition || seen.has(definition)) return [];
+  seen.add(definition);
   const own = scopeFieldsOfSchema(definition.schema);
   if (typeof definition.extends !== "string" || definition.base !== undefined) return own;
-  const inherited = scopeFieldsOf(graph, found.module, definition.extends, seen);
+  const inherited = scopeFieldsOf(graph, module, definition.extends, seen);
   return [...own, ...inherited.filter((f) => !own.includes(f))];
 }
 

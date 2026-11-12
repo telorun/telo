@@ -869,8 +869,9 @@ export function precompileDefinitionSchemas(
     if (m?.kind !== "Telo.Definition") continue;
     compile(m.schema);
     if (resolverFor && m.extends) {
-      // Mirrors the runtime stamp in `resource-definition-controller`; sharing
-      // `effectiveAuthorSchema` is what keeps the two keys identical.
+      // The schema the runtime validates an instance against is the registry's
+      // effective one; folding with `effectiveAuthorSchema`, its computation,
+      // keeps the two cache keys identical.
       try {
         compile(effectiveAuthorSchema(m as unknown as ResourceDefinition, resolverFor(m)));
       } catch {

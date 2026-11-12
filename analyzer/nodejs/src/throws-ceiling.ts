@@ -114,6 +114,41 @@ export function throwsNotSubstitutableMessage(
   );
 }
 
+/** A `throws.codes.<CODE>.displayMessage` a kind declares, as its declarer holds it. */
+export interface DeclaredDisplayMessageEntry {
+  readonly displayMessage: unknown;
+  /** The code's declared `data` schema, when it declares one. */
+  readonly data?: Record<string, unknown>;
+  /** `<module>.<Name>` of the definition declaring it. */
+  readonly declarer: string;
+}
+
+/**
+ * The display messages `def`'s codes carry: per code, the nearest declaration
+ * along `extends` that gives one a `displayMessage`, `def` first. Unlike the
+ * block itself a code's text is kept from an ancestor whose block `def` replaces.
+ */
+export function declaredDisplayMessageEntries(
+  def: ResourceDefinition,
+  resolveDef: DefResolver,
+): Readonly<Record<string, DeclaredDisplayMessageEntry>> {
+  const out: Record<string, DeclaredDisplayMessageEntry> = {};
+  for (const d of [def, ...ancestorChain(def, resolveDef)]) {
+    const codes = throwsOf(d)?.codes ?? {};
+    for (const [code, entry] of Object.entries(codes)) {
+      if (code in out || !entry || typeof entry !== "object") continue;
+      const { displayMessage, data } = entry as { displayMessage?: unknown; data?: unknown };
+      if (displayMessage === undefined) continue;
+      out[code] = {
+        displayMessage,
+        ...(data && typeof data === "object" ? { data: data as Record<string, unknown> } : {}),
+        declarer: throwsDeclarerName(d),
+      };
+    }
+  }
+  return out;
+}
+
 /**
  * What a dispatch through a target known ONLY by its kind may throw — a library's
  * `resources:` input standing in for an abstract. The nearest declaration along

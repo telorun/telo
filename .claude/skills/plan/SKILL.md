@@ -78,9 +78,10 @@ Write to `./plans/<kebab-case-name>.md`. The plan must be:
 Structure:
 
 1. **Problem** — what we're solving and why it matters, together with examples of the current behavior and its shortcomings.
-2. **Solution** — the chosen approach in prose, with module/file references with examples of how the new feature will be used. Include only public API/manifest surface; internal implementation details are not relevant.
-3. **Decisions** — bullet list of the non-obvious choices made, each with a one-line rationale (and rejected alternative where relevant).
-4. **Complete example after the change** (if relevant) — show how a user would use the new feature (eg. YAML manifest), to clarify the intended behavior.
+2. **Surface** — a scan list of every observable name the plan adds, changes or removes, under **Added**, **Changed** and **Removed**: one line each, the name exactly as a user sees it (kind, key, annotation, tag, diagnostic code, CLI flag, env var, file path, wire field, ABI member) and a phrase on what it is or what changes. Existing surface the plan only reuses is not listed — check the codebase before listing a name as Added. An internals-only plan writes `None — internal only.`
+3. **Solution** — the chosen approach in prose, with module/file references with examples of how the new feature will be used. Include only public API/manifest surface; internal implementation details are not relevant.
+4. **Decisions** — bullet list of the non-obvious choices made, each with a one-line rationale (and rejected alternative where relevant).
+5. **Complete example after the change** (if relevant) — show how a user would use the new feature (eg. YAML manifest), to clarify the intended behavior.
 
 After writing, report the path and stop. Do not start implementing.
 

@@ -5,7 +5,7 @@ sidebar_label: Structured Errors
 
 # Structured Errors in `Telo.Sequence`
 
-> `Telo.Sequence` is built in and needs no import. Examples using other `run` kinds assume this module is imported under alias `Run`; substitute your alias if you import it under another name. `Run.Sequence` is deprecated and behaves identically to `Telo.Sequence`.
+> `Telo.Sequence` is built in and needs no import. Examples using other `run` kinds assume this module is imported under alias `Run`; substitute your alias if you import it under another name. `Run.Sequence` is a deprecated alias of `Telo.Sequence` and behaves identically.
 
 `Telo.Sequence` composes invocables and surfaces their structured failures (`InvokeError`) through `try` / `catch`. This page covers the three pieces that make that work end-to-end:
 

@@ -47,7 +47,7 @@ export function outputSlotSites(schema: unknown): OutputSlotSite[] {
 }
 
 /** Every output-constrained slot the analysed kinds declare — each registered
- *  definition's schema as registered, and each kind document's as analysed. */
+ *  kind's effective schema, and each kind document's as analysed. */
 export function declaredOutputSlots(
   registry: AnalysisRegistry,
   manifests: readonly ResourceManifest[],
@@ -59,7 +59,7 @@ export function declaredOutputSlots(
       if (!byKey.has(key)) byKey.set(key, { kind, ...site });
     }
   };
-  for (const kind of registry.allKinds()) add(kind, registry.resolveDefinition(kind)?.schema);
+  for (const kind of registry.allKinds()) add(kind, registry.effectiveKind(kind)?.schema);
   for (const m of manifests) {
     const declaration = kindDeclarationOf(m);
     const name = m.metadata?.name;

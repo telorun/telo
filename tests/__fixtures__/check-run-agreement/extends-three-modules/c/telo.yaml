@@ -1,0 +1,9 @@
+kind: Telo.Library
+metadata: { name: ChainBase, version: 1.0.0 }
+exports: { kinds: [Task] }
+---
+kind: Telo.Definition
+metadata: { name: Task }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./task.mjs#task]
+schema: { type: object, properties: { label: { type: string } } }

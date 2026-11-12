@@ -103,8 +103,8 @@ export function schemaFromSites(
       });
       return out;
     }
-    const targetDef = ctx.defs.resolve(targetKind);
-    if (!targetDef?.schema) {
+    const targetSchema = ctx.defs.effectiveSchemaOf(ctx.defs.resolve(targetKind));
+    if (!targetSchema) {
       out.push({
         code: "SCHEMA_FROM_MISSING_PATH",
         message: `${label}: x-telo-schema-from at '${fieldPath}' → kind '${targetKind}' has no schema`,
@@ -112,7 +112,7 @@ export function schemaFromSites(
       });
       return out;
     }
-    const subSchema = navigateJsonPointer(targetDef.schema, jsonPointer);
+    const subSchema = navigateJsonPointer(targetSchema, jsonPointer);
     if (subSchema === undefined) {
       out.push({
         code: "SCHEMA_FROM_MISSING_PATH",
@@ -166,8 +166,8 @@ export function schemaFromSites(
   }
 
   const refResolvedKind = ctx.aliases.resolveKind(ref.kind) ?? ref.kind;
-  const refDef = ctx.defs.resolve(ref.kind) ?? ctx.defs.resolve(refResolvedKind);
-  if (!refDef?.schema) {
+  const refSchema = ctx.defs.effectiveSchemaOf(ctx.defs.resolve(ref.kind) ?? ctx.defs.resolve(refResolvedKind));
+  if (!refSchema) {
     out.push({
       code: "SCHEMA_FROM_MISSING_PATH",
       message: `${label}: x-telo-schema-from at '${path}' → kind '${ref.kind}' has no schema`,
@@ -175,7 +175,7 @@ export function schemaFromSites(
     });
     return out;
   }
-  const subSchema = navigateJsonPointer(refDef.schema, jsonPointer);
+  const subSchema = navigateJsonPointer(refSchema, jsonPointer);
   if (subSchema === undefined) {
     out.push({
       code: "SCHEMA_FROM_MISSING_PATH",

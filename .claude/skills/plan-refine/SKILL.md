@@ -111,6 +111,9 @@ Apply every decision, fix and removal to the plan yourself:
   lists is held for the final report.
 - Keep the plan's rules: valid frontmatter, no code other than usage examples, no source paths,
   observable artifacts named exactly, Before / After / Verify, short.
+- Keep the **Surface** section (right after Problem) in step with every decision: a name added,
+  renamed, dropped or found to exist already moves between **Added**, **Changed** and **Removed**,
+  or leaves the list, in the same round.
 
 ### 6. Stop or continue
 
@@ -202,6 +205,11 @@ Copy this section verbatim into every reviewer prompt.
 > - use no `JS.Script`
 >
 > A missing, incomplete or incorrect example is an issue.
+>
+> **Then check the Surface section** right after Problem: every observable name the plan adds,
+> changes or removes, under **Added**, **Changed** and **Removed**, one line each. A name in the
+> prose or examples missing from it, a name marked Added that already exists in the codebase, or a
+> reused name listed at all is an issue.
 >
 > **Then list every name** the plan introduces or changes that a user sees — module, kind, key,
 > annotation, tag, diagnostic code, command, flag, env var, file path, event — as a **name

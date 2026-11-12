@@ -112,16 +112,17 @@ export class ControllerRegistry {
 
   /**
    * Distinct resource-config schemas across all registered kinds, taken from
-   * each kind's DEFINITION. Used by the build-time validator warm to pre-compile
+   * each kind's DEFINITION — the effective one `schemaOf` answers. Used by the build-time validator warm to pre-compile
    * the framework/builtin schemas (`Telo.Import`, `Telo.Definition`, the module
    * controller, …) the runtime validates resources against — module-defined
    * kinds aren't registered here until instantiation, so those are warmed from
    * the static manifests instead.
    */
-  getControllerSchemas(): object[] {
+  getControllerSchemas(schemaOf: (definition: ResourceDefinition) => unknown): object[] {
     const schemas: object[] = [];
     for (const kind of this.controllersByKind.keys()) {
-      const schema = this.definitionsByKind.get(kind)?.schema;
+      const definition = this.definitionsByKind.get(kind);
+      const schema = definition ? schemaOf(definition) : undefined;
       if (schema && typeof schema === "object") schemas.push(schema);
     }
     return schemas;

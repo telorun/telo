@@ -27,7 +27,6 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { celEvalModeAt, kindCelEvalSites, NO_CEL_EVAL_SITES, type CelEvalSites } from "./eval-paths.js";
 import {
   controllerBearingAncestor,
-  effectiveAuthorSchema,
   hasOwnControllerOrTemplate,
   type DefResolver,
 } from "./extends-resolution.js";
@@ -1066,7 +1065,7 @@ export function buildForwardViews(input: ForwardViewInput): BuiltViews {
     const entries = forwardedEntries(holder, runner, input, expanded?.definition);
     if (entries.length === 0) continue;
     runners.set(holder.manifest, runner);
-    sites.set(holder.manifest, kindCelEvalSites(holder.definition, resolveDef, registry.shapeLookup));
+    sites.set(holder.manifest, kindCelEvalSites(holder.definition, registry, registry.shapeLookup));
     const own = ownFindings(runner);
     const instances = entries.flatMap((entry) => {
       const holding = meet(space, holder.holding, entry.holding);
@@ -1106,7 +1105,7 @@ export function buildForwardViews(input: ForwardViewInput): BuiltViews {
           siblings: entry.siblings.map((reference) => reference.at),
         },
       });
-      sites.set(view, kindCelEvalSites(entry.definition, resolveDef, registry.shapeLookup));
+      sites.set(view, kindCelEvalSites(entry.definition, registry, registry.shapeLookup));
       if (!holder.chain.has(entry.definition)) {
         queue.push({
           manifest: view,
@@ -1696,7 +1695,7 @@ function fromSelf(holder: Holder, self: readonly string[], input: ForwardViewInp
 function selfDefaults(holder: Holder, input: ForwardViewInput): (keys: readonly Segment[]) => unknown {
   const resolveDef = moduleScopedDefResolver<ResourceDefinition>(input.registry, input.aliases, input.scopes);
   const runner = templateRunnerOf(holder.definition, resolveDef);
-  const schema = runner ? effectiveAuthorSchema(runner, resolveDef) : undefined;
+  const schema = input.registry.effectiveSchemaOf(runner);
   return (keys) => {
     let node: unknown = schema;
     for (const key of keys) {

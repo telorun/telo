@@ -35,7 +35,6 @@ import {
   controllerBearingAncestor,
   ancestorChain,
   resolveParent,
-  effectiveAuthorSchema,
   isModuleKind,
   moduleLangOf,
   recordLangOf,
@@ -692,8 +691,13 @@ export class Kernel implements IKernel {
    * `x-telo-browser-export` is malformed (`BROWSER_EXPORT_ANNOTATION_INVALID`),
    * and one whose eval-site walk meets a union giving a property two eval
    * meanings (`EVAL_MODE_BRANCH_CONFLICT`).
+   *
+   * The analysis registry records the definition with `canonicalExtends` — the
+   * kind its `extends:` names, resolved in the declaring module's scope — which
+   * is what its effective-kind answer folds through; the definition itself, as
+   * the controller registry holds it, stays as written.
    */
-  registerResourceDefinition(definition: ResourceDefinition): void {
+  registerResourceDefinition(definition: ResourceDefinition, canonicalExtends?: string): void {
     const misplaced = scopeSlotProblems(definition);
     if (misplaced.length > 0) {
       throw new RuntimeError(
@@ -771,7 +775,11 @@ export class Kernel implements IKernel {
       throw new RuntimeError("ERR_PATH_PARAMS_FOR_INVALID", `${definition.kind} ${pathParams.message}`);
     }
     this.controllers.registerDefinition(definition);
-    this.registry.registerDefinition(definition);
+    this.registry.registerDefinition(
+      canonicalExtends !== undefined && canonicalExtends !== definition.extends
+        ? { ...definition, extends: canonicalExtends }
+        : definition,
+    );
   }
 
   async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
@@ -896,7 +904,10 @@ export class Kernel implements IKernel {
   /** Definitions with their slot kinds canonical, as the co-referrer readers
    *  compare them. */
   private canonicalSlotKinds(): CanonicalSlotKinds {
-    return new CanonicalSlotKinds((kind, module) => this.registry.resolveDefinitionIn(kind, module));
+    return new CanonicalSlotKinds(
+      (kind, module) => this.registry.resolveDefinitionIn(kind, module),
+      (definition) => this.registry.effectiveKindOf(definition)?.schema,
+    );
   }
 
   /** Every `callsCoReferrers` the registered kinds declare — what makes a scope
@@ -1103,6 +1114,7 @@ export class Kernel implements IKernel {
     // InvokeError.code against the declared throw union (rule 9). Propagates
     // through spawnChild() to module imports and scoped handles.
     this.rootContext.getDefinition = (kind) => this.controllers.getDefinition(kind);
+    this.rootContext.effectiveKind = (kind) => this.registry.effectiveKind(kind);
     this.rootContext.errorDataValidator = errorDataValidatorOver(this.sharedSchemaValidator);
     this.rootContext.failureGraph = () => this._loadedGraph;
 
@@ -1645,7 +1657,9 @@ export class Kernel implements IKernel {
       // validated per-resource at runtime just the same. They're registered by
       // `loadBuiltinDefinitions` above, so bake them from the registry.
       precompileDefinitionSchemas(
-        this.controllers.getControllerSchemas().map((schema) => ({
+        this.controllers
+          .getControllerSchemas((definition) => this.registry.effectiveKindOf(definition)?.schema)
+          .map((schema) => ({
           kind: "Telo.Definition",
           schema,
         })),
@@ -2259,7 +2273,10 @@ export class Kernel implements IKernel {
     const attaching = (listed ?? []).filter((entry) => entry.attach);
     if (attaching.length === 0) {
       const closable = instance as { close?: () => Promise<void> };
-      if (definition?.capability === "Telo.Sink" && typeof closable.close === "function") {
+      if (
+        this.registry.effectiveKindOf(definition)?.capability === "Telo.Sink" &&
+        typeof closable.close === "function"
+      ) {
         await ctx
           .effect("unattached sink", async () => ({ result: undefined, inverse: () => closable.close!() }))
           .perform();
@@ -2336,7 +2353,7 @@ export class Kernel implements IKernel {
    */
   private expandRootBlock(key: "logging" | "tracing", raw: unknown): unknown {
     const expanded = this.rootContext.expandWith(raw, {});
-    const applicationSchema = this.registry.resolveDefinition("Telo.Application")?.schema as
+    const applicationSchema = this.registry.effectiveKind("Telo.Application")?.schema as
       | Record<string, any>
       | undefined;
     const slot = applicationSchema?.properties?.[key] as Record<string, any> | undefined;
@@ -2937,7 +2954,7 @@ export class Kernel implements IKernel {
   /** The display message `resolvedKind` declares for `code` (or the built-in one), its
    *  `data` held to the declared schema — `ctx.declaredDisplayMessage`. */
   declaredDisplayMessage(resolvedKind: string | undefined, code: string, data: unknown, where: string): TextRecord | undefined {
-    const entry = declaredDisplayMessageOf(resolvedKind ? this.controllers.getDefinition(resolvedKind) : undefined, code);
+    const entry = declaredDisplayMessageOf(resolvedKind ? this.registry.effectiveKind(resolvedKind) : undefined, code);
     if (!entry) return undefined;
     const refusal = errorDataRefusal(entry, code, data, errorDataValidatorOver(this.sharedSchemaValidator), where);
     if (refusal) throw refusal;
@@ -3293,14 +3310,17 @@ export class Kernel implements IKernel {
           : `Controller for ${kind} does not implement create method`,
       );
     }
-    const configSchema = definition?.schema as Record<string, unknown> | undefined;
+    // What the kind means along `extends` — the schema an instance is written
+    // against, and the capability whose role schema adds its own eval sites.
+    const effective = this.registry.effectiveKindOf(this.registry.resolveDefinition(resolvedKind));
+    const configSchema = effective?.schema as Record<string, unknown> | undefined;
     if (!configSchema?.type) {
       throw new Error(`No schema defined for kind ${kind}`);
     }
 
-    // Resolve eval paths from x-telo-eval annotations in the parent and own schema
-    const parentDef = definition?.capability
-      ? this.controllers.getDefinition(definition.capability)
+    // Resolve eval paths from x-telo-eval annotations in the capability's and the kind's schema
+    const parentDef = effective?.capability
+      ? this.controllers.getDefinition(effective.capability)
       : undefined;
     // Named shapes are read through the configuration view of the context that
     // declares the kind, the lookup `telo check` reads them through for that
@@ -3310,9 +3330,7 @@ export class Kernel implements IKernel {
     const parentEval = parentDef?.schema
       ? buildEvalPaths(parentDef.schema, shapes)
       : { compile: [], runtime: [] };
-    const ownEval = definition?.schema
-      ? buildEvalPaths(definition.schema, shapes)
-      : { compile: [], runtime: [] };
+    const ownEval = buildEvalPaths(configSchema, shapes);
     // A base-form child's own fields are construction inputs read once by
     // `base:`, so they are compile-eval without annotation — the rule is the
     // analyzer's, shared so `telo check` and dispatch agree on it.
@@ -3323,17 +3341,17 @@ export class Kernel implements IKernel {
     // expansion below and handed to the controller as bindings.
     const accessor = [
       ...(parentDef?.schema ? buildAccessorSites(parentDef.schema, shapes) : []),
-      ...(definition?.schema ? buildAccessorSites(definition.schema, shapes) : []),
+      ...buildAccessorSites(configSchema, shapes),
     ];
     // Regions cover what a controller evaluates per call without `x-telo-eval`
     // (a route's per-request fields). A structural kind's bodies are evaluated
     // by rules of their own.
     const regions =
-      definition?.capability === "Telo.Template"
+      effective?.capability === "Telo.Template"
         ? []
         : [
             ...(parentDef?.schema ? extractCelRegionScopes(parentDef.schema, shapes) : []),
-            ...(definition?.schema ? extractCelRegionScopes(definition.schema, shapes) : []),
+            ...extractCelRegionScopes(configSchema, shapes),
           ];
 
     // A kind may describe a slot with a shape declared elsewhere, so the walks
@@ -3740,7 +3758,7 @@ export class Kernel implements IKernel {
         const tracker = new NeedObservations(
           `${resolvedKind} '${(processedResource.metadata?.name as string | undefined) ?? "<unnamed>"}'`,
           observationDeadline(
-            definition?.capability ?? inheritedCapability(definition, this.scopedDefResolver()),
+            this.registry.effectiveKindOf(definition)?.capability,
           ),
           observing,
         );
@@ -3980,6 +3998,7 @@ export class Kernel implements IKernel {
           ? undefined
           : (this.controllers.getDefinition(canonical) as unknown as Record<string, any> | undefined);
       },
+      effectiveKind: (definition) => this.registry.effectiveKindOf(definition as unknown as ResourceDefinition),
       // The slot holds the LIVE INSTANCE by now — Phase-5 injection runs before
       // create — so the declaration is recovered by instance identity. The ref
       // shape is still accepted: a ref slot on a `with:`-scoped resource is not
@@ -4148,11 +4167,11 @@ export class Kernel implements IKernel {
     // A pure step's `value:` the mapping writes is evaluated by the ancestor's
     // step engine at dispatch, which reads a number found there as written, so
     // it stays compiled rather than becoming one `self` computed.
-    const kept = parentDef
-      ? stepValueSlots(base, effectiveAuthorSchema(parentDef, resolveDef), (kind) => {
-          const def = resolveDef(kind, mapper);
-          return def ? effectiveAuthorSchema(def, resolveDef) : undefined;
-        }).map((slot) => `base.${slot}`)
+    const parentSchema = this.registry.effectiveKindOf(parentDef)?.schema;
+    const kept = parentSchema
+      ? stepValueSlots(base, parentSchema, (kind) =>
+          this.registry.effectiveKindOf(resolveDef(kind, mapper))?.schema,
+        ).map((slot) => `base.${slot}`)
       : [];
     const mapped = expandMapping(
       base,

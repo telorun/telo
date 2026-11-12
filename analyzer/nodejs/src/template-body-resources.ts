@@ -138,6 +138,6 @@ export function bodyResourcesFor(
   const resolve = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, scopes);
   return templateBodyResourcesOf({
     familiesOf,
-    analyzed: (kind, module) => analyzedKind(resolve, kind, module),
+    analyzed: (kind, module) => analyzedKind(resolve, defs, kind, module),
   });
 }

@@ -1,4 +1,4 @@
-import { effectiveAuthorSchema, kindDeclarationOf, type DefResolver } from "@telorun/analyzer";
+import { kindDeclarationOf } from "@telorun/analyzer";
 import type {
   ControllerInstance,
   ResourceContext,
@@ -14,8 +14,8 @@ import {
 /**
  * `Telo.KeyedTranslations` — registers the kind its document declares: the
  * `Telo.Translations` kind whose `messages:` translate the document's keys
- * (`kindDeclarationOf`, the analyzer's synthesized definition), registered with
- * its author schema merged over the abstract's `lang`. Its resources
+ * (`kindDeclarationOf`, the analyzer's synthesized definition), whose author
+ * schema extends the abstract's `lang`. Its resources
  * are catalogs, pure configuration: the kernel judges them when they are
  * created and layers each one the root Application lists over the keys' source
  * wording.
@@ -25,16 +25,12 @@ class KeyedTranslationsDeclaration implements ResourceInstance {
 
   init(ctx: ResourceContext) {
     return ctx.effect(`Telo.KeyedTranslations ${this.resource.metadata.name}`, async () => {
-      const declared = kindDeclarationOf(this.resource)!;
+      const definition = kindDeclarationOf(this.resource)!;
       // The kind extends the built-in `Telo.Translations`, registered under that name.
-      const resolveDef: DefResolver = (kind) => {
-        const definition = ctx.moduleContext.getDefinition?.(kind);
-        if (!definition) {
-          throw new RuntimeError("ERR_FATAL", `the built-in kind '${kind}' a keyed set extends is not registered`);
-        }
-        return definition;
-      };
-      const definition = { ...declared, schema: effectiveAuthorSchema(declared, resolveDef) };
+      const parent = typeof definition.extends === "string" ? definition.extends : undefined;
+      if (parent && !ctx.moduleContext.getDefinition?.(parent)) {
+        throw new RuntimeError("ERR_FATAL", `the built-in kind '${parent}' a keyed set extends is not registered`);
+      }
       ctx.registerDefinition(definition);
       await ctx.registerController(definition.metadata.module, definition.metadata.name, keyedCatalogController);
       recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());

@@ -10,7 +10,6 @@ import {
   celEvalSites,
   declaredCelViewAt,
   declaredViewPaths,
-  effectiveAuthorSchema,
   evalPathCovers,
   implicitEvalSites,
   mergeCelEvalSites,
@@ -24,6 +23,7 @@ import {
   type ExpansionSite,
   type ReachSite,
   type NamedShapeLookup,
+  type EffectiveKind,
 } from "@telorun/analyzer";
 import {
   isCompiledValue,
@@ -182,6 +182,8 @@ export interface TemplateHost {
   /** A declaration as a read past a reference sees it: a named shape with its
    *  `extends` folded. */
   readAcrossReference(declaration: ResourceManifest): ResourceManifest;
+  /** What a registered definition means along `extends`. */
+  effectiveKindOf(definition: ResourceDefinition | undefined): EffectiveKind | undefined;
 }
 
 /** Reports the resources: entries available to dispatch against, by EXPANDED
@@ -255,17 +257,18 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
   let sitesOfDefinition: ReadonlyMap<unknown, ExpansionSite> | undefined;
   // A resource is validated as a copy, so the schema's `default:` values never
   // reach the instance; a controller written in code fills its own, and a
-  // template has none, so `self` fills them here. `definition.schema` is the
-  // inheritance-resolved one, stamped at registration.
-  const fillsDefaults = declaresDefaults(definition.schema);
+  // template has none, so `self` fills them here, from the kind's effective
+  // schema — read once the kind has registered.
   return {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
+      const authorSchema = refPositions.effectiveKindOf(definition as unknown as ResourceDefinition)?.schema;
+      const fillsDefaults = declaresDefaults(authorSchema);
       const definingContext = declaringContextOf(resource, ctx, definition);
       // A body entry's kind is read through the lookup `telo check` reads it
       // with, for the configuration of the module that declares the template.
       const view = definingContext.analysisView;
       const shapes = view?.shapeLookup ?? hostShapes;
-      const selfScalars = declaredViewPaths(definition.schema, shapes);
+      const selfScalars = declaredViewPaths(authorSchema, shapes);
       // `self` is read lazily: Phase 5 injection mutates `resource`'s ref slots
       // (e.g. `connection: !ref Db` → the live instance) AFTER create() but before
       // init(), so capturing self here would freeze the pre-injection refs. Every
@@ -273,7 +276,7 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
       const getSelf = (): Record<string, unknown> => {
         const self = { ...resource, name: resource.metadata.name };
         return fillsDefaults
-          ? (withSchemaDefaults(self, definition.schema) as Record<string, unknown>)
+          ? (withSchemaDefaults(self, authorSchema) as Record<string, unknown>)
           : self;
       };
       // What CEL reads of `self`: each declared scalar in its declared
@@ -358,8 +361,8 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
 
       const capabilityError = (entry: any, target: string, role: string, expected: string): Error => {
         const targetKind = (entry?.resource?.kind ?? "<unknown-kind>") as string;
-        const targetDef = definingContext.getDefinition?.(targetKind);
-        const actualCap = typeof targetDef?.capability === "string" ? targetDef.capability : "<unknown>";
+        const targetCap = refPositions.effectiveKindOf(definingContext.getDefinition?.(targetKind))?.capability;
+        const actualCap = typeof targetCap === "string" ? targetCap : "<unknown>";
         return new Error(
           `Template '${resource.metadata.name}': '${role}:' target '${targetKind}/${target}' ` +
             `has capability '${actualCap}', not ${expected}. Update '${role}:' to name a ` +
@@ -540,7 +543,7 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
        * kind is written in the DEFINING library's alias scope, so it is
        * resolved there — the consumer has never heard of the alias.
        *
-       * The INHERITANCE-RESOLVED schema, merged with the capability abstract's,
+       * The kind's EFFECTIVE schema, merged with the capability abstract's,
        * exactly as the analyzer half reads it (`effectiveSchemaOf` in
        * `cel-scope.ts`). A nested kind that inherits a CEL region from an
        * `extends` parent — or gets one implicitly from `Telo.Provider` — would
@@ -559,8 +562,9 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
           readingByKind.set(kind, UNKNOWN_NESTED_KIND);
           return UNKNOWN_NESTED_KIND;
         }
-        const capability = def.capability;
-        const schema = effectiveAuthorSchema(def, resolveDef) as Record<string, any>;
+        const effective = refPositions.effectiveKindOf(def);
+        const capability = effective?.capability;
+        const schema = effective?.schema as Record<string, any>;
         const reading: NestedKindReading = {
           schema,
           sites: mergeCelEvalSites(

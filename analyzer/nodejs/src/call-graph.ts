@@ -861,8 +861,7 @@ export function buildCallGraph(
     node: ResourceGraphNode,
     resolveName: (name: string, written: unknown) => ResourceGraphNode | undefined,
   ): void => {
-    const definition = definitionFor(node.manifest);
-    const schema = definition?.schema as Record<string, any> | undefined;
+    const schema = registry.effectiveSchemaOf(definitionFor(node.manifest)) as Record<string, any> | undefined;
     if (!schema) return;
     const collected: StepGraphNode[] = [];
     for (const [key, propSchema] of propertySchemas(schema)) {

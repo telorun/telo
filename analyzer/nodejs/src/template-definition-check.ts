@@ -279,7 +279,7 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
     stats: { structural: number; entries: Map<string, number> };
   } {
     const scope = moduleAliasScope(definition.metadata, aliases, aliasesByModule);
-    const selfSchema = buildSelfSchema(definition as Record<string, any>, registry, scope);
+    const selfSchema = buildSelfSchema(definition as Record<string, any>, registry);
     const schemaRefused = holdsExpansionSentinel(definition.schema);
     const metadata = definition.metadata as { name?: string; source?: string; module?: string } | undefined;
     const label = `Telo.Definition/${metadata?.name ?? ""}`;

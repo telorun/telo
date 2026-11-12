@@ -45,6 +45,7 @@ import {
   reportsFromInit,
   startupObservedStateReads,
   type CelEvalSites,
+  type EffectiveKind,
   type LoadedGraph,
 } from "@telorun/analyzer";
 import { authoredDeclarationOf, recordDeclarationScope } from "./declaration-scope.js";
@@ -494,7 +495,7 @@ export async function publishedPropsOf(
   kind: string,
   name: string,
   instance: ResourceInstance,
-  getDefinition: ((kind: string) => ResourceDefinition | undefined) | undefined,
+  effectiveKind: ((kind: string) => EffectiveKind | undefined) | undefined,
 ): Promise<Record<string, unknown>> {
   const snap =
     typeof instance.snapshot === "function"
@@ -504,11 +505,11 @@ export async function publishedPropsOf(
     kind,
     name,
     module: kind.split(".")[0],
-    statusSchema: getDefinition?.(kind)?.status,
+    statusSchema: effectiveKind?.(kind)?.status,
     status: reportedStatus.get(instance),
     started: startedInstances.has(instance),
     completed: completedInstances.has(instance),
-    reportsFromInit: reportsFromInit(getDefinition?.(kind)?.capability),
+    reportsFromInit: reportsFromInit(effectiveKind?.(kind)?.capability),
   });
   publishedByInstance.set(instance, props);
   return props;
@@ -863,6 +864,10 @@ export class EvaluationContext implements IEvaluationContext {
    */
   getDefinition?: (kind: string) => ResourceDefinition | undefined;
 
+  /** What a registered kind means along `extends` — the analysis registry's
+   *  answer. Set by the kernel beside `getDefinition`. */
+  effectiveKind?: (kind: string) => EffectiveKind | undefined;
+
   /** Holds an error's data to the schema its kind declares for the code, where
    *  the error leaves a dispatch. Set by the kernel beside `getDefinition`. */
   errorDataValidator?: ErrorDataValidator;
@@ -1068,13 +1073,16 @@ export class EvaluationContext implements IEvaluationContext {
     }
   }
 
-  /** The kind's effective `status:` — already folded through `extends` and
-   *  stamped onto the definition at registration, in the scope that DECLARED it
-   *  (`resource-definition-controller`). Only the kind's own alias is resolved
-   *  here, in the reading module's scope, which is where it was written. */
+  /** What `kind`, spelled in this module's scope, means along `extends`. */
+  private effectiveKindOf(kind: string): EffectiveKind | undefined {
+    return this.effectiveKind?.(this.resolveKindSafe(kind)) ?? this.effectiveKind?.(kind);
+  }
+
+  /** The kind's effective `status:`, folded through `extends` in the scope that
+   *  declared each definition. The same object until a registration, so the
+   *  publication path's validator cache keyed on it compiles once. */
   private statusSchemaOf(kind: string): Record<string, any> | undefined {
-    const def = this.getDefinition?.(this.resolveKindSafe(kind)) ?? this.getDefinition?.(kind);
-    return def?.status;
+    return this.effectiveKindOf(kind)?.status;
   }
 
   /**
@@ -1082,11 +1090,10 @@ export class EvaluationContext implements IEvaluationContext {
    * parent instance's reading, or undefined when the kind declares none.
    *
    * Such a child is one instance created by its ancestor's controller, so `snapshot()` is the parent's and a field the parent never
-   * declared would be readable from nowhere. The field NAMES come from
-   * `publishedOwnFields`, stamped onto the definition at registration in the
-   * scope that declared the `extends` alias; resolving the chain here would
-   * resolve it in the READING module's scope, which may have no alias for the
-   * parent's library. Done here rather than by rebinding the instance's
+   * declared would be readable from nowhere. The field NAMES are the kind's
+   * `publishedOwnFields`, folded along the canonical `extends` the registry
+   * records — never resolved in the READING module's scope, which may have no
+   * alias for the parent's library. Done here rather than by rebinding the instance's
    * `snapshot()` because this is definition-derived data joined into a reading —
    * exactly what `statusSchemaOf` already does — and a second kernel cannot
    * rebind a trait method.
@@ -1101,8 +1108,7 @@ export class EvaluationContext implements IEvaluationContext {
     kind: string,
     resource: Record<string, unknown>,
   ): Record<string, unknown> | undefined {
-    const def = this.getDefinition?.(this.resolveKindSafe(kind)) ?? this.getDefinition?.(kind);
-    const fields = (def as { publishedOwnFields?: string[] } | undefined)?.publishedOwnFields;
+    const fields = this.effectiveKindOf(kind)?.publishedOwnFields;
     if (!fields?.length) return undefined;
     let overlay: Record<string, unknown> | undefined;
     for (const field of fields) {
@@ -1286,9 +1292,13 @@ export class EvaluationContext implements IEvaluationContext {
       child.getDefinition = this.getDefinition;
     }
     const inheriting = child as unknown as {
+      effectiveKind?: (kind: string) => EffectiveKind | undefined;
       errorDataValidator?: ErrorDataValidator;
       failureGraph?: () => LoadedGraph | undefined;
     };
+    if (this.effectiveKind && !inheriting.effectiveKind) {
+      inheriting.effectiveKind = this.effectiveKind;
+    }
     if (this.errorDataValidator && !inheriting.errorDataValidator) {
       inheriting.errorDataValidator = this.errorDataValidator;
     }
@@ -2840,7 +2850,7 @@ export class EvaluationContext implements IEvaluationContext {
         const settled = this.errorDataValidator
           ? settleDisplayMessage(
               err,
-              this.getDefinition?.(this.resolveKindSafe(kind)) ?? this.getDefinition?.(kind),
+              this.effectiveKindOf(kind),
               this.errorDataValidator,
               `${kind} '${name}'`,
             )
@@ -2956,17 +2966,15 @@ export class EvaluationContext implements IEvaluationContext {
   kindResolver: ((kind: string) => string) | undefined;
 
   private capabilityOf(kind: string): string | undefined {
-    const resolved = this.resolveKindSafe(kind);
-    return this.getDefinition?.(resolved)?.capability ?? this.getDefinition?.(kind)?.capability;
+    return this.effectiveKindOf(kind)?.capability;
   }
 
   private getDeclaredThrowCodes(kind: string): Set<string> | null {
-    if (!this.getDefinition) return null;
-    // The block stamped at registration: an inheriting kind's is its nearest
-    // ancestor's when it declares none.
-    const def = this.getDefinition(this.resolveKindSafe(kind)) ?? this.getDefinition(kind);
-    if (!def) return null;
-    const throws = def.throws;
+    if (!this.effectiveKind) return null;
+    // An inheriting kind's block is its nearest ancestor's when it declares none.
+    const effective = this.effectiveKindOf(kind);
+    if (!effective) return null;
+    const throws = effective.throws;
     if (!throws) return new Set();
     // inherit / passthrough unions are dynamic — resolved statically by the
     // analyzer, not re-derivable here without a manifest-wide traversal. Skip

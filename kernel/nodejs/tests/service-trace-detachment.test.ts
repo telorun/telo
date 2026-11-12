@@ -45,8 +45,8 @@ describe("service trace detachment — a Service's run() does not leak its ambie
     const kernel = await bootKernel();
     kernel.setTracing(true);
     const rootContext = (kernel as unknown as { rootContext: any }).rootContext;
-    const orig = rootContext.getDefinition?.bind(rootContext);
-    rootContext.getDefinition = (kind: string) =>
+    const orig = rootContext.effectiveKind?.bind(rootContext);
+    rootContext.effectiveKind = (kind: string) =>
       kind === "Test.Service" ? { capability: "Telo.Service" } : orig?.(kind);
 
     const echoes: Payload[] = [];
@@ -67,8 +67,8 @@ describe("service trace detachment — a Service's run() does not leak its ambie
     const kernel = await bootKernel();
     kernel.setTracing(true);
     const rootContext = (kernel as unknown as { rootContext: any }).rootContext;
-    const orig = rootContext.getDefinition?.bind(rootContext);
-    rootContext.getDefinition = (kind: string) =>
+    const orig = rootContext.effectiveKind?.bind(rootContext);
+    rootContext.effectiveKind = (kind: string) =>
       kind === "Test.Runnable" ? { capability: "Telo.Runnable" } : orig?.(kind);
 
     const runSpans: Payload[] = [];

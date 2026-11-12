@@ -44,7 +44,7 @@ import {
   isNativeCallableKind,
   type NotData,
 } from "./callable-data-slot.js";
-import { celEvalModeAt, governedCelEvalSites, type NamedShapeLookup } from "./eval-paths.js";
+import { celEvalModeAt, governedCelEvalSites, type KindMeanings, type NamedShapeLookup } from "./eval-paths.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isKindDocument } from "./kind-declaration.js";
@@ -86,6 +86,8 @@ export interface CallableDataInput {
   readonly resolveDef: DefResolver;
   /** The named-shape lookup the eval-site walk takes. */
   readonly shapes: NamedShapeLookup;
+  /** What each kind means along `extends`. */
+  readonly kinds: KindMeanings;
   /** The concrete reference and scope sites of a declaration, its kind resolved
    *  in its own module. */
   readonly sitesOf: (manifest: ResourceManifest) => readonly ReachSite[];
@@ -162,7 +164,7 @@ function isInstanceDocument(manifest: ResourceManifest): boolean {
 }
 
 export function validateCallableData(input: CallableDataInput): AnalysisDiagnostic[] {
-  const { manifests, rootModules, resolveDef, sitesOf, scope, libraries, shapes } = input;
+  const { manifests, rootModules, resolveDef, sitesOf, scope, libraries, shapes, kinds } = input;
 
   // Every need a module declares, by the name a reference in that module writes.
   const needs = new Set<string>();
@@ -203,7 +205,7 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
   const sitesOfEntry = (entry: BodyEntry) => {
     if (!entrySites.has(entry)) {
       const definition = resolveDef(entry.view.kind, entry.view as unknown as ResourceDefinition);
-      entrySites.set(entry, definition ? governedCelEvalSites(definition, resolveDef, shapes) ?? null : null);
+      entrySites.set(entry, definition ? governedCelEvalSites(definition, kinds, shapes) ?? null : null);
     }
     return entrySites.get(entry) ?? undefined;
   };
@@ -429,7 +431,7 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
     // `init()` has evaluated every expression its entry's kind does not defer;
     // one deferred there reaches the declaration's own creation compiled.
     const placement = placements.get(manifest);
-    const evalSites = governedCelEvalSites(definition, resolveDef, input.shapes);
+    const evalSites = governedCelEvalSites(definition, kinds, input.shapes);
     const expression = (node: unknown, path: string): Found | undefined => {
       if (referencePaths.has(path)) return undefined;
       const computed = computedValue(node);

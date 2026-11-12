@@ -113,6 +113,7 @@ function violations(resources: unknown[]): string[] {
   return validateZoneViolations({
     graph,
     resolveDef,
+    schemaOf: (definition) => defs.effectiveSchemaOf(definition) as Record<string, any> | undefined,
     reportModules: new Set(["App"]),
   }).map((d) => d.code);
 }

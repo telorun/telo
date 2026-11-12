@@ -33,6 +33,9 @@ export interface RefReadingScope {
   /** Canonicalizes an alias-qualified kind, for a slot whose constraint has not
    *  been rewritten yet. */
   resolveKind?(kind: string): string | undefined;
+  /** What a definition means along `extends`. Absent, its `status:` is folded
+   *  through `resolve`. */
+  effectiveKindOf?(definition: any): { readonly status?: Record<string, any> } | undefined;
 }
 
 function isObject(value: unknown): value is Record<string, any> {
@@ -60,7 +63,8 @@ export function refSlotReadingSchema(
     const canonical = scope.resolveKind?.(kind) ?? kind;
     const definition = scope.resolve(canonical) ?? scope.resolve(kind);
     if (!definition) continue;
-    const status = effectiveStatusSchema(definition as any, (k) => scope.resolve(k) as any);
+    const effective = scope.effectiveKindOf?.(definition);
+    const status = effective ? effective.status : effectiveStatusSchema(definition as any, (k) => scope.resolve(k) as any);
     if (isObject(status) && isObject(status.properties)) statuses.push(status);
   }
   if (statuses.length === 0) return openReading(slot);

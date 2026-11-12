@@ -2285,6 +2285,11 @@ declaration carrying the slot. Written on a KIND DOCUMENT beside `schema:`
 as that derivation — a consumer pointing at one is typed as if it pointed at
 the derived target. A selector must hold a literal entry name, never `!cel`.
 
+A projection is inherited along merge-form `extends`: a child with no
+`base:` is typed by the nearest ancestor declaring one, and declaring either
+form on the child replaces the inherited one. A `base:` child's schema is its
+own, so it declares its own projection.
+
 ## Typing a call's input from a referenced resource — `x-telo-value-schema-from`
 
 A kind that forwards caller data to a resource it references lets THAT

@@ -242,7 +242,12 @@ export function checkCallSite(
       const produced = navigateSchemaToExprPath(root[1], chain.slice(root[0].length));
       const slotSchema = (contract.schema.properties as Record<string, any> | undefined)?.[inputName];
       if (!produced || !slotSchema || !isLiveSlot(produced)) continue;
-      const retry = declaredRetry(site.step.value, site.step.schema, invokedManifest, invokedDefinition);
+      const retry = declaredRetry(
+        site.step.value,
+        site.step.schema,
+        invokedManifest,
+        defs.effectiveSchemaOf(invokedDefinition) as Record<string, any> | undefined,
+      );
       if (retry === undefined) continue;
       out.push({
         path: `${site.path}.${inputName}`,
@@ -315,12 +320,12 @@ function declaredRetry(
   step: Record<string, any>,
   stepItemSchema: Record<string, any> | undefined,
   invokedManifest: Record<string, any> | undefined,
-  invokedDef: Record<string, any> | undefined,
+  invokedSchema: Record<string, any> | undefined,
 ): string | undefined {
   for (const [field, budget] of retryFields(stepItemSchema)) {
     if (budget(step?.[field]) > 0) return `the step's \`${field}\``;
   }
-  for (const [field, budget] of retryFields(invokedDef?.schema as Record<string, any>)) {
+  for (const [field, budget] of retryFields(invokedSchema as Record<string, any>)) {
     if (budget(invokedManifest?.[field]) > 0) return `the target's \`${field}\``;
   }
   return undefined;

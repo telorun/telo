@@ -138,8 +138,9 @@ export function validateInvocationContract(
     const definition = resolveDef(m.kind, m as unknown as ResourceDefinition);
     if (!definition) continue;
     checkContractResolves(m, md, manifests, resource, filePath, diagnostics);
-    checkLeftoverInputsSchema(m, definition, md, resource, filePath, diagnostics);
-    checkRefSlotWiring(m, definition, manifests, resolveDef, resource, filePath, diagnostics);
+    const kindSchema = registry.effectiveSchemaOf(definition) as Record<string, any> | undefined;
+    checkLeftoverInputsSchema(m, kindSchema, md, resource, filePath, diagnostics);
+    checkRefSlotWiring(m, kindSchema, manifests, resolveDef, resource, filePath, diagnostics);
   }
 
   return diagnostics;
@@ -168,14 +169,13 @@ export function validateInvocationContract(
  */
 function checkRefSlotWiring(
   m: ResourceManifest,
-  definition: ResourceDefinition,
+  schema: Record<string, any> | undefined,
   manifests: ResourceManifest[],
   resolveDef: DefResolver,
   resource: { kind: string; name: string },
   filePath: string | undefined,
   diagnostics: AnalysisDiagnostic[],
 ): void {
-  const schema = definition.schema as Record<string, any> | undefined;
   if (!schema) return;
 
   const ownModule = (m.metadata as { module?: string } | undefined)?.module;
@@ -719,7 +719,7 @@ function checkMappingRequired(
  *  the author has not finished, not an unknown field. */
 function checkLeftoverInputsSchema(
   m: ResourceManifest,
-  definition: ResourceDefinition,
+  kindSchema: Record<string, any> | undefined,
   md: Record<string, unknown>,
   resource: { kind: string; name: string },
   filePath: string | undefined,
@@ -727,7 +727,7 @@ function checkLeftoverInputsSchema(
 ): void {
   const value = md.inputs;
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
-  const properties = (definition.schema?.properties ?? {}) as Record<string, unknown>;
+  const properties = (kindSchema?.properties ?? {}) as Record<string, unknown>;
   if ("inputs" in properties) return;
   if (!("inputType" in properties)) return;
   diagnostics.push({

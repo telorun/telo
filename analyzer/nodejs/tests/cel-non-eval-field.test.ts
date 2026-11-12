@@ -85,7 +85,7 @@ describe("CEL in a non-eval field", () => {
 
   it("does not flag a CEL field an extends child inherits from its parent", () => {
     // Without `base:`, a child is authored against merge(parent, own), and the
-    // kernel stamps that merged schema at definition registration — so it
+    // kernel expands what that effective schema marks — so it
     // expands the inherited field. Reading the child's OWN schema here reported
     // the expression as never evaluated, which is the analyzer and the runtime
     // disagreeing about what the manifest means.

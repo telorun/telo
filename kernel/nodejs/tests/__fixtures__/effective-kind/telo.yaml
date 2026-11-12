@@ -1,0 +1,60 @@
+kind: Telo.Application
+metadata:
+  name: EffectiveKindKernel
+  version: 1.0.0
+  description: Kinds inheriting a parent's schema, status and throws without declaring their own.
+---
+kind: Telo.Definition
+metadata: { name: Reporter }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./nodejs/reporter.mjs#reporter]
+schema:
+  type: object
+  additionalProperties: false
+  properties: { times: { type: integer } }
+status: { type: object, properties: { count: { type: integer } } }
+throws: { codes: { REPORTER_FAILED: { description: The reporter could not report. } } }
+---
+kind: Telo.Definition
+metadata: { name: Counter }
+extends: Self.Reporter
+---
+kind: Telo.Definition
+metadata: { name: Fixed }
+extends: Self.Reporter
+schema: { type: object, additionalProperties: false, properties: {} }
+base: { times: 2 }
+---
+kind: Self.Counter
+metadata: { name: counter }
+times: 5
+---
+kind: Self.Fixed
+metadata: { name: fixed }
+---
+kind: Telo.Definition
+metadata: { name: Form }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/reporter.mjs#echo]
+x-telo-schema-projection: { entries: /fields, key: type }
+outputType: { type: object, properties: { values: { x-telo-schema-projection-from: "" } } }
+schema:
+  type: object
+  properties:
+    fields:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          type:
+            type: string
+            enum: [text, count]
+            x-telo-schema-map: { text: { type: string }, count: { type: integer } }
+---
+kind: Telo.Definition
+metadata: { name: Signup }
+extends: Self.Form
+---
+kind: Self.Signup
+metadata: { name: signup }
+fields: { age: { type: count } }

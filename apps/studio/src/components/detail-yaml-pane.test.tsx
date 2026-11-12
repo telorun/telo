@@ -155,7 +155,7 @@ describe("DetailYamlPane", () => {
     act(() => void vi.advanceTimersByTime(500));
 
     expect(onSourceEdit).not.toHaveBeenCalled();
-    expect(screen.getByText(/unexpected end|flow sequence|expected/i)).toBeInTheDocument();
+    expect(screen.getByText(/is not closed/i)).toBeInTheDocument();
   });
 
   it("says so when the pointer names a path the source does not write", () => {

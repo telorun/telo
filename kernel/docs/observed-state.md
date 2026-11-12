@@ -55,9 +55,10 @@ child with `base:` publishes the parent's unchanged, because it *is* a parent
 instance. The chain is folded in the scope that **declared** each definition,
 never the consumer's: an `extends` alias belongs to the file it was written in,
 so an abstract's `status:` reaches a consumer that imports only the
-implementation (the sanctioned "one import instead of two"). The kernel stamps
-the folded block onto the definition at registration; the analyzer re-scopes per
-declaring module and reaches the same answer.
+implementation (the sanctioned "one import instead of two"). The definition
+registry's effective-kind query answers the folded block, through the canonical
+`extends` each definition registered with; the analyzer and the kernel read the
+same answer, and the definition keeps the `status:` its author wrote.
 
 ## Reporting it from a controller
 

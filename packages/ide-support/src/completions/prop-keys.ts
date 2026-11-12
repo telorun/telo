@@ -42,8 +42,8 @@ export function propKeyCompletions(
   }
   if (!registry) return [];
 
-  const definition = registry.resolveDefinition(kind);
-  if (!definition?.schema) {
+  const schema = registry.effectiveKind(kind)?.schema;
+  if (!schema) {
     // Unknown kind (often: an unloaded import). At root level, still surface
     // the universal `kind` / `metadata` keys so completion isn't dead when
     // the registry hasn't resolved the resource type yet.
@@ -76,8 +76,8 @@ export function propKeyCompletions(
   }
 
   const targetSchema = yamlPath.length === 0
-    ? (definition.schema as Record<string, any>)
-    : navigateSchema(definition.schema as Record<string, any>, yamlPath, (from) =>
+    ? schema
+    : navigateSchema(schema, yamlPath, (from) =>
         registry.resolveSchemaFrom(from, kind),
       );
 

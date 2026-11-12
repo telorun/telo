@@ -77,7 +77,7 @@ import {
   type ResolvedReference,
   type SchemaIssue,
   type AnalysisRegistry,
-  effectiveAuthorSchema,
+  type EffectiveKind,
   readApplicationSourceSlot,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
@@ -257,12 +257,9 @@ export class ResourceContextImpl implements ResourceContext {
   #writtenApplicationSource(): string | undefined {
     const kind = this.#resolvedKind;
     if (!kind || !this.#manifest) return undefined;
-    const registry = this.kernel.getAnalysisRegistry();
-    const definition = registry.resolveDefinition(kind);
-    if (!definition) return undefined;
-    const slot = readApplicationSourceSlot(
-      effectiveAuthorSchema(definition, (k) => registry.resolveDefinition(k)),
-    );
+    const effective = this.kernel.getAnalysisRegistry().effectiveKind(kind);
+    if (!effective) return undefined;
+    const slot = readApplicationSourceSlot(effective.schema);
     const written = slot ? this.#manifest[slot.field] : undefined;
     return typeof written === "string" ? written : undefined;
   }
@@ -605,6 +602,7 @@ export class ResourceContextImpl implements ResourceContext {
       // pointer read at invoke time sees live instances in ref slots.
       manifest,
       resolveDefinition: (kind) => this.kernel.getAnalysisRegistry().resolveDefinition(kind),
+      effectiveKind: (kind) => this.kernel.getAnalysisRegistry().effectiveKind(kind),
       resolveDefinitionIn: (kind, module) =>
         this.kernel.getAnalysisRegistry().resolveDefinitionIn(kind, module),
       resolveLocalInstance: (name) => this.resolveLocalInstance(name),
@@ -1028,7 +1026,10 @@ export class ResourceContextImpl implements ResourceContext {
     const registry = this.kernel.getAnalysisRegistry();
     const own = registry.resolveDefinition(this.#resolvedKind ?? "");
     const coKind = own
-      ? new CanonicalSlotKinds((kind, module) => registry.resolveDefinitionIn(kind, module)).kindAt(
+      ? new CanonicalSlotKinds(
+          (kind, module) => registry.resolveDefinitionIn(kind, module),
+          (definition) => registry.effectiveKindOf(definition)?.schema,
+        ).kindAt(
           own,
           String(site.keys[0]),
           written.kind,
@@ -1339,14 +1340,19 @@ export class ResourceContextImpl implements ResourceContext {
     return this.analysisView.shapeLookup;
   }
 
+  /** What a registered definition means along `extends`. */
+  effectiveKindOf(definition: ResourceDefinition | undefined): EffectiveKind | undefined {
+    return this.analysisView.effectiveKindOf(definition);
+  }
+
   /** The analysis registry as the running configuration of this resource's
    *  module holds it. */
   private get analysisView(): AnalysisRegistry {
     return (this.moduleContext as unknown as KernelModuleContext).analysisView ?? this.kernel.getAnalysisRegistry();
   }
 
-  registerDefinition(def: any) {
-    this.kernel.registerResourceDefinition(def);
+  registerDefinition(def: any, canonicalExtends?: string) {
+    this.kernel.registerResourceDefinition(def, canonicalExtends);
   }
 
   getControllerPolicy(): ControllerPolicy | undefined {

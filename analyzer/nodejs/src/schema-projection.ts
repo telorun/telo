@@ -51,6 +51,7 @@ import { isResolvedReference } from "./resolved-reference.js";
 import type { ScopeSite } from "./scope-address.js";
 import { importPathThrough, ofInstance, scopeReadAt } from "./scoped-name-resolver.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
+import type { EffectiveKind } from "./definition-registry.js";
 import {
   crossingPlace,
   placeAt,
@@ -157,6 +158,29 @@ export function rawSchemaProjection(definition: unknown): unknown {
   if (own !== undefined) return own;
   const schema = definition.schema;
   return isObject(schema) ? schema["x-telo-schema-projection"] : undefined;
+}
+
+/**
+ * The document declaring a kind's projection — `x-telo-schema-projection` (on
+ * the document or, misplaced, in its `schema:`) or `x-telo-schema-projection-from`
+ * on the document — nearest along merge-form `extends`. The two forms are one
+ * inherited value: a child declaring either replaces what it inherits. A `base:`
+ * child's surface is its own, so the walk stops there.
+ */
+export function kindProjectionDeclarer<D extends ResourceDefinition>(
+  definition: D | undefined,
+  resolve: (kind: string, from: D) => D | undefined,
+): D | undefined {
+  const seen = new Set<object>();
+  let at = definition;
+  while (at && !seen.has(at)) {
+    seen.add(at);
+    const document = at as unknown as Record<string, unknown>;
+    if (document[PROJECTION_FROM] !== undefined || rawSchemaProjection(document) !== undefined) return at;
+    if (document.base != null || typeof at.extends !== "string") return undefined;
+    at = resolve(at.extends, at);
+  }
+  return undefined;
 }
 
 /** True when the annotation was found inside `schema:` rather than on the
@@ -822,6 +846,11 @@ export interface ProjectionScope {
   /** The definition a declaration's kind names, resolved in the module scope of
    *  `declaration`. */
   resolveDefinition(kind: string, declaration?: Record<string, any>): Record<string, any> | undefined;
+  /** What a definition {@link resolveDefinition} answered means along `extends`
+   *  — its effective schema and the document declaring its projection. A host
+   *  holding definitions alone, with no registry, omits it; a definition no
+   *  registry holds means what it writes. */
+  effectiveKind?(definition: Record<string, any>): EffectiveKind | undefined;
   /**
    * The concrete reference sites of `declaration` — the sites Phase-5 injection
    * substitutes, `x-telo-schema-from` expansions included, spelled `tables[0]`
@@ -850,6 +879,8 @@ export interface ProjectionModules {
   moduleForAlias(module: string | undefined, alias: string): string | undefined;
   /** See {@link ProjectionScope.referenceSlots}. */
   referenceSlots(declaration: Record<string, any>, module: string | undefined): readonly string[] | undefined;
+  /** See {@link ProjectionScope.effectiveKind}. */
+  effectiveKind?(definition: Record<string, any>): EffectiveKind | undefined;
   readonly libraries?: LibraryDeclarations;
 }
 
@@ -898,6 +929,7 @@ export function projectionScopeOf(
 
   const scope: ProjectionScope = {
     resolveDefinition,
+    ...(modules?.effectiveKind ? { effectiveKind: (definition) => modules.effectiveKind!(definition) } : {}),
     referenceSlots: (declaration, holder) =>
       modules?.referenceSlots(declaration, scopeModuleOf(declaration) ?? scopeModuleOf(holder)),
     resolveManifest(value, holder, trail) {
@@ -1411,8 +1443,14 @@ function projectDeclaration(
   const kind = declaration.kind;
   const definition = run.scope.resolveDefinition(kind, holder.scope);
   if (!definition) return { reason: "no-projection", pointer: anchor, kind };
+  // A definition no registry holds means what it writes.
+  const effective = run.scope.effectiveKind?.(definition) ?? {
+    schema: definition.schema as Record<string, any> | undefined,
+    projectionDeclarer: definition,
+  };
+  const declarer = effective.projectionDeclarer;
 
-  const derived = readKindDerivation(definition);
+  const derived = readKindDerivation(declarer);
   if (derived && "invalid" in derived) {
     return { reason: "invalid", pointer: anchor, detail: `kind '${kind}': ${derived.invalid}` };
   }
@@ -1426,8 +1464,9 @@ function projectDeclaration(
     return withoutEntries(projected, holder, derived.derivation.omit, anchor, run);
   }
 
-  const projection = readSchemaProjection(definition);
-  const map = projection && projectionKeyMap(definition.schema, projection);
+  const projection = readSchemaProjection(declarer);
+  const kindSchema = effective?.schema;
+  const map = projection && projectionKeyMap(kindSchema, projection);
   // The EMPTY pointer names the declaration itself, whose entry paths are its
   // own; any other declaration's entries are anchored at the consumer's slot.
   const pointer = declaration === run.consumer ? "" : anchor === "" ? "/" : anchor;
@@ -1437,7 +1476,7 @@ function projectDeclaration(
           scope: run.scope,
           pointer,
           failures,
-          kindSchema: definition.schema,
+          kindSchema,
         })
       : undefined;
   if (projected) return projected;
@@ -1641,7 +1680,7 @@ function crossedProjectionReads(pointer: string): ReferentReads {
   const known = derivedTargetReads.get(pointer);
   if (known) return known;
   const rest: ProjectionPlace[] = pointerPlaces([pointer]).map((keys) => ({ kind: "value", keys }));
-  const reads: ReferentReads = (referent) => [...rest, ...projectionPlaces(referent.definition)];
+  const reads: ReferentReads = (referent) => [...rest, ...projectionPlaces(referent.projectionDeclarer)];
   derivedTargetReads.set(pointer, reads);
   return reads;
 }
@@ -1665,13 +1704,13 @@ function selectorRead(selector: string): ProjectionPlace {
   return pointerRead(selector, reads);
 }
 
-/** What projecting a declaration of a kind with `definition` reads in it: the
- *  entries its kind's projection names, and in each declaration an entry
- *  names the fields its reference path reads — or, for a kind deriving its
- *  projection, the declaration its derivation names and the entries its
- *  `omit` selectors name. */
-function projectionPlaces(definition: Record<string, any> | undefined): ProjectionPlace[] {
-  const derived = readKindDerivation(definition);
+/** What projecting a declaration of a kind whose projection `declarer` declares
+ *  reads in it: the entries its kind's projection names, and in each
+ *  declaration an entry names the fields its reference path reads — or, for a
+ *  kind deriving its projection, the declaration its derivation names and the
+ *  entries its `omit` selectors name. */
+function projectionPlaces(declarer: Record<string, any> | undefined): ProjectionPlace[] {
+  const derived = readKindDerivation(declarer);
   if (derived && "derivation" in derived) {
     const { from, omit } = derived.derivation;
     return [
@@ -1680,7 +1719,7 @@ function projectionPlaces(definition: Record<string, any> | undefined): Projecti
     ];
   }
   if (derived) return [];
-  const projection = readSchemaProjection(definition);
+  const projection = readSchemaProjection(declarer);
   if (!projection) return [];
   return [
     {
@@ -1696,12 +1735,12 @@ function projectionPlaces(definition: Record<string, any> | undefined): Projecti
  *  through its own kind's projection, or one its `from` pointer names across
  *  references — whose entries are projected, and the entries its `pick` /
  *  `omit` selectors name. */
-export const projectionFromReads: ReadReporter = ({ value, definition }) => {
+export const projectionFromReads: ReadReporter = ({ value, projectionDeclarer }) => {
   const read = readProjectionDerivation(value);
   if (!read || "invalid" in read) return [];
   const { from, pick, omit } = read.derivation;
   return [
-    ...(from === "" ? projectionPlaces(definition) : [pointerRead(from)]),
+    ...(from === "" ? projectionPlaces(projectionDeclarer) : [pointerRead(from)]),
     ...[...(pick !== undefined ? [pick] : []), ...(omit ?? [])].map(selectorRead),
   ];
 };

@@ -16,7 +16,7 @@ const diskSource: ManifestSource = {
 };
 
 /**
- * Read against the REAL `Run.Sequence` schema, for the reason
+ * Read against the REAL `Run.Iteration` schema, for the reason
  * `run-step-schema.test.ts` gives: the control-flow vocabulary this model reads
  * is a shared manifest fragment resolved through the loader, and a hand-written
  * schema would assert against a shape nothing ships.
@@ -30,9 +30,9 @@ describe("step list model", () => {
     const loaded = await new Loader([diskSource]).loadModule(`${repoRoot}/modules/run/telo.yaml`);
     const sequence = loaded.owner.manifests.find(
       (m) =>
-        m?.kind === "Telo.Definition" && (m.metadata as { name?: string })?.name === "Sequence",
+        m?.kind === "Telo.Definition" && (m.metadata as { name?: string })?.name === "Iteration",
     ) as Record<string, unknown> | undefined;
-    expect(sequence, "Run.Sequence definition").toBeDefined();
+    expect(sequence, "Run.Iteration definition").toBeDefined();
     schema = sequence!.schema as Record<string, unknown>;
     stepSchema = getStepSchema(schema)!;
     variants = getVariants(stepSchema, schema);

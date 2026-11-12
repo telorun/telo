@@ -1,7 +1,6 @@
 import { declaredContractShape, type ContractShapeHost } from "./declared-contract-shape.js";
 import {
   effectiveAuthorSchema,
-  effectiveStatusSchema,
   valueSchemaFromProblems,
   type DefResolver,
 } from "@telorun/analyzer";
@@ -15,7 +14,7 @@ import type {
 import { RuntimeError } from "@telorun/sdk";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
-import { stampDeclaredDisplayMessages } from "../../declared-display-messages.js";
+import { registeredKindOf } from "./resource-definition-controller.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
 import { refuseInvalidCompletedWhen } from "./completed-when-guard.js";
 import { refuseInvalidCallsCoReferrers } from "./calls-co-referrers-guard.js";
@@ -64,16 +63,13 @@ class ResourceAbstract implements ResourceInstance {
   }
 
   private async registerKind(ctx: ResourceContext) {
-    const definingCtx = ctx.moduleContext;
-    const resolveDef: DefResolver = (kind) => {
-      let canonical = kind;
-      try {
-        canonical = definingCtx.resolveKind(kind);
-      } catch {
-        // ungated / unqualified — fall back to the raw kind below
-      }
-      return definingCtx.getDefinition?.(canonical) ?? definingCtx.getDefinition?.(kind);
-    };
+    // Every hop resolves in the module that declared the definition it was read off.
+    const resolveDef: DefResolver = (kind, from) =>
+      (
+        ctx as unknown as {
+          resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinition | undefined;
+        }
+      ).resolveDefinitionIn(kind, (from ?? this.resource).metadata?.module);
 
     // Deferred until the ancestor is loaded, the rule the definition controller
     // follows: an abstract stating no capability takes its ancestor's, and the
@@ -130,28 +126,13 @@ class ResourceAbstract implements ResourceInstance {
         ).resolveDefinitionIn(kind, module),
     );
 
-    // Fold the ancestors' schema and observed state in, in THIS scope, exactly
-    // as the definition controller does: an `extends` alias belongs to the file
-    // that wrote it, so a child in another module folding this abstract's own
-    // parent through ITS aliases would resolve `Self` to the wrong module.
-    if (this.resource.extends) {
-      const resolveIn: DefResolver = (kind, from) =>
-        (
-          ctx as unknown as {
-            resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinition | undefined;
-          }
-        ).resolveDefinitionIn(kind, (from ?? (this.resource as unknown as ResourceDefinition)).metadata?.module);
-      this.resource.schema = effectiveAuthorSchema(
-        this.resource as unknown as ResourceDefinition,
-        resolveIn,
-      ) as Record<string, any> | undefined;
-      this.resource.status = effectiveStatusSchema(
-        this.resource as unknown as ResourceDefinition,
-        resolveIn,
-      ) as Record<string, any> | undefined;
-    }
-    stampDeclaredDisplayMessages(this.resource as unknown as ResourceDefinition, resolveDef);
-    ctx.registerDefinition(this.resource);
+    // Recorded with the canonical kind `extends` names in THIS scope: an alias
+    // belongs to the file that wrote it, and what the abstract means along the
+    // chain is the analysis registry's answer folded through that kind.
+    (ctx as unknown as { registerDefinition(definition: unknown, canonicalExtends?: string): void }).registerDefinition(
+      this.resource,
+      this.resource.extends ? registeredKindOf(resolveDef(this.resource.extends)) : undefined,
+    );
     recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());
   }
 }

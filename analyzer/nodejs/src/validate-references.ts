@@ -4,7 +4,6 @@ import { isRefSentinel } from "@telorun/templating";
 import { visitManifest } from "./manifest-visitor.js";
 import { celEvalModeAt, kindCelEvalSites, NO_CEL_EVAL_SITES } from "./eval-paths.js";
 import { computedRefSlots, evaluatedField } from "./ref-slot-computed.js";
-import type { DefResolver } from "./extends-resolution.js";
 import { isSchemaFromSite, schemaFromIsKindDecidable, schemaFromSites } from "./schema-from-sites.js";
 import { valueTypeRefusalCode } from "./schema-error-report.js";
 import {
@@ -534,9 +533,7 @@ export function validateReferences(
    *  walk below visits every site of it. */
   let computedRefSlotPaths: ReadonlySet<string> = new Set();
   const readComputedRefSlots = (r: ResourceManifest, definition?: ResourceDefinition): void => {
-    const resolveDef: DefResolver = (k) =>
-      registry.resolve(aliases.resolveKind(k) ?? k) ?? registry.resolve(k);
-    const sites = definition ? kindCelEvalSites(definition, resolveDef, registry.shapeLookup) : NO_CEL_EVAL_SITES;
+    const sites = definition ? kindCelEvalSites(definition, registry, registry.shapeLookup) : NO_CEL_EVAL_SITES;
     computedRefSlotPaths = new Set(
       computedRefSlots(
         registry.referencePositions(r, aliases, aliasesByModule),

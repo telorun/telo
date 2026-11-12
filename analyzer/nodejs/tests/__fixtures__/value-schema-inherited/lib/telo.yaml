@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata: { name: ShapeLib, version: 1.0.0 }
+exports: { kinds: [Shaped] }
+---
+kind: Telo.Definition
+metadata: { name: Shaped }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./shaped.mjs#shaped]
+schema:
+  type: object
+  properties:
+    shape: { type: object }
+    sample: {}

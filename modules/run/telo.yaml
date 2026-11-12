@@ -16,98 +16,11 @@ exports: { kinds: [Sequence, Value, Choice, Loop, Iteration, Projection, Detach]
 kind: Telo.Definition
 metadata:
   name: Sequence
-  description: >-
-    Runs an ordered list of steps — invoke, if, while, switch, try, throw — over
-    a typed inputs/outputs contract.
+  description: Ordered list of steps over a typed inputs/outputs contract; an alias of the built-in sequence.
   deprecated:
     reason: Identical to the kernel built-in Telo.Sequence, which needs no import.
     replacedBy: Telo.Sequence
-capability: Telo.Runnable
-topology: Sequence
-controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Sequence]
-throws: { inherit: true }
-schema:
-  type: object
-  properties:
-    with:
-      title: With
-      # Scoped names resolve in `/steps` and `/targets`; the members'
-      # creation-time fields read the opening invocation's `inputs`.
-      x-telo-scope: { regions: ["/steps", "/targets"], openedBy: dispatch }
-      description: Resources available during sequence execution; their creation-time fields read the invocation's `inputs`. Torn down when done.
-    targets:
-      title: Targets
-      type: array
-      description: with-resources to run() before executing steps; torn down when done. Reference each with a `!ref <name>`.
-      items:
-        title: Target
-        description: A with-resource to run before steps — write it as a `!ref`.
-        x-telo-ref: { kind: [Telo.Runnable, Telo.Service], use: call }
-        # Structural constraint alongside the annotation, mirroring the builtin
-        # Application `targets` items: admit the `!ref` string and the resolved
-        # `{kind, name}` shape so AJV doesn't reject a resolved ref.
-        anyOf:
-          - { type: string }
-          - type: object
-            required: [kind, name]
-            properties: { kind: { type: string }, name: { type: string } }
-            additionalProperties: true
-    inputType:
-      title: Input Type
-      description: >-
-        The sequence's input contract — a named type reference or an inline type definition. Callers supply values at invoke
-        time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
-        this contract to the resource: declared defaults are filled and every
-        call is validated against it before dispatch.
-      x-telo-ref: { kind: Telo.Type, use: schema }
-    outputType:
-      title: Output Type
-      description: >-
-        The result contract — a named type reference or an inline type definition. Declaring it types
-        `steps.<name>.result` for callers, has every result slot checked
-        statically by `x-telo-value-schema-from`, and has the produced value
-        validated at dispatch.
-      x-telo-ref: { kind: Telo.Type, use: schema }
-    outputs:
-      title: Outputs
-      type: object
-      description: >-
-        A CEL map (key → `!cel` expression) evaluated over `steps.*` and
-        `inputs.*` after the steps run. Its value becomes the sequence's
-        `result` — what a caller sees, e.g. an `Http.Api` route's `returns:`.
-        Omit it to return the raw step-results map.
-      additionalProperties: true
-      x-telo-context: { type: object, properties: { inputs: {} } }
-      x-telo-value-schema-from: outputType
-    steps:
-      title: Steps
-      description: Ordered sequence of steps to execute.
-      x-telo-topology-role: steps
-      type: array
-      items: { $ref: "telo://manifest#/$defs/Step" }
-  required: [steps]
-  examples:
-    - inputType:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [userId]
-          properties: { userId: {}, limit: { type: integer } }
-      steps:
-        - name: fetchUser
-          invoke: !ref GetUser
-          inputs:
-            bindings:
-              - !cel "inputs.userId"
-        - name: count
-          invoke: !ref CountPosts
-          inputs:
-            bindings:
-              - !cel "inputs.userId"
-              - !cel "inputs.limit"
-      outputs:
-        name: !cel "steps.fetchUser.result.rows[0].name"
-        postCount: !cel "steps.count.result.rows[0].n"
+extends: Telo.Sequence
 ---
 kind: Telo.Definition
 metadata:

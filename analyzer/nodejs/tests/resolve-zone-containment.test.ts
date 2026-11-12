@@ -1,4 +1,4 @@
-import type { ResourceManifest } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { buildCallGraph, resourceId } from "../src/call-graph.js";
@@ -131,6 +131,7 @@ const defs = registryOf(
   detachDef,
 );
 const resolveDef = (kind: string) => defs.resolve(kind);
+const schemaOf = (definition: ResourceDefinition) => defs.effectiveSchemaOf(definition) as Record<string, any> | undefined;
 
 describe("findZoneRegions — a ref-slot body", () => {
   const resources = [
@@ -152,7 +153,7 @@ describe("findZoneRegions — a ref-slot body", () => {
   const graph = buildCallGraph(resources, defs);
 
   it("reaches the body and everything it calls, transitively", () => {
-    const [region] = findZoneRegions(graph, resolveDef, "noSuspend");
+    const [region] = findZoneRegions(graph, resolveDef, "noSuspend", schemaOf);
     expect(region).toBeDefined();
     expect(region!.provider.name).toBe("tx");
     expect(region!.slot).toBe("steps");
@@ -165,17 +166,17 @@ describe("findZoneRegions — a ref-slot body", () => {
   });
 
   it("excludes the provider itself — a zone constrains its contents, not its opener", () => {
-    const [region] = findZoneRegions(graph, resolveDef, "noSuspend");
+    const [region] = findZoneRegions(graph, resolveDef, "noSuspend", schemaOf);
     expect(region!.contents.has(resourceId("sql.Transaction", "tx"))).toBe(false);
   });
 
   it("excludes a dependency the provider merely holds", () => {
-    const [region] = findZoneRegions(graph, resolveDef, "noSuspend");
+    const [region] = findZoneRegions(graph, resolveDef, "noSuspend", schemaOf);
     expect(region!.contents.has(resourceId("sql.Connection", "db"))).toBe(false);
   });
 
   it("carries the author's reason and every attribute the slot declares", () => {
-    const [region] = findZoneRegions(graph, resolveDef, "atomic");
+    const [region] = findZoneRegions(graph, resolveDef, "atomic", schemaOf);
     expect(region!.reason).toMatch(/rollback erases/);
     // A consumer deciding collapse reads both off one region rather than
     // walking twice.
@@ -183,8 +184,8 @@ describe("findZoneRegions — a ref-slot body", () => {
   });
 
   it("finds nothing for an attribute the slot does not declare", () => {
-    expect(findZoneRegions(graph, resolveDef, "replayed")).toEqual([]);
-    expect(findZoneRegions(graph, resolveDef, "idempotent")).toEqual([]);
+    expect(findZoneRegions(graph, resolveDef, "replayed", schemaOf)).toEqual([]);
+    expect(findZoneRegions(graph, resolveDef, "idempotent", schemaOf)).toEqual([]);
   });
 });
 
@@ -201,7 +202,7 @@ describe("findZoneRegions — a native step body", () => {
   const graph = buildCallGraph(resources, defs);
 
   it("enters through the slot's own step nodes rather than through an edge", () => {
-    const [region] = findZoneRegions(graph, resolveDef, "replayed");
+    const [region] = findZoneRegions(graph, resolveDef, "replayed", schemaOf);
     expect(region).toBeDefined();
     const names = [...region!.contents.values()].map((c) =>
       c.node.type === "resource" ? c.node.name : `step:${c.node.name}`,
@@ -232,7 +233,7 @@ describe("findZoneRegions — the zone's lifetime stops at a detach", () => {
   ] as unknown as ResourceManifest[];
 
   const graph = buildCallGraph(resources, defs);
-  const [region] = findZoneRegions(graph, resolveDef, "noSuspend");
+  const [region] = findZoneRegions(graph, resolveDef, "noSuspend", schemaOf);
 
   it("records the detaching dispatch as a boundary rather than following it", () => {
     // The detacher IS inside the region — it is called there — while what it
@@ -267,7 +268,7 @@ describe("containmentIndex", () => {
       },
     ] as unknown as ResourceManifest[];
     const graph = buildCallGraph(resources, defs);
-    const index = containmentIndex(findZoneRegions(graph, resolveDef, "noSuspend"));
+    const index = containmentIndex(findZoneRegions(graph, resolveDef, "noSuspend", schemaOf));
     expect(index.get(resourceId("test.Echo", "write"))?.provider.name).toBe("tx");
     expect(index.has(resourceId("sql.Connection", "db"))).toBe(false);
   });

@@ -3,12 +3,10 @@
  * `throws.codes.<CODE>.displayMessage` — and the one rule that attaches them to
  * a failure.
  *
- * A kind's display messages are resolved once, when the kind registers, in the scope that
- * declared it: the nearest declaration along `extends` wins per code, and each is
- * the record creation settled (`{ text, context, lang, computed }`, in the
- * declaring module's language). They are stamped on the definition as
- * `declaredDisplayMessages`, a derived field no manifest writes, so a dispatch exit —
- * which holds the kind and no declaring scope — reads them with one lookup.
+ * A kind's display messages are the analysis registry's answer for the kind
+ * (`EffectiveKind.displayMessages`): the nearest declaration along `extends`
+ * per code, each the record creation settled (`{ text, context, lang,
+ * computed }`, in the declaring module's language).
  *
  * Where an error leaves a dispatch, a code the kind declares with a
  * `displayMessage` gets it unless the error already carries one, and its `data`
@@ -17,13 +15,12 @@
  * message can never fail. An ambient code the kind does not declare gets its
  * built-in one.
  */
-import type { DefResolver } from "@telorun/analyzer";
+import type { EffectiveKind } from "@telorun/analyzer";
 import {
   attachDisplayMessage,
   builtinErrorCode,
   InvokeError,
   isTextRecord,
-  type ResourceDefinition,
   type TextRecord,
 } from "@telorun/sdk";
 import { SchemaValidationError, type SchemaValidator } from "./schema-validator.js";
@@ -36,43 +33,22 @@ export interface DeclaredDisplayMessage {
   readonly declarer: string;
 }
 
-type Stamped = ResourceDefinition & { declaredDisplayMessages?: Readonly<Record<string, DeclaredDisplayMessage>> };
-
-const declarerName = (def: ResourceDefinition): string => {
-  const module = (def.metadata as { module?: string } | undefined)?.module;
-  return module ? `${module}.${def.metadata?.name}` : String(def.metadata?.name);
-};
-
-/**
- * The display messages `def` declares, its parent's (already registered, so already
- * stamped) beneath its own. Stamped on `def`, which is the object the kind
- * registers.
- */
-export function stampDeclaredDisplayMessages(def: ResourceDefinition, resolveDef: DefResolver): void {
-  const parent = typeof def.extends === "string" ? (resolveDef(def.extends, def) as Stamped | undefined) : undefined;
-  const out: Record<string, DeclaredDisplayMessage> = { ...(parent?.declaredDisplayMessages ?? {}) };
-  const codes = (def as { throws?: { codes?: Record<string, { displayMessage?: unknown; data?: unknown }> } }).throws?.codes ?? {};
-  for (const [code, entry] of Object.entries(codes)) {
-    if (!entry || entry.displayMessage === undefined) continue;
-    if (!isTextRecord(entry.displayMessage)) {
+/** The display message `kind` declares for `code`, or — for an ambient code — the built-in one. */
+export function declaredDisplayMessageOf(kind: EffectiveKind | undefined, code: string): DeclaredDisplayMessage | undefined {
+  const declared = kind?.displayMessages[code];
+  if (declared) {
+    if (!isTextRecord(declared.displayMessage)) {
       throw new Error(
-        `${declarerName(def)}: throws.codes.${code}.displayMessage reached registration unsettled — a ` +
+        `${declared.declarer}: throws.codes.${code}.displayMessage reached a dispatch unsettled — a ` +
           `definition's texts are settled into records when it is created.`,
       );
     }
-    out[code] = {
-      record: entry.displayMessage,
-      ...(entry.data && typeof entry.data === "object" ? { data: entry.data as Record<string, unknown> } : {}),
-      declarer: declarerName(def),
+    return {
+      record: declared.displayMessage,
+      ...(declared.data ? { data: declared.data } : {}),
+      declarer: declared.declarer,
     };
   }
-  if (Object.keys(out).length > 0) (def as Stamped).declaredDisplayMessages = out;
-}
-
-/** The display message `def` declares for `code`, or — for an ambient code — the built-in one. */
-export function declaredDisplayMessageOf(def: ResourceDefinition | undefined, code: string): DeclaredDisplayMessage | undefined {
-  const declared = (def as Stamped | undefined)?.declaredDisplayMessages?.[code];
-  if (declared) return declared;
   const builtin = builtinErrorCode(code);
   return builtin ? { record: builtin.record, ...(builtin.data ? { data: builtin.data } : {}), declarer: "Telo" } : undefined;
 }
@@ -125,15 +101,15 @@ export function errorDataRefusal(
  */
 export function settleDisplayMessage(
   err: InvokeError,
-  def: ResourceDefinition | undefined,
+  kind: EffectiveKind | undefined,
   validate: ErrorDataValidator,
   where: string,
 ): InvokeError {
-  const entry = declaredDisplayMessageOf(def, err.code);
+  const entry = declaredDisplayMessageOf(kind, err.code);
   if (!entry) return err;
   const refusal = errorDataRefusal(entry, err.code, err.data, validate, where);
   if (refusal) {
-    const own = declaredDisplayMessageOf(def, refusal.code);
+    const own = declaredDisplayMessageOf(kind, refusal.code);
     if (own) attachDisplayMessage(refusal, own.record);
     return refusal;
   }

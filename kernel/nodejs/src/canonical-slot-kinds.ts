@@ -15,22 +15,26 @@ export type ScopedKindResolver = (kind: string, module: string | undefined) => R
  * wrote it. A definition the kernel registered keeps the spellings its author
  * wrote (`Self.Topic`, `Co.Listener`), and those readers compare kinds as
  * strings, so two modules naming one kind by different aliases must meet as
- * `<module>.<Kind>`. A merge-form `extends` child's schema holds its ancestors'
- * properties, so a top-level property is read in the module of the farthest
- * ancestor declaring it. A kind that resolves to nothing is left as written,
+ * `<module>.<Kind>`. A view's schema is the kind's effective one, which for a
+ * merge-form `extends` child holds its ancestors' properties, so a top-level
+ * property is read in the module of the farthest ancestor declaring it. A kind that resolves to nothing is left as written,
  * for the refusal that reports it.
  */
 export class CanonicalSlotKinds {
   private readonly views = new WeakMap<object, ResourceDefinition>();
 
-  constructor(private readonly resolveIn: ScopedKindResolver) {}
+  constructor(
+    private readonly resolveIn: ScopedKindResolver,
+    private readonly effectiveSchemaOf: (definition: ResourceDefinition) => unknown = (definition) =>
+      definition.schema,
+  ) {}
 
   /** `definition` with its slot kinds canonical. */
   definition(definition: ResourceDefinition): ResourceDefinition {
     const known = this.views.get(definition);
     if (known) return known;
     const module = definition.metadata?.module;
-    const schema = definition.schema as Record<string, unknown> | undefined;
+    const schema = this.effectiveSchemaOf(definition) as Record<string, unknown> | undefined;
     const properties = schema?.properties as Record<string, unknown> | undefined;
     let canonical = this.schema(schema, module);
     if (canonical && properties && typeof properties === "object") {
@@ -95,7 +99,8 @@ export class CanonicalSlotKinds {
       const parent = this.resolveIn(current.extends, current.metadata?.module);
       if (!parent || seen.has(parent)) break;
       seen.add(parent);
-      const declares = (parent.schema as { properties?: Record<string, unknown> } | undefined)?.properties?.[key];
+      const declares = (this.effectiveSchemaOf(parent) as { properties?: Record<string, unknown> } | undefined)
+        ?.properties?.[key];
       if (declares === undefined) break;
       declarer = parent;
       current = parent;

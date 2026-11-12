@@ -131,6 +131,7 @@ function diagnose(resources: unknown[], reportModules = ["App"]) {
   return validateDurableRegions({
     graph,
     resolveDef: (kind) => defs.resolve(kind),
+    schemaOf: (definition) => defs.effectiveSchemaOf(definition) as Record<string, any> | undefined,
     reportModules: new Set(reportModules),
     moduleCallNames: moduleCallNamesByModule(resources as ResourceManifest[]),
     // No function is declared here, so no module call reaches one.
@@ -364,6 +365,7 @@ describe("DURABLE_CONTRACT_REQUIRED", () => {
       validateDurableRegions({
         graph: buildCallGraph(resources as ResourceManifest[], reg),
         resolveDef: (kind) => reg.resolve(kind),
+        schemaOf: (definition) => reg.effectiveSchemaOf(definition) as Record<string, any> | undefined,
         reportModules: new Set(["App"]),
         moduleCallNames: moduleCallNamesByModule(resources as ResourceManifest[]),
         moduleCallFlags: () => undefined,

@@ -47,6 +47,17 @@ template body inherits, by delegation:
   parent's, so a parent that closes its schema (`additionalProperties: false`)
   cannot accept an added field; declaring one is
   `EXTENDS_CLOSED_PARENT_ADDS_FIELD`, and the fix is a `base:` mapping.
+- **The rule behind every item here.** A declaration always means what its
+  author wrote; everything derived along `extends` is answered by the
+  effective-kind query on the definition registry, and nothing writes a derived
+  value over a declaration. A reader that interprets an instance uses the
+  effective answer; a reader that judges the declaration uses the authored
+  document.
+- **Schema projections — by replacement, nearest declarer.** A merge-form child
+  inherits its ancestors' `x-telo-schema-projection` / `-from`: the nearest
+  declarer wins, and a child declaring either form replaces what it would
+  inherit. The walk stops at a `base:` hop, since that child's schema is its
+  own — such a kind declares its own projection.
 - **The rules — by addition**, with a controller of its own or without one.
   Without `base:`, the child is judged by its
   ancestors' [resource rules](./resource-rules.md#inheritance) and

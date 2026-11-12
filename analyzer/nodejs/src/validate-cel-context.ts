@@ -105,6 +105,8 @@ export interface ContextResolveOpts {
     /** The author-facing schema, inheritance resolved. Falls back to the
      *  definition's own `schema` when absent. */
     effectiveSchemaOf?(definition: any): Record<string, unknown> | undefined;
+    /** What a definition means along `extends`. */
+    effectiveKindOf?(definition: any): { readonly status?: Record<string, any> } | undefined;
   };
   aliases?: {
     resolveKind(kind: string): string | undefined;
@@ -664,6 +666,7 @@ export function resolveContextAnnotations(
             ? (withRefSlotsAsReadings(resolved, {
                 resolve: (kind) => defs.resolve(kind),
                 resolveKind: (kind) => aliases?.resolveKind(kind),
+                ...(defs.effectiveKindOf ? { effectiveKindOf: (d: any) => defs.effectiveKindOf!(d) } : {}),
               }) as Record<string, any>)
             : resolved,
         );

@@ -9,7 +9,7 @@ import { ManifestAnalysis } from "./manifest-analysis.js";
 import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
 import { isModuleKind } from "./module-kinds.js";
 import { configuredNamedShapes, declaresNamedShape, libraryNamedShapes } from "./configured-named-shapes.js";
-import { DefinitionRegistry } from "./definition-registry.js";
+import { DefinitionRegistry, type EffectiveKind } from "./definition-registry.js";
 import {
   derivedSlotsOf as readDerivedSlots,
   type DerivedSlot,
@@ -590,6 +590,7 @@ export class AnalysisRegistry {
             : [],
         ),
       definition: (kind, module) => this.resolveDefinitionIn(kind, module),
+      effectiveKind: (definition) => this.defs.effectiveKindOf(definition),
       celScopeHolder: (resource) =>
         celScopeHolderOf(resource, this.defs, this.aliases, this.aliasesByModule).holder,
       aliasesForModule: (module) => this.aliases.aliasesFor(module),
@@ -613,6 +614,18 @@ export class AnalysisRegistry {
     const ctx = this._context();
     const resolved = ctx.aliases?.resolveKind(kind);
     return ctx.definitions?.resolve(kind) ?? (resolved ? ctx.definitions?.resolve(resolved) : undefined);
+  }
+
+  /** What `kind` means along `extends` — its effective schema, status, throws,
+   *  published own fields, display messages and capability — resolved as
+   *  {@link resolveDefinition} resolves it. The definition itself is as written. */
+  effectiveKind(kind: string): EffectiveKind | undefined {
+    return this.effectiveKindOf(this.resolveDefinition(kind));
+  }
+
+  /** {@link effectiveKind} for a definition this registry holds. */
+  effectiveKindOf(definition: ResourceDefinition | undefined): EffectiveKind | undefined {
+    return this._context().definitions?.effectiveKindOf(definition);
   }
 
   /** Resolve a kind in a named module's scope. The entry point for walking an
@@ -764,7 +777,7 @@ export class AnalysisRegistry {
     if (!this.governedSites.has(definition)) {
       this.governedSites.set(
         definition,
-        governedCelEvalSites(definition, this.scopedDefResolver(), this.shapeLookup) ?? null,
+        governedCelEvalSites(definition, this.defs, this.shapeLookup) ?? null,
       );
     }
     return this.governedSites.get(definition) ?? undefined;

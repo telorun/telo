@@ -55,11 +55,16 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 const PROJECTION_FROM = "x-telo-schema-projection-from";
 
-/** Every manifest's derivations; a kind document's own projection as well. */
-export function validateSchemaProjection(manifest: ResourceManifest): SchemaProjectionIssue[] {
+/** Every manifest's derivations; a kind document's own projection as well,
+ *  whose entries, key and modifiers are judged against the document's
+ *  effective schema (`effectiveSchemaOf`, its own when omitted). */
+export function validateSchemaProjection(
+  manifest: ResourceManifest,
+  effectiveSchemaOf: (document: Record<string, unknown>) => unknown = (document) => document.schema,
+): SchemaProjectionIssue[] {
   const kindDocument = manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract";
   return kindDocument
-    ? [...derivationIssues(manifest, true), ...projectionIssues(manifest)]
+    ? [...derivationIssues(manifest, true), ...projectionIssues(manifest, effectiveSchemaOf)]
     : derivationIssues(manifest, false);
 }
 
@@ -102,7 +107,10 @@ function derivationIssues(manifest: ResourceManifest, kindDocument: boolean): Sc
   return issues;
 }
 
-function projectionIssues(manifest: ResourceManifest): SchemaProjectionIssue[] {
+function projectionIssues(
+  manifest: ResourceManifest,
+  effectiveSchemaOf: (document: Record<string, unknown>) => unknown,
+): SchemaProjectionIssue[] {
   const doc = manifest as unknown as Record<string, unknown>;
   const raw = rawSchemaProjection(doc);
   if (raw === undefined) return [];
@@ -170,7 +178,7 @@ function projectionIssues(manifest: ResourceManifest): SchemaProjectionIssue[] {
   }
 
   const projection = readSchemaProjection(doc)!;
-  const schema = doc.schema;
+  const schema = effectiveSchemaOf(doc);
 
   // An ARRAY-shaped collection has no key to name its entries by, so without
   // `name` every entry projects to nothing and the whole projection is an object

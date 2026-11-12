@@ -148,7 +148,7 @@ export function effectiveAuthorSchema(
   const parentSchema = effectiveAuthorSchema(parent, resolve);
   const merged = mergeTypeSchemas([parentSchema, own]) as Record<string, any>;
   for (const annotation of RULE_ANNOTATIONS) {
-    const joined = joinInheritedRules(annotation, parentSchema[annotation], own[annotation]);
+    const joined = joinInheritedRules(parentSchema[annotation], own[annotation]);
     if (joined !== undefined) merged[annotation] = joined;
   }
   if (hasTextKeys(own)) merged[TEXT_KEYS_ANNOTATION] = own[TEXT_KEYS_ANNOTATION];
