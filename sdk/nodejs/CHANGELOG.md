@@ -1,5 +1,18 @@
 # @telorun/sdk
 
+## 0.135.0
+
+### Minor Changes
+
+- 07c52fa: `Telo.Value` is a built-in kind: an invocable that returns a value shaped from its inputs and optional named bindings, checked against its `inputType` and `outputType`, with no import. It answers exactly as `Run.Value` does, listed by `telo builtins`. The Rust kernel refuses it as it does the other CEL-evaluating built-ins.
+
+### Patch Changes
+
+- Updated dependencies [d036bfa]
+- Updated dependencies [d036bfa]
+  - @telorun/cel@0.135.0
+  - @telorun/message-format@0.135.0
+
 ## 0.134.0
 
 ### Minor Changes

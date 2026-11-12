@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 - 2026-11-12
+### Fixed
+* Two concurrent purges of the same run in one process are serialized, so the second answers false once the first has removed the run.
+
 ## 0.9.0 - 2026-11-11
 ### Added
 * The file journal replaces a run's entries with a baseline in one atomic rename (replaceWithBaseline) and deletes a finished run (finishedRuns, deleteFinishedRun), for the workflow's compactAfter and retainFinished.

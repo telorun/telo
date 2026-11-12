@@ -1,4 +1,0 @@
-modules:
-  modules/pdf: Fixed
-body: The README and manifest no longer claim that every @napi-rs/canvas wrapper in the
-  process opens this module's Skia addon.
