@@ -591,3 +591,51 @@ texts:
   - { text: "Everything", translation: "Tutto" }
   - { text: "Drafts about releases", translation: "Bozze sulle versioni" }
   - { text: "Search posts, or filter by author, status or date", translation: "Cerca articoli o filtra per autore, stato o data" }
+
+  # The review pages: the inbox, a document's page, the comparison and a
+  # worker's page, with their models' labels.
+  - { text: "Reviews", translation: "Revisioni" }
+  - { text: "The documents under review. The list reads itself again every thirty seconds and keeps your place; a review waiting past its product's deadline is drawn in red.", translation: "I documenti in revisione. L'elenco si rilegge ogni trenta secondi e mantiene la tua posizione; una revisione che attende oltre la scadenza del suo prodotto è mostrata in rosso." }
+  - { text: "Review", translation: "Revisione" }
+  - { text: "Changes", translation: "Modifiche" }
+  - { text: "Worker", translation: "Esecutore" }
+  - { text: "Worker {$name}", translation: "Esecutore {$name}" }
+  - { text: "There is no review '{$id}'.", translation: "Non esiste la revisione '{$id}'." }
+  - { text: "Review '{$id}' has no revision {$revision}.", translation: "La revisione '{$id}' non ha la versione {$revision}." }
+  - { text: "Revision {$latest} has replaced the one you read. Read it before deciding.", translation: "La versione {$latest} ha sostituito quella che hai letto. Leggila prima di decidere." }
+  - { text: "Revision {$revision} has no item {$item}.", translation: "La versione {$revision} non ha la voce {$item}." }
+  - { text: "All", translation: "Tutte" }
+  - { text: "Waiting a day or more", translation: "In attesa da un giorno o più" }
+  - { text: "{$title}", translation: "{$title}" }
+  - { text: "Compare revisions", translation: "Confronta le versioni" }
+  - { text: "Its worker", translation: "Il suo esecutore" }
+  - { text: "Reject this document?", translation: "Rifiutare questo documento?" }
+  - { text: "Timeline", translation: "Cronologia" }
+  - { text: "Compare from", translation: "Confronta da" }
+  - { text: "Compare to", translation: "Confronta con" }
+  - { text: "Too large to compare line by line.", translation: "Troppo grande per un confronto riga per riga." }
+  - { text: "Approve", translation: "Approva" }
+  - { text: "Request changes", translation: "Chiedi modifiche" }
+  - { text: "Reject", translation: "Rifiuta" }
+  - { text: "A document addressed by its ID, read again every thirty seconds. The buttons decide on the revision on screen, and each item the server names in it has a Comment control.", translation: "Un documento indirizzato dal suo ID, riletto ogni trenta secondi. I pulsanti decidono sulla versione mostrata, e ogni voce che il server vi nomina ha un controllo per commentare." }
+  - { text: "Two revisions compared line by line. Choose either end from the lists; added lines are green, removed ones red.", translation: "Due versioni confrontate riga per riga. Scegli entrambi gli estremi dagli elenchi; le righe aggiunte sono verdi, quelle tolte rosse." }
+  - { text: "The commands of the worker the address names, read again every five seconds without losing the pages loaded.", translation: "I comandi dell'esecutore che l'indirizzo nomina, riletti ogni cinque secondi senza perdere le pagine caricate." }
+  - { text: "Document", translation: "Documento" }
+  - { text: "Product", translation: "Prodotto" }
+  - { text: "Repository", translation: "Repository" }
+  - { text: "State", translation: "Stato" }
+  - { text: "Revised", translation: "Rivisto" }
+  - { text: "Overdue", translation: "In ritardo" }
+  - { text: "Submitted", translation: "Inviato" }
+  - { text: "Changes requested", translation: "Modifiche richieste" }
+  - { text: "Approved", translation: "Approvato" }
+  - { text: "Rejected", translation: "Rifiutato" }
+  - { text: "#", translation: "N." }
+  - { text: "Command", translation: "Comando" }
+  - { text: "Created", translation: "Creato" }
+  - { text: "Event", translation: "Evento" }
+  - { text: "By", translation: "Da" }
+  - { text: "When", translation: "Quando" }
+  - { text: "Revision", translation: "Versione" }
+  - { text: "Your name", translation: "Il tuo nome" }
+  - { text: "Note", translation: "Nota" }

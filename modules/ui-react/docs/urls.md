@@ -5,14 +5,19 @@ Everything is under the mount path. With the application mounted at `/admin`,
 
 | URL | Returns | Cache |
 | --- | --- | --- |
-| any page path, and any other path not under `_telo` | the shell; status 404 when no page declares the path | `no-cache` |
+| any address a page opens, and any other path not under `_telo` | the shell; status 404 when no page [opens](app.md#routing) the address | `no-cache` |
 | `_telo/ui/app` | the application document | `private, no-cache`, `ETag` |
-| `_telo/ui/page?path=<page path>` | a page document; a 404 problem (`{ type, title, status }`, `application/problem+json`) for an unknown path | `private, no-cache`, `ETag` |
+| `_telo/ui/page?path=<address path>` | the document of the page the address opens; a 404 problem (`{ type, title, status }`, `application/problem+json`) when none does | `private, no-cache`, `ETag` |
 | `_telo/ui/events` | server-sent events | — |
 | `_telo/ui/assets/<sha256>/<name>` | a file by content address | `public, max-age=31536000, immutable` |
 
 Anything else under `_telo`, and an asset no address names, is the same 404 problem. Query keys beginning `_telo` are
 reserved to the renderer.
+
+An address whose path is not valid percent-encoding (`/plans/%ZZ`) opens no
+page: its page document is the 404 problem and the renderer draws the
+not-found page. Loaded directly, it is answered `404` with the shell, which
+draws the same not-found page.
 
 ## The open key
 
@@ -109,6 +114,11 @@ With `address: true`, one query key per filter:
 - A key is matched whole against the filters the bar declares; nothing is
   parsed out of it. A key under `_telo.f.<key>.` that is no declared filter's
   is left as it is.
+- A value relative to now, on a `date` or `date-time` filter compared with
+  `eq`, `gt`, `gte`, `lt` or `lte`, is written `now<sign><count><unit>`
+  (`_telo.f.inbox.revisedAt.lte=now-1day`, `now+0hour`), the unit one of
+  `minute`, `hour`, `day`, `week`, `month`, `year`, and read back as relative;
+  the store holds the same spelling.
 
 ### In browser storage
 
@@ -260,6 +270,8 @@ else its `pageWidth`, else `contained`, resolved by `ui`'s `resolvedPageWidth`
 }
 ```
 
+`path` is the page's declared path, its variables as written (`/plans/{id}`),
+whichever address opened it; the renderer reads the variables from the address.
 `title` is absent for a page that declares none — in this document and in the
 application document's `pages` — and the renderer then draws no heading. `children` are `Ui.SpecNode`s, produced for this request: no `when` is left in
 them, and every `shown` is carried as written. `query` is the page's declared
@@ -292,10 +304,12 @@ Every address the page document carries — a `link` or menu item `href`, a
 or option source `href`, a reader's `source`, an action's `request.target`,
 `onSuccess.navigate` and `onSuccess.refreshes` — is `{ path, pathParams,
 queryParams }`, expanded in the browser over the roots its site binds (`row`,
-`query`, `data`, `input`, `result`). The renderer holds a twin of the expansion
+`query`, `params`, `data`, `input`, `result`). A collection source's templated
+`basePath` is `{ path, pathParams }` and expands the same way, over `params`
+and `query`. The renderer holds a twin of the expansion
 in `ui`, and both answer `modules/ui/conformance/addresses.json` row for row:
-a `{name}` segment is the percent-encoded value of its path parameter (an empty
-or absent value does not resolve), query parameters follow in declaration
+a `{name}` segment is the percent-encoded value of its path parameter (an empty,
+absent or null value does not resolve), query parameters follow in declaration
 order with null and empty lists left out and a list repeating its key, and
 the result must be an address under the mount or an `https:`, `http:` or
 `mailto:` one. An app-relative address is requested and linked under the mount.
@@ -305,13 +319,14 @@ the result must be an address under the mount or an `https:`, `http:` or
   nothing and draws its `failure` tree, a refresh is skipped and a navigation
   goes nowhere; each is reported once in the console as
   `ERR_UI_ADDRESS_UNRESOLVED`, naming the parameter.
-- **Following one.** An address whose path and query are exactly a declared
-  page's path moves within the application; any other is an ordinary load. A
-  cell link to anything but a declared page keeps `target="_blank"`.
+- **Following one.** An address a declared page [opens](app.md#routing) moves
+  within the application; any other is an ordinary load. A cell link to
+  anything but a page of the application keeps `target="_blank"`.
 - **The page already shown.** A move to the page being shown (same path, new
   query or fragment) fetches no document and keeps every node mounted — what a
   form or an action holds, a listing's loaded pages — and each reader re-reads
-  the query parameters it declares from the new address.
+  the query parameters it declares from the new address. A move to another
+  value of its variables fetches no document either, and draws the page afresh.
 
 ## Invalidation
 
@@ -324,7 +339,7 @@ every `data` reader whose resolved `source` path is that path (a `refreshes`
 entry whose literal path holds a `*` / `**` segment instead reads again every
 subscribed reader — `data`, listing or chat — whose key it matches, segment by
 segment: `*` one non-empty segment, `**` any number, none included), every listing
-whose `basePath` is (with its facet and relation label reads), and a `chat`
+whose resolved `basePath` is (with its facet and relation label reads), and a `chat`
 whose open conversation path (`<basePath>/conversations/<id>`) is — read again
 unless a turn is running in it. A chat announces its own `refreshes` when a send
 is admitted and when a turn ends.

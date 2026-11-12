@@ -63,7 +63,8 @@ export interface ResourceRule {
   readonly in?: string;
   /** JSON Pointers to this kind's own reference slots whose declarations the
    *  condition reads in place of the references, resolved one level — a single
-   *  slot becomes the declaration it names, a collection its entries resolved.
+   *  slot becomes the declaration it names, a collection its entries resolved;
+   *  a repeated group, as `in:` writes one, reaches every level of a tree.
    *  Opt-in, because rewriting `self` for every rule would change what existing
    *  rules read. */
   readonly resolve?: readonly string[];
@@ -178,7 +179,7 @@ export function readResourceRules(schema: unknown): ResourceRule[] {
     const resolve = entry.resolve;
     if (
       resolve !== undefined &&
-      !(Array.isArray(resolve) && resolve.every((p) => typeof p === "string" && pointerSegments(p)))
+      !(Array.isArray(resolve) && resolve.every((p) => typeof p === "string" && unfoldOnce(p)))
     ) {
       return;
     }
@@ -298,6 +299,71 @@ export function parseRulePointer(pointer: string): RulePointerStep[] | undefined
   };
   const parsed = steps(false);
   return parsed && at === pointer.length ? parsed : undefined;
+}
+
+/** A parsed pointer holding no group, written back as a JSON Pointer. */
+function plainPointer(steps: readonly RulePointerStep[]): string {
+  return steps
+    .map((step) => (step.kind === "key" ? `/${step.key.replace(/~/g, "~0").replace(/\//g, "~1")}` : "/*"))
+    .join("");
+}
+
+/**
+ * The plain pointers (`*` kept) a pointer with repeated groups stands for: each
+ * group taken zero times, and once more for as long as `repeats` — asked with
+ * the pointer of the place the group would start from and how many groups were
+ * taken on the way — allows. A pointer with no group is itself; `undefined` for
+ * one that is not a pointer.
+ */
+export function unfoldRulePointer(
+  pointer: string,
+  repeats: (from: string, taken: number) => boolean,
+): string[] | undefined {
+  if (!/[()|]/.test(pointer)) return pointerSegments(pointer) ? [pointer] : undefined;
+  const steps = parseRulePointer(pointer);
+  if (!steps) return undefined;
+  const out = new Set<string>();
+  const unfold = (rest: readonly RulePointerStep[], prefix: readonly RulePointerStep[], taken: number): void => {
+    const at = rest.findIndex((step) => step.kind === "repeat");
+    if (at === -1) {
+      out.add(plainPointer([...prefix, ...rest]));
+      return;
+    }
+    const group = rest[at] as Extract<RulePointerStep, { kind: "repeat" }>;
+    const before = [...prefix, ...rest.slice(0, at)];
+    const after = rest.slice(at + 1);
+    unfold(after, before, taken);
+    if (taken >= MAX_REPEAT_DEPTH || !repeats(plainPointer(before), taken)) return;
+    for (const alternative of group.alternatives) unfold([...alternative, group, ...after], before, taken + 1);
+  };
+  unfold(steps, [], 0);
+  return [...out];
+}
+
+/** A pointer's unfoldings with each group taken at most once — what a
+ *  declaration check and a read report judge, a group's every level being the
+ *  same schema. */
+export function unfoldOnce(pointer: string): string[] | undefined {
+  return unfoldRulePointer(pointer, (_, taken) => taken < 1);
+}
+
+/**
+ * A `resolve:` pointer as the plain pointers it names in `value`: a group taken
+ * as many times as the value's own data holds another level of it. A group
+ * repeats over the resource's own data, never inside a declaration a reference
+ * names — which the declaration check holds a kind to.
+ */
+export function resolvePointersIn(value: unknown, pointer: string): string[] | undefined {
+  return unfoldRulePointer(pointer, (from) =>
+    placesAlong([{ value, path: "" }], parseRulePointer(from) ?? []).some(
+      (place) =>
+        !place.dynamic &&
+        !!place.value &&
+        typeof place.value === "object" &&
+        !isTaggedSentinel(place.value) &&
+        !isCelNode(place.value),
+    ),
+  );
 }
 
 /** Whether a parsed pointer names one place only: no `*` and no group. */
@@ -824,9 +890,13 @@ export function resourceRuleReads(rules: readonly ResourceRule[], moduleNames?: 
       }
     }
     for (const pointer of rule.resolve ?? []) {
-      const at = crossingPlace(pointer);
-      read(at);
-      targets.push({ at, reads: ruleReferentReads([rule], [pointer], "self") });
+      const plain = unfoldOnce(pointer) ?? [pointer];
+      const reads = ruleReferentReads([rule], plain, "self");
+      const crossed = new Map(plain.map((each) => [JSON.stringify(crossingPlace(each)), crossingPlace(each)]));
+      for (const at of crossed.values()) {
+        read(at);
+        targets.push({ at, reads });
+      }
     }
     if (rule.coReferrers !== undefined) {
       const at = crossingPlace(rule.coReferrers);

@@ -33,11 +33,32 @@ pages:
   `query` and `children`; a page with a `title` draws it as its heading, and one
   without draws none. The application invokes it for every request to its
   path; the page's composites are resolved once, when the page is created.
-- Two pages at one path are refused: `RESOURCE_RULE_VIOLATED` with
-  `data.rule: UI_PAGE_PATH_DUPLICATE` at `telo check`,
-  `ERR_UI_PAGE_PATH_DUPLICATE` at creation.
+- Two pages at one path are refused, and so are two whose paths differ only
+  in the names of their [variables](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
+  (`/plans/{id}`, `/plans/{key}`), since both route the same addresses:
+  `RESOURCE_RULE_VIOLATED` with `data.rule: UI_PAGE_PATH_DUPLICATE` at
+  `telo check`, `ERR_UI_PAGE_PATH_DUPLICATE` at creation.
 - A page's `query` declares the query parameters its own nodes read; the page
   document carries it, `{}` when none is declared.
+
+### Routing
+
+An address opens a page by its segments, on the server — for the shell's
+status and the page document — and in the browser, for which clicks are moves
+within the application:
+
+- A page path's `{name}` segment takes exactly one non-empty segment of the
+  address, percent-decoded, and the page's nodes read it as `params.<name>`
+  wherever they read `query`. A literal segment matches only itself.
+- Where several pages match, the one with a literal segment first where the
+  others have a variable opens: with `/plans/new` and `/plans/{id}` listed,
+  `/plans/new` opens the first and `/plans/7` the second.
+- An address no page matches — a malformed percent-encoded segment included —
+  opens the not-found page.
+- A move to another value of a page's variables draws the page afresh, since
+  it shows another record: what its forms hold, its listings' loaded pages and
+  its open surfaces start again, and no document is fetched. A move that
+  changes only the query keeps every node mounted.
 
 ### Page width
 
@@ -102,8 +123,8 @@ metadata: { name: reportsIcon }
 file: !module-path ./icons/reports.svg
 ```
 
-- With no `navigation`, there is one entry per page, in the order `pages`
-  lists them; with no `placement`, the tree is drawn in the header, and below
+- With no `navigation`, there is one entry per titled page with no variable
+  in its path, in the order `pages` lists them; with no `placement`, the tree is drawn in the header, and below
   `compactBelow` behind a menu button opening a drawer from the start edge.
   Every other default is filled by `ui` (see
   [its defaults](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)).
@@ -116,8 +137,12 @@ file: !module-path ./icons/reports.svg
   `ERR_UI_NAVIGATION_PAGE_UNROUTED` at creation.
 - An entry's label is its `text`, else its page's `title`. A page with no title
   is left out of an omitted navigation, and an entry naming one without `text` is
-  `UI_NAVIGATION_PAGE_UNTITLED` at `telo check` (the first two levels of the
-  tree) and `ERR_UI_NAVIGATION_PAGE_UNTITLED` at creation.
+  `UI_NAVIGATION_PAGE_UNTITLED` at `telo check`, at that entry however deep,
+  and `ERR_UI_NAVIGATION_PAGE_UNTITLED` at creation.
+- A page with a variable in its path is left out of an omitted navigation, and
+  an entry naming one is `UI_NAVIGATION_PAGE_HAS_PARAMETERS` at `telo check`,
+  at that entry however deep, and `ERR_UI_NAVIGATION_PAGE_HAS_PARAMETERS` at
+  creation: it is reached by a link whose `pathParams` fill it.
 - **In the header** (`Ui.HeaderNavigation`) the tree is drawn in the `nav`
   part by the [`Navigation` control](controls-abi.md#navigation) in a row: a
   group opens as a dropdown, a group inside it as a submenu, and what does not
@@ -372,7 +397,7 @@ A fault in one node never takes the page with it.
   console ([addresses](urls.md#addresses)). A navigation entry
   whose address does so is shown the same way beside the navigation.
 - A click on a link is taken as a move within the application only when it
-  leads to a page the application declares. A `link` node to anything else
+  leads to an address a page the application declares [opens](#routing). A `link` node to anything else
   under the mount — a file an `Http.Static` serves beneath it — is an
   ordinary browser load.
 - Every node is drawn inside a boundary of its own — a page's children, a
@@ -422,8 +447,13 @@ but the drawing is the listing's, whatever the layout:
   first page.
 - **Reloading.** A write, a delete, a row action, `notifyChanged(path)` and an
   action's resolved target and `onSuccess.refreshes` reload every listing whose
-  source has that `basePath` ([invalidation](urls.md#invalidation)), and every
-  `values: present` filter over it. A reload keeps
+  source has that `basePath` — a templated one as it resolves
+  ([invalidation](urls.md#invalidation)) — and every `values: present` filter
+  over it. `reloadEvery` reloads the listing on a timer by the same rule, with
+  the `values: present` filters over its source: a tick is skipped while one of
+  its reads is in flight, none runs while the document is hidden, and coming
+  back to it reads once if an interval has passed. A tick, or any reload, that
+  fails keeps the records drawn with the failure beside them. A reload keeps
   what is drawn until it answers: it reads the loaded pages again from the
   first, each with the cursor the one before answered, and draws them
   together; with more than 10 pages loaded in a read it reads the first page
@@ -469,12 +499,16 @@ A component layout's entry is held to the layout contract when the
 application starts; one built for another is drawn as an error node in place
 of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
 
-- A listing, a form and an option source read and write their `basePath` under
-  the mount, as a reader reads its resolved `source`: mounted at `/admin`,
-  `basePath: /api/todos` lists from `/admin/api/todos` and edits
-  `/admin/api/todos/<key>`. A write announces the change under the
-  `basePath` (and an edit or delete also under the record's own path), which is
-  what a reader or an action's `refreshes` names.
+- A listing, a form, a filter bar and an option source read and write their
+  `basePath` under the mount, as a reader reads its resolved `source`: mounted
+  at `/admin`, `basePath: /api/todos` lists from `/admin/api/todos` and edits
+  `/admin/api/todos/<key>`. A templated `basePath` is resolved over `params`
+  and `query` as a request target is; one that does not resolve sends nothing
+  and draws an `error` node (`ERR_UI_ADDRESS_UNRESOLVED`) — in place of the
+  listing, at the top of a form, as the failure of a filter's present values
+  or of an option source. A write announces the change under the resolved
+  `basePath` (and an edit or delete also under the record's own path), which
+  is what a reader or an action's `refreshes` names.
 - A filter bar shows the filters on one property together: one label, and
   each control captioned by its operator — `from` and `to` for a range
   (`gte`, `lte`), `after` and `before` for `gt` and `lt`.
@@ -505,6 +539,16 @@ of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
   related keys are labelled with one batched `in` request per page of values.
   A change announced for the bar's `basePath` reads them again, whether or not
   the bar holds a listing.
+- A `date` or `date-time` filter holding a value relative to now — from a
+  relative `default` or preset — holds it as `now<±n><unit>` (`now-1day`) in
+  the bar, the address and the store, so its preset stays active. Its control
+  shows it as it resolves now. A read resolves it in the viewer's time zone
+  when it asks for a first page — of a listing read, of a reload cycle (every
+  loaded page of the cycle sends that one value), of a grouping's or a
+  filter's present values — and every later page of that sequence sends the
+  same value, since its cursor was issued for it. With more than 10 pages
+  loaded, the first page a reload reads alone keeps the value the pages drawn
+  were read with.
 - A filter under `absent` is a switch: on sends `<property>.absent=true`, off
   sends nothing. Two filters on one property are captioned by operator, the
   `absent` one with `operatorAbsent` (`Manager is`, `Manager not set`).
@@ -556,7 +600,8 @@ of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
 A listing's [`rowActions`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) — and a `list`
 node's, drawn the same way in a last cell of each row — are text buttons in
 each row, showing each action's label in the order declared, before edit and
-delete.
+delete. A [`button` node](#buttons) and a markdown node's
+[annotations](markdown.md#annotations) run their bound actions the same way.
 
 - Written `rowActionsDisplay: menu`, or `auto` where the listing's own width
   does not give the buttons room, they are folded with edit and delete into
@@ -581,10 +626,15 @@ delete.
   question is its title and its button carries the action's label. Cancel or
   Escape sends nothing.
 - An entry with `prompt` opens that confirmation on the press with its fields
-  under the title, each the control a form derives for the property. Its
-  button sends what the fields hold together with the row's bound record;
-  Enter in a field does the same. A value the input model refuses marks its
-  field and nothing is sent. What was entered is kept until the dialog closes.
+  — the action's fields its inputs do not bind — under the title, each the
+  control a form derives for the property. Its button sends what the fields
+  hold together with the bound record, which is never drawn; Enter in a field
+  does the same. The two make one record, held whole to the input model before
+  anything is sent: a value it refuses marks its field, a property it refuses
+  that no field enters — a required input whose binding read nothing — is
+  named under the fields, and nothing is sent. What was entered is kept until
+  the dialog closes, and the fields the action's `state` keeps are
+  [kept values](#forms) like a form's.
 - Once the operation succeeds the confirmation closes, the action's `result`
   tree — when it declares one — is drawn in place of the button
   (`row-answer`), and its `onSuccess` applies. The listing then reloads every
@@ -650,6 +700,13 @@ delete.
   range's initial preset. Every change of a kept property is written to both,
   the address replaced and never pushed; values read back are held to the
   interpreted profile and the current fields, and to their option source.
+  The stored entry is merged property by property, so an entry keeping fewer
+  properties leaves the others another entry of the key keeps. Every form,
+  action and open prompt mounted in the document under the same key, keeping a
+  property in the same place — the address, or one store — follows a change
+  another makes to it, unless it is editing a record; another tab, and a
+  prompt opened later, sees it when it next mounts: `author` entered in one
+  action's prompt opens the next prompt of the key holding it.
 
 ## Actions
 
@@ -689,11 +746,42 @@ below it what the operation answered.
   `onSuccess.refreshes` path are announced (an entry that does not resolve is
   skipped and reported in the console), and every reader reading exactly one
   reads again ([invalidation](urls.md#invalidation)). `onSuccess.navigate`
-  moves the page: within the application to a declared page, by a full load to
+  moves the page: within the application to an address a declared page opens, by a full load to
   any other app-relative address, by replacing the page for an `https://`,
   `http://` or `mailto:` one. An address that does not resolve navigates
   nowhere.
 - The drawn answer is cleared when a property `clearAnswerOn` lists changes.
+
+### Buttons
+
+A [`button` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) is a `button` part labelled with its
+action's `label`, drawn as its `button` display says — text, a glyph beside its
+text, or a glyph alone named by `aria-label` — and styled by its `style`. A
+press runs the action as a [row action](#row-actions) does, with the inputs it
+binds read over the roots in scope when it is pressed: at once, or through its
+`confirm` question and its `prompt`. Until it is answered the button is
+disabled and carries `data-state="submitting"`; a success draws the action's
+`result` tree in its place (`row-answer`) and applies `onSuccess`, and a
+failure draws the `failure` tree beside it (`row-failure`), or in the open
+confirmation. Its `enabled` disables it while its condition does not hold, with
+`disabled-text` beside it.
+
+## Times
+
+A [`time` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), and a `list` column of `type: time`, draws a
+`time` part. A value shaped as a date (`2026-11-05`) or a date-time (RFC 3339)
+is a `<time>` whose `datetime` is the machine-readable time — a date-time in
+UTC. `relative: true` draws it relative to now in the page's language
+(`3 hours ago`, `yesterday`, `in 2 weeks`; a date by calendar days in the
+viewer's time zone), its exact date and time in `title`, and draws it again
+every minute while it is shown and the document is visible, and on the
+document's return to view. `relative: false` draws the date, or the date and
+time in the viewer's time zone, in the page's language. A value of any other
+shape is drawn as its text in a `span`, and nothing is drawn for no value.
+
+A `list` node's `rowStyle` is on each `table-row` as `data-style` and a
+column's `style` on each of its `table-cell`s, both read over `row` and the
+roots the list is drawn under.
 
 ## Surfaces
 

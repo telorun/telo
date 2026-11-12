@@ -10,6 +10,7 @@ import {
   celUint,
   valueTypeOf,
 } from "@telorun/sdk";
+import { resolveSchemaReference } from "./schema-reference.js";
 import { AliasResolver, moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { isResolvedReference } from "./resolved-reference.js";
@@ -22,7 +23,6 @@ import {
   type DefResolver,
   effectiveContractField,
 } from "./extends-resolution.js";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { READS_IDENTITY, type ReadPlace, type ReferentReads } from "./read-place.js";
 import { projectionFromReads } from "./schema-projection.js";
 import { valueDerivedSlot } from "./value-derived-contract.js";
@@ -343,22 +343,18 @@ type RefResolver = (ref: string) => Record<string, any> | undefined;
  * references resolve against: a named shape through `resolveRef`, a `#…` pointer
  * against the contract's own document — where a type reached by
  * `x-telo-value-schema-from` is carried (`resolveContractValueSchemas`), and
- * what a validator follows too. `document` is undefined once a walk has left
- * the contract for a named shape, whose own pointers are not followed.
+ * what a validator follows too; a pointer into a named shape as the shape is.
+ * `document` is undefined once a walk has left the contract for a named shape,
+ * whose own pointers are not followed.
  */
 function contractRefTarget(
   ref: string,
   document: Record<string, any> | undefined,
   resolveRef?: RefResolver,
 ): { target: Record<string, any>; document: Record<string, any> | undefined } | undefined {
-  if (ref.startsWith("#")) {
-    const target = document ? resolveSchemaPointer(document, ref) : undefined;
-    return target && typeof target === "object" && !Array.isArray(target)
-      ? { target: target as Record<string, any>, document }
-      : undefined;
-  }
-  const target = resolveRef?.(ref);
-  return target ? { target, document: undefined } : undefined;
+  const reached = resolveSchemaReference(ref, document, resolveRef);
+  if (!reached) return undefined;
+  return { target: reached.node, document: reached.shape === undefined ? document : undefined };
 }
 
 /**

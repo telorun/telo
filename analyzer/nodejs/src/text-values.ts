@@ -14,7 +14,7 @@
  * Browser-safe: no Node built-ins.
  */
 import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { resolveSchemaReference, schemaReferenceParts } from "./schema-reference.js";
 import {
   judgeValues,
   schemaValueKind,
@@ -63,8 +63,27 @@ function fragmentAt(node: Schema, root: Schema, resolveRef: ((ref: string) => Sc
   const own = textFragmentOf(node);
   if (own !== undefined) return own;
   if (typeof node.$ref !== "string") return undefined;
-  const target = node.$ref.startsWith("#") ? resolveSchemaPointer(root, node.$ref) : resolveRef?.(node.$ref);
-  return isSchema(target) ? textFragmentOf(target) : undefined;
+  const target = resolveSchemaReference(node.$ref, root, resolveRef);
+  return target ? textFragmentOf(target.node) : undefined;
+}
+
+/** The objects a value sits in, from a named shape's root to where a `$ref`'s
+ * pointer into it lands — undefined where the pointer passes through a node
+ * whose position in a value is not known (a `$defs` entry). */
+function holdersAlong(ref: string): number | undefined {
+  const segments = schemaReferenceParts(ref).pointer.slice(1).split("/").filter((segment) => segment !== "");
+  let holders = 0;
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (segment === "properties" || segment === "patternProperties") {
+      holders++;
+      i++;
+    } else if (segment === "additionalProperties") holders++;
+    else if (!["items", "then", "else", "allOf", "anyOf", "oneOf"].includes(segment!) && !/^\d+$/.test(segment!)) {
+      return undefined;
+    }
+  }
+  return holders;
 }
 
 /**
@@ -97,7 +116,17 @@ export function textValuesProblems(
       : `'${where}'`;
     problems.push({ path: where, message: `'${kind}' declares ${place} ${reason}` });
   };
-  const visit = (node: unknown, root: Schema, path: ValuePath, shape: string | undefined, inner: ValuePath): void => {
+  // `holders`: the objects a value here sits in, out to the walk's root — the
+  // kind's or the named shape's — or undefined where the position is not known
+  // (a `$defs` entry).
+  const visit = (
+    node: unknown,
+    root: Schema,
+    path: ValuePath,
+    shape: string | undefined,
+    inner: ValuePath,
+    holders: number | undefined,
+  ): void => {
     if (!isSchema(node) || visited.has(node)) return;
     visited.add(node);
     const step = (key: ValuePath): [ValuePath, ValuePath] => (shape ? [path, [...inner, ...key]] : [[...path, ...key], inner]);
@@ -124,6 +153,13 @@ export function textValuesProblems(
         from("as something other than a relative JSON pointer (`0/data` names the sibling `data`).");
       } else if (TEXT_VALUES_ANNOTATION in node) {
         from(`beside ${TEXT_VALUES_ANNOTATION}: a text's values are declared one way. Remove one of the two.`);
+      } else if (holders !== undefined && relativePointerOf(node[TEXT_VALUES_FROM_ANNOTATION])!.up >= holders) {
+        const up = relativePointerOf(node[TEXT_VALUES_FROM_ANNOTATION])!.up;
+        from(
+          shape
+            ? `climbing ${up} level${up === 1 ? "" : "s"} from the object holding the text, above the named shape: a relative pointer inside a named shape stays within it.`
+            : `climbing ${up} level${up === 1 ? "" : "s"} from the object holding the text, above the resource.`,
+        );
       }
     }
     if (isSchema(node.properties)) {
@@ -149,37 +185,38 @@ export function textValuesProblems(
       }
       for (const [key, child] of Object.entries(node.properties)) {
         const [p, i] = step(["properties", key]);
-        visit(child, root, p, shape, i);
+        visit(child, root, p, shape, i, holders === undefined ? undefined : holders + 1);
       }
     }
     for (const mapKey of ["patternProperties", "$defs", "definitions"] as const) {
       if (!isSchema(node[mapKey])) continue;
       for (const [key, child] of Object.entries(node[mapKey])) {
         const [p, i] = step([mapKey, key]);
-        visit(child, root, p, shape, i);
+        visit(child, root, p, shape, i, mapKey === "patternProperties" && holders !== undefined ? holders + 1 : undefined);
       }
     }
     for (const single of ["additionalProperties", "items", "then", "else"] as const) {
       if (isSchema(node[single])) {
         const [p, i] = step([single]);
-        visit(node[single], root, p, shape, i);
+        visit(node[single], root, p, shape, i, single === "additionalProperties" && holders !== undefined ? holders + 1 : holders);
       }
     }
     for (const union of ["oneOf", "anyOf", "allOf"] as const) {
       if (Array.isArray(node[union])) {
         node[union].forEach((branch: unknown, index: number) => {
           const [p, i] = step([union, index]);
-          visit(branch, root, p, shape, i);
+          visit(branch, root, p, shape, i, holders);
         });
       }
     }
     if (typeof node.$ref === "string" && !node.$ref.startsWith("#")) {
-      const named = resolveRef?.(node.$ref);
-      const name = parseCanonicalTypeSchemaId(node.$ref)?.typeName ?? node.$ref;
-      if (named) visit(named, named, path, shape ?? name, shape ? inner : []);
+      const named = resolveSchemaReference(node.$ref, root, resolveRef);
+      const id = named?.shape ?? node.$ref;
+      const name = parseCanonicalTypeSchemaId(id)?.typeName ?? id;
+      if (named) visit(named.node, named.document, path, shape ?? name, shape ? inner : [], holdersAlong(node.$ref));
     }
   };
-  visit(schema, schema, at, undefined, []);
+  visit(schema, schema, at, undefined, [], 0);
   return problems;
 }
 

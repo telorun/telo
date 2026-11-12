@@ -33,6 +33,20 @@ turns what it produces into a web application.
   declared once. A layout grouping, spanning or nesting by something the API
   cannot filter by is refused by `telo check`, and another module adds a layout
   without changing this one.
+- **Pages keyed by an ID.** A page's path may hold variables (`/plans/{id}`),
+  read anywhere on the page as `params` — by its readers, its listings'
+  sources and the views it places, a library's included — and a read of a
+  variable the placing page lacks is refused by `telo check`. Readers and
+  listings can also read again on a timer (`reloadEvery`), keeping what is
+  loaded and drawn.
+- **Actions bound to what is on screen.** A `button` node runs an action with
+  inputs taken from the page's variables and the data it reads, a prompt asking
+  the person for the rest — an input the action requires that is neither bound
+  nor asked for is refused by `telo check`. A `markdown` node draws text the page
+  reads with such a control on each item the server names in it, and a `time`
+  node draws a date relative to now ("3 hours ago") or in the viewer's own
+  zone. Filter defaults and presets may be relative to now (a day ago, this
+  week).
 - **Navigation names pages, never paths.** An application's menu is a tree of
   pages, links and nested groups, each with an optional icon — a menu bar with
   dropdowns, a sidebar collapsing to a rail of icons, a menu button with a
@@ -80,13 +94,13 @@ turns what it produces into a web application.
 
 | Kind | Purpose |
 | --- | --- |
-| [`Ui.Page`](docs/page.md) | One page of an application: its address, its title and its nodes, delivered per request. |
+| [`Ui.Page`](docs/page.md) | One page of an application: its address — variables included — its title and its nodes, delivered per request. |
 | [`Ui.HeaderNavigation`, `Ui.SidebarNavigation`, `Ui.OverlayNavigation`, `Ui.TabBarNavigation`](docs/navigation.md#placements) | How an application's navigation tree is drawn: a menu bar in the header with dropdowns and submenus, a sidebar collapsing to a rail, the whole tree behind a menu button, or a bottom tab bar. |
 | [`Ui.NavigationPlacement`, `Ui.CompactNavigationPlacement`](docs/navigation.md#placements) | The contracts every navigation placement, and every one suiting a narrow screen, provides through. |
 | [`Ui.FileIcon`](docs/icons.md#uifileicon) | An icon drawn from an image file of your own, in the colour of the text beside it. |
 | [`Ui.Icon`](docs/icons.md#uiicon) | The contract every icon provides through: the one image file its glyph is drawn from. |
 | [`Ui.View`](docs/view.md) | One node tree, placed wherever it is needed. |
-| [`Ui.Data`](docs/data.md) | A record read when the page is drawn, and the trees drawn over it: a sign-in gate, an account panel, a context card. |
+| [`Ui.Data`](docs/data.md) | A record read when the page is drawn, and again on a timer if asked, and the trees drawn over it: a sign-in gate, an account panel, a context card. |
 | [`Ui.Listing`](docs/listing.md) | A collection's records read page by page, sorted, labelled, opened, acted on and deleted, drawn by a layout. |
 | [`Ui.TableLayout`](docs/listing-layouts.md#uitablelayout) | A listing drawn as a data grid. |
 | [`Ui.ListLayout`, `Ui.CardLayout`](docs/listing-layouts.md#uilistlayout) | A listing drawn as a list or feed, or as cards or a gallery. |
@@ -95,7 +109,7 @@ turns what it produces into a web application.
 | [`Ui.TreeLayout`](docs/listing-layouts.md#uitreelayout) | A listing drawn as a hierarchy over a relation of the collection to itself. |
 | [`Ui.ComponentLayout`](docs/listing-layouts.md#uicomponentlayout) | A listing drawn by a browser component of your own, over the reads it declares. |
 | [`Ui.ListingLayout`](docs/listing-layouts.md#uilistinglayout) | The contract every listing layout answers through, judging its own fit to the listing using it. |
-| [`Ui.CollectionSource`](docs/collection-source.md) | A collection as the browser reaches it: the declared collection and the URL of its list endpoint. |
+| [`Ui.CollectionSource`](docs/collection-source.md) | A collection as the browser reaches it: the declared collection and the URL of its list endpoint, literal or filled from the page's path variables. |
 | [`Ui.ConversationSource`](docs/conversation-source.md) | A conversation endpoint as the browser reaches it: the declared conversation and the URL its routes are served under. |
 | [`Ui.Chat`](docs/chat.md) | A full AI chat on a page: streamed replies, reasoning, tool calls and approvals, attachments and branches, following a query parameter of the page so a listing of conversations beside it chooses the one shown. |
 | [`Ui.SplitView`](docs/split-view.md) | A fold-out side panel beside the main content: an aside that folds away, remembers the choice, and opens in a drawer or dialog on a narrow screen. |
@@ -105,7 +119,7 @@ turns what it produces into a web application.
 | [`Ui.Field`](docs/field-kinds.md#uifield) | The contract every field kind answers through, judging its own fit to the model it is placed in. |
 | [`Ui.CollectionOptions`](docs/field-kinds.md#option-sources) | A field's options, read, searched and labelled through the collection contract. |
 | [`Ui.OptionSource`](docs/field-kinds.md#option-sources) | The contract every source of options provides through. |
-| [`Ui.Action`](docs/action.md) | A button that runs an operation: a form for its input, its answer and its failure drawn as node trees, navigation and refreshes after a success, serial or parallel presses, or a place on every record of a listing or a list. |
+| [`Ui.Action`](docs/action.md) | A button that runs an operation: a form for its input, its answer and its failure drawn as node trees, navigation and refreshes after a success, serial or parallel presses, and a place on every record of a listing or a list or on a `button` node, its inputs bound from the data in scope. |
 | [`Ui.Dialog`, `Ui.Drawer`, `Ui.Popover`, `Ui.InlineSurface`, `Ui.Panel`, `Ui.PageSurface`](docs/surfaces.md) | Where a form opens: over the page, in line, beside the list, or in place of the page. |
 | [`Ui.Surface`, `Ui.Overlay`, `Ui.ViewportOverlay`](docs/surfaces.md#the-abstracts) | The contracts every surface, every floating one, and every one placed against the viewport — what a narrow viewport uses — provides through. |
 | [`Ui.Filters`](docs/filters.md) | A filter bar over the listings it contains. |

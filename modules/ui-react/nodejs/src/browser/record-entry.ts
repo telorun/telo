@@ -21,7 +21,7 @@ import {
   type Group,
 } from "./record-fields.js";
 import { RendererContext, RootsContext } from "./renderer-context.js";
-import type { JsonSchema } from "./validation.js";
+import { validate, type JsonSchema } from "./validation.js";
 import { useSay, useText } from "./texts.js";
 
 /** What a form or an action is told of what it enters. */
@@ -63,11 +63,17 @@ function startRecord(entry: EntrySpec, initial: Record<string, unknown> | undefi
   return record;
 }
 
+/** Each kept property's value as compared between entries: its JSON, `""` for none. */
+const keptText = (value: unknown): string => JSON.stringify(value) ?? "";
+
 /**
  * What a form or an action holds while values are entered: the values, the
  * fields drawn now, the record they make, and what is wrong with it — a field's
  * own finding once it has been touched, a server's detail until the field
- * changes again. Every change is kept where the state record says.
+ * changes again. Every change is kept where the state record says, and the
+ * entries sharing its key and a place to keep it — the address, or one store —
+ * hold each kept property as one value: a change one makes is followed by
+ * every other mounted, except one editing a record, which starts from that record.
  */
 export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknown>) {
   const host = useHost();
@@ -96,11 +102,15 @@ export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknow
   // Kept as it changes, the address replaced and never pushed.
   const refused = useRef(false);
   const first = useRef(true);
+  const self = useRef({}).current;
+  // What this entry knows each kept property to hold: what it wrote, or followed.
+  const known = useRef<Record<string, string>>({});
   const keptRecord = enteredRecord(schema, fields, values);
   const keptKey = JSON.stringify(state.fields.map((property) => keptRecord[property]));
   useEffect(() => {
     if (first.current) {
       first.current = false;
+      for (const property of state.fields) known.current[property] = keptText(keptRecord[property]);
       return;
     }
     if (state.key === undefined) return;
@@ -111,7 +121,35 @@ export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknow
     }
     const storage = valueStorage(state);
     if (storage && storedAt && !refused.current) refused.current = !writeValueStore(storage, storedAt, state, keptRecord);
+    // What this entry changed, told to the others: what it followed is not told again.
+    const changed: Record<string, unknown> = {};
+    for (const property of state.fields) {
+      const text = keptText(keptRecord[property]);
+      if (known.current[property] === text) continue;
+      known.current[property] = text;
+      changed[property] = keptRecord[property];
+    }
+    if (Object.keys(changed).length > 0) store.kept({ from: self, key: state.key, values: changed, address: state.address, store: state.store.type });
   }, [keptKey]);
+
+  // Follow what another entry of the key changes, where the two keep it in one place.
+  useEffect(() => {
+    if (state.key === undefined || initial) return;
+    return store.onKept((change) => {
+      if (change.from === self || change.key !== state.key) return;
+      const shared = (state.address && change.address) || (state.store.type !== "memory" && state.store.type === change.store);
+      if (!shared) return;
+      const followed = fields.filter((field) => {
+        if (!state.fields.includes(field.property) || !Object.hasOwn(change.values, field.property)) return false;
+        const value = change.values[field.property];
+        const declared = (schema.properties as Record<string, JsonSchema> | undefined)?.[field.property] ?? {};
+        return value === undefined || validate(declared, value).length === 0;
+      });
+      if (followed.length === 0) return;
+      for (const field of followed) known.current[field.property] = keptText(change.values[field.property]);
+      setValues((held) => ({ ...held, ...enteredValues(schema, followed, change.values) }));
+    });
+  }, [state.key]);
 
   return {
     schema,

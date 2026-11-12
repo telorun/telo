@@ -4,12 +4,13 @@ import { presentationAt } from "./collection-presentation.js";
 import { modelSchema, type JsonSchema } from "./model-schema.js";
 import { resolveNode, type AuthoredNode } from "./node-resolution.js";
 import type { Binding, StyleRule } from "./row-binding.js";
-import { pendingRowAction, providedRowActions, type RowActionConfig } from "./row-actions.js";
+import { pendingBoundAction, providedBoundActions, type BoundActionConfig } from "./bound-actions.js";
 import { uiText } from "./spec-texts.js";
 import { dialogSpec, isSurface } from "./surface-spec.js";
 import { isLayout, type LayoutAnswer, type LayoutInputs } from "./listing-layout.js";
 import { tableLayout } from "./table-layout.js";
 import { filledProvided } from "./fill-marking.js";
+import { reloadEveryOf } from "./timed-reload.js";
 
 /** How a form is opened. A member holding nothing is one left out. */
 interface OpenerConfig {
@@ -33,10 +34,12 @@ type ListingResource = RuntimeResource & {
   create?: OpenerConfig | null;
   edit?: OpenerConfig | null;
   delete?: boolean | null;
-  rowActions?: RowActionConfig[] | null;
+  rowActions?: BoundActionConfig[] | null;
   empty?: AuthoredNode | null;
   layout?: unknown;
   compact?: unknown;
+  /** A `Telo.Duration`, decoded by the kernel. */
+  reloadEvery?: unknown;
 };
 
 class Listing implements ResourceInstance {
@@ -119,8 +122,8 @@ class Listing implements ResourceInstance {
           : await this.ctx.resolveRef(config.surface, isSurface, () => `'${slot}.surface' of ${owner}`, "Ui.Surface").provide();
       return { form, surface, afterSubmit: config.afterSubmit ?? "close", unsaved: config.unsaved ?? "confirm" };
     };
-    const pending = (resource.rowActions ?? []).map((entry, index) => pendingRowAction(entry, this.ctx, owner, `rowActions[${index}]`));
-    const { rowActions, assets: actionAssets } = await providedRowActions(pending);
+    const pending = (resource.rowActions ?? []).map((entry, index) => pendingBoundAction(entry, this.ctx, owner, `rowActions[${index}]`));
+    const { entries: rowActions, assets: actionAssets } = await providedBoundActions(pending);
     assets.push(...actionAssets);
     const create = await opener(resource.create, "create");
     const edit = await opener(resource.edit, "edit");
@@ -150,6 +153,7 @@ class Listing implements ResourceInstance {
       empty: written?.node ?? { type: "text", text: uiText("noRows") },
       layout: layout.spec!,
       ...(compact ? { compact: compact.spec! } : {}),
+      ...reloadEveryOf(resource.reloadEvery),
     };
     return filledProvided({ node, assets: mergeAssets(...assets) });
   }

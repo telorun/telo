@@ -53,7 +53,7 @@ and re-renders the caller when `location` changes. The object has six fields:
 | Field | |
 | --- | --- |
 | `location` | `{ path, search, hash }`. `path` is the current page's declared path, with the mount prefix removed. |
-| `navigate` | `navigate(to, { replace? })` — go to an app-relative reference, resolved against the current page: `/done`, `/chat?c=7`, `?c=7`, `#top`. Adds a history entry, or replaces the current one with `replace: true`. A different page renders that page; the same page with a new query or fragment fetches nothing and re-renders the callers of `useHost`; a path no page declares renders the not-found page. A reference with a scheme or a host throws `TypeError`. While a form opened with `unsaved: confirm` holds unsaved input and the reference would close it, the navigation waits for the user's answer and does not happen if they stay. |
+| `navigate` | `navigate(to, { replace? })` — go to an app-relative reference, resolved against the current page: `/done`, `/chat?c=7`, `?c=7`, `#top`. Adds a history entry, or replaces the current one with `replace: true`. A different page renders that page, and another value of the page's path variables draws it afresh; the same page with a new query or fragment fetches nothing and re-renders the callers of `useHost`; a path no page opens renders the not-found page. A reference with a scheme or a host throws `TypeError`. While a form opened with `unsaved: confirm` holds unsaved input and the reference would close it, the navigation waits for the user's answer and does not happen if they stay. |
 | `href` | `href(to)` — the same resolution, returned as the URL for an anchor, mount prefix included. |
 | `fetch` | `fetch(…)` — the platform `fetch` as the application's own composites call it: same-origin credentials, origin-relative URLs. Returns the platform `Response` untouched, 401 and 403 included. A cross-origin request passes through unchanged. |
 | `notifyChanged` | `notifyChanged(basePath)` — say that the data at this app-relative path changed. Local to the document: every listing whose source's `basePath`, every `data` reader whose resolved source path and every chat whose open conversation path is exactly that path (encoded, its query left out) reloads what it shows, keeping the viewer's place, and every `onChanged` listener for it runs. The renderer's own forms, deletes and actions say the same after a successful write, for the path they wrote. |
@@ -123,15 +123,16 @@ ordinary browser load of `/admin/files/report.pdf`.
 
 1. **Anchors.** A primary click with no modifier key, on an anchor with no
    `target` and no `download`, whose URL is under the mount, not under
-   `/_telo`, and whose path — the mount prefix removed — is exactly the
-   `path` of a page the application declares, navigates within the page: for
+   `/_telo`, and whose path — the mount prefix removed — a page the
+   application declares [opens](app.md#routing), navigates within the page: for
    an anchor a component renders, a `link` node, a navigation entry and a
    link in a cell alike. Every other click is the browser's, so an anchor to
    a file served under the mount loads it. `navigate` is not narrowed: a path
-   no page declares still shows the not-found page.
+   no page opens still shows the not-found page.
 2. **Instance stability.** Re-rendering the same page keeps a component
    mounted, state and all, while its node's position, entry and export are
-   unchanged. It unmounts on a navigation to another page, or when its
+   unchanged. It unmounts on a navigation to another page or to another value
+   of the page's path variables, or when its
    `when:` turns false.
 3. **Boundaries.** Each component has its own error boundary and its own
    suspense boundary. A throw replaces that component with an `error` node;

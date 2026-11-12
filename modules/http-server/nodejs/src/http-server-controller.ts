@@ -68,6 +68,7 @@ import {
 import { createFastifyTeloLogger } from "./fastify-telo-logger.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 import { HostRoutes, publishHostRoutes } from "./host-routes.js";
+import { MalformedTargets } from "./malformed-target.js";
 import { HostClass, hostClasses, NO_CLASS, type MountHostEntry } from "./host-precedence.js";
 import { publishRequestHost, requestHostReader, type RequestHostReader } from "./request-host.js";
 import { headerReads, type HeaderReads } from "./request-header-reads.js";
@@ -253,6 +254,7 @@ class HttpServer implements ResourceInstance {
   private readonly accessRefs: WeakMap<HttpMount, AccessRefs>;
   /** The origin of each mount's first `Telo.PublicUrl`, read at init. */
   private mountOrigins = new Map<HttpMount, string>();
+  private readonly malformedTargets = new MalformedTargets();
   private readonly requestTraces = new WeakMap<
     FastifyRequest,
     RequestTrace & { principal: Readonly<Record<string, unknown>> | null }
@@ -370,7 +372,14 @@ class HttpServer implements ResourceInstance {
       trustProxy,
       // A mount's `hostnames` are a route constraint, so precedence between
       // mounts answering one path is decided where the route is found.
-      routerOptions: { constraints: { teloHost: this.hostConstraint() as never } },
+      // A target whose escapes do not decode matches no route; see `MalformedTargets`.
+      rewriteUrl: (req) => this.malformedTargets.rewrite(req),
+      routerOptions: {
+        constraints: {
+          teloHost: this.hostConstraint() as never,
+          teloMalformedTarget: this.malformedTargets.constraint() as never,
+        },
+      },
       bodyLimit: Number(resource.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES),
       // A mount does real work while it registers (a UI mount builds and
       // addresses its browser entries); Fastify's 10 s default failed it on a
@@ -987,14 +996,16 @@ class HttpServer implements ResourceInstance {
   }
 
   private async setupPlugins() {
-    // A JSON body's reader is not Telo, so a CEL value in it is written as its
-    // plain form — RFC 3339 text for a timestamp, `"5400s"` for a duration,
-    // base64url for bytes — whether or not the route declares a response schema.
+    // First, so every later hook sees the target as sent.
+    this.app.addHook("onRequest", async (request) => this.malformedTargets.restore(request.raw));
     this.installRequestSpan();
     this.installUnknownHostRefusal();
     this.installUnreadBodyClose();
     publishRequestHost(this.app, this.requestHost);
     publishHostRoutes(this.app, this.hostRoutes);
+    // A JSON body's reader is not Telo, so a CEL value in it is written as its
+    // plain form — RFC 3339 text for a timestamp, `"5400s"` for a duration,
+    // base64url for bytes — whether or not the route declares a response schema.
     this.app.addHook("preSerialization", async (_request, _reply, payload) => toPlainJson(payload));
     this.installRequestLogging();
     this.installDefaultMultipartParser();

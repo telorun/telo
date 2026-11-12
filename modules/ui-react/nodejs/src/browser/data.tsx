@@ -7,6 +7,7 @@ import { queryRoot } from "./query-root.js";
 import { RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { requestErrorOf, unansweredError, type RequestError } from "./ui-error.js";
 import { findingText, useSay, type Say } from "./texts.js";
+import { useReloadEvery } from "./timed-reload.js";
 import { validate, type JsonSchema } from "./validation.js";
 
 type Outcome = { ok: true; data: Record<string, unknown> } | { ok: false; error: RequestError };
@@ -41,8 +42,10 @@ async function read(fetch: (url: string) => Promise<Response>, url: string, sche
  * Data read when it is drawn. At most one read is in flight; any number of
  * triggers during it cause exactly one more read after it, and an answer to an
  * address the reader no longer reads is never drawn. `loading` is drawn only
- * before the first answer; a reload keeps the content mounted. Hidden, the
- * reader reads nothing, and reads once when it is shown if anything asked.
+ * before the first answer; a reload keeps the content mounted, and a failed
+ * read keeps it out of sight — but a failed tick of `reloadEvery` keeps it
+ * drawn, the failure beside it. Hidden, the reader reads nothing, and reads
+ * once when it is shown if anything asked.
  */
 export function DataNode({ node }: { node: SpecNode }) {
   const host = useHost();
@@ -57,13 +60,23 @@ export function DataNode({ node }: { node: SpecNode }) {
   const address = resolved.ok ? underMount(prefix, resolved.address) : undefined;
   const unresolved = resolved.ok ? undefined : resolved.error;
   const reloadOn = node.reloadOn as string[];
-  const [outcome, setOutcome] = useState<Outcome>();
+  const [outcome, setOutcome] = useState<Outcome & { tick: boolean }>();
   const [data, setData] = useState<Record<string, unknown>>();
 
-  const state = useRef<{ inFlight: boolean; again: boolean; wanted: boolean; visible: boolean; address: string | undefined; fetch: typeof host.fetch }>({
+  const state = useRef<{
+    inFlight: boolean;
+    again: boolean;
+    wanted: boolean;
+    /** Whether the read in flight is a tick of `reloadEvery`. */
+    tick: boolean;
+    visible: boolean;
+    address: string | undefined;
+    fetch: typeof host.fetch;
+  }>({
     inFlight: false,
     again: false,
     wanted: false,
+    tick: false,
     visible,
     address,
     fetch: host.fetch,
@@ -72,8 +85,8 @@ export function DataNode({ node }: { node: SpecNode }) {
   state.current.address = address;
   state.current.fetch = host.fetch;
 
-  const request = useRef(() => {});
-  request.current = () => {
+  const request = useRef<(tick?: boolean) => void>(() => {});
+  request.current = (tick = false) => {
     const current = state.current;
     if (!current.visible) {
       current.wanted = true;
@@ -86,11 +99,12 @@ export function DataNode({ node }: { node: SpecNode }) {
     if (current.address === undefined) return;
     current.inFlight = true;
     current.wanted = false;
+    current.tick = tick;
     const asked = current.address;
     void read((url) => current.fetch(url, { headers: { accept: "application/json" } }), asked, node.schema as JsonSchema, say).then((answer) => {
       current.inFlight = false;
       if (asked === current.address) {
-        setOutcome(answer);
+        setOutcome({ ...answer, tick: current.tick });
         if (answer.ok) setData(answer.data);
       } else current.again = true;
       if (current.again) {
@@ -120,6 +134,13 @@ export function DataNode({ node }: { node: SpecNode }) {
     };
   }, [reloadOn.includes("focus")]);
 
+  useReloadEvery(
+    node.reloadEvery as number | undefined,
+    visible && address !== undefined,
+    () => state.current.inFlight,
+    () => request.current(true),
+  );
+
   const unauthorized = reloadOn.includes("unauthorized");
   const inside = useMemo<readonly ResponseWatcher[]>(
     () => (unauthorized ? [(response: Response) => response.status === 401 && request.current(), ...watchers] : watchers),
@@ -133,13 +154,15 @@ export function DataNode({ node }: { node: SpecNode }) {
       ? outcome.error
       : undefined;
   const failed = failure !== undefined;
+  // A failed tick leaves what was read on show, the failure beside it.
+  const hidden = failed && !(outcome?.tick === true && !unresolved);
   const status = failed ? "error" : data === undefined ? "loading" : "idle";
 
   return (
     <div data-telo-part="data" data-state={status} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
       {data !== undefined && (
-        <div style={{ display: failed ? "none" : "contents" }}>
-          <VisibleContext.Provider value={visible && !failed}>
+        <div style={{ display: hidden ? "none" : "contents" }}>
+          <VisibleContext.Provider value={visible && !hidden}>
             <ResponseWatchContext.Provider value={inside}>
               <RootsContext.Provider value={contentRoots}>
                 <Node node={node.content} />

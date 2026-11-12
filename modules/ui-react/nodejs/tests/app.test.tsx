@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { address } from "./spec-nodes.js";
+import { address, operation } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -74,6 +74,29 @@ describe("the application shell", () => {
     await rendered.hello();
     await rendered.hello();
     expect(rendered.reloads).toBeGreaterThan(1);
+  });
+
+  it("opens a page by the variables of its path, which its nodes read as `params`", async () => {
+    const plan = { title: "Plan", children: [{ type: "value", value: { root: "params", path: ["id"] }, present: { type: "string" } }] };
+    rendered = await render({ path: "/", pages: { "/": { title: "Home", children: [{ type: "link", text: "Open", href: address("/plans/p%207") }] }, "/plans/{id}": plan } });
+    expect(await rendered.click(rendered.part("link"))).toBe(true);
+    expect(rendered.requests.at(-1)).toBe("GET /_telo/ui/page?path=%2Fplans%2Fp%25207");
+    expect([rendered.part("page-title").textContent, rendered.part("value").textContent]).toEqual(["Plan", "p 7"]);
+  });
+
+  it("draws a page afresh for another value of a variable, and keeps it mounted for another query", async () => {
+    const note = operation("/api/notes", "Send", { type: "object", properties: { note: { type: "string", title: "Note" } } });
+    const links = [
+      { type: "link", text: "Same", href: address("/plans/a", {}, { tab: { value: "x" } }) },
+      { type: "link", text: "Other", href: address("/plans/b") },
+    ];
+    rendered = await render({ path: "/plans/a", pages: { "/plans/{id}": { title: "Plan", children: [note, ...links] } } });
+    const documents = () => rendered!.requests.filter((request) => request.startsWith("GET /_telo/ui/page")).length;
+    await rendered.enter(rendered.part("input"), "kept");
+    await rendered.click(rendered.parts("link")[0]);
+    expect([window.location.search, (rendered.part("input") as HTMLInputElement).value]).toEqual(["?tab=x", "kept"]);
+    await rendered.click(rendered.parts("link")[1]);
+    expect([window.location.pathname, (rendered.part("input") as HTMLInputElement).value, documents()]).toEqual(["/plans/b", "", 1]);
   });
 
   it.each([

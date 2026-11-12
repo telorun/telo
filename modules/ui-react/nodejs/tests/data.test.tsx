@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, type Page, type Rendered } from "./harness.js";
 import { actionNode, dataNode, operation, reportSchema, listingNode, todos, address } from "./spec-nodes.js";
 
@@ -331,5 +331,65 @@ describe("an action's enabled condition", () => {
     await rendered.click(rendered.part("row-action"));
     expect(shownTexts(rendered, "row-answer")).toEqual(["Removed"]);
     expect(rendered.parts("row-action")).toEqual([]);
+  });
+});
+
+describe("a reader on a timer", () => {
+  let visibility: DocumentVisibilityState = "visible";
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    visibility = "visible";
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete (document as { visibilityState?: unknown }).visibilityState;
+  });
+  const tick = async (r: Rendered) => {
+    await act(async () => vi.advanceTimersByTime(5000));
+    await r.settle();
+  };
+  const turn = async (r: Rendered, next: DocumentVisibilityState) => {
+    visibility = next;
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    await r.settle();
+  };
+  const timed = () => page(dataNode({ reloadEvery: 5000 }));
+
+  it("reads again every interval, skipping a tick while its read is in flight", async () => {
+    const server = deferred();
+    rendered = await render({ path: "/", answers: { "/api/account": server.respond }, pages: timed() });
+    await server.release(rendered, json({ authorized: true }));
+    await tick(rendered);
+    await tick(rendered);
+    expect(reads(rendered)).toBe(2);
+    await server.release(rendered, json({ authorized: true }));
+    expect([reads(rendered), server.pending()]).toEqual([2, 0]);
+    await tick(rendered);
+    expect(reads(rendered)).toBe(3);
+  });
+
+  it("reads nothing while the document is hidden, and once on its return when an interval has passed", async () => {
+    rendered = await render({ path: "/", answers: { "/api/account": () => json({ authorized: true }) }, pages: timed() });
+    await turn(rendered, "hidden");
+    await tick(rendered);
+    expect(reads(rendered)).toBe(1);
+    await turn(rendered, "visible");
+    expect(reads(rendered)).toBe(2);
+    await turn(rendered, "hidden");
+    await turn(rendered, "visible");
+    expect(reads(rendered)).toBe(2);
+  });
+
+  it("keeps what it drew when a tick fails, the failure beside it, and tries again on the next", async () => {
+    const server = deferred();
+    rendered = await render({ path: "/", answers: { "/api/account": server.respond }, pages: timed() });
+    await server.release(rendered, json({ authorized: true, email: "ada@example.com" }));
+    await tick(rendered);
+    await server.release(rendered, json({ type: "about:blank", title: "Unavailable", status: 503, code: "ERR_DOWN", detail: "Down." }, 503));
+    expect(shownTexts(rendered, "value")).toEqual(["ada@example.com", "ERR_DOWN", "Down."]);
+    await tick(rendered);
+    await server.release(rendered, json({ authorized: true, email: "ada@example.com" }));
+    expect(shownTexts(rendered, "value")).toEqual(["ada@example.com"]);
   });
 });

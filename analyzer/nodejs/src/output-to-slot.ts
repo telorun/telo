@@ -20,7 +20,8 @@
  */
 import type { ResourceDefinition } from "@telorun/sdk";
 import type { DefResolver } from "./extends-resolution.js";
-import { propertySchemas, resolveSchemaPointer } from "./manifest-navigation.js";
+import { propertySchemas } from "./manifest-navigation.js";
+import { followSchemaReferences, type NamedShapeLookup } from "./schema-reference.js";
 import { readRefSlot, type RefOutputTo } from "./ref-slot.js";
 import { checkSchemaCompatibility } from "./schema-compat.js";
 
@@ -42,27 +43,22 @@ function pointerSegments(pointer: string): string[] {
     .map((token) => token.replace(/~1/g, "/").replace(/~0/g, "~"));
 }
 
-function derefLocal(node: Schema, document: Schema): Schema {
-  const seen = new Set<object>();
-  let current = node;
-  while (typeof current.$ref === "string" && current.$ref.startsWith("#") && !seen.has(current)) {
-    seen.add(current);
-    const target = resolveSchemaPointer(document, current.$ref);
-    if (!isSchema(target)) break;
-    current = target;
-  }
-  return current;
-}
-
-/** The schema `pointer` names from the object schema `enclosing`, or undefined. */
-function siblingAt(enclosing: Schema, pointer: string, document: Schema): Schema | undefined {
-  let current: Schema | undefined = enclosing;
+/** The schema `pointer` names from the object schema `enclosing`, written in
+ *  `document`, every reference on the way followed — or undefined. */
+function siblingAt(
+  enclosing: Schema,
+  pointer: string,
+  document: Schema,
+  shapes: NamedShapeLookup,
+): Schema | undefined {
+  let at: { node: Schema; document: Schema | undefined } | undefined = { node: enclosing, document };
   for (const segment of pointerSegments(pointer)) {
-    if (!current) return undefined;
-    const next: Schema | undefined = propertySchemas(derefLocal(current, document)).find(([key]) => key === segment)?.[1];
-    current = isSchema(next) ? next : undefined;
+    if (!at) return undefined;
+    const object = followSchemaReferences(at.node, at.document, shapes);
+    const next: unknown = propertySchemas(object.node).find(([key]) => key === segment)?.[1];
+    at = isSchema(next) ? { node: next, document: object.document } : undefined;
   }
-  return current ? derefLocal(current, document) : undefined;
+  return at ? followSchemaReferences(at.node, at.document, shapes).node : undefined;
 }
 
 /** Whether `contract` declares a member named `member`. */
@@ -72,14 +68,7 @@ export function declaresMember(contract: Schema, member: string, shapes: (id: st
 }
 
 function rootOf(contract: Schema, shapes: (id: string) => Schema | undefined): Schema | undefined {
-  const seen = new Set<object>();
-  let current: Schema | undefined = contract;
-  while (current && typeof current.$ref === "string" && !current.$ref.startsWith("#") && !seen.has(current)) {
-    seen.add(current);
-    const target: unknown = shapes(current.$ref);
-    current = isSchema(target) ? target : undefined;
-  }
-  return current;
+  return followSchemaReferences(contract, undefined, shapes).node;
 }
 
 /**
@@ -111,7 +100,7 @@ export function outputToProblems(
         message: `${name}: x-telo-ref at '${slotPath}' declares 'outputTo: { slot: ${outputTo.slot}, member: ${outputTo.member} }', but ${reason}.`,
       });
     };
-    const target = siblingAt(enclosing, outputTo.slot, document);
+    const target = siblingAt(enclosing, outputTo.slot, document, shapes);
     if (!target) return refuse(`the object enclosing the slot declares nothing at '${outputTo.slot}'`);
     if (target === slotNode) return refuse(`'${outputTo.slot}' names the slot itself`);
     const targetSlot = readRefSlot(target);

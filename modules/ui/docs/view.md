@@ -16,7 +16,10 @@ content:
     - { type: composite, ref: !ref weeklyTable }
 ```
 
-Expressions in a view are evaluated once, when the application starts. A view
+Expressions in a view are evaluated once, when the application starts. What
+the view draws may read the placing page's [`params`](page.md#params) in the
+browser, typed from each page placing it: a read of a variable one of them
+lacks is `CEL_UNKNOWN_FIELD` naming that page. A view
 whose `content` is switched off by its own `when` provides no node, so the
 node that placed it is left out.
 

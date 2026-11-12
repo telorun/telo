@@ -16,7 +16,7 @@ export type { AssetFile } from "./composite.js";
 // composite's does.
 export { deliveredMenu, placed, presented, type AuthoredNode, type RootShapes } from "./node-resolution.js";
 export { modelShape, type Shape, type ShapeReader } from "./model-schema.js";
-export { placedRowAction } from "./row-actions.js";
+export { placedBoundAction } from "./bound-actions.js";
 // An address or request target as a renderer receives it, with every default
 // filled, and the one way a renderer expands it (`conformance/addresses.json`).
 export { addressSpec, type AddressConfig } from "./address-spec.js";
@@ -40,6 +40,8 @@ export { errorNode, RequestNodes, type EvaluatedNode } from "./delivered-nodes.j
 export { headerReads, unionReads, type HeaderReads } from "./request-header-reads.js";
 export { isPage, type PageDocument, type PageInputs, type PageInstance, type PageReading, type PageRequest } from "./page-controller.js";
 export { resolvedPageWidth, type PageWidth } from "./page-width.js";
+// A page path's variables, and the key two paths routing the same addresses share.
+export { pagePathVariables, pageRouteKey } from "./page-path.js";
 export {
   deliveredNavigation,
   preparedNavigation,

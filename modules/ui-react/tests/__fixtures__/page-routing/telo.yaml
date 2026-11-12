@@ -1,0 +1,26 @@
+# Pages routed by segment: a literal page beside a variable one.
+kind: Telo.Application
+metadata: { name: UiReactPageRoutingApp, version: 1.0.0 }
+lang: en
+imports: { Http: ../../../../http-server, Ui: ../../../../ui, UiReact: ../../../ }
+ports: { http: { env: PORT, default: 19344 } }
+targets:
+  - !ref server
+---
+kind: UiReact.App
+metadata: { name: plans }
+title: Plans
+theme: !ref UiReact.defaultTheme
+pages:
+  - { kind: Ui.Page, path: /, title: Inbox, children: [] }
+  - { kind: Ui.Page, path: /plans/new, title: New plan, children: [] }
+  - { kind: Ui.Page, path: "/plans/{id}", title: Plan, children: [] }
+---
+kind: Http.Server
+metadata: { name: server }
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref plans

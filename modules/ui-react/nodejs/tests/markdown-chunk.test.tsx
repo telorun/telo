@@ -26,7 +26,7 @@ describe("the markdown chunk", () => {
   });
 
   it("is fetched by the first markdown node, whose text shows preformatted until it arrives", async () => {
-    rendered = await render({ path: "/", pages: { "/": { title: "Home", children: [{ type: "markdown", text: { value: "**bold**" } } as never] } } });
+    rendered = await render({ path: "/", pages: { "/": { title: "Home", children: [{ type: "markdown", value: { value: "**bold**" } } as never] } } });
     expect(chunk.requested).toBe(true);
     expect(rendered.part("markdown").getAttribute("data-state")).toBe("loading");
     expect(rendered.part("markdown-code-pre").textContent).toBe("**bold**");

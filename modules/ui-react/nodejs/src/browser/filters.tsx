@@ -31,7 +31,8 @@ import { useRelatedLabels, type RelatedLabels } from "./related-labels.js";
 import { SearchBox } from "./search-box.js";
 import { Node, type SpecNode } from "./nodes.js";
 import { openValue } from "./open-address.js";
-import { FilterContext, RendererContext } from "./renderer-context.js";
+import { addressFailure, resolveBasePath, type BasePath } from "./base-path.js";
+import { FilterContext, RendererContext, RootsContext } from "./renderer-context.js";
 import { Surface, useHeldInside, type SurfaceSpec } from "./surface.js";
 import { labelFor, TextsContext, useSay, useText, type Say, type WireText } from "./texts.js";
 import { plainTypes } from "./validation.js";
@@ -202,7 +203,9 @@ export function Filters({ node }: { node: SpecNode }) {
     const listed = node.fields as FilterField[];
     return search === undefined ? listed : [searchFilter(search, texts.own), ...listed];
   }, [node.fields, search?.pinned, search?.default, texts.own]);
-  const basePath = node.basePath as string;
+  // Where the present values are read: the source's path as it resolves over the roots in scope.
+  const base = resolveBasePath(node.basePath as BasePath, useContext(RootsContext), "'filters' basePath");
+  const basePath = base.ok ? base.address : addressFailure(base.error);
   const presets = node.presets as FilterPreset[];
   const state = node.state as BarState;
   const declared = node.placement as Placement;

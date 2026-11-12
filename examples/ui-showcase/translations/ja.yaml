@@ -572,3 +572,51 @@ texts:
   - { text: "Everything", translation: "すべて" }
   - { text: "Drafts about releases", translation: "リリースに関する下書き" }
   - { text: "Search posts, or filter by author, status or date", translation: "投稿を検索するか、著者・ステータス・日付で絞り込みます" }
+
+  # The review pages: the inbox, a document's page, the comparison and a
+  # worker's page, with their models' labels.
+  - { text: "Reviews", translation: "レビュー" }
+  - { text: "The documents under review. The list reads itself again every thirty seconds and keeps your place; a review waiting past its product's deadline is drawn in red.", translation: "レビュー中の文書です。一覧は30秒ごとに読み直され、表示位置は保たれます。製品の期限を過ぎて待っているレビューは赤で表示されます。" }
+  - { text: "Review", translation: "レビュー" }
+  - { text: "Changes", translation: "変更点" }
+  - { text: "Worker", translation: "ワーカー" }
+  - { text: "Worker {$name}", translation: "ワーカー {$name}" }
+  - { text: "There is no review '{$id}'.", translation: "レビュー「{$id}」はありません。" }
+  - { text: "Review '{$id}' has no revision {$revision}.", translation: "レビュー「{$id}」に版 {$revision} はありません。" }
+  - { text: "Revision {$latest} has replaced the one you read. Read it before deciding.", translation: "版 {$latest} が、読んだ版を置き換えました。判断する前にお読みください。" }
+  - { text: "Revision {$revision} has no item {$item}.", translation: "版 {$revision} に項目 {$item} はありません。" }
+  - { text: "All", translation: "すべて" }
+  - { text: "Waiting a day or more", translation: "1日以上待っているもの" }
+  - { text: "{$title}", translation: "{$title}" }
+  - { text: "Compare revisions", translation: "版を比較" }
+  - { text: "Its worker", translation: "担当ワーカー" }
+  - { text: "Reject this document?", translation: "この文書を却下しますか？" }
+  - { text: "Timeline", translation: "タイムライン" }
+  - { text: "Compare from", translation: "比較元" }
+  - { text: "Compare to", translation: "比較先" }
+  - { text: "Too large to compare line by line.", translation: "大きすぎて行ごとに比較できません。" }
+  - { text: "Approve", translation: "承認" }
+  - { text: "Request changes", translation: "変更を依頼" }
+  - { text: "Reject", translation: "却下" }
+  - { text: "A document addressed by its ID, read again every thirty seconds. The buttons decide on the revision on screen, and each item the server names in it has a Comment control.", translation: "IDで指定され、30秒ごとに読み直される文書です。ボタンは表示中の版について判断し、サーバーが文書内で示す各項目にはコメントの操作があります。" }
+  - { text: "Two revisions compared line by line. Choose either end from the lists; added lines are green, removed ones red.", translation: "2つの版を行ごとに比較します。両端を一覧から選んでください。追加された行は緑、削除された行は赤です。" }
+  - { text: "The commands of the worker the address names, read again every five seconds without losing the pages loaded.", translation: "アドレスが示すワーカーのコマンドです。読み込んだページを失わずに5秒ごとに読み直されます。" }
+  - { text: "Document", translation: "文書" }
+  - { text: "Product", translation: "製品" }
+  - { text: "Repository", translation: "リポジトリ" }
+  - { text: "State", translation: "状態" }
+  - { text: "Revised", translation: "改訂" }
+  - { text: "Overdue", translation: "期限超過" }
+  - { text: "Submitted", translation: "提出済み" }
+  - { text: "Changes requested", translation: "変更依頼中" }
+  - { text: "Approved", translation: "承認済み" }
+  - { text: "Rejected", translation: "却下済み" }
+  - { text: "#", translation: "番号" }
+  - { text: "Command", translation: "コマンド" }
+  - { text: "Created", translation: "作成" }
+  - { text: "Event", translation: "イベント" }
+  - { text: "By", translation: "実行者" }
+  - { text: "When", translation: "日時" }
+  - { text: "Revision", translation: "版" }
+  - { text: "Your name", translation: "お名前" }
+  - { text: "Note", translation: "メモ" }

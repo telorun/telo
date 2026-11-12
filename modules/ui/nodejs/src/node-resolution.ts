@@ -12,7 +12,15 @@ import {
 } from "./composite.js";
 import { headerOf, itemsOf, presentation, schemaAt, shapeLabels, type Shape, type ShapeReader } from "./model-schema.js";
 import { isChain, type Binding, type Condition } from "./row-binding.js";
-import { pendingRowAction, providedRowActions, type PendingRowAction, type RowActionConfig } from "./row-actions.js";
+import {
+  boundActionPlaces,
+  boundActionsOf,
+  pendingBoundAction,
+  providedBoundActions,
+  withBoundActions,
+  type BoundActionConfig,
+  type PendingBoundAction,
+} from "./bound-actions.js";
 import { sourceKeys } from "./source-keys.js";
 
 /** A `Ui.Node` as its author wrote it, references already live. */
@@ -53,7 +61,8 @@ export function nodeLists(node: { type: string; [key: string]: unknown }): strin
  * {@link deliveredMenu}) and a `tabs` node only the tabs (see
  * {@link deliveredTabs}), a composite is replaced by what it provides,
  * containers resolve their children in order, and a `value` or `list` node
- * carries what its roots say about the values it names. `undefined` means the
+ * carries what its roots say about the values it names, and every action a
+ * `list`, `button` or `markdown` node runs is provided. `undefined` means the
  * node is omitted — switched off, or a composite that provided none.
  */
 export async function resolveNode(
@@ -103,9 +112,10 @@ export async function resolveNode(
       const menu = deliveredMenu(leaf);
       return menu && { node: menu as SpecNode, assets: [] };
     }
-    if (!Array.isArray(leaf.rowActions)) return { node: leaf as SpecNode, assets: drawn.assets };
-    const { rowActions, assets } = await providedRowActions(leaf.rowActions as PendingRowAction[]);
-    return { node: { ...leaf, rowActions } as SpecNode, assets: mergeAssets(...assets) };
+    const pending = boundActionsOf(leaf) as unknown as PendingBoundAction[];
+    if (pending.length === 0) return { node: leaf as SpecNode, assets: drawn.assets };
+    const { entries, assets } = await providedBoundActions(pending);
+    return { node: withBoundActions(leaf, entries) as SpecNode, assets: mergeAssets(drawn.assets, ...assets) };
   }
   const assets: AssetFile[][] = [];
   const { when, ...container } = withoutAbsent(node);
@@ -143,8 +153,9 @@ export function placed(provided: SpecNode, placement: { style?: unknown; shown?:
  * served; a link written without one stays inline, a command is drawn by its text.
  */
 export async function withLinkButtons(node: AuthoredNode, ctx: ResourceContext, where: string): Promise<{ node: AuthoredNode; assets: AssetFile[] }> {
-  if (node.type === "command" && node.button == null) return { node: { ...node, button: { type: "text" } }, assets: [] };
-  if ((node.type === "link" || node.type === "command") && node.button != null) {
+  const drawnByText = node.type === "command" || node.type === "button";
+  if (drawnByText && node.button == null) return { node: { ...node, button: { type: "text" } }, assets: [] };
+  if ((node.type === "link" || drawnByText) && node.button != null) {
     const owner = `the ${node.type} node at ${where}`;
     const drawn = await buttonSpec(await providedButton(node.button, ctx, () => `'button' of ${owner}`), owner, "button.icon");
     return { node: { ...node, button: drawn.spec }, assets: drawn.assets };
@@ -177,11 +188,12 @@ export async function withLinkButtons(node: AuthoredNode, ctx: ResourceContext, 
 
 /**
  * A node with what its roots say about the values it names, through every
- * container: a `value` node's `present`, a `list` node's column headers and
- * each column's `present`, and each of its row actions held to its action
- * ({@link pendingRowAction}), the action still the instance for whoever places
- * the node to provide; a `command` node is held to a command one of its roots
- * offers. A member holding nothing is one left out, a bar's region `[]`, and
+ * container: a `value` or `time` node's `present`, a `list` node's column
+ * headers and each column's `present`, a time's `relative`, and each bound
+ * action of a `list`, `button` or `markdown` node
+ * held to its action ({@link pendingBoundAction}), the action
+ * still the instance for whoever places the node to provide; a `command` node
+ * is held to a command one of its roots offers. A member holding nothing is one left out, a bar's region `[]`, and
  * `fill` is the one written; `when` is kept, for whoever decides delivery.
  */
 export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeReader, where: string): AuthoredNode {
@@ -226,31 +238,85 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
       labels: shapeLabels(target),
     };
   }
+  if (own.type === "time") {
+    const present = timePresentation(shapeOf(own.value as Binding, roots, reader, `${where}.value`), own.value as Binding, `${where}.value`);
+    return { ...own, relative: own.relative === true, ...(present ? { present } : {}) };
+  }
   if (own.type === "list") {
     const rows = shapeOf(own.rows as Binding, roots, reader, `${where}.rows`);
     const row = rows && itemsOf(rows, reader, `${where}.rows`);
     const rowRoots: RootShapes = { ...roots, row };
-    const columns = (own.columns as { header?: unknown; value: Binding; href?: AddressConfig | null; shown?: Condition | null }[]).map(
-      ({ header, value, href, shown }, index) => {
-        const target = shapeOf(value, rowRoots, reader, `${where}.columns[${index}].value`);
-        const last = isChain(value) ? value.path[value.path.length - 1] : undefined;
-        const present = presentation(target);
-        return {
-          header: header ?? headerOf(last ?? "", target),
-          value,
-          ...(present ? { present } : {}),
-          labels: shapeLabels(target),
-          ...(href != null ? { href: addressSpec(href, reader.ctx, `${where}.columns[${index}].href`) } : {}),
-          ...(shown != null ? { shown } : {}),
-        };
-      },
-    );
-    const rowActions = (own.rowActions as RowActionConfig[] | undefined)?.map((entry, index) =>
-      pendingRowAction(entry, reader.ctx, where, `rowActions[${index}]`),
-    );
-    return { ...own, columns, rowActionsDisplay: own.rowActionsDisplay ?? "auto", ...(rowActions ? { rowActions } : {}) };
+    const columns = (own.columns as AuthoredColumn[]).map(({ type, header, value, relative, href, shown, style }, index) => {
+      const at = `${where}.columns[${index}]`;
+      const target = shapeOf(value, rowRoots, reader, `${at}.value`);
+      const last = isChain(value) ? value.path[value.path.length - 1] : undefined;
+      const time = type === "time";
+      const present = time ? timePresentation(target, value, `${at}.value`) : presentation(target);
+      return {
+        ...(time ? { type: "time" } : {}),
+        header: header ?? headerOf(last ?? "", target),
+        value,
+        ...(time ? { relative: relative === true } : { labels: shapeLabels(target) }),
+        ...(present ? { present } : {}),
+        ...(href != null ? { href: addressSpec(href, reader.ctx, `${at}.href`) } : {}),
+        ...(shown != null ? { shown } : {}),
+        ...(style != null ? { style } : {}),
+      };
+    });
+    return withPendingActions({ ...own, columns, rowActionsDisplay: own.rowActionsDisplay ?? "auto" }, reader, where);
   }
+  if (own.type === "button" || own.type === "markdown") return withPendingActions(own, reader, where);
   return own;
+}
+
+/** A `list` column as written. A member holding nothing is one left out. */
+interface AuthoredColumn {
+  type?: string | null;
+  header?: unknown;
+  value: Binding;
+  relative?: boolean | null;
+  href?: AddressConfig | null;
+  shown?: Condition | null;
+  style?: unknown;
+}
+
+const DATE_FORMATS: readonly unknown[] = ["date", "date-time"];
+
+/** Whether a declared `type` is a string, possibly nullable, and nothing else. */
+function declaresString(type: unknown): boolean {
+  if (type === "string") return true;
+  if (!Array.isArray(type)) return false;
+  const types = type.filter((each) => each !== "null");
+  return types.length === 1 && types[0] === "string";
+}
+
+/**
+ * What the model says about the value a `time` node or column reads, refusing
+ * a declared string with no date format — the runtime twin of the type
+ * `telo check` gives the field, for a tree it did not judge.
+ */
+function timePresentation(target: Shape | undefined, binding: Binding, where: string): Record<string, unknown> | undefined {
+  const present = presentation(target);
+  if (present && declaresString(present.type) && !DATE_FORMATS.includes(present.format)) {
+    const written = isChain(binding) ? [binding.root, ...binding.path].join(".") : "the value";
+    const declared = present.format === undefined ? "with no format" : `of format ${String(present.format)}`;
+    throw new RuntimeError(
+      "ERR_UI_TIME_VALUE_NOT_DATE",
+      `${where}: '${written}' is a string ${declared}; a time takes a string of format date or date-time. Declare that format on what it reads, or draw it with a 'value' node.`,
+    );
+  }
+  return present;
+}
+
+/** `node` with each bound action it holds held to its action ({@link pendingBoundAction}). */
+function withPendingActions(node: AuthoredNode, reader: ShapeReader, where: string): AuthoredNode {
+  const entries = boundActionsOf(node);
+  if (entries.length === 0) return node;
+  const places = boundActionPlaces(node);
+  const pending = entries.map((entry, index) =>
+    pendingBoundAction(entry as unknown as BoundActionConfig, reader.ctx, where, places[index]),
+  );
+  return withBoundActions(node, pending as unknown as Record<string, unknown>[]);
 }
 
 /**

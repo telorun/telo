@@ -1,0 +1,306 @@
+kind: Telo.Application
+metadata:
+  name: CrudReaderSelectTest
+  version: 1.0.0
+  description: |
+    A reader lists a collection over one fixed SELECT with a join and a
+    computed column. Filters, sort, paging, the total and facets read the
+    SELECT's own columns; a filter outside the declared pairs is a 400. A
+    `scope` the route fixes holds the page, the total and the facets to its
+    rows, and a client filter on a scoped property is a 400. A computed scope
+    naming no property fails at dispatch.
+imports:
+  Crud: ../
+  DataModel: ../../data-model
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref migrate
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: runnersTable }
+table: runners
+columns:
+  name: { type: text, primaryKey: true }
+  region: { type: text, nullable: false }
+---
+kind: SQLite.Table
+metadata: { name: commandsTable }
+table: commands
+columns:
+  seq: { type: integer, primaryKey: true }
+  runner: { type: text, nullable: false }
+  type: { type: text, nullable: false }
+  state: { type: text, nullable: false }
+  created_at: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref runnersTable, !ref commandsTable]
+migrations:
+  0001_runners:
+    statement: INSERT INTO runners (name, region) VALUES ('a', 'eu'), ('b', 'us')
+  0002_commands:
+    statement: |
+      INSERT INTO commands (seq, runner, type, state, created_at) VALUES
+        (1, 'a', 'build',  'pending', '2026-11-01'),
+        (2, 'a', 'test',   'done',    '2026-11-02'),
+        (3, 'b', 'build',  'pending', '2026-11-03'),
+        (4, 'a', 'deploy', 'done',    '2026-11-04'),
+        (5, 'b', 'test',   'failed',  '2026-11-05'),
+        (6, 'a', 'build',  'pending', '2026-11-06')
+---
+kind: Telo.JsonSchema
+metadata: { name: Command }
+schema:
+  type: object
+  required: [seq, runner, type, state, createdAt, region, open]
+  additionalProperties: false
+  properties:
+    seq: { type: integer }
+    runner: { type: string }
+    type: { type: string }
+    state: { type: string }
+    createdAt: { type: string }
+    region: { type: string }
+    open: { type: boolean }
+---
+kind: DataModel.Collection
+metadata: { name: commands }
+model: !ref Command
+key: seq
+query:
+  filters:
+    - { property: runner, operator: eq }
+    - { property: state, operator: in }
+    - { property: region, operator: eq }
+    - { property: open, operator: eq }
+    - { property: createdAt, operator: gte }
+  sort: [{ property: createdAt }]
+  facets: [{ property: state }, { property: region }]
+---
+
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 19341 }
+    mounts:
+      - path: /commands
+        mount:
+          kind: Http.Api
+          routes:
+            -
+              request:
+                method: GET
+                path: /
+                schema:
+                  query:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      limit: { type: integer, minimum: 1, maximum: 100, default: 25 }
+                      cursor: { type: string }
+                      sort: { type: string }
+                      facet: { type: string }
+              handler:
+                kind: Crud.Reader
+                connection: !ref db
+                collection: !ref commands
+                select: !sql |
+                  SELECT c.seq AS "seq", c.runner AS "runner", c.type AS "type", c.state AS "state",
+                         c.created_at AS "createdAt", r.region AS "region",
+                         (c.state = 'pending') AS "open"
+                  FROM commands c JOIN runners r ON r.name = c.runner
+              inputs:
+                filters: !cel >-
+                  keys(request.query)
+                  .filter(k, !(k in ['limit', 'cursor', 'sort', 'facet']))
+                  .map(k, k.contains('.')
+                    ? {'property': k.substring(0, k.lastIndexOf('.')), 'operator': k.substring(k.lastIndexOf('.') + 1), 'value': request.query[k]}
+                    : {'property': k, 'value': request.query[k]})
+                sort: !cel >-
+                  ('sort' in request.query ? request.query.sort.split(',') : [])
+                  .map(s, {'property': s.startsWith('-') ? s.substring(1) : s, 'direction': s.startsWith('-') ? 'desc' : 'asc'})
+                facet: !cel "'facet' in request.query ? request.query.facet : null"
+                limit: !cel "request.query.limit"
+                cursor: !cel "'cursor' in request.query ? request.query.cursor : null"
+              returns:
+                - { status: 200, content: { application/json: { body: !cel "result" } } }
+          catches:
+            - when: !cel "problem.code == 'ERR_CRUD_QUERY_INVALID'"
+              status: 400
+              content:
+                application/json:
+                  body:
+                    issues: !cel "problem.data.issues.map(i, {'pointer': i.pointer, 'keyword': i.keyword})"
+      - path: /runners
+        mount:
+          kind: Http.Api
+          routes:
+            - request:
+                method: GET
+                path: /{runner}/commands
+                schema:
+                  params: { type: object, required: [runner], properties: { runner: { type: string } } }
+                  query:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      limit: { type: integer, minimum: 1, maximum: 100, default: 25 }
+                      cursor: { type: string }
+                      sort: { type: string }
+                      facet: { type: string }
+              handler:
+                kind: Crud.Reader
+                connection: !ref db
+                collection: !ref commands
+                select: !sql |
+                  SELECT c.seq AS "seq", c.runner AS "runner", c.type AS "type", c.state AS "state",
+                         c.created_at AS "createdAt", r.region AS "region",
+                         (c.state = 'pending') AS "open"
+                  FROM commands c JOIN runners r ON r.name = c.runner
+              inputs:
+                filters: !cel >-
+                  keys(request.query)
+                  .filter(k, !(k in ['limit', 'cursor', 'sort', 'facet']))
+                  .map(k, k.contains('.')
+                    ? {'property': k.substring(0, k.lastIndexOf('.')), 'operator': k.substring(k.lastIndexOf('.') + 1), 'value': request.query[k]}
+                    : {'property': k, 'value': request.query[k]})
+                sort: !cel >-
+                  ('sort' in request.query ? request.query.sort.split(',') : [])
+                  .map(s, {'property': s.startsWith('-') ? s.substring(1) : s, 'direction': s.startsWith('-') ? 'desc' : 'asc'})
+                facet: !cel "'facet' in request.query ? request.query.facet : null"
+                limit: !cel "request.query.limit"
+                cursor: !cel "'cursor' in request.query ? request.query.cursor : null"
+                scope: { runner: !cel "request.params.runner" }
+              returns:
+                - { status: 200, content: { application/json: { body: !cel "result" } } }
+          catches:
+            - when: !cel "problem.code == 'ERR_CRUD_QUERY_INVALID'"
+              status: 400
+              content:
+                application/json:
+                  body:
+                    issues: !cel "problem.data.issues.map(i, {'pointer': i.pointer, 'keyword': i.keyword})"
+      # A computed scope is judged at dispatch.
+      - path: /misspelled
+        mount:
+          kind: Http.Api
+          routes:
+            - request: { method: GET, path: / }
+              handler:
+                kind: Crud.Reader
+                connection: !ref db
+                collection: !ref commands
+                table: commands
+              inputs:
+                scope: !cel "{'runnr': 'a'}"
+              returns: [{ status: 200, content: { application/json: { body: !cel "result" } } }]
+          catches:
+            - when: !cel "problem.code == 'ERR_CRUD_QUERY_INVALID'"
+              status: 400
+              content: { application/json: { body: { code: ERR_CRUD_QUERY_INVALID } } }
+            - when: !cel "problem.code == 'ERR_INPUT_INVALID'"
+              status: 422
+              content: { application/json: { body: { code: ERR_INPUT_INVALID } } }
+targets:
+  - !ref server
+steps:
+  # ── Filter, sort, a page of two and the second, over the joined columns ──
+  - name: filtered
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/commands?region=eu&state.in=pending&state.in=done&sort=-createdAt&limit=2" }
+  - name: second
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19341/commands?region=eu&state.in=pending&state.in=done&sort=-createdAt&limit=2&cursor=' + steps.filtered.result.body.next"
+  - name: computed
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/commands?open=true&createdAt.gte=2026-11-02" }
+  - name: facet
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/commands?facet=region" }
+  - name: unknownFilter
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/commands?age=3" }
+  - name: verifyReader
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        filtered:
+          status: !cel "steps.filtered.result.status"
+          rows: !cel "steps.filtered.result.body.rows"
+          total: !cel "steps.filtered.result.body.total"
+          hasNext: !cel "steps.filtered.result.body.next != null"
+        second:
+          seqs: !cel "steps.second.result.body.rows.map(r, r.seq)"
+          total: !cel "steps.second.result.body.total"
+          next: !cel "steps.second.result.body.next"
+        computed: !cel "steps.computed.result.body.rows.map(r, r.seq)"
+        facet: !cel "steps.facet.result.body"
+        unknownFilter:
+          status: !cel "steps.unknownFilter.result.status"
+          issues: !cel "steps.unknownFilter.result.body.issues"
+      expected:
+        filtered:
+          status: 200
+          rows:
+            - { seq: 6, runner: a, type: build, state: pending, createdAt: "2026-11-06", region: eu, open: true }
+            - { seq: 4, runner: a, type: deploy, state: done, createdAt: "2026-11-04", region: eu, open: false }
+          total: 4
+          hasNext: true
+        second: { seqs: [2, 1], total: 4, next: null }
+        computed: [3, 6]
+        facet:
+          values: [{ value: eu, count: 4 }, { value: us, count: 2 }]
+          next: null
+        unknownFilter:
+          status: 400
+          issues: [{ pointer: /age, keyword: additionalProperties }]
+
+  # ── A scope holds every answer to the runner's own rows ──
+  - name: scopedA
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/runners/a/commands?sort=-createdAt&limit=2" }
+  - name: scopedB
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/runners/b/commands" }
+  - name: scopedFacet
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/runners/a/commands?facet=state" }
+  - name: scopedUnknown
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/runners/c/commands" }
+  - name: widened
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/runners/a/commands?runner=b" }
+  - name: misspelled
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/misspelled" }
+  - name: verifyScope
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        scopedA:
+          seqs: !cel "steps.scopedA.result.body.rows.map(r, r.seq)"
+          runners: !cel "steps.scopedA.result.body.rows.map(r, r.runner)"
+          total: !cel "steps.scopedA.result.body.total"
+        scopedB: !cel "steps.scopedB.result.body.rows.map(r, r.seq)"
+        scopedFacet: !cel "steps.scopedFacet.result.body.values"
+        scopedUnknown:
+          rows: !cel "steps.scopedUnknown.result.body.rows"
+          total: !cel "steps.scopedUnknown.result.body.total"
+        widened:
+          status: !cel "steps.widened.result.status"
+          issues: !cel "steps.widened.result.body.issues"
+        misspelled: !cel "steps.misspelled.result.status"
+      expected:
+        scopedA: { seqs: [6, 4], runners: [a, a], total: 4 }
+        scopedB: [3, 5]
+        scopedFacet: [{ value: done, count: 2 }, { value: pending, count: 2 }]
+        scopedUnknown: { rows: [], total: 0 }
+        widened:
+          status: 400
+          issues: [{ pointer: /runner, keyword: additionalProperties }]
+        misspelled: 422

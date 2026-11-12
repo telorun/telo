@@ -7,6 +7,10 @@ export interface Statement {
   params: unknown[];
 }
 
+/** What a request reads rows from: a table, or one fixed SELECT as the literal
+ *  text between its bound values. */
+export type RowSource = string | { fragments: string[]; values: unknown[] };
+
 const COMPARE = { eq: "=", gt: ">", gte: ">=", lt: "<", lte: "<=" } as const;
 
 // Not the backslash: how a backslash reads inside a string literal is an engine setting.
@@ -30,6 +34,13 @@ class Rendering {
     this.params.push(value);
     return this.dialect.placeholderStyle === "numbered" ? `$${this.params.length}` : "?";
   };
+
+  /** The FROM operand. A SELECT becomes a subquery, its own values bound first. */
+  from(source: RowSource): string {
+    if (typeof source === "string") return source;
+    const text = source.fragments.map((fragment, index) => (index === 0 ? fragment : this.bind(source.values[index - 1]) + fragment)).join("");
+    return `(${text}) AS ${this.column("telo_rows")}`;
+  }
 
   column(property: ModelProperty | string): string {
     return this.dialect.quoteIdentifier(typeof property === "string" ? property : property.column);
@@ -59,9 +70,9 @@ class Rendering {
   /** Rows strictly after the cursor's, in the order {@link order} gives. */
   after(query: CollectionQuery): string | undefined {
     if (!query.after) return undefined;
-    const id = this.column(KEY);
+    const id = this.column(query.key);
     const past = query.sort.descending ? "<" : ">";
-    if (query.sort.property.name === KEY) return `${id} ${past} ${this.bind(query.after.id)}`;
+    if (query.sort.property.name === query.key.name) return `${id} ${past} ${this.bind(query.after.id)}`;
     const column = this.column(query.sort.property);
     if (query.after.value === null) return `(${column} IS NULL AND ${id} > ${this.bind(query.after.id)})`;
     return (
@@ -74,8 +85,8 @@ class Rendering {
   /** Nulls last in either direction, `id` ascending between equal values. */
   order(query: CollectionQuery): string {
     const direction = query.sort.descending ? "DESC" : "ASC";
-    const id = this.column(KEY);
-    if (query.sort.property.name === KEY) return `${id} ${direction}`;
+    const id = this.column(query.key);
+    if (query.sort.property.name === query.key.name) return `${id} ${direction}`;
     const column = this.column(query.sort.property);
     return `(${column} IS NULL) ASC, ${column} ${direction}, ${id} ASC`;
   }
@@ -92,7 +103,7 @@ class Rendering {
  */
 export function pageStatement(
   dialect: SqlDialect,
-  table: string,
+  source: RowSource,
   properties: Iterable<ModelProperty>,
   query: CollectionQuery,
 ): Statement {
@@ -100,20 +111,22 @@ export function pageStatement(
   const columns = [...properties]
     .map((property) => `${rendering.column(property)} AS ${rendering.column(property.name)}`)
     .join(", ");
+  const from = rendering.from(source);
   const where = rendering.where([
     ...query.filters.map((filter) => rendering.filter(filter)),
     rendering.search(query.search),
     rendering.after(query),
   ]);
-  const sql = `SELECT ${columns} FROM ${table}${where} ORDER BY ${rendering.order(query)} LIMIT ${rendering.bind(query.limit + 1)}`;
+  const sql = `SELECT ${columns} FROM ${from}${where} ORDER BY ${rendering.order(query)} LIMIT ${rendering.bind(query.limit + 1)}`;
   return { sql, params: rendering.params };
 }
 
 /** How many rows the filters match, whatever the page. */
-export function countStatement(dialect: SqlDialect, table: string, query: CollectionQuery): Statement {
+export function countStatement(dialect: SqlDialect, source: RowSource, query: CollectionQuery): Statement {
   const rendering = new Rendering(dialect);
+  const from = rendering.from(source);
   const where = rendering.where([...query.filters.map((filter) => rendering.filter(filter)), rendering.search(query.search)]);
-  return { sql: `SELECT COUNT(*) AS ${rendering.column("total")} FROM ${table}${where}`, params: rendering.params };
+  return { sql: `SELECT COUNT(*) AS ${rendering.column("total")} FROM ${from}${where}`, params: rendering.params };
 }
 
 /**
@@ -121,8 +134,9 @@ export function countStatement(dialect: SqlDialect, table: string, query: Collec
  * with how many rows hold it, in value order, read one past `limit` so the
  * caller can tell whether another page follows. A NULL is no value.
  */
-export function facetStatement(dialect: SqlDialect, table: string, query: FacetQuery): Statement {
+export function facetStatement(dialect: SqlDialect, source: RowSource, query: FacetQuery): Statement {
   const rendering = new Rendering(dialect);
+  const from = rendering.from(source);
   const column = rendering.column(query.property);
   const where = rendering.where([
     ...query.filters.map((filter) => rendering.filter(filter)),
@@ -131,7 +145,7 @@ export function facetStatement(dialect: SqlDialect, table: string, query: FacetQ
     query.after ? `${column} > ${rendering.bind(query.after.value)}` : undefined,
   ]);
   const sql =
-    `SELECT ${column} AS ${rendering.column("value")}, COUNT(*) AS ${rendering.column("count")} FROM ${table}${where}` +
+    `SELECT ${column} AS ${rendering.column("value")}, COUNT(*) AS ${rendering.column("count")} FROM ${from}${where}` +
     ` GROUP BY ${column} ORDER BY ${column} ASC LIMIT ${rendering.bind(query.limit + 1)}`;
   return { sql, params: rendering.params };
 }

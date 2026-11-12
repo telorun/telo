@@ -6,7 +6,8 @@ metadata:
     What an application is refused for before it serves anything, by `telo
     check` where it is declared and by the application itself where a consumer's
     check cannot see: a page whose list of nodes is computed, and two pages at
-    one path. An application whose pages hold per-request expressions is
+    one path or at paths differing only in the names of their variables. An
+    application whose pages hold per-request expressions is
     checked for duplicate paths all the same — the rule is not skipped. A page
     path and a link address written `//…` are refused as written: a browser
     reads either as another host. A condition the browser draws cannot read
@@ -21,13 +22,16 @@ metadata:
     navigation entry naming a page the application does not list, at any
     depth of its groups, is refused where it is written and by the
     application itself; so is an entry naming a page with no title that gives
-    no text of its own.
+    no text of its own, and one naming a page with a variable in its path —
+    in a group inside a group as well.
 imports: { Probe: ./__fixtures__/probe, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref computedChildren
   - !ref computedChildrenAtRuntime
   - !ref duplicatePath
   - !ref duplicatePathAtRuntime
+  - !ref variableNamesPath
+  - !ref variableNamesPathAtRuntime
   - !ref offsiteReferences
   - !ref ruleRuns
   - !ref pageRoots
@@ -48,6 +52,9 @@ targets:
   - !ref unroutedPageAtRuntime
   - !ref untitledPage
   - !ref untitledPageAtRuntime
+  - !ref navigationPageVariable
+  - !ref navigationPageVariableAtRuntime
+  - !ref navigationPageDeep
 ---
 kind: Assert.Manifest
 metadata: { name: computedChildren }
@@ -78,6 +85,24 @@ source: ./__fixtures__/invalid/duplicate-path/telo.yaml
 expect:
   errors: []
   runFails: "UiReact.App 'twice': 'pages[1]' declares a path another page already has ('/reports')"
+---
+# A literal segment beside a variable routes apart; two variables named apart do not.
+kind: Assert.Manifest
+metadata: { name: variableNamesPath }
+source: ./__fixtures__/invalid/variable-names-path/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/renamed at 'pages[1]': declares a path another page already has, or one differing from it only in the names of its variables"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/renamed at 'pages[2]': declares a path another page already has, or one differing from it only in the names of its variables"
+---
+kind: Assert.Manifest
+metadata: { name: variableNamesPathAtRuntime }
+source: ./__fixtures__/invalid/variable-names-path/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.App 'renamed': 'pages[2]' (/plans/{key}) routes the same addresses as /plans/{id} ('pages[1]')"
 ---
 kind: Assert.Manifest
 metadata: { name: offsiteReferences }
@@ -243,3 +268,28 @@ source: ./__fixtures__/invalid/untitled-page/telo.yaml
 expect:
   errors: []
   runFails: "UiReact.App 'bare': 'navigation.items[1].items[0]' names a page with no title ('/chat') and gives no text of its own"
+---
+kind: Assert.Manifest
+metadata: { name: navigationPageVariable }
+source: ./__fixtures__/invalid/navigation-page-variable/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/linked at 'navigation.items[1]': names a page with a variable in its path, which a navigation entry cannot fill"
+---
+kind: Assert.Manifest
+metadata: { name: navigationPageVariableAtRuntime }
+source: ./__fixtures__/invalid/navigation-page-variable/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.App 'linked': 'navigation.items[1]' names a page with a variable in its path ('/plans/{id}')"
+---
+kind: Assert.Manifest
+metadata: { name: navigationPageDeep }
+source: ./__fixtures__/invalid/navigation-page-deep/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/nested at 'navigation.items[1].items[0].items[0]': names a page with a variable in its path"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/nested at 'navigation.items[1].items[0].items[1]': names a page with no title and gives no text of its own"

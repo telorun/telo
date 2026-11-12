@@ -762,3 +762,51 @@ describe("a filter bar's state", () => {
     expect(said.mock.calls).toEqual([["The browser refuses session storage, so filters are kept in memory: The quota has been exceeded."]]);
   });
 });
+
+describe("a filter bar's values relative to now", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(new Date(2026, 9, 10, 12));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const dayBack = { label: "A day back", values: [{ property: "dueOn", operator: "lte", value: [{ unit: "day", offset: -1 }] }] };
+
+  it("stay relative in the address, keep their preset active, and are resolved again by the next first page", async () => {
+    const bar = { ...kept({ address: true }), fields: [filterField("dueOn", "lte")], presets: [{ label: "All", values: [] }, dayBack] };
+    rendered = await show(bar);
+    await pick(rendered, "filters-preset", "A day back");
+    expect([asked(rendered), new URLSearchParams(window.location.search).get("_telo.f.todos.dueOn.lte")]).toEqual(["dueOn.lte=2026-10-09", "now-1day"]);
+    const address = window.location.search;
+    rendered.unmount();
+    vi.setSystemTime(new Date(2026, 9, 12, 12));
+    rendered = await show(bar, { path: `/${address}` });
+    const states = rendered.parts("filters-preset").map((preset) => preset.getAttribute("data-state"));
+    expect([asked(rendered), states, (rendered.part("filter-input") as HTMLInputElement).value]).toEqual(["dueOn.lte=2026-10-11", ["off", "on"], "2026-10-11"]);
+  });
+
+  it("send one resolved value on every page of a sequence and of a reload cycle", async () => {
+    const bar = { fields: [filterField("dueOn", "lte", { default: [{ unit: "day", offset: 0 }] })] };
+    rendered = await show(bar, { table: { paging: "more", reloadEvery: 5000 } });
+    vi.setSystemTime(new Date(2026, 9, 12, 12));
+    await rendered.click(rendered.part("load-more"));
+    expect(rendered.requests.filter((request) => listing.test(request))).toEqual(["GET /api/todos?limit=2&dueOn.lte=2026-10-10", "GET /api/todos?limit=2&cursor=Mg&dueOn.lte=2026-10-10"]);
+    const before = lists(rendered);
+    await act(async () => vi.advanceTimersByTime(5000));
+    await rendered.settle();
+    expect(rendered.requests.filter((request) => listing.test(request)).slice(before)).toEqual([
+      "GET /api/todos?limit=2&dueOn.lte=2026-10-12",
+      "GET /api/todos?limit=2&cursor=Mg&dueOn.lte=2026-10-12",
+    ]);
+  });
+
+  it("are replaced by an absolute value once one is typed", async () => {
+    rendered = await show({ fields: [filterField("dueOn", "lte")], presets: [dayBack] });
+    await pick(rendered, "filters-preset", "A day back");
+    await rendered.enter(rendered.part("filter-input"), "2026-10-05");
+    await rendered.commit(rendered.part("filter-input"), "enter");
+    const states = rendered.parts("filters-preset").map((preset) => preset.getAttribute("data-state"));
+    expect([asked(rendered), states]).toEqual(["dueOn.lte=2026-10-05", ["off"]]);
+  });
+});

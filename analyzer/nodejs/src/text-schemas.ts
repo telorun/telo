@@ -19,7 +19,7 @@
  */
 import { serializePattern } from "@telorun/sdk";
 import { isHoistedFragmentDefKey, manifestFragmentOf } from "./manifest-schemas.js";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { resolveSchemaReference } from "./schema-reference.js";
 import { readRefSlot } from "./ref-slot.js";
 import { SCHEMA_REGION_KEYS } from "./schema-region.js";
 import { textKey } from "./text-judgement.js";
@@ -111,7 +111,7 @@ export function schemaValueSites(
         }
       }
       if (typeof declared.$ref === "string" && declared.$ref.startsWith("#")) {
-        walk(resolveSchemaPointer(kindSchema, declared.$ref), value, path);
+        walk(resolveSchemaReference(declared.$ref, kindSchema, undefined)?.node, value, path);
       }
       for (const union of ["oneOf", "anyOf", "allOf"] as const) {
         if (Array.isArray(declared[union])) for (const branch of declared[union]) walk(branch, value, path);
@@ -283,7 +283,7 @@ function shapeProblem(annotation: string, value: unknown, path: ValuePath): Text
 function propertiesOf(node: unknown, root: Record<string, unknown>): Record<string, unknown> | undefined {
   let at = node;
   for (let hops = 0; hops < 32 && isPlainObject(at) && typeof at.$ref === "string" && at.$ref.startsWith("#"); hops++) {
-    at = resolveSchemaPointer(root as Record<string, any>, at.$ref);
+    at = resolveSchemaReference(at.$ref, root as Record<string, any>, undefined)?.node;
   }
   return isPlainObject(at) && isPlainObject(at.properties) ? at.properties : undefined;
 }
@@ -307,7 +307,7 @@ function schemaAt(start: unknown, segments: readonly string[], root: Record<stri
 function isTextNode(node: unknown, root: Record<string, unknown>): boolean {
   if (isTextSchema(node)) return true;
   if (isPlainObject(node) && typeof node.$ref === "string" && node.$ref.startsWith("#")) {
-    return isTextSchema(resolveSchemaPointer(root as Record<string, any>, node.$ref));
+    return isTextSchema(resolveSchemaReference(node.$ref, root as Record<string, any>, undefined)?.node);
   }
   return false;
 }

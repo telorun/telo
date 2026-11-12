@@ -95,6 +95,13 @@
   [data-telo-part="markdown"][data-state="loading"] > [data-telo-part="markdown-code-pre"] { white-space: pre-wrap; overflow-wrap: anywhere; }
   [data-telo-part="markdown-code-copy"] { margin-inline-start: auto; }
   [data-telo-part="markdown-image"] { max-width: 100%; }
+  /* An annotated block's controls sit in a row at its end; those whose line is
+     past the text in a row after it. */
+  [data-telo-part="markdown-annotations"],
+  [data-telo-part="markdown-unplaced-annotations"] { display: inline-flex; flex-wrap: wrap; align-items: center; vertical-align: middle; }
+  [data-telo-part="markdown-unplaced-annotations"] { display: flex; }
+  [data-telo-part="markdown-annotation"] { display: inline-flex; flex-wrap: wrap; align-items: center; }
+  [data-telo-part="time"] { white-space: nowrap; }
   /* A split view: the aside beside its content while open; folded, it is a rail
      holding only its bar, so the toggle stays where it was and the content only
      widens; in the compact surface the same rail stays and its toggle opens the aside,

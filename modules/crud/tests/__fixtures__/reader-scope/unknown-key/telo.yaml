@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata: { name: CrudReaderScopeUnknownKey, version: 1.0.0 }
+imports:
+  Crud: ../../../../
+  DataModel: ../../../../../data-model
+  SQLite: ../../../../../sqlite
+  Http: ../../../../../http-server
+targets: [!ref server]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: 19342 }
+mounts:
+  - path: /
+    mount:
+      kind: Http.Api
+      routes:
+        - request: { method: GET, path: /commands }
+          handler:
+            kind: Crud.Reader
+            connection: !ref db
+            collection: !ref commands
+            table: commands
+          inputs: { scope: { runnr: a } }
+          returns: [{ status: 200, content: { application/json: { body: !cel "result" } } }]
+      catches:
+        - when: !cel "problem.code == 'ERR_CRUD_QUERY_INVALID'"
+          status: 400
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Telo.JsonSchema
+metadata: { name: Command }
+schema:
+  type: object
+  required: [seq, runner]
+  properties: { seq: { type: integer }, runner: { type: string } }
+---
+kind: DataModel.Collection
+metadata: { name: commands }
+model: !ref Command
+key: seq
+query: { filters: [], sort: [] }

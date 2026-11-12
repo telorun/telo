@@ -190,6 +190,25 @@ describe("a form's values", () => {
     rendered = await show([node]);
     expect((rendered.part("input") as HTMLInputElement).value).toBe("2026-05");
   });
+
+  const keptUnder = (fields: string[]) => ({ key: "reviewer", address: false, store: { type: "local" }, fields });
+  const values = () => rendered!.parts("input").map((each) => (each as HTMLInputElement).value);
+
+  it("are one value per kept property across the entries sharing their key: what one enters, every other mounted follows", async () => {
+    const entry = () => action([input("month", "Month")], { state: keptUnder(["month"]) });
+    rendered = await show([entry(), entry()]);
+    await rendered.enter(rendered.parts("input")[0], "2026-07");
+    expect(values()).toEqual(["2026-07", "2026-07"]);
+  });
+
+  it("are merged into the store property by property: a narrower entry's write keeps a wider one's other property", async () => {
+    const wide = action([input("month", "Month"), input("team", "Team")], { state: keptUnder(["month", "team"]) });
+    const narrow = action([input("month", "Month")], { state: keptUnder(["month"]) });
+    rendered = await show([wide, narrow]);
+    await rendered.enter(rendered.parts("input")[1], "red");
+    await rendered.enter(rendered.parts("input")[2], "2026-08");
+    expect([JSON.parse(localStorage.getItem("telo.ui:/:v:reviewer")!), values()]).toEqual([{ v: 1, values: { team: "red", month: "2026-08" } }, ["2026-08", "red", "2026-08"]]);
+  });
 });
 
 describe("live validation", () => {

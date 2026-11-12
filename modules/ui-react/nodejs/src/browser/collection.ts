@@ -1,12 +1,29 @@
 import { readBinding, type Binding } from "./bindings.js";
 import type { Host } from "./host.js";
+import { readRelative, resolveRelative, type RelativeFormat } from "./relative-time.js";
 import { underMount } from "./renderer-context.js";
 import { networkError, responseError } from "./ui-error.js";
 
 export type Operator = "eq" | "contains" | "gt" | "gte" | "lt" | "lte" | "in" | "absent";
 
-/** One query parameter of a collection request. */
-export type Param = [name: string, value: string];
+/** One query parameter of a collection request. A filter holding a value
+ *  relative to now carries the format it resolves to, and is resolved before
+ *  it is sent ({@link resolveParams}). */
+export type Param = [name: string, value: string, relative?: RelativeFormat];
+
+/** The parameters as sent at `now`: each relative value resolved, every other as it is. */
+export function resolveParams(params: readonly Param[], now: Date): Param[] {
+  return params.map(([name, value, relative]) => {
+    const moved = relative === undefined ? undefined : readRelative(value);
+    return moved === undefined || relative === undefined ? [name, value] : [name, resolveRelative(moved, relative, now)];
+  });
+}
+
+/** Every parameter's value, or a refusal for one still relative: a read resolves its filters before it sends them. */
+function sentValue([name, value, relative]: Param): string {
+  if (relative !== undefined) throw new Error(`The filter '${name}' holds a value relative to now ('${value}') that was never resolved before it was sent.`);
+  return value;
+}
 
 /** The parameter a filter sends: `<property>=` for equality, `<property>.<operator>=` otherwise. */
 export function filterParam(property: string, operator: Operator, value: string): Param {
@@ -39,7 +56,7 @@ export function collectionUrl(url: string, view: CollectionView): string {
   query.set("limit", String(view.limit));
   if (view.cursor !== undefined) query.set("cursor", view.cursor);
   if (view.sort !== undefined) query.set("sort", view.sort);
-  for (const [name, value] of view.filters) query.append(name, value);
+  for (const param of view.filters) query.append(param[0], sentValue(param));
   return `${url}?${query}`;
 }
 
@@ -76,7 +93,7 @@ export interface CollectionRequest {
 /** The URL a request is sent to: its path under the mount, its parameters in order. */
 export function requestUrl(prefix: string, request: CollectionRequest): string {
   const query = new URLSearchParams();
-  for (const [name, value] of request.params) query.append(name, value);
+  for (const param of request.params) query.append(param[0], sentValue(param));
   return `${underMount(prefix, request.path)}?${query}`;
 }
 

@@ -1,0 +1,273 @@
+# Document review: an inbox, a document's page, a page comparing two of its
+# revisions and a worker's page, over the routes under /api/review. Pages whose
+# address carries an ID read it as `params`; readers and listings reload on a
+# timer; a document's Markdown has a Comment control on each item the server
+# names; buttons decide on the revision on screen. Every application lists the
+# four pages and navigates to the inbox.
+kind: Ui.Page
+metadata: { name: inbox }
+path: /reviews
+title: Reviews
+children:
+  - type: text
+    style: muted
+    text: >-
+      The documents under review. The list reads itself again every thirty seconds and keeps your place; a review
+      waiting past its product's deadline is drawn in red.
+  - type: composite
+    ref:
+      kind: Ui.Filters
+      presentation: !ref reviewsPresentation
+      fields:
+        - { property: state, operator: in }
+        - { property: product, operator: eq, values: present }
+        - { property: repo, operator: eq, values: present }
+        - { property: revisedAt, operator: lte }
+      presets:
+        - { label: All, values: [] }
+        # Resolved at every read; the address keeps `now-1day`.
+        - label: Waiting a day or more
+          values:
+            - { property: state, operator: in, value: [submitted, revised] }
+            - { property: revisedAt, operator: lte, value: { unit: day, offset: -1 } }
+      content:
+        type: composite
+        ref:
+          kind: Ui.Listing
+          presentation: !ref reviewsPresentation
+          model: !ref ReviewRow
+          sort: { by: { property: revisedAt, direction: descending } }
+          reloadEvery: 30s
+          rowStyle: { by: !cel "row.overdue", cases: { "true": danger } }
+          layout:
+            kind: Ui.TableLayout
+            columns:
+              - value: !cel "row.title"
+                href: { path: !ref review, pathParams: { id: !cel "row.id" } }
+              - value: !cel "row.product"
+              - value: !cel "row.state"
+              - value: !cel "row.revisedAt"
+---
+kind: Ui.Page
+metadata: { name: review }
+path: /reviews/{id}
+title: Review
+children:
+  - type: text
+    style: muted
+    text: >-
+      A document addressed by its ID, read again every thirty seconds. The buttons decide on the revision on screen,
+      and each item the server names in it has a Comment control.
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref ReviewDetail
+      source:
+        path: "/api/review/reviews/{id}"
+        pathParams: { id: !cel "params.id" }
+      reloadEvery: 30s
+      content:
+        type: stack
+        children:
+          - type: text
+            style: heading
+            text: { text: "{$title}", values: { title: !cel "data.review.title" } }
+          # "3 hours ago", the exact time on hover.
+          - { type: time, value: !cel "data.review.latestRevision.createdAt", relative: true }
+          - type: columns
+            children:
+              - type: link
+                text: Compare revisions
+                href: { path: !ref compare, pathParams: { id: !cel "params.id" } }
+              # With no worker the parameter is null, which leaves the address
+              # unresolved, and a link with an unresolved address is drawn as text.
+              - type: link
+                text: Its worker
+                href: { path: !ref worker, pathParams: { name: !cel "data.review.worker" } }
+          # Three buttons, each bound to the revision on screen; each prompt asks
+          # for what the inputs leave, and `author` is entered once for all four.
+          - type: columns
+            children:
+              - type: button
+                inputs:
+                  id: !cel "params.id"
+                  decision: approve
+                  revision: !cel "data.review.latestRevision.seq"
+                  hash: !cel "data.review.latestRevision.hash"
+                prompt: true
+                action:
+                  kind: Ui.Action
+                  inputModel: !ref ReviewDecision
+                  outputModel: !ref ReviewDecisionAnswer
+                  request:
+                    target: { path: "/api/review/reviews/{id}/decisions", pathParams: { id: !cel "input.id" } }
+                  label: Approve
+                  # The prompt asks for `author`, the one field the inputs leave.
+                  fields: [id, decision, revision, hash, author]
+                  state: { key: reviewer, store: { kind: Ui.LocalStore }, fields: [author] }
+                  onSuccess:
+                    refreshes: [{ path: "/api/review/reviews/{id}", pathParams: { id: !cel "input.id" } }]
+              - type: button
+                inputs:
+                  id: !cel "params.id"
+                  decision: request_changes
+                  revision: !cel "data.review.latestRevision.seq"
+                  hash: !cel "data.review.latestRevision.hash"
+                prompt: true
+                action:
+                  kind: Ui.Action
+                  inputModel: !ref ReviewDecision
+                  outputModel: !ref ReviewDecisionAnswer
+                  request:
+                    target: { path: "/api/review/reviews/{id}/decisions", pathParams: { id: !cel "input.id" } }
+                  label: Request changes
+                  state: { key: reviewer, store: { kind: Ui.LocalStore }, fields: [author] }
+                  onSuccess:
+                    refreshes: [{ path: "/api/review/reviews/{id}", pathParams: { id: !cel "input.id" } }]
+              - type: button
+                inputs:
+                  id: !cel "params.id"
+                  decision: reject
+                  revision: !cel "data.review.latestRevision.seq"
+                  hash: !cel "data.review.latestRevision.hash"
+                prompt: true
+                confirm: Reject this document?
+                action:
+                  kind: Ui.Action
+                  inputModel: !ref ReviewDecision
+                  outputModel: !ref ReviewDecisionAnswer
+                  request:
+                    target: { path: "/api/review/reviews/{id}/decisions", pathParams: { id: !cel "input.id" } }
+                  label: Reject
+                  state: { key: reviewer, store: { kind: Ui.LocalStore }, fields: [author] }
+                  onSuccess:
+                    refreshes: [{ path: "/api/review/reviews/{id}", pathParams: { id: !cel "input.id" } }]
+          # Each item the server names gets a Comment control with its count.
+          - type: markdown
+            value: !cel "data.review.latestRevision.body"
+            annotations:
+              rows: !cel "data.review.latestRevision.items"
+              line: !cel "row.line"
+              count: !cel "row.count"
+              action:
+                inputs:
+                  id: !cel "params.id"
+                  revision: !cel "data.review.latestRevision.seq"
+                  item: !cel "row.id"
+                prompt: true
+                action:
+                  kind: Ui.Action
+                  inputModel:
+                    kind: Telo.JsonSchema
+                    schema:
+                      type: object
+                      additionalProperties: false
+                      required: [id, revision, author, body]
+                      properties:
+                        id: { type: string }
+                        revision: { type: integer }
+                        item: { type: string }
+                        author: { type: string, title: Your name, minLength: 1, maxLength: 100 }
+                        body: { type: string, title: Comment, minLength: 1, maxLength: 20000 }
+                  outputModel: !ref ReviewCommentAnswer
+                  request:
+                    target: { path: "/api/review/reviews/{id}/comments", pathParams: { id: !cel "input.id" } }
+                  label: Comment
+                  # The same key as the decisions: `author` is entered once.
+                  state: { key: reviewer, store: { kind: Ui.LocalStore }, fields: [author] }
+                  onSuccess:
+                    refreshes: [{ path: "/api/review/reviews/{id}", pathParams: { id: !cel "input.id" } }]
+          - type: list
+            heading: Timeline
+            rows: !cel "data.events"
+            columns:
+              - value: !cel "row.type"
+              - value: !cel "row.author"
+              - { type: time, value: !cel "row.createdAt", relative: true }
+---
+kind: Ui.Page
+metadata: { name: compare }
+path: /reviews/{id}/compare
+title: Changes
+children:
+  - type: text
+    style: muted
+    text: Two revisions compared line by line. Choose either end from the lists; added lines are green, removed ones red.
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref ReviewComparison
+      query:
+        base: { type: string, pattern: "^[0-9]{1,9}$" }
+        target: { type: string, pattern: "^[0-9]{1,9}$" }
+      source:
+        path: "/api/review/reviews/{id}/compare"
+        pathParams: { id: !cel "params.id" }
+        queryParams: { base: !cel "query.base", target: !cel "query.target" }
+      content:
+        type: stack
+        children:
+          # The server marks what it compared, its defaults included.
+          - type: list
+            heading: Compare from
+            rows: !cel "data.revisions"
+            rowStyle: { by: !cel "row.base", cases: { "true": strong } }
+            columns:
+              - value: !cel "row.seq"
+                href:
+                  path: !ref compare
+                  pathParams: { id: !cel "params.id" }
+                  queryParams: { base: !cel "row.seq", target: !cel "data.target" }
+              - { type: time, value: !cel "row.createdAt", relative: true }
+          - type: list
+            heading: Compare to
+            rows: !cel "data.revisions"
+            rowStyle: { by: !cel "row.target", cases: { "true": strong } }
+            columns:
+              - value: !cel "row.seq"
+                href:
+                  path: !ref compare
+                  pathParams: { id: !cel "params.id" }
+                  queryParams: { base: !cel "data.base", target: !cel "row.seq" }
+              - { type: time, value: !cel "row.createdAt", relative: true }
+          - type: text
+            style: muted
+            text: Too large to compare line by line.
+            shown: { at: !cel "data.comparable", matches: { const: false } }
+          # A line diff as a list with row and column styles.
+          - type: list
+            rows: !cel "data.lines"
+            rowStyle: { by: !cel "row.op", cases: { added: success, removed: danger } }
+            columns:
+              - value: !cel "row.text"
+                style: { by: !cel "row.op", cases: { context: muted } }
+---
+kind: Ui.Page
+metadata: { name: worker }
+path: /workers/{name}
+title: Worker
+children:
+  - type: text
+    style: heading
+    text: { text: "Worker {$name}", values: { name: !cel "params.name" } }
+  - type: text
+    style: muted
+    text: The commands of the worker the address names, read again every five seconds without losing the pages loaded.
+  - type: composite
+    ref:
+      kind: Ui.Listing
+      presentation:
+        kind: Ui.CollectionPresentation
+        source:
+          kind: Ui.CollectionSource
+          collection: !ref commands
+          # A templated base path, filled from the page's variable.
+          basePath:
+            path: "/api/review/workers/{name}/commands"
+            pathParams: { name: !cel "params.name" }
+      model: !ref WorkerCommand
+      paging: more
+      pageSize: 50
+      sort: { by: { property: seq, direction: descending }, choosable: false }
+      # New commands appear; a second loaded page and the scroll stay.
+      reloadEvery: 5s

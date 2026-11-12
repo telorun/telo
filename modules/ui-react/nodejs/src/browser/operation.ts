@@ -1,8 +1,10 @@
 import { createContext } from "react";
 import { addressReads, resolveAddress, resolveRefresh, resolveRequest, type AddressWire } from "./address-wire.js";
 import type { Binding, Condition } from "./bindings.js";
+import type { KeptState } from "./form-state.js";
 import type { Host, HostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
+import { matchPage } from "./page-route.js";
 import type { Field } from "./record-fields.js";
 import { underMount } from "./renderer-context.js";
 import { requestErrorOf, unansweredError, type RequestError } from "./ui-error.js";
@@ -18,6 +20,8 @@ export interface ActionSpec {
   request: { method: RequestMethod; target: AddressWire; consumed: string[] };
   label: WireText;
   fields: Field[];
+  /** Where the values its fields enter are kept, its prompts' included. */
+  state: KeptState;
   enabled?: Condition & { disabledText: WireText };
   /** What a success's body is held to; absent when no answer is declared. */
   answer?: JsonSchema;
@@ -30,7 +34,7 @@ export interface ActionSpec {
 
 export type RequestMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 
-/** An operation a row offers. */
+/** An operation run with bound inputs: a row's, an annotation's or a `button` node's. */
 export interface RowActionSpec {
   action: ActionSpec;
   inputs: Record<string, Binding>;
@@ -80,21 +84,28 @@ export function readsResult(node: Node | undefined): boolean {
     case "columns":
       return (node.children as Node[]).some(readsResult);
     case "value":
+    case "time":
       return readsAnswer(node.value);
+    case "markdown":
+      return readsAnswer(node.value) || (node.annotations !== undefined && (readsAnswer(node.annotations.rows) || boundReads(node.annotations.action)));
+    case "button":
+      return boundReads(node as unknown as RowActionSpec);
     case "list":
       return (
         readsAnswer(node.rows) ||
-        (node.columns as { value: unknown; header?: unknown; shown?: { at: unknown } }[]).some(
-          (column) => readsAnswer(column.value) || readsAnswer(column.shown?.at) || textReads(column.header),
+        readsAnswer(node.rowStyle?.by) ||
+        (node.columns as { value: unknown; header?: unknown; shown?: { at: unknown }; style?: { by: unknown } }[]).some(
+          (column) => readsAnswer(column.value) || readsAnswer(column.shown?.at) || readsAnswer(column.style?.by) || textReads(column.header),
         ) ||
-        ((node.rowActions ?? []) as RowActionSpec[]).some(
-          (entry) => Object.values(entry.inputs).some(readsAnswer) || readsAnswer(entry.enabled?.at),
-        )
+        ((node.rowActions ?? []) as RowActionSpec[]).some(boundReads)
       );
     default:
       return false;
   }
 }
+
+/** Whether a bound action's inputs or its condition read the answer. */
+const boundReads = (entry: RowActionSpec): boolean => Object.values(entry.inputs).some(readsAnswer) || readsAnswer(entry.enabled?.at);
 
 /** Whether a text's values read the answer. */
 function textReads(text: unknown): boolean {
@@ -154,8 +165,8 @@ export async function runOperation(
 /**
  * What a success does beyond being drawn: every reader over the resolved target
  * path, each resolved `refreshes` path and `also` (a listing's own paths) reads
- * again, then the page goes where `navigate` says — a declared page within the
- * application, any other app-relative address by a load, an absolute one
+ * again, then the page goes where `navigate` says — an address a declared page
+ * opens within the application, any other app-relative address by a load, an absolute one
  * replacing the page. A refresh that does not resolve is skipped; a navigation
  * that does not goes nowhere.
  */
@@ -181,7 +192,7 @@ export function followSuccess(
   if (href === undefined) return;
   if (address.startsWith("/")) {
     const path = new URL(address, "http://telo.invalid").pathname;
-    if (pages.includes(path)) host.navigate(address);
+    if (matchPage(pages, path) !== undefined) host.navigate(address);
     else store.leave(href);
     return;
   }

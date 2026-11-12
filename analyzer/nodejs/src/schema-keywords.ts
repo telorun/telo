@@ -33,6 +33,7 @@ const X_TELO_PATH_PARAMS_FOR = "x-telo-path-params-for" as const;
 /** Read on a binding of an `x-telo-context` alone. */
 const X_TELO_CONTEXT_EVAL = "x-telo-context-eval" as const;
 const X_TELO_CONTEXT_FROM_REFERRER = "x-telo-context-from-referrer" as const;
+const X_TELO_CONTEXT_FROM_PATH_TEMPLATE = "x-telo-context-from-path-template" as const;
 const X_TELO_CONTEXT_NULLABLE_WHEN = "x-telo-context-nullable-when" as const;
 const X_TELO_CONTEXT_ITEM_FILLS = "x-telo-context-item-fills" as const;
 const X_TELO_CAUGHT_MEMBER = "x-telo-caught-member" as const;
@@ -76,6 +77,7 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       | typeof X_TELO_TEXT_CONTEXT
       | typeof X_TELO_CONTEXT_EVAL
       | typeof X_TELO_CONTEXT_FROM_REFERRER
+      | typeof X_TELO_CONTEXT_FROM_PATH_TEMPLATE
       | typeof X_TELO_CONTEXT_NULLABLE_WHEN
       | typeof X_TELO_CONTEXT_ITEM_FILLS
       | typeof X_TELO_CAUGHT_MEMBER
@@ -377,6 +379,13 @@ const FROM_REFERRER_ENTRY = {
   type: "string",
 };
 
+const FROM_PATH_TEMPLATE_ENTRY = {
+  title: "Context from path template",
+  description:
+    "Type this node as the variables of the path template at the relative pointer (`0/path`, from the object holding the region's field): a closed object with one required string per `{name}` segment. Where the field holds no template, the node is an open map of strings.",
+  type: "string",
+};
+
 const NULLABLE_WHEN_ENTRY = {
   title: "Context nullable when",
   description:
@@ -398,11 +407,13 @@ const NULLABLE_WHEN_ENTRY = {
 export const TELO_CONTEXT_BINDING_ANNOTATIONS: Record<
   | typeof X_TELO_CONTEXT_EVAL
   | typeof X_TELO_CONTEXT_FROM_REFERRER
+  | typeof X_TELO_CONTEXT_FROM_PATH_TEMPLATE
   | typeof X_TELO_CONTEXT_NULLABLE_WHEN
   | typeof X_TELO_CONTEXT_ITEM_FILLS,
   Record<string, unknown>
 > = {
   [X_TELO_CONTEXT_FROM_REFERRER]: FROM_REFERRER_ENTRY,
+  [X_TELO_CONTEXT_FROM_PATH_TEMPLATE]: FROM_PATH_TEMPLATE_ENTRY,
   [X_TELO_CONTEXT_NULLABLE_WHEN]: NULLABLE_WHEN_ENTRY,
   [X_TELO_CONTEXT_ITEM_FILLS]: {
     title: "Context item fills",
@@ -428,10 +439,14 @@ export const TELO_CONTEXT_BINDING_ANNOTATIONS: Record<
  * `properties` from a binding of an `x-telo-context` — and offered there alone.
  */
 export const TELO_CONTEXT_MEMBER_ANNOTATIONS: Record<
-  typeof X_TELO_CAUGHT_MEMBER | typeof X_TELO_CONTEXT_FROM_REFERRER | typeof X_TELO_CONTEXT_NULLABLE_WHEN,
+  | typeof X_TELO_CAUGHT_MEMBER
+  | typeof X_TELO_CONTEXT_FROM_REFERRER
+  | typeof X_TELO_CONTEXT_FROM_PATH_TEMPLATE
+  | typeof X_TELO_CONTEXT_NULLABLE_WHEN,
   Record<string, unknown>
 > = {
   [X_TELO_CONTEXT_FROM_REFERRER]: FROM_REFERRER_ENTRY,
+  [X_TELO_CONTEXT_FROM_PATH_TEMPLATE]: FROM_PATH_TEMPLATE_ENTRY,
   [X_TELO_CONTEXT_NULLABLE_WHEN]: NULLABLE_WHEN_ENTRY,
   [X_TELO_CAUGHT_MEMBER]: {
     title: "Caught member",

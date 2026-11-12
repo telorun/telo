@@ -401,3 +401,60 @@ describe("resource rules — resolve through entries holding a reference", () =>
     expect(evaluate("editors")).toEqual(["violation"]);
   });
 });
+
+/** A `resolve:` pointer with a repeated group reaches every level of a tree, as
+ *  an `in:` pointer does; the group repeats over the resource's own fields. */
+describe("resource rules — resolve through a repeated group", () => {
+  const tree = {
+    type: "object",
+    properties: { entries: { type: "array", items: { $ref: "#/$defs/Entry" } } },
+    $defs: {
+      Entry: {
+        type: "object",
+        properties: {
+          language: { "x-telo-ref": { kind: "std.Language", use: "dependency" } },
+          entries: { type: "array", items: { $ref: "#/$defs/Entry" } },
+        },
+      },
+    },
+    "x-telo-resource-rules": [
+      {
+        resolve: ["/entries(/*/entries)*/*/language"],
+        in: "/entries(/*/entries)*",
+        condition: cel("!has(this.language) || this.language.code != 'bad'"),
+        code: "LANGUAGE_BAD",
+        message: "an entry names a bad language",
+      },
+    ],
+  };
+  const entry = (language?: string, entries?: unknown[]) => ({
+    ...(language ? { language: ref(language) } : {}),
+    ...(entries ? { entries } : {}),
+  });
+
+  it("reads the declaration an entry names at any depth", () => {
+    const binder = binderOver([language("good", "good"), language("bad", "bad")], tree);
+    const holder = {
+      kind: "std.Tree",
+      metadata: { name: "tree" },
+      entries: [entry("good", [entry(undefined, [entry("good"), entry(undefined, [entry("bad")])])])],
+    } as unknown as ResourceManifest;
+    const findings = evaluateResourceRules(holder, tree, undefined, undefined, binder);
+    expect(findings.map((f) => [f.kind, "path" in f ? f.path : undefined])).toEqual([
+      ["violation", "entries[0].entries[0].entries[1].entries[0]"],
+    ]);
+  });
+
+  it("refuses a group that repeats over a reference slot", () => {
+    const across = {
+      ...tree,
+      "x-telo-resource-rules": [{ ...tree["x-telo-resource-rules"][0], resolve: ["/entries(/*/language)*"] }],
+    };
+    const issues = validateResourceRuleDeclarations(
+      { kind: "Telo.Definition", metadata: { name: "Tree" }, schema: across } as unknown as ResourceManifest,
+    );
+    expect(issues.map((i) => [i.path, i.message.includes("steps over a reference slot")])).toEqual([
+      ["schema.x-telo-resource-rules[0].resolve[0]", true],
+    ]);
+  });
+});

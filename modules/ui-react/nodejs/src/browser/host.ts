@@ -12,6 +12,17 @@ interface Target {
   hash: string;
 }
 
+/** A change one form or action made to the values it keeps under a key: each
+ *  property it changed (`undefined` when it holds none now), and where it keeps them. */
+export interface KeptChange {
+  /** The entry that made it, which does not follow itself. */
+  from: object;
+  key: string;
+  values: Record<string, unknown>;
+  address: boolean;
+  store: "memory" | "local" | "session";
+}
+
 /** A form holding unsaved input, as the store asks about it. */
 export interface UnsavedGuard {
   /** Whether the form is still shown at a location. */
@@ -321,6 +332,36 @@ export class HostStore {
     const key = changeKey(path) ?? path;
     const listeners = this.changes.get(key) ?? new Set();
     this.changes.set(key, listeners);
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+
+  private readonly keptListeners = new Set<(change: KeptChange) => void>();
+
+  /** Tell every entry mounted in the document of a change another made to the values it keeps. */
+  readonly kept = (change: KeptChange): void => {
+    for (const listener of [...this.keptListeners]) listener(change);
+  };
+
+  /** Call `listener` with each change an entry makes to the values it keeps. */
+  readonly onKept = (listener: (change: KeptChange) => void): (() => void) => {
+    this.keptListeners.add(listener);
+    return () => this.keptListeners.delete(listener);
+  };
+
+  private readonly rereads = new Map<string, Set<() => void>>();
+
+  /** Say that a listing over the collection at `basePath` reads itself again on
+   *  its timer, so the facet requests over it read again with it. Nothing else is told. */
+  readonly reread = (basePath: string): void => {
+    for (const listener of [...(this.rereads.get(changeKey(basePath) ?? basePath) ?? [])]) listener();
+  };
+
+  /** Call `listener` whenever a listing over `basePath` reads itself again on its timer. */
+  readonly onReread = (basePath: string, listener: () => void): (() => void) => {
+    const key = changeKey(basePath) ?? basePath;
+    const listeners = this.rereads.get(key) ?? new Set();
+    this.rereads.set(key, listeners);
     listeners.add(listener);
     return () => listeners.delete(listener);
   };

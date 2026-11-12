@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: UiReactPageRoutingTest
+  version: 1.0.0
+  description: |
+    An application routes an address to a page by its segments: a variable
+    segment takes one non-empty segment, a literal one beats it, and an address
+    no page's segments match is the not-found shell. The page document is
+    looked up the same way and carries the page's declared path; one asked for
+    through a malformed percent-encoded segment is the 404 problem. An address
+    holding a percent-escape that does not decode, loaded directly, is the
+    not-found shell with status 404.
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/page-routing/telo.yaml
+    ports: { http: 19344 }
+targets:
+  - !ref fixture
+steps:
+  - name: variable
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19344/plans/p7", responseType: text }
+  - name: literal
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19344/plans/new", responseType: text }
+  - name: deeper
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19344/plans/p7/more", responseType: text }
+  - name: malformedPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19344/plans/%ZZ", responseType: text }
+  - name: truncatedPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19344/plans/%E0%A4%A", responseType: text }
+  - name: variableDocument
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19344/_telo/ui/page?path=/plans/p7" }
+  - name: literalDocument
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19344/_telo/ui/page?path=/plans/new" }
+  - name: malformedDocument
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19344/_telo/ui/page?path=/plans/%25E0%25A4%25A" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        shells: !cel "[steps.variable.result.status, steps.literal.result.status, steps.deeper.result.status]"
+        malformedPages:
+          status: !cel "[steps.malformedPage.result.status, steps.truncatedPage.result.status]"
+          shell: !cel "[steps.malformedPage.result.body == steps.deeper.result.body, steps.truncatedPage.result.body == steps.deeper.result.body]"
+        variableDocument: !cel "[steps.variableDocument.result.status, steps.variableDocument.result.body.path]"
+        literalDocument: !cel "[steps.literalDocument.result.status, steps.literalDocument.result.body.path]"
+        malformedDocument:
+          status: !cel "steps.malformedDocument.result.status"
+          body: !cel "steps.malformedDocument.result.body"
+      expected:
+        shells: [200, 200, 404]
+        malformedPages: { status: [404, 404], shell: [true, true] }
+        variableDocument: [200, "/plans/{id}"]
+        literalDocument: [200, /plans/new]
+        malformedDocument: { status: 404, body: { type: about:blank, title: Not Found, status: 404 } }

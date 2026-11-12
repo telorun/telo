@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: CrudReaderScopeRefusalsTest
+  version: 1.0.0
+  description: |
+    A reader's `scope` is typed by the collection's model before the app runs:
+    a key naming no property of the model, and a value of another type than
+    the property's, are each refused where the route writes them.
+imports: { Assert: ../../assert }
+targets:
+  - !ref unknownKey
+  - !ref wrongType
+---
+kind: Assert.Manifest
+metadata: { name: unknownKey }
+source: ./__fixtures__/reader-scope/unknown-key/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/scope must NOT have additional properties ('runnr' is not allowed)"
+---
+kind: Assert.Manifest
+metadata: { name: wrongType }
+source: ./__fixtures__/reader-scope/wrong-type/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "returns 'int' but the inline Crud.Reader's declared inputType expects 'string'"

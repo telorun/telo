@@ -16,7 +16,7 @@
  */
 import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
 import { declaredEvalMode } from "./eval-paths.js";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { resolveSchemaReference, schemaReferenceParts } from "./schema-reference.js";
 import { pointerSegments, renderValuePath, textFragmentOf, type TextFragment, type ValuePath } from "./text-slot.js";
 
 export interface TextSlotAccessorProblem {
@@ -64,16 +64,10 @@ function textBeneath(
   const fragment = textFragmentOf(node);
   if (fragment !== undefined) return { fragment, ...(shape ? { shape } : {}) };
   if (typeof node.$ref === "string") {
-    if (node.$ref.startsWith("#")) {
-      const target = resolveSchemaPointer(root, node.$ref);
-      const found = isSchema(target) ? textBeneath(target, root, resolveRef, seen, shape) : undefined;
-      if (found) return found;
-    } else {
-      const named = resolveRef?.(node.$ref);
-      const name = parseCanonicalTypeSchemaId(node.$ref)?.typeName ?? node.$ref;
-      const found = named ? textBeneath(named, named, resolveRef, seen, shape ?? name) : undefined;
-      if (found) return found;
-    }
+    const target = resolveSchemaReference(node.$ref, root, resolveRef);
+    const name = target?.shape ? (parseCanonicalTypeSchemaId(target.shape)?.typeName ?? target.shape) : undefined;
+    const found = target ? textBeneath(target.node, target.document, resolveRef, seen, shape ?? name) : undefined;
+    if (found) return found;
   }
   for (const child of childSchemas(node)) {
     const found = textBeneath(child, root, resolveRef, seen, shape);
@@ -130,17 +124,17 @@ export function textSlotAccessorProblems(
     const step = (key: ValuePath): [ValuePath, InShape | undefined] =>
       shape ? [path, { ...shape, inner: [...shape.inner, ...key] }] : [[...path, ...key], undefined];
     if (typeof node.$ref === "string") {
-      const local = node.$ref.startsWith("#");
       const document = shape?.document ?? schema;
-      const target = local ? resolveSchemaPointer(document, node.$ref) : resolveRef?.(node.$ref);
-      if (!isSchema(target) || open.includes(target)) return;
-      if (local) {
-        const segments = pointerSegments(node.$ref.slice(1)) ?? [];
+      const reached = resolveSchemaReference(node.$ref, document, resolveRef);
+      if (!reached || open.includes(reached.node)) return;
+      const target = reached.node;
+      const segments = pointerSegments(schemaReferenceParts(node.$ref).pointer.slice(1)) ?? [];
+      if (reached.shape === undefined) {
         if (shape) visit(target, path, [...open, target], { ...shape, inner: segments });
         else visit(target, [...at, ...segments], [...open, target]);
       } else {
-        const name = parseCanonicalTypeSchemaId(node.$ref)?.typeName ?? node.$ref;
-        visit(target, path, [...open, target], { name, document: target, inner: [] });
+        const name = parseCanonicalTypeSchemaId(reached.shape)?.typeName ?? reached.shape;
+        visit(target, path, [...open, target], { name, document: reached.document, inner: segments });
       }
       return;
     }

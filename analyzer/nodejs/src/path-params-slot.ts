@@ -35,6 +35,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { resolveSchemaReference } from "./schema-reference.js";
 import { isCompiledValue, parseCanonicalTypeSchemaId } from "@telorun/sdk";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { enclosingKeys, placeAt, type ReadPlace, type ReadReporter } from "./read-place.js";
@@ -251,7 +252,7 @@ function declaresPathParams(schema: Schema, external: ExternalSchemaResolver | u
       if (PATH_PARAMS_FOR_ANNOTATION in record) found = true;
       if (typeof record.$ref === "string" && !record.$ref.startsWith("#")) {
         named = true;
-        const target = external?.(record.$ref);
+        const target = resolveSchemaReference(record.$ref, undefined, external)?.node;
         if (target && scan(target).found) found = true;
       }
       for (const [key, child] of Object.entries(record)) {
@@ -560,8 +561,10 @@ export function pathParamsAnnotationProblems(
           visit(target.schema, root, holder, path, shapeOf, inner);
         }
       } else {
-        const named = resolveRef?.(node.$ref);
-        if (named) visit(named, named, holder, path, shapeOf ?? shapeName(node.$ref), shapeOf ? inner : []);
+        const named = resolveSchemaReference(node.$ref, root, resolveRef);
+        if (named) {
+          visit(named.node, named.document, holder, path, shapeOf ?? shapeName(named.shape!), shapeOf ? inner : []);
+        }
       }
     }
   };

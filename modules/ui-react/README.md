@@ -12,6 +12,9 @@ by a React renderer this module ships prebuilt.
   is no generated code and nothing to compile per application.
 - **Per-request pages.** A node's `when:` and its text may read the request's
   headers, so a role or a tenant decides what a page shows.
+- **Pages keyed by ID.** A page path's `{name}` segment is a
+  [variable](docs/app.md#routing) its nodes read as `params`, so `/plans/{id}`
+  reads one plan; another ID draws the page afresh.
 - **A menu that fits the screen.** The [navigation](docs/app.md#navigation) is
   a tree of pages, links and groups — a menu bar with dropdowns and submenus,
   or a sidebar collapsing to a rail of icons that remembers its open groups,
@@ -21,14 +24,22 @@ by a React renderer this module ships prebuilt.
   its text, so a theme colours it as it colours text.
 - **Data on page load, drawn by condition.** A [`Ui.Data`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   is read when it is drawn — a loading state first, a failure state for a
-  refused read — and read again on window focus or when a request inside it
-  answers 401, so a sign-in gate is a reader and a condition. A node's `shown`
+  refused read — and read again on window focus, on a timer (`reloadEvery`,
+  keeping what is drawn) or when a request inside it answers 401, so a sign-in
+  gate is a reader and a condition. A node's `shown`
   is decided in the browser over the answer, the page's query parameters or a
   form's values; hidden content keeps what it holds and requests nothing.
 - **Operations that answer in place.** An action draws its answer, or why it
-  failed, under its form; a row's action draws its answer in place of its
-  button. A success refreshes the readers and listings it changed and can move
-  the page, and a serial action's presses run one after another.
+  failed, under its form; a row's action, a [`button`](docs/app.md#buttons)
+  bound to the page's data and a control on an item of
+  [Markdown text](docs/markdown.md#annotations) draw theirs in place of their
+  button. A prompt completes the bound record and holds it whole to the input
+  model before sending; a value one prompt keeps opens the next of its key. A
+  success refreshes the readers and listings it changed and can move the page,
+  and a serial action's presses run one after another.
+- **Times as people read them.** A [`time`](docs/app.md#times) draws "3 hours
+  ago" with the exact time on hover, kept current while shown, or a date in
+  the viewer's language and zone.
 - **Swappable themes, separate brand.** An application picks its look with one
   reference — [`theme: !ref UiReact.defaultTheme`](docs/theme.md), or a theme
   another module publishes — and its brand with [`Ui.DesignTokens`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
@@ -95,7 +106,8 @@ by a React renderer this module ships prebuilt.
   CommonMark with tables, task lists, strikethrough and autolinks as
   elements — raw HTML is text, a link or image failing the address rule is
   plain text — with highlighted code blocks and a copy button, from a chunk
-  fetched only when a page draws one.
+  fetched only when a page draws one; the items a server names in it carry
+  [controls](docs/markdown.md#annotations) on the blocks they start on.
 - **A chat, drawn from what the endpoint offers.** A [`chat` node](docs/chat.md)
   is a full client of the conversation contract — streamed replies, reasoning,
   tool calls, approvals, attachments, branches — whose upload control exists only

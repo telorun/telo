@@ -1,6 +1,7 @@
 import { inheritedCapability } from "./extends-resolution.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
+import { schemaReferenceParts } from "./schema-reference.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -58,7 +59,7 @@ export function validateSchemaTypeRefs(
         return;
       }
       const obj = value as Record<string, unknown>;
-      const parsed = parseTeloTypeRef(obj.$ref);
+      const parsed = parseTeloTypeRef(typeof obj.$ref === "string" ? schemaReferenceParts(obj.$ref).shape : undefined);
       if (parsed) {
         const module = parsed.authority === "Self" ? ownModule : resolver.moduleForAlias(parsed.authority);
         if (!module) {

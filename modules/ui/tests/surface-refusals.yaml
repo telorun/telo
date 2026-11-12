@@ -24,7 +24,7 @@ source: ./__fixtures__/invalid/shapes/telo.yaml
 expect:
   errors:
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | tabs | image | svg | value | list | bar | command | composite)"
+      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | tabs | image | svg | value | time | markdown | list | button | bar | command | composite)"
     - code: SCHEMA_VIOLATION
       message: "Ui.View/strayKey: /content/children/0 must NOT have additional properties ('gap' is not allowed)"
     - code: SCHEMA_VIOLATION

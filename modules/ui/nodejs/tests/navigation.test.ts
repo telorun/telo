@@ -52,4 +52,15 @@ describe("a navigation delivered for a request", () => {
     const labelled = await preparedNavigation({ items: [{ type: "page", page: bare, text: text("Chat") }] } as never, [bare], ctx, "the app", async () => "");
     expect(deliveredNavigation(labelled.items)).toEqual([{ type: "page", key: "chat", path: "/chat", text: text("Chat") }]);
   });
+
+  it("leaves a page with a variable in its path out of an omitted navigation, and refuses an entry naming one", async () => {
+    const page = (path: string) => ({ snapshot: () => ({ path, title: text(path), query: {} }) }) as never;
+    const ctx = { resolveRef: (reference: unknown) => reference } as unknown as ResourceContext;
+    const plan = page("/plans/{id}");
+    const prepared = await preparedNavigation(undefined, [page("/"), plan], ctx, "the app", async () => "");
+    expect(deliveredNavigation(prepared.items).map((entry) => (entry as { path: string }).path)).toEqual(["/"]);
+    await expect(preparedNavigation({ items: [{ type: "page", page: plan }] } as never, [plan], ctx, "the app", async () => "")).rejects.toMatchObject({
+      code: "ERR_UI_NAVIGATION_PAGE_HAS_PARAMETERS",
+    });
+  });
 });

@@ -17,6 +17,7 @@ import {
   type SchemaIssue,
   type SchemaNodeFindings,
   type TeloFormatEntry,
+  withReachedFragmentDefs,
 } from "@telorun/analyzer";
 import {
   CEL_SCALAR_FORMS,
@@ -568,7 +569,9 @@ export class SchemaValidator {
           }
         : normalized;
 
-    const injected = withImplicit;
+    // A pointer `$ref` based in this schema compiles a named shape it reaches
+    // against this document, so the shapes' hoisted fragments are carried here.
+    const injected = withReachedFragmentDefs(withImplicit, (id) => this.rawSchemas.get(id) as Record<string, any> | undefined);
 
     // Canonicalize tagged carriers (an `!interpolate` in a `description`, a
     // `!cel` tag, …) to their bare source text so AJV can

@@ -18,6 +18,8 @@
  *    only at runtime is not statically analyzable, which is the property the
  *    typed reference graph exists to protect. There is deliberately no
  *    fallback: no single value is conservative for every consumer;
+ *  - a `completedWhen` naming no boolean sibling, or on a slot pairing no
+ *    `inputs:` map (`completed-when-slot.ts`);
  *  - an argument map paired by an `inputs:` pointer (or a step item's
  *    `x-telo-topology-role: inputs`) that may be omitted and declares no literal
  *    object `default:` — what an omitted map is dispatched and judged as.
@@ -34,9 +36,11 @@ import type { AliasResolver } from "./alias-resolver.js";
 import { buildCallGraph, type CallGraph } from "./call-graph.js";
 import { CALLABLE_CAPABILITY, isCallableKind, resolveSignature } from "./callable-signature.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import type { NamedShapeLookup } from "./schema-reference.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { isRefUse, readOutputTo, readRefSlot, REF_USES, type RefUse } from "./ref-slot.js";
 import { argumentMapDefaultProblems } from "./argument-map-default.js";
+import { completedWhenProblems } from "./completed-when-slot.js";
 
 export interface RefSlotIssue {
   code:
@@ -50,6 +54,7 @@ export interface RefSlotIssue {
     | "X_TELO_REF_INVALID_OUTPUT_TYPE"
     | "X_TELO_REF_INVALID_OUTPUT_TO"
     | "X_TELO_REF_INVALID_OBSERVES"
+    | "X_TELO_REF_INVALID_COMPLETED_WHEN"
     | "ARGUMENT_MAP_DEFAULT_INVALID";
   /** The definition (schema issues) or resource (selector issues) at fault. */
   manifest: ResourceManifest;
@@ -241,6 +246,7 @@ const REF_ANNOTATION_KEYS = new Set([
   "kind",
   "use",
   "inputs",
+  "completedWhen",
   "throwsThrough",
   "outputType",
   "outputTo",
@@ -309,6 +315,15 @@ function walkSchema(
     if (key === "x-telo-ref" || key === "examples" || key === "default") continue;
     walkSchema(value, path ? `${path}.${key}` : key, visited, claimedBranches, onSlot);
   }
+}
+
+/** Every misdirected `completedWhen` a definition's or named shape's schema
+ *  writes, a sibling reached by a `$ref` into a named shape read through
+ *  `lookup` — asked once the shapes are announced. */
+export function completedWhenIssues(definition: ResourceManifest, lookup: NamedShapeLookup): RefSlotIssue[] {
+  const schema = (definition as Record<string, unknown>).schema;
+  const name = `${definition.kind} '${definition.metadata?.name as string}'`;
+  return completedWhenProblems(schema, name, "schema", lookup).map((problem) => ({ ...problem, manifest: definition }));
 }
 
 /** Schema-level checks over one definition/abstract manifest. */

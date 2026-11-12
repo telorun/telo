@@ -7,6 +7,7 @@ import {
   type RuntimeResource,
 } from "@telorun/sdk";
 import type { JsonSchema } from "./model-schema.js";
+import type { Binding } from "./row-binding.js";
 
 export type Operator = "eq" | "contains" | "gt" | "gte" | "lt" | "lte" | "in" | "absent";
 
@@ -36,14 +37,19 @@ export interface CollectionFacts {
   relations: Record<string, { target?: CollectionIdentity }>;
 }
 
+/** Where a collection's list endpoint is: a literal path, or a template whose
+ *  `{name}` segments `pathParams` fills, each a binding the browser resolves. */
+export type BasePath = string | { path: string; pathParams: Record<string, Binding> };
+
 export interface CollectionSourceInstance {
-  readonly basePath: string;
+  readonly basePath: BasePath;
   collection(): CollectionFacts;
 }
 
 export function isCollectionSource(candidate: unknown): candidate is CollectionSourceInstance {
   const source = candidate as CollectionSourceInstance | null;
-  return typeof source?.basePath === "string" && typeof source.collection === "function";
+  const basePath = source?.basePath as unknown;
+  return (typeof basePath === "string" || (typeof basePath === "object" && basePath !== null)) && typeof source?.collection === "function";
 }
 
 export const sameCollection = (a: CollectionIdentity, b: CollectionIdentity): boolean => a.name === b.name && a.module === b.module;
@@ -85,10 +91,13 @@ function isReading(value: unknown): value is CollectionReading {
   );
 }
 
-type CollectionSourceResource = RuntimeResource & { collection: unknown; basePath: string };
+type CollectionSourceResource = RuntimeResource & {
+  collection: unknown;
+  basePath: string | { path: string; pathParams?: Record<string, Binding> | null };
+};
 
 class CollectionSource implements ResourceInstance, CollectionSourceInstance {
-  readonly basePath: string;
+  readonly basePath: BasePath;
   private facts?: CollectionFacts;
 
   constructor(
@@ -97,7 +106,8 @@ class CollectionSource implements ResourceInstance, CollectionSourceInstance {
     /** The reference as written, read before injection replaces it. */
     private readonly written: Reference | undefined,
   ) {
-    this.basePath = resource.basePath;
+    const { basePath } = resource;
+    this.basePath = typeof basePath === "string" ? basePath : { path: basePath.path, pathParams: { ...(basePath.pathParams ?? {}) } };
   }
 
   /** The declarations lookup, which the relation checks a source feeds need. */

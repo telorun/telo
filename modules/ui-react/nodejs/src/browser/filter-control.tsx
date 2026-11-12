@@ -7,6 +7,7 @@ import type { FilterField } from "./filter-state.js";
 import { ErrorNode } from "./nodes.js";
 import type { RelatedLabels } from "./related-labels.js";
 import { useShowValue, type ShowValue } from "./record-fields.js";
+import { readRelative, relativeFormat, resolveRelative } from "./relative-time.js";
 import { RendererContext } from "./renderer-context.js";
 import { separated } from "./separated.js";
 import { useSay, useText } from "./texts.js";
@@ -188,17 +189,23 @@ function PropertyFilter({ field, id, name, values, onChange, onCommit }: FilterC
   }
 }
 
-/** A filter typed into. Under `in`, its values are separated by commas. */
+/** A filter typed into. Under `in`, its values are separated by commas. A value
+ *  relative to now is shown as it resolves now; typing replaces it with what is typed. */
 function Typed({ field, id, name, values, onChange, onCommit }: FilterControlProps) {
   const { lang } = useContext(RendererContext);
   const control = useControls();
   const many = field.operator === "in";
   const parsed = (text: string) => (many ? separated(text) : text === "" ? [] : [text]);
-  const [text, setText] = useState(values.join(", "));
+  const format = relativeFormat(field.schema, field.operator);
+  const shown = values.map((value) => {
+    const relative = format === undefined ? undefined : readRelative(value);
+    return relative === undefined || format === undefined ? value : resolveRelative(relative, format, new Date());
+  });
+  const [text, setText] = useState(shown.join(", "));
   // Follow a value set from elsewhere — a reset, a preset — and leave what is
   // being typed alone while it still says the same.
   useEffect(() => {
-    if (parsed(text).join("\n") !== values.join("\n")) setText(values.join(", "));
+    if (parsed(text).join("\n") !== shown.join("\n")) setText(shown.join(", "));
   }, [values.join("\n")]);
   const entry = {
     id,

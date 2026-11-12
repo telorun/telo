@@ -1,0 +1,39 @@
+# A computed map at a contract map keyed by a type's properties: no key is
+# known before dispatch, which refuses the one naming no property.
+kind: Telo.Application
+metadata: { name: App, version: 1.0.0 }
+targets:
+  - invoke: !ref scoped
+    inputs:
+      scope: !cel "{'runnr': 'a'}"
+---
+kind: Telo.JsonSchema
+metadata: { name: Command }
+schema:
+  type: object
+  properties: { seq: { type: integer }, runner: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: Scoped }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { model: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      scope:
+        type: object
+        additionalProperties: { x-telo-value-schema-from: { from: /model, member: "0#" } }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: body }
+    steps:
+      - { name: done, value: true }
+invoke: !ref body
+---
+kind: Self.Scoped
+metadata: { name: scoped }
+model: !ref Command

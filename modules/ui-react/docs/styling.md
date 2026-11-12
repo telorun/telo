@@ -234,6 +234,7 @@ nothing and must go through `header-content` —
 | `image` | an `image` node |
 | `svg` | an `svg` node, drawn as an image |
 | `value` | a `value` node: one value of a data scope, presented as its schema says — a `format: uri` / `uri-reference` string as a `link` |
+| `time` | a `time` node, or the value of a time column: a `<time>` whose `datetime` is the machine-readable time, its text relative to now with the exact time as its `title`, or absolute; a value that is no date is a `span` holding its text |
 | `list` | a `list` node, or one list of an action's answer: its heading, then its grid |
 | `list-heading` | a list's heading, an `h3`; absent when the list declares none |
 | `list-empty` | the cell a list shows when its rows hold none |
@@ -243,6 +244,7 @@ nothing and must go through `header-content` —
 | `bar-center` | the bar's `center` nodes; drawn, empty, when there are none |
 | `bar-end` | the bar's `end` nodes, at its end edge |
 | `command` | a `command` node: a `<button>` running a command of the place it is in — `data-command` names it, `data-button` how it is drawn — disabled while it cannot run, not drawn where it is not offered; a glyph alone is named by `aria-label` and a tooltip |
+| `button` | a `button` node: a `<button>` running its action, labelled with the action's label — `data-button` says how it is drawn, `data-state="submitting"` while its press is pending; once the action has answered, its `row-answer` stands in its place, and a failure is its `row-failure` beside it |
 
 A column of a `list` whose `shown` does not hold is left out, header and cells.
 
@@ -294,6 +296,9 @@ is on it as `data-style`.
 | `markdown-code-pre` | the block's `pre`, focusable so a wide block scrolls from the keyboard; also the preformatted text shown before the chunk arrives |
 | `markdown-code-text` | the `code` inside it |
 | `markdown-token` | a highlighted run of code, its kind in `data-token` |
+| `markdown-annotations` | the controls of the annotations on one block, in order, inside it: at the end of a heading, a paragraph, a quote, a code block or a table's frame, after the first block of a list item |
+| `markdown-annotation` | one annotation's control: its `row-action` button, then the `badge` holding its count when it has one, and the `row-answer` or `row-failure` of a press |
+| `markdown-unplaced-annotations` | after the text, the `markdown-annotation`s whose line is past it; drawn only when there are any, and holding every annotation while the chunk is fetched |
 
 ### Chat
 
@@ -859,7 +864,7 @@ listed.
 
 | Attribute | Values | On |
 | --- | --- | --- |
-| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `data`, `listing`, `form`, `filters`, `component`, `action`, `row-action`, `markdown`, `chat` |
+| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `data`, `listing`, `form`, `filters`, `component`, `action`, `row-action`, `button`, `markdown`, `chat` |
 | `data-invalid="…"` | `true`, while what it holds is refused; the control inside carries its own | `field`, `picker` |
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
@@ -872,9 +877,9 @@ listed.
 | `data-frame="…"` | `framed`, `flush`: a split view's aside, or a list layout, drawn as a bordered panel of its own spaced from its neighbours, or with no frame and no gap, set against its neighbour by a divider | `split`, `split-aside`, `list-layout` |
 | `data-display="…"` | `inline`, `menu`: a record's actions drawn as buttons, or folded into one menu button | `row-actions` |
 | `data-embedded="…"` | `true`, on a part that draws a frame of its own (an outer border, radius and background) while it is the direct content of a flush split view's aside or content — a listing's layout counting as its listing — so it draws none, the split's frame being the one panel | `chat`, `list-layout`, `table-frame`, `tree-layout`, `calendar-grid` |
-| `data-button="…"` | `text`, `icon`: a `link` node drawn as a button, by its text or by a glyph, absent on a link drawn inline; how a `command` is drawn | `link`, `command` |
+| `data-button="…"` | `text`, `icon`: a `link` node drawn as a button, by its text or by a glyph, absent on a link drawn inline; how a `command` or a `button` is drawn | `link`, `command`, `button` |
 | `data-command="…"` | `chat.exportTranscript`, `chat.copyTranscript`, `chat.stop`, `chat.newConversation`: the command a `command` part runs, so a look can choose its glyph | `command` |
-| `data-fill="…"` | `true`, while the part [fills](#filling) the room it is in | `app`, `main`, `page`, `box`, `stack`, `columns`, `text`, `badge`, `link`, `image`, `svg`, `value`, `list`, `bar`, `command`, `data`, `listing`, `form`, `action`, `filters`, `component`, `chat`, `split`, `split-aside`, `split-content`, `markdown`, `navigation`, `tabs`, `tab-panel` |
+| `data-fill="…"` | `true`, while the part [fills](#filling) the room it is in | `app`, `main`, `page`, `box`, `stack`, `columns`, `text`, `badge`, `link`, `image`, `svg`, `value`, `time`, `list`, `bar`, `command`, `button`, `data`, `listing`, `form`, `action`, `filters`, `component`, `chat`, `split`, `split-aside`, `split-content`, `markdown`, `navigation`, `tabs`, `tab-panel` |
 | `data-record="…"` | `true`: a link drawn from a record's own content — a layout's content, a column's or value's `href` — and never from a relation's label, an action's answer or a form; absent otherwise | `link` |
 | `data-selected="…"` | `true`, while a link the record draws leads to where the viewer is: the current location, with the same address and query; absent otherwise | `table-row`, `list-item`, `card`, `board-card`, `calendar-event`, `timeline-bar`, `tree-item` |
 | `data-align="…"` | `start`, `center`, `end` — a popover's, along its side; a table column's alignment | `surface`, `markdown-table-header-cell`, `markdown-table-cell` |
@@ -935,7 +940,8 @@ every `row-action` is disabled while a record is being deleted, too. A
 `data-style` is a space-separated list, so match one name with `~=`. A
 record's element — a `table-row`, `list-item`, `card`, `board-card`,
 `calendar-event`, `timeline-bar` or `tree-item` — carries the listing's
-`rowStyle`, a cell its column's `style`, and a confirmation's
+`rowStyle`, a cell its column's `style` (a `list` node's `table-row` and
+`table-cell` likewise carry its `rowStyle` and its column's), and a confirmation's
 `submit` — deleting a row, discarding unsaved input — carries `danger`; the
 `submit` of a row operation's confirmation carries none.
 

@@ -4,7 +4,8 @@ metadata:
   version: 1.0.0
   description: |
     What a filter bar refuses — a pair listed twice, a default, control or
-    preset its filter cannot hold, a duplicate preset label — statically and
+    preset its filter cannot hold (a value relative to now on a filter that is
+    no date comparison among them), a duplicate preset label — statically and
     again when the bar is first read, and where pinning a filter is a warning.
 imports: { Assert: ../../assert, Probe: ./__fixtures__/probe, Run: ../../run }
 targets:
@@ -15,6 +16,7 @@ targets:
   - !ref searchUndeclaredAtRuntime
   - !ref presetSearchUnsetAtRuntime
   - !ref presetValueInvalidAtRuntime
+  - !ref presetRelativeInvalidAtRuntime
   - !ref presetLabelDuplicateAtRuntime
   - !ref toggleOverTextAtRuntime
   - !ref toggleUntypedAtRuntime
@@ -71,6 +73,13 @@ source: ./__fixtures__/invalid/preset-value-invalid/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'presetValueInvalid': 'presets[0]' sets a value its filter cannot hold ('eq' on 'isDone')"
+---
+kind: Assert.Manifest
+metadata: { name: presetRelativeInvalidAtRuntime }
+source: ./__fixtures__/invalid/preset-relative-invalid/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'presetRelativeInvalid': 'presets[0].values[0].value' sets a value its filter cannot hold: a relative value fits a date or date-time filter with eq, gt, gte, lt or lte, not state with in."
 ---
 kind: Assert.Manifest
 metadata: { name: presetLabelDuplicateAtRuntime }

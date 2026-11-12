@@ -292,8 +292,18 @@ describe("x-telo-value-schema-from with a member", () => {
     expect(found.map((d) => d.data?.path)).toEqual(["filters.status"]);
   });
 
-  it("lets a key the type does not declare contribute nothing", () => {
-    expect(codes([pickerDef(), picker({ other: cel("row.count") })], "CEL_TYPE_ERROR")).toEqual([]);
+  it("refuses a key the type does not declare", () => {
+    const manifests = [pickerDef(), picker({ statsu: cel("row.label"), size: 3 })];
+    const found = codes(manifests, "SCHEMA_VIOLATION");
+    expect(found.map((d) => d.data?.path)).toEqual(["filters"]);
+    expect(found[0]!.message).toContain("'statsu' is not allowed");
+    expect(codes(manifests, "CEL_TYPE_ERROR")).toEqual([]);
+  });
+
+  it("keeps a key the kind's own schema fixes", () => {
+    const def = pickerDef() as any;
+    def.schema.properties.filters.properties = { tier: { type: "string" } };
+    expect(codes([def, picker({ tier: "free", status: "open" })], "SCHEMA_VIOLATION")).toEqual([]);
   });
 
   it("refuses a key member on a node that is no map value", () => {

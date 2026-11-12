@@ -591,3 +591,51 @@ texts:
   - { text: "Everything", translation: "सब कुछ" }
   - { text: "Drafts about releases", translation: "रिलीज़ के बारे में ड्राफ़्ट" }
   - { text: "Search posts, or filter by author, status or date", translation: "पोस्ट खोजें, या लेखक, स्थिति या तारीख़ से फ़िल्टर करें" }
+
+  # The review pages: the inbox, a document's page, the comparison and a
+  # worker's page, with their models' labels.
+  - { text: "Reviews", translation: "समीक्षाएँ" }
+  - { text: "The documents under review. The list reads itself again every thirty seconds and keeps your place; a review waiting past its product's deadline is drawn in red.", translation: "समीक्षा में दस्तावेज़। सूची हर तीस सेकंड में ख़ुद को फिर से पढ़ती है और आपकी जगह बनाए रखती है; अपने उत्पाद की समय-सीमा से अधिक प्रतीक्षा कर रही समीक्षा लाल रंग में दिखती है।" }
+  - { text: "Review", translation: "समीक्षा" }
+  - { text: "Changes", translation: "बदलाव" }
+  - { text: "Worker", translation: "वर्कर" }
+  - { text: "Worker {$name}", translation: "वर्कर {$name}" }
+  - { text: "There is no review '{$id}'.", translation: "'{$id}' नाम की कोई समीक्षा नहीं है।" }
+  - { text: "Review '{$id}' has no revision {$revision}.", translation: "समीक्षा '{$id}' का कोई संस्करण {$revision} नहीं है।" }
+  - { text: "Revision {$latest} has replaced the one you read. Read it before deciding.", translation: "संस्करण {$latest} ने आपके पढ़े हुए संस्करण की जगह ले ली है। निर्णय लेने से पहले उसे पढ़ें।" }
+  - { text: "Revision {$revision} has no item {$item}.", translation: "संस्करण {$revision} में कोई बिंदु {$item} नहीं है।" }
+  - { text: "All", translation: "सभी" }
+  - { text: "Waiting a day or more", translation: "एक दिन या अधिक से प्रतीक्षा में" }
+  - { text: "{$title}", translation: "{$title}" }
+  - { text: "Compare revisions", translation: "संस्करणों की तुलना करें" }
+  - { text: "Its worker", translation: "इसका वर्कर" }
+  - { text: "Reject this document?", translation: "क्या यह दस्तावेज़ अस्वीकार करें?" }
+  - { text: "Timeline", translation: "समयरेखा" }
+  - { text: "Compare from", translation: "आरंभिक संस्करण" }
+  - { text: "Compare to", translation: "अंतिम संस्करण" }
+  - { text: "Too large to compare line by line.", translation: "पंक्ति दर पंक्ति तुलना के लिए बहुत बड़ा।" }
+  - { text: "Approve", translation: "स्वीकृत करें" }
+  - { text: "Request changes", translation: "बदलाव माँगें" }
+  - { text: "Reject", translation: "अस्वीकार करें" }
+  - { text: "A document addressed by its ID, read again every thirty seconds. The buttons decide on the revision on screen, and each item the server names in it has a Comment control.", translation: "अपनी ID से पहचाना गया एक दस्तावेज़, जो हर तीस सेकंड में फिर से पढ़ा जाता है। बटन स्क्रीन पर दिख रहे संस्करण पर निर्णय लेते हैं, और सर्वर इसमें जिस भी बिंदु का नाम लेता है उस पर टिप्पणी का नियंत्रण होता है।" }
+  - { text: "Two revisions compared line by line. Choose either end from the lists; added lines are green, removed ones red.", translation: "दो संस्करणों की पंक्ति दर पंक्ति तुलना। सूचियों से दोनों छोर चुनें; जोड़ी गई पंक्तियाँ हरी हैं, हटाई गई लाल।" }
+  - { text: "The commands of the worker the address names, read again every five seconds without losing the pages loaded.", translation: "पते में नामित वर्कर के आदेश, जो लोड किए गए पृष्ठ खोए बिना हर पाँच सेकंड में फिर से पढ़े जाते हैं।" }
+  - { text: "Document", translation: "दस्तावेज़" }
+  - { text: "Product", translation: "उत्पाद" }
+  - { text: "Repository", translation: "रिपॉज़िटरी" }
+  - { text: "State", translation: "स्थिति" }
+  - { text: "Revised", translation: "संशोधित" }
+  - { text: "Overdue", translation: "विलंबित" }
+  - { text: "Submitted", translation: "जमा किया गया" }
+  - { text: "Changes requested", translation: "बदलाव माँगे गए" }
+  - { text: "Approved", translation: "स्वीकृत" }
+  - { text: "Rejected", translation: "अस्वीकृत" }
+  - { text: "#", translation: "क्र." }
+  - { text: "Command", translation: "आदेश" }
+  - { text: "Created", translation: "बनाया गया" }
+  - { text: "Event", translation: "घटना" }
+  - { text: "By", translation: "द्वारा" }
+  - { text: "When", translation: "कब" }
+  - { text: "Revision", translation: "संस्करण" }
+  - { text: "Your name", translation: "आपका नाम" }
+  - { text: "Note", translation: "नोट" }

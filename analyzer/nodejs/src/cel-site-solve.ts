@@ -73,6 +73,7 @@
  *
  * Browser-safe.
  */
+import { resolveSchemaReference, schemaReferenceParts } from "./schema-reference.js";
 import { childNodes, type CelNode } from "@telorun/cel";
 import type { ResourceManifest } from "@telorun/sdk";
 import {
@@ -2371,16 +2372,15 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       const guard = new Set(seen).add(schema);
       if (typeof schema.$ref === "string") {
         const ref = schema.$ref as string;
-        if (!ref.startsWith("#/")) {
-          const shape = input.shapeNameOf(ref);
+        const { shape: id } = schemaReferenceParts(ref);
+        if (id !== undefined) {
+          const shape = input.shapeNameOf(id);
           if (shape !== undefined) shapes.add(shape);
         }
-        const target = ref.startsWith("#/")
-          ? (resolvePointer(document, ref.slice(1)) as Record<string, any> | undefined)
-          : input.shapeOf(ref, wit);
+        const target = resolveSchemaReference(ref, document, (shape) => input.shapeOf(shape, wit));
         if (target) {
-          if (!ref.startsWith("#/")) document = target;
-          visit(target, depth, root, document, guard);
+          document = target.document;
+          visit(target.node, depth, root, document, guard);
         }
       }
       out.push({ node: schema, at: keys.slice(0, depth), root });
@@ -3234,14 +3234,13 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       const guard = new Set(seen).add(schema);
       if (typeof schema.$ref === "string") {
         const ref = schema.$ref as string;
-        if (!ref.startsWith("#/")) {
-          const shape = input.shapeNameOf(ref);
+        const { shape: id } = schemaReferenceParts(ref);
+        if (id !== undefined) {
+          const shape = input.shapeNameOf(id);
           if (shape !== undefined) shapes.add(shape);
         }
-        const target = ref.startsWith("#/")
-          ? (resolvePointer(document, ref.slice(1)) as Record<string, any> | undefined)
-          : input.shapeOf(ref, wit);
-        if (target) visit(target, at, root, ref.startsWith("#/") ? document : target, guard);
+        const target = resolveSchemaReference(ref, document, (shape) => input.shapeOf(shape, wit));
+        if (target) visit(target.node, at, root, target.document, guard);
       }
       out.push({ node: schema, at, root });
       for (const branch of ["allOf", "anyOf", "oneOf"] as const) {
@@ -4463,16 +4462,6 @@ function readsObservedStateGate(
   if (isKindDocument(declaration)) return true;
   if (isModuleKind(declaration.kind as string | undefined) && keys[0] === "imports") return true;
   return chains.some((chain) => observedStateRead(chain) !== undefined);
-}
-
-function resolvePointer(root: unknown, pointer: string): unknown {
-  let node = root;
-  for (const raw of pointer.split("/").slice(1)) {
-    const segment = raw.replace(/~1/g, "/").replace(/~0/g, "~");
-    if (node === null || typeof node !== "object") return undefined;
-    node = (node as Record<string, unknown>)[segment];
-  }
-  return node;
 }
 
 function valueAt(root: unknown, keys: ReadKeys): unknown {

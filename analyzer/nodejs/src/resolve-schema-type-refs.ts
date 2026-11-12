@@ -6,6 +6,7 @@ import type { AliasResolver } from "./alias-resolver.js";
 import { isTaggedSentinel } from "@telorun/templating";
 import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
+import { schemaReferenceParts } from "./schema-reference.js";
 import { isResolvedReference, RESOLVED_REFERENCE_MARKER } from "./resolved-reference.js";
 
 /** Schema-bearing fields on a Telo.Definition / Telo.Type resource. */
@@ -45,10 +46,11 @@ const SIGNATURE_FIELDS = ["params", "returns"];
  * The legacy authoring spelling `$ref: "telo://<authority>/<type>"` is resolved
  * the same way, since a published artifact carries it. The version lives on the
  * `imports:` entry, never the URI — only the pinned version is loaded, so the
- * canonical id is version-free. Already-canonical refs and fragment-bearing
- * built-ins (`telo://manifest#/$defs/ResourceRef`) are left untouched: the former
- * because the authority resolves to nothing, the latter because they do not match
- * the `authority/type` grammar.
+ * canonical id is version-free; a JSON Pointer into a shape
+ * (`telo://Self/<type>#/properties/x`) keeps its pointer. Already-canonical refs
+ * and fragment-bearing built-ins (`telo://manifest#/$defs/ResourceRef`) are left
+ * untouched: the former because the authority resolves to nothing, the latter
+ * because they do not match the `authority/type` grammar.
  */
 export function resolveSchemaTypeRefs(
   resources: ResourceManifest[],
@@ -168,10 +170,13 @@ function canonicalizeInPlace(
     return;
   }
   const obj = value as Record<string, unknown>;
-  const parsed = parseTeloTypeRef(obj.$ref);
+  // A JSON Pointer into a named shape keeps its pointer; the shape is named as a
+  // whole shape is.
+  const { shape, pointer } = typeof obj.$ref === "string" ? schemaReferenceParts(obj.$ref) : { shape: undefined, pointer: "#" };
+  const parsed = parseTeloTypeRef(shape);
   if (parsed) {
     const module = resolveAuthority(parsed.authority);
-    if (module) obj.$ref = canonicalTypeSchemaId(module, parsed.typeName);
+    if (module) obj.$ref = `${canonicalTypeSchemaId(module, parsed.typeName)}${pointer === "#" ? "" : pointer}`;
   }
   // A reference the tag left behind. Rewritten in place rather than replaced,
   // so a node that carried siblings (a `title`, a `description`) keeps them —

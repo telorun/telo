@@ -23,8 +23,10 @@ import {
   matchForSitesOf,
   type NamedShapeLookup,
 } from "./eval-paths.js";
-import { resolveSchemaPointer, propertySchemas } from "./manifest-navigation.js";
+import { propertySchemas } from "./manifest-navigation.js";
+import { followSchemaReferences } from "./schema-reference.js";
 import { CONTEXT_EVAL, contextEvalValueProblem } from "./context-eval.js";
+import { CONTEXT_FROM_PATH_TEMPLATE, fromPathTemplateProblem } from "./context-from-path-template.js";
 import { CONTEXT_FROM_REFERRER, fromReferrerProblem } from "./context-from-referrer.js";
 import { ITEM_FILLS, itemFillsValueProblem } from "./context-fill-cycle.js";
 import { NULLABLE_WHEN, nullableWhenTarget, nullableWhenValueProblem, readNullableWhen } from "./context-nullable-when.js";
@@ -45,6 +47,7 @@ export interface AnnotationProblem {
     | "CONTEXT_EVAL_MISPLACED"
     | "ELEMENT_FROM_ITEM_INVALID"
     | "CONTEXT_FROM_REFERRER_INVALID"
+    | "CONTEXT_FROM_PATH_TEMPLATE_INVALID"
     | "CONTEXT_NULLABLE_WHEN_INVALID"
     | "CONTEXT_ITEM_FILLS_INVALID";
   readonly warning?: true;
@@ -145,6 +148,12 @@ export function annotationDeclarationProblems(
       if (problem) problems.push({ code: problem.code, path: where, message: problem.message });
     }
 
+    if (CONTEXT_FROM_PATH_TEMPLATE in node) {
+      const where = renderValuePath([...path, CONTEXT_FROM_PATH_TEMPLATE]);
+      const problem = fromPathTemplateProblem(node, where, binding !== undefined, binding?.field, root, shapes, isResource);
+      if (problem) problems.push({ code: problem.code, path: where, message: problem.message });
+    }
+
     if (NULLABLE_WHEN in node) {
       const where = renderValuePath([...path, NULLABLE_WHEN]);
       const problem = nullableWhenValueProblem(node[NULLABLE_WHEN]);
@@ -158,7 +167,6 @@ export function annotationDeclarationProblems(
       } else if (!binding) {
         problems.push({
           code: "CONTEXT_NULLABLE_WHEN_INVALID",
-          warning: true,
           path: where,
           message: `'${where}' is read only on a binding — a property of an 'x-telo-context' — or a member beneath one, so here it marks nothing.`,
         });
@@ -176,7 +184,6 @@ export function annotationDeclarationProblems(
         if (refusal) {
           problems.push({
             code: "CONTEXT_NULLABLE_WHEN_INVALID",
-            warning: true,
             path: where,
             message: `'${where}' at '${rule.pointer}' never decides anything: ${refusal}.`,
           });
@@ -282,18 +289,8 @@ export function annotationDeclarationProblems(
 /** A `$ref` followed to the node it names, with the document that node's own
  *  references resolve against. */
 function deref(node: Schema, document: Schema, shapes: NamedShapeLookup): [Schema, Schema] {
-  const seen = new Set<object>();
-  let current = node;
-  let doc = document;
-  while (typeof current.$ref === "string" && !seen.has(current)) {
-    seen.add(current);
-    const local = current.$ref.startsWith("#");
-    const target = local ? resolveSchemaPointer(doc, current.$ref) : shapes(current.$ref);
-    if (!isSchema(target)) break;
-    if (!local) doc = target;
-    current = target;
-  }
-  return [current, doc];
+  const reached = followSchemaReferences(node, document, shapes);
+  return [reached.node, reached.document ?? document];
 }
 
 function isArraySchema(node: Schema): boolean {

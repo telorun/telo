@@ -575,3 +575,51 @@ texts:
   - { text: "Everything", translation: "전체" }
   - { text: "Drafts about releases", translation: "릴리스에 관한 초안" }
   - { text: "Search posts, or filter by author, status or date", translation: "게시물을 검색하거나 작성자, 상태, 날짜로 필터링하세요" }
+
+  # The review pages: the inbox, a document's page, the comparison and a
+  # worker's page, with their models' labels.
+  - { text: "Reviews", translation: "검토" }
+  - { text: "The documents under review. The list reads itself again every thirty seconds and keeps your place; a review waiting past its product's deadline is drawn in red.", translation: "검토 중인 문서입니다. 목록은 30초마다 다시 읽히며 보던 위치를 유지합니다. 제품 기한을 넘겨 기다리는 검토는 빨간색으로 표시됩니다." }
+  - { text: "Review", translation: "검토" }
+  - { text: "Changes", translation: "변경 사항" }
+  - { text: "Worker", translation: "워커" }
+  - { text: "Worker {$name}", translation: "워커 {$name}" }
+  - { text: "There is no review '{$id}'.", translation: "'{$id}' 검토가 없습니다." }
+  - { text: "Review '{$id}' has no revision {$revision}.", translation: "검토 '{$id}'에 버전 {$revision}이(가) 없습니다." }
+  - { text: "Revision {$latest} has replaced the one you read. Read it before deciding.", translation: "버전 {$latest}이(가) 읽은 버전을 대체했습니다. 결정하기 전에 읽어 보세요." }
+  - { text: "Revision {$revision} has no item {$item}.", translation: "버전 {$revision}에 항목 {$item}이(가) 없습니다." }
+  - { text: "All", translation: "전체" }
+  - { text: "Waiting a day or more", translation: "하루 이상 대기 중" }
+  - { text: "{$title}", translation: "{$title}" }
+  - { text: "Compare revisions", translation: "버전 비교" }
+  - { text: "Its worker", translation: "담당 워커" }
+  - { text: "Reject this document?", translation: "이 문서를 반려할까요?" }
+  - { text: "Timeline", translation: "타임라인" }
+  - { text: "Compare from", translation: "비교 기준" }
+  - { text: "Compare to", translation: "비교 대상" }
+  - { text: "Too large to compare line by line.", translation: "너무 커서 줄 단위로 비교할 수 없습니다." }
+  - { text: "Approve", translation: "승인" }
+  - { text: "Request changes", translation: "변경 요청" }
+  - { text: "Reject", translation: "반려" }
+  - { text: "A document addressed by its ID, read again every thirty seconds. The buttons decide on the revision on screen, and each item the server names in it has a Comment control.", translation: "ID로 지정되며 30초마다 다시 읽히는 문서입니다. 버튼은 화면의 버전에 대해 결정하며, 서버가 문서에서 지정한 각 항목에는 댓글 컨트롤이 있습니다." }
+  - { text: "Two revisions compared line by line. Choose either end from the lists; added lines are green, removed ones red.", translation: "두 버전을 줄 단위로 비교합니다. 목록에서 양쪽 끝을 고르세요. 추가된 줄은 초록색, 삭제된 줄은 빨간색입니다." }
+  - { text: "The commands of the worker the address names, read again every five seconds without losing the pages loaded.", translation: "주소가 지정한 워커의 명령으로, 불러온 페이지를 잃지 않고 5초마다 다시 읽힙니다." }
+  - { text: "Document", translation: "문서" }
+  - { text: "Product", translation: "제품" }
+  - { text: "Repository", translation: "저장소" }
+  - { text: "State", translation: "상태" }
+  - { text: "Revised", translation: "수정됨" }
+  - { text: "Overdue", translation: "기한 초과" }
+  - { text: "Submitted", translation: "제출됨" }
+  - { text: "Changes requested", translation: "변경 요청됨" }
+  - { text: "Approved", translation: "승인됨" }
+  - { text: "Rejected", translation: "반려됨" }
+  - { text: "#", translation: "번호" }
+  - { text: "Command", translation: "명령" }
+  - { text: "Created", translation: "생성" }
+  - { text: "Event", translation: "이벤트" }
+  - { text: "By", translation: "작성자" }
+  - { text: "When", translation: "시각" }
+  - { text: "Revision", translation: "버전" }
+  - { text: "Your name", translation: "이름" }
+  - { text: "Note", translation: "메모" }

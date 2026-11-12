@@ -46,6 +46,7 @@ export const TYPING_ANNOTATIONS = [
   "x-telo-context-element-from-item",
   "x-telo-context-collection-from",
   "x-telo-context-parameters-from",
+  "x-telo-context-from-path-template",
 ] as const;
 
 export type FromReferrerProblem =

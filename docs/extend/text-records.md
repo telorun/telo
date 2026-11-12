@@ -365,7 +365,7 @@ with a test application listing every catalog it ships.
 | `TEXT_ARGUMENT_COMPUTED` | a `Text` parameter's argument is an expression, or an expression at a text-or-record slot is not typed as a record |
 | `TEXT_VALUES_FOR_INVALID` | a values pairing names nothing, no `Text`, or a `Text` already paired |
 | `TEXT_SLOT_ACCESSOR` | a kind types a text at or beneath an accessor field |
-| `TEXT_VALUES_INVALID` | `x-telo-text-values` on a node that is no text, a value schema other than `string` / `integer` / `number`, or on a text a values pairing binds; `x-telo-text-values-from` on a node that is no text, that is no relative pointer, beside `x-telo-text-values`, or naming a sibling the object does not declare |
+| `TEXT_VALUES_INVALID` | `x-telo-text-values` on a node that is no text, a value schema other than `string` / `integer` / `number`, or on a text a values pairing binds; `x-telo-text-values-from` on a node that is no text, that is no relative pointer, beside `x-telo-text-values`, naming a sibling the object does not declare, or climbing above the resource or the named shape it is written in |
 | `TEXT_KEYS_INVALID` | `x-telo-text-keys` off a schema root, or naming a kind that is no keyed translation set |
 | `MESSAGE_TEXT_UNUSED` (warning) | a catalog entry matches no text its module's imports show |
 | `MESSAGE_TRANSLATION_MISSING` (warning) | a served language has no translation for a keyed set's key or a `Text` written in another language |

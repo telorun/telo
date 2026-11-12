@@ -5,7 +5,7 @@ present values (a [facet](#facets)). It implements the
 [collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/), so a screen
 reading the same collection works over it with no adapter. It accepts the
 filters, sorts, facets and search the collection's
-[`query`](collection.md#the-declared-query) declares, and no others.
+[`query`](collection.md#the-declared-query) declares, and no others. The same contract over a SELECT of your own, in a route you write, is [`Crud.Reader`](reader.md).
 
 ## Query
 

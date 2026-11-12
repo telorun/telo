@@ -92,6 +92,9 @@ import {
   textKeysDeclarer,
   textKeysOf,
   textKeysProblems,
+  conflictShape,
+  evalModeBranchConflictMessage,
+  evalModeBranchConflicts,
   textSlotAccessorProblems,
   textValuesProblems,
   type NamedContractShape,
@@ -682,7 +685,9 @@ export class Kernel implements IKernel {
    * dependency's kind is refused too (`telo check`'s twin: `SCOPE_SLOT_MISPLACED`).
    * So is one typing an accessor field's value by a text fragment, which its
    * controller would receive as a binding (`TEXT_SLOT_ACCESSOR`), and one whose
-   * `x-telo-browser-export` is malformed (`BROWSER_EXPORT_ANNOTATION_INVALID`).
+   * `x-telo-browser-export` is malformed (`BROWSER_EXPORT_ANNOTATION_INVALID`),
+   * and one whose eval-site walk meets a union giving a property two eval
+   * meanings (`EVAL_MODE_BRANCH_CONFLICT`).
    */
   registerResourceDefinition(definition: ResourceDefinition): void {
     const misplaced = scopeSlotProblems(definition);
@@ -717,6 +722,22 @@ export class Kernel implements IKernel {
     );
     if (textKeys) {
       throw new RuntimeError("ERR_TEXT_KEYS_INVALID", `${definition.kind} ${textKeys.message}`);
+    }
+    const shapeOf = (ref: string) =>
+      (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
+      this.registry.schemaForId(ref);
+    const [branchConflict] = evalModeBranchConflicts(definition.schema, shapeOf);
+    if (branchConflict) {
+      const shape = conflictShape(branchConflict);
+      const name = `${definition.kind} '${String(definition.metadata?.name)}'`;
+      throw new RuntimeError(
+        "ERR_EVAL_MODE_BRANCH_CONFLICT",
+        evalModeBranchConflictMessage(
+          branchConflict,
+          shape ? `${name} reaches the named shape '${shape.name}' (${shape.id}), which` : name,
+          (shape && shapeOf(shape.id)) || branchConflict.document,
+        ),
+      );
     }
     const [browserExport] = browserExportAnnotationProblems(String(definition.metadata?.name), definition.schema);
     if (browserExport) {

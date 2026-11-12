@@ -1,0 +1,35 @@
+# Lists whose row style and cell style are chosen by an expression, which an
+# accessor never evaluates.
+kind: Telo.Application
+metadata: { name: UiInvalidListStylesApp, version: 1.0.0 }
+imports: { Ui: ../../../../ }
+---
+kind: Telo.JsonSchema
+metadata: { name: Diff }
+schema:
+  type: object
+  properties:
+    lines:
+      type: array
+      items: { type: object, required: [op, text], properties: { op: { type: string }, text: { type: string } } }
+---
+kind: Ui.Data
+metadata: { name: rowStyleComputed }
+model: !ref Diff
+source: /api/plan
+content:
+  type: list
+  rows: !cel "data.lines"
+  rowStyle: { by: !cel "row.op + 's'", cases: { added: success } }
+  columns: [{ value: !cel "row.text" }]
+---
+kind: Ui.Data
+metadata: { name: cellStyleComputed }
+model: !ref Diff
+source: /api/plan
+content:
+  type: list
+  rows: !cel "data.lines"
+  columns:
+    - value: !cel "row.text"
+      style: { by: !cel "size(row.op)", cases: { "0": muted } }

@@ -103,6 +103,15 @@ button[data-telo-part="command"] { gap: 0.375rem; padding: 0 var(--telo-space-sm
 button[data-telo-part="command"]:not([data-fill="true"]) { height: 1.75rem; }
 button[data-telo-part="command"][data-button="icon"][aria-label] { width: 1.75rem; padding: 0; }
 button[data-telo-part="command"]:hover { background: var(--ui-react-radix-fill); color: var(--telo-color-text); }
+/* A button node: the outlined button a link drawn as a button is; `accent` solid, `danger` soft red. */
+button[data-telo-part="button"] { padding: 0 0.625rem; border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); color: var(--telo-color-text); }
+button[data-telo-part="button"]:not([data-fill="true"]) { height: 2rem; }
+button[data-telo-part="button"][data-button="icon"][aria-label] { width: 2rem; padding: 0; }
+button[data-telo-part="button"]:hover { background: var(--ui-react-radix-fill); }
+button[data-telo-part="button"][data-style~="accent"] { border-color: transparent; background: var(--telo-color-accent); color: var(--telo-color-accent-text); }
+button[data-telo-part="button"][data-style~="accent"]:hover { background: color-mix(in oklab, var(--telo-color-accent) 80%, transparent); }
+button[data-telo-part="button"][data-style~="danger"] { border-color: transparent; background: var(--ui-react-radix-danger-soft); color: var(--telo-color-danger); }
+button[data-telo-part="button"][data-state="submitting"] { opacity: 0.7; }
 h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-weight: 600; }
 [data-telo-part="link"] { color: var(--telo-color-accent); font-weight: 500; text-decoration: underline; text-decoration-color: color-mix(in oklab, var(--telo-color-accent) 35%, transparent); text-underline-offset: 3px; border-radius: 2px; outline: none; transition: text-decoration-color 150ms; }
 [data-telo-part="link"]:hover { text-decoration-color: currentColor; }
@@ -122,6 +131,9 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-weight: 60
 [data-telo-part="header-start"] [data-telo-part="image"], [data-telo-part="header-start"] [data-telo-part="svg"], [data-telo-part="header-end"] [data-telo-part="image"], [data-telo-part="header-end"] [data-telo-part="svg"] { height: 2rem; width: auto; border: 0; }
 [data-telo-part="box"] { line-height: var(--telo-line-height-body); }
 [data-telo-part="value"] { font-variant-numeric: tabular-nums; }
+/* A relative time is underlined with dots: its exact time is its tooltip. */
+[data-telo-part="time"] { font-variant-numeric: tabular-nums; }
+[data-telo-part="time"][title] { text-decoration: underline dotted; text-decoration-color: color-mix(in oklab, currentColor 40%, transparent); text-underline-offset: 3px; cursor: help; }
 [data-telo-part="data"] { min-width: 0; }
 [data-telo-part="list"] { gap: var(--telo-space-md); }
 [data-telo-part="list-heading"] { margin: 0; color: var(--telo-color-muted); font-family: var(--telo-font-heading); font-size: var(--telo-font-size-sm); font-weight: 600; letter-spacing: 0.04em; line-height: var(--telo-line-height-heading); text-transform: uppercase; }
@@ -633,6 +645,12 @@ button[data-telo-part="markdown-code-copy"]:hover { background: var(--ui-react-r
 [data-telo-part="markdown-token"][data-token="keyword"] { color: var(--telo-color-accent); font-weight: 600; }
 [data-telo-part="markdown-token"]:is([data-token="function"], [data-token="type"]) { color: var(--telo-color-text); font-weight: 600; }
 [data-telo-part="markdown-token"]:is([data-token="operator"], [data-token="punctuation"]) { color: var(--telo-color-muted); }
+/* An annotated block's controls: compact buttons in the body's type at the block's end, each with its count. */
+[data-telo-part="markdown-annotations"] { gap: var(--telo-space-xs); margin-inline-start: var(--telo-space-sm); font-family: var(--telo-font-body); font-size: var(--telo-font-size-sm); font-weight: 400; letter-spacing: normal; line-height: 1; color: var(--telo-color-text); }
+[data-telo-part="markdown-annotation"] { gap: var(--telo-space-xs); }
+[data-telo-part="markdown-annotation"] > button[data-telo-part="row-action"] { height: 1.5rem; padding: 0 var(--telo-space-sm); font-size: var(--telo-font-size-sm); }
+[data-telo-part="markdown-annotation"] > [data-telo-part="badge"] { height: 1.125rem; padding: 0 0.375rem; font-size: 0.75rem; }
+[data-telo-part="markdown-unplaced-annotations"] { gap: var(--telo-space-sm); padding-top: var(--telo-space-sm); border-top: 1px dashed var(--telo-color-border); font-size: var(--telo-font-size-sm); }
 [data-telo-part="markdown-token"]:is([data-token="property"], [data-token="variable"]) { color: color-mix(in oklab, var(--telo-color-accent) 60%, var(--telo-color-muted)); }
 [data-telo-part="markdown-token"][data-token="deleted"] { color: var(--telo-color-danger); }
 

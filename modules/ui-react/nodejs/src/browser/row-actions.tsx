@@ -1,22 +1,16 @@
 import { Fragment, useContext, useId, useRef, useState, type ReactNode } from "react";
 import { conditionHolds, readBinding } from "./bindings.js";
+import type { KeptState } from "./form-state.js";
 import { useHost, useHostStore } from "./host.js";
 import { Node } from "./nodes.js";
 import { RowMenu, type RowMenuEntry } from "./row-menu.js";
 import { followSuccess, PressQueueContext, runOperation, type Outcome, type RowActionSpec } from "./operation.js";
-import {
-  enteredRecord,
-  enteredValues,
-  fieldFindings,
-  Fields,
-  hiddenFindings,
-  refusalOf,
-  shownFields,
-  type EnteredValues,
-} from "./record-fields.js";
+import { useRecordEntry } from "./record-entry.js";
+import { Fields, refusalOf } from "./record-fields.js";
 import { RendererContext, RootsContext } from "./renderer-context.js";
 import { Confirmation } from "./surface.js";
 import type { RequestError } from "./ui-error.js";
+import { validate } from "./validation.js";
 import { useSay, useText } from "./texts.js";
 
 type Row = Record<string, unknown>;
@@ -29,10 +23,6 @@ interface Asking {
   key: string;
   /** The roots the press binds beside the row: a move's `to`. */
   extra: Roots;
-  /** What its prompt's fields hold, and what was refused of them. */
-  values: EnteredValues;
-  fieldErrors: Record<string, string>;
-  formError?: string;
   busy: boolean;
   failure?: RequestError;
 }
@@ -50,9 +40,32 @@ function boundRecord(entry: RowActionSpec, roots: Roots): Record<string, unknown
 
 const answerKey = (index: number, key: string) => `${index}\u0000${key}`;
 
+/** What a confirmation with no prompt keeps: nothing. */
+const UNKEPT: KeptState = { address: false, store: { type: "memory" }, fields: [] };
+
+/** A button of an entry, as a place drawing it in its own way is told of it. */
+export interface EntryButton {
+  label: string;
+  disabled: boolean;
+  /** Whether this entry's press of the row is the one pending. */
+  submitting: boolean;
+  press(): void;
+}
+
+export interface ControlOptions {
+  disabled?: boolean;
+  /** Draws the button, in place of a `row-action` one. */
+  button?: (button: EntryButton) => ReactNode;
+  /** Drawn right after the button, and not in place of an answer. */
+  beside?: ReactNode;
+}
+
 export interface RowActions {
   /** The buttons — or the answers drawn in their place — of one row. */
   cell(row: Row, key: string, disabled?: boolean): ReactNode;
+  /** One entry's control for a row: its answer once it succeeded; else its
+   *  button, what `beside` holds, why it is disabled and what its last press failed with. */
+  control(index: number, row: Row, key: string, options?: ControlOptions): ReactNode;
   /** The same, folded into a menu: the answers of pressed actions, then one button opening each action followed by `after`. */
   menuCell(row: Row, key: string, disabled?: boolean, after?: RowMenuEntry[]): ReactNode;
   /** The confirmation of the press being asked about, when one is open. */
@@ -88,7 +101,6 @@ export function useRowActions(
   const text = useText();
   const { pages, prefix } = useContext(RendererContext);
   const queues = useContext(PressQueueContext);
-  const promptId = useId();
   const [answers, setAnswers] = useState<ReadonlyMap<string, Outcome>>(new Map());
   // The row action pending or queued per row, by row key. Read on the press
   // itself, which can arrive before the disabled button is drawn.
@@ -109,26 +121,14 @@ export function useRowActions(
     setBusyKeys(new Map(pending.current));
   };
 
-  const send = async (index: number, row: Row, key: string, extra: Roots, values: EnteredValues, inDialog: boolean) => {
-    if (pending.current.has(key)) return;
+  /** Send a press's record; what it came to, or nothing when the row's last press is still pending. */
+  const send = async (index: number, row: Row, key: string, extra: Roots, input: Record<string, unknown>, inDialog: boolean): Promise<Outcome | undefined> => {
+    if (pending.current.has(key)) return undefined;
     const entry = entries[index];
     const { action } = entry;
-    const rowRoots = { ...roots, ...extra, row };
-    const prompted = entry.prompt?.fields ?? [];
-    const asked = entry.prompt ? shownFields(action.schema, prompted, values, rowRoots) : [];
-    // What the dialog entered, with the row's own values over it, bound now.
-    const input = { ...(entry.prompt ? enteredRecord(action.schema, asked, values) : {}), ...boundRecord(entry, rowRoots) };
-    if (entry.prompt) {
-      const invalid = fieldFindings(action.schema, asked, input, {}, say);
-      const unshown = hiddenFindings(action.schema, prompted.filter((field) => !asked.includes(field)), input, say, (label) => text(label));
-      if (Object.keys(invalid).length > 0 || unshown.length > 0) {
-        setAsking({ index, row, key, extra, values, busy: false, fieldErrors: invalid, ...(unshown.length > 0 ? { formError: unshown.join(" ") } : {}) });
-        return;
-      }
-    }
     hold(key, index);
     answer(answerKey(index, key), undefined);
-    if (inDialog) setAsking({ index, row, key, extra, values, busy: true, fieldErrors: {} });
+    if (inDialog) setAsking({ index, row, key, extra, busy: true });
     const outcome = await queues.run(action, () => runOperation(host, prefix, action, input, say));
     hold(key, undefined);
     if (outcome.ok) {
@@ -136,24 +136,23 @@ export function useRowActions(
       if (action.result !== undefined) answer(answerKey(index, key), outcome);
       followSuccess(action, outcome, host, store, pages);
       succeeded(outcome.result, key);
-      return;
+      return outcome;
     }
-    if (!inDialog) return answer(answerKey(index, key), outcome);
-    if (outcome.error.status === 400 && entry.prompt) {
-      // A prompt shows a refusal as a form does: on its fields, and under them.
-      const { byField, other } = refusalOf(outcome.body, asked, say);
-      setAsking({ index, row, key, extra, values, busy: false, fieldErrors: byField, ...(other.length > 0 ? { formError: other.join(" ") } : {}) });
-      return;
+    if (!inDialog) {
+      answer(answerKey(index, key), outcome);
+      return outcome;
     }
-    setAsking({ index, row, key, extra, values, busy: false, fieldErrors: {}, failure: outcome.error });
+    // A prompt shows a refusal as a form does, on its fields: the dialog draws it.
+    const onFields = outcome.error.status === 400 && entry.prompt !== undefined;
+    setAsking({ index, row, key, extra, busy: false, ...(onFields ? {} : { failure: outcome.error }) });
+    return outcome;
   };
 
   const press = (index: number, row: Row, key: string, extra: Roots = {}) => {
     if (pending.current.has(key)) return;
     const entry = entries[index];
-    if (entry.confirm === undefined && entry.prompt === undefined) return void send(index, row, key, extra, {}, false);
-    const values = entry.prompt ? enteredValues(entry.action.schema, entry.prompt.fields) : {};
-    setAsking({ index, row, key, extra, values, busy: false, fieldErrors: {} });
+    if (entry.confirm === undefined && entry.prompt === undefined) return void send(index, row, key, extra, boundRecord(entry, { ...roots, ...extra, row }), false);
+    setAsking({ index, row, key, extra, busy: false });
   };
 
   const failureOf = (index: number, key: string): ReactNode => {
@@ -168,38 +167,50 @@ export function useRowActions(
     );
   };
 
-  const cell = (row: Row, key: string, disabled = false): ReactNode =>
-    entries.map((entry, index) => {
-      const outcome = answers.get(answerKey(index, key));
-      const { action } = entry;
-      if (outcome?.ok && action.result !== undefined) {
-        return (
-          <div key={index} data-telo-part="row-answer">
-            <RootsContext.Provider value={{ result: outcome.result, input: outcome.input, values: outcome.input }}>
-              <Node node={action.result} />
-            </RootsContext.Provider>
-          </div>
-        );
-      }
-      const rowRoots = { ...roots, row };
-      const allowed = conditionHolds(entry.enabled, rowRoots);
-      const busy = busyKeys.has(key);
-      return (
-        <Fragment key={index}>
-          <button
-            data-telo-part="row-action"
-            type="button"
-            data-state={busyKeys.get(key) === index ? "submitting" : undefined}
-            disabled={busy || disabled || !allowed}
-            onClick={() => press(index, row, key)}
-          >
-            {text(action.label)}
+  /** An entry's `result` tree for a row, once its press succeeded; nothing otherwise. */
+  const answerOf = (index: number, key: string): ReactNode => {
+    const outcome = answers.get(answerKey(index, key));
+    const { action } = entries[index];
+    if (!outcome?.ok || action.result === undefined) return null;
+    return (
+      <div data-telo-part="row-answer">
+        <RootsContext.Provider value={{ result: outcome.result, input: outcome.input, values: outcome.input }}>
+          <Node node={action.result} />
+        </RootsContext.Provider>
+      </div>
+    );
+  };
+
+  const control = (index: number, row: Row, key: string, options: ControlOptions = {}): ReactNode => {
+    const answered = answerOf(index, key);
+    if (answered) return answered;
+    const entry = entries[index];
+    const rowRoots = { ...roots, row };
+    const allowed = conditionHolds(entry.enabled, rowRoots);
+    const button: EntryButton = {
+      label: text(entry.action.label),
+      disabled: busyKeys.has(key) || options.disabled === true || !allowed,
+      submitting: busyKeys.get(key) === index,
+      press: () => press(index, row, key),
+    };
+    return (
+      <>
+        {options.button ? (
+          options.button(button)
+        ) : (
+          <button data-telo-part="row-action" type="button" data-state={button.submitting ? "submitting" : undefined} disabled={button.disabled} onClick={button.press}>
+            {button.label}
           </button>
-          {!allowed && entry.enabled && <span data-telo-part="disabled-text">{text(entry.enabled.disabledText, undefined, rowRoots)}</span>}
-          {failureOf(index, key)}
-        </Fragment>
-      );
-    });
+        )}
+        {options.beside}
+        {!allowed && entry.enabled && <span data-telo-part="disabled-text">{text(entry.enabled.disabledText, undefined, rowRoots)}</span>}
+        {failureOf(index, key)}
+      </>
+    );
+  };
+
+  const cell = (row: Row, key: string, disabled = false): ReactNode =>
+    entries.map((_, index) => <Fragment key={index}>{control(index, row, key, { disabled })}</Fragment>);
 
   const menuCell = (row: Row, key: string, disabled = false, after: RowMenuEntry[] = []): ReactNode => {
     const rowRoots = { ...roots, row };
@@ -207,22 +218,15 @@ export function useRowActions(
     const answered: ReactNode[] = [];
     const offered: RowMenuEntry[] = [];
     entries.forEach((entry, index) => {
-      const outcome = answers.get(answerKey(index, key));
-      const { action } = entry;
-      if (outcome?.ok && action.result !== undefined) {
-        answered.push(
-          <div key={index} data-telo-part="row-answer">
-            <RootsContext.Provider value={{ result: outcome.result, input: outcome.input, values: outcome.input }}>
-              <Node node={action.result} />
-            </RootsContext.Provider>
-          </div>,
-        );
+      const drawn = answerOf(index, key);
+      if (drawn) {
+        answered.push(<Fragment key={index}>{drawn}</Fragment>);
         return;
       }
       const allowed = conditionHolds(entry.enabled, rowRoots);
       offered.push({
         key: `action:${index}`,
-        label: text(action.label),
+        label: text(entry.action.label),
         disabled: busy || disabled || !allowed,
         ...(!allowed && entry.enabled ? { hint: text(entry.enabled.disabledText, undefined, rowRoots) } : {}),
         run: () => press(index, row, key),
@@ -241,52 +245,24 @@ export function useRowActions(
 
   let dialog: ReactNode = null;
   if (asking) {
-    const entry = entries[asking.index];
-    const prompt = entry.prompt;
     const rowRoots = { ...roots, ...asking.extra, row: asking.row };
-    const submit = () => void send(asking.index, asking.row, asking.key, asking.extra, asking.values, true);
     dialog = (
-      <Confirmation
-        title={text(entry.confirm ?? entry.action.label, undefined, rowRoots)}
-        confirm={text(entry.action.label)}
-        danger={false}
-        busy={asking.busy}
-        failure={asking.failure && { type: "error", code: asking.failure.code ?? "", message: asking.failure.message ?? "" }}
-        onConfirm={submit}
-        onClose={() => asking.busy || setAsking(undefined)}
-      >
-        {prompt && (
-          <form
-            data-telo-part="form"
-            autoComplete="off"
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              submit();
-            }}
-          >
-            <Fields
-              id={promptId}
-              schema={entry.action.schema}
-              fields={shownFields(entry.action.schema, prompt.fields, asking.values, rowRoots)}
-              values={asking.values}
-              roots={{ ...rowRoots, values: enteredRecord(entry.action.schema, prompt.fields, asking.values) }}
-              errors={asking.fieldErrors}
-              onChange={(property, next) => setAsking((current) => current && { ...current, values: { ...current.values, [property]: next } })}
-            />
-            {asking.formError && (
-              <div data-telo-part="form-error" role="alert">
-                {asking.formError}
-              </div>
-            )}
-          </form>
-        )}
-      </Confirmation>
+      <RootsContext.Provider value={rowRoots}>
+        <PressDialog
+          key={answerKey(asking.index, asking.key)}
+          entry={entries[asking.index]}
+          busy={asking.busy}
+          failure={asking.failure}
+          onSend={(input) => send(asking.index, asking.row, asking.key, asking.extra, input, true)}
+          onClose={() => asking.busy || setAsking(undefined)}
+        />
+      </RootsContext.Provider>
     );
   }
 
   return {
     cell,
+    control,
     menuCell,
     dialog,
     press,
@@ -299,4 +275,90 @@ export function useRowActions(
       }),
     clear: () => setAnswers((current) => (current.size === 0 ? current : new Map())),
   };
+}
+
+interface PressDialogProps {
+  entry: RowActionSpec;
+  busy: boolean;
+  failure?: RequestError;
+  /** Send the record; what it came to, or nothing when it was not sent. */
+  onSend(input: Record<string, unknown>): Promise<Outcome | undefined>;
+  onClose(): void;
+}
+
+/**
+ * The confirmation of one press, drawn over the row and the roots in scope.
+ * With a prompt, its fields enter the action's input model as a form does —
+ * kept, and followed across the entries sharing their state key, as the
+ * action's own state says — and the entered values and the bound ones make
+ * one record, held whole to the input model before anything is sent: a
+ * property it refuses that no field enters is named under the fields. The
+ * bound values are always sent, and never drawn.
+ */
+function PressDialog({ entry, busy, failure, onSend, onClose }: PressDialogProps) {
+  const roots = useContext(RootsContext);
+  const say = useSay();
+  const text = useText();
+  const id = useId();
+  const { action, prompt } = entry;
+  const entered = useRecordEntry({ schema: action.schema, fields: prompt?.fields ?? [], groups: [], state: prompt ? action.state : UNKEPT });
+
+  const submit = async () => {
+    if (busy) return;
+    const bound = boundRecord(entry, roots);
+    let input = bound;
+    if (prompt) {
+      const checked = entered.check(bound);
+      if (!checked.ok) return;
+      input = { ...checked.record, ...bound };
+      const asked = new Set(prompt.fields.map((field) => field.property));
+      const labels = new Map(action.fields.map((field) => [field.property, field.label]));
+      const unentered = validate(action.schema, input)
+        .filter((finding) => !asked.has(finding.path[0]))
+        .map((finding) => {
+          const why = say(finding.text.key, finding.text.values);
+          const property = finding.path[0];
+          if (property === undefined) return why;
+          const label = labels.get(property);
+          return `${label === undefined ? property : text(label)}: ${why}`;
+        });
+      if (unentered.length > 0) return entered.refuse({}, unentered);
+    }
+    const outcome = await onSend(input);
+    if (prompt && outcome && !outcome.ok && outcome.error.status === 400) {
+      const { byField, other } = refusalOf(outcome.body, entered.shown, say);
+      entered.refuse(byField, other);
+    }
+  };
+
+  return (
+    <Confirmation
+      title={text(entry.confirm ?? action.label)}
+      confirm={text(action.label)}
+      danger={false}
+      busy={busy}
+      failure={failure && { type: "error", code: failure.code ?? "", message: failure.message ?? "" }}
+      onConfirm={() => void submit()}
+      onClose={onClose}
+    >
+      {prompt && (
+        <form
+          data-telo-part="form"
+          autoComplete="off"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
+          <Fields id={id} schema={entered.schema} fields={entered.shown} values={entered.values} roots={entered.roots} errors={entered.errors} onChange={entered.change} />
+          {entered.formError && (
+            <div data-telo-part="form-error" role="alert">
+              {entered.formError}
+            </div>
+          )}
+        </form>
+      )}
+    </Confirmation>
+  );
 }

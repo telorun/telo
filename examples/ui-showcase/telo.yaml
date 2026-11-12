@@ -9,13 +9,14 @@ metadata:
     and query parameters, data readers with loading and failure states and a
     sign-in gate, data grids, filter bars, forms, actions, custom components,
     a generated admin screen, related records drawn as a table, cards, a board,
-    a calendar and a tree, tabs and themes. The same pages are served four
-    times — under the built-in look with a brand chosen per request, under a
-    Radix theme, under a theme of the example's own with a bundled typeface,
-    and with a sidebar that collapses to a rail and becomes a bottom tab bar
-    on a phone. The data is a small studio's team, people, projects, tasks,
-    requests, bookings, comments, blog posts and reporting lines in SQLite,
-    with real sessions behind a sign-in gate.
+    a calendar and a tree, document review screens addressed by ID, tabs and
+    themes. The same pages are served four times — under the built-in look
+    with a brand chosen per request, under a Radix theme, under a theme of the
+    example's own with a bundled typeface, and with a sidebar that collapses to
+    a rail and becomes a bottom tab bar on a phone. The data is a small
+    studio's team, people, projects, tasks, requests, bookings, comments, blog
+    posts, reporting lines, documents under review and its workers' commands
+    in SQLite, with real sessions behind a sign-in gate.
 # 0.129.0: ui's shipped translations, which an older runtime cannot load.
 requires: { telo: ">=0.133.0" }
 lang: en
@@ -34,6 +35,7 @@ imports:
   UiReact: ../../modules/ui-react
   Radix: ../../modules/ui-react-radix
   UiLucide: ../../modules/ui-lucide
+  TextDiff: ../../modules/text-diff
   # Two libraries of the example's own: its browser components, and the theme
   # the `/brand` mount draws with.
   Components: ./components
@@ -41,7 +43,7 @@ imports:
 # The database, the routes crud does not give, the translations with one file
 # per language, and one file per page holding the view every application
 # places there.
-include: [./data.yaml, ./api.yaml, ./translations/en.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages-overview.yaml, ./pages-conditions.yaml, ./pages-data.yaml, ./pages-tables.yaml, ./pages-filters.yaml, ./pages-forms.yaml, ./pages-actions.yaml, ./pages-components.yaml, ./pages-crud.yaml, ./pages-records.yaml, ./pages-search.yaml, ./pages-themes.yaml]
+include: [./data.yaml, ./api.yaml, ./translations/en.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages-overview.yaml, ./pages-conditions.yaml, ./pages-data.yaml, ./pages-tables.yaml, ./pages-filters.yaml, ./pages-forms.yaml, ./pages-actions.yaml, ./pages-components.yaml, ./pages-crud.yaml, ./pages-records.yaml, ./pages-search.yaml, ./pages-review.yaml, ./pages-themes.yaml]
 # The texts are written in English, the module's `lang`; `english` covers the
 # one text crud writes with no `lang`, and ui's own texts come translated with ui.
 translations:
@@ -240,6 +242,10 @@ pages:
   - !ref searchScreen
   - !ref searchBesideScreen
   - !ref searchReleasesScreen
+  - !ref inbox
+  - !ref review
+  - !ref compare
+  - !ref worker
   - !ref rootThemes
 # The pages as a tree: the screens built from nodes in one group, the ones
 # entering data in a group inside it.
@@ -270,6 +276,7 @@ navigation:
         - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
         - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
         - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
+    - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
     - { type: page, page: !ref rootThemes, icon: !ref themesIcon }
 ---
 # The overview at the root: the view every application places, and nodes of
@@ -451,6 +458,10 @@ pages:
   - !ref searchScreen
   - !ref searchBesideScreen
   - !ref searchReleasesScreen
+  - !ref inbox
+  - !ref review
+  - !ref compare
+  - !ref worker
   - !ref themesScreen
 navigation:
   items:
@@ -479,6 +490,7 @@ navigation:
         - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
         - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
         - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
+    - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
     - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
 # The same pages under the example's own theme (`brand/`): Radix's controls
@@ -581,6 +593,10 @@ pages:
   - !ref searchScreen
   - !ref searchBesideScreen
   - !ref searchReleasesScreen
+  - !ref inbox
+  - !ref review
+  - !ref compare
+  - !ref worker
   - !ref themesScreen
 navigation:
   items:
@@ -609,6 +625,7 @@ navigation:
         - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
         - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
         - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
+    - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
     - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
 # The built-in look with its navigation in a sidebar that collapses to a rail
@@ -710,6 +727,10 @@ pages:
   - !ref searchScreen
   - !ref searchBesideScreen
   - !ref searchReleasesScreen
+  - !ref inbox
+  - !ref review
+  - !ref compare
+  - !ref worker
   - !ref themesScreen
 navigation:
   items:
@@ -738,6 +759,7 @@ navigation:
         - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
         - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
         - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
+    - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
     - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
   placement:
     kind: Ui.SidebarNavigation
@@ -815,6 +837,10 @@ name: panel-left
 kind: UiLucide.Icon
 metadata: { name: searchReleasesIcon }
 name: rocket
+---
+kind: UiLucide.Icon
+metadata: { name: reviewsIcon }
+name: inbox
 ---
 # The typeface the brand ships. Inter comes with the example (`fonts/`, under
 # the SIL Open Font License), so the `/brand` application serves its four
@@ -935,6 +961,8 @@ mounts:
     mount: !ref postsApi
   - path: /api/employees
     mount: !ref employeesApi
+  - path: /api/review
+    mount: !ref reviewApi
   - path: /api
     mount: !ref showcaseApi
   - path: /radix/api/private
@@ -958,6 +986,8 @@ mounts:
     mount: !ref postsApi
   - path: /radix/api/employees
     mount: !ref employeesApi
+  - path: /radix/api/review
+    mount: !ref reviewApi
   - path: /radix/api
     mount: !ref showcaseApi
   - path: /brand/api/private
@@ -981,6 +1011,8 @@ mounts:
     mount: !ref postsApi
   - path: /brand/api/employees
     mount: !ref employeesApi
+  - path: /brand/api/review
+    mount: !ref reviewApi
   - path: /brand/api
     mount: !ref showcaseApi
   - path: /sidebar/api/private
@@ -1004,6 +1036,8 @@ mounts:
     mount: !ref postsApi
   - path: /sidebar/api/employees
     mount: !ref employeesApi
+  - path: /sidebar/api/review
+    mount: !ref reviewApi
   - path: /sidebar/api
     mount: !ref showcaseApi
   - path: /api

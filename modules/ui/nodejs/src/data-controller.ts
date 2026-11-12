@@ -11,6 +11,8 @@ import { resolveNode, type AuthoredNode, type RootShapes } from "./node-resoluti
 import { DEFAULT_FAILURE, NOTHING } from "./request-failure.js";
 import { uiText } from "./spec-texts.js";
 import { filledProvided } from "./fill-marking.js";
+import { PAGE_PARAMS } from "./page-path.js";
+import { reloadEveryOf } from "./timed-reload.js";
 
 type Reload = "focus" | "unauthorized";
 
@@ -22,6 +24,8 @@ type DataResource = RuntimeResource & {
   loading?: AuthoredNode | null;
   failure?: AuthoredNode | null;
   reloadOn?: Reload[] | null;
+  /** A `Telo.Duration`, decoded by the kernel. */
+  reloadEvery?: unknown;
 };
 
 /** What `loading` is when the author leaves it out. */
@@ -46,11 +50,13 @@ class Data implements ResourceInstance {
     const query = resource.query ?? {};
     const queryShape = modelShape({ type: "object", properties: query, additionalProperties: false }, reader, "query");
     const error = modelShape({ $ref: canonicalTypeSchemaId("Ui", "RequestError") }, reader, "failure");
+    // The placing page's variables, which only the browser knows.
+    const params = modelShape(PAGE_PARAMS, reader, "params");
     const tree = async (node: AuthoredNode, where: string, roots: RootShapes) =>
       (await resolveNode(node, this.ctx, `${this.owner} ${where}`, roots)) ?? { node: NOTHING, assets: [] };
-    const content = await tree(resource.content, "content", { data: modelShape(schema, reader, "model"), query: queryShape });
-    const loading = resource.loading == null ? { node: DEFAULT_LOADING, assets: [] } : await tree(resource.loading, "loading", { query: queryShape });
-    const failure = await tree(resource.failure ?? DEFAULT_FAILURE, "failure", { error, query: queryShape });
+    const content = await tree(resource.content, "content", { data: modelShape(schema, reader, "model"), query: queryShape, params });
+    const loading = resource.loading == null ? { node: DEFAULT_LOADING, assets: [] } : await tree(resource.loading, "loading", { query: queryShape, params });
+    const failure = await tree(resource.failure ?? DEFAULT_FAILURE, "failure", { error, query: queryShape, params });
     const node: SpecNode = {
       type: "data",
       schema,
@@ -60,6 +66,7 @@ class Data implements ResourceInstance {
       loading: loading.node ?? NOTHING,
       failure: failure.node ?? NOTHING,
       reloadOn: resource.reloadOn ?? [],
+      ...reloadEveryOf(resource.reloadEvery),
     };
     return filledProvided({ node, assets: mergeAssets(content.assets, loading.assets, failure.assets) });
   }

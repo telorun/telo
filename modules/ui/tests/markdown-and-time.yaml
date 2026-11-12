@@ -1,0 +1,188 @@
+kind: Telo.Application
+metadata:
+  name: UiMarkdownAndTimeTest
+  version: 1.0.0
+  description: |
+    A page draws Markdown it reads, with a control on each item the server
+    names in it, and dates as times — a `time` node and a list's time column,
+    relative or absolute — each as a renderer receives it. Refused by `telo
+    check`: an annotation reading a member its row does not declare, Markdown
+    read from something that is not a string, a time read from a string with no
+    date format, and `relative` on a value; a time over such a string is
+    refused again when a reader in a library is first read.
+imports: { Ui: ../, Assert: ../../assert }
+targets:
+  - !ref main
+  - !ref refused
+  - !ref timeNotDate
+  - !ref timeNotDateAtRuntime
+---
+kind: Telo.JsonSchema
+metadata: { name: PlanDetail }
+schema:
+  type: object
+  required: [plan, events]
+  properties:
+    plan:
+      type: object
+      required: [latestRevision]
+      properties:
+        latestRevision:
+          type: object
+          required: [seq, body, createdAt, items]
+          properties:
+            seq: { type: integer }
+            body: { type: string }
+            createdAt: { type: string, format: date-time }
+            items:
+              type: array
+              items:
+                type: object
+                required: [id, line, count]
+                properties: { id: { type: string }, line: { type: integer }, count: { type: integer } }
+    events:
+      type: array
+      items:
+        type: object
+        required: [type, createdAt]
+        properties:
+          type: { type: string, title: Event }
+          createdAt: { type: string, format: date-time, title: When }
+---
+kind: Ui.Page
+metadata: { name: plan }
+path: /plans/{id}
+children:
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref PlanDetail
+      source:
+        path: "/api/plans/{id}"
+        pathParams: { id: !cel "params.id" }
+      content:
+        type: stack
+        children:
+          - { type: time, value: !cel "data.plan.latestRevision.createdAt", relative: true }
+          - type: markdown
+            value: !cel "data.plan.latestRevision.body"
+            annotations:
+              rows: !cel "data.plan.latestRevision.items"
+              line: !cel "row.line"
+              count: !cel "row.count"
+              action:
+                inputs:
+                  id: !cel "params.id"
+                  revision: !cel "data.plan.latestRevision.seq"
+                  item: !cel "row.id"
+                prompt: true
+                action:
+                  kind: Ui.Action
+                  inputModel:
+                    kind: Telo.JsonSchema
+                    schema:
+                      type: object
+                      required: [id, revision, author, body]
+                      properties:
+                        id: { type: string }
+                        revision: { type: integer }
+                        item: { type: string }
+                        author: { type: string, title: Your name }
+                        body: { type: string, title: Comment }
+                  request:
+                    target: { path: "/api/plans/{id}/comments", pathParams: { id: !cel "input.id" } }
+                  label: Comment
+          - type: list
+            rows: !cel "data.events"
+            columns:
+              - value: !cel "row.type"
+              - { type: time, value: !cel "row.createdAt" }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: page
+    invoke: !ref plan
+    inputs: { request: { headers: {} } }
+  - name: timeIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.page.result.children[0].content.children[0]"
+      expected:
+        type: time
+        value: { root: data, path: [plan, latestRevision, createdAt] }
+        relative: true
+        present: { type: string, format: date-time }
+        fill: false
+  - name: markdownIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        cel.bind(m, steps.page.result.children[0].content.children[1], {
+          'members': sort(keys(m)),
+          'value': m.value,
+          'rows': m.annotations.rows,
+          'line': m.annotations.line,
+          'count': m.annotations.count,
+          'inputs': m.annotations.action.inputs,
+          'prompted': m.annotations.action.prompt.fields.map(f, f.property),
+          'action': [m.annotations.action.action.type, m.annotations.action.action.label.text]
+        })
+      expected:
+        members: [annotations, fill, type, value]
+        value: { root: data, path: [plan, latestRevision, body] }
+        rows: { root: data, path: [plan, latestRevision, items] }
+        line: { root: row, path: [line] }
+        count: { root: row, path: [count] }
+        inputs:
+          id: { root: params, path: [id] }
+          revision: { root: data, path: [plan, latestRevision, seq] }
+          item: { root: row, path: [id] }
+        prompted: [author, body]
+        action: [action, Comment]
+  - name: columnsAre
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.page.result.children[0].content.children[2].columns.map(c, has(c.type) ? {'type': c.type, 'header': c.header.text, 'value': c.value, 'present': c.present} : {'header': c.header.text, 'value': c.value, 'present': c.present})"
+      expected:
+        - { header: Event, value: { root: row, path: [type] }, present: { type: string } }
+        - { type: time, header: When, value: { root: row, path: [createdAt] }, present: { type: string, format: date-time } }
+  - name: timeColumnIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "sort(keys(steps.page.result.children[0].content.children[2].columns[1]))"
+      expected: [header, present, relative, type, value]
+  - name: timeColumnRelative
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.page.result.children[0].content.children[2].columns[1].relative"
+      expected: false
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/invalid/markdown-time/check.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Data/lineTypo: !cel: 'row.lnie' is not defined (available: id, line, count)"
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Data/markdownNotString: CEL at 'content.value' reads 'data.seq', whose declared shape does not fit what the field expects: /: type mismatch — source is 'integer', target expects 'string'"
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Data/timeColumnNoFormat: CEL at 'content.columns[0].value': 'row.type' is a string with no format; the field takes a string of format date or date-time"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Data/valueRelative: /content must NOT have additional properties ('relative' is not allowed)"
+---
+kind: Assert.Manifest
+metadata: { name: timeNotDate }
+source: ./__fixtures__/invalid/markdown-time/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Data/timeNoFormat: CEL at 'content.value': 'data.title' is a string with no format; the field takes a string of format date or date-time"
+---
+kind: Assert.Manifest
+metadata: { name: timeNotDateAtRuntime }
+source: ./__fixtures__/invalid/markdown-time/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Data 'timeNoFormat' content.value: 'data.title' is a string with no format; a time takes a string of format date or date-time."

@@ -134,7 +134,7 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="data"] { gap: var(--telo-space-sm); }
 
 /* ---- Buttons: every pressable part, quiet by default ---- */
-[data-telo-part="listing-create"], [data-telo-part="row-action"], [data-telo-part="row-edit"], [data-telo-part="row-delete"], [data-telo-part="row-menu"],
+[data-telo-part="button"], [data-telo-part="listing-create"], [data-telo-part="row-action"], [data-telo-part="row-edit"], [data-telo-part="row-delete"], [data-telo-part="row-menu"],
 [data-telo-part="pager-prev"], [data-telo-part="pager-next"], [data-telo-part="load-more"], [data-telo-part="listing-sort-option"],
 [data-telo-part="record-move"], [data-telo-part="record-create"], [data-telo-part="calendar-prev"], [data-telo-part="calendar-next"],
 [data-telo-part="calendar-period"], [data-telo-part="timeline-prev"], [data-telo-part="timeline-next"], [data-telo-part="timeline-scale"],
@@ -669,3 +669,14 @@ a[data-telo-part="chat-attachment"] { color: var(--telo-color-accent); }
 [data-style~="success"] { color: var(--telo-color-success); }
 [data-telo-part="badge"][data-style~="accent"] { border-color: var(--telo-color-accent); background: var(--telo-color-accent); color: var(--telo-color-accent-text); }
 code, kbd { font-family: var(--telo-font-mono), "Courier New", monospace; }
+
+/* ---- A button node, a relative time and a markdown block's annotations ---- */
+[data-telo-part="button"][data-style~="accent"] { border-color: var(--telo-color-accent); background: var(--telo-color-accent); color: var(--telo-color-accent-text); box-shadow: var(--telo-shadow-sm); }
+[data-telo-part="button"][data-style~="danger"] { border-color: var(--telo-color-danger); color: var(--telo-color-danger); }
+[data-telo-part="button"][data-state="submitting"] { opacity: 0.7; }
+[data-telo-part="time"] { font-variant-numeric: tabular-nums; }
+[data-telo-part="time"][title] { text-decoration: underline dotted; text-decoration-color: var(--telo-color-muted); text-underline-offset: 3px; cursor: help; }
+[data-telo-part="markdown-annotations"] { gap: var(--telo-space-xs); margin-inline-start: var(--telo-space-sm); font-family: var(--telo-font-body), system-ui, sans-serif; font-size: var(--telo-font-size-sm); font-weight: 400; font-style: normal; line-height: 1; color: var(--telo-color-text); }
+[data-telo-part="markdown-annotation"] { gap: var(--telo-space-xs); }
+[data-telo-part="markdown-annotation"] > [data-telo-part="badge"] { padding: 0 var(--telo-space-xs); font-size: var(--telo-font-size-sm); }
+[data-telo-part="markdown-unplaced-annotations"] { gap: var(--telo-space-sm); padding-top: var(--telo-space-sm); border-top: 1px dashed var(--telo-color-border); font-size: var(--telo-font-size-sm); }

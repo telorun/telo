@@ -182,10 +182,12 @@ import {
 } from "./schema-projection.js";
 import {
   validateDynamicSelectors,
+  completedWhenIssues,
   validateRefSlotDeclarations,
   type RefSlotIssue,
 } from "./validate-ref-slots.js";
 import { retryForProblems } from "./retry-for-slot.js";
+import { completedWhenProblems } from "./completed-when-slot.js";
 import { pathParamsAnnotationProblems, pathParamsProblems } from "./path-params-slot.js";
 import { catchesForProblems } from "./catches-for-slot.js";
 import { raisesProblems } from "./raises-slot.js";
@@ -260,6 +262,7 @@ import {
   callSiteAt,
   omittedSlotCallSite,
   slotInputsPath,
+  slotCompletedWhenPath,
   stepCallSiteOf,
   stepItemsOf,
   templateCallSite,
@@ -290,6 +293,7 @@ import {
   type NamedShapeLookup,
 } from "./eval-paths.js";
 import { accessorFields, accessorProblems } from "./accessor-binding.js";
+import { accessorFormatMisfit } from "./accessor-format-fit.js";
 import { computedRefSlots, evaluatedField, refSlotComputedReason } from "./ref-slot-computed.js";
 import { RuleDeclarationViews, type ForwardedReference } from "./rule-declaration-view.js";
 import type { ModuleCallDispatch } from "@telorun/templating";
@@ -423,6 +427,7 @@ import { validateScopedNameReach } from "./validate-scope-reach.js";
 import { validateLibraryBrowserExports } from "./validate-library-browser-exports.js";
 import { validateScopedKindDocuments } from "./validate-scoped-kind-documents.js";
 import { importAnchoredDiagnostic, importReach } from "./reaching-import.js";
+import { validateEvalModeBranches } from "./validate-eval-mode-branches.js";
 import { textSlotAccessorProblems } from "./text-slot-accessor.js";
 import { textValuesProblems } from "./text-values.js";
 import { misplacedTextKeys, textKeysProblems } from "./text-keys.js";
@@ -1340,7 +1345,15 @@ function slotRuleSites(
   scope: Pick<RelationReaderScope, "defs" | "aliases" | "aliasesByModule" | "rootModules">,
 ): CelEvalSites | undefined {
   if (!isEntryIdentity(identity, scope.rootModules)) return undefined;
-  const definition = namedDeclarationDefinition(identity, scope);
+  return definitionEvalSites(namedDeclarationDefinition(identity, scope), scope);
+}
+
+/** Where a definition's resources' values are evaluated — undefined for a kind
+ *  that is no runtime resource instance's. */
+function definitionEvalSites(
+  definition: ResourceDefinition | undefined,
+  scope: Pick<RelationReaderScope, "defs" | "aliases">,
+): CelEvalSites | undefined {
   const { defs, aliases } = scope;
   const resolveDef: DefResolver = (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
   // Only a runtime resource instance's kind says where its values are
@@ -1848,7 +1861,11 @@ const RELATION_READERS: RelationReaderTable = {
         const inputsPath = slotInputsPath(site);
         if (inputsPath === undefined || !isAtOrAbove(region.at, site.keys) || seen.has(site.path)) continue;
         seen.add(site.path);
-        out.push({ anchor: site.keys, related: [parseKeys(inputsPath)] });
+        const completedWhen = slotCompletedWhenPath(site);
+        out.push({
+          anchor: site.keys,
+          related: [parseKeys(inputsPath), ...(completedWhen !== undefined ? [parseKeys(completedWhen)] : [])],
+        });
       }
       return out;
     },
@@ -1873,6 +1890,10 @@ const RELATION_READERS: RelationReaderTable = {
         site = callSiteAt("slot", pathText(inputsKeys), values as Record<string, any>, value as Record<string, any>, manifest as Record<string, any>, ctx);
       }
       if (!site) return [];
+      // A target that obtains what the map leaves unbound, where the slot's
+      // `completedWhen` sibling holds a literal `true`.
+      const completedKeys = instance.related?.[1];
+      if (completedKeys && door.place(completedKeys) === true) site = { ...site, completed: true };
       return checkCallSite(site, manifest as Record<string, any>, door.requests, door.defs, door.aliases, doorScopes(door)).map(
         (issue) => callInputFinding(manifest, issue),
       );
@@ -2031,6 +2052,19 @@ const RELATION_READERS: RelationReaderTable = {
       targets: [instance.anchor, ...(instance.related ?? [])].map(identityTarget),
     }),
     judge: (instance, input) => matchChecks(instance, input),
+  },
+  // An accessor chain naming a string of a format its field does not take, at
+  // a declaration of the entry's own modules and every template-body entry it
+  // declares: the chain's declared source against the field's formats.
+  accessorFormats: {
+    instances: (region, scope) =>
+      uniqueAnchors(
+        accessorChainFieldsOf(region.holder as Record<string, unknown>, region.identity, scope).map((field) => field.keys),
+        region.at,
+      ),
+    // The way to the field selects the union branch declaring it.
+    reads: () => ({ places: [], facts: true, enclosing: true }),
+    judge: (instance, input) => accessorFormatChecks(instance, input),
   },
   // Each value an expression produces against the slot it flows into: the
   // expression, judged once for every slot it flows into and reported by the
@@ -2619,6 +2653,98 @@ function matchChecks(instance: RelationInstance, { identity, value, door }: Rela
       false,
       [path, { text: accessorPath, anywhere: true }],
     );
+  });
+}
+
+/** An accessor field holding a `!cel` chain, by keys in its declaration, with
+ *  the schemas its kind declares there when `withSlots` asks for them. */
+interface AccessorChainField {
+  readonly keys: readonly (string | number)[];
+  readonly slots: readonly Record<string, any>[];
+}
+
+/** Every accessor field of a declaration, and of each template-body entry it
+ *  declares, that holds a `!cel` chain. */
+function accessorChainFieldsOf(
+  holder: Record<string, unknown>,
+  identity: DeclarationIdentity,
+  scope: Pick<RelationReaderScope, "defs" | "aliases" | "aliasesByModule" | "rootModules">,
+  withSlots = false,
+): AccessorChainField[] {
+  const { defs, aliases, aliasesByModule, rootModules } = scope;
+  if (typeof identity.kind !== "string" || !isEntryIdentity(identity, rootModules)) return [];
+  const namedShape: ExternalSchemaResolver = (ref) => defs.schemaForId(ref);
+  const out: AccessorChainField[] = [];
+  const collect = (
+    manifest: Record<string, unknown>,
+    sites: CelEvalSites | undefined,
+    schema: () => Record<string, any> | undefined,
+    prefix: readonly (string | number)[],
+  ): void => {
+    if (!sites) return;
+    const fields = accessorFields(manifest, sites).filter(
+      (field) => isTaggedSentinel(field.value) && field.value.engine === CEL_ENGINE,
+    );
+    if (fields.length === 0) return;
+    const declared = withSlots ? schema() : undefined;
+    const slots = declared ? collectCelValueSlots(manifest, declared, "", namedShape) : [];
+    for (const field of fields) {
+      out.push({
+        keys: [...prefix, ...field.keys],
+        slots: slots.filter((slot) => slot.path === field.path).map((slot) => slot.schema),
+      });
+    }
+  };
+  const definition = namedDeclarationDefinition(identity, scope);
+  collect(holder, slotRuleSites(identity, scope), () => definition && validationSchemaOfDefinition(definition, scope), []);
+  for (const body of templateBodies(holder as unknown as ResourceManifest, defs, aliases, { aliasesByModule, rootModules: rootModules as Set<string> })) {
+    const entry = body.definition as ResourceDefinition | undefined;
+    collect(
+      body.manifest as unknown as Record<string, unknown>,
+      definitionEvalSites(entry, scope),
+      () => defs.effectiveSchemaOf(entry) as Record<string, any> | undefined,
+      parseKeys(body.prefix),
+    );
+  }
+  return out;
+}
+
+/**
+ * An accessor chain whose declared source may be a string of a format its
+ * field does not take. A site typed by several referrers is judged under each
+ * typing; a misfit only some of them make names those referrers.
+ */
+function accessorFormatChecks(instance: RelationInstance, { identity, value, door }: RelationRuleInput): RelationFinding[] {
+  const leaf = instance.anchor;
+  const holder = anchorHolder(identity, leaf, value) as Record<string, any>;
+  for (const { at, members } of door.enclosing()) {
+    const object = at.length === 0 ? holder : (valueAtKeys(holder, at) as Record<string, any> | undefined);
+    if (!object || Array.isArray(object)) continue;
+    for (const [key, member] of Object.entries(members)) if (!(key in object)) object[key] = member;
+  }
+  const path = pathText(leaf);
+  const field = accessorChainFieldsOf(holder, identity, door, true).find((each) => pathText(each.keys) === path);
+  if (!field || field.slots.length === 0) return [];
+  const facts = door.facts(leaf);
+  const variants = facts?.variants;
+  const typings = Math.max(1, variants?.length ?? 0);
+  const namedShape: ExternalSchemaResolver = (ref) => door.defs.schemaForId(ref);
+  const found = new Map<string, { labels: Set<string>; count: number }>();
+  for (let typing = 0; typing < typings; typing++) {
+    const produced = variants ? variants[typing]?.produced : facts?.produced;
+    if (!produced) continue;
+    const reason = field.slots.map((slot) => accessorFormatMisfit(slot, produced, namedShape)).find((r) => r !== undefined);
+    if (!reason) continue;
+    let entry = found.get(reason);
+    if (!entry) found.set(reason, (entry = { labels: new Set(), count: 0 }));
+    entry.count++;
+    const label = variants?.[typing]?.label;
+    if (label) entry.labels.add(label);
+  }
+  const chain = (isTaggedSentinel(value) ? value.source : facts?.source ?? "").trim();
+  return [...found].map(([reason, entry]) => {
+    const under = entry.count < typings && entry.labels.size > 0 ? ` (as ${[...entry.labels].join(", ")} references it)` : "";
+    return relationFindingAt(identity, "CEL_TYPE_ERROR", `CEL at '${path}': '${chain}' ${reason}.${under}`, path, false, path);
   });
 }
 
@@ -7427,6 +7553,14 @@ export class StaticAnalyzer {
     for (const { id, schema } of foldedShapesOf(manifests as ResourceManifest[])) {
       defs.announceNamedShape(id, schema);
     }
+    // A `completedWhen` sibling may be reached through a named shape, so the
+    // annotation is judged once every shape is announced.
+    for (const m of manifests) {
+      const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+      if (ownModule && !rootModules.has(ownModule)) continue;
+      if (!isKindDocument(m) && !namedShapeOf(m)) continue;
+      refSlotIssues.push(...completedWhenIssues(m, (id) => defs.namedShapeAt(id, ownModule, undefined)?.schema));
+    }
 
     /**
      * What a peer rule's `peers:` pointer names in the kind its `referrer:`
@@ -9374,6 +9508,8 @@ export class StaticAnalyzer {
         }
         // What its matchers ask of the accessors they match.
         relationGroupFindings("match", m);
+        // The formats its accessor chains name against their fields'.
+        relationGroupFindings("accessorFormats", m);
       }
     }
 
@@ -9788,6 +9924,55 @@ export class StaticAnalyzer {
           .problems,
       ];
       for (const problem of kindProblems) pushKindDocumentProblem(m, ownModule, problem);
+    }
+    // A union giving one property two eval meanings, once at the document
+    // declaring it — the kind's schema or the named shape its walk enters.
+    const soleRootModule = rootModules.size === 1 ? [...rootModules][0] : undefined;
+    validateEvalModeBranches({
+      kinds: (allManifests as unknown as ResourceManifest[]).flatMap((m) => {
+        const declared = kindDeclarationOf(m);
+        return declared
+          ? [{ manifest: m, module: (m.metadata as { module?: string } | undefined)?.module, schema: declared.schema }]
+          : [];
+      }),
+      shapes: (ref) => defs.schemaForId(ref) ?? shapeDocuments.get(ref),
+      shapeDocuments: [
+        ...(allManifests as unknown as ResourceManifest[]).map((manifest) => ({
+          manifest,
+          module: (manifest.metadata as { module?: string } | undefined)?.module ?? soleRootModule,
+        })),
+        ...(options?.moduleDocuments ?? []).flatMap((library) =>
+          (library.manifests as ResourceManifest[]).map((manifest) => ({ manifest, module: library.module })),
+        ),
+      ],
+      report: (manifest, module, problem) => pushKindDocumentProblem(manifest, module, problem),
+    });
+    // A dependency's misdirected `completedWhen`, at the `imports:` entry
+    // reaching it: the kernel refuses its kinds and named shapes as it
+    // registers them. The entry's own modules are judged where written, above.
+    const completedWhenJudged = new Set<string>();
+    const judgeCompletedWhen = (m: ResourceManifest, module: string): void => {
+      if (rootModules.has(module)) return;
+      const key = `${module}\0${String(m.kind)}\0${String(m.metadata?.name)}`;
+      if (completedWhenJudged.has(key)) return;
+      const scope = declaringModuleScope(module, aliases, { aliasesByModule, rootModules });
+      const shape =
+        typeof m.kind === "string" &&
+        inheritedCapability(defs.resolve(scope.resolveKind(m.kind) ?? m.kind), (k) => defs.resolve(k)) === "Telo.Type";
+      if (!isKindDocument(m) && !shape) return;
+      completedWhenJudged.add(key);
+      const lookup = (id: string) =>
+        defs.namedShapeAt(id, module, moduleAliasScope({ module }, aliases, aliasesByModule))?.schema ?? shapeDocuments.get(id);
+      for (const problem of completedWhenProblems(m.schema, `'${String(m.metadata?.name)}'`, "schema", lookup)) {
+        pushKindDocumentProblem(m, module, problem);
+      }
+    };
+    for (const m of allManifests as unknown as ResourceManifest[]) {
+      const module = (m.metadata as { module?: string } | undefined)?.module;
+      if (module) judgeCompletedWhen(m, module);
+    }
+    for (const library of options?.moduleDocuments ?? []) {
+      for (const m of library.manifests as ResourceManifest[]) judgeCompletedWhen(m, library.module);
     }
     // `x-telo-text-keys` outside a kind's `schema:` — every document the kernel
     // creates, a dependency's too (its full documents where the analysis holds

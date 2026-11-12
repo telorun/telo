@@ -7,6 +7,7 @@ import { createCollection } from "../../tests/__fixtures__/collection-api/collec
 import { App } from "../src/browser/app.js";
 import type { ControlsField } from "../src/browser/effective-controls.js";
 import type { SpecNode } from "../src/browser/nodes.js";
+import { matchPage } from "../src/browser/page-route.js";
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -209,7 +210,10 @@ export async function render(options: {
       });
     }
     if (url.pathname === `${prefix}/_telo/ui/page`) {
-      const path = url.searchParams.get("path") as string;
+      // Looked up as the server does: the page the address opens, by its declared path.
+      const matched = matchPage(Object.keys(pages), url.searchParams.get("path") as string);
+      if (!matched) return json({ type: "about:blank", title: "Not Found", status: 404 }, 404);
+      const path = matched.path;
       const digest = `${path}#${versions[path] ?? 0}`;
       if (new Headers(init?.headers).get("if-none-match") === `"${digest}"`) return new Response(null, { status: 304 });
       return json({ specVersion: 1, bundle, digest, path, ...(pages[path].title === undefined ? {} : { title: wireText(pages[path].title as string) }), lang: options.lang ?? "en", width: pages[path].width ?? "contained", children: wire(pages[path].children) });

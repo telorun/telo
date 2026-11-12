@@ -28,7 +28,7 @@ import type { AliasResolver } from "./alias-resolver.js";
 import { renderChain } from "./callable-flags.js";
 import { parseCelSource, valueBrandHint } from "./cel-environment.js";
 import { producedValueOf, type ProducedValue } from "./cel-produced-value.js";
-import { declaredChainSchemaAt, type CelScopeResolver, type CelSiteRef, type ReferrerVariant } from "./cel-scope.js";
+import { declaredChainSchemaAt, type CelScopeResolver, type CelSiteRef, type ReferrerLink, type ReferrerVariant } from "./cel-scope.js";
 import { reportCelSiteJudgement } from "./cel-site-judgements.js";
 import type { CelOccurrenceFacts } from "./cel-site-solve.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -722,12 +722,7 @@ function mergeVariantFindings(
       const shared = counts.get(keyOf(d)) === judged.length;
       const finding =
         shared || label === undefined ? d : { ...d, message: `${d.message} (as ${label} references it)` };
-      const anchors = foreign
-        ? (variant?.referrers ?? []).filter((r) => {
-            const own = (r.manifest.metadata as { module?: string } | undefined)?.module;
-            return own === undefined || rootModules.has(own);
-          })
-        : [];
+      const anchors = foreign ? entryReferrers(variant?.referrers ?? [], rootModules) : [];
       const copies =
         anchors.length === 0
           ? [finding]
@@ -761,6 +756,28 @@ function mergeVariantFindings(
       }
     }
   }
+  return out;
+}
+
+/** The slots of the entry's own modules a chain of referrers starts from: each
+ *  referrer the entry declares, and past one another module declares, the
+ *  referrers its own typing came from. */
+function entryReferrers(
+  referrers: ReadonlyArray<ReferrerLink>,
+  rootModules: ReadonlySet<string>,
+): ReferrerLink[] {
+  const out: ReferrerLink[] = [];
+  const seen = new Set<ReferrerLink>();
+  const visit = (links: ReadonlyArray<ReferrerLink>): void => {
+    for (const link of links) {
+      if (seen.has(link)) continue;
+      seen.add(link);
+      const own = (link.manifest.metadata as { module?: string } | undefined)?.module;
+      if (own === undefined || rootModules.has(own)) out.push(link);
+      else visit(link.via ?? []);
+    }
+  };
+  visit(referrers);
   return out;
 }
 

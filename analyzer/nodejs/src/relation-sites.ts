@@ -59,6 +59,7 @@ export type OwnGroup =
   | "computedRefSlots"
   | "annotations"
   | "match"
+  | "accessorFormats"
   | "slotFitOwn"
   | "slotFitTemplate"
   | "slotFitCalls"

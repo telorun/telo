@@ -78,11 +78,30 @@ export function readValueStore(storage: Storage, at: string, schema: JsonSchema,
   }
 }
 
-/** Write a form's kept values; `false` when the store takes nothing, which is
- *  then left alone — the values stay in memory. */
-export function writeValueStore(storage: Storage, at: string, state: KeptState, record: Record<string, unknown>): boolean {
-  const values = Object.fromEntries(state.fields.filter((property) => record[property] !== undefined).map((property) => [property, record[property]]));
+/** What an entry under a key holds now, as written: every property any entry sharing it keeps. */
+function storedValues(storage: Storage, at: string): Record<string, unknown> {
   try {
+    const entry = JSON.parse(storage.getItem(at) ?? "null") as { v?: unknown; values?: unknown } | null;
+    return entry?.v === VERSION && entry.values !== null && typeof entry.values === "object" && !Array.isArray(entry.values)
+      ? { ...(entry.values as Record<string, unknown>) }
+      : {};
+  } catch {
+    // Not an entry this renderer wrote: it is replaced.
+    return {};
+  }
+}
+
+/** Write a form's kept values, property by property: each property it keeps
+ *  set — or removed, when it holds none — and every other property another
+ *  entry of the key keeps left as it is. `false` when the store takes nothing,
+ *  which is then left alone — the values stay in memory. */
+export function writeValueStore(storage: Storage, at: string, state: KeptState, record: Record<string, unknown>): boolean {
+  try {
+    const values = storedValues(storage, at);
+    for (const property of state.fields) {
+      if (record[property] === undefined) delete values[property];
+      else values[property] = record[property];
+    }
     storage.setItem(at, JSON.stringify({ v: VERSION, values }));
     return true;
   } catch (error) {

@@ -12,6 +12,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { resolveSchemaReference } from "./schema-reference.js";
 import { parseExpression, type CelNode } from "@telorun/cel";
 import { checkSchemaCompatibility, type CompatibilityConflict } from "./schema-compat.js";
 
@@ -189,7 +190,7 @@ function deref(
 ): Record<string, any> {
   let current = schema;
   for (let hops = 0; hops < 16 && typeof current.$ref === "string"; hops++) {
-    const next = resolveRef(current.$ref);
+    const next = resolveSchemaReference(current.$ref, undefined, resolveRef)?.node;
     if (!next) break;
     current = next;
   }
@@ -258,7 +259,7 @@ function conjoined(
   let path = open;
   if (typeof node.$ref === "string" && !node.$ref.startsWith("#")) {
     if (open.has(node.$ref)) return node;
-    const target = resolveRef(node.$ref);
+    const target = resolveSchemaReference(node.$ref, undefined, resolveRef)?.node;
     if (!target) return node;
     path = new Set(open).add(node.$ref);
     const { $ref: _ref, ...rest } = node;

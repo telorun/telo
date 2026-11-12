@@ -34,8 +34,8 @@ metadata: { name: rules }
 source: ./__fixtures__/invalid/lib/telo.yaml
 expect:
   errors:
-    - code: RESOURCE_RULE_VIOLATED
-      message: "Ui.Listing/sourceFilter at 'filters.done': filters its source by a property the row model does not declare"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/sourceFilter: `filters` does not satisfy the type declared at `{ from: /model, member: 0# }`: / must NOT have additional properties ('done' is not allowed)"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Listing/sortNotAccepted: starts sorted by a property the collection does not accept a sort on"
     - code: RESOURCE_RULE_VIOLATED
@@ -74,6 +74,10 @@ expect:
       message: "Ui.Filters/presetSearchUnset: holds a search with nothing to read it: the bar writes `search` over a collection declaring no `query.search`, or a preset sets a search on a bar that has none"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/presetValueInvalid at 'presets[0]': sets a value its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/presetRelativeInvalid at 'presets[0]': sets a value its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/defaultRelativeInvalid at 'fields[0]': declares a default its filter cannot hold"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/presetLabelDuplicate at 'presets[1]': has the label of another preset"
     - code: RESOURCE_RULE_VIOLATED

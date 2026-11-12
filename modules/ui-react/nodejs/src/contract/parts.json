@@ -5,8 +5,8 @@
       "sidebar-toggle", "main", "page", "page-title", "tab-bar"
     ],
     "structure": [
-      "box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "list",
-      "list-heading", "list-empty", "data", "bar", "bar-start", "bar-center", "bar-end", "command"
+      "box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "time", "list",
+      "list-heading", "list-empty", "data", "bar", "bar-start", "bar-center", "bar-end", "command", "button"
     ],
     "markdown": [
       "markdown", "markdown-paragraph", "markdown-heading", "markdown-quote", "markdown-list",
@@ -14,7 +14,8 @@
       "markdown-code", "markdown-link", "markdown-image", "markdown-break", "markdown-table-frame", "markdown-table",
       "markdown-table-head", "markdown-table-body", "markdown-table-row", "markdown-table-header-cell",
       "markdown-table-cell", "markdown-code-block", "markdown-code-header", "markdown-code-language",
-      "markdown-code-copy", "markdown-code-pre", "markdown-code-text", "markdown-token"
+      "markdown-code-copy", "markdown-code-pre", "markdown-code-text", "markdown-token", "markdown-annotations",
+      "markdown-annotation", "markdown-unplaced-annotations"
     ],
     "chat": [
       "chat", "chat-main", "chat-header", "chat-transcript", "chat-empty", "chat-message", "chat-message-label", "chat-message-body",
@@ -87,7 +88,7 @@
     "status": ["component", "error", "error-code", "error-message", "loading"]
   },
   "states": {
-    "data-state": { "values": ["idle", "loading", "error", "empty", "submitting"], "on": ["page", "data", "listing", "form", "filters", "component", "action", "row-action", "markdown", "chat"] },
+    "data-state": { "values": ["idle", "loading", "error", "empty", "submitting"], "on": ["page", "data", "listing", "form", "filters", "component", "action", "row-action", "button", "markdown", "chat"] },
     "data-actions": { "values": ["inside", "outside"], "on": ["chat-composer"] },
     "data-role": { "values": ["user", "assistant"], "on": ["chat-message"] },
     "data-status": {
@@ -105,13 +106,13 @@
     "data-size": { "values": ["small", "medium", "large", "full"], "on": ["surface", "cards-layout", "split-aside"] },
     "data-frame": { "values": ["framed", "flush"], "on": ["split", "split-aside", "list-layout"] },
     "data-embedded": { "values": ["true"], "on": ["chat", "list-layout", "table-frame", "tree-layout", "calendar-grid"] },
-    "data-button": { "values": ["text", "icon"], "on": ["link", "command"] },
+    "data-button": { "values": ["text", "icon"], "on": ["link", "command", "button"] },
     "data-command": { "values": ["chat.exportTranscript", "chat.copyTranscript", "chat.stop", "chat.newConversation"], "on": ["command"] },
     "data-fill": {
       "values": ["true"],
       "on": [
-        "app", "main", "page", "box", "stack", "columns", "text", "badge", "link", "image", "svg", "value", "list", "bar",
-        "command", "data", "listing", "form", "action", "filters", "component", "chat", "split", "split-aside", "split-content",
+        "app", "main", "page", "box", "stack", "columns", "text", "badge", "link", "image", "svg", "value", "time", "list", "bar",
+        "command", "button", "data", "listing", "form", "action", "filters", "component", "chat", "split", "split-aside", "split-content",
         "markdown", "navigation", "tabs", "tab-panel"
       ]
     },

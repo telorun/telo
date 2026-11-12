@@ -1,0 +1,137 @@
+kind: Telo.Application
+metadata:
+  name: UiPageVariablesTest
+  version: 1.0.0
+  description: |
+    A page path's `{name}` segment is a variable its tree reads as `params`,
+    a string the page presents as one. A reader and a listing a page places
+    read the page's variables too: a reader's source and a collection source's
+    templated `basePath` cross as bindings over `params`, and `reloadEvery`
+    crosses in milliseconds. Refused by `telo check`: a read of a variable the
+    page lacks — in its own tree, in a view or a source it places, a library's
+    view included — a brace beside other text or a name given twice in a page
+    path, a link to a page with a variable that leaves it unfilled, and a reload
+    more often than every five seconds, which the resource refuses again when
+    it is created.
+imports:
+  Ui: ../
+  DataModel: ../../data-model
+  Probe: ./__fixtures__/probe
+  Assert: ../../assert
+targets:
+  - !ref main
+  - !ref refused
+  - !ref reloadEveryRefused
+  - !ref reloadEveryAtRuntime
+---
+kind: Telo.JsonSchema
+metadata: { name: Command }
+schema: { type: object, required: [seq], properties: { seq: { type: integer } } }
+---
+kind: Ui.Data
+metadata: { name: plan }
+model: { kind: Telo.JsonSchema, schema: { type: object } }
+source:
+  path: "/api/plans/{id}"
+  pathParams: { id: !cel "params.id" }
+reloadEvery: 30s
+content: { type: value, value: !cel "params.id" }
+---
+kind: Ui.Listing
+metadata: { name: commands }
+model: !ref Command
+reloadEvery: 5s
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath:
+      path: "/api/runners/{name}/commands"
+      pathParams: { name: !cel "params.name" }
+    collection:
+      kind: DataModel.Collection
+      key: seq
+      model: !ref Command
+      query: { filters: [], sort: [] }
+---
+kind: Ui.Page
+metadata: { name: planPage }
+path: /plans/{id}
+children:
+  - { type: value, value: !cel "params.id" }
+  - { type: composite, ref: !ref plan }
+---
+kind: Ui.Page
+metadata: { name: runnerPage }
+path: /runners/{name}
+children:
+  - { type: composite, ref: !ref commands }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: page
+    invoke: !ref planPage
+    inputs: { request: { headers: {} } }
+  - name: pageIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.page.result.children[0]"
+      expected: { type: value, fill: false, value: { root: params, path: [id] }, present: { type: string }, labels: [] }
+  - name: plan
+    invoke: { kind: Probe.Read, source: !ref plan }
+  - name: planIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "{'source': steps.plan.result.node.source, 'reloadEvery': steps.plan.result.node.reloadEvery}"
+      expected:
+        source: { path: { value: "/api/plans/{id}" }, pathParams: { id: { root: params, path: [id] } }, queryParams: {} }
+        reloadEvery: 30000
+  - name: commands
+    invoke: { kind: Probe.Read, source: !ref commands }
+  - name: commandsIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "{'basePath': steps.commands.result.node.basePath, 'reloadEvery': steps.commands.result.node.reloadEvery}"
+      expected:
+        basePath: { path: "/api/runners/{name}/commands", pathParams: { name: { root: params, path: [name] } } }
+        reloadEvery: 5000
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/invalid/page-variables/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Page/plan: !cel: 'params.nope' is not defined (available: id)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Page/inbox: !cel: 'params.id' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.View/planTitle: !cel: 'params.id' is not defined (available: ) (as Ui.Page/inbox references it)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Page/inbox at 'children[2].ref': Ui.View/planId: !cel: 'params.id' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Listing/commands: !cel: 'params.name' is not defined (available: ) (as Ui.Page/runners references it)"
+    - code: PATH_PARAMETER_UNBOUND
+      message: "Ui.Page/inbox: the template 'path: /plans/{id}' of 'plan' (named at 'children[3].href.path') reads '{id}'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/textBeside: /path must match pattern"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/repeated: /path matches a shape that is not allowed here"
+---
+kind: Assert.Manifest
+metadata: { name: reloadEveryRefused }
+source: ./__fixtures__/invalid/reload-every/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Data/tooOften: /reloadEvery must be a Telo.Duration at least 5s, not 1s"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/listedTooOften: /reloadEvery must be a Telo.Duration at least 5s, not 4.999s"
+---
+kind: Assert.Manifest
+metadata: { name: reloadEveryAtRuntime }
+source: ./__fixtures__/invalid/reload-every/telo.yaml
+expect:
+  errors: []
+  runFails: "/reloadEvery must be a Telo.Duration at least 5s, not 1s"

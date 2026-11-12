@@ -1,4 +1,5 @@
 import AjvModule from "ajv";
+import { resolveSchemaReference } from "./schema-reference.js";
 import addFormats from "ajv-formats";
 import { isRefSentinel } from "@telorun/templating";
 import {
@@ -15,7 +16,6 @@ import {
   valueTypePlaceholder,
 } from "@telorun/sdk";
 import { canonicalJson } from "./canonical-json.js";
-import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { memberForbidden, memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
 import { liftFragmentDefs, ManifestRootSchema } from "./manifest-schemas.js";
 import { deepEquals } from "./migrations/match.js";
@@ -1156,14 +1156,8 @@ export function resolveRefIn(
   external?: ExternalSchemaResolver,
 ): { schema: Record<string, any>; root: Record<string, any> } {
   if (!schema.$ref || typeof schema.$ref !== "string") return { schema, root };
-  if (schema.$ref.startsWith("#")) {
-    const resolved = resolveSchemaPointer(root, schema.$ref);
-    return resolved && typeof resolved === "object"
-      ? { schema: resolved as Record<string, any>, root }
-      : { schema, root };
-  }
-  const target = external?.(schema.$ref);
-  return target ? { schema: target, root: target } : { schema, root };
+  const target = resolveSchemaReference(schema.$ref, root, external);
+  return target ? { schema: target.node, root: target.document } : { schema, root };
 }
 
 /** Looks a registered schema up by its `$id`. */
@@ -1193,7 +1187,7 @@ export function inlineNamedShapes(
     const record = node as Record<string, any>;
     const ref = record.$ref;
     if (typeof ref === "string" && !ref.startsWith("#") && !open.has(ref)) {
-      const target = resolve(ref);
+      const target = resolveSchemaReference(ref, undefined, resolve)?.node;
       if (target) {
         // The reference's own keys go; a `title` or `description` beside it stays.
         const siblings: Record<string, any> = {};

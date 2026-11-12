@@ -44,8 +44,9 @@ schema:
   (`/route/path`). Write it exactly when the template field may hold a `!ref`.
 
 The annotation works at any depth: in a list item, a map value, a union branch,
-and inside a named shape the kind's schema reaches by `$ref` — recursive shapes
-included — so a node tree's addresses are checked wherever they sit.
+and inside a named shape the kind's schema reaches by `$ref` to the shape or a
+JSON Pointer into it — recursive shapes included — so a node tree's addresses
+are checked wherever they sit.
 
 ## The template
 

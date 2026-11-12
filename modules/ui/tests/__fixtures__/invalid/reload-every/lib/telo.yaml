@@ -1,0 +1,29 @@
+# A reader and a listing reloading more often than every five seconds.
+kind: Telo.Library
+metadata:
+  name: UiInvalidReloadEvery
+  version: 1.0.0
+  description: Test fixture exporting a reader and a listing whose reload interval is below five seconds.
+imports: { Ui: ../../../../../, DataModel: ../../../../../../data-model }
+exports: { resources: [tooOften, listedTooOften] }
+---
+kind: Ui.Data
+metadata: { name: tooOften }
+model: { kind: Telo.JsonSchema, schema: { type: object } }
+source: /api/status
+reloadEvery: 1s
+content: { type: text, text: Ready }
+---
+kind: Ui.Listing
+metadata: { name: listedTooOften }
+model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+reloadEvery: 4999ms
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/items
+    collection:
+      kind: DataModel.Collection
+      model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+      query: { filters: [], sort: [] }

@@ -22,8 +22,10 @@ theme: !ref Radix.theme
 `Radix.theme` is Studio's look: neutral surfaces, the brand blue as the
 accent, outlined and slightly raised fields and buttons, bordered popups, a
 quiet header holding the title in the accent colour, a sidebar and a bottom
-tab bar in the header's tint, tabs underlined in the accent, and table
-headings in small uppercase letters. It holds:
+tab bar in the header's tint, tabs underlined in the accent, table
+headings in small uppercase letters, a `button` node outlined like a link
+drawn as a button, the controls on Markdown items compact with their count
+beside them, and a relative time underlined with dots over its exact time. It holds:
 
 - `tokens` — the design tokens' light values, a `Ui.DesignTokens` set, a
   contained page's measure (`width.page`) `72rem` and the page inset

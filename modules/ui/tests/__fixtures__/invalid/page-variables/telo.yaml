@@ -1,0 +1,69 @@
+# Pages whose trees read path variables their paths lack, views and a source
+# placed on such pages, paths misusing braces, and a link to a page with a
+# variable that leaves it unfilled.
+kind: Telo.Application
+metadata: { name: UiInvalidPageVariablesApp, version: 1.0.0 }
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model, Lib: ../../page-params-library }
+---
+kind: Telo.JsonSchema
+metadata: { name: Command }
+schema: { type: object, required: [seq], properties: { seq: { type: integer } } }
+---
+kind: Ui.View
+metadata: { name: planTitle }
+content: { type: value, value: !cel "params.id" }
+---
+kind: Ui.Listing
+metadata: { name: commands }
+model: !ref Command
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath:
+      path: "/api/runners/{name}/commands"
+      pathParams: { name: !cel "params.name" }
+    collection:
+      kind: DataModel.Collection
+      key: seq
+      model: !ref Command
+      query: { filters: [], sort: [] }
+---
+kind: Ui.Page
+metadata: { name: plan }
+path: /plans/{id}
+children:
+  - { type: value, value: !cel "params.id" }
+  - { type: value, value: !cel "params.nope" }
+  - { type: composite, ref: !ref planTitle }
+---
+kind: Ui.Page
+metadata: { name: inbox }
+path: /
+children:
+  - { type: value, value: !cel "params.id" }
+  - { type: composite, ref: !ref planTitle }
+  - { type: composite, ref: !ref Lib.planId }
+  - { type: link, text: Plan, href: { path: !ref plan } }
+---
+kind: Ui.Page
+metadata: { name: runner }
+path: /runners/{name}
+children:
+  - { type: composite, ref: !ref commands }
+---
+kind: Ui.Page
+metadata: { name: runners }
+path: /runners
+children:
+  - { type: composite, ref: !ref commands }
+---
+kind: Ui.Page
+metadata: { name: textBeside }
+path: /plans/x{id}
+children: []
+---
+kind: Ui.Page
+metadata: { name: repeated }
+path: /plans/{id}/revisions/{id}
+children: []

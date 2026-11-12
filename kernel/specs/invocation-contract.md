@@ -140,11 +140,18 @@ to ONE PROPERTY of each type it reaches rather than to the type: the property
 whose name `member` yields. `member` is a Relative JSON Pointer from the
 annotated node — a non-negative integer of levels out, then `#` (the key that
 node is reached by) or a JSON Pointer to the string naming the property; `0#` is
-a map value's own key, so a map typed by a model is held key by key. A name the
-type does not declare at its root contributes nothing. Inside a contract the
-member is known only where it is the node's own key: a property's name, or for a
-map's values every property the type declares, each under its own name; a member
-any other pointer names is data and contributes nothing there.
+a map value's own key, so a map typed by a model is held key by key. **A map's
+values keyed by their own key are typed on the map**: every key its annotated
+`additionalProperties` (or `patternProperties` entry) governs MUST name a
+property the type declares at its root, and its value MUST satisfy that
+property — a key naming none is refused, as an unknown argument at a call site
+and as `ERR_INPUT_INVALID` for a computed map at dispatch. A key the kind's own
+schema fixes (the map's `properties`) keeps its own reading; at a fixed key the
+member is that property alone, and a name the type does not declare there
+contributes nothing; a type declaring no properties at its root types no key.
+Inside a contract the member is known only where it is the node's own key (`0#`):
+a property's name, or a map's key; a member any other pointer names is data and
+contributes nothing there.
 
 **Crossing a reference.** When the value reached so far sits at one of the
 holding declaration's reference sites — the sites the runtime substitutes with a
@@ -566,6 +573,16 @@ object. A property the enclosing object requires is never omitted and needs none
 
 A written map is dispatched exactly as evaluated: nothing spread, nothing nested,
 and a written `{}` is `{}`.
+
+A reference slot may also declare `completedWhen: <pointer>`, anchored as
+`inputs:` is, naming a sibling its schema declares `type: boolean`. Where that
+sibling holds a literal `true`, the target obtains every input the map leaves
+unbound before it runs, so a static checker MUST NOT refuse a required input
+missing from the map there; it still refuses a key the contract does not declare
+and a value of the wrong type. Absent or `false` — or written as an expression —
+it changes nothing. The target's own rules are what guarantee completeness. A
+`completedWhen` naming no boolean sibling, or on a slot pairing no `inputs:`, is
+refused at the kind (or the named shape declaring the slot) and when it registers.
 
 A static checker MUST judge an omitted map as that literal default against the
 target's resolved input contract, and report what it finds at the reference — the

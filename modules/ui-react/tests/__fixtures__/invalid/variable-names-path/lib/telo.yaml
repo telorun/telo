@@ -1,0 +1,19 @@
+# Two pages whose paths differ only in the name of their variable.
+kind: Telo.Library
+metadata:
+  name: UiReactVariableNamesPath
+  version: 1.0.0
+  description: >-
+    Test fixture exporting an application whose two pages route the same
+    addresses, their paths differing only in a variable's name.
+imports: { UiReact: ../../../../../, Ui: ../../../../../../ui }
+exports: { resources: [renamed] }
+---
+kind: UiReact.App
+metadata: { name: renamed }
+title: Renamed
+theme: !ref UiReact.defaultTheme
+pages:
+  - { kind: Ui.Page, path: /plans/new, title: New plan, children: [] }
+  - { kind: Ui.Page, path: "/plans/{id}", title: Plan, children: [] }
+  - { kind: Ui.Page, path: "/plans/{key}", title: Plan again, children: [] }

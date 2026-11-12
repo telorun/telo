@@ -247,3 +247,37 @@ export const dataNode = (overrides: Record<string, unknown> = {}): SpecNode => (
   reloadOn: [],
   ...overrides,
 });
+
+/** A plan review's comment on an item of a revision: the person enters who and what. */
+export const commentSchema = {
+  type: "object",
+  required: ["id", "revision", "author", "body"],
+  properties: {
+    id: { type: "string" },
+    revision: { type: "integer" },
+    item: { type: "string" },
+    author: { type: "string", title: "Your name", minLength: 1 },
+    body: { type: "string", title: "Comment", minLength: 1 },
+  },
+};
+
+/** A plan review's decision on a revision. */
+export const decisionSchema = {
+  type: "object",
+  required: ["id", "decision", "revision", "author"],
+  properties: {
+    id: { type: "string" },
+    decision: { enum: ["approve", "request_changes"] },
+    revision: { type: "integer" },
+    author: { type: "string", title: "Your name", minLength: 1 },
+    note: { type: "string", title: "Note", minLength: 1 },
+  },
+};
+
+/** The state a review's actions keep `author` in, under one key in the local store. */
+export const reviewerState = (fields: string[]) => ({ key: "reviewer", address: false, store: { type: "local" }, fields });
+
+/** The prompt `ui` gives a bound action: a field per property the inputs leave. */
+export const promptOf = (action: SpecNode, properties: string[]) => ({
+  fields: (action.fields as { property: string }[]).filter((field) => properties.includes(field.property)),
+});

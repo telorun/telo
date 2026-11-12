@@ -22,7 +22,8 @@
 import { expansionTagOf, isTaggedSentinel } from "@telorun/templating";
 import { readRelativePointer, type RelativePointer, type SchemaLevel } from "./element-from-item.js";
 import type { NamedShapeLookup } from "./eval-paths.js";
-import { propertySchemas, resolveSchemaPointer } from "./manifest-navigation.js";
+import { propertySchemas } from "./manifest-navigation.js";
+import { followSchemaReferences } from "./schema-reference.js";
 import { enclosingKeys, placeAt, type ReadPlace, type ReadReporter } from "./read-place.js";
 
 export const NULLABLE_WHEN = "x-telo-context-nullable-when";
@@ -129,18 +130,8 @@ export function withNull(schema: Schema): Schema {
 /** A schema node read through its `$ref`s, with the document its own local
  *  references resolve against. */
 function deref(node: Schema, document: Schema, shapes: NamedShapeLookup): [Schema, Schema] {
-  const seen = new Set<object>();
-  let current = node;
-  let doc = document;
-  while (typeof current.$ref === "string" && !seen.has(current)) {
-    seen.add(current);
-    const local = current.$ref.startsWith("#");
-    const target = local ? resolveSchemaPointer(doc, current.$ref) : shapes(current.$ref);
-    if (!isSchema(target)) break;
-    if (!local) doc = target;
-    current = target;
-  }
-  return [current, doc];
+  const reached = followSchemaReferences(node, document, shapes);
+  return [reached.node, reached.document ?? document];
 }
 
 /** The schema a member name or list index reaches from `node`. */
@@ -191,20 +182,35 @@ export function nullableWhenTarget(
   shapes: NamedShapeLookup,
   rootIsResource: boolean,
 ): { refusal: string } | { target: Schema } {
+  return holderPointerTarget(levels, rule.at, document, shapes, rootIsResource);
+}
+
+/**
+ * The schema a relative pointer anchored at the context holder names, for a
+ * binding (or member) of the region declared on the field at
+ * `levels[levels.length - 1]` — or why it names nothing the schema declares.
+ */
+export function holderPointerTarget(
+  levels: readonly SchemaLevel[],
+  pointer: RelativePointer,
+  document: Schema,
+  shapes: NamedShapeLookup,
+  rootIsResource: boolean,
+): { refusal: string } | { target: Schema } {
   // A region on a list's items is held by the item itself.
   const field = levels.length - 1;
   const holderLevel = levels[field]?.key === "*" ? field : field - 1;
-  const at = holderLevel - rule.at.up;
+  const at = holderLevel - pointer.up;
   if (at < 0) {
     return {
       refusal: rootIsResource
-        ? `it climbs ${rule.at.up} level${rule.at.up === 1 ? "" : "s"} from the context holder, above the resource`
-        : `it climbs ${rule.at.up} level${rule.at.up === 1 ? "" : "s"} from the context holder, above the named shape, whose holder is not known here`,
+        ? `it climbs ${pointer.up} level${pointer.up === 1 ? "" : "s"} from the context holder, above the resource`
+        : `it climbs ${pointer.up} level${pointer.up === 1 ? "" : "s"} from the context holder, above the named shape, whose holder is not known here`,
     };
   }
   let node: Schema = levels[at]!.node;
   let doc = document;
-  for (const segment of rule.at.segments) {
+  for (const segment of pointer.segments) {
     const found = schemaMemberOf(node, doc, segment, shapes);
     if (!found) return { refusal: `it names '${segment}', which the schema does not declare there` };
     [node, doc] = found;

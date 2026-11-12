@@ -1,0 +1,67 @@
+# Readers whose Markdown, annotations, times and values each write what their
+# fields do not take.
+kind: Telo.Application
+metadata: { name: UiInvalidMarkdownTimeApp, version: 1.0.0 }
+imports: { Ui: ../../../../ }
+---
+kind: Telo.JsonSchema
+metadata: { name: Revision }
+schema:
+  type: object
+  required: [seq, body, items, events]
+  properties:
+    seq: { type: integer }
+    body: { type: string }
+    items:
+      type: array
+      items:
+        type: object
+        required: [id, line, count]
+        properties: { id: { type: string }, line: { type: integer }, count: { type: integer } }
+    events:
+      type: array
+      items: { type: object, required: [type], properties: { type: { type: string } } }
+---
+kind: Ui.Action
+metadata: { name: comment }
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [item, body]
+    properties: { item: { type: string }, body: { type: string } }
+request: { target: /api/comments }
+label: Comment
+---
+kind: Ui.Data
+metadata: { name: lineTypo }
+model: !ref Revision
+source: /api/revision
+content:
+  type: markdown
+  value: !cel "data.body"
+  annotations:
+    rows: !cel "data.items"
+    line: !cel "row.lnie"
+    action: { action: !ref comment, inputs: { item: !cel "row.id" }, prompt: true }
+---
+kind: Ui.Data
+metadata: { name: markdownNotString }
+model: !ref Revision
+source: /api/revision
+content: { type: markdown, value: !cel "data.seq" }
+---
+kind: Ui.Data
+metadata: { name: timeColumnNoFormat }
+model: !ref Revision
+source: /api/revision
+content:
+  type: list
+  rows: !cel "data.events"
+  columns: [{ type: time, value: !cel "row.type", relative: true }]
+---
+kind: Ui.Data
+metadata: { name: valueRelative }
+model: !ref Revision
+source: /api/revision
+content: { type: value, value: !cel "data.body", relative: true }

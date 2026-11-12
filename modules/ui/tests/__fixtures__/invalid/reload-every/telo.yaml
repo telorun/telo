@@ -1,0 +1,5 @@
+kind: Telo.Application
+metadata: { name: UiInvalidReloadEveryApp, version: 1.0.0 }
+imports: { Lib: ./lib, Probe: ../../probe }
+targets:
+  - invoke: { kind: Probe.Read, source: !ref Lib.tooOften }

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { act } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import archiveRequest from "../../tests/__fixtures__/action/archive-request.json" with { type: "json" };
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
 import { FakeIntersections } from "./intersections.js";
-import { filtersNode, operation, listingNode, todos, address } from "./spec-nodes.js";
+import { filterField, filtersNode, memoryState, operation, listingNode, todos, address } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -742,5 +742,77 @@ describe("a listing's related records", () => {
     await rendered.click(rendered.fixture("notify"));
     expect(asked()).toBe(4);
     expect(lists(rendered)).toEqual([]);
+  });
+});
+
+describe("a listing over a templated path", () => {
+  const commands = (runner: string) => [{ id: 1, text: `${runner} first` }];
+  const runnerListing = (name: { root: string; path: string[] }) =>
+    listingNode({
+      basePath: { path: "/api/runners/{name}/commands", pathParams: { name } },
+      columns: [{ header: "Task", value: row("text"), present: { type: "string" }, labels: [] }],
+      create: undefined,
+      edit: undefined,
+      delete: false,
+    });
+  const sendTo = (runner: string) => operation(`/api/runners/${runner}/commands`, `Send to ${runner}`, { type: "object", properties: {} }, { fields: [], state: memoryState([]) });
+  const showRunner = (children: unknown[]) =>
+    render({
+      path: "/runners/a",
+      collections: { "/api/runners/a/commands": commands("a"), "/api/runners/b/commands": commands("b") },
+      pages: { "/runners/{name}": { title: "Runner", children: children as never } },
+    });
+  const reads = (r: Rendered, runner: string) => r.requests.filter((request) => request.startsWith(`GET /api/runners/${runner}/commands?`));
+
+  it("reads the path its page's variables fill, and reloads on a write under that path and no other", async () => {
+    rendered = await showRunner([runnerListing({ root: "params", path: ["name"] }), sendTo("b"), sendTo("a")]);
+    expect([reads(rendered, "a"), reads(rendered, "b"), cells(rendered, 0)]).toEqual([["GET /api/runners/a/commands?limit=2"], [], ["a first"]]);
+    await rendered.click(rendered.parts("submit")[0]);
+    expect(reads(rendered, "a")).toHaveLength(1);
+    await rendered.click(rendered.parts("submit")[1]);
+    expect(reads(rendered, "a")).toHaveLength(2);
+  });
+
+  it("reads nothing and draws its failure while the path does not resolve", async () => {
+    rendered = await showRunner([runnerListing({ root: "params", path: ["nope"] })]);
+    expect([rendered.part("listing").getAttribute("data-state"), rendered.part("error-code").textContent, reads(rendered, "a")]).toEqual(["error", "ERR_UI_ADDRESS_UNRESOLVED", []]);
+  });
+});
+
+describe("a listing on a timer", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const tick = async (r: Rendered) => {
+    await act(async () => vi.advanceTimersByTime(5000));
+    await r.settle();
+  };
+
+  it("reads its loaded pages and the facet requests over its source again every interval, keeping the second page and each record's element", async () => {
+    rendered = await show([filtersNode(appending({ reloadEvery: 5000 }), { fields: [filterField("status", "in", { values: "present" })] })]);
+    await rendered.click(rendered.part("load-more"));
+    const first = rendered.parts("table-row")[0];
+    const before = rendered.requests.length;
+    await tick(rendered);
+    expect(rendered.requests.slice(before).sort()).toEqual(["GET /api/todos?limit=100&facet=status", "GET /api/todos?limit=2", "GET /api/todos?limit=2&cursor=Mg"]);
+    expect([rendered.parts("table-row").length, rendered.parts("table-row")[0] === first]).toEqual([4, true]);
+  });
+
+  it("keeps what it drew when a timed read fails, the failure beside it, and tries again on the next tick", async () => {
+    rendered = await show([appending({ reloadEvery: 5000 })]);
+    const platform = globalThis.fetch;
+    let failing = true;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) =>
+      failing
+        ? new Response(JSON.stringify({ type: "about:blank", title: "Unavailable", status: 503, code: "ERR_DOWN", detail: "Down." }), { status: 503 })
+        : platform(input, init)) as typeof fetch;
+    await tick(rendered);
+    expect([cells(rendered, 0), rendered.part("error-code").textContent]).toEqual([["Write the plan", "Review the plan"], "ERR_DOWN"]);
+    failing = false;
+    await tick(rendered);
+    expect([cells(rendered, 0).length, rendered.parts("error")]).toEqual([2, []]);
   });
 });

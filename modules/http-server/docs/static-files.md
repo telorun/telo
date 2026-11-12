@@ -115,7 +115,9 @@ immutable: true
 
 `GET /` and real files (`/assets/app-3f9a.js`) serve as-is; `GET /settings/profile`
 — which is not a file on disk — returns `index.html` with a `200`, and the
-client router takes over. Without `spaFallback`, unmatched paths `404`.
+client router takes over. A path holding a percent-escape that does not decode
+(`/settings/%ZZ`) is an unmatched path too, so it gets `index.html` as well.
+Without `spaFallback`, unmatched paths `404`.
 
 ## Caching content-hashed assets
 

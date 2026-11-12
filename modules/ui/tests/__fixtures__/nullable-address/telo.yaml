@@ -1,0 +1,20 @@
+# A link reads a property that may be null, in a path parameter and in a query parameter.
+kind: Telo.Application
+metadata: { name: UiNullableAddressApp, version: 1.0.0 }
+imports: { Ui: ../../../ }
+---
+kind: Telo.JsonSchema
+metadata: { name: Record }
+schema: { type: object, properties: { worker: { type: [string, "null"] } } }
+---
+kind: Ui.Data
+metadata: { name: nullableLink }
+model: !ref Record
+source: /api/record
+content:
+  type: link
+  text: Worker
+  href:
+    path: "/workers/{worker}"
+    pathParams: { worker: !cel "data.worker" }
+    queryParams: { by: !cel "data.worker" }

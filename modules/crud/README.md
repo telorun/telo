@@ -20,6 +20,7 @@ A complete REST API over a SQL table as a single declarative resource. A `Crud.C
 | --- | --- |
 | [`Crud.Collection`](docs/collection.md) | The table, the record's shape for each operation, the filters, sorts and facets the list accepts, and the relations to other collections. A `DataModel.Collection`. |
 | [`Crud.Api`](docs/api.md) | The five routes over one collection's table. |
+| [`Crud.Reader`](docs/reader.md) | The list contract over a table or one fixed SELECT with joined or computed columns, with a `scope` the route fixes. |
 
 The list route's query, facets, response and refusals are in [The list route](docs/list-route.md).
 
@@ -127,5 +128,5 @@ mounts:
 - A `POST` body is validated against the collection's `create` shape and a `PUT` body against its `update` shape; a refused one is a 400 naming the property.
 - A read returns a record valid against its shape, so it can be sent back: a column holding `NULL` is `null` where the property admits it, left out where the property is optional, and the type's empty value (`""`, `0`, `false`) where it is required. See [What a read returns](docs/api.md#what-a-read-returns).
 - Set `openapi:` on the `Http.Server` to emit the spec, which states each operation's shape: request bodies, the record read, and the rows of the list.
-- For joins, computed columns or custom status logic, write an `Http.Api` with `Sql.Query` handlers; `Crud.Api` covers the single-table case.
+- For joins or computed columns, list through a [`Crud.Reader`](docs/reader.md) over a fixed SELECT in an `Http.Api` route; for custom status logic write the route with `Sql.Query` handlers. `Crud.Api` covers the single-table case.
 - An admin screen over a collection is the `crud-ui` module's.

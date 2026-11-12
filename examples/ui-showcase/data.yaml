@@ -1,10 +1,12 @@
 # The showcase's data: one SQLite database holding a small studio — its team
-# record, its people, its projects with their members, tags and tasks, and the
-# sessions the sign-in gate opens. Every table declares the rows it starts with
+# record, its people, its projects with their members, tags and tasks, the
+# documents it reviews and its workers' commands, and the sessions the sign-in
+# gate opens. Every table declares the rows it starts with
 # (`seeds`), so each page is populated on a fresh database; a row edited
 # through the screens stays edited, and a seeded column is restored on the next
 # start. Every collection a screen lists is one `Crud.Collection` served by one
-# `Crud.Api`, so its list pages, sorts, filters and writes for real.
+# `Crud.Api`, so its list pages, sorts, filters and writes for real — except the
+# review pages' two, each a `Crud.Reader` route over a SELECT of its own.
 kind: SQLite.Connection
 metadata: { name: db }
 file: !cel "variables.dbFile"
@@ -26,6 +28,13 @@ tables:
   - !ref authorsTable
   - !ref postsTable
   - !ref employeesTable
+  - !ref reviewProductsTable
+  - !ref reviewsTable
+  - !ref reviewRevisionsTable
+  - !ref reviewItemsTable
+  - !ref reviewCommentsTable
+  - !ref reviewEventsTable
+  - !ref workerCommandsTable
 ---
 # The studio itself: one row, read by the overview.
 kind: SQLite.Table
@@ -697,3 +706,334 @@ kind: CrudUi.CollectionSource
 metadata: { name: employeesSource }
 collection: !ref employees
 basePath: /api/employees
+---
+# ---- Document review: the review pages' documents and the workers' commands ----
+# A product's deadline is how long a review may wait for a decision. The
+# website's is a century, so its reviews are never overdue and the inbox reads
+# the same on every run.
+kind: SQLite.Table
+metadata: { name: reviewProductsTable }
+table: review_products
+columns:
+  slug: { type: text, primaryKey: true }
+  name: { type: text, nullable: false }
+  deadline_seconds: { type: integer, nullable: false }
+seeds:
+  key: [slug]
+  rows:
+    - { slug: handbook, name: Handbook, deadline_seconds: 86400 }
+    - { slug: website, name: Website, deadline_seconds: 3153600000 }
+---
+# A document under review. `last_reviewed` is the revision the latest decision
+# was made on, which the compare page starts from; `worker` the worker that
+# writes its revisions, if any.
+kind: SQLite.Table
+metadata: { name: reviewsTable }
+table: reviews
+columns:
+  id: { type: text, primaryKey: true }
+  title: { type: text, nullable: false }
+  product: { type: text, nullable: false }
+  repo: { type: text, nullable: false }
+  state: { type: text, nullable: false, default: submitted }
+  worker: { type: text }
+  last_reviewed: { type: integer }
+foreignKeys:
+  reviews_product: { columns: [product], references: { table: !ref reviewProductsTable, columns: [slug] } }
+seeds:
+  key: [id]
+  rows:
+    - { id: r1, title: Rewrite the onboarding chapter, product: handbook, repo: docs, state: revised, worker: a, last_reviewed: 1 }
+    - { id: r2, title: Cache the project pages, product: website, repo: site, state: submitted }
+    - { id: r3, title: Retire the old pricing table, product: website, repo: site, state: approved, worker: b, last_reviewed: 1 }
+    - { id: r4, title: A style guide for release notes, product: handbook, repo: docs, state: submitted }
+    - { id: r5, title: Move the blog to the new theme, product: website, repo: site, state: changes_requested, worker: b, last_reviewed: 1 }
+    - { id: r6, title: Offline sync design, product: handbook, repo: mobile, state: rejected, last_reviewed: 1 }
+    - { id: r7, title: Translate the handbook into Polish, product: handbook, repo: docs, state: submitted, worker: a }
+---
+# Every revision of a document, whole: its Markdown and the SHA-256 of it,
+# which a decision restates so it is made on the text the reviewer read.
+kind: SQLite.Table
+metadata: { name: reviewRevisionsTable }
+table: review_revisions
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  review_id: { type: text, nullable: false }
+  seq: { type: integer, nullable: false }
+  hash: { type: text, nullable: false }
+  body: { type: text, nullable: false }
+  created_at: { type: text, nullable: false }
+indexes: { review_revisions_unique: { columns: [review_id, seq], unique: true } }
+foreignKeys:
+  review_revisions_review: { columns: [review_id], references: { table: !ref reviewsTable, columns: [id] } }
+seeds:
+  key: [review_id, seq]
+  rows:
+    - review_id: r1
+      seq: 1
+      hash: b99b8f8ee6e5e64739f7ac9f4d6f792ddf7d3a63ba23ebedb5025f51e1971250
+      created_at: "2026-11-01T10:00:00Z"
+      body: |
+        # Rewrite the onboarding chapter
+
+        ## S1 Split the chapter
+
+        - One page for everyone.
+
+        ## S2 Add a first-week checklist
+
+        What a newcomer does each day, as a list.
+    - review_id: r1
+      seq: 2
+      hash: c2a3053294a31ee57802d17fe1ce4006697fca4ecf176dda424829b31372681d
+      created_at: "2026-11-03T12:30:00Z"
+      body: |
+        # Rewrite the onboarding chapter
+
+        ## S1 Split the chapter
+
+        - One page for engineers.
+        - One page for designers.
+
+        ## S2 Add a first-week checklist
+
+        What a newcomer does each day, as a list.
+    - review_id: r1
+      seq: 3
+      hash: 11a4f80d2e3f8a5a990abe6fc56d526bccac598d86a2609fc97a297b0c8bf0bd
+      created_at: "2026-11-05T16:20:00Z"
+      body: |
+        # Rewrite the onboarding chapter
+
+        ## S1 Split the chapter
+
+        - One page for engineers.
+        - One page for designers.
+        - One page for writers.
+
+        ## S2 Add a first-week checklist
+
+        What a newcomer does each day, as a list:
+
+        ```text
+        ## S9 an example heading, not an item
+        ```
+
+        ## S3 Name a buddy for every newcomer
+    - review_id: r2
+      seq: 1
+      hash: e6d63c101302ae4dcdd236146096a7044e46c1881d31ede2b42997b3d88dfc56
+      created_at: "2026-11-04T08:02:11Z"
+      body: |
+        # Cache the project pages
+
+        ## C1 Cache each project page for a minute
+
+        A page changes when its project does, and no sooner.
+
+        ## C2 Clear the cache on every write
+    - review_id: r3
+      seq: 1
+      hash: 026ed68f0cb88d30833d11802e7409a1debc88a8529a0de92e381475496fb4a8
+      created_at: "2026-10-28T09:00:00Z"
+      body: |
+        # Retire the old pricing table
+
+        ## P1 Redirect the old address to the new page
+    - review_id: r4
+      seq: 1
+      hash: 80276bccc87c52092ef1d29753334b881b000cef400dc67103e943a3fca73511
+      created_at: "2026-11-02T15:45:00Z"
+      body: |
+        # A style guide for release notes
+
+        ## G1 Lead with what changed
+
+        ## G2 One sentence per change
+    - review_id: r5
+      seq: 1
+      hash: b21ad9a76b90bfbd096a1a5f129dcafc142a29bf1797e59896e27966e349b1fa
+      created_at: "2026-10-30T11:00:00Z"
+      body: |
+        # Move the blog to the new theme
+
+        ## B1 Keep every post's address
+    - review_id: r6
+      seq: 1
+      hash: f05b725e6bf36f24afa41764e2a297ec30adca18cb93b496d6d1c18b39d321b6
+      created_at: "2026-10-25T14:00:00Z"
+      body: |
+        # Offline sync design
+
+        ## O1 Queue every write while offline
+    - review_id: r7
+      seq: 1
+      hash: d6615b034043b8ade8af9ea598fbbf41e6bb07d303678ca2e13d1f5b2535b245
+      created_at: "2026-11-06T07:30:00Z"
+      body: |
+        # Translate the handbook into Polish
+
+        ## T1 Translate the onboarding chapter first
+---
+# The items a revision holds and the line each starts on. Which blocks are
+# items is the server's grammar (a `## <ID> …` heading outside a fenced
+# block); the screens parse none, so the lines are stored with the revision.
+kind: SQLite.Table
+metadata: { name: reviewItemsTable }
+table: review_items
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  review_id: { type: text, nullable: false }
+  revision: { type: integer, nullable: false }
+  item: { type: text, nullable: false }
+  line: { type: integer, nullable: false }
+indexes: { review_items_unique: { columns: [review_id, revision, item], unique: true } }
+seeds:
+  key: [review_id, revision, item]
+  rows:
+    - { review_id: r1, revision: 1, item: S1, line: 3 }
+    - { review_id: r1, revision: 1, item: S2, line: 7 }
+    - { review_id: r1, revision: 2, item: S1, line: 3 }
+    - { review_id: r1, revision: 2, item: S2, line: 8 }
+    - { review_id: r1, revision: 3, item: S1, line: 3 }
+    - { review_id: r1, revision: 3, item: S2, line: 9 }
+    - { review_id: r1, revision: 3, item: S3, line: 17 }
+    - { review_id: r2, revision: 1, item: C1, line: 3 }
+    - { review_id: r2, revision: 1, item: C2, line: 7 }
+    - { review_id: r3, revision: 1, item: P1, line: 3 }
+    - { review_id: r4, revision: 1, item: G1, line: 3 }
+    - { review_id: r4, revision: 1, item: G2, line: 5 }
+    - { review_id: r5, revision: 1, item: B1, line: 3 }
+    - { review_id: r6, revision: 1, item: O1, line: 3 }
+    - { review_id: r7, revision: 1, item: T1, line: 3 }
+---
+# A comment on one revision, on one of its items or on the whole text.
+kind: SQLite.Table
+metadata: { name: reviewCommentsTable }
+table: review_comments
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  seed_key: { type: text, unique: true }
+  review_id: { type: text, nullable: false }
+  revision: { type: integer, nullable: false }
+  item: { type: text }
+  author: { type: text, nullable: false }
+  body: { type: text, nullable: false }
+  created_at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')" }
+seeds:
+  key: [seed_key]
+  rows:
+    - { seed_key: RC01, review_id: r1, revision: 1, item: S1, author: Liam Carter, body: One page is too long to read in a day., created_at: "2026-11-02T09:05:00Z" }
+    - { seed_key: RC02, review_id: r1, revision: 3, item: S1, author: Liam Carter, body: Writers need a page of their own too., created_at: "2026-11-05T17:00:00Z" }
+    - { seed_key: RC03, review_id: r1, revision: 3, item: S1, author: Maya Harris, body: Designers will want the brand files linked here., created_at: "2026-11-05T17:40:00Z" }
+    - { seed_key: RC04, review_id: r1, revision: 3, item: S3, author: Ada Brooks, body: Who names the buddy?, created_at: "2026-11-05T18:10:00Z" }
+---
+# What happened to a document, in order. A revision a worker writes has no
+# author.
+kind: SQLite.Table
+metadata: { name: reviewEventsTable }
+table: review_events
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  seed_key: { type: text, unique: true }
+  review_id: { type: text, nullable: false }
+  type: { type: text, nullable: false }
+  author: { type: text }
+  note: { type: text }
+  created_at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')" }
+seeds:
+  key: [seed_key]
+  rows:
+    - { seed_key: RE01, review_id: r1, type: submitted, author: Sofia Rossi, created_at: "2026-11-01T10:00:00Z" }
+    - { seed_key: RE02, review_id: r1, type: changes_requested, author: Liam Carter, note: Split it by role., created_at: "2026-11-02T09:10:00Z" }
+    - { seed_key: RE03, review_id: r1, type: revised, created_at: "2026-11-03T12:30:00Z" }
+    - { seed_key: RE04, review_id: r1, type: revised, created_at: "2026-11-05T16:20:00Z" }
+    - { seed_key: RE05, review_id: r2, type: submitted, author: James Walker, created_at: "2026-11-04T08:02:11Z" }
+    - { seed_key: RE06, review_id: r3, type: submitted, author: Maya Harris, created_at: "2026-10-28T09:00:00Z" }
+    - { seed_key: RE07, review_id: r3, type: approved, author: Ada Brooks, created_at: "2026-10-29T10:30:00Z" }
+    - { seed_key: RE08, review_id: r4, type: submitted, author: Sofia Rossi, created_at: "2026-11-02T15:45:00Z" }
+    - { seed_key: RE09, review_id: r5, type: submitted, author: Maya Harris, created_at: "2026-10-30T11:00:00Z" }
+    - { seed_key: RE10, review_id: r5, type: changes_requested, author: James Walker, note: Old posts lose their images., created_at: "2026-10-31T08:15:00Z" }
+    - { seed_key: RE11, review_id: r6, type: submitted, author: Liam Carter, created_at: "2026-10-25T14:00:00Z" }
+    - { seed_key: RE12, review_id: r6, type: rejected, author: Ada Brooks, note: The app ships online-only first., created_at: "2026-10-27T16:00:00Z" }
+    - { seed_key: RE13, review_id: r7, type: submitted, author: Sofia Rossi, created_at: "2026-11-06T07:30:00Z" }
+---
+# The commands a worker runs, newest last.
+kind: SQLite.Table
+metadata: { name: workerCommandsTable }
+table: worker_commands
+columns:
+  seq: { type: integer, primaryKey: true }
+  worker: { type: text, nullable: false }
+  type: { type: text, nullable: false }
+  state: { type: text, nullable: false }
+  created_at: { type: text, nullable: false }
+seeds:
+  key: [seq]
+  rows:
+    - { seq: 1, worker: a, type: build, state: done, created_at: "2026-11-05T16:21:00Z" }
+    - { seq: 2, worker: a, type: test, state: done, created_at: "2026-11-05T16:25:00Z" }
+    - { seq: 3, worker: b, type: build, state: failed, created_at: "2026-11-05T16:30:00Z" }
+    - { seq: 4, worker: a, type: publish, state: running, created_at: "2026-11-06T07:31:00Z" }
+    - { seq: 5, worker: b, type: build, state: queued, created_at: "2026-11-06T07:40:00Z" }
+    - { seq: 6, worker: a, type: test, state: queued, created_at: "2026-11-06T07:45:00Z" }
+---
+# One inbox row: the latest revision's time, and whether the review has waited
+# past its product's deadline for a decision.
+kind: Telo.JsonSchema
+metadata: { name: ReviewRow }
+schema:
+  type: object
+  required: [id, title, product, repo, state, revisedAt, overdue]
+  properties:
+    id: { type: string }
+    title: { type: string, title: Document }
+    product: { type: string, title: Product }
+    repo: { type: string, title: Repository }
+    state:
+      type: string
+      title: State
+      enum: [submitted, changes_requested, revised, approved, rejected]
+      oneOf:
+        - { const: submitted, title: Submitted }
+        - { const: changes_requested, title: Changes requested }
+        - { const: revised, title: Revised }
+        - { const: approved, title: Approved }
+        - { const: rejected, title: Rejected }
+    revisedAt: { type: string, format: date-time, title: Revised }
+    overdue: { type: boolean, title: Overdue }
+---
+# What the inbox route accepts and what its screen offers: one declaration.
+kind: DataModel.Collection
+metadata: { name: reviews }
+model: !ref ReviewRow
+query:
+  filters:
+    - { property: product, operator: eq }
+    - { property: repo, operator: eq }
+    - { property: state, operator: in }
+    - { property: revisedAt, operator: lte }
+  sort: [{ property: revisedAt }]
+  facets: [{ property: product }, { property: repo }]
+---
+kind: Ui.CollectionPresentation
+metadata: { name: reviewsPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref reviews, basePath: /api/review/reviews }
+---
+kind: Telo.JsonSchema
+metadata: { name: WorkerCommand }
+schema:
+  type: object
+  required: [seq, worker, type, state, createdAt]
+  properties:
+    seq: { type: integer, title: "#" }
+    worker: { type: string, title: Worker }
+    type: { type: string, title: Command }
+    state: { type: string, title: State }
+    createdAt: { type: string, format: date-time, title: Created }
+---
+kind: DataModel.Collection
+metadata: { name: commands }
+key: seq
+model: !ref WorkerCommand
+query: { filters: [{ property: state, operator: in }], sort: [{ property: seq }] }

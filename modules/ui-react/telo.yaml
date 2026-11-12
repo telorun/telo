@@ -225,7 +225,7 @@ schema:
       description: >-
         The pages the application routes to, each served at its own path:
         written in place, or named by reference — a library's included. No two
-        may share a path.
+        may route the same addresses.
       type: array
       minItems: 1
       items: { x-telo-ref: { kind: Ui.Page, use: call } }
@@ -237,13 +237,16 @@ schema:
         them, in the header and behind a menu button on a narrow viewport.
       $ref: "telo://Ui/Navigation"
   x-telo-resource-rules:
+    # A variable's name decides no route: `{id}` and `{key}` match the same segments.
     - resolve: [/pages]
       in: /pages
-      condition: !cel "self.pages.exists_one(p, p.path == this.path)"
+      condition: !cel >-
+        self.pages.exists_one(p, regexReplace(p.path, '[{][^/]*[}]', '{}') == regexReplace(this.path, '[{][^/]*[}]', '{}'))
       code: UI_PAGE_PATH_DUPLICATE
       message: >-
-        declares a path another page already has. Give each page a path of its
-        own.
+        declares a path another page already has, or one differing from it only
+        in the names of its variables, so both route the same addresses. Give
+        each page a path of its own.
     # Every depth of the tree: a group's entries, and theirs.
     - in: /navigation/items(/*/items)*
       condition: !cel >-
@@ -253,15 +256,21 @@ schema:
       message: >-
         names a page the application does not list in its pages, so it leads
         nowhere. Add the page to pages, or remove the entry.
-    # The page an entry names is read at the first two levels of the tree; a
-    # deeper entry is judged when the application starts.
-    - resolve: [/navigation/items/*/page, /navigation/items/*/items/*/page]
+    - resolve: ["/navigation/items(/*/items)*/*/page"]
       in: /navigation/items(/*/items)*
       condition: !cel "this.type != 'page' || has(this.text) || !has(this.page.path) || has(this.page.title)"
       code: UI_NAVIGATION_PAGE_UNTITLED
       message: >-
         names a page with no title and gives no text of its own, so it has no
         label. Write the entry's text, or give the page a title.
+    - resolve: ["/navigation/items(/*/items)*/*/page"]
+      in: /navigation/items(/*/items)*
+      condition: !cel "this.type != 'page' || !has(this.page.path) || !this.page.path.contains('{')"
+      code: UI_NAVIGATION_PAGE_HAS_PARAMETERS
+      message: >-
+        names a page with a variable in its path, which a navigation entry
+        cannot fill. Reach the page with a link whose pathParams fill it, or
+        remove the entry.
 ---
 # The look of every part the renderer draws and, optionally, the controls it
 # draws with; the brand stays a separate `Ui.DesignTokens` set. Layering:

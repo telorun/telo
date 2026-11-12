@@ -158,6 +158,16 @@ export {
   kindIsA,
 } from "./co-referrer-slot.js";
 export type { CoReferrerCallProblem } from "./co-referrer-slot.js";
+export { COMPLETED_WHEN_CODE, completedWhenProblems } from "./completed-when-slot.js";
+export { withReachedFragmentDefs } from "./pointer-base-fragments.js";
+export {
+  followSchemaReferences,
+  isPointerReference,
+  resolveSchemaReference,
+  schemaReferenceParts,
+} from "./schema-reference.js";
+export type { SchemaReferenceParts, SchemaReferenceTarget } from "./schema-reference.js";
+export type { CompletedWhenProblem } from "./completed-when-slot.js";
 export {
   coReferrerScopedMessage,
   CoReferrerSearch,
@@ -726,6 +736,9 @@ export type {
   TextParameter,
 } from "./text-schemas.js";
 export { textSlotAccessorProblems } from "./text-slot-accessor.js";
+export { evalModeBranchConflicts } from "./eval-paths.js";
+export type { EvalModeBranchConflict } from "./eval-paths.js";
+export { conflictShape, evalModeBranchConflictMessage } from "./eval-mode-branch-conflict.js";
 export {
   dataTextValues,
   declaredValueKinds,
