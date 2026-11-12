@@ -10,9 +10,9 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
-use telo_templating::{UnsupportedConstruct, YamlErrorKind};
+use telo_templating::UnsupportedConstruct;
 
-use crate::parse_loaded_file::parse_error_message;
+use crate::parse_loaded_file::{parse_error_message, YamlErrorKind};
 use crate::position_metadata::DocumentPosition;
 use crate::system_kinds::is_module_document;
 use crate::types::{kind_of, AnalysisDiagnostic, Range, ResourceManifest};

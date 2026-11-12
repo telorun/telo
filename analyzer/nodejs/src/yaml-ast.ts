@@ -1,5 +1,5 @@
 import { defaultCustomTags, isTaggedSentinel } from "@telorun/templating";
-import { isMap, isScalar, isSeq, parseAllDocuments, type Document, type Node } from "yaml";
+import { isMap, isScalar, isSeq, parseAllDocuments, Scalar, type Document, type Node } from "yaml";
 import { buildCelSegments, type CelSegment } from "./cel-ast.js";
 
 /** Read-only YAML node model owned by the analyzer — the shared, browser-safe
@@ -46,12 +46,33 @@ export interface AstDocument {
   range: [number, number];
 }
 
-/** Parse `text` into the read-only AST. Wraps `parseAllDocuments` with the
- *  repo's custom tags (`!cel` / `!ref`) and adapts each `yaml` tree into a
- *  thin `AstNode` view — CEL parsing stays deferred to `celSegments().ast()`. */
+/** Parse `text` into the read-only AST. Wraps {@link parseManifestDocuments} and
+ *  adapts each `yaml` tree into a thin `AstNode` view — CEL parsing stays deferred
+ *  to `celSegments().ast()`. */
 export function parseToAst(text: string): AstDocument[] {
-  const documents = parseAllDocuments(text, { customTags: defaultCustomTags() });
-  return documents.map((doc) => documentToAst(doc, text));
+  return parseManifestDocuments(text).map((doc) => documentToAst(doc, text));
+}
+
+/** The documents of `text` a manifest reader indexes: `parseAllDocuments` with the
+ *  repo's custom tags (`!cel` / `!ref`), less every span holding nothing — no `---`
+ *  marker, no node and no error, which a leading `...` makes `yaml` yield. Both
+ *  loaders drop such a span before documents are indexed, so a document's index is
+ *  the same in every host. */
+export function parseManifestDocuments(text: string): Document[] {
+  return parseAllDocuments(text, { customTags: defaultCustomTags() }).filter((doc) => !isEmptySpan(doc));
+}
+
+function isEmptySpan(doc: Document): boolean {
+  const contents = doc.contents;
+  return (
+    !doc.directives?.docStart &&
+    doc.errors.length === 0 &&
+    isScalar(contents) &&
+    contents.type === Scalar.PLAIN &&
+    contents.source === "" &&
+    !contents.tag &&
+    !contents.anchor
+  );
 }
 
 /** Adapt one already-parsed `yaml.Document` into an `AstDocument`. Lets a host

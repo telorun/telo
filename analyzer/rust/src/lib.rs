@@ -62,7 +62,7 @@ pub use loaded_types::{
     ParseErrorOrigin,
 };
 pub use manifest_loader::{load_graph, resolve_source, ImportTargetPort, ManifestLoader};
-pub use parse_loaded_file::{parse_error_message, parse_loaded_file};
+pub use parse_loaded_file::{parse_error_kind, parse_error_message, parse_loaded_file, YamlErrorKind};
 pub use position_metadata::DocumentPosition;
 pub use release::WORKSPACE_FILENAME;
 pub use resolve_ref_sentinels::{

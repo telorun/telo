@@ -33,10 +33,10 @@ Each row is `{ name, yaml }` (one document) plus exactly one of:
   order; a `!ref` sentinel is `{ __tagged, engine: "ref", source }` plus the
   engine's `parsed` or `refusal`; `...` is a plain key. Compared as serialized
   JSON text, so key order is part of the answer.
-- `refusal: { code }` — the loader refuses the document: an expansion tag on a
-  scalar or a sequence, or a tagged mapping writing `__expand` itself.
-  `BRANCH_SHAPE_INVALID` for `!if` / `!switch`, `REPEAT_SHAPE_INVALID` for
-  `!for-each`.
+- `refusal: { code }` — the loader reports the document's expansion tag as
+  misused: one on a scalar or a sequence, or a tagged mapping writing `__expand`
+  itself. `BRANCH_SHAPE_INVALID` for `!if` / `!switch`, `REPEAT_SHAPE_INVALID`
+  for `!for-each`. The tree still loads, as `yaml` reads it.
 
 Rows also pin the YAML the tags sit in, as the `yaml` package reads it: plain
 scalars by YAML 1.2's core schema (`yes` is a string, `0x1F` and `0o17` integers,
@@ -79,14 +79,17 @@ loader places none. Two families:
   its document, aliases expanding past `yaml`'s bound of 100, a quote never closed,
   a flow collection never closed, a tab as indentation, a plain value holding `: `,
   a line indented to match nothing beside it, an undefined escape, a plain value
-  starting with `@` or `` ` `` — each with one sentence, and every error a loader
-  cannot place in one of them as "not valid YAML". Each loader classifies its own
-  parser's errors; a row pins a kind where both parsers reach it at the same place.
-  A loader reads past the first error only as far as its parser does — the Rust
-  loader stops reading at an alias naming no anchor, where the Node loader reports
-  it and reads the file's later documents, an under-report — so a row holds one
-  YAML error. The alias bound's row sits exactly one alias past it, so a loader
-  moving the bound by one fails it.
+  starting with `@` or `` ` `` — each with one sentence, and every other error as
+  "not valid YAML". Both loaders read with one parser — the Rust one a twin of the
+  `yaml` package's lexer, parser and composer at the version the Node packages pin
+  — and place each of its errors in a kind by its code and, where one code covers
+  several causes, its message, so a row holds every error of the file, in the
+  loader's order: several in one document, and errors in later documents. Rows pin
+  an input for each error code the parser raises, each branch of the placement,
+  and inputs whose ranges depend on how far the parser reads on (a quote or a
+  bracket left open as the document continues, a tab after a value). The alias
+  bound's row sits exactly one alias past it, so a loader moving the bound by one
+  fails it.
 
 `documents`, when present, is each document's `{ sourceLine, positions }`: the
 0-based line it starts on, and its position index — every field value's range
@@ -94,7 +97,9 @@ under its dotted path (`list[3].flow`) and every map key's under `@key:<path>`, 
 the order the index files them, compared as text. A node's range runs from its
 first character after its tag and anchor to the end of its own text; a block
 collection ends where its last value ends, line break and the trailing comment
-lines it keeps included; an alias is no entry.
+lines it keeps included; an alias is no entry. A span with no `---` marker, no
+node and no error — what a leading `...` opens — is no document to either loader,
+so the document after it is document 0.
 
 Run by the two analyzers' loaders: `analyzer/nodejs/tests/loader-positions-conformance.test.ts`
 and `analyzer/rust/tests/loader_positions_conformance.rs`.

@@ -7,7 +7,8 @@
 //! this conversion of a composed document to the plain-JSON manifest tree: a tag is an
 //! engine when the registry holds it, each recognised one becomes a [`crate::sentinel`]
 //! marker object, an expansion tag's mapping loads with its marker first, and aliases
-//! expand as `yaml` expands them, under its `maxAliasCount` bound.
+//! expand as `yaml` expands them — an alias naming no anchor before it and aliases past
+//! its `maxAliasCount` bound refused first, in `toJS`'s order, as `yaml` throws them.
 //!
 //! Node items with no twin: `stringify` / `identify`, which serve the editor's round trip —
 //! no Rust reader writes YAML back.
@@ -19,7 +20,7 @@ use telorun_cel_value::es_number;
 
 use crate::engines::include::{INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE};
 use crate::engines::module_path::MODULE_PATH_ENGINE;
-use crate::expansion_tags::{expansion_shape_code, expansion_tag_keys, is_expansion_tag, EXPANSION_MARKER};
+use crate::expansion_tags::{is_expansion_tag, EXPANSION_MARKER};
 use crate::sentinel::{make_tagged_sentinel, REF_ENGINE};
 use crate::yaml_composer::{NodeId, ScalarValue, YamlDocument, YamlNode, YamlNodeKind, YamlScalar, YamlTag};
 
@@ -78,9 +79,9 @@ pub enum UnsupportedConstruct {
     NonFiniteNumber { value: f64 },
     /// A tree deeper than [`MAX_DEPTH`]. Retired when no reader of the tree recurses on it.
     TreeDepth,
-    /// Flow collections nested past saphyr's 255 levels. Retired when the event source
-    /// reads any depth.
-    FlowDepth,
+    /// A document under `%YAML 1.1`, whose plain scalars `yaml` resolves by the YAML 1.1
+    /// schema. Retired when this reader resolves scalars by that schema.
+    Yaml11Schema,
     /// An alias inside the value its own anchor names. Retired when the two loaders agree on
     /// a refusal of a value containing itself.
     SelfContainingAlias,
@@ -109,17 +110,18 @@ impl UnsupportedConstruct {
             UnsupportedConstruct::NonFiniteNumber { value } => {
                 format!("number {} has no JSON representation", es_number(*value))
             }
-            UnsupportedConstruct::TreeDepth | UnsupportedConstruct::FlowDepth => NESTING_REFUSAL.to_string(),
+            UnsupportedConstruct::TreeDepth => NESTING_REFUSAL.to_string(),
+            UnsupportedConstruct::Yaml11Schema => "the document is under `%YAML 1.1`, whose scalars this kernel does not read: remove the directive, or write the document in YAML 1.2".to_string(),
             UnsupportedConstruct::SelfContainingAlias => "this alias sits inside the value its anchor names, so the value would contain itself, which a manifest tree cannot hold".to_string(),
         }
     }
 }
 
-/// Why the tag layer refuses a node: a refusal both loaders name under one code, or a
-/// construct only this reader cannot hold.
+/// Why the tag layer refuses a node: a construct only this reader cannot hold. A misused
+/// expansion tag is no refusal of the tree, which loads it as `yaml` does; the loaders
+/// report it from the document ([`crate::expansion_tags::expansion_tag_misuse`]).
 #[derive(Debug, Clone, PartialEq)]
 pub enum TagRefusal {
-    Loader { code: &'static str, message: String },
     Unsupported(UnsupportedConstruct),
 }
 
@@ -133,7 +135,6 @@ pub struct TagError {
 impl std::fmt::Display for TagError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.refusal {
-            TagRefusal::Loader { message, .. } => f.write_str(message),
             TagRefusal::Unsupported(construct) => f.write_str(&construct.message()),
         }
     }
@@ -146,17 +147,6 @@ impl TagError {
         Self { refusal: TagRefusal::Unsupported(construct), range: Some(node.range) }
     }
 
-    fn coded(node: &YamlNode, code: &'static str, message: impl Into<String>) -> Self {
-        Self { refusal: TagRefusal::Loader { code, message: message.into() }, range: Some(node.range) }
-    }
-
-    /// The code both loaders name the refusal under, for a loader refusal.
-    pub fn code(&self) -> Option<&'static str> {
-        match &self.refusal {
-            TagRefusal::Loader { code, .. } => Some(code),
-            TagRefusal::Unsupported(_) => None,
-        }
-    }
 }
 
 /// Why a composed document has no JSON tree.
@@ -164,6 +154,9 @@ impl TagError {
 pub enum JsonRefusal {
     /// The tag layer refuses a node.
     Tag(TagError),
+    /// An alias names no anchor before it in its document — a YAML error both loaders name,
+    /// at the alias's `[start, valueEnd]`.
+    UnresolvedAlias { range: [usize; 2] },
     /// The document's aliases expand past `yaml`'s bound — a YAML error both loaders name.
     AliasLimit,
 }
@@ -178,6 +171,12 @@ impl From<TagError> for JsonRefusal {
 /// rewriting recognised tags to sentinels. `None` for a document holding nothing, or null.
 pub fn document_to_json(doc: &YamlDocument) -> Result<Option<Json>, JsonRefusal> {
     let Some(root) = doc.root else { return Ok(None) };
+    if let Some(refusal) = alias_failure(doc, root) {
+        return Err(refusal);
+    }
+    if doc.yaml_1_1 {
+        return Err(TagError::unsupported(&doc.nodes[root], UnsupportedConstruct::Yaml11Schema).into());
+    }
     let json = Converter::new(doc).convert(root)?;
     Ok(if json.is_null() { None } else { Some(json) })
 }
@@ -203,12 +202,11 @@ struct Converter<'d> {
     /// How many levels each anchored node's tree holds, for an alias copying it.
     heights: HashMap<NodeId, usize>,
     open: HashSet<NodeId>,
-    anchors: HashMap<NodeId, AnchorData>,
 }
 
 impl<'d> Converter<'d> {
     fn new(doc: &'d YamlDocument) -> Self {
-        Self { doc, built: HashMap::new(), heights: HashMap::new(), open: HashSet::new(), anchors: HashMap::new() }
+        Self { doc, built: HashMap::new(), heights: HashMap::new(), open: HashSet::new() }
     }
 
     fn convert(mut self, root: NodeId) -> Result<Json, JsonRefusal> {
@@ -224,9 +222,6 @@ impl<'d> Converter<'d> {
                 }
                 Work::Value(id, depth) => {
                     let node = &self.doc.nodes[id];
-                    if node.anchored {
-                        self.anchors.insert(id, AnchorData { count: 1, alias_count: 0 });
-                    }
                     match &node.kind {
                         YamlNodeKind::Scalar(scalar) => {
                             let json = scalar_json(node, scalar)?;
@@ -238,11 +233,12 @@ impl<'d> Converter<'d> {
                             heights.push(0);
                         }
                         YamlNodeKind::Alias { target } => {
-                            let height = self.heights.get(target).copied().unwrap_or(0);
+                            let target = target.expect("an unresolved alias is refused before conversion");
+                            let height = self.heights.get(&target).copied().unwrap_or(0);
                             if depth - 1 + height > MAX_DEPTH {
                                 return Err(too_deep(node).into());
                             }
-                            values.push(self.alias(node, *target)?);
+                            values.push(self.alias(node, target)?);
                             heights.push(height);
                         }
                         YamlNodeKind::Sequence { items, .. } => {
@@ -261,20 +257,6 @@ impl<'d> Converter<'d> {
                                 return Err(too_deep(node).into());
                             }
                             let expansion = collection_tag(node, "a mapping")?;
-                            if let Some(tag) = &expansion {
-                                let writes_marker = entries.iter().any(|entry| {
-                                    matches!(&self.doc.nodes[entry.key].kind,
-                                        YamlNodeKind::Scalar(key) if key.value == ScalarValue::String && key.text == EXPANSION_MARKER)
-                                });
-                                if writes_marker {
-                                    return Err(TagError::coded(
-                                        node,
-                                        expansion_shape_code(tag),
-                                        format!("'!{tag}' holds a key '{EXPANSION_MARKER}', which is reserved for the tag's own marker. Remove it."),
-                                    )
-                                    .into());
-                                }
-                            }
                             if node.anchored {
                                 self.open.insert(id);
                             }
@@ -302,16 +284,30 @@ impl<'d> Converter<'d> {
                 Work::CloseMapping(id, len, expansion) => {
                     let pairs = values.split_off(values.len() - 2 * len);
                     let height = 1 + heights.split_off(heights.len() - 2 * len).into_iter().max().unwrap_or(0);
-                    let mut out = Map::with_capacity(len + usize::from(expansion.is_some()));
-                    if let Some(tag) = expansion {
-                        out.insert(EXPANSION_MARKER.to_string(), Json::String(tag));
-                    }
+                    let mut written = Map::with_capacity(len);
                     let mut pairs = pairs.into_iter();
                     while let (Some(Json::String(key)), Some(value)) = (pairs.next(), pairs.next()) {
-                        out.insert(key, value);
+                        written.insert(key, value);
                     }
-                    let json = Json::Object(out);
-                    self.close(id, &json, height);
+                    let json = match expansion {
+                        Some(tag) => {
+                            // `{ [marker]: tag, ...written }`: a written marker key keeps the
+                            // marker's place and its own value. An alias is handed the mapping
+                            // as written, before the marker is put in front of it.
+                            let mut out = Map::with_capacity(len + 1);
+                            out.insert(EXPANSION_MARKER.to_string(), Json::String(tag));
+                            for (key, value) in &written {
+                                out.insert(key.clone(), value.clone());
+                            }
+                            self.close(id, &Json::Object(written), height);
+                            Json::Object(out)
+                        }
+                        None => {
+                            let json = Json::Object(written);
+                            self.close(id, &json, height);
+                            json
+                        }
+                    };
                     values.push(json);
                     heights.push(height);
                 }
@@ -328,74 +324,24 @@ impl<'d> Converter<'d> {
         }
     }
 
-    /// An alias's value: a copy of its anchor's, counted as `yaml` counts it.
+    /// An alias's value: a copy of its anchor's. Its count was held to the bound before
+    /// conversion ([`alias_failure`]).
     fn alias(&mut self, node: &YamlNode, target: NodeId) -> Result<Json, JsonRefusal> {
         if self.open.contains(&target) {
             return Err(TagError::unsupported(node, UnsupportedConstruct::SelfContainingAlias).into());
         }
-        let mut data = self.anchors.get(&target).copied().unwrap_or(AnchorData { count: 1, alias_count: 0 });
-        data.count += 1;
-        if data.alias_count == 0 {
-            data.alias_count = self.alias_count_of(target);
-        }
-        self.anchors.insert(target, data);
-        if data.count.saturating_mul(data.alias_count) > MAX_ALIAS_COUNT {
-            return Err(JsonRefusal::AliasLimit);
-        }
         Ok(self.built.get(&target).cloned().unwrap_or(Json::Null))
-    }
-
-    /// `yaml`'s `getAliasCount`: the largest expansion factor anywhere beneath a node — an
-    /// alias its anchor's count times its own factor, a scalar 1, a collection the largest
-    /// of its children (0 when it has none).
-    fn alias_count_of(&self, node: NodeId) -> u64 {
-        enum Step {
-            Enter(NodeId),
-            Missing,
-            Fold(usize),
-        }
-        let mut steps = vec![Step::Enter(node)];
-        let mut counts: Vec<u64> = Vec::new();
-        while let Some(step) = steps.pop() {
-            match step {
-                Step::Missing => counts.push(1),
-                Step::Fold(len) => {
-                    let folded = counts.split_off(counts.len() - len).into_iter().max().unwrap_or(0);
-                    counts.push(folded);
-                }
-                Step::Enter(id) => match &self.doc.nodes[id].kind {
-                    YamlNodeKind::Alias { target } => counts.push(
-                        self.anchors.get(target).map_or(0, |data| data.count.saturating_mul(data.alias_count)),
-                    ),
-                    YamlNodeKind::Scalar(_) => counts.push(1),
-                    YamlNodeKind::Sequence { items, .. } => {
-                        steps.push(Step::Fold(items.len()));
-                        steps.extend(items.iter().map(|item| Step::Enter(*item)));
-                    }
-                    YamlNodeKind::Mapping { entries, .. } => {
-                        steps.push(Step::Fold(entries.len() * 2));
-                        for entry in entries {
-                            steps.push(Step::Enter(entry.key));
-                            steps.push(entry.value.map_or(Step::Missing, Step::Enter));
-                        }
-                    }
-                },
-            }
-        }
-        counts.pop().unwrap_or(0)
     }
 
     /// A mapping key as the text the loaders key the entry by.
     fn key(&mut self, id: NodeId) -> Result<String, JsonRefusal> {
         let node = &self.doc.nodes[id];
-        if node.anchored {
-            self.anchors.insert(id, AnchorData { count: 1, alias_count: 0 });
-        }
         let json = match &node.kind {
             YamlNodeKind::Scalar(scalar) => {
                 match &node.tag {
                     None | Some(YamlTag::Core(_)) => {}
-                    Some(YamlTag::Local(name)) if is_expansion_tag(name) => return Err(expansion_misuse(node, name, "a scalar").into()),
+                    // A scalar behind an expansion tag loads as the bare value.
+                    Some(YamlTag::Local(name)) if is_expansion_tag(name) => {}
                     Some(tag) => {
                         return Err(collection_key(node, format!("a `{}`-tagged value", tag.written())).into())
                     }
@@ -406,7 +352,9 @@ impl<'d> Converter<'d> {
                 }
                 json
             }
-            YamlNodeKind::Alias { target } => self.alias(node, *target)?,
+            YamlNodeKind::Alias { target } => {
+                self.alias(node, target.expect("an unresolved alias is refused before conversion"))?
+            }
             YamlNodeKind::Sequence { .. } => return Err(collection_key(node, "a list").into()),
             YamlNodeKind::Mapping { .. } => return Err(collection_key(node, "a mapping").into()),
         };
@@ -421,6 +369,85 @@ impl<'d> Converter<'d> {
     }
 }
 
+/// The alias failure `doc.toJS()` throws first, walking the tree in its order (each key
+/// before its value): an alias naming no anchor before it, or one whose anchor's copies
+/// would exceed `maxAliasCount`, counted as `yaml`'s `Alias.toJSON` counts them.
+fn alias_failure(doc: &YamlDocument, root: NodeId) -> Option<JsonRefusal> {
+    let mut anchors: HashMap<NodeId, AnchorData> = HashMap::new();
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        let node = &doc.nodes[id];
+        if node.anchored {
+            anchors.insert(id, AnchorData { count: 1, alias_count: 0 });
+        }
+        match &node.kind {
+            YamlNodeKind::Scalar(_) => {}
+            YamlNodeKind::Alias { target: None } => return Some(JsonRefusal::UnresolvedAlias { range: node.range }),
+            YamlNodeKind::Alias { target: Some(target) } => {
+                let mut data = anchors.get(target).copied().unwrap_or(AnchorData { count: 1, alias_count: 0 });
+                data.count += 1;
+                if data.alias_count == 0 {
+                    data.alias_count = alias_count_of(doc, &anchors, *target);
+                }
+                anchors.insert(*target, data);
+                if data.count.saturating_mul(data.alias_count) > MAX_ALIAS_COUNT {
+                    return Some(JsonRefusal::AliasLimit);
+                }
+            }
+            YamlNodeKind::Sequence { items, .. } => stack.extend(items.iter().rev()),
+            YamlNodeKind::Mapping { entries, .. } => {
+                for entry in entries.iter().rev() {
+                    stack.extend(entry.value);
+                    stack.push(entry.key);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// `yaml`'s `getAliasCount`: the largest expansion factor anywhere beneath a node — an alias
+/// its anchor's count times its own factor, a scalar 1, a collection the largest of its
+/// children (0 when it has none).
+fn alias_count_of(doc: &YamlDocument, anchors: &HashMap<NodeId, AnchorData>, node: NodeId) -> u64 {
+    enum Step {
+        Enter(NodeId),
+        Missing,
+        Fold(usize),
+    }
+    let mut steps = vec![Step::Enter(node)];
+    let mut counts: Vec<u64> = Vec::new();
+    while let Some(step) = steps.pop() {
+        match step {
+            Step::Missing => counts.push(1),
+            Step::Fold(len) => {
+                let folded = counts.split_off(counts.len() - len).into_iter().max().unwrap_or(0);
+                counts.push(folded);
+            }
+            Step::Enter(id) => match &doc.nodes[id].kind {
+                YamlNodeKind::Alias { target } => counts.push(
+                    target
+                        .and_then(|target| anchors.get(&target))
+                        .map_or(0, |data| data.count.saturating_mul(data.alias_count)),
+                ),
+                YamlNodeKind::Scalar(_) => counts.push(1),
+                YamlNodeKind::Sequence { items, .. } => {
+                    steps.push(Step::Fold(items.len()));
+                    steps.extend(items.iter().map(|item| Step::Enter(*item)));
+                }
+                YamlNodeKind::Mapping { entries, .. } => {
+                    steps.push(Step::Fold(entries.len() * 2));
+                    for entry in entries {
+                        steps.push(Step::Enter(entry.key));
+                        steps.push(entry.value.map_or(Step::Missing, Step::Enter));
+                    }
+                }
+            },
+        }
+    }
+    counts.pop().unwrap_or(0)
+}
+
 /// A collection's tag: an expansion tag's name for a mapping, nothing for no tag or a core
 /// collection tag, and a refusal for anything else — every tag but an expansion tag holds a
 /// scalar.
@@ -428,13 +455,8 @@ fn collection_tag(node: &YamlNode, written: &'static str) -> Result<Option<Strin
     let Some(tag) = &node.tag else { return Ok(None) };
     match tag {
         YamlTag::Core(name) if name == "map" || name == "seq" => Ok(None),
-        YamlTag::Local(name) if is_expansion_tag(name) => {
-            if written == "a mapping" {
-                Ok(Some(name.clone()))
-            } else {
-                Err(expansion_misuse(node, name, "a sequence"))
-            }
-        }
+        // A sequence behind an expansion tag loads as the bare list.
+        YamlTag::Local(name) if is_expansion_tag(name) => Ok((written == "a mapping").then(|| name.clone())),
         YamlTag::Local(name) if EXPRESSION_ENGINES.contains(&name.as_str()) => Err(expression_refusal(node, name)),
         YamlTag::Local(name) if KNOWN_ENGINES.contains(&name.as_str()) => Err(TagError::unsupported(
             node,
@@ -448,7 +470,7 @@ fn collection_tag(node: &YamlNode, written: &'static str) -> Result<Option<Strin
 fn scalar_json(node: &YamlNode, scalar: &YamlScalar) -> Result<Json, TagError> {
     match &node.tag {
         None | Some(YamlTag::Core(_)) => {}
-        Some(YamlTag::Local(name)) if is_expansion_tag(name) => return Err(expansion_misuse(node, name, "a scalar")),
+        Some(YamlTag::Local(name)) if is_expansion_tag(name) => {}
         Some(YamlTag::Local(name)) if EXPRESSION_ENGINES.contains(&name.as_str()) => return Err(expression_refusal(node, name)),
         Some(YamlTag::Local(name)) if KNOWN_ENGINES.contains(&name.as_str()) => return Ok(make_tagged_sentinel(name, &scalar.text)),
         Some(other) => return Err(unsupported_tag(node, other)),
@@ -477,7 +499,7 @@ fn scalar_value_json(node: &YamlNode, scalar: &YamlScalar) -> Result<Json, TagEr
         ScalarValue::Null => Json::Null,
         ScalarValue::Bool(b) => Json::Bool(b),
         ScalarValue::Number(n) => number_json(node, n)?,
-        ScalarValue::String | ScalarValue::Engine => Json::String(scalar.text.clone()),
+        ScalarValue::String | ScalarValue::Engine | ScalarValue::Opaque => Json::String(scalar.text.clone()),
     })
 }
 
@@ -504,14 +526,6 @@ fn too_deep(node: &YamlNode) -> TagError {
 
 fn collection_key(node: &YamlNode, written: impl Into<String>) -> TagError {
     TagError::unsupported(node, UnsupportedConstruct::CollectionKey { written: written.into() })
-}
-
-fn expansion_misuse(node: &YamlNode, tag: &str, written: &str) -> TagError {
-    TagError::coded(
-        node,
-        expansion_shape_code(tag),
-        format!("'!{tag}' is written on {written}; it takes a mapping ({}).", expansion_tag_keys(tag)),
-    )
 }
 
 fn expression_refusal(node: &YamlNode, engine: &str) -> TagError {

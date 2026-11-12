@@ -40,12 +40,10 @@ No runner has a skip path or a tolerance list.
 
 ## What the Rust analyzer covers
 
-The Rust analyzer reports YAML parse failures (`MANIFEST_PARSE_FAILED`), the loader's expansion refusals (`BRANCH_POSITION_INVALID`, `REPEAT_OUTSIDE_TEMPLATE`, `BRANCH_SHAPE_INVALID`, `REPEAT_SHAPE_INVALID`), `KIND_PREFIX_RESERVED`, the capability roster (`CAPABILITY_UNKNOWN`, `CAPABILITY_NOT_DECLARABLE`) and `INVALID_REFERENCE_FORM`, and the Rust kernel raises each from them. Node's other passes have no twin there yet, so a manifest any of them would report has no row. It may under-report and never over-report; where it does, no row can hold the manifest until a runner can pass it, and these are owed:
+The Rust analyzer reports YAML parse failures (`MANIFEST_PARSE_FAILED`) — every error the `yaml` package raises, in every document, read by a twin of its lexer, parser and composer — the loader's expansion refusals (`BRANCH_POSITION_INVALID`, `REPEAT_OUTSIDE_TEMPLATE`, `BRANCH_SHAPE_INVALID`, `REPEAT_SHAPE_INVALID`), `KIND_PREFIX_RESERVED`, the capability roster (`CAPABILITY_UNKNOWN`, `CAPABILITY_NOT_DECLARABLE`) and `INVALID_REFERENCE_FORM`, and the Rust kernel raises each from them. Node's other passes have no twin there yet, so a manifest any of them would report has no row. It may under-report and never over-report; where it does, no row can hold the manifest until a runner can pass it, and these are owed:
 
 - An `imports:` block written behind an expansion tag: Node also reads the tag's marker as an import named `__expand` and reports it `INVALID_IMPORT_SOURCE`; the Rust loader reads no import there.
 - `INVALID_IMPORT_SOURCE` and `IMPORT_UNRESOLVED` have no producer: an import that cannot be resolved or read ends the Rust graph walk as the source's own error.
 - `INVALID_IMPORT_TARGET` is raised by the Rust kernel's load but reported as no diagnostic, since its sentence names where the target was fetched from, which the Rust transports word differently.
-- An alias naming no anchor: the Rust loader stops reading the file there, where the Node loader reports it and reads the file's later documents, so anything Node reports after it is not reported.
-- Two YAML shapes are classified under another kind than Node's: a tab indenting a key that follows a mapping at column 0 (Node's tab-indentation kind, Rust's bad-indentation one), and a flow mapping left open while the document continues on the next line (Node's unclosed-collection kind at the next line, Rust's generic kind inside the mapping).
 
 The vectors are not built-in vocabulary: nothing under `sdk/builtins/` reads them, and no runtime ships them.

@@ -68,7 +68,7 @@ importers:
         specifier: ^2.0.1
         version: 2.0.1
       yaml:
-        specifier: ^2.8.3
+        specifier: 2.8.3
         version: 2.8.3
     devDependencies:
       '@telorun/sdk':
@@ -665,7 +665,7 @@ importers:
         specifier: ^3.1.7
         version: 3.2.0
       yaml:
-        specifier: ^2.8.3
+        specifier: 2.8.3
         version: 2.8.3
     devDependencies:
       '@telorun/sdk':
@@ -3740,7 +3740,7 @@ importers:
         specifier: 14.0.1
         version: 14.0.1
       yaml:
-        specifier: ^2.8.3
+        specifier: 2.8.3
         version: 2.8.3
     devDependencies:
       '@telorun/sdk':
