@@ -1,5 +1,14 @@
 # @telorun/templating
 
+## 0.135.0
+
+### Patch Changes
+
+- 8e04ab6: A resource or referrer rule that iterates a map or tests membership with `in` reads only the map's keys, so it is judged on a resource whose map values are `!cel` instead of being reported as `RESOURCE_RULE_SKIPPED`; over a list the elements are still read.
+- Updated dependencies [d036bfa]
+- Updated dependencies [d036bfa]
+  - @telorun/cel@0.135.0
+
 ## 0.134.0
 
 ### Patch Changes

@@ -1,8 +1,0 @@
-modules:
-  modules/desktop: Added
-body: "Documentation: `telo run` as the desktop host (single instance, remembered
-  loopback origin, admission through a second loopback origin of the host's own that
-  serves every page the host shows, startup view), external sign-in through the need's
-  `callbackPaths` (a `form_post` return arrives with the host origin as `Origin`),
-  windows shown where the session has no tray, and what `onClose: hide` means for
-  stopping."

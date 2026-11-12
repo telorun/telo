@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.4 - 2026-11-12
+### Fixed
+* The Rust runtime guide lists every runtime: form itself instead of linking to another module's page.
+
 ## 0.19.3 - 2026-11-09
 ### Fixed
 * The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.

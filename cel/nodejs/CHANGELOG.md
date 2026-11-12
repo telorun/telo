@@ -1,5 +1,12 @@
 # @telorun/cel
 
+## 0.135.0
+
+### Minor Changes
+
+- d036bfa: The calendar functions read a year from 1 to 99 as itself. `addMonths`, `startOfMonth`, `isoIn` and `nowIso` used to read such a year as 1900 to 1999 when they turned a wall clock back into an instant or wrote a zone's offset, so `addMonths(timestamp('0050-01-31T00:00:00Z'), 1)` now answers `0050-02-28T00:00:00Z`, and a result that falls before year 1 is refused with `addMonths: the result is outside the range of a timestamp` instead of answering an instant in the 1900s.
+- d036bfa: A call that resolves to a registration with no implementation answers `unbound_function`, naming the function and its signature, instead of `no_matching_overload`.
+
 ## 0.134.0
 
 ## 0.133.0

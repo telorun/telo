@@ -1,6 +1,6 @@
 [package]
 name = "telorun-console"
-version = "0.19.3"
+version = "0.19.4"
 license = "MIT"
 edition = "2021"
 publish = false
