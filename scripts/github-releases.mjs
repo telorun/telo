@@ -56,6 +56,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, loadWorkspace } from "./module-ownership.mjs";
 import { channelOf, cliVersionCommit, githubReleaseFlags } from "./release-channel.mjs";
+import { candidatePackages } from "./release-package-set.mjs";
 
 const dryRun = process.argv.includes("--dry-run");
 
@@ -352,15 +353,19 @@ async function createRelease({ tag, name, body, draft = false, flags = {} }) {
   throw new Error(`Creating release ${tag} failed: ${response.status} ${detail}`);
 }
 
-let candidates = published;
-if (candidates.length === 0) {
-  candidates = versionBumpsInHeadCommit();
-  if (candidates.length > 0) {
-    console.log(
-      `github-releases: no published set was reported; recovered ${candidates.length} ` +
-        `version bump${candidates.length === 1 ? "" : "s"} from this commit.`,
-    );
-  }
+const needsRecovery = published.length === 0 || ["final", "patch"].includes(process.env.RELEASE_CHANNEL ?? "");
+const recovered = needsRecovery ? versionBumpsInHeadCommit() : [];
+const candidates = candidatePackages({ published, recovered, channel: process.env.RELEASE_CHANNEL });
+if (published.length === 0 && candidates.length > 0) {
+  console.log(
+    `github-releases: no published set was reported; recovered ${candidates.length} ` +
+      `version bump${candidates.length === 1 ? "" : "s"} from this commit.`,
+  );
+} else if (candidates.length > published.length) {
+  console.log(
+    `github-releases: the published set was partial; added ${candidates.length - published.length} ` +
+      `package${candidates.length - published.length === 1 ? "" : "s"} from this commit's version bumps.`,
+  );
 }
 if (candidates.length === 0) {
   console.log("github-releases: nothing was published; no releases to create.");
