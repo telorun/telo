@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-11-12
+### Added
+* Styles for the markdown annotation control, the button node and the time element.
+
 ## 0.8.0 - 2026-11-09
 ### Added
 * Draws Combobox on Radix at ui_react_controls-4, the search box's suggestion list on Radix's popover, and styles the search box, its chips and the suggestion list.

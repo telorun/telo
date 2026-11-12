@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: UiReact
-  version: 0.12.2
+  version: 0.13.0
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [UI]
@@ -12,7 +12,7 @@ metadata:
     and drop and inline editing, validated forms, filter bars, swappable themes
     and custom React components. Mounted on an HTTP server, it turns page
     descriptions into an admin panel with no frontend build.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.136.0" }
 restrictions:
   - requires: { telo: ">=0.129.0" }
     reason: "The App reads the application's translations (`ctx.translations`) and the keyed texts its kind names (`x-telo-text-keys`); 0.128.0 has neither and cannot load the `ui` beneath it."

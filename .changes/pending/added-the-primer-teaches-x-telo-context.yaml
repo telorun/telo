@@ -1,6 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The primer teaches x-telo-context-from-path-template, which types a binding as the
-  variables of a path template the resource holds, and that a map keyed by a model
-  through the member form of x-telo-value-schema-from refuses a key the model does not
-  declare.

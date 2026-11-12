@@ -1,6 +1,6 @@
 {
   "name": "@telorun/cache",
-  "version": "0.14.3",
+  "version": "0.15.0",
   "private": true,
   "description": "Telo cache module — Cache.Store abstract plus Lookup / Entry / View operating against any store.",
   "keywords": [

@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: DurableJournalPostgres
-  version: 0.14.1
+  version: 0.14.2
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Reliability, Storage]
@@ -13,7 +13,7 @@ metadata:
 requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=unreleased"
+  telo: ">=0.136.0"
 imports:
   DurableLocal: ../durable-local
   Postgres: ../postgres

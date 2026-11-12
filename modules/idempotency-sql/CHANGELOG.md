@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-11-12
+### Added
+* IdempotencySql.Once's forwarded inputs are typed by the body's input contract, so its sensitive marks are redacted in the claim's traces and a refused payload fails at the claim's own dispatch.
+
 ## 0.3.2 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.
