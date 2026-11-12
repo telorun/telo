@@ -2,41 +2,255 @@
   {
     "name": "a tag at an import entry",
     "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Run: !if { if: true, then: ../run }\n",
-    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+    "refusals": [
+      { "documentIndex": 0, "code": "BRANCH_POSITION_INVALID", "message": "'!if' at 'imports.Run' of the Telo.Application document: the loader reads every import before anything is expanded, so it cannot be chosen or repeated. Write it plainly.", "range": [4, 11, 4, 37] }
+    ]
   },
   {
     "name": "a tag as the whole imports block",
     "yaml": "kind: Telo.Library\nmetadata:\n  name: Lib\nimports: !switch { switch: a, cases: { a: { Run: ../run } } }\n",
-    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+    "refusals": [
+      { "documentIndex": 0, "code": "BRANCH_POSITION_INVALID", "message": "'!switch' at 'imports' of the Telo.Library document: the loader reads every import before anything is expanded, so it cannot be chosen or repeated. Write it plainly.", "range": [3, 17, 3, 61] }
+    ]
   },
   {
     "name": "a tag at an import's source",
     "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Run:\n    source: !if { if: true, then: ../run }\n",
-    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+    "refusals": [
+      { "documentIndex": 0, "code": "BRANCH_POSITION_INVALID", "message": "'!if' at 'imports.Run.source' of the Telo.Application document: the loader reads every import's source before anything is expanded, so it cannot be chosen or repeated. Write it plainly.", "range": [5, 16, 5, 42] }
+    ]
   },
   {
     "name": "a repeat at an import entry",
     "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Run: !for-each { in: [a], emit: ../run }\n",
-    "refusals": [{ "documentIndex": 0, "code": "REPEAT_OUTSIDE_TEMPLATE" }]
+    "refusals": [
+      { "documentIndex": 0, "code": "REPEAT_OUTSIDE_TEMPLATE", "message": "'!for-each' at 'imports.Run' of the Telo.Application document: the loader reads every import before anything is expanded, so it cannot be chosen or repeated. Write it plainly.", "range": [4, 17, 4, 42] }
+    ]
   },
   {
     "name": "a splice among the imports",
     "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  ...: !for-each { in: [a], key: k, emit: ../run }\n",
-    "refusals": [{ "documentIndex": 0, "code": "REPEAT_OUTSIDE_TEMPLATE" }]
+    "refusals": [
+      { "documentIndex": 0, "code": "REPEAT_OUTSIDE_TEMPLATE", "message": "A '...' splice at 'imports....' of the Telo.Application document: the loader reads every import before anything is expanded, so it cannot be chosen or repeated. Write it plainly.", "range": [4, 17, 4, 50] }
+    ]
   },
   {
     "name": "a tag at an include entry",
     "yaml": "kind: Telo.Application\nmetadata:\n  name: App\ninclude:\n  - !if { if: true, then: ./part.yaml }\n",
-    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+    "refusals": [
+      { "documentIndex": 0, "code": "BRANCH_POSITION_INVALID", "message": "'!if' at 'include[0]' of the Telo.Application document: the loader reads the files it includes before anything is expanded, so it cannot be chosen or repeated. Write it plainly.", "range": [4, 8, 4, 39] }
+    ]
   },
   {
     "name": "a tag at the module's name",
     "yaml": "kind: Telo.Library\nmetadata:\n  name: !if { if: true, then: Lib }\n",
-    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+    "refusals": [
+      { "documentIndex": 0, "code": "BRANCH_POSITION_INVALID", "message": "'!if' at 'metadata.name' of the Telo.Library document: the loader reads the module's name before anything is expanded, so it cannot be chosen or repeated. Write it plainly.", "range": [2, 12, 2, 35] }
+    ]
   },
   {
     "name": "tags the loader does not read are not its to refuse",
     "yaml": "kind: Telo.Application\nmetadata:\n  name: App\ntargets:\n  - !if { if: true, then: !ref job }\n--- !if\nmetadata: { name: job }\nif: true\nthen: { kind: Run.Value, value: 1 }\n",
     "refusals": []
+  },
+  {
+    "name": "every node form's range, in UTF-16 code units",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App # a comment\nlist:\n  - plain\n  - 'single'\n  - \"double\"\n  - { flow: map, n: 1 }\n  - [flow, seq]\n      # a comment indented past the list belongs to its last item\nblock: |\n  line one\n  line two\nfolded: >-\n  folded text\ntagged: !ref target\nanchored: &a { z: 1 }\naliased: *a\nempty:\nnested:\n  deep:\n    - - x\n  last:\n    value: 1\n    # a comment at the entries' indentation stays with them\nafter: 😀 beyond the basic plane\n\"😀 key\": v\n",
+    "refusals": [],
+    "documents": [
+      {
+        "sourceLine": 0,
+        "positions": {
+          "@key:kind": [0, 0, 0, 4],
+          "kind": [0, 6, 0, 22],
+          "@key:metadata": [1, 0, 1, 8],
+          "metadata": [2, 2, 3, 0],
+          "@key:metadata.name": [2, 2, 2, 6],
+          "metadata.name": [2, 8, 2, 11],
+          "@key:list": [3, 0, 3, 4],
+          "list": [4, 2, 10, 0],
+          "list[0]": [4, 4, 4, 9],
+          "list[1]": [5, 4, 5, 12],
+          "list[2]": [6, 4, 6, 12],
+          "list[3]": [7, 4, 7, 23],
+          "@key:list[3].flow": [7, 6, 7, 10],
+          "list[3].flow": [7, 12, 7, 15],
+          "@key:list[3].n": [7, 17, 7, 18],
+          "list[3].n": [7, 20, 7, 21],
+          "list[4]": [8, 4, 8, 15],
+          "list[4][0]": [8, 5, 8, 9],
+          "list[4][1]": [8, 11, 8, 14],
+          "@key:block": [10, 0, 10, 5],
+          "block": [10, 7, 13, 0],
+          "@key:folded": [13, 0, 13, 6],
+          "folded": [13, 8, 15, 0],
+          "@key:tagged": [15, 0, 15, 6],
+          "tagged": [15, 13, 15, 19],
+          "@key:anchored": [16, 0, 16, 8],
+          "anchored": [16, 13, 16, 21],
+          "@key:anchored.z": [16, 15, 16, 16],
+          "anchored.z": [16, 18, 16, 19],
+          "@key:aliased": [17, 0, 17, 7],
+          "@key:empty": [18, 0, 18, 5],
+          "empty": [18, 6, 18, 6],
+          "@key:nested": [19, 0, 19, 6],
+          "nested": [20, 2, 25, 0],
+          "@key:nested.deep": [20, 2, 20, 6],
+          "nested.deep": [21, 4, 22, 0],
+          "nested.deep[0]": [21, 6, 22, 0],
+          "nested.deep[0][0]": [21, 8, 21, 9],
+          "@key:nested.last": [22, 2, 22, 6],
+          "nested.last": [23, 4, 24, 0],
+          "@key:nested.last.value": [23, 4, 23, 9],
+          "nested.last.value": [23, 11, 23, 12],
+          "@key:after": [25, 0, 25, 5],
+          "after": [25, 7, 25, 32],
+          "@key:😀 key": [26, 0, 26, 8],
+          "😀 key": [26, 10, 26, 11]
+        }
+      }
+    ]
+  },
+  {
+    "name": "each document's start line, an empty last document included",
+    "yaml": "a: 1\n---\nb: 2\n--- !if\nif: true\nthen: 1\n---\n",
+    "refusals": [],
+    "documents": [
+      {
+        "sourceLine": 0,
+        "positions": {
+          "@key:a": [0, 0, 0, 1],
+          "a": [0, 3, 0, 4]
+        }
+      },
+      {
+        "sourceLine": 2,
+        "positions": {
+          "@key:b": [2, 0, 2, 1],
+          "b": [2, 3, 2, 4]
+        }
+      },
+      {
+        "sourceLine": 4,
+        "positions": {
+          "@key:if": [4, 0, 4, 2],
+          "if": [4, 4, 4, 8],
+          "@key:then": [5, 0, 5, 4],
+          "then": [5, 6, 5, 7]
+        }
+      },
+      { "sourceLine": 7, "positions": {} }
+    ]
+  },
+  {
+    "name": "a leading --- opens the first document",
+    "yaml": "---\na: 1\n",
+    "refusals": [],
+    "documents": [
+      {
+        "sourceLine": 0,
+        "positions": {
+          "@key:a": [1, 0, 1, 1],
+          "a": [1, 3, 1, 4]
+        }
+      }
+    ]
+  },
+  {
+    "name": "a file of comments holds no document",
+    "yaml": "# only a comment\n",
+    "refusals": [],
+    "documents": []
+  },
+  {
+    "name": "a key written twice",
+    "yaml": "kind: A\nmetadata:\n  name: x\nname: 1\nname: 2\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This key is already written earlier in the same mapping; a mapping holds each key once, so remove or rename one of the two.", "range": [4, 0, 4, 1] }
+    ]
+  },
+  {
+    "name": "an alias naming no anchor",
+    "yaml": "kind: A\nvalue: *missing\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This alias names no anchor written before it in the document; write the anchor (`&name`) on an earlier value, or write the value out in place of the alias.", "range": [1, 7, 1, 15] }
+    ]
+  },
+  {
+    "name": "an anchor does not reach a later document",
+    "yaml": "a: &x 1\n---\nb: *x\n",
+    "refusals": [
+      { "documentIndex": 1, "code": "MANIFEST_PARSE_FAILED", "message": "This alias names no anchor written before it in the document; write the anchor (`&name`) on an earlier value, or write the value out in place of the alias.", "range": [2, 3, 2, 5] }
+    ]
+  },
+  {
+    "name": "aliases expanding past the bound",
+    "yaml": "a: &a [x, x, x, x, x, x, x, x, x, x]\nb: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a, *a]\nc: [*b, *b, *b, *b, *b, *b, *b, *b, *b, *b]\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "The aliases in this document expand into more copies of their values than a manifest may hold; write the repeated values out, or alias them fewer times." }
+    ]
+  },
+  {
+    "name": "a double quote never closed",
+    "yaml": "kind: A\nname: \"unterminated\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A quoted value is never closed; end it with the quote character it opens with.", "range": [2, 0, 2, 1] }
+    ]
+  },
+  {
+    "name": "a single quote never closed, read on over a line too little indented",
+    "yaml": "kind: A\nname: 'unterminated\nmore: x\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A quoted value is never closed; end it with the quote character it opens with.", "range": [3, 0, 3, 1] }
+    ]
+  },
+  {
+    "name": "a flow sequence never closed",
+    "yaml": "kind: A\nlist: [1, 2\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A bracketed list or map ('[…]' or '{…}') is not closed, or a line inside it is not indented past the key holding it; close it with the matching ']' or '}', and indent its continuation lines.", "range": [2, 0, 2, 1] }
+    ]
+  },
+  {
+    "name": "a tab as indentation",
+    "yaml": "kind: A\nmetadata:\n\tname: x\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A tab indents this line; YAML indents with spaces only.", "range": [2, 0, 2, 1] }
+    ]
+  },
+  {
+    "name": "a plain value holding ': '",
+    "yaml": "kind: A\ndescription: uses encoding: base64 here\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A plain (unquoted) value cannot contain ': ' (a colon followed by a space), which the parser reads as a nested mapping; wrap the value in quotes, e.g. `description: \"… encoding: base64 …\"`.", "range": [1, 13, 1, 14] }
+    ]
+  },
+  {
+    "name": "a line indented to match nothing beside it",
+    "yaml": "kind: A\nmetadata:\n  name: x\n version: 1\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This line is not indented to match the entries beside it; align it with its siblings, or indent it under the key it belongs to.", "range": [3, 0, 3, 1] }
+    ]
+  },
+  {
+    "name": "an escape YAML does not define",
+    "yaml": "kind: A\nname: \"bad \\q escape\"\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A double-quoted value holds an escape sequence YAML does not define; write the backslash itself as `\\\\`, or use single quotes, inside which a backslash is literal.", "range": [1, 11, 1, 12] }
+    ]
+  },
+  {
+    "name": "a plain value starting with a reserved character",
+    "yaml": "kind: A\nname: @x\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes.", "range": [1, 6, 1, 7] }
+    ]
+  },
+  {
+    "name": "anything else is not valid YAML",
+    "yaml": "kind: A\nlist: [1, 2]]\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "MANIFEST_PARSE_FAILED", "message": "This is not valid YAML; check the indentation, quoting and brackets at this position.", "range": [1, 12, 1, 13] }
+    ]
   }
 ]

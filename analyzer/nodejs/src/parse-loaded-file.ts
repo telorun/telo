@@ -1,13 +1,13 @@
 import type { CelEnvironment } from "@telorun/cel";
 import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
 import { defaultCustomTags, siteEnvironment, type CelProgramSite } from "@telorun/templating";
-import { parseAllDocuments } from "yaml";
+import { parseAllDocuments, visit, type Document } from "yaml";
 import { buildCelEnvironment } from "./cel-environment.js";
 import type { LoadedFile, ParseError } from "./loaded-types.js";
 import { migrateManifests, NO_MIGRATIONS } from "./migrations/driver.js";
 import type { MigrationEntry } from "./migrations/types.js";
 import { loaderExpansionRefusals } from "./loader-expansion-refusals.js";
-import { buildDocumentPositions } from "./position-metadata.js";
+import { buildDocumentPositions, buildLineOffsets, offsetToPosition } from "./position-metadata.js";
 import { expandManifestFragments } from "./manifest-schemas.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
 import { precompileDoc } from "./precompile.js";
@@ -36,16 +36,89 @@ export interface ParseOptions {
   moduleNames?: ReadonlySet<string>;
 }
 
-/** Append an actionable hint to raw yaml-parser messages that are otherwise
- *  cryptic. The parser reports `BLOCK_AS_IMPLICIT_KEY` ("Nested mappings are
- *  not allowed in compact mappings") when a plain (unquoted) scalar contains
- *  `: ` (colon-space) — the parser reads the colon as a nested key. Telling the
- *  author to quote the value turns an opaque error into a one-step fix. */
-function augmentParseMessage(err: import("yaml").YAMLError): string {
-  if (err.code === "BLOCK_AS_IMPLICIT_KEY") {
-    return `${err.message}\n\nHint: a plain (unquoted) value cannot contain ': ' (colon followed by a space) — the parser reads it as a nested mapping. Wrap the value in quotes, e.g. \`description: "… \`encoding: base64\` …"\`.`;
+/** What each YAML error says: one closed set of kinds, one sentence each, worded by Telo
+ *  rather than by a parser so that every engine reports a malformed file in the same
+ *  words (the Rust loader's `parse_error_message`). Each loader classifies its own
+ *  parser's errors into a kind; one it cannot place is `unreadable`. */
+export const PARSE_ERROR_MESSAGES = {
+  duplicateKey:
+    "This key is already written earlier in the same mapping; a mapping holds each key once, so remove or rename one of the two.",
+  unresolvedAlias:
+    "This alias names no anchor written before it in the document; write the anchor (`&name`) on an earlier value, or write the value out in place of the alias.",
+  aliasLimit:
+    "The aliases in this document expand into more copies of their values than a manifest may hold; write the repeated values out, or alias them fewer times.",
+  unclosedQuote: "A quoted value is never closed; end it with the quote character it opens with.",
+  unclosedFlowCollection:
+    "A bracketed list or map ('[…]' or '{…}') is not closed, or a line inside it is not indented past the key holding it; close it with the matching ']' or '}', and indent its continuation lines.",
+  tabIndentation: "A tab indents this line; YAML indents with spaces only.",
+  plainValueColon:
+    "A plain (unquoted) value cannot contain ': ' (a colon followed by a space), which the parser reads as a nested mapping; wrap the value in quotes, e.g. `description: \"… encoding: base64 …\"`.",
+  badIndentation:
+    "This line is not indented to match the entries beside it; align it with its siblings, or indent it under the key it belongs to.",
+  invalidEscape:
+    "A double-quoted value holds an escape sequence YAML does not define; write the backslash itself as `\\\\`, or use single quotes, inside which a backslash is literal.",
+  reservedCharacter: "A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes.",
+  unreadable: "This is not valid YAML; check the indentation, quoting and brackets at this position.",
+} as const;
+
+export type ParseErrorKind = keyof typeof PARSE_ERROR_MESSAGES;
+
+/** The kind of one of the `yaml` package's errors, read from its code and, where one code
+ *  covers several causes, its message. */
+function parseErrorKind(err: import("yaml").YAMLError): ParseErrorKind {
+  const message = err.message;
+  switch (err.code) {
+    case "DUPLICATE_KEY":
+      return "duplicateKey";
+    case "TAB_AS_INDENT":
+      return "tabIndentation";
+    case "BAD_DQ_ESCAPE":
+      return "invalidEscape";
+    case "BLOCK_AS_IMPLICIT_KEY":
+      return message.startsWith("Nested mappings are not allowed in compact mappings")
+        ? "plainValueColon"
+        : "unreadable";
+    case "MISSING_CHAR":
+      if (message.startsWith("Missing closing")) return "unclosedQuote";
+      if (/^Flow (sequence|map) must end with/.test(message)) return "unclosedFlowCollection";
+      return "unreadable";
+    case "BAD_INDENT":
+      if (/^Flow (sequence|map) in block collection must be sufficiently indented/.test(message)) {
+        return "unclosedFlowCollection";
+      }
+      if (/^All (mapping|sequence) items must start at the same column/.test(message)) return "badIndentation";
+      return "unreadable";
+    case "BAD_SCALAR_START":
+      return message.includes("reserved character") ? "reservedCharacter" : "unreadable";
+    default:
+      return "unreadable";
   }
-  return err.message;
+}
+
+/** The kind of a failure `doc.toJSON()` throws, which is how `yaml` refuses an alias:
+ *  undefined for anything else, which is not the parser's to report. */
+function aliasFailureKind(error: unknown): "unresolvedAlias" | "aliasLimit" | undefined {
+  if (!(error instanceof ReferenceError)) return undefined;
+  if (error.message.startsWith("Unresolved alias")) return "unresolvedAlias";
+  if (error.message.startsWith("Excessive alias count")) return "aliasLimit";
+  return undefined;
+}
+
+/** The first alias of `doc`, in conversion order, naming no anchor before it. */
+function unresolvedAliasRange(doc: Document, text: string): import("./types.js").Range | undefined {
+  let range: import("./types.js").Range | undefined;
+  visit(doc, {
+    Alias(_key, node) {
+      if (node.resolve(doc) || !node.range) return;
+      const lineOffsets = buildLineOffsets(text);
+      range = {
+        start: offsetToPosition(node.range[0], lineOffsets),
+        end: offsetToPosition(node.range[1], lineOffsets),
+      };
+      return visit.BREAK;
+    },
+  });
+  return range;
 }
 
 /** The yaml lib reports 1-based `{line, col}` pairs; convert to a 0-based
@@ -86,14 +159,23 @@ export function parseYamlText(text: string): ParsedYaml {
     for (const err of doc.errors) {
       parseErrors.push({
         documentIndex,
-        message: augmentParseMessage(err),
+        message: PARSE_ERROR_MESSAGES[parseErrorKind(err)],
         range: rangeFromLinePos(err.linePos),
       });
     }
   });
 
-  const manifests = documents.map((doc) => {
-    const raw = doc.toJSON();
+  const manifests = documents.map((doc, documentIndex) => {
+    let raw: unknown;
+    try {
+      raw = doc.toJSON();
+    } catch (error) {
+      const kind = aliasFailureKind(error);
+      if (!kind) throw error;
+      const range = kind === "unresolvedAlias" ? unresolvedAliasRange(doc, text) : undefined;
+      parseErrors.push({ documentIndex, message: PARSE_ERROR_MESSAGES[kind], ...(range ? { range } : {}) });
+      return null;
+    }
     return raw === null || raw === undefined ? null : (raw as ResourceManifest);
   });
   parseErrors.push(...loaderExpansionRefusals(text, documents, manifests, positions));

@@ -1,7 +1,9 @@
 //! Telo templating for the Rust kernel: the tag layer.
 //!
 //! Mirrors `templating/nodejs` file for file: the tagged-sentinel shape and the YAML tag
-//! configuration the kernel reads a manifest with, the engine contract (`engine.rs`), and
+//! configuration the kernel reads a manifest with, over the YAML composer
+//! (`yaml_composer.rs`, which stands in for the `yaml` package the Node half composes with),
+//! the engine contract (`engine.rs`), and
 //! every tag engine over `telorun-cel` — `!cel`, `!interpolate`, `!sql` and `!literal`, the
 //! `!ref`, `!include-*` and `!module-path` markers, and the closed table and registry that
 //! list them. Beneath them the two environments with their brands, value-type registration,
@@ -17,6 +19,7 @@ pub mod engines;
 pub mod expansion_tags;
 pub mod registry;
 pub mod sentinel;
+pub mod yaml_composer;
 pub mod yaml_tags;
 
 pub use builtins::{
@@ -63,4 +66,8 @@ pub use sentinel::{
     is_tagged_sentinel, make_tagged_sentinel, ref_sentinel_source, ref_sentinel_verdict,
     tagged_sentinel_parts, REF_ENGINE,
 };
-pub use yaml_tags::{yaml_to_json, TagError};
+pub use yaml_composer::{
+    compose_first_yaml_document, compose_yaml, NodeId, ScalarValue, YamlDocument, YamlEntry, YamlError, YamlErrorKind,
+    YamlNode, YamlNodeKind, YamlScalar, YamlScalarStyle, YamlStream, YamlTag,
+};
+pub use yaml_tags::{document_to_json, JsonRefusal, TagError, NESTING_REFUSAL};

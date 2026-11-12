@@ -1,49 +1,103 @@
 //! Pure: text in, structured load result out. No I/O, no caches.
 //! Mirrors `../../nodejs/src/parse-loaded-file.ts`.
+//!
+//! Node items with no twin: `ParseOptions` (migration, fragment expansion and precompile run
+//! in the Node loader only) and the parse cache's restored parse.
 
-use serde::Deserialize;
-use serde_yaml::Value as Yaml;
-use telo_templating::yaml_to_json;
+use telo_templating::{compose_yaml, document_to_json, JsonRefusal, YamlErrorKind, NESTING_REFUSAL};
 
 use crate::loaded_types::{LoadedFile, ParseError};
 use crate::loader_expansion_refusals::loader_expansion_refusals;
-use crate::types::ResourceManifest;
+use crate::position_metadata::{build_document_positions, build_line_offsets, offset_to_position};
+use crate::types::{Range, ResourceManifest};
+use crate::yaml_ast::{document_to_ast, AstDocument};
+
+/// What each YAML error says — one sentence per kind, the same words in both loaders
+/// (`PARSE_ERROR_MESSAGES` in the Node twin), whichever parser found it. The one kind with
+/// no Node twin is the Rust reader's nesting bound, worded as its tree bound is.
+pub fn parse_error_message(kind: YamlErrorKind) -> &'static str {
+    match kind {
+        YamlErrorKind::DuplicateKey => "This key is already written earlier in the same mapping; a mapping holds each key once, so remove or rename one of the two.",
+        YamlErrorKind::UnresolvedAlias => "This alias names no anchor written before it in the document; write the anchor (`&name`) on an earlier value, or write the value out in place of the alias.",
+        YamlErrorKind::AliasLimit => "The aliases in this document expand into more copies of their values than a manifest may hold; write the repeated values out, or alias them fewer times.",
+        YamlErrorKind::UnclosedQuote => "A quoted value is never closed; end it with the quote character it opens with.",
+        YamlErrorKind::UnclosedFlowCollection => "A bracketed list or map ('[…]' or '{…}') is not closed, or a line inside it is not indented past the key holding it; close it with the matching ']' or '}', and indent its continuation lines.",
+        YamlErrorKind::TabIndentation => "A tab indents this line; YAML indents with spaces only.",
+        YamlErrorKind::PlainValueColon => "A plain (unquoted) value cannot contain ': ' (a colon followed by a space), which the parser reads as a nested mapping; wrap the value in quotes, e.g. `description: \"… encoding: base64 …\"`.",
+        YamlErrorKind::BadIndentation => "This line is not indented to match the entries beside it; align it with its siblings, or indent it under the key it belongs to.",
+        YamlErrorKind::InvalidEscape => "A double-quoted value holds an escape sequence YAML does not define; write the backslash itself as `\\\\`, or use single quotes, inside which a backslash is literal.",
+        YamlErrorKind::ReservedCharacter => "A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes.",
+        YamlErrorKind::Unreadable => "This is not valid YAML; check the indentation, quoting and brackets at this position.",
+        YamlErrorKind::NestingTooDeep => NESTING_REFUSAL,
+    }
+}
 
 pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> LoadedFile {
-    let mut manifests: Vec<Option<ResourceManifest>> = Vec::new();
-    let mut parse_errors: Vec<ParseError> = Vec::new();
+    let stream = compose_yaml(text);
+    let ast_documents: Vec<AstDocument> = stream.documents.iter().map(document_to_ast).collect();
+    let positions = build_document_positions(text, &ast_documents);
+    let line_offsets = build_line_offsets(text);
+    let range_of = |offsets: [usize; 2]| Range {
+        start: offset_to_position(offsets[0], &line_offsets),
+        end: offset_to_position(offsets[1], &line_offsets),
+    };
 
-    for (document_index, document) in serde_yaml::Deserializer::from_str(text).enumerate() {
-        match Yaml::deserialize(document) {
-            Ok(Yaml::Null) => manifests.push(None),
-            Ok(value) => match yaml_to_json(value) {
-                Ok(json) => {
-                    for refusal in loader_expansion_refusals(&json) {
-                        parse_errors.push(ParseError {
-                            document_index,
-                            code: Some(refusal.code.to_string()),
-                            message: refusal.message,
-                        });
-                    }
-                    manifests.push(Some(json));
-                }
-                Err(err) => {
-                    manifests.push(None);
-                    parse_errors.push(ParseError {
-                        document_index,
-                        code: err.code.map(str::to_string),
-                        message: err.message,
-                    });
-                }
-            },
-            Err(err) => {
+    // In the Node loader's order: the parser's errors, then the documents an alias makes
+    // unreadable, then the tag layer's refusals, then the loader's own.
+    let mut parse_errors: Vec<ParseError> = stream
+        .errors
+        .iter()
+        .map(|error| ParseError {
+            document_index: error.document_index,
+            code: None,
+            message: parse_error_message(error.kind).to_string(),
+            range: error.range.map(range_of),
+        })
+        .collect();
+    let mut tag_errors: Vec<ParseError> = Vec::new();
+    let mut manifests: Vec<Option<ResourceManifest>> = Vec::with_capacity(stream.documents.len());
+    for (document_index, document) in stream.documents.iter().enumerate() {
+        if !document.complete {
+            manifests.push(None);
+            continue;
+        }
+        match document_to_json(document) {
+            Ok(manifest) => manifests.push(manifest),
+            Err(JsonRefusal::AliasLimit) => {
                 manifests.push(None);
                 parse_errors.push(ParseError {
                     document_index,
                     code: None,
-                    message: err.to_string(),
+                    message: parse_error_message(YamlErrorKind::AliasLimit).to_string(),
+                    range: None,
                 });
             }
+            Err(JsonRefusal::Tag(error)) => {
+                manifests.push(None);
+                tag_errors.push(ParseError {
+                    document_index,
+                    code: error.code.map(str::to_string),
+                    message: error.message,
+                    range: error.range.map(range_of),
+                });
+            }
+        }
+    }
+    parse_errors.append(&mut tag_errors);
+
+    for (document_index, manifest) in manifests.iter().enumerate() {
+        let Some(manifest) = manifest else { continue };
+        for refusal in loader_expansion_refusals(manifest) {
+            let range = positions
+                .get(document_index)
+                .and_then(|position| position.position_index.get(&refusal.path))
+                .copied();
+            parse_errors.push(ParseError {
+                document_index,
+                code: Some(refusal.code.to_string()),
+                message: refusal.message,
+                range,
+            });
         }
     }
 
@@ -52,6 +106,8 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
         requested_url: requested_url.to_string(),
         text: text.to_string(),
         manifests,
+        ast_documents,
+        positions,
         parse_errors,
     }
 }

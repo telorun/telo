@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Loader } from "../src/manifest-loader.js";
+import { PARSE_ERROR_MESSAGES } from "../src/parse-loaded-file.js";
 import { DiagnosticSeverity, type ManifestSource } from "../src/types.js";
 
 /** In-memory ManifestSource backed by a flat path → text map. */
@@ -51,8 +52,8 @@ describe("Loader.loadGraph — parseDiagnostics", () => {
     expect((d.data as { filePath?: string }).filePath).toBe("/ws/telo.yaml");
     // The failing `: ` sits at line 9 (1-based) → line 8 (0-based).
     expect(d.range?.start.line).toBe(8);
-    // The raw yaml message is augmented with an actionable quoting hint.
-    expect(d.message).toContain("Wrap the value in quotes");
+    // Telo's sentence for the kind, with the quoting fix — never the parser's own text.
+    expect(d.message).toBe(PARSE_ERROR_MESSAGES.plainValueColon);
   });
 
   it("reports no parse diagnostics for a well-formed manifest", async () => {

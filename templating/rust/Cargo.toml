@@ -10,7 +10,9 @@ description = "Telo templating — YAML tag sentinels shared by the manifest loa
 # Written order is part of what a manifest says (a tag's keys, a `...`
 # splice's place, emitted map order), and it is what the Node loader keeps.
 serde_json = { version = "1", features = ["preserve_order"] }
-serde_yaml = "0.9"
+# The YAML event source the composer reads, and nothing else of it; pinned exactly, since
+# every node range and error position the loaders report is read off its events.
+saphyr-parser = "=0.3.4"
 # The hole grammar asks the engine where a quoted literal ends, and trims by the value
 # crate's ECMAScript whitespace.
 telorun-cel = { path = "../../cel/rust" }

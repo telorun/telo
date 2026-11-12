@@ -1,7 +1,8 @@
 //! Telo manifest loading and reference resolution for the Rust kernel.
 //!
 //! Mirrors the part of `analyzer/nodejs` the kernel depends on at runtime:
-//! reading a manifest file, parsing its documents, rewriting `!ref` sentinels,
+//! reading a manifest file, parsing its documents (through `telo-templating`'s YAML
+//! composer, with each document's position index beside the tree), rewriting `!ref` sentinels,
 //! and reading what a schema node says of the value at it (the host-path slot
 //! readers and the walk pairing each text leaf with its node). The
 //! static-analysis passes that make up the rest of the Node
@@ -28,6 +29,7 @@ pub mod native_entries;
 pub mod nearest_name;
 pub mod parse_loaded_file;
 pub mod plain_literal_decoding;
+pub mod position_metadata;
 pub mod release;
 pub mod reserved_kind_prefix;
 pub mod resolve_ref_sentinels;
@@ -39,10 +41,12 @@ pub mod system_kinds;
 pub mod types;
 pub mod validate_reference_forms;
 pub mod value_type_keyword;
+pub mod yaml_ast;
 
 pub use loaded_types::{LoadedFile, ParseError};
 pub use manifest_loader::{resolve_source, ManifestLoader};
-pub use parse_loaded_file::parse_loaded_file;
+pub use parse_loaded_file::{parse_error_message, parse_loaded_file};
+pub use position_metadata::DocumentPosition;
 pub use release::WORKSPACE_FILENAME;
 pub use resolve_ref_sentinels::{
     as_resolved_ref, find_unresolved_sentinels, resolve_ref_sentinels, RefTargets, ResolvedRef,
@@ -57,6 +61,6 @@ pub use validate_reference_forms::{
     reference_form_message, AcceptsValue, InvalidReferenceForm, ReferenceForm,
 };
 pub use types::{
-    kind_of, name_of, LoadError, ManifestSource, ReadManifest, ResourceManifest,
-    DEFAULT_MANIFEST_FILENAME,
+    kind_of, name_of, LoadError, ManifestSource, Position, PositionIndex, Range, ReadManifest,
+    ResourceManifest, DEFAULT_MANIFEST_FILENAME,
 };

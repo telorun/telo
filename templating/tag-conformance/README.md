@@ -1,9 +1,11 @@
 # Tag conformance vectors
 
-What every manifest loader answers for the tags the templating layer owns: the
+What every manifest loader answers for the tags the templating layer owns — the
 expansion tags (`!if`, `!switch`, `!for-each`), the `...` splice key and the
-`!ref` grammar. Language-neutral rows; the data is the artifact, and no generator
-is committed. The Node loader runs them in `templating/nodejs/tests/tag-conformance.test.ts`,
+`!ref` grammar — and for the YAML beneath them: how scalars resolve, where each
+field sits and how a malformed file is worded. Language-neutral rows; the data is
+the artifact, the values are the Node loader's answers, and no generator is
+committed. The Node loader runs them in `templating/nodejs/tests/tag-conformance.test.ts`,
 the Rust loader in `templating/rust/tests/tag_conformance.rs`.
 
 ## `ref.json` — the `!ref` grammar
@@ -36,6 +38,12 @@ Each row is `{ name, yaml }` (one document) plus exactly one of:
   `BRANCH_SHAPE_INVALID` for `!if` / `!switch`, `REPEAT_SHAPE_INVALID` for
   `!for-each`.
 
+Rows also pin the YAML the tags sit in, as the `yaml` package reads it: plain
+scalars by YAML 1.2's core schema (`yes` is a string, `0x1F` and `0o17` integers,
+`~` null), an explicit core tag (`!!str`, `!!int`) read by that tag's test, an
+alias copying its anchor's value and `<<` a plain key. A row's YAML parses with no
+error.
+
 No row holds an expression tag (`!cel`, `!interpolate`, `!sql`), which the Rust
 loader refuses by name, and no row has an integer-like mapping key, whose order a
 JavaScript object does not keep.
@@ -50,15 +58,40 @@ behind a tag (`--- !switch`) is written with the tag on the line after `---`,
 which the YAML library does for any tagged document and which means the same
 document.
 
-## `loader-positions.json` — what a loader refuses before building the graph
+## `loader-positions.json` — what a loader refuses, and where every field is
 
-Each row is `{ name, yaml }` (a whole file) and `refusals`, a list of
-`{ documentIndex, code }`: the expansion constructs written at a value the loader
-itself reads before anything is expanded — a module document's `metadata` and
-`metadata.name`, `imports:` (the block, an entry, an entry's `source`) and
-`include:` (the block, an entry). `!if` / `!switch` there are
-`BRANCH_POSITION_INVALID`, `!for-each` and a `...` splice
-`REPEAT_OUTSIDE_TEMPLATE`. Every other position is judged by the analysis, not
-the loader, so a row whose tags stand anywhere else expects no refusal. Run by the
-two analyzers' loaders: `analyzer/nodejs/tests/loader-positions-conformance.test.ts`
+Each row is `{ name, yaml }` (a whole file), `refusals` and optionally `documents`.
+
+`refusals` is every error the loader reports for the file, in its order, each
+`{ documentIndex, code, message, range? }`; `range` is `[startLine, startCharacter,
+endLine, endCharacter]`, 0-based, characters in UTF-16 code units, absent where the
+loader places none. Two families:
+
+- the expansion constructs written at a value the loader itself reads before
+  anything is expanded — a module document's `metadata` and `metadata.name`,
+  `imports:` (the block, an entry, an entry's `source`) and `include:` (the block,
+  an entry). `!if` / `!switch` there are `BRANCH_POSITION_INVALID`, `!for-each` and
+  a `...` splice `REPEAT_OUTSIDE_TEMPLATE`, each at the range the position index
+  gives its path. Every other position is judged by the analysis, not the loader,
+  so a row whose tags stand anywhere else expects no refusal;
+- YAML errors, `MANIFEST_PARSE_FAILED`, worded by Telo rather than by a parser: one
+  closed set of kinds — a key written twice, an alias naming no anchor before it in
+  its document, aliases expanding past `yaml`'s bound of 100, a quote never closed,
+  a flow collection never closed, a tab as indentation, a plain value holding `: `,
+  a line indented to match nothing beside it, an undefined escape, a plain value
+  starting with `@` or `` ` `` — each with one sentence, and every error a loader
+  cannot place in one of them as "not valid YAML". Each loader classifies its own
+  parser's errors; a row pins a kind where both parsers reach it at the same place.
+  A loader reads past the first error only as far as its parser does, so a row
+  holds one YAML error.
+
+`documents`, when present, is each document's `{ sourceLine, positions }`: the
+0-based line it starts on, and its position index — every field value's range
+under its dotted path (`list[3].flow`) and every map key's under `@key:<path>`, in
+the order the index files them, compared as text. A node's range runs from its
+first character after its tag and anchor to the end of its own text; a block
+collection ends where its last value ends, line break and the trailing comment
+lines it keeps included; an alias is no entry.
+
+Run by the two analyzers' loaders: `analyzer/nodejs/tests/loader-positions-conformance.test.ts`
 and `analyzer/rust/tests/loader_positions_conformance.rs`.

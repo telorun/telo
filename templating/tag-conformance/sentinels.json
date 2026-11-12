@@ -99,5 +99,25 @@
     "name": "a tagged mapping writing the marker key",
     "yaml": "port: !if { __expand: switch, if: true, then: 1 }\n",
     "refusal": { "code": "BRANCH_SHAPE_INVALID" }
+  },
+  {
+    "name": "plain scalars resolve by YAML 1.2's core schema",
+    "yaml": "a: 1.0\nb: 0x1F\nc: 0o17\nd: 017\ne: ~\nf: yes\ng: TRUE\nh: tRue\ni: .5\nj: 1e3\nk: \"1\"\nl: Null\nm: -0\nn: 1_000\no: 5.\np: no\n",
+    "json": { "a": 1, "b": 31, "c": 15, "d": 17, "e": null, "f": "yes", "g": true, "h": "tRue", "i": 0.5, "j": 1000, "k": "1", "l": null, "m": 0, "n": "1_000", "o": 5, "p": "no" }
+  },
+  {
+    "name": "an explicit core tag reads its text by that tag's test",
+    "yaml": "a: !!str 12\nb: !!int \"7\"\nc: !!float 1\nd: !!bool yes\ne: !!str true\n",
+    "json": { "a": "12", "b": 7, "c": "1", "d": "yes", "e": "true" }
+  },
+  {
+    "name": "an alias copies its anchor's value, and << is a plain key",
+    "yaml": "base: &b { x: 1 }\nlist: [*b, *b]\nmerged:\n  <<: *b\n  y: 2\nlabel: &l text\ncopy: *l\n",
+    "json": { "base": { "x": 1 }, "list": [{ "x": 1 }, { "x": 1 }], "merged": { "<<": { "x": 1 }, "y": 2 }, "label": "text", "copy": "text" }
+  },
+  {
+    "name": "a key without a value is null, and a key's own text is its JSON key",
+    "yaml": "? alone\nempty:\nflow: { k }\ntrue: t\n2.50: n\n~: z\n",
+    "json": { "alone": null, "empty": null, "flow": { "k": null }, "true": "t", "2.5": "n", "": "z" }
   }
 ]

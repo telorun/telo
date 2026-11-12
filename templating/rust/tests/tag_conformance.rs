@@ -2,8 +2,7 @@
 //! `../../nodejs/tests/tag-conformance.test.ts`.
 
 use serde_json::Value;
-use serde_yaml::Value as Yaml;
-use telo_templating::{parse_ref_source, yaml_to_json};
+use telo_templating::{compose_yaml, document_to_json, parse_ref_source, JsonRefusal};
 
 fn vectors(file: &str) -> Vec<Value> {
     let path = format!("{}/../tag-conformance/{file}", env!("CARGO_MANIFEST_DIR"));
@@ -31,15 +30,18 @@ fn ref_grammar() {
 #[test]
 fn sentinels() {
     for row in vectors("sentinels.json") {
-        let yaml: Yaml = serde_yaml::from_str(row["yaml"].as_str().unwrap()).unwrap();
-        let loaded = yaml_to_json(yaml);
+        let stream = compose_yaml(row["yaml"].as_str().unwrap());
+        assert_eq!(stream.errors, vec![], "{}", row["name"]);
+        let loaded = document_to_json(&stream.documents[0]);
         match row.get("refusal") {
-            Some(refusal) => {
-                let err = loaded.expect_err(row["name"].as_str().unwrap());
-                assert_eq!(err.code, refusal["code"].as_str(), "{}", row["name"]);
-            }
+            Some(refusal) => match loaded {
+                Err(JsonRefusal::Tag(err)) => assert_eq!(err.code, refusal["code"].as_str(), "{}", row["name"]),
+                other => panic!("{}: expected a tag refusal, got {other:?}", row["name"]),
+            },
             None => {
-                let json = loaded.unwrap_or_else(|err| panic!("{}: {err}", row["name"]));
+                let json = loaded
+                    .unwrap_or_else(|err| panic!("{}: {err:?}", row["name"]))
+                    .unwrap_or(Value::Null);
                 // Compared as text, so key order is part of the answer.
                 assert_eq!(
                     serde_json::to_string(&json).unwrap(),

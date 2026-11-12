@@ -1,8 +1,13 @@
 //! Runs `templating/tag-conformance/loader-positions.json`, the Rust twin of
 //! `../../nodejs/tests/loader-positions-conformance.test.ts`.
 
-use serde_json::Value;
+use serde_json::{json, Map, Value};
 use telo_analyzer::parse_loaded_file::parse_loaded_file;
+use telo_analyzer::Range;
+
+fn compact(range: &Range) -> Value {
+    json!([range.start.line, range.start.character, range.end.line, range.end.character])
+}
 
 #[test]
 fn loader_positions() {
@@ -16,8 +21,39 @@ fn loader_positions() {
         let found: Vec<Value> = loaded
             .parse_errors
             .iter()
-            .map(|error| serde_json::json!({ "documentIndex": error.document_index, "code": error.code }))
+            .map(|error| {
+                let mut refusal = Map::new();
+                refusal.insert("documentIndex".into(), json!(error.document_index));
+                // The code the loader reports the error under.
+                refusal.insert("code".into(), json!(error.code.as_deref().unwrap_or("MANIFEST_PARSE_FAILED")));
+                refusal.insert("message".into(), json!(error.message));
+                if let Some(range) = &error.range {
+                    refusal.insert("range".into(), compact(range));
+                }
+                Value::Object(refusal)
+            })
             .collect();
         assert_eq!(Value::Array(found), row["refusals"], "{}", row["name"]);
+        if let Some(documents) = row.get("documents") {
+            let found: Vec<Value> = loaded
+                .positions
+                .iter()
+                .map(|document| {
+                    let positions: Map<String, Value> = document
+                        .position_index
+                        .iter()
+                        .map(|(path, range)| (path.clone(), compact(range)))
+                        .collect();
+                    json!({ "sourceLine": document.source_line, "positions": positions })
+                })
+                .collect();
+            // Compared as text, so the order fields are filed in is part of the answer.
+            assert_eq!(
+                serde_json::to_string(&found).unwrap(),
+                serde_json::to_string(documents).unwrap(),
+                "{}",
+                row["name"]
+            );
+        }
     }
 }
