@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0 - 2026-11-12
+### Added
+* Cache.View's forwarded inputs and served value are typed by the target's contracts, so sensitive marks are redacted in the view's traces and a payload the target's contract refuses fails at the view's own dispatch.
+
 ## 0.14.3 - 2026-11-11
 ### Fixed
 * The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.

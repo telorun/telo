@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Benchmark
-  version: 0.12.1
+  version: 0.12.2
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Testing, Performance]
@@ -13,7 +13,7 @@ metadata:
     with samples, and thresholds fail the run in CI.
 requires: { telo: ">=0.133.0" }
 restrictions:
-  - requires: { telo: ">=unreleased" }
+  - requires: { telo: ">=0.136.0" }
     reason: Comparison reads a Telo program's boot time from its startup span, which kernels before this release do not write.
 exports: { kinds: [Suite, Comparison] }
 ---

@@ -1,5 +1,0 @@
-modules:
-  modules/run: Added
-body: "Run.Sequence produces its outputs inside its with: scope, so a scoped resource's
-  stream it returns, maps or hands to Run.Detach keeps the scope open until the stream
-  settles."

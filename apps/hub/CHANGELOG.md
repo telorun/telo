@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.0 - 2026-11-12
+### Added
+* The design-library guide teaches x-telo-context-from-path-template, typing a binding as the variables of a path template the resource holds, completedWhen on x-telo-ref and pointer $ref reuse of a closed shape's members; the build-ui guide teaches page variables and params, reloadEvery, the markdown, time and button nodes, Ui.BoundAction, list styles, relative filter values and Crud.Reader over a SELECT with scope.
+
 ## 0.25.0 - 2026-11-11
 ### Added
 * Imports of workspace modules are relative paths in the source tree; the published form is written at release.

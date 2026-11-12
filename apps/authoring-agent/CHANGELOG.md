@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.37.0 - 2026-11-12
+### Added
+* The primer teaches that a with:-scoped resource reads the invocation's inputs, that forwarding kinds type their payload from the target's contract, and how an unread scoped stream is cancelled.
+* The primer teaches x-telo-context-from-path-template, which types a binding as the variables of a path template the resource holds, and that a map keyed by a model through the member form of x-telo-value-schema-from refuses a key the model does not declare.
+
 ## 0.35.0 - 2026-11-11
 ### Added
 * Imports of workspace modules are relative paths in the source tree; the published form is written at release.

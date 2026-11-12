@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5 - 2026-11-12
+### Fixed
+* Each Broadcast.Subscription delivery, onError and onGap run now dispatches under a context of its own, released when it returns, so a handler's scoped resources are torn down once per message instead of being held until the subscription stops.
+
 ## 0.2.4 - 2026-11-11
 ### Fixed
 * The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.
