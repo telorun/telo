@@ -16,6 +16,12 @@
 //!   end, by the attribution rule of `yaml`'s CST parser — in UTF-16 code units;
 //! - an alias resolves to the latest anchor of its name before it in its document.
 //!
+//! Two places where it reads less than `yaml` does, each an under-report rather than a
+//! different answer: an alias naming no anchor ends the stream — saphyr stops there, so
+//! the documents after it are neither read nor reported, where the Node loader reports
+//! that document's error and reads on — and flow collections nested past saphyr's 255
+//! levels are a limit of this reader ([`ReadFailure::Unsupported`]), never a YAML kind.
+//!
 //! Every walk here is a loop over events or an explicit stack; nothing recurses on the
 //! depth of the input.
 
@@ -25,6 +31,7 @@ use saphyr_parser::{Event, Parser, ScalarStyle, ScanError, Span, Tag};
 use telorun_cel_value::es_string_to_number;
 
 use crate::builtins::default_registry;
+use crate::yaml_tags::UnsupportedConstruct;
 
 /// Index of a node in its document's arena.
 pub type NodeId = usize;
@@ -134,8 +141,10 @@ pub struct YamlDocument {
     pub complete: bool,
 }
 
-/// The closed set of YAML errors both loaders name. Each half classifies its own parser's
-/// errors into one of these; an error neither can place is [`YamlErrorKind::Unreadable`].
+/// The closed set of YAML errors both loaders name — exactly the Node loader's set. Each half
+/// classifies its own parser's errors into one of these; an error neither can place is
+/// [`YamlErrorKind::Unreadable`]. A limit of this reader's own (saphyr's flow nesting bound)
+/// is no YAML kind: it is a [`ReadFailure::Unsupported`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum YamlErrorKind {
     DuplicateKey,
@@ -149,16 +158,21 @@ pub enum YamlErrorKind {
     InvalidEscape,
     ReservedCharacter,
     Unreadable,
-    /// Flow collections nested past saphyr's 255 levels — a bound of the Rust reader alone,
-    /// worded as the tree bound is (`yaml_tags::NESTING_REFUSAL`), and no YAML error.
-    NestingTooDeep,
 }
 
-/// A YAML error: its kind, the document it is in and where, in UTF-16 code units.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Why the reader stopped, or what it found: a YAML error both loaders name, or a construct
+/// this reader cannot hold, which the Node loader reads.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReadFailure {
+    Yaml(YamlErrorKind),
+    Unsupported(UnsupportedConstruct),
+}
+
+/// A YAML error: what it is, the document it is in and where, in UTF-16 code units.
+#[derive(Debug, Clone, PartialEq)]
 pub struct YamlError {
     pub document_index: usize,
-    pub kind: YamlErrorKind,
+    pub failure: ReadFailure,
     pub range: Option<[usize; 2]>,
 }
 
@@ -620,7 +634,7 @@ impl Composer {
         // saphyr refuses an alias naming no anchor in the stream; one whose anchor is in an
         // earlier document names none in its own, as `yaml` reads it.
         let Some(target) = self.doc().anchors.get(&anchor).copied() else {
-            self.stop(YamlErrorKind::UnresolvedAlias, (start, end));
+            self.stop(ReadFailure::Yaml(YamlErrorKind::UnresolvedAlias), (start, end));
             return;
         };
         let node = YamlNode { kind: YamlNodeKind::Alias { target }, tag: None, anchored: false, range: [0, 0], end: 0 };
@@ -802,7 +816,7 @@ impl Composer {
         if duplicate {
             let range = [self.text.u16(start), self.text.u16(start) + 1];
             let document_index = self.document_index();
-            self.errors.push(YamlError { document_index, kind: YamlErrorKind::DuplicateKey, range: Some(range) });
+            self.errors.push(YamlError { document_index, failure: ReadFailure::Yaml(YamlErrorKind::DuplicateKey), range: Some(range) });
         }
     }
 
@@ -959,17 +973,22 @@ impl Composer {
     /// The parser's fatal error, classified, and the document it cut short.
     fn fail(&mut self, error: &ScanError) {
         let mark = error.marker().index();
+        // saphyr's own nesting bound is a limit of this reader, not a YAML error.
+        if error.info() == "recursion limit exceeded" {
+            self.stop(ReadFailure::Unsupported(UnsupportedConstruct::FlowDepth), (mark, mark + 1));
+            return;
+        }
         let (kind, range) = self.classify(error.info(), mark);
-        self.stop(kind, range);
+        self.stop(ReadFailure::Yaml(kind), range);
     }
 
     /// End the stream at a fatal error, the document it cut short kept as incomplete.
-    fn stop(&mut self, kind: YamlErrorKind, range: (usize, usize)) {
+    fn stop(&mut self, failure: ReadFailure, range: (usize, usize)) {
         self.stopped = true;
         let document_index = self.document_index();
         self.errors.push(YamlError {
             document_index,
-            kind,
+            failure,
             range: Some([self.text.u16(range.0), self.text.u16(range.1)]),
         });
         if let Some(builder) = self.doc.take() {
@@ -989,9 +1008,6 @@ impl Composer {
                 p += 1;
             }
             return (YamlErrorKind::UnresolvedAlias, (mark, p));
-        }
-        if info == "recursion limit exceeded" {
-            return (YamlErrorKind::NestingTooDeep, point);
         }
         if info == "while scanning a quoted scalar, found unexpected end of stream" {
             return (YamlErrorKind::UnclosedQuote, (len, len + 1));

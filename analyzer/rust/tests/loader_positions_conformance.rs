@@ -3,6 +3,7 @@
 
 use serde_json::{json, Map, Value};
 use telo_analyzer::parse_loaded_file::parse_loaded_file;
+use telo_analyzer::loaded_types::ParseErrorOrigin;
 use telo_analyzer::Range;
 
 fn compact(range: &Range) -> Value {
@@ -22,11 +23,18 @@ fn loader_positions() {
             .parse_errors
             .iter()
             .map(|error| {
+                let code = match &error.origin {
+                    ParseErrorOrigin::Yaml(_) => "MANIFEST_PARSE_FAILED",
+                    ParseErrorOrigin::Loader { code, .. } => code,
+                    // A row is a refusal both loaders make; this reader's own limits are none.
+                    ParseErrorOrigin::Unsupported(construct) => {
+                        panic!("{}: refused as unsupported: {}", row["name"], construct.message())
+                    }
+                };
                 let mut refusal = Map::new();
                 refusal.insert("documentIndex".into(), json!(error.document_index));
-                // The code the loader reports the error under.
-                refusal.insert("code".into(), json!(error.code.as_deref().unwrap_or("MANIFEST_PARSE_FAILED")));
-                refusal.insert("message".into(), json!(error.message));
+                refusal.insert("code".into(), json!(code));
+                refusal.insert("message".into(), json!(error.message()));
                 if let Some(range) = &error.range {
                     refusal.insert("range".into(), compact(range));
                 }

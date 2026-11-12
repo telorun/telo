@@ -44,7 +44,9 @@ const KNOWN_ENGINES: &[&str] = &[
 /// refused by name rather than as an unknown tag.
 const EXPRESSION_ENGINES: &[&str] = &["cel", "interpolate", "sql"];
 
-/// `yaml`'s default `maxAliasCount`: how far a document's aliases may multiply its data.
+/// How far a document's aliases may multiply its data: `yaml`'s `maxAliasCount`. One bound
+/// with the Node loader's `MAX_ALIAS_COUNT` (`analyzer/nodejs/src/parse-loaded-file.ts`),
+/// which hands it to `yaml` by name; the two change together.
 const MAX_ALIAS_COUNT: u64 = 100;
 
 /// How deep the JSON tree may nest — the bound the Rust reader has always had. Every reader
@@ -56,31 +58,104 @@ const MAX_DEPTH: usize = 128;
 pub const NESTING_REFUSAL: &str =
     "the document nests deeper than 128 levels here, which this kernel's manifest tree does not hold";
 
+/// A construct this reader cannot hold, which the Node loader reads: never a diagnostic, a
+/// refusal of the Rust kernel's load alone. Each variant names the condition that retires it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnsupportedConstruct {
+    /// A tag holding CEL. Retired when the Rust kernel evaluates expressions.
+    ExpressionTag { engine: String },
+    /// A plain string holding `${{` — the legacy spelling the Node loader migrates. Retired
+    /// when this reader runs the `untagged-interpolation` migration.
+    UntaggedInterpolation { text: String },
+    /// A tag this reader does not read, or a known one on a node it cannot be read on
+    /// (`written_on`: a collection). Retired when the manifest tree holds what `yaml`
+    /// makes of every tag.
+    UnsupportedTag { tag: String, written_on: Option<&'static str> },
+    /// A mapping key that is no scalar: a collection, or a scalar behind a tag (`written`
+    /// says which). Retired when the two loaders agree on a refusal of such a key.
+    CollectionKey { written: String },
+    /// `.inf` / `.nan`. Retired when the manifest tree holds a non-finite number.
+    NonFiniteNumber { value: f64 },
+    /// A tree deeper than [`MAX_DEPTH`]. Retired when no reader of the tree recurses on it.
+    TreeDepth,
+    /// Flow collections nested past saphyr's 255 levels. Retired when the event source
+    /// reads any depth.
+    FlowDepth,
+    /// An alias inside the value its own anchor names. Retired when the two loaders agree on
+    /// a refusal of a value containing itself.
+    SelfContainingAlias,
+}
+
+impl UnsupportedConstruct {
+    /// The one sentence each construct is refused with.
+    pub fn message(&self) -> String {
+        match self {
+            UnsupportedConstruct::ExpressionTag { engine } => format!(
+                "`!{engine}` holds CEL, and this kernel has no expression engine: reading it as a literal would silently produce the wrong value"
+            ),
+            UnsupportedConstruct::UntaggedInterpolation { text } => format!(
+                "plain string {text:?} holds `${{{{`: untagged interpolation is a legacy spelling of `!cel` / `!interpolate`, and this kernel has no expression engine to evaluate either — reading it as a literal string would silently produce the wrong value"
+            ),
+            UnsupportedConstruct::UnsupportedTag { tag, written_on: Some(written) } => {
+                format!("`{tag}` expects a scalar string, got {written}")
+            }
+            UnsupportedConstruct::UnsupportedTag { tag, written_on: None } => format!(
+                "unsupported YAML tag `{tag}`; this kernel recognises: {}",
+                KNOWN_ENGINES.iter().map(|e| format!("!{e}")).collect::<Vec<_>>().join(", ")
+            ),
+            UnsupportedConstruct::CollectionKey { written } => {
+                format!("manifest mapping keys must be scalars, got {written}")
+            }
+            UnsupportedConstruct::NonFiniteNumber { value } => {
+                format!("number {} has no JSON representation", es_number(*value))
+            }
+            UnsupportedConstruct::TreeDepth | UnsupportedConstruct::FlowDepth => NESTING_REFUSAL.to_string(),
+            UnsupportedConstruct::SelfContainingAlias => "this alias sits inside the value its anchor names, so the value would contain itself, which a manifest tree cannot hold".to_string(),
+        }
+    }
+}
+
+/// Why the tag layer refuses a node: a refusal both loaders name under one code, or a
+/// construct only this reader cannot hold.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TagRefusal {
+    Loader { code: &'static str, message: String },
+    Unsupported(UnsupportedConstruct),
+}
+
 #[derive(Debug)]
 pub struct TagError {
-    /// The diagnostic code, when the refusal is one the loaders name (an
-    /// expansion tag on a scalar or a sequence); `None` for an unreadable value.
-    pub code: Option<&'static str>,
-    pub message: String,
+    pub refusal: TagRefusal,
     /// The refused node's `[start, valueEnd]`, in UTF-16 code units.
     pub range: Option<[usize; 2]>,
 }
 
 impl std::fmt::Display for TagError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
+        match &self.refusal {
+            TagRefusal::Loader { message, .. } => f.write_str(message),
+            TagRefusal::Unsupported(construct) => f.write_str(&construct.message()),
+        }
     }
 }
 
 impl std::error::Error for TagError {}
 
 impl TagError {
-    fn at(node: &YamlNode, message: impl Into<String>) -> Self {
-        Self { code: None, message: message.into(), range: Some(node.range) }
+    fn unsupported(node: &YamlNode, construct: UnsupportedConstruct) -> Self {
+        Self { refusal: TagRefusal::Unsupported(construct), range: Some(node.range) }
     }
 
     fn coded(node: &YamlNode, code: &'static str, message: impl Into<String>) -> Self {
-        Self { code: Some(code), message: message.into(), range: Some(node.range) }
+        Self { refusal: TagRefusal::Loader { code, message: message.into() }, range: Some(node.range) }
+    }
+
+    /// The code both loaders name the refusal under, for a loader refusal.
+    pub fn code(&self) -> Option<&'static str> {
+        match &self.refusal {
+            TagRefusal::Loader { code, .. } => Some(code),
+            TagRefusal::Unsupported(_) => None,
+        }
     }
 }
 
@@ -256,11 +331,7 @@ impl<'d> Converter<'d> {
     /// An alias's value: a copy of its anchor's, counted as `yaml` counts it.
     fn alias(&mut self, node: &YamlNode, target: NodeId) -> Result<Json, JsonRefusal> {
         if self.open.contains(&target) {
-            return Err(TagError::at(
-                node,
-                "this alias sits inside the value its anchor names, so the value would contain itself, which a manifest tree cannot hold",
-            )
-            .into());
+            return Err(TagError::unsupported(node, UnsupportedConstruct::SelfContainingAlias).into());
         }
         let mut data = self.anchors.get(&target).copied().unwrap_or(AnchorData { count: 1, alias_count: 0 });
         data.count += 1;
@@ -326,11 +397,7 @@ impl<'d> Converter<'d> {
                     None | Some(YamlTag::Core(_)) => {}
                     Some(YamlTag::Local(name)) if is_expansion_tag(name) => return Err(expansion_misuse(node, name, "a scalar").into()),
                     Some(tag) => {
-                        return Err(TagError::at(
-                            node,
-                            format!("manifest mapping keys must be scalars, got a `{}`-tagged value", tag.written()),
-                        )
-                        .into())
+                        return Err(collection_key(node, format!("a `{}`-tagged value", tag.written())).into())
                     }
                 }
                 let json = scalar_value_json(node, scalar)?;
@@ -340,20 +407,16 @@ impl<'d> Converter<'d> {
                 json
             }
             YamlNodeKind::Alias { target } => self.alias(node, *target)?,
-            YamlNodeKind::Sequence { .. } => {
-                return Err(TagError::at(node, "manifest mapping keys must be scalars, got a list").into())
-            }
-            YamlNodeKind::Mapping { .. } => {
-                return Err(TagError::at(node, "manifest mapping keys must be scalars, got a mapping").into())
-            }
+            YamlNodeKind::Sequence { .. } => return Err(collection_key(node, "a list").into()),
+            YamlNodeKind::Mapping { .. } => return Err(collection_key(node, "a mapping").into()),
         };
         match json {
             Json::Null => Ok(String::new()),
             Json::Bool(b) => Ok(b.to_string()),
             Json::Number(n) => Ok(es_number(n.as_f64().unwrap_or(f64::NAN))),
             Json::String(s) => Ok(s),
-            Json::Array(_) => Err(TagError::at(node, "manifest mapping keys must be scalars, got a list").into()),
-            Json::Object(_) => Err(TagError::at(node, "manifest mapping keys must be scalars, got a mapping").into()),
+            Json::Array(_) => Err(collection_key(node, "a list").into()),
+            Json::Object(_) => Err(collection_key(node, "a mapping").into()),
         }
     }
 }
@@ -361,7 +424,7 @@ impl<'d> Converter<'d> {
 /// A collection's tag: an expansion tag's name for a mapping, nothing for no tag or a core
 /// collection tag, and a refusal for anything else — every tag but an expansion tag holds a
 /// scalar.
-fn collection_tag(node: &YamlNode, written: &str) -> Result<Option<String>, TagError> {
+fn collection_tag(node: &YamlNode, written: &'static str) -> Result<Option<String>, TagError> {
     let Some(tag) = &node.tag else { return Ok(None) };
     match tag {
         YamlTag::Core(name) if name == "map" || name == "seq" => Ok(None),
@@ -373,9 +436,10 @@ fn collection_tag(node: &YamlNode, written: &str) -> Result<Option<String>, TagE
             }
         }
         YamlTag::Local(name) if EXPRESSION_ENGINES.contains(&name.as_str()) => Err(expression_refusal(node, name)),
-        YamlTag::Local(name) if KNOWN_ENGINES.contains(&name.as_str()) => {
-            Err(TagError::at(node, format!("`!{name}` expects a scalar string, got {written}")))
-        }
+        YamlTag::Local(name) if KNOWN_ENGINES.contains(&name.as_str()) => Err(TagError::unsupported(
+            node,
+            UnsupportedConstruct::UnsupportedTag { tag: tag.written(), written_on: Some(written) },
+        )),
         other => Err(unsupported_tag(node, other)),
     }
 }
@@ -396,9 +460,7 @@ fn scalar_json(node: &YamlNode, scalar: &YamlScalar) -> Result<Json, TagError> {
         // reaches a controller looking like an expression that was never
         // evaluated. Rejected on the same grounds as `!cel`.
         if s.contains("${{") {
-            return Err(TagError::at(node, format!(
-                "plain string {s:?} holds `${{{{`: untagged interpolation is a legacy spelling of `!cel` / `!interpolate`, and this kernel has no expression engine to evaluate either — reading it as a literal string would silently produce the wrong value"
-            )));
+            return Err(TagError::unsupported(node, UnsupportedConstruct::UntaggedInterpolation { text: s.clone() }));
         }
     }
     Ok(json)
@@ -433,11 +495,15 @@ fn number_json(node: &YamlNode, n: f64) -> Result<Json, TagError> {
     }
     Number::from_f64(n)
         .map(Json::Number)
-        .ok_or_else(|| TagError::at(node, format!("number {} has no JSON representation", es_number(n))))
+        .ok_or_else(|| TagError::unsupported(node, UnsupportedConstruct::NonFiniteNumber { value: n }))
 }
 
 fn too_deep(node: &YamlNode) -> TagError {
-    TagError::at(node, NESTING_REFUSAL)
+    TagError::unsupported(node, UnsupportedConstruct::TreeDepth)
+}
+
+fn collection_key(node: &YamlNode, written: impl Into<String>) -> TagError {
+    TagError::unsupported(node, UnsupportedConstruct::CollectionKey { written: written.into() })
 }
 
 fn expansion_misuse(node: &YamlNode, tag: &str, written: &str) -> TagError {
@@ -449,21 +515,11 @@ fn expansion_misuse(node: &YamlNode, tag: &str, written: &str) -> TagError {
 }
 
 fn expression_refusal(node: &YamlNode, engine: &str) -> TagError {
-    TagError::at(
-        node,
-        format!("`!{engine}` holds CEL, and this kernel has no expression engine: reading it as a literal would silently produce the wrong value"),
-    )
+    TagError::unsupported(node, UnsupportedConstruct::ExpressionTag { engine: engine.to_string() })
 }
 
 fn unsupported_tag(node: &YamlNode, tag: &YamlTag) -> TagError {
-    TagError::at(
-        node,
-        format!(
-            "unsupported YAML tag `{}`; this kernel recognises: {}",
-            tag.written(),
-            KNOWN_ENGINES.iter().map(|e| format!("!{e}")).collect::<Vec<_>>().join(", ")
-        ),
-    )
+    TagError::unsupported(node, UnsupportedConstruct::UnsupportedTag { tag: tag.written(), written_on: None })
 }
 
 #[cfg(test)]
@@ -501,15 +557,15 @@ mod tests {
     #[test]
     fn expression_tags_are_refused_by_name() {
         let err = refusal("value: !cel \"1 + 1\"");
-        assert!(err.message.contains("`!cel` holds CEL"), "{}", err.message);
+        assert_eq!(err.refusal, TagRefusal::Unsupported(UnsupportedConstruct::ExpressionTag { engine: "cel".into() }));
         let err = refusal("value: !interpolate \"port ${{ variables.port }}\"");
-        assert!(err.message.contains("`!interpolate` holds CEL"), "{}", err.message);
+        assert_eq!(err.refusal, TagRefusal::Unsupported(UnsupportedConstruct::ExpressionTag { engine: "interpolate".into() }));
     }
 
     #[test]
     fn inline_expressions_are_rejected_rather_than_read_as_literals() {
         let err = refusal("value: \"port ${{ variables.port }}\"");
-        assert!(err.message.contains("`!interpolate`"), "{}", err.message);
+        assert!(err.to_string().contains("`!interpolate`"), "{err}");
     }
 
     #[test]

@@ -5,10 +5,13 @@
 //! code-plus-message shape lives here. Codes match the Node kernel's wherever
 //! the failure is the same one, so a message is searchable across both.
 
+use telo_analyzer::AnalysisDiagnostic;
 use telorun_sdk_core::FailureTrace;
 
+/// Written as `[<code>] <message>`, then each diagnostic it carries on a line of its own
+/// as `[<CODE>] <message>` — a refusal's headline alone ("Manifest validation failed")
+/// names no cause.
 #[derive(Debug, thiserror::Error)]
-#[error("[{code}] {message}")]
 pub struct KernelError {
     pub code: String,
     pub message: String,
@@ -20,6 +23,22 @@ pub struct KernelError {
     pub trace: FailureTrace,
     /// The host's stack; only for a failure that is not a structured refusal (a panic).
     pub host_stack: Option<String>,
+    /// The static analysis findings a load refusal carries, each as `telo check` reports
+    /// it. Node's kernel converts each to a `RuntimeDiagnostic`; this one carries them whole.
+    pub diagnostics: Vec<AnalysisDiagnostic>,
+}
+
+impl std::fmt::Display for KernelError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {}", self.code, self.message)?;
+        for diagnostic in &self.diagnostics {
+            match &diagnostic.code {
+                Some(code) => write!(f, "\n  [{code}] {}", diagnostic.message)?,
+                None => write!(f, "\n  {}", diagnostic.message)?,
+            }
+        }
+        Ok(())
+    }
 }
 
 impl KernelError {
@@ -31,7 +50,14 @@ impl KernelError {
             display_message: None,
             trace: FailureTrace::default(),
             host_stack: None,
+            diagnostics: Vec::new(),
         }
+    }
+
+    /// The error carrying `diagnostics`, the findings it refuses a load for.
+    pub fn with_diagnostics(mut self, diagnostics: Vec<AnalysisDiagnostic>) -> Self {
+        self.diagnostics = diagnostics;
+        self
     }
 
     pub fn runtime_invalid(message: impl Into<String>) -> Self {

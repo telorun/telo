@@ -4,17 +4,16 @@
 //! Node items with no twin: `ParseOptions` (migration, fragment expansion and precompile run
 //! in the Node loader only) and the parse cache's restored parse.
 
-use telo_templating::{compose_yaml, document_to_json, JsonRefusal, YamlErrorKind, NESTING_REFUSAL};
+use telo_templating::{compose_yaml, document_to_json, JsonRefusal, ReadFailure, TagRefusal, YamlErrorKind};
 
-use crate::loaded_types::{LoadedFile, ParseError};
+use crate::loaded_types::{LoadedFile, ParseError, ParseErrorOrigin};
 use crate::loader_expansion_refusals::loader_expansion_refusals;
 use crate::position_metadata::{build_document_positions, build_line_offsets, offset_to_position};
 use crate::types::{Range, ResourceManifest};
 use crate::yaml_ast::{document_to_ast, AstDocument};
 
 /// What each YAML error says — one sentence per kind, the same words in both loaders
-/// (`PARSE_ERROR_MESSAGES` in the Node twin), whichever parser found it. The one kind with
-/// no Node twin is the Rust reader's nesting bound, worded as its tree bound is.
+/// (`PARSE_ERROR_MESSAGES` in the Node twin), whichever parser found it.
 pub fn parse_error_message(kind: YamlErrorKind) -> &'static str {
     match kind {
         YamlErrorKind::DuplicateKey => "This key is already written earlier in the same mapping; a mapping holds each key once, so remove or rename one of the two.",
@@ -28,7 +27,6 @@ pub fn parse_error_message(kind: YamlErrorKind) -> &'static str {
         YamlErrorKind::InvalidEscape => "A double-quoted value holds an escape sequence YAML does not define; write the backslash itself as `\\\\`, or use single quotes, inside which a backslash is literal.",
         YamlErrorKind::ReservedCharacter => "A plain value cannot start with '@' or '`', which YAML reserves; wrap the value in quotes.",
         YamlErrorKind::Unreadable => "This is not valid YAML; check the indentation, quoting and brackets at this position.",
-        YamlErrorKind::NestingTooDeep => NESTING_REFUSAL,
     }
 }
 
@@ -49,8 +47,10 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
         .iter()
         .map(|error| ParseError {
             document_index: error.document_index,
-            code: None,
-            message: parse_error_message(error.kind).to_string(),
+            origin: match &error.failure {
+                ReadFailure::Yaml(kind) => ParseErrorOrigin::Yaml(*kind),
+                ReadFailure::Unsupported(construct) => ParseErrorOrigin::Unsupported(construct.clone()),
+            },
             range: error.range.map(range_of),
         })
         .collect();
@@ -67,8 +67,7 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
                 manifests.push(None);
                 parse_errors.push(ParseError {
                     document_index,
-                    code: None,
-                    message: parse_error_message(YamlErrorKind::AliasLimit).to_string(),
+                    origin: ParseErrorOrigin::Yaml(YamlErrorKind::AliasLimit),
                     range: None,
                 });
             }
@@ -76,8 +75,10 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
                 manifests.push(None);
                 tag_errors.push(ParseError {
                     document_index,
-                    code: error.code.map(str::to_string),
-                    message: error.message,
+                    origin: match error.refusal {
+                        TagRefusal::Loader { code, message } => ParseErrorOrigin::Loader { code, message },
+                        TagRefusal::Unsupported(construct) => ParseErrorOrigin::Unsupported(construct),
+                    },
                     range: error.range.map(range_of),
                 });
             }
@@ -94,8 +95,7 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
                 .copied();
             parse_errors.push(ParseError {
                 document_index,
-                code: Some(refusal.code.to_string()),
-                message: refusal.message,
+                origin: ParseErrorOrigin::Loader { code: refusal.code, message: refusal.message },
                 range,
             });
         }

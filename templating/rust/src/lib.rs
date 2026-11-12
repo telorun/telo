@@ -67,7 +67,7 @@ pub use sentinel::{
     tagged_sentinel_parts, REF_ENGINE,
 };
 pub use yaml_composer::{
-    compose_first_yaml_document, compose_yaml, NodeId, ScalarValue, YamlDocument, YamlEntry, YamlError, YamlErrorKind,
+    compose_first_yaml_document, compose_yaml, NodeId, ReadFailure, ScalarValue, YamlDocument, YamlEntry, YamlError, YamlErrorKind,
     YamlNode, YamlNodeKind, YamlScalar, YamlScalarStyle, YamlStream, YamlTag,
 };
-pub use yaml_tags::{document_to_json, JsonRefusal, TagError, NESTING_REFUSAL};
+pub use yaml_tags::{document_to_json, JsonRefusal, TagError, TagRefusal, UnsupportedConstruct, NESTING_REFUSAL};

@@ -5,6 +5,8 @@
 //! dependency's `{ kind, name }` is marked as the reference it means
 //! ([`mark_legacy_references`]).
 //!
+//! [`validate_reference_forms`] reports them for the entry module as Node's analysis does.
+//!
 //! Only reference slots are judged — the nodes a kind's schema marks
 //! `x-telo-ref`, found through `properties`, `additionalProperties`, `items`,
 //! local `$ref`s and union and `allOf` branches — never a whole document: a
@@ -14,8 +16,15 @@
 
 use serde_json::Value;
 
-use crate::resolved_reference::{carries_reference_marker, RESOLVED_REFERENCE_MARKER};
+use crate::loaded_types::LoadedGraph;
+use crate::module_alias_scope::definition_in_scope;
+use crate::quoted_place::with_quoted_path;
+use crate::resolved_reference::{carries_reference_marker, declares_name_field, RESOLVED_REFERENCE_MARKER};
 use crate::schema_compat::{collect_properties, resolve_ref_in, union_branches};
+use crate::system_kinds::{is_module_document, skips_ref_resolution};
+use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticResource};
+
+const CODE: &str = "INVALID_REFERENCE_FORM";
 
 /// Which spelling an author wrote.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -353,4 +362,72 @@ mod tests {
         assert!(find_invalid_reference_forms(&value, &schema, &declares, &accepts).is_empty());
         assert_eq!(find_invalid_reference_forms(&reference, &schema, &declares, &accepts).len(), 1);
     }
+}
+
+/// The objects written as a reference among a module document's `targets:` — an entry
+/// that is itself a reference, or an inline step's `invoke:`.
+pub fn target_reference_forms(
+    document: &Value,
+    kind_declares_name: &dyn Fn(&str) -> Option<bool>,
+) -> Vec<InvalidReferenceForm> {
+    let Some(targets) = document.get("targets").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for (index, target) in targets.iter().enumerate() {
+        let (value, path, pointer) = match target.get("invoke") {
+            Some(invoke) if target.get("kind").is_none() => {
+                (invoke, format!("targets[{index}].invoke"), format!("/targets/{index}/invoke"))
+            }
+            _ => (target, format!("targets[{index}]"), format!("/targets/{index}")),
+        };
+        if let Some((form, name)) = authored_object_form(value, kind_declares_name) {
+            found.push(InvalidReferenceForm { path, pointer, form, name });
+        }
+    }
+    found
+}
+
+/// `INVALID_REFERENCE_FORM` for every object an author wrote as a reference in the entry
+/// module — a dependency's are not the consumer's to fix, and the kernel refuses only an
+/// author-written `__ref` key there, when an import loads the library. A resource whose
+/// kind does not resolve is not judged.
+pub fn validate_reference_forms(graph: &LoadedGraph, accepts: &AcceptsValue) -> Vec<AnalysisDiagnostic> {
+    let source = graph.root_source.as_str();
+    let file = &graph.entry().owner;
+    let declares_name = |kind: &str| {
+        definition_in_scope(graph, source, kind)
+            .map(|definition| declares_name_field(definition.get("schema").unwrap_or(&Value::Null)))
+    };
+    let mut diagnostics = Vec::new();
+    for document in file.documents() {
+        let Some(kind) = kind_of(document) else { continue };
+        if skips_ref_resolution(kind) {
+            continue;
+        }
+        let found = if is_module_document(kind) {
+            target_reference_forms(document, &declares_name)
+        } else {
+            let Some(schema) = definition_in_scope(graph, source, kind).and_then(|definition| definition.get("schema"))
+            else {
+                continue;
+            };
+            find_invalid_reference_forms(document, schema, &declares_name, accepts)
+        };
+        let name = name_of(document).unwrap_or_default();
+        for form in found {
+            let diagnostic = AnalysisDiagnostic::error(
+                CODE,
+                format!("{kind}/{name}: {}", reference_form_message(&form)),
+                DiagnosticData {
+                    resource: Some(DiagnosticResource { kind: kind.to_string(), name: name.to_string() }),
+                    file_path: Some(file.source.clone()),
+                    path: Some(form.path.clone()),
+                    ..Default::default()
+                },
+            );
+            diagnostics.push(with_quoted_path(diagnostic, &form.path));
+        }
+    }
+    diagnostics
 }

@@ -82,8 +82,11 @@ loader places none. Two families:
   starting with `@` or `` ` `` — each with one sentence, and every error a loader
   cannot place in one of them as "not valid YAML". Each loader classifies its own
   parser's errors; a row pins a kind where both parsers reach it at the same place.
-  A loader reads past the first error only as far as its parser does, so a row
-  holds one YAML error.
+  A loader reads past the first error only as far as its parser does — the Rust
+  loader stops reading at an alias naming no anchor, where the Node loader reports
+  it and reads the file's later documents, an under-report — so a row holds one
+  YAML error. The alias bound's row sits exactly one alias past it, so a loader
+  moving the bound by one fails it.
 
 `documents`, when present, is each document's `{ sourceLine, positions }`: the
 0-based line it starts on, and its position index — every field value's range

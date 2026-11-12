@@ -14,7 +14,11 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use serde_json::{json, Value};
-use telo_analyzer::{as_resolved_ref, LoadedFile, ManifestLoader, DEFAULT_MANIFEST_FILENAME};
+use telo_analyzer::sources::oci_ref::is_oci_ref;
+use telo_analyzer::{
+    analyze, as_resolved_ref, load_graph, AnalysisDiagnostic, AnalysisOptions, DiagnosticSeverity,
+    ImportTargetPort, LoadedFile, LoadedGraph, ManifestLoader, ParseErrorOrigin, DEFAULT_MANIFEST_FILENAME,
+};
 
 use crate::bundle::module_artifact::{
     module_artifact_for, module_directory_for, LayerFetcher, ModuleArtifacts, ModuleFiles,
@@ -22,7 +26,9 @@ use crate::bundle::module_artifact::{
 use crate::bundle::module_manifest::read_owner_manifest;
 use crate::controller_loader::ControllerLoader;
 use crate::controller_registry::ControllerRegistry;
-use crate::controllers::module::module_controller::{load_module, LoadedModule, ModuleRole};
+use crate::controllers::module::import_controller::resolve_import_source;
+use crate::controllers::module::module_controller::{load_module, value_branch_accepts, LoadedModule, ModuleRole};
+use crate::import_load_failure::import_load_failure;
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
 use crate::invoke_dispatch;
@@ -36,15 +42,12 @@ use crate::manifest_sources::oci_source::OciSource;
 use crate::module_context::ModuleContext;
 use crate::runtime_registry::ControllerPolicy;
 
-/// The analyzer's manifest loader plus what the Node kernel's
-/// `buildModuleArtifacts` does after a load: a module whose manifest carries a
-/// `layers:` index gets its artifact registered under its canonical source, one
-/// fetched from a registry without one is recorded as unlocatable, and every
-/// module's `sources:` block is kept for the staged-file check.
-///
-/// At READ time rather than after the whole graph, because this kernel creates a
-/// module's resources inside that module's load — its own kinds' controllers
-/// resolve before the load returns, so the artifact must already be known.
+/// The analyzer's manifest loader, the port the load's graph walk reads and
+/// resolves through, plus what the Node kernel's `buildModuleArtifacts` does
+/// after a load: a module whose manifest carries a `layers:` index gets its
+/// artifact registered under its canonical source, one fetched from a registry
+/// without one is recorded as unlocatable, and every module's `sources:` block
+/// is kept for the staged-file check.
 pub struct ArtifactManifestLoader {
     manifests: ManifestLoader,
     layer_fetcher: Rc<dyn LayerFetcher>,
@@ -53,31 +56,49 @@ pub struct ArtifactManifestLoader {
     legacy_manifests_dir: Option<PathBuf>,
 }
 
+impl ImportTargetPort for ArtifactManifestLoader {
+    type Error = KernelError;
+
+    fn resolve(&self, from: &LoadedFile, alias: &str, source: &str) -> Result<String, KernelError> {
+        let from_artifact = is_oci_ref(&from.requested_url) || is_oci_ref(&from.source);
+        resolve_import_source(alias, source, &from.source, from_artifact)
+    }
+
+    fn load(&self, url: &str) -> Result<LoadedFile, KernelError> {
+        Ok(self.manifests.load(url)?)
+    }
+}
+
 impl ArtifactManifestLoader {
-    pub fn load(&self, path_or_url: &str) -> Result<LoadedFile, KernelError> {
-        let loaded = self.manifests.load(path_or_url)?;
-        let owner = read_owner_manifest(loaded.documents())
-            .map_err(|err| KernelError::new(err.code(), format!("'{}': {err}", loaded.source)))?;
-        let module_dir = module_directory_for(
-            &loaded.requested_url,
-            &loaded.source,
-            &self.manifests_dir,
-            self.legacy_manifests_dir.as_deref(),
-        );
-        match module_artifact_for(
-            &loaded.requested_url,
-            owner.layers,
-            module_dir,
-            Rc::clone(&self.layer_fetcher),
-        )? {
-            Some(artifact) => self.artifacts.register(&loaded.source, Rc::new(artifact)),
-            None if loaded.requested_url.contains("://") => {
-                self.artifacts.register_unlocatable(&loaded.source)
+    /// Register every module of `graph`'s artifact and `sources:` block — after
+    /// the static refusals, as the Node kernel builds them, so a manifest that
+    /// does not parse is refused before its owner fields are read.
+    fn build_module_artifacts(&self, graph: &LoadedGraph) -> Result<(), KernelError> {
+        for module in graph.modules.values() {
+            let loaded = &module.owner;
+            let owner = read_owner_manifest(loaded.documents())
+                .map_err(|err| KernelError::new(err.code(), format!("'{}': {err}", loaded.source)))?;
+            let module_dir = module_directory_for(
+                &loaded.requested_url,
+                &loaded.source,
+                &self.manifests_dir,
+                self.legacy_manifests_dir.as_deref(),
+            );
+            match module_artifact_for(
+                &loaded.requested_url,
+                owner.layers,
+                module_dir,
+                Rc::clone(&self.layer_fetcher),
+            )? {
+                Some(artifact) => self.artifacts.register(&loaded.source, Rc::new(artifact)),
+                None if loaded.requested_url.contains("://") => {
+                    self.artifacts.register_unlocatable(&loaded.source)
+                }
+                None => {}
             }
-            None => {}
+            self.artifacts.register_sources(&loaded.source, owner.sources);
         }
-        self.artifacts.register_sources(&loaded.source, owner.sources);
-        Ok(loaded)
+        Ok(())
     }
 
     /// Where the files of the module whose manifest resolved from `source` are.
@@ -89,6 +110,9 @@ impl ArtifactManifestLoader {
 /// Everything a module load needs, shared by every module in one run.
 pub struct LoadEnv {
     pub loader: ArtifactManifestLoader,
+    /// The entry and every library its imports reach, read once, before anything
+    /// is created: every module the load creates is read from here.
+    pub graph: LoadedGraph,
     pub registry: ControllerRegistry,
     pub controllers: ControllerLoader,
     /// Loaded modules by (canonical manifest path, policy). A library imported
@@ -124,11 +148,21 @@ impl LoadEnv {
             .insert(cache_key, Rc::clone(&loaded.context));
         Ok(loaded.context)
     }
+
+    /// The file the load's graph read for `path_or_url`.
+    pub fn file(&self, path_or_url: &str) -> Result<&LoadedFile, KernelError> {
+        self.graph.module(path_or_url).map(|module| &module.owner).ok_or_else(|| {
+            KernelError::runtime_invalid(format!(
+                "'{path_or_url}' is loaded by a module, but the load's import graph never reached it"
+            ))
+        })
+    }
 }
 
 /// The environment for one run from `entry`: the `.telo` cache root anchored on
 /// it, and the source chain local file → manifest cache → OCI registry, so a
-/// cached manifest never reaches the network.
+/// cached manifest never reaches the network. The entry's whole import graph is
+/// read and its static refusals raised before anything else.
 fn load_env(entry: &str) -> Result<LoadEnv, KernelError> {
     let entry_dir = entry_dir(entry)?;
     let manifests_dir = resolve_cache_root(&entry_dir)
@@ -136,22 +170,78 @@ fn load_env(entry: &str) -> Result<LoadEnv, KernelError> {
         .join("manifests");
     let oci = OciSource::default();
     let artifacts = Rc::new(ModuleArtifacts::default());
+    let loader = ArtifactManifestLoader {
+        manifests: ManifestLoader::new(vec![
+            Box::new(LocalFileSource),
+            Box::new(LocalManifestCacheSource::new(&entry_dir, manifests_dir.clone())),
+            Box::new(oci.clone()),
+        ]),
+        layer_fetcher: Rc::new(oci),
+        artifacts: Rc::clone(&artifacts),
+        legacy_manifests_dir: legacy_manifests_dir_fallback(&entry_dir, &manifests_dir),
+        manifests_dir,
+    };
+    let graph = load_graph(&loader, entry)?;
+    refuse_static_findings(&graph)?;
+    loader.build_module_artifacts(&graph)?;
     Ok(LoadEnv {
-        loader: ArtifactManifestLoader {
-            manifests: ManifestLoader::new(vec![
-                Box::new(LocalFileSource),
-                Box::new(LocalManifestCacheSource::new(&entry_dir, manifests_dir.clone())),
-                Box::new(oci.clone()),
-            ]),
-            layer_fetcher: Rc::new(oci),
-            artifacts: Rc::clone(&artifacts),
-            legacy_manifests_dir: legacy_manifests_dir_fallback(&entry_dir, &manifests_dir),
-            manifests_dir,
-        },
+        loader,
+        graph,
         registry: ControllerRegistry::default(),
         controllers: ControllerLoader::new(artifacts),
         modules: RefCell::new(HashMap::new()),
     })
+}
+
+/// What the load refuses before any module is created, in the Node kernel's
+/// order: a construct this kernel cannot read at all; the import failures, as
+/// one error of the first failure's code; the parse failures, as one
+/// `ERR_MANIFEST_VALIDATION_FAILED` naming each file; the analysis's errors, as
+/// one `ERR_MANIFEST_VALIDATION_FAILED`. Each carries its diagnostics.
+fn refuse_static_findings(graph: &LoadedGraph) -> Result<(), KernelError> {
+    for module in graph.modules.values() {
+        let file = &module.owner;
+        for error in &file.parse_errors {
+            let ParseErrorOrigin::Unsupported(construct) = &error.origin else { continue };
+            let place = match error.range {
+                Some(range) => format!(
+                    "document {}, line {}, column {}",
+                    error.document_index,
+                    range.start.line + 1,
+                    range.start.character + 1
+                ),
+                None => format!("document {}", error.document_index),
+            };
+            return Err(KernelError::new(
+                "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+                format!("'{}', {place}: {}", file.source, construct.message()),
+            ));
+        }
+    }
+    if let Some(failure) = import_load_failure(graph) {
+        return Err(failure);
+    }
+    if !graph.parse_diagnostics.is_empty() {
+        let message = graph
+            .parse_diagnostics
+            .iter()
+            .map(|d| match d.data.as_ref().and_then(|data| data.file_path.as_deref()) {
+                Some(file) => format!("{file}: {}", d.message),
+                None => d.message.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(KernelError::manifest_validation_failed(message)
+            .with_diagnostics(graph.parse_diagnostics.clone()));
+    }
+    let errors: Vec<AnalysisDiagnostic> = analyze(graph, &AnalysisOptions { accepts_value: &value_branch_accepts })
+        .into_iter()
+        .filter(|d| d.severity == Some(DiagnosticSeverity::Error))
+        .collect();
+    if !errors.is_empty() {
+        return Err(KernelError::manifest_validation_failed("Manifest validation failed").with_diagnostics(errors));
+    }
+    Ok(())
 }
 
 fn cwd_unreadable(what: &str, err: std::io::Error) -> KernelError {
