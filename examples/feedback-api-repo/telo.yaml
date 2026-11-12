@@ -2,7 +2,7 @@ kind: Telo.Application
 metadata:
   name: FeedbackApiRepo
   version: 1.0.0
-  categories: [ Transport, Storage ]
+  categories: [ Transport, Storage, UI ]
   description: |
     Feedback REST API with no hand-written SQL past the schema migration:
     `SqlRepository.Create` / `SqlRepository.Read` are the route handlers, and CEL
@@ -12,11 +12,15 @@ metadata:
     plain table access; reach for `Crud.Api` (see `todo-app`) when you want
     the whole REST surface generated, and for `Sql.Query` when you need a join.
 
-    Run, then:
+    A page on `/` takes feedback through a form and lists what came in, drawn
+    from the same routes — the form and the list are declared, not coded.
+
+    Run, open http://localhost:8844/, or use the API:
         curl -X POST localhost:8844/v1/feedback \
           -H 'content-type: application/json' \
           -d '{"text":"the docs are great","source":"web","rating":5}'
         curl localhost:8844/v1/feedback
+lang: en
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   # 0.133.0: `Telo.OpenUrl`.
@@ -26,10 +30,12 @@ imports:
   Sql: ../../modules/sql
   SQLite: ../../modules/sqlite
   SqlRepository: ../../modules/sql-repository
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 targets:
   - !ref migrate
   - !ref server
-  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
+  - { name: openUi, invoke: !ref openUi, inputs: { url: !cel "resources.server.status.localUrl" } }
 ports: { http: { env: PORT, default: 8844 } }
 variables:
   dbFile:
@@ -79,6 +85,7 @@ mounts:
   - path: /v1
     mount: !ref feedbackRoutes
   - { path: /docs, mount: { kind: Http.Reference } }
+  - { path: /, mount: !ref ui }
 ---
 kind: Http.Api
 metadata: { name: feedbackRoutes }
@@ -117,6 +124,18 @@ routes:
           application/json:
             body: !cel "result.rows"
 
+  # GET /v1/feedback/recent — the list as an object, which is what a screen
+  # reads (`Ui.Data` takes a JSON object, never a bare array).
+  - request: { path: /feedback/recent, method: GET }
+    handler: !ref readFeedback
+    inputs: { filters: {} }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              entries: !cel "result.rows"
+
   # GET /v1/feedback/{id} — fetch a single entry by id
   - request:
       path: /feedback/{id}
@@ -136,5 +155,76 @@ routes:
       - status: 404
         content: { application/json: { body: { ok: false, message: Not found } } }
 ---
+# What the form sends; the POST route's body schema says the same.
+kind: Telo.JsonSchema
+metadata: { name: NewFeedback }
+schema:
+  type: object
+  required: [text, rating]
+  additionalProperties: false
+  properties:
+    text: { type: string, title: Feedback, minLength: 1 }
+    source: { type: string, title: Where from }
+    rating: { type: integer, title: Rating (1-5), minimum: 1, maximum: 5 }
+---
+kind: Telo.JsonSchema
+metadata: { name: Received }
+schema: { type: object, required: [message], properties: { message: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: FeedbackEntries }
+schema:
+  type: object
+  required: [entries]
+  properties:
+    entries:
+      type: array
+      items:
+        type: object
+        required: [id, text, rating]
+        properties:
+          id: { type: integer }
+          text: { type: string, title: Feedback }
+          source: { type: string, title: Source }
+          rating: { type: integer, title: Rating }
+          created_at: { type: string, title: Received }
+---
+kind: Ui.Action
+metadata: { name: sendFeedback }
+inputModel: !ref NewFeedback
+outputModel: !ref Received
+request: { target: /v1/feedback }
+label: Send feedback
+result: { type: text, text: Thank you — your feedback was received., style: success }
+onSuccess: { refreshes: [/v1/feedback/recent] }
+---
+kind: UiReact.App
+metadata: { name: ui }
+title: Feedback
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Feedback
+    width: contained
+    children:
+      - { type: text, text: Tell us what you think, style: heading }
+      - { type: composite, ref: !ref sendFeedback }
+      - { type: text, text: What came in, style: subheading }
+      - type: composite
+        ref:
+          kind: Ui.Data
+          model: !ref FeedbackEntries
+          source: /v1/feedback/recent
+          reloadOn: [focus]
+          content:
+            type: list
+            rows: !cel "data.entries"
+            columns:
+              - { header: Rating, value: !cel "row.rating" }
+              - { header: Feedback, value: !cel "row.text" }
+              - { header: Source, value: !cel "row.source" }
+              - { header: Received, value: !cel "row.created_at" }
+---
 kind: Telo.OpenUrl
-metadata: { name: openDocs }
+metadata: { name: openUi }

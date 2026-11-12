@@ -3,10 +3,10 @@ metadata:
   name: NotesWebSignInTest
   version: 1.0.0
   description: >-
-    Runs `examples/notes-web` unmodified against a fixture identity provider, once with
+    Runs `examples/notes-web` unmodified with the stand-in identity provider it starts itself, once with
     the provider returning the code in the redirect's query and once as a form POST. A
-    client plays the browser: sign-in through the provider ends on a page naming the
-    user; a returned state that is not the browser's, and a replayed return, are refused.
+    client plays the browser: sign-in through the provider ends with the session naming the
+    user, which the home page reads; a returned state that is not the browser's, and a replayed return, are refused.
 imports:
   App: ../../../modules/app
   HttpClient: ../../../modules/http-client
@@ -35,9 +35,12 @@ inputType:
     required: [notes, idp, notesPort, mode, shown]
     properties: { notes: { type: string }, idp: { type: string }, notesPort: { type: integer }, mode: { type: string }, shown: { type: string } }
 steps:
+  - name: page
+    invoke: !ref visit
+    inputs: { url: !cel "inputs.notes + '/_telo/ui/page?path=/'" }
   - name: anonymous
     invoke: !ref visit
-    inputs: { url: !cel "inputs.notes + '/'" }
+    inputs: { url: !cel "inputs.notes + '/api/session'" }
   - name: login
     invoke: !ref visit
     inputs: { url: !cel "inputs.notes + '/auth/login'" }
@@ -72,7 +75,7 @@ steps:
     value: !cel "'notes-session=' + steps.callback.result.headers['set-cookie'].split('notes-session=')[1].split(';')[0]"
   - name: signedIn
     invoke: !ref visit
-    inputs: { url: !cel "inputs.notes + '/'", headers: { cookie: !cel "steps.sessionCookie.result" } }
+    inputs: { url: !cel "inputs.notes + '/api/session'", headers: { cookie: !cel "steps.sessionCookie.result" } }
   # A second sign-in whose return carries a state this browser was not sent away with.
   - name: login2
     invoke: !ref visit
@@ -108,19 +111,21 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        anonymous: { status: !cel "steps.anonymous.result.status", signInLink: !cel "steps.anonymous.result.body.contains('/auth/login')" }
+        page: { status: !cel "steps.page.result.status", reads: !cel "steps.page.result.body.children[1].source.path.value", signInLink: !cel "steps.page.result.body.children[1].content.children[1].children[1].href.path.value" }
+        anonymous: { status: !cel "steps.anonymous.result.status", user: !cel "steps.anonymous.result.body.user" }
         login:
           status: !cel "steps.login.result.status"
           sendsToProvider: !cel "steps.login.result.headers['location'].startsWith(inputs.idp + '/authorize?response_type=code&client_id=notes-example&redirect_uri=http%3A%2F%2F127.0.0.1%3A' + string(inputs.notesPort) + '%2Fauth%2Fcallback&state=' + steps.state.result + '&response_mode=' + inputs.mode)"
         callback: { status: !cel "steps.callback.result.status", location: !cel "steps.callback.result.headers['location']" }
-        signedIn: { status: !cel "steps.signedIn.result.status", names: !cel "steps.signedIn.result.body.contains('Signed in as ' + inputs.shown)", rawMarkup: !cel "steps.signedIn.result.body.contains('<script>')" }
+        signedIn: { status: !cel "steps.signedIn.result.status", names: !cel "steps.signedIn.result.body.user == inputs.shown" }
         forgedState: { status: !cel "steps.forgedState.result.status", setsSession: !cel "steps.forgedState.result.headers['set-cookie'].contains('notes-session=')" }
         replayed: { status: !cel "steps.replayed.result.status", setsSession: !cel "steps.replayed.result.headers['set-cookie'].contains('notes-session=')" }
       expected:
-        anonymous: { status: 200, signInLink: true }
+        page: { status: 200, reads: /api/session, signInLink: /auth/login }
+        anonymous: { status: 200, user: "" }
         login: { status: 302, sendsToProvider: true }
         callback: { status: 302, location: / }
-        signedIn: { status: 200, names: true, rawMarkup: false }
+        signedIn: { status: 200, names: true }
         forgedState: { status: 400, setsSession: false }
         replayed: { status: 400, setsSession: false }
 ---
@@ -128,15 +133,11 @@ kind: Telo.Sequence
 metadata: { name: queryMode }
 with:
   - kind: App.Instance
-    metadata: { name: idp }
-    source: ./__fixtures__/identity-provider/telo.yaml
-    ports: { http: 8862 }
-  - kind: App.Instance
     metadata: { name: notes }
     source: ../telo.yaml
-    ports: { http: 8861 }
-    variables: { providerUrl: "http://127.0.0.1:8862", responseMode: query }
-targets: [!ref idp, !ref notes]
+    ports: { http: 8861, provider: 8862 }
+    variables: { responseMode: query }
+targets: [!ref notes]
 steps:
   - name: flow
     invoke: !ref signInFlow
@@ -146,36 +147,27 @@ kind: Telo.Sequence
 metadata: { name: formPostMode }
 with:
   - kind: App.Instance
-    metadata: { name: idp }
-    source: ./__fixtures__/identity-provider/telo.yaml
-    ports: { http: 8864 }
-  - kind: App.Instance
     metadata: { name: notes }
     source: ../telo.yaml
-    ports: { http: 8863 }
-    variables: { providerUrl: "http://127.0.0.1:8864", responseMode: form_post }
-targets: [!ref idp, !ref notes]
+    ports: { http: 8863, provider: 8864 }
+    variables: { responseMode: form_post }
+targets: [!ref notes]
 steps:
   - name: flow
     invoke: !ref signInFlow
     inputs: { notes: "http://127.0.0.1:8863", idp: "http://127.0.0.1:8864", notesPort: 8863, mode: form_post, shown: alice }
 ---
-# A user name carrying markup is shown as text.
+# A user name carrying markup is handed over as data; the page draws it as text.
 kind: Telo.Sequence
 metadata: { name: hostileName }
 with:
   - kind: App.Instance
-    metadata: { name: idp }
-    source: ./__fixtures__/identity-provider/telo.yaml
-    ports: { http: 8866 }
-    variables: { subject: "<script>alert(1)</script>" }
-  - kind: App.Instance
     metadata: { name: notes }
     source: ../telo.yaml
-    ports: { http: 8865 }
-    variables: { providerUrl: "http://127.0.0.1:8866", responseMode: query }
-targets: [!ref idp, !ref notes]
+    ports: { http: 8865, provider: 8866 }
+    variables: { responseMode: query, standInUser: "<script>alert(1)</script>" }
+targets: [!ref notes]
 steps:
   - name: flow
     invoke: !ref signInFlow
-    inputs: { notes: "http://127.0.0.1:8865", idp: "http://127.0.0.1:8866", notesPort: 8865, mode: query, shown: "&lt;script&gt;alert(1)&lt;/script&gt;" }
+    inputs: { notes: "http://127.0.0.1:8865", idp: "http://127.0.0.1:8866", notesPort: 8865, mode: query, shown: "<script>alert(1)</script>" }

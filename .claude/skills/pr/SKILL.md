@@ -174,7 +174,7 @@ never yours.
   - **Sweep CI before every push.** Bring the branch up to date and run the changeset gate as in
     step 2; then, as the last thing before the push, read the checks once more
     (`gh pr checks <n> --json name,bucket,link`). Every failing check there must be either fixed
-    in the commit you are about to push or a failure outside this change (below). One that is
+    in the commit you are about to push or an infrastructure error awaiting its re-run (below). One that is
     neither — it failed while you were fixing the last — is read, fixed, re-run locally and
     amended the same way, and the sweep runs again. Push only when a sweep finds no failure left
     unfixed locally.
@@ -189,11 +189,12 @@ never yours.
     fix, and say what the flake was in the report. A flake you cannot make deterministic is
     reported with its failing log line and your finding; do not paper over it with retries or
     longer timeouts alone.
-  - **A failure outside this change** — an infrastructure error, a check that also fails on
-    `main`: re-run it once with `gh run rerun <run-id> --failed` after its run has finished
-    (GitHub refuses to re-run a run in progress). A push carrying a fix for another check re-runs
-    it anyway, and counts as that re-run. If it fails again, stop and report it with its log line;
-    do not fix other code to get green.
+  - **A failure this change did not cause is still fixed in this PR.** Only an infrastructure
+    error (a runner, network or GitHub outage, no test failing) is re-run instead: once, with
+    `gh run rerun <run-id> --failed` after its run has finished (GitHub refuses to re-run a run in
+    progress); a push carrying a fix for another check re-runs it anyway, and counts as that
+    re-run. A failing test — one that also fails on `main`, or that you believe is unrelated — is
+    found and fixed like any other, and the report says it predates the change.
   - **The same check failing after three amend rounds:** stop and report. Grinding is not
     progress.
 - **A pull request that reports conflicts with `main`, or falls behind it while its checks run,**
@@ -221,7 +222,7 @@ A stop for any other reason gets the same message, saying where it stopped and w
 
 - Merge a PR, or push to `main`.
 - Commit anything outside the change: the whole working tree, or the scope they named plus the
-  working files that ride along, plus fixes to it and to the flaky tests its CI exposes.
+  working files that ride along, plus fixes to it and to every failing test its CI exposes.
 - Leave a changed working file (`CLAUDE.md`, `.claude/`, `plans/`) uncommitted.
 - Guess a file into or out of a named scope.
 - Add a new commit to fix CI; amend instead.

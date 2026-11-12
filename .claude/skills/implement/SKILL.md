@@ -12,8 +12,11 @@ round answers the review, `/pr` lands it. Write no report files; briefs go in th
 The task is what the arguments name or point at, or — with no arguments — the design this
 conversation just agreed. Record `git status` first, so you know what the tree held before.
 
-Stop and ask, building nothing, when no task can be identified or a public-surface question (a kind,
-field, schema shape, diagnostic code, package boundary) is still open.
+Stop and ask, building nothing, only when no task can be identified. A public-surface question still
+open (a kind, field, schema shape, diagnostic code, package boundary) or a name the user never
+confirmed goes to `decider` in one call; build its answer. Never decline a task as too big, and
+never split it into several `/implement` runs or pull requests: size is what parts are for, all in
+this one run. Build in the current tree unless the arguments ask for another worktree.
 
 Otherwise cut the task into **parts**, as few as it needs — one is the norm. Split only along a real
 boundary: a different package or runtime, work that must land first, or more than one builder's
@@ -62,7 +65,9 @@ the rest by part, one fresh builder per part: `builder-lite` when every item sta
 otherwise `builder`, `builder-high` only when an item reopens a `high` part's design; an item
 spanning parts goes to one `builder`.
 
-A declined finding and every pre-existing defect go in the final message, never in the tree. No
+A finding that the settled design cannot work as written goes to `decider`; build its answer in
+this round and report it — stop for approval only when it overrules something the user explicitly
+asked for. A declined finding and every pre-existing defect go in the final message, never in the tree. No
 second round, no second audit, never two builders at once.
 
 ## 5. Verify, then `/pr`

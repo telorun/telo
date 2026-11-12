@@ -2,15 +2,16 @@ kind: Telo.Application
 metadata:
   name: SupportInboxMcp
   version: 1.0.0
-  categories: [ AI, Transport, Storage ]
+  categories: [ AI, Transport, Storage, UI ]
   description: |
-    A support-ticket service with two front doors onto the same handlers: a REST
-    API for your app, and an MCP endpoint so an assistant (Claude Desktop,
-    Cursor, any MCP client) can search and close tickets itself.
+    A support-ticket service with three front doors onto the same handlers: a REST
+    API for your app, an MCP endpoint so an assistant (Claude Desktop, Cursor, any
+    MCP client) can search and close tickets itself, and a declared web page where
+    a person sees the inbox and closes tickets.
 
     The two surfaces share the resources, not just the database — `searchTickets`
     and `closeTicket` are each declared once and referenced by both the HTTP route
-    and the MCP tool entry. Exposing an existing app to a model is a mount and a
+    and the MCP tool entry, and the page calls the same routes. Exposing an existing app to a model is a mount and a
     tool bundle, not a second service to keep in sync.
 
     Run, then:
@@ -19,6 +20,7 @@ metadata:
         curl -s -XPOST localhost:8066/mcp -H 'content-type: application/json' \
           -H 'accept: application/json, text/event-stream' \
           -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+lang: en
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
@@ -29,10 +31,12 @@ imports:
   Mcp: ../../modules/mcp-server
   Sql: ../../modules/sql
   SQLite: ../../modules/sqlite
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 targets:
   - !ref migrate
   - !ref server
-  - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }
+  - { name: openUi, invoke: !ref openUi, inputs: { url: !cel "resources.server.status.localUrl" } }
 ports: { http: { env: PORT, protocol: tcp, default: 8066 } }
 variables:
   dbFile:
@@ -120,6 +124,33 @@ routes:
         content:
           application/json:
             body: !cel "result.rows"
+
+  # The whole inbox as an object, which is what the page reads.
+  - request: { path: /tickets/inbox, method: GET }
+    handler: !ref searchTickets
+    inputs:
+      sql: "SELECT id, subject, body, status FROM tickets ORDER BY id"
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              tickets: !cel "result.rows"
+
+  # The same `closeTicket` the assistant calls.
+  - request:
+      path: /tickets/{id}/close
+      method: POST
+      schema: { params: { type: object, required: [id], properties: { id: { type: integer } } } }
+    handler: !ref closeTicket
+    inputs:
+      id: !cel "request.params.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
 ---
 # Front door 2: MCP, for an assistant. Same two resources, described for a model
 # instead of for a browser — `argumentsSchema` is what the model must produce,
@@ -189,6 +220,72 @@ mounts:
   - path: /mcp
     mount: !ref mcpEndpoint
   - { path: /docs, mount: { kind: Http.Reference } }
+  - { path: /, mount: !ref ui }
+---
+# Front door 3: a page, drawn from the routes above.
+kind: Telo.JsonSchema
+metadata: { name: Inbox }
+schema:
+  type: object
+  required: [tickets]
+  properties:
+    tickets:
+      type: array
+      items:
+        type: object
+        required: [id, subject, status]
+        properties:
+          id: { type: integer, title: "#" }
+          subject: { type: string, title: Subject }
+          body: { type: string, title: Details }
+          status: { type: string, title: Status }
+---
+kind: Telo.JsonSchema
+metadata: { name: TicketId }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Closed }
+schema: { type: object, required: [closed], properties: { closed: { type: boolean } } }
+---
+kind: Ui.Action
+metadata: { name: closeTicketAction }
+inputModel: !ref TicketId
+outputModel: !ref Closed
+request: { target: { path: "/api/tickets/{id}/close", pathParams: { id: !cel "input.id" } } }
+label: Close
+result: { type: badge, style: success, text: Closed }
+onSuccess: { refreshes: [/api/tickets/inbox] }
+---
+kind: UiReact.App
+metadata: { name: ui }
+title: Support inbox
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Inbox
+    children:
+      - { type: text, text: Support tickets, style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Data
+          model: !ref Inbox
+          source: /api/tickets/inbox
+          reloadOn: [focus]
+          content:
+            type: list
+            rows: !cel "data.tickets"
+            columns:
+              - { header: "#", value: !cel "row.id" }
+              - { header: Subject, value: !cel "row.subject" }
+              - { header: Details, value: !cel "row.body" }
+              - { header: Status, value: !cel "row.status" }
+            rowActions:
+              - action: !ref closeTicketAction
+                inputs: { id: !cel "row.id" }
+                confirm: Close this ticket?
+                enabled: { at: !cel "row.status", matches: { const: open }, disabledText: Already closed. }
 ---
 kind: Telo.OpenUrl
-metadata: { name: openDocs }
+metadata: { name: openUi }

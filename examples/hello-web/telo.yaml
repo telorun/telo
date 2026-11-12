@@ -2,31 +2,50 @@ kind: Telo.Application
 metadata:
   name: HelloWeb
   version: 1.0.0
+  categories: [Transport, UI]
   description: |
-    A two-page web app: `/` and `/settings`. It knows nothing about windows;
+    A two-page web app: `/` and `/settings`, declared as a UI with a header menu
+    and no hand-written frontend. It knows nothing about windows;
     `examples/hello-desktop` wraps it in a desktop shell without changing it.
 
-    Run, then:
-        curl http://localhost:8080/
-imports: { Http: ../../modules/http-server }
+    Run, then open http://localhost:8080/
+lang: en
+requires: { telo: ">=0.133.0" }
+imports:
+  Http: ../../modules/http-server
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 ports: { http: { env: PORT, default: 8080 } }
 targets:
   - !ref helloServer
+  - { name: openUi, invoke: !ref openUi, inputs: { url: !cel "resources.helloServer.status.localUrl" } }
+---
+kind: UiReact.App
+metadata: { name: helloUi }
+title: Hello
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Home
+    width: contained
+    children:
+      - { type: text, text: "Hello, world!", style: heading }
+      - { type: text, text: This page is declared in YAML and drawn by the UI renderer., style: muted }
+      - { type: link, text: Open settings, href: /settings, button: { kind: Ui.TextButton }, style: accent }
+  - kind: Ui.Page
+    path: /settings
+    title: Settings
+    width: contained
+    children:
+      - { type: text, text: Settings, style: heading }
+      - { type: text, text: Nothing to configure yet., style: muted }
 ---
 kind: Http.Server
 metadata: { name: helloServer }
 listen: { port: !cel "ports.http" }
 mounts:
-  - { path: /, mount: !ref helloPage }
+  - { path: /, mount: !ref helloUi }
 ---
-kind: Http.Api
-metadata: { name: helloPage }
-routes:
-  - request: { path: /, method: GET }
-    handler: { kind: Telo.Value, value: {} }
-    returns:
-      - { status: 200, content: { text/html: { body: "<h1>Hello, world!</h1>" } } }
-  - request: { path: /settings, method: GET }
-    handler: { kind: Telo.Value, value: {} }
-    returns:
-      - { status: 200, content: { text/html: { body: "<h1>Settings</h1>" } } }
+kind: Telo.OpenUrl
+metadata: { name: openUi }

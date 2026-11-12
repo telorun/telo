@@ -11,9 +11,9 @@ Loaded when working under `kernel/nodejs/`. Repo-wide rules live in the root `CL
 
 - `kernel.ts` — main orchestrator, boot sequence, multi-pass init loop, event bus. It registers `Self` on the ROOT context (pointing at the Application's own `metadata.name`), the half the import controller has always registered for a library: without it a root Application declaring its own `Telo.Definition` and instantiating it as `kind: Self.<Kind>` passed `telo check` — which registers `Self` for a root module — and failed at boot with "no module imported with alias 'Self'".
 - YAML loading + CEL-YAML compilation lives in the **analyzer** (`analyzer/nodejs/src/manifest-loader.ts`, `parse-loaded-file.ts`), not here; `kernel.ts` imports it
-- `evaluation-context.ts` — `EvaluationContext`, `ModuleContext` — variable/secret/resource scoping
+- `evaluation-context.ts` — `EvaluationContext` — variable/secret/resource scoping
 - `resource-context.ts` — bridge: `getModuleContext()`, `registerModuleImport()`
-- `module-context-registry.ts` — per-module store for variables, secrets, resources, imports
+- `module-context.ts` — `ModuleContext`, the per-module store for variables, secrets, resources, imports
 - `controller-registry.ts` — maps resource kinds to controller implementations
 - `builtin-controllers.ts` — the controllers the kernel implements itself, one table (entry → lazy import) its boot registers from; its keys are exported as `BUILTIN_CONTROLLER_ENTRIES`, which is how the CLI reports a kernel candidate `{ runtime: kernel, entry }` (a need type's) as Node-hosted. The kernel-declared need types (`Telo.PublicUrl`, …) are registered per definition beside it, not entries of it
 - `controllers/module/module-controller.ts` — handles `kind: Telo.Application` / `kind: Telo.Library` (includes, module scope)
@@ -189,7 +189,7 @@ One seam (`controller-loaders/esbuild-runtime.ts`) loads esbuild for both bundle
 
 ## Where to look
 
-- Module/import scoping → `evaluation-context.ts`, `module-context-registry.ts`, `import-controller.ts`
+- Module/import scoping → `evaluation-context.ts`, `module-context.ts`, `import-controller.ts`
 - "in which scope does a projected contract's hop resolve?" → `declaration-scope.ts` (declaration → the context that declared it, plus its authored form, recorded at registration and at `create()`), `instance-declaration.ts` (live instance → declaration), the `projections` scope in `Kernel.bindInvocationContract`. Each reference a derivation crosses resolves in the context that declared the declaration HOLDING it (the binding resource's context is right only for the first hop), and only at a path that is one of the holder's concrete reference sites — the ones Phase-5 injection substitutes. The same scope types a contract node carrying `x-telo-value-schema-from` (`resolveContractValueSchemas`, in `resolveBoundContract`): its location is walked across the live declarations, so a reference `telo check` could not follow — a library's resource input — is typed at dispatch, and a location the kind's schema cannot hold is refused at definition registration (`ERR_VALUE_SCHEMA_FROM_INVALID`, both meta-controllers, through the analyzer's `valueSchemaFromProblems` — in the kind's own fields and in the named shape its `inputType` / `outputType` names, read from the declarations the load holds, resolved across imports with `extends` parents folded, `controllers/resource-definition/declared-contract-shape.ts`, because a shape registers its schema only when created)
 - "why is a redundant import cheap / where does per-import analysis work go?" → `controllers/module/library-scope.ts` (isolated imports, the library's scope in the kernel registry), `controllers/module/shared-libraries.ts` (`lifecycle: shared`, the whole instance)
 - "what undoes this, and when?" → `sdk/nodejs/src/effect.ts` (the author surface), `kernel/nodejs/src/effect-scope.ts` (the frames + the instance→owner record), the init/run/teardown halves of `kernel/nodejs/src/evaluation-context.ts`, `kernel/specs/revertible-effects.md` (normative), `modules/http-server/nodejs/src/http-server-controller.ts` (the reference consumer)

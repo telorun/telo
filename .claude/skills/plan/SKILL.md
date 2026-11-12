@@ -39,7 +39,7 @@ Ask focused questions to remove ambiguity. Cover, as relevant:
 - **Behavior** — inputs, outputs, edge cases, failure modes, idempotency, concurrency.
 - **Integration points** — which existing modules/tables/APIs are touched or reused.
 - **Non-functional** — performance, security, observability, migration/rollback.
-- **Open decisions** — when multiple reasonable approaches exist, list them with trade-offs and ask the user to pick.
+- **Open decisions** — when multiple reasonable approaches exist, send them with their trade-offs to `decider` (all of them in one call) and bring the user its pick to confirm or overrule, not a menu.
 
 Batch related questions. Don't ask things you can answer from the code yourself.
 
@@ -57,7 +57,7 @@ Let the user probe your understanding and challenge assumptions. Iterate until y
 Before asking for go-ahead, make sure **every** decision is settled. No item is left for "later" or "TBD". For each open question either:
 
 - Get the user to decide, or
-- Decide yourself with a clear rationale and confirm the choice with the user.
+- Have `decider` decide and confirm its choice, with its rationale, with the user.
 
 If anything is still uncertain, go back to Phase 2 or 3. The plan will be refined further by the user afterwards, but it must not ship with open questions.
 

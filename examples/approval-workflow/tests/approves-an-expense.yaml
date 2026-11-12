@@ -1,0 +1,95 @@
+kind: Telo.Application
+metadata:
+  name: ApprovalWorkflowExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/approval-workflow` with a journal of its own and walks an expense
+    through its screen: the page reads the run's status from the screen route, an
+    expense over the threshold parks until an approval arrives, and the approval the
+    row action sends completes it. The home page and the expense page are read as the
+    UI documents the browser draws.
+imports:
+  App: ../../../modules/app
+  HttpClient: ../../../modules/http-client
+  Timer: ../../../modules/timer
+  Assert: ../../../modules/assert
+variables:
+  # The directory each run's journal goes in; a run keeps a subdirectory of its own.
+  stateRoot:
+    env: APPROVAL_EXAMPLE_TEST_DIR
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: ./.telo
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports: { http: 8871 }
+    variables: { journalDir: !cel "variables.stateRoot.joinPath('expenses-' + uuidv4())" }
+targets:
+  - !ref app
+steps:
+  - name: home
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs: { url: "http://127.0.0.1:8871/_telo/ui/page", query: { path: / } }
+  - name: expensePage
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs: { url: "http://127.0.0.1:8871/_telo/ui/page", query: { path: /expense } }
+  - name: submit
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:8871/api/expenses" }
+    inputs: { body: { employee: ada, amountCents: 250000, reason: conference } }
+  - { name: parked, value: { n: 0, status: "", token: "" } }
+  - name: awaitParked
+    while: !cel "steps.parked.result.status != 'parked' && steps.parked.result.n < 40"
+    do:
+      - name: wait
+        invoke: { kind: Timer.Delay }
+        inputs: { duration: 500ms, value: {} }
+      - name: read
+        invoke: { kind: HttpClient.Request, method: GET }
+        inputs: { url: !cel "'http://127.0.0.1:8871/api/expenses/' + steps.submit.result.body.runId + '/screen'" }
+      - name: parked
+        value:
+          n: !cel "steps.parked.result.n + 1"
+          status: !cel "size(steps.read.result.body.expenses) > 0 ? steps.read.result.body.expenses[0].status : ''"
+          token: !cel "size(steps.read.result.body.expenses) > 0 ? steps.read.result.body.expenses[0].token : ''"
+  - name: approve
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:8871/api/approvals" }
+    inputs: { body: { token: !cel "steps.parked.result.token", approvedBy: grace, note: ok } }
+  - { name: completed, value: { n: 0, status: "", token: "" } }
+  - name: awaitCompleted
+    while: !cel "steps.completed.result.status != 'completed' && steps.completed.result.n < 40"
+    do:
+      - name: wait
+        invoke: { kind: Timer.Delay }
+        inputs: { duration: 500ms, value: {} }
+      - name: read
+        invoke: { kind: HttpClient.Request, method: GET }
+        inputs: { url: !cel "'http://127.0.0.1:8871/api/expenses/' + steps.submit.result.body.runId + '/screen'" }
+      - name: completed
+        value:
+          n: !cel "steps.completed.result.n + 1"
+          status: !cel "size(steps.read.result.body.expenses) > 0 ? steps.read.result.body.expenses[0].status : ''"
+          token: !cel "size(steps.read.result.body.expenses) > 0 ? steps.read.result.body.expenses[0].token : ''"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        homeNodes: !cel "steps.home.result.body.children.map(c, c.type)"
+        expenseReads: !cel "steps.expensePage.result.body.children[1].source.path.value"
+        submit: { status: !cel "steps.submit.result.status", token: !cel "steps.submit.result.body.token" }
+        parked: !cel "steps.parked.result.status"
+        approve: !cel "steps.approve.result.body.delivered"
+        completed: !cel "steps.completed.result.status"
+      expected:
+        homeNodes: [text, text, action]
+        expenseReads: /api/expenses/{run}/screen
+        submit: { status: 202, token: "approve:expense:ada:250000" }
+        parked: parked
+        approve: true
+        completed: completed

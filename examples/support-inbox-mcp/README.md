@@ -1,12 +1,13 @@
-# Support inbox — one app, a REST API and an MCP server
+# Support inbox — one app, a REST API, an MCP server and a web page
 
-Two front doors onto the same two handlers:
+Three front doors onto the same two handlers:
 
 ```
 Http.Server (:8066)
 ├── /api → Http.Api          ─┐
-└── /mcp → Mcp.HttpEndpoint  ─┴─► searchTickets (Sql.Query)
-                                  closeTicket   (Telo.Sequence → Sql.Command)
+├── /mcp → Mcp.HttpEndpoint  ─┼─► searchTickets (Sql.Query)
+└── /    → UiReact.App ──────┘   closeTicket   (Telo.Sequence → Sql.Command)
+                                 (the page calls the /api routes)
 ```
 
 `searchTickets` and `closeTicket` are declared once. The HTTP route describes
@@ -22,6 +23,8 @@ telo ./examples/support-inbox-mcp
 
 curl -s 'localhost:8066/api/tickets?q=login'
 ```
+
+Open http://localhost:8066/ for the inbox: the tickets in a table, each open one with a Close button.
 
 ## Talk to it as an MCP client
 

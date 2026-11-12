@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata:
+  name: DrawShapesAgentCheckTest
+  version: 1.0.0
+  description: >-
+    `examples/draw-shapes-agent` passes the static check. Running it needs a model and
+    an object store, so the page and the route it calls are held to their shapes here.
+imports: { Assert: ../../../modules/assert }
+targets:
+  - !ref check
+---
+kind: Assert.Manifest
+metadata: { name: check }
+source: ../telo.yaml
+expect: {}
