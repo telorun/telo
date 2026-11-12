@@ -2,7 +2,7 @@
 //! for it, every diagnostic whole and at the range it is shown at. This runner holds the
 //! analysis, assembled as every host assembles it, to each row's `diagnostics`.
 
-use std::path::{Path, PathBuf, MAIN_SEPARATOR};
+use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 use telo_analyzer::{
@@ -15,6 +15,11 @@ fn vectors() -> PathBuf {
         .join("../check-conformance/vectors")
         .canonicalize()
         .expect("vectors directory")
+}
+
+/// A path with `/` separators on every platform, so a source reads as the recorded rows do.
+fn slashed(path: &str) -> String {
+    path.replace(std::path::MAIN_SEPARATOR, "/")
 }
 
 /// The filesystem, a directory read as its `telo.yaml`.
@@ -30,7 +35,7 @@ impl ManifestSource for FileSource {
         let file = if path.is_dir() { path.join(DEFAULT_MANIFEST_FILENAME) } else { path.to_path_buf() };
         let text = std::fs::read_to_string(&file)
             .map_err(|err| LoadError::Io { path: file.display().to_string(), message: err.to_string() })?;
-        Ok(ReadManifest { text, source: file.display().to_string() })
+        Ok(ReadManifest { text, source: slashed(&file.display().to_string()) })
     }
 }
 
@@ -71,7 +76,7 @@ fn diagnostics_of(dir: &Path) -> Vec<Value> {
     let entry = dir.join(DEFAULT_MANIFEST_FILENAME).display().to_string();
     let graph = load_graph(&loader, &entry).expect("graph loads");
     let analysis = analyze(&graph, &AnalysisOptions { accepts_value: &|_, _, _| false });
-    let prefix = format!("{}{MAIN_SEPARATOR}", dir.display());
+    let prefix = format!("{}/", slashed(&dir.display().to_string()));
     assemble_graph_diagnostics(&graph, analysis)
         .diagnostics
         .iter()

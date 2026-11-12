@@ -396,7 +396,9 @@ pub fn validate_reference_forms(graph: &LoadedGraph, accepts: &AcceptsValue) -> 
     let source = graph.root_source.as_str();
     let file = &graph.entry().owner;
     let declares_name = |kind: &str| {
+        // A kind specializing another may declare `name` through its chain: undecided.
         definition_in_scope(graph, source, kind)
+            .filter(|definition| definition.get("extends").is_none())
             .map(|definition| declares_name_field(definition.get("schema").unwrap_or(&Value::Null)))
     };
     let mut diagnostics = Vec::new();

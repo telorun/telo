@@ -24,7 +24,25 @@ fn refusal_text(error: &KernelError, dir: &Path) -> String {
             None => format!("  {}", diagnostic.message),
         });
     }
-    lines.join("\n").replace(&format!("{}{MAIN_SEPARATOR}", dir.display()), "")
+    strip_row_directory(&lines.join("\n"), dir)
+}
+
+/// The row directory's prefix removed, and the separators of the path it began written `/`
+/// as the recorded text has them — in that path alone, since a message may hold a backslash
+/// of its own.
+fn strip_row_directory(text: &str, dir: &Path) -> String {
+    let prefix = format!("{}{MAIN_SEPARATOR}", dir.display());
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(&prefix) {
+        out.push_str(&rest[..at]);
+        rest = &rest[at + prefix.len()..];
+        let end = rest.find(|c: char| c.is_whitespace() || matches!(c, '\'' | '"' | ':' | ',')).unwrap_or(rest.len());
+        out.push_str(&rest[..end].replace(MAIN_SEPARATOR, "/"));
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn run_fails(dir: &Path) -> Option<String> {

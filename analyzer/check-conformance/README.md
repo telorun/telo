@@ -25,6 +25,7 @@ The values are Node's answers, recorded by running the Node analyzer and the Nod
 - `branch-shape-sequence`, `branch-shape-marker-key`, `repeat-shape-sequence` — an expansion tag of the wrong shape: `BRANCH_SHAPE_INVALID`, `REPEAT_SHAPE_INVALID`.
 - `reserved-prefix-alias`, `reserved-prefix-library-name`, `reserved-prefix-entry-name` — `KIND_PREFIX_RESERVED` for an import's alias, an imported library's name and the entry's own name; `import-failure-holds-back-analysis` — the importing file's analysis held back.
 - `capability-unknown`, `capability-not-declarable` — `CAPABILITY_UNKNOWN` / `CAPABILITY_NOT_DECLARABLE` on the entry's own definitions; `capability-in-dependency`, `capability-in-transitive-dependency` — on a dependency's, reported at the entry's `imports:` entry reaching it.
+- `builtins-entry` — the built-in vocabulary archive as the entry: one `UNDEFINED_KIND` at its `kind:`, the file's analysis held back; `library-empty-first-document` — an imported library whose first document is empty, its definitions still judged.
 - `reference-form-target`, `reference-form-slot` — `INVALID_REFERENCE_FORM`, with its `quotedPlace`, at a boot target and at a kind's reference slot.
 - `mixed-entry-and-dependency` — several of the above in one manifest.
 

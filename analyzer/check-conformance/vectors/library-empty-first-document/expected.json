@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "CAPABILITY_UNKNOWN",
+      "source": "telo-analyzer",
+      "message": "Imported library 'Lib', reached through import 'Lib': Telo.Definition 'Thing': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 21
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [CAPABILITY_UNKNOWN] Imported library 'Lib', reached through import 'Lib': Telo.Definition 'Thing': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+}

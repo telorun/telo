@@ -20,10 +20,10 @@ fn refuses_the_archive_as_an_entry() {
         .load(&fixture("builtins-entry"))
         .expect_err("load must fail");
     assert_eq!(err.code, "ERR_MANIFEST_VALIDATION_FAILED", "{err}");
-    assert_eq!(
-        err.message,
-        "Telo.Builtins is the published built-in vocabulary of a telo release; it is read, never declared, run or imported."
-    );
+    let sentence = "Telo.Builtins is the published built-in vocabulary of a telo release; it is read, never declared, run or imported.";
+    assert!(err.message.ends_with(&format!("telo.yaml: {sentence}")), "{err}");
+    let codes: Vec<_> = err.diagnostics.iter().map(|d| d.code.as_deref()).collect();
+    assert_eq!(codes, [Some("UNDEFINED_KIND")], "{err}");
 }
 
 #[test]

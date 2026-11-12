@@ -73,11 +73,11 @@ impl LoadedFile {
         self.manifests.iter().flatten()
     }
 
-    /// The file's `Telo.Application` / `Telo.Library` document: its first, when it is one.
+    /// The file's `Telo.Application` / `Telo.Library` document: its first non-empty one,
+    /// when it is one.
     pub fn module_document(&self) -> Option<&ResourceManifest> {
-        self.manifests
-            .first()
-            .and_then(Option::as_ref)
+        self.documents()
+            .next()
             .filter(|document| kind_of(document).is_some_and(is_module_document))
     }
 }
