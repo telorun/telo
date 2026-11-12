@@ -7,12 +7,15 @@ publish = false
 description = "Telo manifest loading, reference resolution and the schema slot readers, shared between the Rust kernel and future static analysis."
 
 [dependencies]
-serde = "1"
+# The position index keeps the order fields were written in, as the Node index does.
+indexmap = "2"
+serde = { version = "1", features = ["derive"] }
 # Manifest key order is part of what a manifest says, and what the Node half keeps.
 serde_json = { version = "1", features = ["preserve_order"] }
-serde_yaml = "0.9"
 sha2 = "0.10"
 telo-templating = { path = "../../templating/rust" }
+# A YAML key is filed under ECMAScript's text of its number, as the Node index files it.
+telorun-cel-value = { path = "../../cel/rust/value" }
 # Value types, read as data — backend-free, so no controller backend comes with it.
 telorun-sdk-core = { path = "../../sdk/rust/core" }
 thiserror = "1"

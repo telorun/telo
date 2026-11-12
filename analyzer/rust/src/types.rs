@@ -9,9 +9,29 @@
 //! controller backend by feature, and Cargo would unify the napi backend into
 //! the kernel binary.
 
+use indexmap::IndexMap;
+use serde::Serialize;
 use serde_json::Value;
 
 pub const DEFAULT_MANIFEST_FILENAME: &str = "telo.yaml";
+
+/// A place in a file: 0-based line, and 0-based character in UTF-16 code units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Position {
+    pub line: usize,
+    pub character: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Range {
+    pub start: Position,
+    pub end: Position,
+}
+
+/// Maps a dotted field path (`kind`, `config.routes[0].path`) to its source range; a
+/// map key's own range is filed under `@key:<path>`. Built from the YAML nodes before the
+/// conversion to plain JSON, so positions never enter the manifest tree.
+pub type PositionIndex = IndexMap<String, Range>;
 
 /// A single YAML document from a manifest file.
 pub type ResourceManifest = Value;

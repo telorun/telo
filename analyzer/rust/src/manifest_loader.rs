@@ -30,16 +30,19 @@ impl ManifestLoader {
         let read = source.read(path_or_url)?;
         let loaded = parse_loaded_file(&read.source, path_or_url, &read.text);
         if let Some(error) = loaded.parse_errors.first() {
+            let place = match error.range {
+                Some(range) => format!(
+                    "document {}, line {}, column {}",
+                    error.document_index,
+                    range.start.line + 1,
+                    range.start.character + 1
+                ),
+                None => format!("document {}", error.document_index),
+            };
+            let message = format!("{place}: {}", error.message);
             return Err(match &error.code {
-                Some(code) => LoadError::Refused {
-                    path: read.source,
-                    code: code.clone(),
-                    message: format!("document {}: {}", error.document_index, error.message),
-                },
-                None => LoadError::Parse {
-                    path: read.source,
-                    message: format!("document {}: {}", error.document_index, error.message),
-                },
+                Some(code) => LoadError::Refused { path: read.source, code: code.clone(), message },
+                None => LoadError::Parse { path: read.source, message },
             });
         }
         Ok(loaded)

@@ -4,7 +4,9 @@
 //! the two sentences that say what such a document is — and the release an
 //! archive is the vocabulary of, which a CLI prints as its identity.
 
-use serde::Deserialize;
+use telo_templating::{compose_first_yaml_document, YamlDocument, YamlNodeKind};
+
+use crate::parse_loaded_file::parse_error_message;
 
 /// The kind of the archive's root document.
 pub const BUILTIN_VOCABULARY_KIND: &str = "Telo.Builtins";
@@ -28,26 +30,39 @@ pub fn builtin_vocabulary_import_message(source: &str, version: Option<&str>) ->
 /// `X` or `X+unreleased`. The `version` of the Node reader's
 /// `readBuiltinVocabulary`, refused in its words.
 pub fn builtin_vocabulary_version(archive: &str) -> Result<String, String> {
-    let root = match serde_yaml::Deserializer::from_str(archive).next() {
-        Some(document) => serde_yaml::Value::deserialize(document)
-            .map_err(|err| format!("document 1 does not parse: {err}"))?,
-        None => serde_yaml::Value::Null,
-    };
-    if root.get("kind").and_then(serde_yaml::Value::as_str) != Some(BUILTIN_VOCABULARY_KIND) {
+    let stream = compose_first_yaml_document(archive);
+    if let Some(error) = stream.errors.first() {
+        return Err(format!("document 1 does not parse: {}", parse_error_message(error.kind)));
+    }
+    let root = stream.documents.first();
+    if root.and_then(|doc| text_at(doc, &["kind"])) != Some(BUILTIN_VOCABULARY_KIND) {
         return Err(format!(
             "the first document is not `kind: {BUILTIN_VOCABULARY_KIND}`."
         ));
     }
-    match root
-        .get("metadata")
-        .and_then(|metadata| metadata.get("version"))
-        .and_then(serde_yaml::Value::as_str)
-    {
+    match root.and_then(|doc| text_at(doc, &["metadata", "version"])) {
         Some(version) if !version.is_empty() => Ok(version.to_string()),
         _ => Err(
             "the root declares no `metadata.version`: an archive is the vocabulary of one release."
                 .to_string(),
         ),
+    }
+}
+
+/// The text of the string scalar a path of mapping keys reaches, read off the composed
+/// nodes — the archive's root is read, never converted.
+fn text_at<'d>(doc: &'d YamlDocument, path: &[&str]) -> Option<&'d str> {
+    let mut node = doc.root?;
+    for segment in path {
+        let YamlNodeKind::Mapping { entries, .. } = &doc.nodes[node].kind else { return None };
+        node = entries.iter().find_map(|entry| match &doc.nodes[entry.key].kind {
+            YamlNodeKind::Scalar(key) if key.text == *segment => entry.value,
+            _ => None,
+        })?;
+    }
+    match &doc.nodes[node].kind {
+        YamlNodeKind::Scalar(scalar) if scalar.value == telo_templating::ScalarValue::String => Some(&scalar.text),
+        _ => None,
     }
 }
 
