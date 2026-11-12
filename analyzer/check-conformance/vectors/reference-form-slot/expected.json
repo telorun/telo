@@ -1,0 +1,39 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "INVALID_REFERENCE_FORM",
+      "source": "telo-analyzer",
+      "message": "Self.Router/router: object reference '{ kind, name }' at 'handler' is not supported; write it as '!ref greeter'",
+      "data": {
+        "resource": {
+          "kind": "Self.Router",
+          "name": "router"
+        },
+        "filePath": "telo.yaml",
+        "path": "handler",
+        "quotedPlace": [
+          {
+            "before": "Self.Router/router: object reference '{ kind, name }' at '",
+            "after": "' is not supported; write it as '!ref greeter'",
+            "place": "handler",
+            "from": 0,
+            "path": "handler",
+            "form": "dotted"
+          }
+        ]
+      },
+      "range": {
+        "start": {
+          "line": 19,
+          "character": 9
+        },
+        "end": {
+          "line": 19,
+          "character": 46
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [INVALID_REFERENCE_FORM] Self.Router/router: object reference '{ kind, name }' at 'handler' is not supported; write it as '!ref greeter'"
+}

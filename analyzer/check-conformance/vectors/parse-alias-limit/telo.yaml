@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: AliasLimit }
+x0: &a [1, 1, 1, 1, 1]
+x1: &b [*a, *a, *a, *a, *a]
+x2: &c [*b, *b, *b, *b, *b]
+x3: [*c, *c, *c, *c, *c]

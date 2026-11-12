@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: BranchShape }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: Telo.Invocable
+schema: !if [a]

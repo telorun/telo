@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MANIFEST_PARSE_FAILED",
+      "source": "telo-analyzer",
+      "message": "This alias names no anchor written before it in the document; write the anchor (`&name`) on an earlier value, or write the value out in place of the alias.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 12
+        },
+        "end": {
+          "line": 5,
+          "character": 20
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: This alias names no anchor written before it in the document; write the anchor (`&name`) on an earlier value, or write the value out in place of the alias.\n  [MANIFEST_PARSE_FAILED] This alias names no anchor written before it in the document; write the anchor (`&name`) on an earlier value, or write the value out in place of the alias."
+}

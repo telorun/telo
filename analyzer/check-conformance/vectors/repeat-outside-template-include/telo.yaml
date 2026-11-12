@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: RepeatInclude }
+include: !for-each { in: [a, b], as: part, emit: part.yaml }

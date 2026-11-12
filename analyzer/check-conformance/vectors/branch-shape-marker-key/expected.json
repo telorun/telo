@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "BRANCH_SHAPE_INVALID",
+      "source": "telo-analyzer",
+      "message": "'!if' holds a key '__expand', which is reserved for the tag's own marker. Remove it.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 12
+        },
+        "end": {
+          "line": 6,
+          "character": 61
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: '!if' holds a key '__expand', which is reserved for the tag's own marker. Remove it.\n  [BRANCH_SHAPE_INVALID] '!if' holds a key '__expand', which is reserved for the tag's own marker. Remove it."
+}

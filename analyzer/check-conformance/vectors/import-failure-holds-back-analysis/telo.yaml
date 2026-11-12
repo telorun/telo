@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: HeldBackImport }
+imports: { Self: ./lib }
+---
+kind: Telo.Definition
+metadata: { name: Misspelled }
+capability: Telo.Invokable

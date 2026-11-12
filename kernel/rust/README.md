@@ -22,14 +22,15 @@ The first run builds `modules/console/rust`; later runs hit Cargo's incremental 
 | -------------- | ------------------------------------------------------------------------------------- |
 | Documents      | `Telo.Application`, `Telo.Library`, `Telo.Definition`, resource docs                   |
 | Module scope   | `imports` (local relative paths and `oci://` refs), `exports.kinds`, `exports.resources`, `Self.<Kind>` |
-| References     | `!ref <name>`, `!ref Self.<name>`, `!ref <Alias>.<name>`; an imported library's legacy `{ kind, name }` (for a kind declaring no `name` field) is read as the reference it means; the entry module's `{ kind, name }` and any author-written `__ref` key are `ERR_INVALID_REFERENCE_FORM` |
+| References     | `!ref <name>`, `!ref Self.<name>`, `!ref <Alias>.<name>`; an imported library's legacy `{ kind, name }` (for a kind declaring no `name` field) is read as the reference it means; an imported library's author-written `__ref` key is `ERR_INVALID_REFERENCE_FORM`; the entry module's `{ kind, name }` and `__ref` are refused by the load's analysis (below) |
 | Capabilities   | `Telo.Invocable`                                                                       |
 | Targets        | inline invoke steps with literal `inputs`                                              |
 | Contracts      | `inputType` / `outputType`, including declared defaults                                |
+| Static refusals | a YAML parse failure, the loader's expansion refusals, a reserved kind prefix, the capability roster and the reference forms: `analyzer/rust`'s diagnostics, raised before any module is created in the Node kernel's form — an import failure as `ERR_<code>`, a parse failure and the analysis's errors each as one `ERR_MANIFEST_VALIDATION_FAILED` carrying them (the rows of `analyzer/check-conformance/`) |
 | Host paths     | `Telo.HostPath` slots: a relative path, or one existing as the other kind of entry than the slot's `entry: file \| directory`, refused when the resource is created (the vectors in `analyzer/host-path-conformance/`) |
 | Controllers    | `pkg:cargo/<crate>?local_path=<dir>#<entry>`, `pkg:telo/local/dylib?path=<file>&os=…&arch=…[&libc=…]&abi=telo-<ABI>#<entry>` |
 
-Not supported, each failing with a message that names what is missing rather than degrading quietly: CEL and `!cel`, `variables` / `secrets` / `ports`, transports other than local paths and `oci://` (`https://` imports), private OCI registries, nested libraries (a relative import inside an `oci://` module is refused with `ERR_UNSUPPORTED_MANIFEST_FEATURE`, never fetched; the `oci://h/r@sha256:<hex>/<path>` identity is not parsed — the text after `@` is read as the reference), streams, `extends`, template-backed definitions, `Telo.Sequence`, `Run.Sequence`, every capability other than `Telo.Invocable`, and static analysis.
+Not supported, each failing with a message that names what is missing rather than degrading quietly: CEL and `!cel`, `variables` / `secrets` / `ports`, transports other than local paths and `oci://` (`https://` imports), private OCI registries, nested libraries (a relative import inside an `oci://` module is refused with `ERR_UNSUPPORTED_MANIFEST_FEATURE`, never fetched; the `oci://h/r@sha256:<hex>/<path>` identity is not parsed — the text after `@` is read as the reference), streams, `extends`, template-backed definitions, `Telo.Sequence`, `Run.Sequence`, every capability other than `Telo.Invocable`, and every static analysis beyond the refusals above.
 
 ## Reading a published module
 

@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: InvalidEscape }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: Telo.Invocable
+description: "a \q b"

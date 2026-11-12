@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata: { name: Self }
+imports: { Lib: ./lib }
+targets:
+  - { invoke: { kind: Self.Greeter, name: greeter } }
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invocable
+---
+kind: Telo.Definition
+metadata: { name: Misspelled }
+capability: Telo.Invokable
+---
+kind: Self.Greeter
+metadata: { name: greeter }

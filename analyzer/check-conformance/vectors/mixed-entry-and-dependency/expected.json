@@ -1,0 +1,107 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "CAPABILITY_NOT_DECLARABLE",
+      "source": "telo-analyzer",
+      "message": "Imported library 'MixedLib', reached through import 'Lib': Telo.Abstract 'Contract': 'Telo.Executable' cannot be declared as a capability: Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 21
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "CAPABILITY_UNKNOWN",
+      "source": "telo-analyzer",
+      "message": "Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Definition",
+          "name": "Misspelled"
+        },
+        "filePath": "telo.yaml",
+        "path": "capability"
+      },
+      "range": {
+        "start": {
+          "line": 12,
+          "character": 12
+        },
+        "end": {
+          "line": 12,
+          "character": 26
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "INVALID_REFERENCE_FORM",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/Self: object reference '{ kind, name }' at 'targets[0].invoke' is not supported; write it as '!ref greeter'",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "Self"
+        },
+        "filePath": "telo.yaml",
+        "path": "targets[0].invoke",
+        "quotedPlace": [
+          {
+            "before": "Telo.Application/Self: object reference '{ kind, name }' at '",
+            "after": "' is not supported; write it as '!ref greeter'",
+            "place": "targets[0].invoke",
+            "from": 0,
+            "path": "targets[0].invoke",
+            "form": "dotted"
+          }
+        ]
+      },
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 14
+        },
+        "end": {
+          "line": 4,
+          "character": 51
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "KIND_PREFIX_RESERVED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/Self: A module may not be named 'Self': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. Rename the module.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "Self"
+        },
+        "filePath": "telo.yaml",
+        "path": "metadata.name"
+      },
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 18
+        },
+        "end": {
+          "line": 1,
+          "character": 22
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [CAPABILITY_UNKNOWN] Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.\n  [CAPABILITY_NOT_DECLARABLE] Imported library 'MixedLib', reached through import 'Lib': Telo.Abstract 'Contract': 'Telo.Executable' cannot be declared as a capability: Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.\n  [INVALID_REFERENCE_FORM] Telo.Application/Self: object reference '{ kind, name }' at 'targets[0].invoke' is not supported; write it as '!ref greeter'\n  [KIND_PREFIX_RESERVED] Telo.Application/Self: A module may not be named 'Self': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. Rename the module."
+}

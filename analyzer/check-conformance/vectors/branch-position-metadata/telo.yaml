@@ -1,0 +1,2 @@
+kind: Telo.Application
+metadata: !if { if: true, then: { name: Chosen } }

@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MANIFEST_PARSE_FAILED",
+      "source": "telo-analyzer",
+      "message": "The aliases in this document expand into more copies of their values than a manifest may hold; write the repeated values out, or alias them fewer times.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 9007199254740991
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: The aliases in this document expand into more copies of their values than a manifest may hold; write the repeated values out, or alias them fewer times.\n  [MANIFEST_PARSE_FAILED] The aliases in this document expand into more copies of their values than a manifest may hold; write the repeated values out, or alias them fewer times."
+}

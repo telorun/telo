@@ -1,0 +1,53 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "CAPABILITY_NOT_DECLARABLE",
+      "source": "telo-analyzer",
+      "message": "Telo.Abstract 'Shell': 'Telo.Template' cannot be declared as a capability: The lifecycle of a document that declares rather than runs: an application, a library, an import, a kind or a need type. Read by the kernel while it loads a module, never instantiated, and reserved for the built-in vocabulary — a kind declared in a module never takes this role. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Abstract",
+          "name": "Shell"
+        },
+        "filePath": "telo.yaml",
+        "path": "capability"
+      },
+      "range": {
+        "start": {
+          "line": 9,
+          "character": 12
+        },
+        "end": {
+          "line": 9,
+          "character": 25
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "CAPABILITY_NOT_DECLARABLE",
+      "source": "telo-analyzer",
+      "message": "Telo.Definition 'Runner': 'Telo.Executable' cannot be declared as a capability: Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Definition",
+          "name": "Runner"
+        },
+        "filePath": "telo.yaml",
+        "path": "capability"
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 12
+        },
+        "end": {
+          "line": 5,
+          "character": 27
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [CAPABILITY_NOT_DECLARABLE] Telo.Definition 'Runner': 'Telo.Executable' cannot be declared as a capability: Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.\n  [CAPABILITY_NOT_DECLARABLE] Telo.Abstract 'Shell': 'Telo.Template' cannot be declared as a capability: The lifecycle of a document that declares rather than runs: an application, a library, an import, a kind or a need type. Read by the kernel while it loads a module, never instantiated, and reserved for the built-in vocabulary — a kind declared in a module never takes this role. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+}

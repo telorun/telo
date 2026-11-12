@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: TabIndentation }
+---
+kind: Telo.Definition
+metadata:
+	name: Thing

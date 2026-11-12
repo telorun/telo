@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: MixedLib }
+---
+kind: Telo.Abstract
+metadata: { name: Contract }
+capability: Telo.Executable

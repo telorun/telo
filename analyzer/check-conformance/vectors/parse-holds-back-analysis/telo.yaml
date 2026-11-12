@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: HeldBack }
+---
+kind: Telo.Definition
+metadata: { name: Twice }
+capability: Telo.Invocable
+capability: Telo.Runnable
+---
+kind: Telo.Definition
+metadata: { name: Misspelled }
+capability: Telo.Invokable
