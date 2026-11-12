@@ -1,7 +1,0 @@
-modules:
-  modules/run: Added
-body: "Run.Sequence's `with:` is declared `x-telo-scope: { regions, openedBy: dispatch
-  }`: its members' creation-time fields read `inputs`, the inputs of the call that
-  opened the run (a boot run's being its contract's defaults over `{}`), and the
-  controller opens each run with them. The steps of a `run()` now read the contract's
-  defaults too."

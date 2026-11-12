@@ -1,7 +1,0 @@
-modules:
-  modules/crud: Added
-body: "Crud.Reader is exported: it lists a DataModel.Collection over a table or one
-  fixed SELECT with joined or computed columns, through the same list contract as
-  Crud.Api, with a `scope` input that fixes property values no client can filter by or
-  widen. A reader names its collection instead of a model, and its row and query default
-  from it."

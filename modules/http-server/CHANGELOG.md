@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.44.2 - 2026-11-12
+### Fixed
+* A request whose path holds a percent-escape that does not decode is answered as a request no route matches — by the mount's not-found handler, notFoundHandler, or the bare 404 problem — and passes the request log, span, unknownHosts and mount access like any request, instead of Fastify's own 400 FST_ERR_BAD_URL body.
+
 ## 0.44.1 - 2026-11-12
 ### Fixed
 * A mount that needs time to register (such as a UI app building its browser entries) now has up to 120 seconds before the server fails to start with a plugin timeout, instead of 10 seconds.

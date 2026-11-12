@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-11-12
+### Fixed
+* Each turn now runs under a context minted through the runtime and closed when the turn ends, so an agent whose streamed output comes from a with:-scoped resource keeps that resource alive for the whole turn.
+
 ## 0.3.0 - 2026-11-09
 ### Added
 * Chat.Conversation takes an optional titles: { model }, an Ai.Model that names untitled conversations: as a turn ends on a conversation with no title, the model writes a three-to-six-word title from the user's message and the reply, before the turn's final event, so a client reading the conversation at the turn's end sees it. A title already set, a rename included, is kept, and a failed title call is logged without failing the turn.

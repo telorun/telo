@@ -1,5 +1,0 @@
-modules:
-  modules/lease: Added
-body: Lease.Critical's forwarded inputs and result are typed by the body's contracts, so
-  sensitive marks are redacted in the lease's traces and a payload the body's contract
-  refuses fails at the lease's own dispatch.

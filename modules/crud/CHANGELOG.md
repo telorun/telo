@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.37.0 - 2026-11-12
+### Added
+* Crud.Reader is exported: it lists a DataModel.Collection over a table or one fixed SELECT with joined or computed columns, through the same list contract as Crud.Api, with a `scope` input that fixes property values no client can filter by or widen. A reader names its collection instead of a model, and its row and query default from it.
+
 ## 0.36.0 - 2026-11-09
 ### Added
 * The list route answers `search=<text>` on a collection that declares `query.search`: a row matches when any declared property contains the text, ignoring case, together with the other filters, and a facet request counts under the search too. A collection that declares none refuses `search` as any undeclared parameter.

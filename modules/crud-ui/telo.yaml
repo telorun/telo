@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: CrudUi
-  version: 0.5.3
+  version: 0.6.0
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [UI, Data]
@@ -11,7 +11,7 @@ metadata:
     or any other layout, create and edit forms and a confirmed delete. Related
     records are shown by name and picked from a list, all derived from the data
     model.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.136.0" }
 restrictions:
   - requires: { telo: ">=0.126.0" }
     reason: "0.125.1 checks this module clean and fails at boot: its forward past a source reads the instance, so the body's forms and listing get no `model` (ERR_RESOURCE_SCHEMA_VALIDATION_FAILED)."

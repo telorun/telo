@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.34.0 - 2026-11-12
+### Added
+* Run.Detach's forwarded inputs are typed by the target's input contract, so its sensitive marks are redacted in the detach's traces and a payload the contract refuses fails at the detach's own dispatch.
+* Run.Sequence produces its outputs inside its with: scope, so a scoped resource's stream it returns, maps or hands to Run.Detach keeps the scope open until the stream settles.
+* Run.Sequence's `with:` is declared `x-telo-scope: { regions, openedBy: dispatch }`: its members' creation-time fields read `inputs`, the inputs of the call that opened the run (a boot run's being its contract's defaults over `{}`), and the controller opens each run with them. The steps of a `run()` now read the contract's defaults too.
+
 ## 0.33.0 - 2026-11-12
 ### Deprecated
 * Run.Value is deprecated in favour of the built-in Telo.Value, which needs no import; declaring one reports DEPRECATED_KIND.

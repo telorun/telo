@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 - 2026-11-12
+### Added
+* Lease.Critical's forwarded inputs and result are typed by the body's contracts, so sensitive marks are redacted in the lease's traces and a payload the body's contract refuses fails at the lease's own dispatch.
+
 ## 0.15.4 - 2026-11-11
 ### Fixed
 * The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.
