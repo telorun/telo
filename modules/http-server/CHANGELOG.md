@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.44.1 - 2026-11-12
+### Fixed
+* A mount that needs time to register (such as a UI app building its browser entries) now has up to 120 seconds before the server fails to start with a plugin timeout, instead of 10 seconds.
+
 ## 0.44.0 - 2026-11-09
 ### Added
 * Http.Server reports the URL its socket listens on as status.localUrl (https under tls, a wildcard address written as localhost), and its http.server.started record gains url.full with the same value.

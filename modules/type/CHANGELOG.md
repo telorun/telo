@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.3 - 2026-11-12
+### Fixed
+* The usage notes no longer mention a scripting kind that is not part of the standard library.
+
 ## 0.13.2 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

@@ -1,5 +1,25 @@
 # @telorun/studio
 
+## 0.37.0
+
+### Minor Changes
+
+- 2189641: Opening an app from a URL copies the files its modules claim with `!module-path`, `!include-text` and `!include-bytes` beside its manifests, so an app that embeds a file (the chat example's `telo-mark.svg`) runs from the copy. A claimed file that cannot be fetched is listed as an error in the import preview, and a binary file, which the workspace cannot store, as a warning.
+- 2189641: An app that asks to open a page (`Telo.OpenUrl`) now gets it opened by Studio at the address you can reach it on: a dialog asks "Open <app> in another tab?" for a run you started, with an "Always open this app" choice per workspace and app, and a page on another site always asks first. A run Studio did not start, such as one still live after a reload, shows the link in the run dock instead of asking, and an address that is not one of the app's declared ports is shown and never opened.
+
+### Patch Changes
+
+- Updated dependencies [07c52fa]
+- Updated dependencies [2189641]
+- Updated dependencies [2189641]
+- Updated dependencies [8e04ab6]
+  - @telorun/sdk@0.135.0
+  - @telorun/analyzer@0.135.0
+  - @telorun/debug-wire@0.4.9
+  - @telorun/templating@0.135.0
+  - @telorun/ide-support@0.135.0
+  - @telorun/debug-ui@0.6.11
+
 ## 0.36.0
 
 ### Minor Changes

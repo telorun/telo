@@ -1,4 +1,0 @@
-modules:
-  modules/run: Deprecated
-body: Run.Value is deprecated in favour of the built-in Telo.Value, which needs no
-  import; declaring one reports DEPRECATED_KIND.

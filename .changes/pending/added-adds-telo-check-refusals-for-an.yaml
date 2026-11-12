@@ -1,6 +1,0 @@
-modules:
-  modules/ai: Added
-body: "Adds telo check refusals for an agent's textTools: an argument a static tool's
-  parameters refuse (AI_TEXT_TOOL_ARGUMENT_UNKNOWN) and a required parameter left
-  unmapped (AI_TEXT_TOOL_ARGUMENT_MISSING), on Ai.Agent and Ai.AgentStream; the runtime
-  twins stay for tools a provider only discovers at run time."
