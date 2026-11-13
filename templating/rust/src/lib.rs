@@ -10,8 +10,9 @@
 //! list them. Beneath them the two environments with their brands, value-type registration,
 //! the verdict codes, the hole grammar, compiling an expression with its module calls and
 //! written arguments, the call audit, what an expression reads and the walk over a manifest
-//! value for its tagged scalars. Nothing wires the engines in yet: the kernel's tag reader
-//! (`yaml_tags.rs`) still refuses `!cel`, `!interpolate` and `!sql`.
+//! value for its tagged scalars. The tag reader (`yaml_tags.rs`) reads `!cel`, `!interpolate`,
+//! `!sql` and `!literal` as sentinels, as Node does; no host compiles one here yet, and the Rust
+//! kernel refuses an expression sentinel where it consumes the value.
 
 pub mod builtins;
 pub mod cel;

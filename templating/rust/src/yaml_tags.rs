@@ -18,32 +18,10 @@ use std::collections::{HashMap, HashSet};
 use serde_json::{Map, Number, Value as Json};
 use telorun_cel_value::es_number;
 
-use crate::engines::include::{INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE};
-use crate::engines::module_path::MODULE_PATH_ENGINE;
+use crate::builtins::default_registry;
 use crate::expansion_tags::{is_expansion_tag, EXPANSION_MARKER};
-use crate::sentinel::{make_tagged_sentinel, REF_ENGINE};
+use crate::sentinel::make_tagged_sentinel;
 use crate::yaml_composer::{NodeId, ScalarValue, YamlDocument, YamlNode, YamlNodeKind, YamlScalar, YamlTag};
-
-/// Engines this kernel reads.
-///
-/// The two `!include-*` tags ARE here, because the tag set is part of what a
-/// manifest means and a kernel that silently skipped them would read an embedded
-/// file as an unresolved marker. `kernel/rust` resolves them at resource
-/// creation; `!include-bytes` fails there with an explicit message, since this
-/// kernel's manifest tree is `serde_json::Value` and has no bytes variant to
-/// carry the result. `!module-path` resolves there too, to an absolute path.
-const KNOWN_ENGINES: &[&str] = &[
-    REF_ENGINE,
-    INCLUDE_TEXT_ENGINE,
-    INCLUDE_BYTES_ENGINE,
-    MODULE_PATH_ENGINE,
-];
-
-/// Tags whose scalar holds CEL — the whole scalar under `!cel`, each `${{ }}`
-/// hole under `!interpolate` and `!sql`. This kernel has no expression engine,
-/// and reading one as an opaque value would evaluate it as a literal, so each is
-/// refused by name rather than as an unknown tag.
-const EXPRESSION_ENGINES: &[&str] = &["cel", "interpolate", "sql"];
 
 /// How far a document's aliases may multiply its data: `yaml`'s `maxAliasCount`. One bound
 /// with the Node loader's `MAX_ALIAS_COUNT` (`analyzer/nodejs/src/parse-loaded-file.ts`),
@@ -63,8 +41,6 @@ pub const NESTING_REFUSAL: &str =
 /// refusal of the Rust kernel's load alone. Each variant names the condition that retires it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnsupportedConstruct {
-    /// A tag holding CEL. Retired when the Rust kernel evaluates expressions.
-    ExpressionTag { engine: String },
     /// A plain string holding `${{` — the legacy spelling the Node loader migrates. Retired
     /// when this reader runs the `untagged-interpolation` migration.
     UntaggedInterpolation { text: String },
@@ -91,9 +67,6 @@ impl UnsupportedConstruct {
     /// The one sentence each construct is refused with.
     pub fn message(&self) -> String {
         match self {
-            UnsupportedConstruct::ExpressionTag { engine } => format!(
-                "`!{engine}` holds CEL, and this kernel has no expression engine: reading it as a literal would silently produce the wrong value"
-            ),
             UnsupportedConstruct::UntaggedInterpolation { text } => format!(
                 "plain string {text:?} holds `${{{{`: untagged interpolation is a legacy spelling of `!cel` / `!interpolate`, and this kernel has no expression engine to evaluate either — reading it as a literal string would silently produce the wrong value"
             ),
@@ -102,7 +75,7 @@ impl UnsupportedConstruct {
             }
             UnsupportedConstruct::UnsupportedTag { tag, written_on: None } => format!(
                 "unsupported YAML tag `{tag}`; this kernel recognises: {}",
-                KNOWN_ENGINES.iter().map(|e| format!("!{e}")).collect::<Vec<_>>().join(", ")
+                default_registry().list().iter().map(|e| format!("!{}", e.name())).collect::<Vec<_>>().join(", ")
             ),
             UnsupportedConstruct::CollectionKey { written } => {
                 format!("manifest mapping keys must be scalars, got {written}")
@@ -457,8 +430,7 @@ fn collection_tag(node: &YamlNode, written: &'static str) -> Result<Option<Strin
         YamlTag::Core(name) if name == "map" || name == "seq" => Ok(None),
         // A sequence behind an expansion tag loads as the bare list.
         YamlTag::Local(name) if is_expansion_tag(name) => Ok((written == "a mapping").then(|| name.clone())),
-        YamlTag::Local(name) if EXPRESSION_ENGINES.contains(&name.as_str()) => Err(expression_refusal(node, name)),
-        YamlTag::Local(name) if KNOWN_ENGINES.contains(&name.as_str()) => Err(TagError::unsupported(
+        YamlTag::Local(name) if default_registry().has(name) => Err(TagError::unsupported(
             node,
             UnsupportedConstruct::UnsupportedTag { tag: tag.written(), written_on: Some(written) },
         )),
@@ -471,8 +443,7 @@ fn scalar_json(node: &YamlNode, scalar: &YamlScalar) -> Result<Json, TagError> {
     match &node.tag {
         None | Some(YamlTag::Core(_)) => {}
         Some(YamlTag::Local(name)) if is_expansion_tag(name) => {}
-        Some(YamlTag::Local(name)) if EXPRESSION_ENGINES.contains(&name.as_str()) => return Err(expression_refusal(node, name)),
-        Some(YamlTag::Local(name)) if KNOWN_ENGINES.contains(&name.as_str()) => return Ok(make_tagged_sentinel(name, &scalar.text)),
+        Some(YamlTag::Local(name)) if default_registry().has(name) => return Ok(make_tagged_sentinel(name, &scalar.text)),
         Some(other) => return Err(unsupported_tag(node, other)),
     }
     let json = scalar_value_json(node, scalar)?;
@@ -528,10 +499,6 @@ fn collection_key(node: &YamlNode, written: impl Into<String>) -> TagError {
     TagError::unsupported(node, UnsupportedConstruct::CollectionKey { written: written.into() })
 }
 
-fn expression_refusal(node: &YamlNode, engine: &str) -> TagError {
-    TagError::unsupported(node, UnsupportedConstruct::ExpressionTag { engine: engine.to_string() })
-}
-
 fn unsupported_tag(node: &YamlNode, tag: &YamlTag) -> TagError {
     TagError::unsupported(node, UnsupportedConstruct::UnsupportedTag { tag: tag.written(), written_on: None })
 }
@@ -569,11 +536,20 @@ mod tests {
     }
 
     #[test]
-    fn expression_tags_are_refused_by_name() {
-        let err = refusal("value: !cel \"1 + 1\"");
-        assert_eq!(err.refusal, TagRefusal::Unsupported(UnsupportedConstruct::ExpressionTag { engine: "cel".into() }));
-        let err = refusal("value: !interpolate \"port ${{ variables.port }}\"");
-        assert_eq!(err.refusal, TagRefusal::Unsupported(UnsupportedConstruct::ExpressionTag { engine: "interpolate".into() }));
+    fn expression_tags_and_literal_become_sentinels() {
+        for (tag, engine) in [("cel", "cel"), ("interpolate", "interpolate"), ("sql", "sql"), ("literal", "literal")] {
+            let json = parse(&format!("value: !{tag} \"port ${{{{ variables.port }}}}\"")).unwrap();
+            assert_eq!(
+                serde_json::to_string(&json["value"]).unwrap(),
+                format!("{{\"__tagged\":true,\"engine\":\"{engine}\",\"source\":\"port ${{{{ variables.port }}}}\"}}")
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_tag_names_every_tag_the_registry_holds() {
+        let err = refusal("value: !nope x");
+        assert!(err.to_string().contains("!literal"), "{err}");
     }
 
     #[test]

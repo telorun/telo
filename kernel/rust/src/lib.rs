@@ -20,6 +20,7 @@ pub mod declared_display_messages;
 pub mod directory_lock;
 pub mod error;
 pub mod evaluation_context;
+pub mod expression_refusal;
 pub mod host_paths;
 pub mod import_load_failure;
 pub mod invocation_contract_binding;

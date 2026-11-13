@@ -31,6 +31,7 @@ use crate::controllers::module::module_controller::{load_module, value_branch_ac
 use crate::import_load_failure::import_load_failure;
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
+use crate::expression_refusal::refuse_expression_sentinels;
 use crate::invoke_dispatch;
 use telorun_sdk_core::FailureFrame;
 use crate::lexical_path;
@@ -332,6 +333,12 @@ impl Kernel {
         target: &Value,
         index: usize,
     ) -> Result<Value, KernelError> {
+        refuse_expression_sentinels(
+            &format!("Telo.Application/{}", root.context.name),
+            &json!({ "targets": [target] }),
+            "",
+            &[],
+        )?;
         if target.get("when").is_some() {
             return Err(KernelError::new(
                 "ERR_UNSUPPORTED_MANIFEST_FEATURE",
