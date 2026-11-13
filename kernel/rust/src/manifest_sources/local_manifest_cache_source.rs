@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use telo_analyzer::sources::integrity::{split_integrity, verify_integrity};
 use telo_analyzer::sources::oci_ref::parse_oci_ref;
-use telo_analyzer::{LoadError, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME};
+use telo_analyzer::{LoadError, LoadedGraph, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME};
 
 use crate::lexical_path;
 use crate::workspace_marker::find_workspace_root;
@@ -94,6 +94,57 @@ pub fn legacy_manifests_dir(entry_dir: &Path) -> PathBuf {
 pub fn legacy_manifests_dir_fallback(entry_dir: &Path, current: &Path) -> Option<PathBuf> {
     let legacy = legacy_manifests_dir(entry_dir);
     (lexical_path::normalize(&legacy) != lexical_path::normalize(current)).then_some(legacy)
+}
+
+/// Persist every module file of `graph` to the manifest cache, except the entry itself and
+/// any source with no cache coordinates (a local file is already on disk). Mirrors
+/// `writeManifestCache`: idempotent, rewrites an existing file, never deletes an entry.
+/// Returns the paths written.
+pub fn write_manifest_cache(graph: &LoadedGraph, manifests_dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut written = Vec::new();
+    for module in graph.modules.values() {
+        let file = &module.owner;
+        if file.source == graph.root_source {
+            continue;
+        }
+        let Some(target) = cache_path_for_canonical(&file.source, manifests_dir) else { continue };
+        if written.contains(&target) {
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&target, &file.text)?;
+        written.push(target);
+    }
+    Ok(written)
+}
+
+/// The directory an entry anchors its manifest cache on: the directory itself, or the one
+/// holding the file. Mirrors `resolveEntryDir`: any entry with a URL scheme — `oci://`,
+/// `memory://` — has no local anchor, so `None`; a `file://` URL reads as its path.
+pub fn resolve_entry_dir(entry_path: &str) -> std::io::Result<Option<PathBuf>> {
+    let path = match url_scheme(entry_path) {
+        Some("file:") => entry_path.strip_prefix("file://").unwrap_or(entry_path),
+        Some(_) => return Ok(None),
+        None => entry_path,
+    };
+    let absolute = lexical_path::absolute(Path::new(path))?;
+    if absolute.is_dir() {
+        return Ok(Some(absolute));
+    }
+    Ok(Some(absolute.parent().map(Path::to_path_buf).unwrap_or(absolute)))
+}
+
+/// The scheme of `text`, with its colon — two or more characters, so a Windows drive
+/// letter (`D:\src`) is never one.
+fn url_scheme(text: &str) -> Option<&str> {
+    let end = text.find(':')?;
+    let scheme = &text[..end];
+    let mut chars = scheme.chars();
+    let first_is_letter = chars.next().is_some_and(|c| c.is_ascii_alphabetic());
+    (first_is_letter && scheme.len() >= 2 && chars.all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c)))
+        .then(|| &text[..=end])
 }
 
 /// The `.telo` cache root for work anchored at `from`.

@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::{
     analyze, as_resolved_ref, load_graph, AnalysisDiagnostic, AnalysisOptions, DiagnosticSeverity,
-    ImportTargetPort, LoadedFile, LoadedGraph, ManifestLoader, ParseErrorOrigin, DEFAULT_MANIFEST_FILENAME,
+    ImportTargetPort, LoadedFile, LoadedGraph, ManifestLoader, ManifestSource, ParseErrorOrigin, DEFAULT_MANIFEST_FILENAME,
 };
 
 use crate::bundle::module_artifact::{
@@ -50,14 +50,29 @@ use crate::runtime_registry::ControllerPolicy;
 /// without one is recorded as unlocatable, and every module's `sources:` block
 /// is kept for the staged-file check.
 pub struct ArtifactManifestLoader {
-    manifests: ManifestLoader,
+    manifests: SourcesImportPort,
     layer_fetcher: Rc<dyn LayerFetcher>,
     artifacts: Rc<ModuleArtifacts>,
     manifests_dir: PathBuf,
     legacy_manifests_dir: Option<PathBuf>,
 }
 
-impl ImportTargetPort for ArtifactManifestLoader {
+/// The import-target port over a list of manifest sources: an import's source is resolved
+/// by the kernel's own rules (`resolve_import_source`, which refuses a transport or nested
+/// library this kernel cannot read) and read through the first source supporting it. The
+/// load walks it, and a host that reads a graph without creating anything — `telo check` —
+/// walks the same one.
+pub struct SourcesImportPort {
+    manifests: ManifestLoader,
+}
+
+impl SourcesImportPort {
+    pub fn new(sources: Vec<Box<dyn ManifestSource>>) -> Self {
+        Self { manifests: ManifestLoader::new(sources) }
+    }
+}
+
+impl ImportTargetPort for SourcesImportPort {
     type Error = KernelError;
 
     fn resolve(&self, from: &LoadedFile, alias: &str, source: &str) -> Result<String, KernelError> {
@@ -67,6 +82,18 @@ impl ImportTargetPort for ArtifactManifestLoader {
 
     fn load(&self, url: &str) -> Result<LoadedFile, KernelError> {
         Ok(self.manifests.load(url)?)
+    }
+}
+
+impl ImportTargetPort for ArtifactManifestLoader {
+    type Error = KernelError;
+
+    fn resolve(&self, from: &LoadedFile, alias: &str, source: &str) -> Result<String, KernelError> {
+        self.manifests.resolve(from, alias, source)
+    }
+
+    fn load(&self, url: &str) -> Result<LoadedFile, KernelError> {
+        self.manifests.load(url)
     }
 }
 
@@ -172,7 +199,7 @@ fn load_env(entry: &str) -> Result<LoadEnv, KernelError> {
     let oci = OciSource::default();
     let artifacts = Rc::new(ModuleArtifacts::default());
     let loader = ArtifactManifestLoader {
-        manifests: ManifestLoader::new(vec![
+        manifests: SourcesImportPort::new(vec![
             Box::new(LocalFileSource),
             Box::new(LocalManifestCacheSource::new(&entry_dir, manifests_dir.clone())),
             Box::new(oci.clone()),

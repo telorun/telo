@@ -44,6 +44,15 @@ impl OciSource {
         )
     }
 
+    /// The digest of the OCI manifest `reference` resolves to at the registry now, `None`
+    /// when it does not exist — what the `check` freshness pass compares a cached tag with.
+    pub fn manifest_digest(&self, reference: &str) -> Result<Option<String>, String> {
+        let parsed = parse_oci_ref(reference).map_err(|err| err.message)?;
+        self.client(&parsed.host, &parsed.repo)
+            .manifest_digest(&parsed.reference)
+            .map_err(|err| err.message)
+    }
+
     /// Pull only the manifest layer and return its verified `telo.yaml`.
     ///
     /// The OCI manifest is fetched by a usually-mutable reference and never

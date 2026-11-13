@@ -3154,6 +3154,8 @@ name = "telo-cli"
 version = "0.136.0"
 dependencies = [
  "flate2",
+ "indexmap",
+ "serde",
  "serde_json",
  "tar",
  "telo-analyzer",

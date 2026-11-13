@@ -56,6 +56,7 @@ Files mirror `kernel/nodejs/src/` one-for-one, kebab-case becoming snake_case. T
 - **`controller_loaders/native_abi.rs` has no Node twin.** It is the host side of the C ABI; the Node.js kernel's equivalent is N-API, supplied by its runtime.
 - **`controller_loaders/dylib_loader.rs` and `controller_loaders/purl.rs` have no Node twin.** The first is the artifact branch of Node's `bundle-loader.ts` for the `dylib` format; the second is the PURL grammar Node takes from a library.
 - **`manifest_sources/oci_source.rs` has no Node twin.** It is the read half of Node's `transports/oci/oci-transport.ts`; this kernel publishes nothing.
+- **A host that reads a graph without running it** (`telo check` in `cli/rust`) loads through the kernel's own pieces: `kernel::SourcesImportPort`, `resolve_cache_root`, `resolve_entry_dir` and `write_manifest_cache` in `manifest_sources/local_manifest_cache_source.rs`, `manifest_sources/origin_digests.rs`, `OciSource::manifest_digest`, and `controller_loaders/controller_tool_requirements.rs`. The kernel has no check command of its own.
 
 ## How a controller is loaded
 
