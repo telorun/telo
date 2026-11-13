@@ -517,6 +517,49 @@ export function rewriteUnreleasedFloors(text, version) {
   return { text: out, changes: edits.sort((a, b) => a.start - b.start).map((edit) => edit.where) };
 }
 
+/**
+ * `text` with each `>=unreleased` in `requires.telo` and in a `restrictions:` entry's
+ * `requires.telo` replaced by the bound `taggedText` — the same module as a release
+ * resolved it — holds at the same place: `requires.telo`, or the entry of the same index
+ * and `reason`. A place the release left `>=unreleased`, or that has no counterpart, stays.
+ */
+export function carryResolvedFloors(text, taggedText) {
+  const ownerOf = (source) =>
+    parseAllDocuments(source).find((doc) => {
+      const kind = doc.get("kind");
+      return kind === "Telo.Application" || kind === "Telo.Library";
+    });
+  const own = ownerOf(text);
+  const tagged = ownerOf(taggedText);
+  if (!own || !tagged || !isMap(own.contents) || !isMap(tagged.contents)) return { text, changes: [] };
+  const edits = [];
+  const consider = (requires, taggedRequires, where) => {
+    if (!isMap(requires) || !isMap(taggedRequires)) return;
+    const node = requires.get("telo", true);
+    const resolved = taggedRequires.get("telo");
+    if (!isScalar(node) || node.value !== ">=unreleased" || !node.range) return;
+    if (typeof resolved !== "string" || resolved === ">=unreleased") return;
+    const [start, end] = node.range;
+    const quote = /^['"]/.exec(text.slice(start, end))?.[0] ?? "";
+    edits.push({ start, end, text: `${quote}${resolved}${quote}`, where });
+  };
+  consider(own.contents.get("requires", true), tagged.contents.get("requires", true), "requires.telo");
+  const restrictions = own.contents.get("restrictions", true);
+  const taggedRestrictions = tagged.contents.get("restrictions", true);
+  if (isSeq(restrictions) && isSeq(taggedRestrictions)) {
+    restrictions.items.forEach((entry, index) => {
+      const other = taggedRestrictions.items[index];
+      if (!isMap(entry) || !isMap(other) || entry.get("reason") !== other.get("reason")) return;
+      consider(entry.get("requires", true), other.get("requires", true), `restrictions[${index}].requires.telo`);
+    });
+  }
+  let out = text;
+  for (const edit of [...edits].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, edit.start) + edit.text + out.slice(edit.end);
+  }
+  return { text: out, changes: edits.sort((a, b) => a.start - b.start).map((edit) => edit.where) };
+}
+
 /** Rewrite `>=unreleased` in every workspace module manifest to the surface
  *  version the telo line was just given. Returns one note per rewritten place. */
 export async function rewriteWorkspaceFloors() {

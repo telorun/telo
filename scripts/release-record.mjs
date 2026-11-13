@@ -12,6 +12,12 @@
 // are computed afterwards by the workflow (`telo release floor`), never copied;
 // imports stay relative on main, so no pin is written. Every write goes through the analyzer's own version stamps.
 //
+// One floor is taken from the tag rather than computed, because measurement cannot: a
+// `>=unreleased` in a module's `requires.telo` or `restrictions:` entry that the release
+// resolved on its branch (the version step) becomes the bound the tag holds at the same place.
+// A `restrictions:` entry is invisible to `telo release floor`, and left at `>=unreleased` in a
+// dependency it holds every dependent's measured floor there through its import closure.
+//
 // Two modes over one computation: `write` (Record release) writes the files, then
 // the Rust twins and chart versions that follow from them; `check` (Start release candidates)
 // writes nothing and refuses when any file would change, naming the first. Main
@@ -44,7 +50,7 @@ import { WorkspaceNotFoundError, loadWorkspace } from "../cli/nodejs/src/release
 import { refuse, setOutput } from "./release-actions-output.mjs";
 import { recordTagFor } from "./release-branch.mjs";
 import { releaseCommitOf } from "./release-commit.mjs";
-import { ROOT, rustTwinMismatches, stampRustTwins, workspacePackages } from "./version-line.mjs";
+import { ROOT, carryResolvedFloors, rustTwinMismatches, stampRustTwins, workspacePackages } from "./version-line.mjs";
 
 const posix = (path) => path.split(sep).join("/");
 
@@ -145,7 +151,7 @@ export function recordPlan({ tag }) {
       if (!pkg.private && pkg.name) text = stampSelfNpmPins(text, pkg.name, version, manifest);
       put(ownPackage, stampPackageVersion(current(ownPackage), version, ownPackage));
     }
-    put(manifest, text);
+    put(manifest, carryResolvedFloors(text, taggedManifest).text);
 
     const crate = `${module.key}/rust/Cargo.toml`;
     if (current(crate) === undefined) continue;

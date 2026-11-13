@@ -433,6 +433,7 @@ export class Kernel implements IKernel {
 
   private holdCount = 0;
   private idleResolvers: Array<() => void> = [];
+  private idleForced = false;
   private _exitCode = 0;
   private readonly sharedSchemaValidator = new SchemaValidator();
   /** `!include-*` reads, keyed by resolved URI, so two resources embedding the
@@ -3061,7 +3062,8 @@ export class Kernel implements IKernel {
   }
 
   waitForIdle(): Promise<void> {
-    if (this.holdCount === 0) {
+    if (this.holdCount === 0 || this.idleForced) {
+      this.idleForced = false;
       return Promise.resolve();
     }
     return new Promise((resolve) => {
@@ -3070,7 +3072,8 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Force-resolve any pending `waitForIdle()` even when holds are still active.
+   * Force-resolve any pending `waitForIdle()` — or, when none is pending, the next one —
+   * even when holds are still active.
    * Used by external signal handlers (SIGINT/SIGTERM) to unblock graceful exit
    * so `start()`'s waitForIdle returns and its finally clause runs `teardown()`.
    *
@@ -3079,6 +3082,9 @@ export class Kernel implements IKernel {
    */
   forceIdle(): void {
     const resolvers = this.idleResolvers.splice(0);
+    // Nothing waiting yet (a signal between `Kernel.Started` and `start()` reaching its wait):
+    // the next wait returns at once, or the stop is lost and the process never exits.
+    if (resolvers.length === 0) this.idleForced = true;
     for (const resolve of resolvers) resolve();
   }
 

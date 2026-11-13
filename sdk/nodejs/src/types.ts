@@ -152,8 +152,8 @@ export interface Kernel {
   acquireHold(reason?: string): () => void;
   waitForIdle(): Promise<void>;
   /**
-   * Force-resolve a pending `waitForIdle()` even when holds are still active.
-   * Used by external signal handlers (SIGINT/SIGTERM) so graceful exit can
+   * Force-resolve a pending `waitForIdle()` — or, when none is pending, the next
+   * one — even when holds are still active. Used by external signal handlers (SIGINT/SIGTERM) so graceful exit can
    * proceed past `await kernel.waitForIdle()`. Does not tear down — call
    * `teardown()` for cleanup.
    */

@@ -832,9 +832,8 @@ export async function run(given: RunArgv): Promise<void> {
     process.once("SIGTERM", shutdown);
     const host = desktop;
     if (host) {
-      // A stop the host asks for during startup waits for its end: `forceIdle`
-      // releases only a wait already under way, and `start()` begins its wait
-      // in the turn after `Kernel.Started`.
+      // A stop the host asks for during startup is acted on once startup ends
+      // (`Kernel.Started`), never in the middle of the boot.
       let started = false;
       let stopAsked = false;
       kernel.on("Kernel.Started", () => {

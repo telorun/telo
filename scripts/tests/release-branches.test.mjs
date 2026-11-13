@@ -912,7 +912,7 @@ describe("two-PR release flow", () => {
     assert.ok(!existsSync(join(root, ".changeset/next.md")));
   });
 
-  it("a record copies the tag's versions, changelogs and ledger entries for what main holds, deletes what the tag released, and leaves floors alone", () => {
+  it("a record copies the tag's versions, changelogs and ledger entries for what main holds, deletes what the tag released, and carries the floors the release resolved", () => {
     const manifest = (name, version, floor) =>
       `kind: Telo.Library\nmetadata:\n  name: ${name}\n  version: ${version}\nrequires:\n  telo: "${floor}"\n`;
     const ledger = (entries) =>
@@ -953,9 +953,71 @@ describe("two-PR release flow", () => {
       "modules/a/CHANGELOG.md",
       "modules/a/telo.yaml",
     ]);
-    assert.equal(plan.writes["modules/a/telo.yaml"], manifest("A", "1.1.0", ">=unreleased"));
+    assert.equal(plan.writes["modules/a/telo.yaml"], manifest("A", "1.1.0", ">=0.85.0"));
     assert.match(plan.writes["cli/nodejs/package.json"], /"version":"0\.85\.0"/);
     assert.equal(plan.writes[".changes/ledger.yaml"].includes("modules/gone"), false);
     assert.match(plan.writes[".changes/ledger.yaml"], /modules\/a:\n {4}version: 1\.1\.0/);
+  });
+
+  describe("a record's `>=unreleased` floors", () => {
+    const manifest = (version, floor, restriction, reason = "needs a feature") =>
+      `kind: Telo.Library\nmetadata:\n  name: A\n  version: ${version}\nrequires:\n  telo: "${floor}"\nrestrictions:\n  - requires: { telo: "${restriction}" }\n    reason: ${reason}\n`;
+
+    /** 0.85.x released from a branch cut off main, which then gained `pending` changesets and `mainManifest`. */
+    function recorded({ pending = {}, tagged = manifest("1.1.0", ">=0.85.0", ">=0.85.0"), cli = "0.85.0", mainManifest } = {}) {
+      const root = workspace("0.84.2");
+      put(root, "telo-workspace.yaml", "release:\n  modules:\n    - modules/*\n");
+      put(root, "modules/a/telo.yaml", manifest("1.0.0", ">=unreleased", ">=unreleased"));
+      changeset(root, "next", "minor");
+      commit(root, "feat");
+      git(root, "switch", "-q", "-c", "release/0.85");
+      rmSync(join(root, ".changeset/next.md"));
+      put(root, "cli/nodejs/package.json", JSON.stringify({ name: "@telorun/cli", version: cli }));
+      put(root, "modules/a/telo.yaml", tagged);
+      commit(root, "chore(release): version packages and modules");
+      git(root, "tag", "modules-0.85-1");
+      git(root, "switch", "-q", "main");
+      for (const [id, packages] of Object.entries(pending)) {
+        put(root, `.changeset/${id}.md`, `---\n${packages.map((name) => `"${name}": patch`).join("\n")}\n---\n\nmain only\n`);
+      }
+      if (mainManifest) put(root, "modules/a/telo.yaml", mainManifest);
+      if (Object.keys(pending).length > 0 || mainManifest) commit(root, "work on main after the cut");
+      return root;
+    }
+
+    it("take the bound the tag holds at the same place, in requires and in a restriction", () => {
+      const plan = recordPlanOf(recorded(), "modules-0.85-1");
+      assert.equal(plan.writes["modules/a/telo.yaml"], manifest("1.1.0", ">=0.85.0", ">=0.85.0"));
+    });
+
+    it("take it whatever changesets main still holds pending", () => {
+      for (const pending of [{ other: ["@telorun/runner-core"] }, { own: ["@telorun/cli"] }]) {
+        const plan = recordPlanOf(recorded({ pending }), "modules-0.85-1");
+        assert.equal(plan.writes["modules/a/telo.yaml"], manifest("1.1.0", ">=0.85.0", ">=0.85.0"));
+      }
+    });
+
+    it("take the tag's own bound, not the tag's version, so a patch release does not narrow a restriction", () => {
+      const root = recorded({ cli: "0.85.1", tagged: manifest("1.1.0", ">=0.85.0", ">=0.85.0") });
+      const plan = recordPlanOf(root, "modules-0.85-1");
+      assert.equal(plan.writes["modules/a/telo.yaml"], manifest("1.1.0", ">=0.85.0", ">=0.85.0"));
+    });
+
+    it("stay where the tag also left `>=unreleased`, and for a restriction main gave another reason", () => {
+      const stillUnreleased = recorded({ tagged: manifest("1.1.0", ">=unreleased", ">=unreleased") });
+      assert.equal(recordPlanOf(stillUnreleased, "modules-0.85-1").writes["modules/a/telo.yaml"], manifest("1.1.0", ">=unreleased", ">=unreleased"));
+
+      const reworded = recorded({ mainManifest: manifest("1.0.0", ">=unreleased", ">=unreleased", "main's own reason") });
+      assert.equal(
+        recordPlanOf(reworded, "modules-0.85-1").writes["modules/a/telo.yaml"],
+        manifest("1.1.0", ">=0.85.0", ">=unreleased", "main's own reason"),
+      );
+    });
+
+    it("leave nothing to record once applied", () => {
+      const root = recorded();
+      applyRecord(root, "modules-0.85-1");
+      assert.equal(recordPlanOf(root, "modules-0.85-1").writes["modules/a/telo.yaml"], undefined);
+    });
   });
 });
