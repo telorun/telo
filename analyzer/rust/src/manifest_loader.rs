@@ -163,6 +163,7 @@ pub fn load_graph<P: ImportTargetPort>(port: &P, entry_url: &str) -> Result<Load
         requested: HashMap::from([(entry_url.to_string(), root_source.clone())]),
         import_edges: HashMap::new(),
         parse_diagnostics: Vec::new(),
+        migration_diagnostics: Vec::new(),
         errors: Vec::new(),
     };
     let builtin_vocabulary = entry.manifests.first().and_then(Option::as_ref).and_then(kind_of)
@@ -173,6 +174,8 @@ pub fn load_graph<P: ImportTargetPort>(port: &P, entry_url: &str) -> Result<Load
         walk_imports(port, &mut graph)?;
     }
     graph.parse_diagnostics = collect_parse_diagnostics(graph.modules.values().map(|module| &module.owner));
+    // Rewrite always, report locally: every file was migrated, and only the entry's own reports.
+    graph.migration_diagnostics = graph.modules[&root_source].owner.migrations.diagnostics.clone();
     if builtin_vocabulary {
         graph.parse_diagnostics.push(builtin_vocabulary_entry_refusal(&graph.modules[&root_source].owner));
     }

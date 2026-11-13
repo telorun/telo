@@ -1,14 +1,16 @@
 //! The complete diagnostic set of a loaded graph, as every host presents it. Mirrors
-//! `../../nodejs/src/graph-diagnostics.ts`: parse and import-resolution diagnostics first,
-//! then the analysis diagnostics of every file whose analysis is not a cascade of a parse
-//! or import failure. This loader reads no migration, version reconciliation or module
-//! file claim, so those groups have no twin.
+//! `../../nodejs/src/graph-diagnostics.ts`: parse, migration and import-resolution
+//! diagnostics first, then the analysis diagnostics of every file whose analysis is not a
+//! cascade of a parse or import failure, each path remapped onto what the author wrote.
+//! This loader reads no version reconciliation or module file claim, so those groups have
+//! no twin.
 
 use std::collections::HashSet;
 
 use crate::diagnostic_location::find_positions;
 use crate::import_resolution_diagnostics::import_resolution_diagnostics;
 use crate::loaded_types::LoadedGraph;
+use crate::migrations::remap_migrated_paths;
 use crate::types::AnalysisDiagnostic;
 
 /// Files whose analysis diagnostics are a cascade: a file that failed to parse, and a file
@@ -33,7 +35,8 @@ pub fn assemble_graph_diagnostics(graph: &LoadedGraph, analysis: Vec<AnalysisDia
     let compromised = compromised_files(graph);
     let mut live = Vec::new();
     let mut suppressed = Vec::new();
-    for d in analysis {
+    // Analysis ran over the migrated tree, positions come from the raw file.
+    for d in remap_migrated_paths(graph, analysis) {
         let file = find_positions(graph, d.data.as_ref())
             .map(|positions| positions.file)
             .or_else(|| d.data.as_ref().and_then(|data| data.file_path.clone()))
@@ -45,6 +48,7 @@ pub fn assemble_graph_diagnostics(graph: &LoadedGraph, analysis: Vec<AnalysisDia
         }
     }
     let mut diagnostics = graph.parse_diagnostics.clone();
+    diagnostics.extend(graph.migration_diagnostics.iter().cloned());
     diagnostics.extend(import_resolution_diagnostics(graph));
     diagnostics.extend(live);
     AssembledDiagnostics { diagnostics, suppressed }

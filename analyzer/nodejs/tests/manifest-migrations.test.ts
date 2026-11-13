@@ -1220,6 +1220,41 @@ describe("entry files", () => {
     expect(run("12")).toBe(0);
   });
 
+  it("matches a value pattern as RE2 does, against the whole value", () => {
+    // The rows `analyzer/rust/src/migrations/match.rs` holds too, so both halves
+    // read one pattern alike: RE2's `.` stops only at `\n`.
+    const rows: Array<[string, string, boolean]> = [
+      ["Telo\\..*", "Telo.Invocable", true],
+      ["Telo\\..*", "Telo.Invocable\rx", true],
+      ["Telo\\..*", "Telo.Invocable\nx", false],
+      ["Telo\\..*", "Lib.Telo.X", false],
+      ["[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*", "Lib.Store", true],
+      ["[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*", "Lib.Store.x", false],
+      ["[^/~]+", "rows", true],
+      ["a|b", "ab", false],
+    ];
+    for (const [pattern, value, expected] of rows) {
+      const patterned = parseMigrationEntry(
+        "ok.json",
+        entry([{ match: { key: "legacy", ...TEST_SCOPE, valuePattern: pattern }, patch: [{ op: "remove-entry" }] }]),
+      );
+      const rewrites = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", app(`legacy: ${JSON.stringify(value)}`), {
+        migrate: true,
+        migrations: [patterned],
+      }).migrations.rewrites.length;
+      expect([pattern, value, rewrites]).toEqual([pattern, value, expected ? 1 : 0]);
+    }
+  });
+
+  it("refuses a pattern RE2 cannot parse, in RE2's words", () => {
+    expect(() =>
+      parseMigrationEntry(
+        "bad.json",
+        entry([{ match: { key: "k", ...TEST_SCOPE, valuePattern: "(a" }, patch: [{ op: "remove-entry" }] }]),
+      ),
+    ).toThrow("'match.valuePattern' is not a valid pattern: error parsing regexp: missing closing ): `^(?:(a)$`");
+  });
+
   it("refuses a pattern outside the RE2 subset", () => {
     for (const pattern of ["(?!Telo\\.).*", "(?<=a)b", "(a)\\1", "(?<n>a)\\k<n>"]) {
       expect(() =>

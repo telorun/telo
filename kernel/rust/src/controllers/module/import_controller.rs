@@ -19,7 +19,7 @@ use telo_analyzer::resolve_source;
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 
 use crate::error::KernelError;
-use crate::expression_refusal::refuse_expression_sentinels;
+use crate::expression_refusal::{refuse_expression_sentinels, Owner};
 use crate::runtime_registry::{normalize_runtime, ControllerPolicy};
 
 pub struct ImportSpec {
@@ -47,7 +47,12 @@ pub fn parse_import(
             // before the supply itself is.
             let mut other = ["source", "runtime", "resources", "needs"].to_vec();
             other.retain(|key| map.contains_key(*key));
-            refuse_expression_sentinels(owner, entry, &format!("imports.{alias}"), &other)?;
+            refuse_expression_sentinels(
+                Owner { label: owner, source: base_source },
+                entry,
+                &format!("imports.{alias}"),
+                &other,
+            )?;
             for unsupported in ["variables", "secrets", "resources", "needs"] {
                 if map.contains_key(unsupported) {
                     return Err(KernelError::new(

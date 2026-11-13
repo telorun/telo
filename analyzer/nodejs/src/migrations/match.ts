@@ -60,6 +60,7 @@
  *  is refused rather than ignored — a selector that silently matches wider than
  *  it reads is the one failure this cannot tolerate. */
 
+import { re2Pattern, type RE2Compiled } from "@telorun/cel";
 import { interpolationShape, isTaggedSentinel } from "@telorun/templating";
 import { isInSchemaRegion } from "../schema-region.js";
 import type { MigrationPath } from "./types.js";
@@ -111,8 +112,8 @@ export interface MigrationMatch {
    *  ordinary validator to report, instead of silently rewriting it. */
   readonly valueOneOf?: readonly unknown[];
   /** The value must be a string that FULLY matches this pattern — for a legacy
-   *  spelling told apart by its shape rather than by a known list. Written in the
-   *  RE2 subset every runtime's reader accepts: no lookaround, no backreference. */
+   *  spelling told apart by its shape rather than by a known list. An RE2 pattern,
+   *  matched by the engine behind CEL's `matches` in every runtime. */
   readonly valuePattern?: string;
   /** The value must be a string that does NOT fully match this pattern — the
    *  exclusion a pattern without lookaround cannot express on its own. */
@@ -522,27 +523,30 @@ function valueMatches(match: MigrationMatch, value: unknown): boolean {
   return true;
 }
 
-/** Each pattern compiled once, anchored at both ends — a pattern matches the
- *  WHOLE value, so an entry never depends on whether its author remembered to
- *  anchor it. */
-const COMPILED_PATTERNS = new Map<string, RegExp>();
+/** A pattern anchored at both ends — it matches the WHOLE value, so an entry never
+ *  depends on whether its author remembered to anchor it — compiled by the RE2
+ *  engine behind CEL's `matches`, which every runtime shares: a pattern read by
+ *  one regex dialect here and another elsewhere would make one manifest migrate
+ *  on one kernel and not on another. That engine's cache holds the compile. */
+function anchored(pattern: string): RE2Compiled {
+  return re2Pattern(`^(?:${pattern})$`);
+}
 
 function fullMatch(pattern: string, value: string): boolean {
-  let compiled = COMPILED_PATTERNS.get(pattern);
-  if (!compiled) {
-    compiled = new RegExp(`^(?:${pattern})$`, "u");
-    COMPILED_PATTERNS.set(pattern, compiled);
+  const compiled = anchored(pattern);
+  // A pattern reaches here only through `readValuePattern`, which refused one RE2
+  // cannot parse; a hand-built match holding one is a defect, raised as one.
+  if ("refused" in compiled) {
+    throw new Error(`migration value pattern '${pattern}' is not an RE2 pattern: ${compiled.refused.message}`);
   }
-  return compiled.test(value);
+  return compiled.pattern.matcher(value).find();
 }
 
 /**
- * Read a `valuePattern` / `valueNotPattern`, refusing anything outside the RE2
- * subset. An entry travels to every runtime, and a construct one regex engine
- * accepts and another refuses — or reads differently — would make one manifest
- * migrate on one kernel and not on another, silently. Lookaround and
- * backreferences are the constructs RE2 refuses; the rest of the syntax an entry
- * needs reads alike everywhere.
+ * Read a `valuePattern` / `valueNotPattern`, refusing anything RE2 does not read.
+ * Lookaround and backreferences are named, since an author reaching for one is
+ * reaching for a construct the dialect deliberately lacks; anything else RE2
+ * cannot parse is refused in RE2's own words.
  */
 function readValuePattern(describe: string, raw: unknown): void {
   if (typeof raw !== "string" || raw.length === 0) {
@@ -555,10 +559,9 @@ function readValuePattern(describe: string, raw: unknown): void {
         `reader accepts — no lookaround, no backreferences`,
     );
   }
-  try {
-    new RegExp(`^(?:${raw})$`, "u");
-  } catch (err) {
-    throw new Error(`${describe} is not a valid pattern: ${err instanceof Error ? err.message : err}`);
+  const compiled = anchored(raw);
+  if ("refused" in compiled) {
+    throw new Error(`${describe} is not a valid pattern: ${compiled.refused.message}`);
   }
 }
 
@@ -569,7 +572,7 @@ function outsideRe2Subset(pattern: string): string | undefined {
     const char = pattern[i];
     if (char === "\\") {
       const next = pattern[i + 1] ?? "";
-      if (/[1-9]/.test(next)) return `a backreference ('\\${next}')`;
+      if (next >= "1" && next <= "9") return `a backreference ('\\${next}')`;
       if (next === "k" && pattern[i + 2] === "<") return "a named backreference ('\\k<…>')";
       i++;
       continue;

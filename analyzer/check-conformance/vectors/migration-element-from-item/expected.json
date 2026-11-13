@@ -1,0 +1,40 @@
+{
+  "diagnostics": [
+    {
+      "severity": 2,
+      "code": "DEPRECATED_ELEMENT_FROM_ITEM_FIELD",
+      "source": "telo-analyzer",
+      "tags": [
+        2
+      ],
+      "message": "`x-telo-context-element-from-item: rows` is now written `x-telo-context-element-from-item: 0/rows`.\n`x-telo-context-element-from-item` names the field whose chain types the binding with a relative JSON pointer from the object holding the field the region is declared on (`0/rows` for a sibling, `2/rows` two levels up), so a region on a list column's own field can reach the list's `rows`; a bare field name could name only a field of the enclosing array entry.\nRun `telo migrate` to apply it.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "schema.properties.columns.items.properties.label.x-telo-context.properties.row.x-telo-context-element-from-item",
+        "resource": {
+          "kind": "Telo.Definition",
+          "name": "Table"
+        },
+        "fix": {
+          "replacement": "0/rows"
+        },
+        "migration": {
+          "id": "element-from-item-relative-pointer",
+          "legacyPath": "schema.properties.columns.items.properties.label.x-telo-context.properties.row.x-telo-context-element-from-item",
+          "migratedPath": "schema.properties.columns.items.properties.label.x-telo-context.properties.row.x-telo-context-element-from-item"
+        }
+      },
+      "range": {
+        "start": {
+          "line": 20,
+          "character": 69
+        },
+        "end": {
+          "line": 20,
+          "character": 73
+        }
+      }
+    }
+  ],
+  "runFails": null
+}

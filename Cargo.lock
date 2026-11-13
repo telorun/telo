@@ -3143,6 +3143,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "telo-templating",
+ "telorun-cel",
  "telorun-cel-value",
  "telorun-sdk-core",
  "thiserror 1.0.69",

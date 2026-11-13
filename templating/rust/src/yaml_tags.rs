@@ -41,9 +41,6 @@ pub const NESTING_REFUSAL: &str =
 /// refusal of the Rust kernel's load alone. Each variant names the condition that retires it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnsupportedConstruct {
-    /// A plain string holding `${{` — the legacy spelling the Node loader migrates. Retired
-    /// when this reader runs the `untagged-interpolation` migration.
-    UntaggedInterpolation { text: String },
     /// A tag this reader does not read, or a known one on a node it cannot be read on
     /// (`written_on`: a collection). Retired when the manifest tree holds what `yaml`
     /// makes of every tag.
@@ -67,9 +64,6 @@ impl UnsupportedConstruct {
     /// The one sentence each construct is refused with.
     pub fn message(&self) -> String {
         match self {
-            UnsupportedConstruct::UntaggedInterpolation { text } => format!(
-                "plain string {text:?} holds `${{{{`: untagged interpolation is a legacy spelling of `!cel` / `!interpolate`, and this kernel has no expression engine to evaluate either — reading it as a literal string would silently produce the wrong value"
-            ),
             UnsupportedConstruct::UnsupportedTag { tag, written_on: Some(written) } => {
                 format!("`{tag}` expects a scalar string, got {written}")
             }
@@ -446,17 +440,9 @@ fn scalar_json(node: &YamlNode, scalar: &YamlScalar) -> Result<Json, TagError> {
         Some(YamlTag::Local(name)) if default_registry().has(name) => return Ok(make_tagged_sentinel(name, &scalar.text)),
         Some(other) => return Err(unsupported_tag(node, other)),
     }
-    let json = scalar_value_json(node, scalar)?;
-    if let Json::String(s) = &json {
-        // The legacy inline expression form. Passing it through as a literal
-        // would be the one failure mode worse than rejecting it: the value
-        // reaches a controller looking like an expression that was never
-        // evaluated. Rejected on the same grounds as `!cel`.
-        if s.contains("${{") {
-            return Err(TagError::unsupported(node, UnsupportedConstruct::UntaggedInterpolation { text: s.clone() }));
-        }
-    }
-    Ok(json)
+    // A plain string holding `${{` is a plain string here, as in `yaml`: the loader's
+    // migration rewrites the legacy spelling, and analysis reports what it leaves.
+    scalar_value_json(node, scalar)
 }
 
 /// What an untagged or core-tagged scalar resolves to, as JSON.
@@ -553,9 +539,9 @@ mod tests {
     }
 
     #[test]
-    fn inline_expressions_are_rejected_rather_than_read_as_literals() {
-        let err = refusal("value: \"port ${{ variables.port }}\"");
-        assert!(err.to_string().contains("`!interpolate`"), "{err}");
+    fn an_untagged_interpolation_is_a_plain_string() {
+        let json = parse("value: \"port ${{ variables.port }}\"").unwrap();
+        assert_eq!(json["value"], serde_json::json!("port ${{ variables.port }}"));
     }
 
     #[test]

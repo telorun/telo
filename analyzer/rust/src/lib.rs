@@ -2,14 +2,16 @@
 //!
 //! Mirrors the part of `analyzer/nodejs` the kernel depends on at runtime:
 //! reading a manifest file, parsing its documents (through `telo-templating`'s YAML
-//! composer, with each document's position index beside the tree), walking an entry's
-//! import graph, rewriting `!ref` sentinels, and reading what a schema node says of the
-//! value at it (the host-path slot readers and the walk pairing each text leaf with its
-//! node). Its static analysis is Node's `AnalysisDiagnostic` for the refusals the Rust
-//! kernel makes — a YAML parse failure, the loader's expansion refusals, a reserved kind
-//! prefix, the capability roster and the reference forms — located by Node's fallback
-//! chain; the kernel raises them from here. Node's other passes have no counterpart yet,
-//! and this crate is where they belong when they arrive.
+//! composer, with each document's position index beside the tree), applying the manifest
+//! migrations of `analyzer/migrations/` to them, walking an entry's import graph,
+//! rewriting `!ref` sentinels, and reading what a schema node says of the value at it (the
+//! host-path slot readers and the walk pairing each text leaf with its node). Its static
+//! analysis is Node's `AnalysisDiagnostic` for the deprecations the migrations report and
+//! the refusals the Rust kernel makes — a YAML parse failure, the loader's expansion
+//! refusals, a reserved kind prefix, the capability roster, the reference forms and a
+//! plain string left holding `${{` — located by Node's fallback chain; the kernel raises
+//! them from here. Node's other passes have no counterpart yet, and this crate is where
+//! they belong when they arrive.
 //!
 //! The artifact model — selectors, the layer index, the OCI ref grammar and
 //! inline integrity — lives here for the same reason it lives in the Node
@@ -31,6 +33,7 @@ pub mod loaded_types;
 pub mod loader_expansion_refusals;
 pub mod manifest_loader;
 pub mod manifest_navigation;
+pub mod migrations;
 pub mod module_alias_scope;
 pub mod native_entries;
 pub mod nearest_name;
@@ -44,10 +47,12 @@ pub mod reserved_kind_prefix;
 pub mod resolve_ref_sentinels;
 pub mod resolved_reference;
 pub mod schema_compat;
+pub mod schema_region;
 pub mod source_entries;
 pub mod sources;
 pub mod system_kinds;
 pub mod types;
+pub mod untagged_interpolation;
 pub mod validate_identifier_names;
 pub mod validate_reference_forms;
 pub mod value_type_keyword;
@@ -62,6 +67,7 @@ pub use loaded_types::{
     ParseErrorOrigin,
 };
 pub use manifest_loader::{load_graph, resolve_source, ImportTargetPort, ManifestLoader};
+pub use migrations::{core_migrations, migrate_manifests, remap_migrated_paths, FileMigrations, MigrationRewrite};
 pub use parse_loaded_file::{parse_error_kind, parse_error_message, parse_loaded_file, YamlErrorKind};
 pub use position_metadata::DocumentPosition;
 pub use release::WORKSPACE_FILENAME;
@@ -78,7 +84,7 @@ pub use validate_reference_forms::{
     reference_form_message, target_reference_forms, AcceptsValue, InvalidReferenceForm, ReferenceForm,
 };
 pub use types::{
-    kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticFix, DiagnosticFixTag, DiagnosticResource,
+    kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticFix, DiagnosticFixTag, DiagnosticMigration, DiagnosticResource,
     DiagnosticSeverity, DiagnosticTag, LoadError, ManifestSource, Position, PositionIndex, Range, ReadManifest,
     ResourceManifest, ANALYZER_SOURCE, DEFAULT_MANIFEST_FILENAME,
 };

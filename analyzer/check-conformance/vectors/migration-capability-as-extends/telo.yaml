@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: ExtendsApp }
+imports: { Lib: ./lib }
+---
+kind: Telo.Abstract
+metadata: { name: Mine }
+capability: Lib.Store
+---
+kind: Telo.Definition
+metadata: { name: Broken }
+capability: Telo.Invokable

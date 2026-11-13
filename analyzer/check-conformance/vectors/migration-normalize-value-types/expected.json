@@ -1,0 +1,72 @@
+{
+  "diagnostics": [
+    {
+      "severity": 2,
+      "code": "X_TELO_TYPE_DEPRECATED",
+      "source": "telo-analyzer",
+      "tags": [
+        2
+      ],
+      "message": "`x-telo-type: TcpPort` is now written `x-telo-type: Telo.TcpPort`.\nThe three value-type annotations were unified into one `x-telo-type`, whose names are `Telo.`-qualified like every other kernel-owned name. `x-telo-binary` and `x-telo-stream` said what a value IS just as `x-telo-type` did, differing only in posture toward the JSON Schema layer — so a fourth kind of value meant a fourth keyword and edits across four packages.\nRun `telo migrate` to apply it.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "schema.properties.port.x-telo-type",
+        "resource": {
+          "kind": "Telo.Definition",
+          "name": "Listener"
+        },
+        "fix": {
+          "replacement": "Telo.TcpPort"
+        },
+        "migration": {
+          "id": "normalize-value-types",
+          "legacyPath": "schema.properties.port.x-telo-type",
+          "migratedPath": "schema.properties.port.x-telo-type"
+        }
+      },
+      "range": {
+        "start": {
+          "line": 8,
+          "character": 52
+        },
+        "end": {
+          "line": 8,
+          "character": 59
+        }
+      }
+    },
+    {
+      "severity": 2,
+      "code": "X_TELO_TYPE_DEPRECATED",
+      "source": "telo-analyzer",
+      "tags": [
+        2
+      ],
+      "message": "`x-telo-stream: true` is now written `x-telo-type: Telo.Stream`.\nThe three value-type annotations were unified into one `x-telo-type`, whose names are `Telo.`-qualified like every other kernel-owned name. `x-telo-binary` and `x-telo-stream` said what a value IS just as `x-telo-type` did, differing only in posture toward the JSON Schema layer — so a fourth kind of value meant a fourth keyword and edits across four packages.\nno quick fix (renames a key) — run `telo migrate`",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "schema.properties.body.x-telo-stream",
+        "resource": {
+          "kind": "Telo.Definition",
+          "name": "Listener"
+        },
+        "migration": {
+          "id": "normalize-value-types",
+          "legacyPath": "schema.properties.body.x-telo-stream",
+          "migratedPath": "schema.properties.body.x-telo-type"
+        }
+      },
+      "range": {
+        "start": {
+          "line": 8,
+          "character": 86
+        },
+        "end": {
+          "line": 8,
+          "character": 90
+        }
+      }
+    }
+  ],
+  "runFails": null
+}

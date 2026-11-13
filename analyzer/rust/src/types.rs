@@ -110,6 +110,19 @@ pub struct DiagnosticData {
     /// The code a kernel raises the refusal under, where it is not `ERR_<code>`.
     #[serde(rename = "runtimeCode", skip_serializing_if = "Option::is_none")]
     pub runtime_code: Option<String>,
+    /// The rewrite a migration's deprecation reports.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub migration: Option<DiagnosticMigration>,
+}
+
+/// The rewrite a migration's deprecation reports: the entry, and the path before and after.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DiagnosticMigration {
+    pub id: String,
+    #[serde(rename = "legacyPath")]
+    pub legacy_path: String,
+    #[serde(rename = "migratedPath")]
+    pub migrated_path: String,
 }
 
 /// An LSP-compatible diagnostic, Node's `AnalysisDiagnostic`. `range` is absent when only

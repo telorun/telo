@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: RefApp }
+---
+kind: Telo.Definition
+metadata: { name: Caller }
+capability: Telo.Type
+schema:
+  type: object
+  properties: { target: { type: string, x-telo-ref: { kind: Telo.Invocable, use: call } } }

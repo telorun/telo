@@ -88,7 +88,7 @@ capability: Sql.Connection
 extends: Sql.Connection
 ```
 
-The capability is inherited from the abstract when it declares one; restate it identically only if you want it written down. Where `extends:` is already declared the rename has nowhere to go — a definition has one parent — and the value is refused as `CAPABILITY_UNKNOWN`. The Rust kernel applies no migration and refuses the legacy spelling as `ERR_CAPABILITY_UNKNOWN`; it supports no `extends:` either, so such a kind never ran there.
+The capability is inherited from the abstract when it declares one; restate it identically only if you want it written down. Where `extends:` is already declared the rename has nowhere to go — a definition has one parent — and the value is refused as `CAPABILITY_UNKNOWN`. The Rust kernel migrates the legacy spelling too, then refuses the resulting `extends:` (`ERR_UNSUPPORTED_MANIFEST_FEATURE`), which it does not support yet.
 
 ---
 

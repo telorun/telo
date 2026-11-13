@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: DepApp }
+imports: { Lib: ./lib }
+---
+kind: Telo.Definition
+metadata: { name: Broken }
+capability: Telo.Invokable

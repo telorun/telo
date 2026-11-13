@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: TypesApp }
+---
+kind: Telo.Definition
+metadata: { name: Listener }
+capability: Telo.Type
+schema:
+  type: object
+  properties: { port: { type: integer, x-telo-type: TcpPort }, body: { x-telo-stream: true } }

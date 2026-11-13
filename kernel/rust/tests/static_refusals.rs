@@ -170,3 +170,34 @@ fn a_literal_reaches_schema_validation_as_its_text() {
     let (_dir, err) = load(&[("app/telo.yaml", &string_field_app("7")), ("lib/telo.yaml", THING_LIBRARY)]);
     assert!(err.to_string().contains("is invalid"), "{err}");
 }
+
+/// What the load's analysis leaves — a library's own string holding a `${{` no hole can be
+/// read out of — is refused where the kernel consumes it, in the words of Node's backstop.
+#[test]
+fn a_plain_string_left_holding_an_interpolation_is_refused_where_it_is_consumed() {
+    let (dir, err) = load(&[
+        ("app/telo.yaml", &string_field_app("ok")),
+        (
+            "lib/telo.yaml",
+            &format!("{THING_LIBRARY}---\nkind: Self.Thing\nmetadata: {{ name: priced }}\ntext: \"costs ${{{{ 5\"\n"),
+        ),
+    ]);
+    assert_eq!(err.code, "ERR_UNTAGGED_INTERPOLATION", "{err}");
+    assert_eq!(
+        err.message,
+        format!(
+            "Failed to compile manifest in {}: 'text' is a plain string holding '${{{{', which is never evaluated. Untagged interpolation is a legacy spelling the 'untagged-interpolation' migration rewrites (a lone hole to !cel, text with holes to !interpolate); run 'telo migrate' to apply it, or tag the value !literal if the text is meant literally.",
+            source(dir.path(), "lib/telo.yaml")
+        )
+    );
+}
+
+/// The text a `!literal` resolves to is the author's, never an untagged interpolation.
+#[test]
+fn a_literal_holding_an_interpolation_is_no_untagged_one() {
+    let (_dir, err) = load(&[
+        ("app/telo.yaml", &string_field_app("!literal \"costs ${{ 5\"")),
+        ("lib/telo.yaml", THING_LIBRARY),
+    ]);
+    assert_ne!(err.code, "ERR_UNTAGGED_INTERPOLATION", "{err}");
+}

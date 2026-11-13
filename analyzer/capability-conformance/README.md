@@ -19,6 +19,6 @@ A load refuses it through its analysis, as one `ERR_MANIFEST_VALIDATION_FAILED` 
 - `analyzer/nodejs/tests/capability-roster.test.ts` — the roster's reader, `telo check`'s half.
 - `kernel/nodejs/tests/capability-roster.test.ts` — the Node kernel's registration guard.
 - `analyzer/rust/src/capability_roster.rs` (tests) — the Rust analyzer's reader.
-- `kernel/rust/tests/capability_roster.rs` — the Rust kernel's load, which refuses a definition's `capability:` through its analysis, as one `ERR_MANIFEST_VALIDATION_FAILED` carrying the row's code and `Telo.Definition '<name>': <message>`. It refuses every `extends:` on its own (`ERR_UNSUPPORTED_MANIFEST_FEATURE`), after the analysis, so an accepted row with `extends: true` is held only to carrying no capability diagnostic.
+- `kernel/rust/tests/capability_roster.rs` — the Rust kernel's load, which refuses a definition's `capability:` through its analysis, as one `ERR_MANIFEST_VALIDATION_FAILED` carrying the row's code and `Telo.Definition '<name>': <message>`. It refuses every `extends:` on its own (`ERR_UNSUPPORTED_MANIFEST_FEATURE`), after the analysis, so an accepted row with `extends: true` is held only to carrying no capability diagnostic. A row whose value the load's migration rewrites (`capability: <Alias>.<Kind>`) never reaches the roster at load, and is held to the same.
 
 The vectors are not built-in vocabulary: nothing under `sdk/builtins/` reads them, and no runtime ships them.

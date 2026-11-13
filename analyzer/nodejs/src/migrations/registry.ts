@@ -13,12 +13,9 @@
  *  The files live beside the language implementations rather than inside any
  *  one of them because every kernel must apply the IDENTICAL rewrite — a
  *  rewrite added to one side would mean one artifact means two things on two
- *  kernels, invisibly, since a migration that succeeds is silent. Only
- *  `analyzer/nodejs` reads them today — the Rust reader is planned, and until
- *  it lands the Rust kernel applies NO migration, so a legacy spelling it
- *  cannot otherwise interpret fails there rather than being rewritten. When it
- *  lands it will embed these files with `include_str!`; a Go half would use
- *  `//go:embed`. JSON rather than YAML for one reason: it is the only format
+ *  kernels, invisibly, since a migration that succeeds is silent. The Rust
+ *  half embeds these files with `include_str!` from the same directory
+ *  listing; a Go half would use `//go:embed`. JSON rather than YAML for one reason: it is the only format
  *  all three embed with no generation step, because TypeScript's only native
  *  embed is `resolveJsonModule`. The copy under `./entries/` is made by the
  *  analyzer's `prepare` (`scripts/copy-migration-entries.mjs`) — identical

@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: SqlApp }
+imports: { SQLite: ./sqlite }
+---
+kind: SQLite.Schema
+metadata: { name: Tables }
+beforeMigrations: {}
+---
+kind: Telo.Definition
+metadata: { name: Broken }
+capability: Telo.Invokable

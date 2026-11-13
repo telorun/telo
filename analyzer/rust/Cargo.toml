@@ -14,6 +14,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 telo-templating = { path = "../../templating/rust" }
+# RE2, the pattern language a migration entry's value patterns are written in.
+telorun-cel = { path = "../../cel/rust" }
 # A YAML key is filed under ECMAScript's text of its number, as the Node index files it.
 telorun-cel-value = { path = "../../cel/rust/value" }
 # Value types, read as data — backend-free, so no controller backend comes with it.
