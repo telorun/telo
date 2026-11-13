@@ -44,6 +44,7 @@ const VALUE: &str = "Telo.Value";
 use crate::controllers::resource_definition::resource_definition_controller::register_definition;
 use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
+use crate::expression_refusal::refuse_expression_sentinels;
 use crate::kernel::LoadEnv;
 use crate::module_context::ModuleContext;
 use crate::resolve_include_sentinels::{resolve_include_sentinels, IncludeCache};
@@ -106,6 +107,13 @@ pub fn load_module(
             KernelError::manifest_validation_failed(format!("'{path}' has no metadata.name"))
         })?
         .to_string();
+    // `imports:` and `targets:` are consumed where they are read, and refuse there.
+    refuse_expression_sentinels(
+        &format!("{module_kind}/{module_name}"),
+        module_doc,
+        "",
+        &["imports", "targets"],
+    )?;
     reject_unsupported_module_fields(module_doc, &loaded.source)?;
 
     if let Some(second) = documents.iter().skip(1).find(|document| {
@@ -122,7 +130,7 @@ pub fn load_module(
     reject_keyed_translations(&documents, &loaded.source)?;
 
     let from_artifact = is_oci_ref(path) || is_oci_ref(&loaded.source);
-    let imports = load_imports(env, module_doc, &loaded.source, from_artifact)?;
+    let imports = load_imports(env, module_doc, &format!("{module_kind}/{module_name}"), &loaded.source, from_artifact)?;
 
     // The language the module's texts are written in, which a kind's declared
     // error texts are read in.
@@ -132,6 +140,12 @@ pub fn load_module(
         if kind_of(document) != Some(DEFINITION) {
             continue;
         }
+        refuse_expression_sentinels(
+            &format!("{DEFINITION}/{}", name_of(document).unwrap_or("<unnamed>")),
+            document,
+            "",
+            &[],
+        )?;
         let definition = register_definition(&module_name, &loaded.source, &policy, document, lang)?;
         env.registry.register(Rc::clone(&definition))?;
         definitions.insert(definition.name.clone(), definition);
@@ -187,6 +201,7 @@ pub fn load_module(
             continue;
         }
         let name = resource_name(document, &context.source)?;
+        refuse_expression_sentinels(&format!("{kind}/{name}"), document, "", &[])?;
         let definition = resolve_resource_kind(&context, &kind, name)?;
         let instance = create_resource(definition, document, name, &context.source, &env.controllers)?;
         context.resources.set_resource(instance);
@@ -487,6 +502,7 @@ fn unresolved_reference_error(
 fn load_imports(
     env: &LoadEnv,
     module_doc: &Value,
+    owner: &str,
     base_source: &str,
     from_artifact: bool,
 ) -> Result<HashMap<String, Rc<ModuleContext>>, KernelError> {
@@ -495,7 +511,7 @@ fn load_imports(
         return Ok(imports);
     };
     for (alias, entry) in entries {
-        let spec = parse_import(alias, entry, base_source, from_artifact)?;
+        let spec = parse_import(alias, entry, owner, base_source, from_artifact)?;
         let child = env.load_import(&spec.source, spec.policy)?;
         imports.insert(alias.clone(), child);
     }
@@ -572,6 +588,7 @@ fn build_ref_targets(
             continue;
         }
         let name = resource_name(document, &context.source)?;
+        refuse_expression_sentinels(&format!("{kind}/{name}"), document, "", &[])?;
         let definition = resolve_resource_kind(context, kind, name)?;
         targets.add_local(name, definition.kind.clone());
     }

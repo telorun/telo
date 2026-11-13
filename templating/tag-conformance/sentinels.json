@@ -119,5 +119,15 @@
     "name": "a key without a value is null, and a key's own text is its JSON key",
     "yaml": "? alone\nempty:\nflow: { k }\ntrue: t\n2.50: n\n~: z\n",
     "json": { "alone": null, "empty": null, "flow": { "k": null }, "true": "t", "2.5": "n", "": "z" }
+  },
+  {
+    "name": "!cel, !interpolate, !sql and !literal load as sentinels",
+    "yaml": "a: !cel \"variables.port + 1\"\nb: !interpolate \"http://localhost:${{ ports.http }}\"\nc: !sql \"SELECT * FROM t WHERE id = ${{ inputs.id }}\"\nd: !literal \"${{ not an expression }}\"\n",
+    "json": {
+      "a": { "__tagged": true, "engine": "cel", "source": "variables.port + 1" },
+      "b": { "__tagged": true, "engine": "interpolate", "source": "http://localhost:${{ ports.http }}" },
+      "c": { "__tagged": true, "engine": "sql", "source": "SELECT * FROM t WHERE id = ${{ inputs.id }}" },
+      "d": { "__tagged": true, "engine": "literal", "source": "${{ not an expression }}" }
+    }
   }
 ]

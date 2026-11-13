@@ -44,9 +44,9 @@ scalars by YAML 1.2's core schema (`yes` is a string, `0x1F` and `0o17` integers
 alias copying its anchor's value and `<<` a plain key. A row's YAML parses with no
 error.
 
-No row holds an expression tag (`!cel`, `!interpolate`, `!sql`), which the Rust
-loader refuses by name, and no row has an integer-like mapping key, whose order a
-JavaScript object does not keep.
+An expression tag (`!cel`, `!interpolate`, `!sql`) and `!literal` load as the sentinel
+`{ __tagged: true, engine, source }`, the engine being the tag's name; no row has an
+integer-like mapping key, whose order a JavaScript object does not keep.
 
 ## `round-trip.json` — what a writer gives back (Node only)
 

@@ -1,5 +1,5 @@
-//! Replace `!include-text` / `!include-bytes` markers with the file's contents,
-//! mirroring `../../nodejs/src/resolve-include-sentinels.ts`.
+//! Replace `!include-text` / `!include-bytes` markers with the file's contents, and a
+//! `!literal` with its text through the engine table's `literal` engine, mirroring `../../nodejs/src/resolve-include-sentinels.ts`.
 //!
 //! A path resolves as the Node kernel's `resolveModuleFileUri` resolves it: beside
 //! the manifest for a module on disk, and inside the module directory of a
@@ -14,8 +14,9 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use telo_templating::{
-    is_tagged_sentinel, normalize_include_path, normalize_module_path, tagged_sentinel_parts,
-    INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE, MODULE_PATH_ENGINE,
+    build_cel_language_environment, default_registry, is_tagged_sentinel, normalize_include_path,
+    normalize_module_path, tagged_sentinel_parts, CompileEnv, CompileOutcome, INCLUDE_BYTES_ENGINE,
+    INCLUDE_TEXT_ENGINE, LITERAL_ENGINE, MODULE_PATH_ENGINE,
 };
 
 use crate::bundle::module_artifact::ModuleFiles;
@@ -122,6 +123,10 @@ fn visit(item: &mut Value, root: &mut ModuleRoot, cache: &mut IncludeCache) -> R
             *item = Value::String(resolve_module_path(source, root)?);
             return Ok(());
         }
+        if engine == LITERAL_ENGINE {
+            *item = resolve_literal(source)?;
+            return Ok(());
+        }
         // Another engine's marker is opaque.
         return Ok(());
     }
@@ -129,6 +134,19 @@ fn visit(item: &mut Value, root: &mut ModuleRoot, cache: &mut IncludeCache) -> R
         return Ok(());
     }
     walk(item, root, cache)
+}
+
+/// A `!literal` is its text, as the engine table's `literal` engine compiles it.
+fn resolve_literal(source: &str) -> Result<Value, KernelError> {
+    let engine = default_registry()
+        .get(LITERAL_ENGINE)
+        .ok_or_else(|| KernelError::runtime_invalid("the engine table holds no `literal` engine"))?;
+    let cel_env = build_cel_language_environment();
+    match engine.compile(source, &CompileEnv { cel_env: &cel_env, module_names: None }) {
+        Ok(CompileOutcome::Resolved(value)) => Ok(value),
+        Ok(_) => Err(KernelError::runtime_invalid("the `literal` engine did not resolve its text at compile")),
+        Err(err) => Err(KernelError::runtime_invalid(format!("the `literal` engine refused its text: {err}"))),
+    }
 }
 
 /// A nested resource declaration — an inline `{ kind, … }`. Its embeds are its
@@ -337,6 +355,14 @@ mod tests {
         let err = resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new())
             .expect_err("nothing there is refused");
         assert_eq!(err.code, "ERR_MODULE_PATH_NOT_FOUND");
+    }
+
+    #[test]
+    fn resolves_a_literal_to_its_text() {
+        let (_dir, manifest) = fixture();
+        let mut doc = json!({ "kind": "X", "t": sentinel("literal", "${{ not an expression }}") });
+        resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new()).unwrap();
+        assert_eq!(doc["t"], json!("${{ not an expression }}"));
     }
 
     #[test]

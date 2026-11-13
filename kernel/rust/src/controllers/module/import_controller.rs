@@ -19,6 +19,7 @@ use telo_analyzer::resolve_source;
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 
 use crate::error::KernelError;
+use crate::expression_refusal::refuse_expression_sentinels;
 use crate::runtime_registry::{normalize_runtime, ControllerPolicy};
 
 pub struct ImportSpec {
@@ -35,12 +36,18 @@ pub struct ImportSpec {
 pub fn parse_import(
     alias: &str,
     entry: &Value,
+    owner: &str,
     base_source: &str,
     from_artifact: bool,
 ) -> Result<ImportSpec, KernelError> {
     let (source, runtime) = match entry {
         Value::String(source) => (source.as_str(), None),
         Value::Object(map) => {
+            // What the import supplies is consumed here, so an expression in it is refused
+            // before the supply itself is.
+            let mut other = ["source", "runtime", "resources", "needs"].to_vec();
+            other.retain(|key| map.contains_key(*key));
+            refuse_expression_sentinels(owner, entry, &format!("imports.{alias}"), &other)?;
             for unsupported in ["variables", "secrets", "resources", "needs"] {
                 if map.contains_key(unsupported) {
                     return Err(KernelError::new(
@@ -112,13 +119,13 @@ mod tests {
     #[test]
     fn refuses_a_relative_import_inside_an_artifact_and_keeps_local_ones() {
         let entry = json!("./lib");
-        let Err(refusal) = parse_import("Lib", &entry, "oci://ghcr.io/x/app@1.0.0", true) else {
+        let Err(refusal) = parse_import("Lib", &entry, "Telo.Application/App", "oci://ghcr.io/x/app@1.0.0", true) else {
             panic!("a relative import inside an artifact must be refused");
         };
         assert_eq!(refusal.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE");
         assert!(refusal.message.contains("Nested libraries"), "{}", refusal.message);
 
-        let Ok(local) = parse_import("Lib", &entry, "/work/app/telo.yaml", false) else {
+        let Ok(local) = parse_import("Lib", &entry, "Telo.Application/App", "/work/app/telo.yaml", false) else {
             panic!("a relative import from a local module must resolve");
         };
         assert_eq!(local.source, "/work/app/lib");
