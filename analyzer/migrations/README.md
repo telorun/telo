@@ -11,10 +11,8 @@ The files sit here, beside the language implementations rather than inside any
 one of them, because **every kernel must apply the identical rewrite**. A
 rewrite added to one side would mean one artifact means two things on two
 kernels, invisibly — a migration that succeeds is silent. `analyzer/nodejs`
-imports these files directly. `analyzer/rust` does not read them yet: until it
-does, the Rust kernel applies no migration at all, so a legacy spelling fails
-there rather than being rewritten differently. When it lands it will embed them
-with `include_str!`; a Go half would use `//go:embed`.
+imports these files directly, and `analyzer/rust` embeds them with `include_str!`
+from the same directory listing; a Go half would use `//go:embed`.
 
 JSON rather than YAML for one reason: it is the only format all three can embed
 with no generation step. Rust and Go can embed any text file; TypeScript cannot,
@@ -73,7 +71,7 @@ out, and delete from it silently.
 | `inKind` | yes | document `kind:` values this rule may match in |
 | `under` | yes | top-level document keys; the match must be at or below one of them |
 | `value` / `valueOneOf` | no | the value must equal this / be one of these |
-| `valuePattern` / `valueNotPattern` | no | the value must be a string that fully matches / does not fully match this pattern, written in the RE2 subset (no lookaround, no backreference — refused when the entry is read) |
+| `valuePattern` / `valueNotPattern` | no | the value must be a string that fully matches / does not fully match this pattern, evaluated as RE2 by the engine behind CEL's `matches` in every runtime (no lookaround, no backreference — refused when the entry is read) |
 | `withSibling` | no | a key that must be present in the same mapping |
 | `notUnder` | no | narrows within `under` — the data-bearing JSON Schema keywords |
 | `ancestor` | no | `{ path, key, value }`: the matched path ends in `path` (ending at the matched key), and the mapping holding `path`'s first key holds `key` with the scalar `value` |

@@ -4,14 +4,14 @@
 //! The Node `LoadedFile` also carries the `yaml` package's documents, which only the
 //! editor's round trip reads; the Rust half writes no YAML back, so it carries the
 //! read-only model and the positions alone. The graph carries no version
-//! reconciliation, migration, module-file or child-application half: this loader
-//! reads none of them.
+//! reconciliation, module-file or child-application half: this loader reads none of them.
 
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use telo_templating::UnsupportedConstruct;
 
+use crate::migrations::FileMigrations;
 use crate::parse_loaded_file::{parse_error_message, YamlErrorKind};
 use crate::position_metadata::DocumentPosition;
 use crate::system_kinds::is_module_document;
@@ -65,6 +65,9 @@ pub struct LoadedFile {
     /// Per-document start line and position index, aligned to `manifests`.
     pub positions: Vec<DocumentPosition>,
     pub parse_errors: Vec<ParseError>,
+    /// What the migration phase rewrote in this file, and the diagnostics for it.
+    /// `manifests` are the post-migration tree; the positions are the raw file's.
+    pub migrations: FileMigrations,
 }
 
 impl LoadedFile {
@@ -139,6 +142,9 @@ pub struct LoadedGraph {
     pub import_edges: HashMap<String, IndexMap<String, ImportEdge>>,
     /// Every file's parse errors as diagnostics.
     pub parse_diagnostics: Vec<AnalysisDiagnostic>,
+    /// The deprecations the migration phase reports: the entry module's own file only,
+    /// since a published dependency is not the consumer's to fix.
+    pub migration_diagnostics: Vec<AnalysisDiagnostic>,
     pub errors: Vec<GraphLoadError>,
 }
 

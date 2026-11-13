@@ -1,13 +1,16 @@
 //! Pure: text in, structured load result out. No I/O, no caches.
 //! Mirrors `../../nodejs/src/parse-loaded-file.ts`.
 //!
-//! Node items with no twin: `ParseOptions` (migration, fragment expansion and precompile run
-//! in the Node loader only) and the parse cache's restored parse.
+//! Node items with no twin: `ParseOptions` and the parse cache's restored parse. Every Rust
+//! consumer reads a file resolved, so the migration phase always runs, as it does for every
+//! Node consumer that opts into `migrate`; fragment expansion and precompile run in the Node
+//! loader only.
 
 use telo_templating::{document_to_json, expansion_tag_misuse, JsonRefusal, LinePos, TagRefusal, YamlError};
 
 use crate::loaded_types::{LoadedFile, ParseError, ParseErrorOrigin};
 use crate::loader_expansion_refusals::loader_expansion_refusals;
+use crate::migrations::migrate_manifests;
 use crate::position_metadata::{build_document_positions, build_line_offsets, offset_to_position};
 use crate::types::{Position, Range, ResourceManifest};
 use crate::yaml_ast::{document_to_ast, manifest_documents, AstDocument};
@@ -157,6 +160,10 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
 
     parse_errors.append(&mut unsupported);
 
+    // The migration phase, immediately after parse and before anything else reads the tree,
+    // so a rule only ever matches what the author wrote.
+    let migrations = migrate_manifests(source, &mut manifests, None);
+
     LoadedFile {
         source: source.to_string(),
         requested_url: requested_url.to_string(),
@@ -165,5 +172,6 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
         ast_documents,
         positions,
         parse_errors,
+        migrations,
     }
 }

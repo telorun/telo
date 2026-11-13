@@ -1,0 +1,8 @@
+units:
+  analyzer: Added
+body: "A migration entry's `valuePattern` / `valueNotPattern` is now evaluated as RE2,
+  by the same engine CEL's `matches` uses, instead of JavaScript's regular expressions —
+  so the Node and Rust readers of `analyzer/migrations/` match a value alike. A pattern
+  RE2 cannot parse is refused when the entry is read, in RE2's words. Where the two
+  dialects differed, RE2's reading now holds: `.` matches a carriage return, so a value
+  such as `Telo.X\\ry` now fully matches `Telo\\..*`."

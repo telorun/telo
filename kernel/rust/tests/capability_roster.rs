@@ -2,8 +2,11 @@
 //! row of `analyzer/capability-conformance/vectors.json`, declared by an application, is
 //! one `ERR_MANIFEST_VALIDATION_FAILED` carrying the row's code and message — and an
 //! accepted row raises none. This kernel refuses every `extends:` after the analysis, so an
-//! accepted row declaring one is held only to carrying no capability diagnostic.
+//! accepted row declaring one is held only to carrying no capability diagnostic. A row whose
+//! value the load's migration rewrites (`capability: <Alias>.<Kind>` into `extends:`) never
+//! reaches the roster at load, so it is held to the same.
 
+use telo_analyzer::migrate_manifests;
 use telo_kernel::Kernel;
 
 const VECTORS: &str = include_str!("../../../analyzer/capability-conformance/vectors.json");
@@ -22,6 +25,15 @@ fn answers_every_capability_conformance_vector() {
             definition.push_str("extends: Lib.Base\n");
         }
         let manifest = format!("kind: Telo.Application\nmetadata: {{ name: Roster }}\n---\n{definition}");
+        let mut document = serde_json::json!({ "kind": "Telo.Definition" });
+        if let Some(capability) = row.get("capability") {
+            document["capability"] = capability.clone();
+        }
+        if row["extends"].as_bool().expect("extends") {
+            document["extends"] = "Lib.Base".into();
+        }
+        let mut documents = vec![Some(document)];
+        let migrated = !migrate_manifests("roster.yaml", &mut documents, None).rewrites.is_empty();
         let path = dir.path().join("telo.yaml");
         std::fs::write(&path, manifest).expect("write manifest");
 
@@ -34,7 +46,7 @@ fn answers_every_capability_conformance_vector() {
                 .map(|d| (d.code.clone().unwrap_or_default(), d.message.clone()))
                 .collect()
         };
-        match row["code"].as_str() {
+        match row["code"].as_str().filter(|_| !migrated) {
             None => {
                 if let Err(error) = answer {
                     assert_eq!(capability_findings(&error), vec![], "{id}");

@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: BaseLib }
+---
+kind: Telo.Abstract
+metadata: { name: Store }
+capability: Telo.Invocable

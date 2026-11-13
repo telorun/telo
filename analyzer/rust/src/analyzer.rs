@@ -1,9 +1,10 @@
 //! The static analysis of a loaded graph, mirroring the passes of
 //! `../../nodejs/src/analyzer.ts` this analyzer has: the capability roster over every
 //! kind document of the graph (a dependency's reported at the entry's import reaching
-//! it), the entry module's reference forms, and its own name. Each is a refusal the Rust
-//! kernel makes; Node's other passes have no twin yet, so an analysis here reports a
-//! subset of Node's, in Node's order, and never a diagnostic Node does not make.
+//! it), the entry module's reference forms, its own name, and a plain string it leaves
+//! holding `${{`. Each is a refusal the Rust kernel makes; Node's other passes have no
+//! twin yet, so an analysis here reports a subset of Node's, in Node's order, and never a
+//! diagnostic Node does not make.
 //!
 //! Hosts present the result through `graph_diagnostics::assemble_graph_diagnostics`.
 
@@ -11,6 +12,7 @@ use crate::capability_roster::capability_problem;
 use crate::loaded_types::LoadedGraph;
 use crate::reaching_import::{import_anchored_diagnostic, import_reach, module_name_of};
 use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticResource};
+use crate::untagged_interpolation::validate_untagged_interpolation;
 use crate::validate_identifier_names::validate_identifier_names;
 use crate::validate_reference_forms::{validate_reference_forms, AcceptsValue};
 
@@ -28,6 +30,7 @@ pub fn analyze(graph: &LoadedGraph, options: &AnalysisOptions) -> Vec<AnalysisDi
     let mut diagnostics = capability_diagnostics(graph);
     diagnostics.extend(validate_reference_forms(graph, options.accepts_value));
     diagnostics.extend(validate_identifier_names(graph));
+    diagnostics.extend(validate_untagged_interpolation(graph));
     diagnostics
 }
 

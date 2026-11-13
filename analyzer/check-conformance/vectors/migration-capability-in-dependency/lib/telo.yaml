@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata: { name: MidLib }
+imports: { Base: ./base }
+---
+kind: Telo.Abstract
+metadata: { name: Mine }
+capability: Base.Store

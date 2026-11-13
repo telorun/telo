@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata: { name: ElementApp }
+---
+kind: Telo.Definition
+metadata: { name: Table }
+capability: Telo.Type
+schema:
+  type: object
+  properties:
+    columns:
+      type: array
+      items:
+        type: object
+        properties:
+          rows: { type: array, items: { type: string }, x-telo-eval: compile }
+          label:
+            type: string
+            x-telo-eval: runtime
+            x-telo-context:
+              type: object
+              properties: { row: { x-telo-context-element-from-item: rows } }

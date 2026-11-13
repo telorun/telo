@@ -1,0 +1,2 @@
+kind: Telo.Application
+metadata: { name: ResidueApp, description: "costs ${{ 5" }

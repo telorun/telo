@@ -44,7 +44,7 @@ const VALUE: &str = "Telo.Value";
 use crate::controllers::resource_definition::resource_definition_controller::register_definition;
 use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
-use crate::expression_refusal::refuse_expression_sentinels;
+use crate::expression_refusal::{refuse_expression_sentinels, Owner};
 use crate::kernel::LoadEnv;
 use crate::module_context::ModuleContext;
 use crate::resolve_include_sentinels::{resolve_include_sentinels, IncludeCache};
@@ -109,7 +109,7 @@ pub fn load_module(
         .to_string();
     // `imports:` and `targets:` are consumed where they are read, and refuse there.
     refuse_expression_sentinels(
-        &format!("{module_kind}/{module_name}"),
+        Owner { label: &format!("{module_kind}/{module_name}"), source: &loaded.source },
         module_doc,
         "",
         &["imports", "targets"],
@@ -141,7 +141,7 @@ pub fn load_module(
             continue;
         }
         refuse_expression_sentinels(
-            &format!("{DEFINITION}/{}", name_of(document).unwrap_or("<unnamed>")),
+            Owner { label: &format!("{DEFINITION}/{}", name_of(document).unwrap_or("<unnamed>")), source: &loaded.source },
             document,
             "",
             &[],
@@ -186,6 +186,13 @@ pub fn load_module(
                 context.source
             )));
         };
+        // Refused before the embeds resolve, so text a `!literal` resolves to is never read
+        // as an untagged interpolation.
+        if kind != DEFINITION {
+            let name = resource_name(document, &context.source)?;
+            let label = format!("{kind}/{name}");
+            refuse_expression_sentinels(Owner { label: &label, source: &context.source }, document, "", &[])?;
+        }
         // Embedded files are read here, immediately before the resource is
         // built, so a marker never reaches a controller and the schema below
         // sees the resolved value.
@@ -201,7 +208,6 @@ pub fn load_module(
             continue;
         }
         let name = resource_name(document, &context.source)?;
-        refuse_expression_sentinels(&format!("{kind}/{name}"), document, "", &[])?;
         let definition = resolve_resource_kind(&context, &kind, name)?;
         let instance = create_resource(definition, document, name, &context.source, &env.controllers)?;
         context.resources.set_resource(instance);
@@ -588,7 +594,8 @@ fn build_ref_targets(
             continue;
         }
         let name = resource_name(document, &context.source)?;
-        refuse_expression_sentinels(&format!("{kind}/{name}"), document, "", &[])?;
+        let label = format!("{kind}/{name}");
+        refuse_expression_sentinels(Owner { label: &label, source: &context.source }, document, "", &[])?;
         let definition = resolve_resource_kind(context, kind, name)?;
         targets.add_local(name, definition.kind.clone());
     }

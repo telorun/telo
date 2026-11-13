@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: UntaggedApp, description: "v ${{ 1 }}" }
+---
+kind: Telo.Definition
+metadata: { name: Greeter, description: "${{ 1 + 1 }}" }
+capability: Telo.Invokable

@@ -1,0 +1,37 @@
+{
+  "diagnostics": [
+    {
+      "severity": 2,
+      "code": "X_TELO_REF_SCALAR_TYPE",
+      "source": "telo-analyzer",
+      "tags": [
+        2
+      ],
+      "message": "`type` is no longer used.\nA reference is written with the `!ref` tag and resolves to an object, so a reference slot no longer carries the scalar `type:` that plain-string references were pinned to. Leaving it in place makes the slot reject the very value it is declared to accept, and every schema reader has had to know to ignore it.\nno quick fix (removes an entry) — run `telo migrate`",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "schema.properties.target.type",
+        "resource": {
+          "kind": "Telo.Definition",
+          "name": "Caller"
+        },
+        "migration": {
+          "id": "ref-slot-scalar-type",
+          "legacyPath": "schema.properties.target.type",
+          "migratedPath": "schema.properties.target.type"
+        }
+      },
+      "range": {
+        "start": {
+          "line": 8,
+          "character": 32
+        },
+        "end": {
+          "line": 8,
+          "character": 38
+        }
+      }
+    }
+  ],
+  "runFails": null
+}
