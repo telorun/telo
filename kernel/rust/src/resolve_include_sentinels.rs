@@ -1,5 +1,6 @@
-//! Replace `!include-text` / `!include-bytes` markers with the file's contents, and a
-//! `!literal` with its text through the engine table's `literal` engine, mirroring `../../nodejs/src/resolve-include-sentinels.ts`.
+//! Replace `!include-text` / `!include-bytes` markers with the file's contents, mirroring
+//! `../../nodejs/src/resolve-include-sentinels.ts`. The walk descends into every object, as
+//! `sentinel_pass` does; a `!literal` is that pass's to resolve.
 //!
 //! A path resolves as the Node kernel's `resolveModuleFileUri` resolves it: beside
 //! the manifest for a module on disk, and inside the module directory of a
@@ -14,9 +15,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use telo_templating::{
-    build_cel_language_environment, default_registry, is_tagged_sentinel, normalize_include_path,
-    normalize_module_path, tagged_sentinel_parts, CompileEnv, CompileOutcome, INCLUDE_BYTES_ENGINE,
-    INCLUDE_TEXT_ENGINE, LITERAL_ENGINE, MODULE_PATH_ENGINE,
+    is_tagged_sentinel, normalize_include_path, normalize_module_path, tagged_sentinel_parts, INCLUDE_BYTES_ENGINE,
+    INCLUDE_TEXT_ENGINE, MODULE_PATH_ENGINE,
 };
 
 use crate::bundle::module_artifact::ModuleFiles;
@@ -46,9 +46,6 @@ pub fn resolve_include_sentinels(
         files,
         dir: None,
     };
-    // The document being created is itself a `{ kind, … }` declaration, so the
-    // walk starts inside it — a nested declaration resolves when that resource
-    // is created, the same line Phase-5 injection draws for references.
     walk(document, &mut root, cache)
 }
 
@@ -123,38 +120,13 @@ fn visit(item: &mut Value, root: &mut ModuleRoot, cache: &mut IncludeCache) -> R
             *item = Value::String(resolve_module_path(source, root)?);
             return Ok(());
         }
-        if engine == LITERAL_ENGINE {
-            *item = resolve_literal(source)?;
-            return Ok(());
-        }
         // Another engine's marker is opaque.
         return Ok(());
     }
-    if is_tagged_sentinel(item) || is_nested_declaration(item) {
+    if is_tagged_sentinel(item) {
         return Ok(());
     }
     walk(item, root, cache)
-}
-
-/// A `!literal` is its text, as the engine table's `literal` engine compiles it.
-fn resolve_literal(source: &str) -> Result<Value, KernelError> {
-    let engine = default_registry()
-        .get(LITERAL_ENGINE)
-        .ok_or_else(|| KernelError::runtime_invalid("the engine table holds no `literal` engine"))?;
-    let cel_env = build_cel_language_environment();
-    match engine.compile(source, &CompileEnv { cel_env: &cel_env, module_names: None }) {
-        Ok(CompileOutcome::Resolved(value)) => Ok(value),
-        Ok(_) => Err(KernelError::runtime_invalid("the `literal` engine did not resolve its text at compile")),
-        Err(err) => Err(KernelError::runtime_invalid(format!("the `literal` engine refused its text: {err}"))),
-    }
-}
-
-/// A nested resource declaration — an inline `{ kind, … }`. Its embeds are its
-/// own to resolve, when it is created.
-fn is_nested_declaration(value: &Value) -> bool {
-    value
-        .as_object()
-        .is_some_and(|entries| entries.get("kind").and_then(Value::as_str).is_some())
 }
 
 /// A `!module-path` names a location, so resolving it reads nothing: it becomes
@@ -313,16 +285,14 @@ mod tests {
     }
 
     #[test]
-    fn does_not_descend_into_a_nested_declaration() {
+    fn resolves_an_embed_inside_a_nested_declaration() {
         let (_dir, manifest) = fixture();
         let mut doc = json!({
             "kind": "Run.Sequence",
-            "with": [{ "kind": "Run.Value", "value": sentinel(INCLUDE_TEXT_ENGINE, "nope.txt") }],
-            "own": sentinel(INCLUDE_TEXT_ENGINE, "theme.txt"),
+            "with": [{ "kind": "Run.Value", "value": sentinel(INCLUDE_TEXT_ENGINE, "theme.txt") }],
         });
         resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new()).unwrap();
-        assert_eq!(doc["own"], json!("brand: blue\n"));
-        assert!(is_tagged_sentinel(&doc["with"][0]["value"]));
+        assert_eq!(doc["with"][0]["value"], json!("brand: blue\n"));
     }
 
     /// A module fetched from a registry with no layer index has no files to
@@ -355,14 +325,6 @@ mod tests {
         let err = resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new())
             .expect_err("nothing there is refused");
         assert_eq!(err.code, "ERR_MODULE_PATH_NOT_FOUND");
-    }
-
-    #[test]
-    fn resolves_a_literal_to_its_text() {
-        let (_dir, manifest) = fixture();
-        let mut doc = json!({ "kind": "X", "t": sentinel("literal", "${{ not an expression }}") });
-        resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new()).unwrap();
-        assert_eq!(doc["t"], json!("${{ not an expression }}"));
     }
 
     #[test]

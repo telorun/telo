@@ -56,6 +56,36 @@ fn import_site(graph: &LoadedGraph, module_source: &str) -> Option<(String, Opti
     None
 }
 
+/// A module as the message names it: a remote ref as written, a local module as the
+/// `file://` URL Node's `pathToFileURL` gives its path, percent-encoded the same way.
+fn module_as_written(source: &str) -> String {
+    if source.contains("://") {
+        return source.to_string();
+    }
+    let path = std::path::Path::new(source);
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+    };
+    let mut text = absolute.to_string_lossy().into_owned();
+    if cfg!(windows) {
+        text = text.replace('\\', "/");
+    }
+    if !text.starts_with('/') {
+        text.insert(0, '/');
+    }
+    let mut url = String::from("file://");
+    for byte in text.bytes() {
+        if byte < 0x21 || byte > 0x7e || b"\"#%<>?[\\]^`{|}~".contains(&byte) {
+            url.push_str(&format!("%{byte:02X}"));
+        } else {
+            url.push(byte as char);
+        }
+    }
+    url
+}
+
 /// What each kind in the graph needs beyond the kernel itself. A kind lists `controllers:`
 /// as *candidates* and the kernel takes the first this host can load, so a kind with any
 /// toolless candidate is dropped, and one whose candidates all need tools is reported only
@@ -84,8 +114,9 @@ fn kind_demands(graph: &LoadedGraph, env: &HashMap<String, String>) -> Vec<KindD
             if toolless || requirements.is_empty() {
                 continue;
             }
+            let written = if file.requested_url.is_empty() { &file.source } else { &file.requested_url };
             demands.push(KindDemand {
-                module: if file.requested_url.is_empty() { file.source.clone() } else { file.requested_url.clone() },
+                module: module_as_written(written),
                 module_source: file.source.clone(),
                 requirements,
             });
@@ -209,11 +240,24 @@ mod tests {
         assert_eq!(found[0].code.as_deref(), Some(CONTROLLER_TOOL_MISSING));
         assert_eq!(found[0].severity, Some(DiagnosticSeverity::Warning));
         assert!(
-            found[0].message.starts_with("A controller of /app/telo.yaml needs \"cargo\", which is not on PATH:"),
+            found[0].message.starts_with("A controller of file:///app/telo.yaml needs \"cargo\", which is not on PATH:"),
             "{}",
             found[0].message
         );
         assert!(found[0].message.ends_with("so this is a warning rather than an error."));
         assert!(probe_controller_tools(&graph, &env, &|_, _| true).is_empty());
+    }
+
+    #[test]
+    fn names_a_local_module_by_its_file_url_as_node_does() {
+        if cfg!(windows) {
+            return;
+        }
+        assert_eq!(module_as_written("/app/telo.yaml"), "file:///app/telo.yaml");
+        assert_eq!(
+            module_as_written("/a b/c#d?e%f\\g\nh\ri\tj/k\"l<m>n`o{p}q|r^s\u{e9}~[x]"),
+            "file:///a%20b/c%23d%3Fe%25f%5Cg%0Ah%0Di%09j/k%22l%3Cm%3En%60o%7Bp%7Dq%7Cr%5Es%C3%A9%7E%5Bx%5D"
+        );
+        assert_eq!(module_as_written("oci://ghcr.io/telorun/console@0.9.0#sha256-abc"), "oci://ghcr.io/telorun/console@0.9.0#sha256-abc");
     }
 }
