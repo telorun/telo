@@ -351,6 +351,33 @@ impl OciClient {
         Ok(OciManifest { layers })
     }
 
+    /// The digest of the OCI manifest `reference` names now: the registry's
+    /// `Docker-Content-Digest`, else the hash of the manifest body. `None` when the
+    /// reference does not exist. Mirrors `headManifest`; read with a GET, since this
+    /// client sends no other method and a manifest is a few hundred bytes.
+    pub fn manifest_digest(&self, reference: &str) -> Result<Option<String>, OciError> {
+        let url = format!("{}/manifests/{reference}", self.base());
+        let mut response = self.authed_get(&url, Some(MANIFEST_ACCEPT), &self.pull_scope())?;
+        if response.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            return Err(oci_error(format!(
+                "OCI head manifest {}:{reference} on {} failed: {}",
+                self.repo,
+                self.host,
+                response.status()
+            )));
+        }
+        let header = response
+            .headers()
+            .get("docker-content-digest")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        let body = read_body(&mut response, &url)?;
+        Ok(Some(header.unwrap_or_else(|| blob_digest(&body))))
+    }
+
     pub fn pull_blob(&self, digest: &str) -> Result<Vec<u8>, OciError> {
         let url = format!("{}/blobs/{digest}", self.base());
         let mut response = self.authed_get(&url, None, &self.pull_scope())?;

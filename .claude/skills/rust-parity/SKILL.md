@@ -48,6 +48,15 @@ runs each on both kernels with the environment the suite gives it, and writes a 
 test per kernel. A test's pass is exit code 0, as in the suite. `--filter <text>` narrows it;
 `--only rust` skips the Node half for a quick re-check.
 
+The sweep has a second dimension, `--dimension run|check` (default both): `check` runs `telo check`
+of both CLIs over every manifest whose first document is an Application or a Library, and compares
+`-o json` and the exit status — and the text, byte for byte, where a manifest has no debt entry — against
+`check-debt.json` beside `sweep.mjs`, the ratchet list of what the Rust analyzer may still miss (`owners`: each Node
+code to the build-order step 3 slice owing it; `manifests`: each path to the codes it lacks, or to an
+`unsupported` construct). A Rust diagnostic Node does not make always fails, and a stale entry fails; the
+dimension exits non-zero then. `--reuse-node <earlier --out file>` replays that file's recorded Node runs, so
+iterating on Rust does not pay for Node's again.
+
 - **The target** is the tests that pass on Node in the same sweep. A test red on Node locally
   (a missing key, a service not running) is outside the target and listed as such — never
   counted as a Rust gap, never "fixed" by you.
