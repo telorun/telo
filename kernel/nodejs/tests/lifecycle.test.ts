@@ -327,9 +327,36 @@ source: memory://does-not-exist
       expect(resolved).toBe(true);
     });
 
-    it("is a no-op when no waiters are pending", () => {
+    it("does not throw when no waiters are pending", () => {
       const { kernel } = makeKernel();
       expect(() => kernel.forceIdle()).not.toThrow();
+    });
+
+    it("ends start() when asked from a Kernel.Started listener, before start() reaches its wait", async () => {
+      const { kernel } = makeKernel();
+      await kernel.load("memory://app");
+      kernel.acquireHold("test-hold");
+      kernel.on("Kernel.Started", () => setImmediate(() => kernel.forceIdle()));
+
+      const timeout = new Promise<string>((resolve) => setTimeout(() => resolve("hung"), 5000));
+      expect(await Promise.race([kernel.start().then(() => "ended"), timeout])).toBe("ended");
+    });
+
+    it("releases the next waitForIdle() when none was pending, once, so a stop between Started and the wait is not lost", async () => {
+      const { kernel } = makeKernel();
+      await kernel.load("memory://app");
+      await kernel.boot();
+      kernel.acquireHold("test-hold");
+
+      kernel.forceIdle();
+      await expect(kernel.waitForIdle()).resolves.toBeUndefined();
+
+      let second = false;
+      void kernel.waitForIdle().then(() => {
+        second = true;
+      });
+      await new Promise<void>((r) => setImmediate(r));
+      expect(second).toBe(false);
     });
   });
 });
