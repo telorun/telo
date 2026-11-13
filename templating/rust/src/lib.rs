@@ -39,6 +39,7 @@ pub use cel::compile::{
 pub use cel::environment::{
     build_cel_environment, build_cel_language_environment, cel_builtin_functions, cel_function_catalog, CelHandlers,
 };
+pub use telorun_cel::CelEnvironment;
 pub use cel::literal_argument::WrittenArgument;
 pub use cel::module_call::{ModuleCallDispatch, ModuleFunction};
 pub use cel::verdict_codes::{

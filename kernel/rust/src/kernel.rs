@@ -31,7 +31,8 @@ use crate::controllers::module::module_controller::{load_module, value_branch_ac
 use crate::import_load_failure::import_load_failure;
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
-use crate::expression_refusal::{refuse_expression_at, Owner};
+use crate::resolve_include_sentinels::{resolve_include_sentinels, IncludeCache};
+use crate::sentinel_pass::{compile_sentinels_at, Owner};
 use crate::invoke_dispatch;
 use telorun_sdk_core::FailureFrame;
 use crate::lexical_path;
@@ -360,8 +361,20 @@ impl Kernel {
         target: &Value,
         index: usize,
     ) -> Result<Value, KernelError> {
+        // The entry is consumed now, so it takes the pass a resource takes at creation, then
+        // its embeds resolve against the root module's files.
         let label = format!("Telo.Application/{}", root.context.name);
-        refuse_expression_at(Owner { label: &label, source: &root.context.source }, target, &format!("targets[{index}]"))?;
+        let mut target = target.clone();
+        compile_sentinels_at(
+            Owner { label: &label, source: &root.context.source },
+            &mut target,
+            &format!("targets[{index}]"),
+        )?;
+        let files = self.env.as_ref().map(|env| env.loader.module_files(&root.context.source));
+        if let Some(files) = files {
+            resolve_include_sentinels(&mut target, &root.context.source, &files, &mut IncludeCache::new())?;
+        }
+        let target = &target;
         if target.get("when").is_some() {
             return Err(KernelError::new(
                 "ERR_UNSUPPORTED_MANIFEST_FEATURE",

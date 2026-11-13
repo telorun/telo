@@ -14,7 +14,13 @@ fn load(files: &[(&str, &str)]) -> (tempfile::TempDir, KernelError) {
     }
     let entry = dir.path().join("app/telo.yaml");
     let err = Kernel::new().load(&entry.display().to_string()).expect_err("load must fail");
+    assert_no_sentinel(&err);
     (dir, err)
+}
+
+/// A refusal that names a tagged marker object means one reached a stage that reads values.
+fn assert_no_sentinel(err: &KernelError) {
+    assert!(!err.to_string().contains("__tagged"), "a sentinel reached a value-reading stage: {err}");
 }
 
 fn source(dir: &Path, path: &str) -> String {
@@ -138,16 +144,97 @@ fn a_target_holding_an_expression_is_refused_when_it_runs() {
     );
 }
 
-/// A nested declaration is its own to refuse when it is created, so the declaring
-/// resource's creation does not read it: what stops this load is the schema, not an engine.
+/// The pass descends into every object under a consumed value, a nested declaration included.
 #[test]
-fn an_expression_inside_a_nested_declaration_is_not_read() {
+fn an_expression_inside_a_nested_declaration_is_refused_with_the_path_through_it() {
     let text = app(&format!(
         "imports: {{ Console: {} }}\n---\nkind: Console.WriteLine\nmetadata: {{ name: w }}\nnested: {{ kind: Console.Write, output: !cel \"'x'\" }}\n",
         console()
     ));
     let (_dir, err) = load(&[("app/telo.yaml", &text)]);
-    assert!(!err.to_string().contains(NO_ENGINE), "{err}");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert_eq!(err.message, format!("Console.WriteLine/w: field `nested.output` holds `!cel`, {NO_ENGINE}"));
+}
+
+fn inline_input_type_library(default: &str) -> String {
+    format!(
+        "kind: Telo.Library\nmetadata: {{ name: Lib }}\n---\nkind: Telo.Definition\nmetadata: {{ name: Thing }}\ncapability: Telo.Invocable\ninputType:\n  kind: Telo.JsonSchema\n  schema:\n    type: object\n    properties:\n      a: {{ type: string, default: {default} }}\n"
+    )
+}
+
+/// An inline `inputType` is a nested declaration whose schema default reaches a controller.
+#[test]
+fn an_expression_in_an_inline_input_type_default_is_refused() {
+    let (_dir, err) = load(&[
+        ("app/telo.yaml", &app("imports: { Lib: ../lib }\n")),
+        ("lib/telo.yaml", &inline_input_type_library("!cel \"'x'\"")),
+    ]);
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert_eq!(
+        err.message,
+        format!("Telo.Definition/Thing: field `inputType.schema.properties.a.default` holds `!cel`, {NO_ENGINE}")
+    );
+}
+
+#[test]
+fn a_literal_in_an_inline_input_type_default_is_resolved_not_refused() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    for (path, text) in [
+        ("app/telo.yaml", app("imports: { Lib: ../lib }\n")),
+        ("lib/telo.yaml", inline_input_type_library("!literal \"${{ x }}\"")),
+    ] {
+        let path = dir.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).expect("create dir");
+        std::fs::write(path, text).expect("write manifest");
+    }
+    Kernel::new().load(&dir.path().join("app/telo.yaml").display().to_string()).expect("the literal is text");
+}
+
+/// A tag without a hole is still an expression sentinel, not a plain value.
+#[test]
+fn a_hole_less_interpolate_or_sql_is_refused() {
+    for tag in ["interpolate", "sql"] {
+        let text = app(&format!(
+            "imports: {{ Console: {} }}\n---\nkind: Console.WriteLine\nmetadata: {{ name: w }}\noutput: !{tag} \"no holes\"\n",
+            console()
+        ));
+        let (_dir, err) = load(&[("app/telo.yaml", &text)]);
+        assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+        assert_eq!(err.message, format!("Console.WriteLine/w: field `output` holds `!{tag}`, {NO_ENGINE}"));
+    }
+}
+
+/// A source the engine cannot read is its own refusal, carrying the engine's message.
+#[test]
+fn an_unreadable_interpolation_is_refused_with_the_engines_message() {
+    let text = app(&format!(
+        "imports: {{ Console: {} }}\n---\nkind: Console.WriteLine\nmetadata: {{ name: w }}\noutput: !interpolate \"a ${{{{ 1\"\n",
+        console()
+    ));
+    let (_dir, err) = load(&[("app/telo.yaml", &text)]);
+    assert_eq!(err.code, "ERR_MANIFEST_VALIDATION_FAILED", "{err}");
+    assert!(err.message.contains("Console.WriteLine/w: field `output`: "), "{err}");
+    assert!(err.message.contains("!interpolate"), "{err}");
+}
+
+/// A target is consumed when it runs: `!literal` is its text and `!include-text` the file's.
+#[test]
+fn a_target_resolves_a_literal_and_an_include_when_it_runs() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let entry = dir.path().join("telo.yaml");
+    std::fs::write(dir.path().join("note.txt"), "from a file").expect("write note");
+    std::fs::write(
+        &entry,
+        app(&format!(
+            "imports: {{ Console: {} }}\ntargets:\n  - invoke: !ref Console.writeLine\n    inputs: {{ output: !literal \"costs ${{{{ 5 }}}}\" }}\n  - invoke: !ref Console.writeLine\n    inputs: {{ output: !include-text note.txt }}\n",
+            console()
+        )),
+    )
+    .expect("write manifest");
+    let mut kernel = Kernel::new();
+    kernel.load(&entry.display().to_string()).expect("the load consumes no target");
+    let results = kernel.run_targets().expect("the targets run");
+    assert_eq!(results, vec![serde_json::json!("costs ${{ 5 }}"), serde_json::json!("from a file")]);
 }
 
 /// A kind taking one string field, which no controller backs: a `!literal` that reached

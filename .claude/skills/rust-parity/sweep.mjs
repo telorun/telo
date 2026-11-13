@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Two dimensions, run from a repo root: `node .claude/skills/rust-parity/sweep.mjs --out <file>
 // [--dimension run|check] [--filter <text>] [--only rust|node] [--concurrency <n>] [--timeout <seconds>]
-// [--reuse-node <earlier out file>]` (default: both dimensions).
+// [--reuse-node <earlier out file> [--reuse-node-any-commit]]` (default: both dimensions).
 //
 // `run` runs every manifest test `test-suite.yaml` discovers on both kernels and writes one verdict
 // per test per kernel.
@@ -29,6 +29,9 @@ const CHECK_SLICE_OWNER = /^3a-2\b|slice 14\b/;
 const TOOL_MISSING = "CONTROLLER_TOOL_MISSING";
 // A rule's evaluation budget is wall-clock time, so whether it is exceeded depends on the load.
 const RULE_BUDGET = /exceeded its evaluation budget \(\d+ms\)/;
+const OVER_BUDGET_CODES = new Set(["RESOURCE_RULE_INVALID", "REFERRER_RULE_INVALID"]);
+// The code a CLI prints on stderr when it holds a construct back.
+const HOST_REFUSAL = "ERR_UNSUPPORTED_MANIFEST_FEATURE";
 // How a debt entry names a diagnostic that carries no code (a load failure).
 const NO_CODE = "(none)";
 
@@ -189,9 +192,9 @@ function readPackageScript(name) {
 // Both CLIs run with `--no-cache-write` under one sweep-owned `TELO_CACHE_DIR`, one invocation per
 // manifest and form (`-o json`, then the text form where the manifest has no debt entry), the
 // working directory the repo root, `NO_COLOR` set. `CONTROLLER_TOOL_MISSING` and a rule that "exceeded its
-// evaluation budget" — statements about the machine and its load, not the manifest, and different on
-// every run — are dropped from both payloads and the counts recomputed; a manifest whose Node text
-// run reports one is not byte-compared.
+// evaluation budget" (a `RESOURCE_RULE_INVALID` or `REFERRER_RULE_INVALID` with that sentence) — statements
+// about the machine and its load, not the manifest, and different on every run — are dropped from both
+// payloads and the counts recomputed; a manifest whose Node text run reports one is not byte-compared.
 //
 // What passes is `check-debt.json`'s to say:
 //   - a Rust diagnostic not equal, as a whole, to one of Node's always fails: the Rust analyzer may
@@ -302,8 +305,14 @@ function firstDocumentKind(text) {
   return /^kind:[ \t]*["']?([A-Za-z.]+)/m.exec(head)?.[1];
 }
 
+// A reused Node run is only what HEAD's Node would say when it was made at HEAD.
 function readReusedNode(file) {
   const earlier = JSON.parse(readFileSync(file, "utf8"));
+  if (earlier.commit !== report.commit) {
+    const message = `--reuse-node ${file} was made at commit ${earlier.commit ?? "(none)"}, but HEAD is ${report.commit}`;
+    if (!options.reuseNodeAnyCommit) fail(`${message}; re-run the Node sweep at HEAD or pass --reuse-node-any-commit`);
+    process.stderr.write(`sweep: warning: ${message}\n`);
+  }
   return new Map((earlier.check?.results ?? []).filter((r) => r.node).map((r) => [r.path, r.node]));
 }
 
@@ -340,12 +349,18 @@ function readPayload(run) {
   } catch {
     return { unusable: `stdout is not JSON: ${tail(run.stdout)} ${tail(run.stderr)}` };
   }
-  const diagnostics = payload.diagnostics.filter((d) => d.code !== TOOL_MISSING && !RULE_BUDGET.test(d.message));
+  const diagnostics = payload.diagnostics.filter((d) => d.code !== TOOL_MISSING && !isOverBudget(d));
   const errorCount = diagnostics.filter((d) => d.severity === "error").length;
   const warnCount = diagnostics.length - errorCount;
-  // `ok: false` with no error is a refusal of the host: a construct this CLI cannot read.
-  const refused = payload.ok === false && payload.errorCount === 0;
+  // A host refusal: `ok: false` with no error, or the refusal's code on stderr beside a real error
+  // of another file (a held-back file the envelope does not count as refused).
+  const refused = (payload.ok === false && errorCount === 0) || run.stderr.includes(`[${HOST_REFUSAL}]`);
   return { diagnostics, errorCount, warnCount, refused, ok: errorCount === 0 && !refused, exitCode: run.exitCode, stderr: run.stderr };
+}
+
+// Node's over-budget finding: its code and its sentence together, never the sentence alone.
+function isOverBudget(diagnostic) {
+  return OVER_BUDGET_CODES.has(diagnostic.code) && RULE_BUDGET.test(diagnostic.message);
 }
 
 function tail(text) {
@@ -427,9 +442,23 @@ function staleEntries(debt, covered, swept, results) {
 }
 
 function parseArgs(argv) {
-  const parsed = { out: null, filter: "", only: null, concurrency: 3, timeout: 600, dimension: null, reuseNode: null };
-  for (let i = 0; i < argv.length; i += 2) {
-    const [flag, value] = [argv[i], argv[i + 1]];
+  const parsed = {
+    out: null,
+    filter: "",
+    only: null,
+    concurrency: 3,
+    timeout: 600,
+    dimension: null,
+    reuseNode: null,
+    reuseNodeAnyCommit: false,
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const flag = argv[i];
+    if (flag === "--reuse-node-any-commit") {
+      parsed.reuseNodeAnyCommit = true;
+      continue;
+    }
+    const value = argv[++i];
     if (value === undefined) fail(`${flag} needs a value`);
     if (flag === "--out") parsed.out = value;
     else if (flag === "--filter") parsed.filter = value;

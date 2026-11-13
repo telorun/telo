@@ -44,7 +44,7 @@ const VALUE: &str = "Telo.Value";
 use crate::controllers::resource_definition::resource_definition_controller::register_definition;
 use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
-use crate::expression_refusal::{refuse_expression_sentinels, Owner};
+use crate::sentinel_pass::{compile_sentinels, Owner};
 use crate::kernel::LoadEnv;
 use crate::module_context::ModuleContext;
 use crate::resolve_include_sentinels::{resolve_include_sentinels, IncludeCache};
@@ -74,12 +74,12 @@ pub fn load_module(
 ) -> Result<LoadedModule, KernelError> {
     let loaded = env.file(path)?;
     reject_expansion_constructs(&loaded.manifests, &loaded.text, &loaded.source)?;
-    let documents: Vec<Value> = loaded.documents().cloned().collect();
+    let mut documents: Vec<Value> = loaded.documents().cloned().collect();
 
     let module_doc = documents.first().ok_or_else(|| {
         KernelError::manifest_validation_failed(format!("'{path}' contains no documents"))
     })?;
-    let module_kind = kind_of(module_doc).unwrap_or("");
+    let module_kind = kind_of(module_doc).unwrap_or("").to_owned();
     // The built-in vocabulary is read, never run or imported; the refusal says
     // what it is, in the words `telo check` uses. An import of it is refused by
     // the load's graph walk, as its import's `INVALID_IMPORT_TARGET`.
@@ -107,13 +107,14 @@ pub fn load_module(
             KernelError::manifest_validation_failed(format!("'{path}' has no metadata.name"))
         })?
         .to_string();
-    // `imports:` and `targets:` are consumed where they are read, and refuse there.
-    refuse_expression_sentinels(
+    // `imports:` and `targets:` are consumed where they are read, and take the pass there.
+    compile_sentinels(
         Owner { label: &format!("{module_kind}/{module_name}"), source: &loaded.source },
-        module_doc,
+        &mut documents[0],
         "",
         &["imports", "targets"],
     )?;
+    let module_doc = &documents[0];
     reject_unsupported_module_fields(module_doc, &loaded.source)?;
 
     if let Some(second) = documents.iter().skip(1).find(|document| {
@@ -134,24 +135,20 @@ pub fn load_module(
 
     // The language the module's texts are written in, which a kind's declared
     // error texts are read in.
-    let lang = module_doc.get("lang").and_then(Value::as_str);
+    let lang = module_doc.get("lang").and_then(Value::as_str).map(str::to_owned);
     let mut definitions = HashMap::new();
-    for document in documents.iter().skip(1) {
+    for document in documents.iter_mut().skip(1) {
         if kind_of(document) != Some(DEFINITION) {
             continue;
         }
-        refuse_expression_sentinels(
-            Owner { label: &format!("{DEFINITION}/{}", name_of(document).unwrap_or("<unnamed>")), source: &loaded.source },
-            document,
-            "",
-            &[],
-        )?;
-        let definition = register_definition(&module_name, &loaded.source, &policy, document, lang)?;
+        let label = format!("{DEFINITION}/{}", name_of(document).unwrap_or("<unnamed>"));
+        compile_sentinels(Owner { label: &label, source: &loaded.source }, document, "", &[])?;
+        let definition = register_definition(&module_name, &loaded.source, &policy, document, lang.as_deref())?;
         env.registry.register(Rc::clone(&definition))?;
         definitions.insert(definition.name.clone(), definition);
     }
 
-    let (exported_kinds, exported_resources) = read_exports(module_doc, &loaded.source)?;
+    let (exported_kinds, exported_resources) = read_exports(&documents[0], &loaded.source)?;
 
     let context = Rc::new(ModuleContext {
         name: module_name,
@@ -164,7 +161,6 @@ pub fn load_module(
         policy,
     });
 
-    let mut documents = documents;
     read_reference_forms(&context, &mut documents, role)?;
     let targets = build_ref_targets(&context, &documents)?;
     for document in documents.iter_mut() {
@@ -186,12 +182,12 @@ pub fn load_module(
                 context.source
             )));
         };
-        // Refused before the embeds resolve, so text a `!literal` resolves to is never read
-        // as an untagged interpolation.
+        // A kind document took the pass at registration. A resource takes it here, before the
+        // embeds resolve, so text an embed produces is never read as an untagged interpolation.
         if kind != DEFINITION {
             let name = resource_name(document, &context.source)?;
             let label = format!("{kind}/{name}");
-            refuse_expression_sentinels(Owner { label: &label, source: &context.source }, document, "", &[])?;
+            compile_sentinels(Owner { label: &label, source: &context.source }, document, "", &[])?;
         }
         // Embedded files are read here, immediately before the resource is
         // built, so a marker never reaches a controller and the schema below
@@ -594,8 +590,6 @@ fn build_ref_targets(
             continue;
         }
         let name = resource_name(document, &context.source)?;
-        let label = format!("{kind}/{name}");
-        refuse_expression_sentinels(Owner { label: &label, source: &context.source }, document, "", &[])?;
         let definition = resolve_resource_kind(context, kind, name)?;
         targets.add_local(name, definition.kind.clone());
     }

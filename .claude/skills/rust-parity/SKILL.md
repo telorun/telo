@@ -55,7 +55,11 @@ of both CLIs over every manifest whose first document is an Application or a Lib
 code to the build-order step 3 slice owing it; `manifests`: each path to the codes it lacks, or to an
 `unsupported` construct). A Rust diagnostic Node does not make always fails, and a stale entry fails; the
 dimension exits non-zero then. `--reuse-node <earlier --out file>` replays that file's recorded Node runs, so
-iterating on Rust does not pay for Node's again.
+iterating on Rust does not pay for Node's again; it refuses a file made at another commit unless
+`--reuse-node-any-commit` is given. The sweep leaves out `CONTROLLER_TOOL_MISSING` and the over-budget rule
+findings (`RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID` saying a rule "exceeded its evaluation budget"),
+because both are statements about the machine and its load rather than the manifest; the second stays until
+step 3d slice 13 replaces the wall-clock budget with a counted one.
 
 - **The target** is the tests that pass on Node in the same sweep. A test red on Node locally
   (a missing key, a service not running) is outside the target and listed as such — never

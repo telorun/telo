@@ -5,7 +5,9 @@
 //! another rule produced; rules within an entry apply in order at each match; entries never
 //! see one another's output. Idempotency follows: a rule matches only the legacy spelling.
 //! Node's `migrateFileText` — `telo migrate`'s file repair — has no twin here: no Rust
-//! reader writes YAML back.
+//! reader writes YAML back. Node visits integer-like mapping keys first (`Object.entries`
+//! order) where this walk keeps YAML order, so only the order of rewrites and of their
+//! diagnostics can differ, in a mapping with such keys.
 
 use std::collections::HashSet;
 
