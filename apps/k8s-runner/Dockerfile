@@ -32,7 +32,8 @@ FROM development AS build
 
 COPY . .
 
-RUN pnpm install --frozen-lockfile
+# Only this image's workspace packages are in the context (Dockerfile.dockerignore).
+RUN pnpm install --frozen-lockfile --filter @telorun/k8s-runner...
 # `...` builds the @telorun/runner-core + @telorun/debug-wire workspace
 # dependencies first; without it tsc / the runtime can't resolve their dist.
 RUN pnpm run --filter @telorun/k8s-runner... build

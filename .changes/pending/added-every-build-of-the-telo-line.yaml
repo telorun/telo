@@ -1,0 +1,10 @@
+units:
+  analyzer: Added
+  cel: Added
+  kernel: Added
+  packages/language-server: Added
+body: Every build of the telo line now reports its recorded version with `+unreleased` —
+  the engine handshake, the kernel's `Kernel.Starting`, the CEL engine's module key, the
+  built-in vocabulary archive and the running surface — and only the published package,
+  built by its own `prepack`, reports exactly its version. The surface generation is the
+  recorded version's `major.minor.patch`; no build reads a release plan any more.

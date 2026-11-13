@@ -1,0 +1,8 @@
+units:
+  release: Fixed
+body: "`apply` now moves a dependent crate's `version` requirement on a path dependency
+  it bumps, keeping its operator, so a candidate of a crate others name with a
+  requirement still resolves; and an apply that fails after it began stamping — a
+  version file, a host hook, or the reading the ledger is recorded from — restores every
+  file it wrote and records no ledger. A host's `check` gate now receives the plan the
+  gate formed."

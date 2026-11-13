@@ -1,5 +1,5 @@
-// The vocabulary renderer is run by `@telorun/analyzer`'s own `prepare` while `changeset publish`
-// compiles `@telorun/kernel` against the analyzer's source in the same job, so a reader must
+// The vocabulary renderer is run by `@telorun/analyzer`'s own `build` while the kernel
+// compiles against the analyzer's source in the same workspace build, so a reader must
 // never find a generated file missing or half-written.
 // Run: node --test scripts/tests/render-builtin-vocabulary.test.mjs
 

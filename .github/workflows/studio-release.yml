@@ -2,17 +2,15 @@ name: Release Studio
 
 # Builds the Tauri desktop binaries for Telo Studio and publishes them as a
 # GitHub Release on the external `telorun/studio` repo (the same repo the web
-# build is deployed to via Pages in `studio-pages.yml`), and publishes the web
-# image and its chart.
+# build is deployed to via Pages in `studio-pages.yml`). The web image and its
+# chart are the `apps/studio` unit's `docker` and `helm` rows, published with every
+# other image and chart by `publish-docker.yml`.
 #
-# Called by the branch's Publish workflow on finals and patches only: a candidate
-# carries an rc version of Studio and publishes none of it. `@telorun/studio` is
-# private so it never lands in `publishedPackages`; the `gate` job instead
-# confirms its `package.json` version moved in the release commit (which happens
-# when a release PR merges, including the automatic `updateInternalDependencies`
-# patch bumps) before spending matrix minutes. Every job builds the release tag's
-# tree, the publication commit, whose first parent is that release commit
-# (`release-commit.mjs`). A re-run of the Publish run answers as the first did.
+# Called by the branch's Publish workflow on finals and patches only. The `gate`
+# job reads whether the release moved the `apps/studio` unit from the units the
+# release commit moved (`units`) before spending matrix minutes. Every job builds
+# the release tag's tree, the publication commit. A re-run of the Publish run
+# answers as the first did.
 
 on:
   workflow_call:
@@ -29,6 +27,10 @@ on:
         description: 'The release tag (v<version>), checked out.'
         type: string
         required: true
+      units:
+        description: 'JSON array of {key, name, version, ecosystem}: the units the release commit moved (release-units.mjs).'
+        type: string
+        default: '[]'
 
 permissions:
   contents: read
@@ -50,34 +52,19 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Find the release commit
-        id: release-commit
-        run: node scripts/release-commit.mjs HEAD
-
-      - name: Check studio version
+      - name: Did the release move Studio
         id: check
         env:
-          RELEASE_COMMIT: ${{ steps.release-commit.outputs.release-commit }}
+          UNITS: ${{ inputs.units }}
         run: |
           set -euo pipefail
-          NEW=$(jq -r .version apps/studio/package.json)
-          echo "version=$NEW" >> "$GITHUB_OUTPUT"
-
-          # A path absent at the parent is a move (the editor -> studio rename)
-          # or a brand-new app — neither is a version bump, and treating one as
-          # a bump republishes whatever version happens to be in the file.
-          if ! git cat-file -e "${RELEASE_COMMIT}^:apps/studio/package.json" 2>/dev/null; then
-            echo "apps/studio/package.json did not exist at ${RELEASE_COMMIT}^ -> not a version bump; skipping."
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          OLD=$(git show "${RELEASE_COMMIT}^:apps/studio/package.json" | jq -r .version)
-          if [ "$NEW" != "$OLD" ]; then
-            echo "Studio version changed: $OLD -> $NEW"
+          VERSION=$(echo "${UNITS:-[]}" | jq -r '[.[] | select(.key=="apps/studio")][0].version // ""')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ -n "$VERSION" ]; then
+            echo "Studio released $VERSION."
             echo "release=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Studio version unchanged ($NEW); skipping release."
+            echo "The release did not move apps/studio; skipping."
             echo "release=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -210,72 +197,6 @@ jobs:
             apps/studio/src-tauri/target/**/release/bundle/appimage/*.AppImage
             apps/studio/src-tauri/target/**/release/bundle/deb/*.deb
           if-no-files-found: error
-
-  # The web build, as the image Telo Cloud serves at `studio.telo.run` — behind
-  # Cloud's own ingress so its API is same-origin. Released on the same version
-  # move as the desktop bundles, so the two builds of one version are one commit.
-  web-image:
-    name: Publish ghcr.io/telorun/studio-web
-    needs: gate
-    if: needs.gate.outputs.release == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
-
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & push studio-web
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/studio/Dockerfile
-          target: production
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/telorun/studio-web:${{ needs.gate.outputs.version }}
-            ${{ needs.gate.outputs.latest == 'true' && 'ghcr.io/telorun/studio-web:latest' || '' }}
-          cache-from: type=gha,scope=studio-web
-          cache-to: type=gha,mode=max,scope=studio-web
-
-  # After the image it points at exists, never beside it: the chart's
-  # appVersion IS that image's tag.
-  web-chart:
-    name: Publish the studio-web Helm chart
-    needs: [gate, web-image]
-    if: needs.gate.outputs.release == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
-      - uses: azure/setup-helm@v4
-
-      - name: Verify the chart carries the released version
-        run: node scripts/stamp-chart-version.mjs --check
-
-      - name: Package and push the chart
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "${GITHUB_TOKEN}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          helm package apps/studio/chart --destination /tmp/charts
-          helm push /tmp/charts/*.tgz oci://ghcr.io/telorun/charts
 
   release:
     name: Publish release to telorun/studio

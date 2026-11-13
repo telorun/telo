@@ -29,8 +29,8 @@
  * the disambiguation and no word has to.
  *
  * **`requires.telo` is a floor only**: `>=<version>`, or `>=unreleased` — the
- * telo release carrying the pending telo-line changesets, met only by a build
- * whose version carries `+unreleased`. A ceiling is a `restrictions:` entry
+ * telo release that will carry it, which `telo release apply` writes in, met
+ * only by a build whose version carries `+unreleased`. A ceiling is a `restrictions:` entry
  * (`restrictions.ts`); one on a module's own `requires.telo` is flagged
  * `ceiling` and kept in the block, since a published manifest's is honoured as a
  * restriction of that version. `host.node` keeps both bounds.
@@ -109,8 +109,8 @@ const EMPTY: RequiresBlock = { host: {} };
  *  from above. */
 export type RequirementPlace = "module" | "restriction";
 
-/** The `>=unreleased` floor: the telo release carrying the pending telo-line
- *  changesets, met only by a build of it. */
+/** The `>=unreleased` floor: the telo release that will carry it, which
+ *  `telo release apply` writes in, met only by a build of it. */
 export const UNRELEASED_FLOOR = ">=unreleased";
 
 /**

@@ -46,70 +46,55 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Wraps `changeset status`: private `-build` packages are versionable, and a
-      # module-owned package's version is the MODULE's now (moved by `telo release
-      # apply`, never by changesets), so both are filtered out. Only a changed
-      # published, non-module package with no changeset fails here. On main a
-      # changeset the live release branch carries covers nothing; the release
-      # machinery's own PRs skip coverage only.
-      - name: Check changeset status
-        if: github.event_name == 'pull_request'
-        run: node scripts/check-changeset-status.mjs origin/${{ github.base_ref }}
-
-      - name: Disallow major version bumps in changesets
-        if: github.event_name == 'pull_request'
-        run: |
-          failed=0
-          for f in .changeset/*.md; do
-            [ -f "$f" ] || continue
-            [ "$(basename "$f")" = "README.md" ] && continue
-            if awk '/^---$/{c++; next} c==1' "$f" | grep -Eq "^['\"]?[^'\":]+['\"]?:[[:space:]]*major[[:space:]]*$"; then
-              echo "::error file=$f::Major version bumps are not allowed in changesets."
-              failed=1
-            fi
-          done
-          exit $failed
-
-      # The module release gate. It does NOT fail because a payload moved — under a
-      # toolchain bump every module's digest moves, and those ship as unattributed
-      # patches with nobody writing prose. It fails when no consistent plan can be
-      # formed: a fragment naming an unknown module, a major-inducing kind, or a
-      # manifest version that disagrees with its ledger entry.
+      # The release gate, for every unit — npm packages, crates, images, charts,
+      # the .vsix and modules. It does NOT fail because a payload moved: a changed
+      # unit with no fragment ships as an unattributed patch and only warns. It fails
+      # when no consistent plan can be formed — a fragment naming no unit, a level
+      # above the marker's `maxBump: minor`, a unit whose version locations disagree,
+      # a telo floor the release would leave wrong — including a `>=unreleased` floor
+      # in a plan that moves no telo version.
       #
-      # Not PR-only: a malformed fragment breaks the release batch whenever it is
-      # reached, so it must never sit on main either. It needs no credentials — the
-      # committed ledger is what it compares against, which is why a fork's PR runs
-      # the identical computation the release job runs.
-      # Run through bun on the TS entry, like every other CLI step in this job.
-      # `bin/telo.mjs` imports `cli/nodejs/dist/`, and this job deliberately does
-      # not build — it is the static-check job, and a full workspace build to run
-      # one gate would be minutes of it. `bun` is a workspace devDependency, so
-      # `pnpm exec` has it on PATH with no toolchain setup.
-      # `base` is HEAD for a push and for the release machinery's own pull request
-      # (its diff is the release); `carried-by` names the live release branch when
-      # the tree checked is main's, so a fragment it already carries plans nothing.
+      # Not PR-only: a malformed fragment breaks the release whenever it is reached,
+      # so it must never sit on main either. It needs no credentials — the committed
+      # ledger is what it compares against. A layer is the file set the package
+      # manager packs (its `prepack` building the payload), `cargo package --list`, a
+      # Docker context or a chart, so the workspace is built first, and the gate runs
+      # the Node build of the CLI, as the release job does. `base` is HEAD for a push
+      # and for the release machinery's own pull request (its diff is the release);
+      # `carried-by` names the live release branch when the tree checked is main's,
+      # so a fragment it already carries plans nothing.
       - name: Read the release gate refs
         id: gates
         run: node scripts/release-branch.mjs gate-refs
+
+      - name: Build the workspace for the release gate
+        run: pnpm -r --if-present build
+
+      # A linking crate's cargo layer reads its closure across every platform
+      # (`cargo metadata --locked --offline`), so every platform's crates are fetched first.
+      - name: Fetch every platform's crates
+        run: cargo fetch --locked
 
       - name: Check the release plan
         env:
           BASE: ${{ steps.gates.outputs.base }}
           CARRIED_BY: ${{ steps.gates.outputs.carried-by }}
-        run: pnpm exec bun ./cli/nodejs/bin/telo.ts release check --base "$BASE" ${CARRIED_BY:+--carried-by "$CARRIED_BY"}
+        run: node ./cli/nodejs/bin/telo.mjs release check --base "$BASE" ${CARRIED_BY:+--carried-by "$CARRIED_BY"}
+
+      # A release branch whose final is published takes patches only: a pull request
+      # into it may plan no unit above `patch`.
+      - name: Check the plan is patch-only
+        if: github.event_name == 'pull_request' && startsWith(github.base_ref, 'release/')
+        env:
+          BASE: ${{ steps.gates.outputs.base }}
+          CARRIED_BY: ${{ steps.gates.outputs.carried-by }}
+        run: node scripts/release-patch-gate.mjs --base "$BASE" ${CARRIED_BY:+--carried-by "$CARRIED_BY"}
 
       # A doc that hardcodes a version for a ref this repo publishes goes stale
       # silently and reads as current to whoever copies it. The `<version>` marker
       # is substituted at site build time; this is what keeps it used.
       - name: Check documentation version pins
         run: pnpm run check:docs
-
-      # A Helm chart's version and appVersion ARE the deployed package's version;
-      # the Version PR stamps them. Unchecked, a hand edit desynchronizes them
-      # invisibly until an operator installs a chart whose appVersion names an
-      # image tag that was never built from it.
-      - name: Check chart versions
-        run: pnpm run check:charts
 
       # The controller protocol's spec and its message set are two halves of one
       # contract, and either half can be edited without the other. A wrong
@@ -207,12 +192,8 @@ jobs:
       # The release PR's gate on the publication commit its merge makes: every import
       # must come out published, or await this release's own publish. The release plan
       # it reads digests the controller builds, so the workspace is built for it alone.
-      - name: Build the workspace for the release PR's import check
-        if: startsWith(github.head_ref, 'changeset-release/')
-        run: pnpm -r --if-present build
-
       - name: Check every import of the release PR publishes (a module with changes its version does not carry fails here)
-        if: startsWith(github.head_ref, 'changeset-release/')
+        if: startsWith(github.head_ref, 'release-version/')
         timeout-minutes: 20
         env:
           TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
@@ -1625,8 +1606,8 @@ jobs:
           cache-directories: .telo/cargo
 
       # The Rust CLI embeds the built-in vocabulary archive, which is rendered,
-      # never tracked, and its build refuses to run without it. The version
-      # generator reads changesets' release plan, so the workspace is installed first.
+      # never tracked, and its build refuses to run without it. The workspace is
+      # installed first, since the root `prepare` renders it.
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 

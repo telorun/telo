@@ -8,16 +8,15 @@ name: Release VS Code Extension
 #               catalog never selects a candidate engine.
 #   final/patch the same asset, and the VS Code Marketplace — moved only forward.
 #
-# `telo-vscode` is a private workspace member, so changesets versions it but never
-# publishes it and it never lands in `publishedPackages`. The release signal is its
-# `package.json` version field moving in the release commit (`release-commit.mjs`:
-# the tag's commit, or its first parent when that is a publication commit), which happens
-# when a Version PR merges (including the automatic `updateInternalDependencies`
-# bumps that follow an analyzer/kernel release). A run where it did not move
-# packages nothing. Recovery is a re-run of the Publish run.
+# `ide/vscode` is a release unit of its own (a declared payload: the files `vsce`
+# packs), versioned by `telo release apply` when what it ships moves — a bundled
+# engine included. The release signal is its `package.json` version moving in the
+# release commit (`release-commit.mjs`: the tag's commit, or its first parent when
+# that is a publication commit). A run where it did not move packages nothing.
+# Recovery is a re-run of the Publish run.
 #
-# The links in the packed README resolve to the release tag `v<cli version>`, the
-# tag whose tree this `.vsix` is built from.
+# The links in the packed README resolve to the unit's own tag,
+# `ide/vscode@<version>`, which the release placed on its release commit.
 
 on:
   workflow_call:
@@ -107,8 +106,6 @@ jobs:
       # script changed, so both callers keep one code path.
       - name: Package the extension
         if: steps.check.outputs.release == 'true'
-        env:
-          TELO_PACK_LINKS_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           pnpm --filter "./ide/vscode" vsix

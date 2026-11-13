@@ -176,7 +176,7 @@ expectations only by a major decision.
 
 **The charter's surface is the exception, and the only one.** What *Charter surface* names — a
 spec, schemas, a package, an ABI generation, error codes, a CI gate — a slice may add exactly as
-the charter describes it, with the docs, changesets and `CLAUDE.md` / authoring-agent updates
+the charter describes it, with the docs, release fragments and `CLAUDE.md` / authoring-agent updates
 `CLAUDE.md` makes mandatory for it. Where the charter puts shared machinery in one
 implementation (the Node kernel's bundle loading shared with the controller host), moving that
 code so both use it is within the exception, provided the Node kernel's behaviour does not
@@ -251,7 +251,7 @@ Run `implement`'s steps 1–4 on the slice, with these differences:
   `--features telorun-sdk/native`, then `cargo test -p <crate> --locked` for each crate it
   touched; the Node manifest and unit tests of any module or package it touched (Node must stay
   exactly as green as it was there); the sweep filtered to the slice's tests; and
-  `node scripts/check-changeset-status.mjs`. `implement`'s step 5 re-runs them all, plus the
+  `telo release check`. `implement`'s step 5 re-runs them all, plus the
   full sweep: no regressions.
 - **Blockers.** A builder that stops on a question gets `decider`'s answer — major or not — in
   a fresh builder for that part, and the build carries on. Only a stop that no decision answers

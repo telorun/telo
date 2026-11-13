@@ -23,7 +23,7 @@ const { publish, publishPayloadBuilder, verifySiblingPinsForTest } = await impor
 const { createLogger } = await import("../src/logger.js");
 const { Output, installOutput } = await import("../src/output.js");
 const { digestPayload } = await import("../src/release/evidence.js");
-const { writeLedger } = await import("../src/release/ledger-store.js");
+const { moduleUnitLayers, writeLedger } = await import("../src/release/ledger-store.js");
 const { workspaceAssignment } = await import("../src/release/targets.js");
 const { loadWorkspace } = await import("../src/release/workspace.js");
 const { planWorkspace } = await import("../src/release/workspace-plan.js");
@@ -61,7 +61,7 @@ const pin = (text: string): string =>
 function writeWorkspace(): { lib: string; app: string } {
   write(
     "telo-workspace.yaml",
-    `release:\n  registry: ${REGISTRY}\n  modules:\n    - modules/*\n    - path: blueprints/*\n      registry: ${BLUEPRINTS}\n`,
+    `release:\n  units:\n    - { path: modules/*, ecosystem: { telo: { ".": { registry: ${REGISTRY} } } } }\n    - path: blueprints/*\n      ecosystem: { telo: { ".": { registry: ${BLUEPRINTS} } } }\n`,
   );
   return {
     lib: write("modules/lib/telo.yaml", library("Lib", "1.0.0")),
@@ -164,21 +164,21 @@ describe("a module of a release workspace", () => {
       entries.set(key, {
         version: assignment.module.version,
         registry,
-        layers: await digestPayload(payload),
+        layers: moduleUnitLayers(key, await digestPayload(payload)),
       });
     }
-    writeLedger(root, { modules: entries });
+    writeLedger(root, { units: entries });
 
     const { plan } = await planWorkspace(loadWorkspace(root), { rungs: {}, baseRef: "HEAD" });
 
     expect(plan.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
-    expect(plan.modules).toEqual([]);
+    expect(plan.units).toEqual([]);
   });
 });
 
 describe("a publish inside a workspace with unresolved destinations elsewhere", () => {
-  const withoutRegistry = (modules: string[]) =>
-    `release:\n  modules:\n${modules.join("")}`;
+  const withoutRegistry = (units: string[]) =>
+    `release:\n  units:\n${units.join("")}`;
 
   async function publishDryRun(destination: string, manifest: string) {
     const stdout = { text: "", write: (chunk: string) => (stdout.text += chunk) };
@@ -200,7 +200,7 @@ describe("a publish inside a workspace with unresolved destinations elsewhere", 
   it("ignores an unrelated module with no destination", async () => {
     write(
       "telo-workspace.yaml",
-      `release:\n  modules:\n    - path: mods/*\n      registry: ${REGISTRY}\n    - other/*\n`,
+      `release:\n  units:\n    - path: mods/*\n      ecosystem: { telo: { ".": { registry: ${REGISTRY} } } }\n    - { path: other/*, ecosystem: telo }\n`,
     );
     const a = write("mods/a/telo.yaml", library("A", "1.0.0"));
     write("other/b/telo.yaml", library("B", "1.0.0"));
@@ -213,7 +213,7 @@ describe("a publish inside a workspace with unresolved destinations elsewhere", 
   });
 
   it("refuses a module with no destination of its own, without naming --registry as a publish option", async () => {
-    write("telo-workspace.yaml", withoutRegistry(["    - other/*\n"]));
+    write("telo-workspace.yaml", withoutRegistry(["    - { path: other/*, ecosystem: telo }\n"]));
     const b = write("other/b/telo.yaml", library("B", "1.0.0"));
 
     const { report } = await publishDryRun(`${REGISTRY}/b`, b);
@@ -227,7 +227,7 @@ describe("a publish inside a workspace with unresolved destinations elsewhere", 
   it("refuses when a sibling it imports has no destination", async () => {
     write(
       "telo-workspace.yaml",
-      `release:\n  modules:\n    - path: mods/*\n      registry: ${REGISTRY}\n    - other/*\n`,
+      `release:\n  units:\n    - path: mods/*\n      ecosystem: { telo: { ".": { registry: ${REGISTRY} } } }\n    - { path: other/*, ecosystem: telo }\n`,
     );
     const a = write("mods/a/telo.yaml", library("A", "1.0.0", { B: "../../other/b" }));
     write("other/b/telo.yaml", library("B", "1.0.0"));

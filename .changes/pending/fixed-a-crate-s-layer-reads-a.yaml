@@ -1,0 +1,4 @@
+units:
+  release: Fixed
+body: A crate's layer reads a `license-file` or `readme` its manifest names outside the
+  crate from where it is, as `cargo package` does, instead of refusing it as missing.

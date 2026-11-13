@@ -1,0 +1,114 @@
+[
+  {
+    "name": "empty",
+    "entries": [],
+    "expected": {
+      "digest": "sha256-47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU"
+    }
+  },
+  {
+    "name": "one-file",
+    "entries": [
+      {
+        "path": "a.txt",
+        "text": "a\n"
+      }
+    ],
+    "expected": {
+      "digest": "sha256-mKB6HWRQWToyvv-NrE0QRoWUA359-tuKWh4RHVZZBz4"
+    }
+  },
+  {
+    "name": "executable-and-link",
+    "entries": [
+      {
+        "path": "bin/run",
+        "text": "#!/bin/sh\n",
+        "executable": true
+      },
+      {
+        "path": "latest",
+        "link": "bin/run"
+      }
+    ],
+    "expected": {
+      "digest": "sha256-88LTmHIydjkycfnC3a8Tfn8dUsd3r5o-3nUgHyi1hIM"
+    }
+  },
+  {
+    "name": "order-independent",
+    "entries": [
+      {
+        "path": "z",
+        "text": "z"
+      },
+      {
+        "path": "a/b",
+        "text": ""
+      },
+      {
+        "path": "a",
+        "text": "x"
+      },
+      {
+        "path": "A",
+        "text": "x"
+      }
+    ],
+    "expected": {
+      "digest": "sha256-u593lisLn6USgt3LlLhGVV1938uliwB2dF0ZIUx1rFM"
+    }
+  },
+  {
+    "name": "non-ascii-paths",
+    "entries": [
+      {
+        "path": "é.txt",
+        "text": "é"
+      },
+      {
+        "path": "z.txt",
+        "text": "z"
+      },
+      {
+        "path": "😀.txt",
+        "text": "x"
+      },
+      {
+        "path": "～.txt",
+        "text": "y"
+      }
+    ],
+    "expected": {
+      "digest": "sha256-v8TqDyPqAMgDArPwT66q6TwC9RXgzQehB1B8jfEkRzI"
+    }
+  },
+  {
+    "name": "binary",
+    "entries": [
+      {
+        "path": "blob",
+        "base64": "AAECA/7/"
+      }
+    ],
+    "expected": {
+      "digest": "sha256-tYN8JoDEnP9bSwqd5zSdMe6hjRq9JM8kviMtdBjV-FY"
+    }
+  },
+  {
+    "name": "duplicate-path",
+    "entries": [
+      {
+        "path": "a",
+        "text": "1"
+      },
+      {
+        "path": "a",
+        "text": "2"
+      }
+    ],
+    "expected": {
+      "error": "'a' is listed twice in one file set."
+    }
+  }
+]

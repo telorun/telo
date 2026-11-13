@@ -1,25 +1,21 @@
-// The version generator, the Rust-twin stamp and the changeset gate under
-// changesets prerelease mode and on release branches, each run in a scratch
-// workspace holding copies of the scripts. Run: node --test scripts/tests/*.test.mjs
+// The version modules a build embeds, and what a Publish run reads off its release
+// commit: the moved units, the npm packages it publishes, the image tags and the
+// charts. Each generator case runs in a scratch workspace holding copies of the
+// scripts. Run: node --test scripts/tests/*.test.mjs
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { imageTags } from "../image-tags.mjs";
+import { chartsToPublish, pushBase } from "../publish-charts.mjs";
+import { distTagOf, packagesToPublish } from "../publish-packages.mjs";
+import { movedUnits, movedVersions } from "../release-units.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const CHANGESETS_BIN = join(REPO, "node_modules", "@changesets", "cli", "bin.js");
-const CARRIED = "cli/nodejs/src/release/carried-changes.ts";
-const LINE = {
-  "@telorun/analyzer": "analyzer/nodejs",
-  "@telorun/cli": "cli/nodejs",
-  "@telorun/kernel": "kernel/nodejs",
-  "@telorun/language-server": "packages/language-server",
-  "@telorun/cel": "cel/nodejs",
-};
 const made = [];
 after(() => made.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
@@ -28,257 +24,159 @@ function put(root, path, text) {
   writeFileSync(join(root, path), text);
 }
 
-function run(root, command, args, env = {}) {
-  // The gate reads a pull request's refs from the environment; a test states its own,
-  // or on the Version PR every case runs exempt as `changeset-release/*`.
-  const inherited = { ...process.env };
-  delete inherited.GITHUB_HEAD_REF;
-  delete inherited.GITHUB_BASE_REF;
-  return spawnSync(command, args, { cwd: root, encoding: "utf8", env: { ...inherited, ...env } });
-}
-
 function git(root, ...args) {
-  return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-function commit(root, message) {
-  git(root, "add", "-A");
-  git(root, "commit", "-q", "-m", message);
-}
-
-/** A workspace at `version` with a git history on `main`. */
-function workspace(version = "0.84.2") {
-  const root = mkdtempSync(join(tmpdir(), "telo-release-"));
+/** A workspace holding the generator's scripts and the four packages it writes. */
+function generatorWorkspace(version) {
+  const root = mkdtempSync(join(tmpdir(), "telo-version-line-"));
   made.push(root);
-  cpSync(join(REPO, "scripts"), join(root, "scripts"), {
-    recursive: true,
-    filter: (source) => !source.includes("tests") && !source.includes("db-init"),
-  });
-  symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
-  // The gate reads which changesets a release branch carries through the CLI's file.
-  put(root, CARRIED, readFileSync(join(REPO, CARRIED), "utf8"));
-  put(root, "package.json", '{"name":"root","private":true,"version":"1.0.0"}');
-  put(root, "pnpm-workspace.yaml", "packages:\n  - cli/*\n  - kernel/*\n  - analyzer/*\n  - cel/*\n  - packages/*\n  - other\n  - debug-ui\n");
-  put(root, ".gitignore", "node_modules\nanalyzer/nodejs/src/telo-version.ts\npackages/language-server/src/engine-version.ts\ncel/nodejs/src/engine-version.ts\nkernel/nodejs/src/telo-runtime-version.ts\n");
-  for (const [name, dir] of Object.entries(LINE)) {
-    const devDependencies = name === "@telorun/cli" ? { "@telorun/debug-ui": "1.0.0" } : undefined;
-    put(root, `${dir}/package.json`, JSON.stringify({ name, version, devDependencies }));
-    put(root, `${dir}/src/index.ts`, "export {};\n");
+  for (const script of ["generate-telo-version.mjs", "version-line.mjs"]) {
+    cpSync(join(REPO, "scripts", script), join(root, "scripts", script));
   }
-  put(root, "other/package.json", JSON.stringify({ name: "@telorun/other", version: "1.3.0" }));
-  put(root, "other/index.js", "\n");
-  put(root, "debug-ui/package.json", JSON.stringify({ name: "@telorun/debug-ui", version: "1.0.0" }));
-  put(root, "cli/rust/Cargo.toml", `[package]\nname = "telorun-cli"\nversion = "${version}"\n`);
-  put(root, "Cargo.lock", `version = 4\n\n[[package]]\nname = "telorun-cli"\nversion = "${version}"\n`);
-  put(
-    root,
-    ".changeset/config.json",
-    JSON.stringify({
-      changelog: false, commit: false, fixed: [Object.keys(LINE)], linked: [], access: "public",
-      baseBranch: "main", updateInternalDependencies: "patch", ignore: [],
-    }),
-  );
-  git(root, "init", "-q", "-b", "main");
-  git(root, "config", "user.name", "t");
-  git(root, "config", "user.email", "t@t");
-  commit(root, "init");
+  put(root, "analyzer/nodejs/package.json", JSON.stringify({ name: "@telorun/analyzer", version }));
+  for (const dir of ["cel/nodejs", "kernel/nodejs", "packages/language-server"]) {
+    put(root, `${dir}/package.json`, JSON.stringify({ name: dir, version }));
+    mkdirSync(join(root, dir, "src"), { recursive: true });
+  }
+  mkdirSync(join(root, "analyzer/nodejs/src"), { recursive: true });
   return root;
 }
 
-function changeset(root, id, bump, name = "@telorun/cli") {
-  put(root, `.changeset/${id}.md`, `---\n"${name}": ${bump}\n---\n\nchange\n`);
+function generate(root, cwd, ...args) {
+  const result = spawnSync(process.execPath, [join(root, "scripts", "generate-telo-version.mjs"), ...args], { cwd, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
 }
 
-function changesets(root, ...args) {
-  const result = run(root, process.execPath, [CHANGESETS_BIN, ...args]);
-  assert.equal(result.status, 0, result.stderr + result.stdout);
-}
+const read = (root, path) => readFileSync(join(root, path), "utf8");
 
-function generated(root) {
-  const result = run(root, process.execPath, ["scripts/generate-telo-version.mjs"]);
-  assert.equal(result.status, 0, result.stderr);
-  const read = (path, key) => new RegExp(`${key} = "([^"]+)"`).exec(readFileSync(join(root, path), "utf8"))[1];
-  return {
-    surface: read("analyzer/nodejs/src/telo-version.ts", "TELO_SURFACE_VERSION"),
-    identity: read("kernel/nodejs/src/telo-runtime-version.ts", "TELO_RUNTIME_VERSION"),
-  };
-}
-
-function gate(root, base) {
-  const result = run(root, process.execPath, ["scripts/check-changeset-status.mjs", base]);
-  if (process.env.GATE_DEBUG) console.error(result.stderr);
-  return result;
-}
-
-describe("version generator", () => {
-  it("main right after the cut, nothing pending", () => {
-    assert.deepEqual(generated(workspace()), { surface: "0.84.2", identity: "0.84.2" });
+describe("the version modules", () => {
+  it("embed the recorded version with +unreleased in every build, from the repository root", () => {
+    const root = generatorWorkspace("0.85.0-rc.2");
+    generate(root, root);
+    assert.match(read(root, "analyzer/nodejs/src/telo-version.ts"), /TELO_SURFACE_VERSION = "0\.85\.0";/);
+    assert.match(read(root, "analyzer/nodejs/src/telo-version.ts"), /TELO_RUNNING_SURFACE = "0\.85\.0\+unreleased";/);
+    assert.match(read(root, "cel/nodejs/src/engine-version.ts"), /ENGINE_VERSION = "0\.85\.0-rc\.2\+unreleased";/);
+    assert.match(read(root, "kernel/nodejs/src/telo-runtime-version.ts"), /TELO_RUNTIME_VERSION = "0\.85\.0-rc\.2\+unreleased";/);
+    assert.match(read(root, "packages/language-server/src/engine-version.ts"), /TELO_ENGINE_VERSION = "0\.85\.0-rc\.2\+unreleased";/);
   });
 
-  it("main with a minor pending", () => {
-    const root = workspace();
-    changeset(root, "one", "minor");
-    assert.deepEqual(generated(root), { surface: "0.85.0", identity: "0.85.0+unreleased" });
+  it("embed exactly the version in a package's published build, and write that package alone", () => {
+    const root = generatorWorkspace("0.85.0");
+    generate(root, root);
+    generate(root, join(root, "cel/nodejs"), "--published");
+    assert.match(read(root, "cel/nodejs/src/engine-version.ts"), /ENGINE_VERSION = "0\.85\.0";/);
+    assert.match(read(root, "kernel/nodejs/src/telo-runtime-version.ts"), /\+unreleased/);
+    generate(root, join(root, "analyzer/nodejs"), "--published");
+    assert.match(read(root, "analyzer/nodejs/src/telo-version.ts"), /TELO_RUNNING_SURFACE = "0\.85\.0";/);
   });
 
-  it("candidates: rc.0 released, then a pending patch, then after pre exit", () => {
-    const root = workspace();
-    changeset(root, "one", "minor");
-    changesets(root, "pre", "enter", "rc");
-    changesets(root, "version");
-    assert.deepEqual(generated(root), { surface: "0.85.0", identity: "0.85.0-rc.0" });
-
-    changeset(root, "two", "patch");
-    assert.deepEqual(generated(root), { surface: "0.85.0", identity: "0.85.0-rc.1+unreleased" });
-
-    changesets(root, "pre", "exit");
-    assert.deepEqual(generated(root), { surface: "0.85.0", identity: "0.85.0+unreleased" });
-  });
-});
-
-describe("Rust twins", () => {
-  it("version-line writes a prerelease into Cargo.toml and Cargo.lock, and the gate accepts it", () => {
-    const root = workspace();
-    changeset(root, "one", "minor");
-    changesets(root, "pre", "enter", "rc");
-    changesets(root, "version");
-    assert.equal(run(root, process.execPath, ["scripts/version-line.mjs"]).status, 0);
-    assert.match(readFileSync(join(root, "cli/rust/Cargo.toml"), "utf8"), /version = "0.85.0-rc.0"/);
-    assert.match(readFileSync(join(root, "Cargo.lock"), "utf8"), /version = "0.85.0-rc.0"/);
-    commit(root, "version");
-    assert.equal(gate(root, "HEAD").status, 0);
-  });
-});
-
-describe("floors waiting for a release", () => {
-  const MODULE = `kind: Telo.Library
-metadata:
-  name: Geocode
-  version: 1.2.0
-requires:
-  telo: ">=unreleased" # waiting
-  host: { node: ">=20.0.0" }
-restrictions:
-  - requires: { telo: '>=unreleased' }
-    reason: Needs the next kernel.
-  - versions: ">=1.0.0"
-    requires: { telo: "<0.122.0" }
-    reason: Broken above.
-`;
-
-  it("the version step rewrites >=unreleased in requires.telo and in entries, keeping the layout", () => {
-    const root = workspace();
-    put(root, "telo-workspace.yaml", "release:\n  modules:\n    - modules/*\n    - '!modules/skipped'\n");
-    put(root, "modules/geocode/telo.yaml", MODULE);
-    put(root, "modules/skipped/telo.yaml", MODULE);
-    const result = run(root, process.execPath, ["scripts/version-line.mjs"]);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /modules\/geocode\/telo.yaml: requires.telo >=unreleased → >=0.84.2/);
-    assert.match(result.stdout, /modules\/geocode\/telo.yaml: restrictions\[0\].requires.telo >=unreleased → >=0.84.2/);
-    assert.equal(
-      readFileSync(join(root, "modules/geocode/telo.yaml"), "utf8"),
-      MODULE.replace('">=unreleased" # waiting', '">=0.84.2" # waiting').replace("'>=unreleased'", "'>=0.84.2'"),
-    );
-    assert.equal(readFileSync(join(root, "modules/skipped/telo.yaml"), "utf8"), MODULE);
-  });
-});
-
-describe("changeset gate", () => {
-  it("a main change with no changeset fails; a changeset covers it", () => {
-    const root = workspace();
-    git(root, "switch", "-q", "-c", "pr");
-    put(root, "cli/nodejs/src/index.ts", "export const a = 1;\n");
-    commit(root, "change");
-    assert.equal(gate(root, "main").status, 1);
-    changeset(root, "cover", "patch");
-    assert.equal(gate(root, "main").status, 0);
-  });
-
-  it("takes the base from GITHUB_BASE_REF", () => {
-    const root = workspace();
-    git(root, "switch", "-q", "-c", "pr");
-    put(root, "cli/nodejs/src/index.ts", "export const a = 1;\n");
-    commit(root, "change");
-    git(root, "update-ref", "refs/remotes/origin/main", "main");
-    const result = run(root, process.execPath, ["scripts/check-changeset-status.mjs"], { GITHUB_BASE_REF: "main" });
-    assert.equal(result.status, 1);
-  });
-
-  it("a changeset a candidate already released does not cover a later change", () => {
-    const root = workspace();
-    changeset(root, "one", "minor");
-    changesets(root, "pre", "enter", "rc");
-    changesets(root, "version");
-    run(root, process.execPath, ["scripts/version-line.mjs"]);
-    commit(root, "rc.0");
-    git(root, "switch", "-q", "-c", "fix");
-    put(root, "cli/nodejs/src/index.ts", "export const a = 1;\n");
-    commit(root, "fix");
-    const refused = gate(root, "main");
-    assert.equal(refused.status, 1);
-    assert.match(refused.stderr, /@telorun\/cli changed a published file but no changeset covers it/);
-    changeset(root, "two", "patch");
-    assert.equal(gate(root, "main").status, 0);
-  });
-
-  it("on main, a changeset the live release branch carries covers nothing", () => {
-    const root = workspace();
-    changeset(root, "shipped", "patch");
-    commit(root, "changeset before the cut");
-    git(root, "branch", "release/0.85");
-    git(root, "switch", "-q", "-c", "pr");
-    put(root, "cli/nodejs/src/index.ts", "export const a = 1;\n");
-    commit(root, "change");
-    const refused = gate(root, "main");
-    assert.equal(refused.status, 1);
-    assert.match(refused.stderr, /@telorun\/cli changed a published file but no changeset covers it/);
-    git(root, "branch", "-D", "release/0.85");
-    assert.equal(gate(root, "main").status, 0);
-  });
-
-  it("a release branch past its final accepts only patch changesets", () => {
-    const root = workspace();
-    git(root, "switch", "-q", "-c", "release/0.85");
-    git(root, "update-ref", "refs/remotes/origin/release/0.85", "release/0.85");
-    git(root, "tag", "v0.85.0");
-    git(root, "switch", "-q", "-c", "fix");
-    changeset(root, "brave-otters-sing", "minor", "@telorun/other");
-    commit(root, "minor");
-    const refused = gate(root, "origin/release/0.85");
-    assert.equal(refused.status, 1);
-    assert.match(
-      refused.stderr,
-      /release\/0\.85 accepts only patch changesets; @telorun\/other has a minor \(\.changeset\/brave-otters-sing\.md\)\./,
-    );
-    put(root, ".changeset/pre.json", JSON.stringify({ mode: "pre", tag: "rc", initialVersions: {}, changesets: [] }));
-    assert.equal(gate(root, "origin/release/0.85").status, 0);
-  });
-
-  it("a freshly cut branch, with no final yet, carries its minor changesets", () => {
-    const root = workspace();
-    git(root, "switch", "-q", "-c", "release/0.85");
-    git(root, "update-ref", "refs/remotes/origin/release/0.85", "release/0.85");
-    git(root, "switch", "-q", "-c", "fix");
-    changeset(root, "brave-otters-sing", "minor", "@telorun/other");
-    commit(root, "minor");
-    assert.equal(gate(root, "origin/release/0.85").status, 0);
-  });
-
-  it("exempts the release machinery's pull requests from coverage only", () => {
-    const root = workspace();
-    git(root, "switch", "-q", "-c", "pr");
-    put(root, "cli/nodejs/src/index.ts", "export const a = 1;\n");
-    commit(root, "change");
-    for (const head of ["changeset-release/release/0.85", "release-record/release/0.85"]) {
-      const result = run(root, process.execPath, ["scripts/check-changeset-status.mjs", "main"], { GITHUB_HEAD_REF: head });
-      assert.equal(result.status, 0, result.stderr);
-      assert.match(result.stdout, /coverage is exempt/);
+  it("write only the packages a partial checkout holds", () => {
+    const root = mkdtempSync(join(tmpdir(), "telo-version-line-partial-"));
+    made.push(root);
+    for (const script of ["generate-telo-version.mjs", "version-line.mjs"]) {
+      cpSync(join(REPO, "scripts", script), join(root, "scripts", script));
     }
-    assert.equal(run(root, process.execPath, ["scripts/check-changeset-status.mjs", "main"], { GITHUB_HEAD_REF: "feat/x" }).status, 1);
-    put(root, "cli/rust/Cargo.toml", '[package]\nname = "telorun-cli"\nversion = "0.0.1"\n');
-    commit(root, "twin drifts");
-    const twin = run(root, process.execPath, ["scripts/check-changeset-status.mjs", "main"], { GITHUB_HEAD_REF: "release-record/release/0.85" });
-    assert.equal(twin.status, 1);
-    assert.match(twin.stderr, /cli\/rust\/Cargo\.toml is 0\.0\.1 but its Node twin/);
+    mkdirSync(join(root, "analyzer/nodejs/src"), { recursive: true });
+    const result = spawnSync(process.execPath, [join(root, "scripts", "generate-telo-version.mjs")], { cwd: root, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.stdout, "");
+  });
+});
+
+/** A repository whose second commit versions `kernel` final and `apps/hub` as a candidate. */
+function releasedRepo() {
+  const root = mkdtempSync(join(tmpdir(), "telo-release-units-"));
+  made.push(root);
+  git(root, "init", "-q", "-b", "main");
+  git(root, "config", "user.email", "t@example.com");
+  git(root, "config", "user.name", "T");
+  git(root, "config", "commit.gpgsign", "false");
+  put(root, ".changes/ledger.yaml", "units:\n  kernel:\n    version: 0.84.0\n  apps/hub:\n    version: 0.27.0\n  modules/console:\n    version: 0.18.0\n");
+  git(root, "add", "-A");
+  git(root, "commit", "-q", "-m", "base");
+  put(
+    root,
+    ".changes/ledger.yaml",
+    "units:\n  kernel:\n    version: 0.85.0\n  apps/hub:\n    version: 0.27.0\n    candidate:\n      version: 0.28.0-rc.1\n  modules/console:\n    version: 0.18.0\n",
+  );
+  git(root, "commit", "-q", "-am", "chore(release): version");
+  return root;
+}
+
+describe("the units a release commit moved", () => {
+  it("are the ledger's final or candidate versions that moved against the parent, one row per package", () => {
+    const root = releasedRepo();
+    const moved = movedVersions({ cwd: root, commit: "HEAD" });
+    assert.deepEqual(moved, [
+      { key: "apps/hub", version: "0.28.0-rc.1" },
+      { key: "kernel", version: "0.85.0" },
+    ]);
+    const order = [
+      { key: "kernel", ecosystem: "cargo", path: "kernel/rust", version: "0.85.0" },
+      { key: "kernel", ecosystem: "npm", path: "kernel/nodejs", version: "0.85.0" },
+      { key: "modules/console", ecosystem: "telo", path: "modules/console", version: "0.18.0", destination: "oci://ghcr.io/telorun/console" },
+      { key: "apps/hub", ecosystem: "docker", path: "apps/hub", version: "0.28.0-rc.1", destination: "docker.io/telorun/hub" },
+    ];
+    const files = { "kernel/rust/Cargo.toml": '[package]\nname = "telo-kernel"\n', "kernel/nodejs/package.json": '{"name":"@telorun/kernel"}' };
+    assert.deepEqual(movedUnits({ moved, order, read: (file) => files[file] }), [
+      { key: "kernel", name: "telo-kernel", version: "0.85.0", ecosystem: "cargo" },
+      { key: "kernel", name: "@telorun/kernel", version: "0.85.0", ecosystem: "npm" },
+      { key: "apps/hub", name: "docker.io/telorun/hub", version: "0.28.0-rc.1", ecosystem: "docker" },
+    ]);
+  });
+});
+
+describe("what a Publish run publishes", () => {
+  it("publishes each npm row npm lacks, in order, a candidate under rc and a final under latest", () => {
+    const rows = [
+      { key: "sdk", ecosystem: "cargo", path: "sdk/rust", version: "0.85.0-rc.1" },
+      { key: "sdk", ecosystem: "npm", path: "sdk/nodejs", version: "0.85.0-rc.1" },
+      { key: "packages/glob", ecosystem: "npm", path: "packages/glob/nodejs", version: "0.3.2" },
+      { key: "packages/debug-ui", ecosystem: "npm", path: "packages/debug-ui", version: "0.7.0" },
+    ];
+    const names = { "sdk/nodejs": "@telorun/sdk", "packages/glob/nodejs": "@telorun/glob", "packages/debug-ui": "@telorun/debug-ui" };
+    const published = new Set(["@telorun/glob@0.3.2"]);
+    assert.deepEqual(
+      packagesToPublish({ rows, nameOf: (path) => names[path], isPublished: (name, version) => published.has(`${name}@${version}`) }),
+      [
+        { key: "sdk", path: "sdk/nodejs", name: "@telorun/sdk", version: "0.85.0-rc.1", distTag: "rc" },
+        { key: "packages/debug-ui", path: "packages/debug-ui", name: "@telorun/debug-ui", version: "0.7.0", distTag: "latest" },
+      ],
+    );
+    assert.equal(distTagOf("1.0.0-beta.3"), "beta");
+    assert.equal(distTagOf("0.85.0-rc.1"), "rc");
+    assert.equal(distTagOf("0.85.0"), "latest");
+  });
+
+  it("tags an image with its unit's version, latest only for a final no released version exceeds", () => {
+    const units = [{ key: "apps/hub", name: "docker.io/telorun/hub", version: "0.28.0", ecosystem: "docker" }];
+    assert.deepEqual(imageTags({ units, key: "apps/hub", sha: "abc1234", releasedVersions: ["0.27.0", "0.28.0"] }).tags, [
+      "docker.io/telorun/hub:latest",
+      "docker.io/telorun/hub:0.28.0",
+      "docker.io/telorun/hub:sha-abc1234",
+    ]);
+    assert.deepEqual(imageTags({ units, key: "apps/hub", sha: "abc1234", releasedVersions: ["0.29.0"] }).tags, [
+      "docker.io/telorun/hub:0.28.0",
+      "docker.io/telorun/hub:sha-abc1234",
+    ]);
+    const candidate = [{ ...units[0], version: "0.28.0-rc.1" }];
+    assert.deepEqual(imageTags({ units: candidate, key: "apps/hub", sha: "abc1234", suffix: "-slim", releasedVersions: [] }).tags, [
+      "docker.io/telorun/hub:0.28.0-rc.1-slim",
+      "docker.io/telorun/hub:sha-abc1234-slim",
+    ]);
+    assert.deepEqual(imageTags({ units, key: "apps/studio", sha: "abc1234", releasedVersions: [] }), { version: "", tags: [] });
+  });
+
+  it("pushes the chart of every helm row the release moved to its destination's registry", () => {
+    const order = [
+      { key: "apps/k8s-runner", ecosystem: "helm", path: "apps/k8s-runner/chart", version: "0.26.0", destination: "oci://ghcr.io/telorun/charts/k8s-runner" },
+      { key: "apps/hub", ecosystem: "helm", path: "apps/hub/chart", version: "0.27.0", destination: "oci://ghcr.io/telorun/charts/hub" },
+    ];
+    assert.deepEqual(chartsToPublish({ units: [{ key: "apps/k8s-runner", version: "0.26.0" }], order }), [
+      { key: "apps/k8s-runner", path: "apps/k8s-runner/chart", destination: "oci://ghcr.io/telorun/charts/k8s-runner", version: "0.26.0" },
+    ]);
+    assert.equal(pushBase("oci://ghcr.io/telorun/charts/k8s-runner"), "oci://ghcr.io/telorun/charts");
   });
 });

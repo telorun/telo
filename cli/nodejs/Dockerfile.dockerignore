@@ -24,13 +24,10 @@
 !packages/runner-core
 !packages/debug-ui
 !packages/glob/nodejs
+!release/nodejs
+!release/LICENSE
 !package.json
-# The root `prepare` derives TELO_SURFACE_VERSION from the changesets `fixed`
-# group and the pending changesets; it reads every member of that group,
-# language-server and cel included, and writes the engine's identity into it.
-# A line member the CLI does not otherwise need is still read here, so leaving
-# one out fails the image build rather than merely shipping less.
-!.changeset
+# The root `prepare` writes the line's version modules into every line member it finds (generate-telo-version.mjs), language-server and cel included, reading the recorded version from analyzer/nodejs/package.json.
 !packages/language-server
 !cel/nodejs
 # The SDK's message core; its `prepare` generates its module from the CLDR data.
@@ -38,8 +35,6 @@
 !message-format/cldr
 !packages/editor-protocol
 !pnpm-*
-# `patchedDependencies` in pnpm-workspace.yaml; `pnpm fetch` refuses without them.
-!patches
 !tsconfig.base.json
 
 Dockerfile*

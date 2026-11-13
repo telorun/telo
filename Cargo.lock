@@ -38,6 +38,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "arraydeque"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2737,6 +2743,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "saphyr-parser"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c98d2738e44a25e6ba2e6d83d91805648df204768abc96f4f1278cb3d5c90bbe"
+dependencies = [
+ "arraydeque",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3226,8 +3242,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "telorun-glob"
+version = "0.3.2"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "telorun-message-format"
 version = "0.136.0"
+
+[[package]]
+name = "telorun-release"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "flate2",
+ "indexmap",
+ "saphyr-parser",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "telorun-glob",
+ "tempfile",
+ "ureq",
+]
 
 [[package]]
 name = "telorun-sdk"

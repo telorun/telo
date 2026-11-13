@@ -10,7 +10,7 @@
  * - an MIT directory has no `LICENSE`, or a package or crate beneath one
  *   declares anything else;
  * - an MIT package names a workspace package that is not MIT in its
- *   dependencies, dev dependencies, peer dependencies or `teloInlines`;
+ *   dependencies, dev dependencies or peer dependencies;
  * - an MIT crate has a path dependency on a crate that is not MIT, or any crate
  *   declares no license at all;
  * - a module root has no `LICENSE`, or its module doc does not declare
@@ -33,6 +33,7 @@ const MIT_DIRECTORIES = [
   "message-format",
   "sdk",
   "templating",
+  "release",
   "packages/glob",
   "packages/editor-protocol",
   "modules",
@@ -95,7 +96,6 @@ for (const { file, pkg } of packages.values()) {
     ...Object.keys(pkg.dependencies ?? {}),
     ...Object.keys(pkg.devDependencies ?? {}),
     ...Object.keys(pkg.peerDependencies ?? {}),
-    ...(pkg.teloInlines ?? []),
   ]);
   for (const name of named) {
     const target = packages.get(name);

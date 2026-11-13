@@ -1,0 +1,62 @@
+# Read instead of the root's .dockerignore: this image builds from the repository
+# root (`docker build -f apps/hub-web/Dockerfile .`) and needs only what is admitted
+# below. Everything else in the context is part of the image's release payload,
+# so an unrelated file here would plan the image again on every release.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+# The root `prepare`, which every `pnpm install` runs, reads these.
+!scripts/copy-value-type-entries.mjs
+!scripts/copy-zone-attribute-entries.mjs
+!scripts/copy-error-code-entries.mjs
+!scripts/copy-issue-keyword-entries.mjs
+!scripts/copy-migration-entries.mjs
+!scripts/copy-format-entries.mjs
+!scripts/generate-telo-version.mjs
+!scripts/version-line.mjs
+!scripts/render-builtin-vocabulary.mjs
+!scripts/generate-artifact-axes.mjs
+!sdk/value-types
+!sdk/zone-attributes
+!sdk/error-codes
+!sdk/issue-keywords
+!sdk/formats
+!sdk/builtins
+!sdk/translations
+!sdk/LICENSE
+!analyzer/migrations
+!analyzer/artifact-axes
+!apps/hub-web
+# What a build writes: the image builds it again, and a workstation's copy is
+# not the source's.
+**/node_modules
+**/dist
+**/app-dist
+**/app-single
+**/build
+**/target
+**/.react-router
+**/*.tsbuildinfo
+**/.telo
+analyzer/nodejs/src/migrations/entries
+analyzer/nodejs/src/formats/entries
+analyzer/nodejs/src/builtin-entries
+analyzer/nodejs/src/builtin-vocabulary
+analyzer/nodejs/builtin-vocabulary-slices.json
+analyzer/nodejs/src/telo-version.ts
+analyzer/nodejs/src/artifact-axes.ts
+sdk/nodejs/src/value-types/entries
+sdk/nodejs/src/zone-attributes/entries
+sdk/nodejs/src/error-codes/entries
+sdk/nodejs/src/issue-keywords/entries
+cel/nodejs/src/engine-version.ts
+kernel/nodejs/src/telo-runtime-version.ts
+packages/language-server/src/engine-version.ts
+message-format/nodejs/src/cldr-data.ts
+# Release records and agent notes no build reads.
+**/CHANGELOG.md
+**/CLAUDE.md
+**/.DS_Store
+**/.env
+**/.env.*

@@ -22,8 +22,8 @@
 // its message is `chore(release): publish <first tag>`, its author and committer the
 // bot identity below, both dates the release commit's committer date, so a re-run
 // makes the same sha. When the rewrite changes nothing there is no publication commit
-// and the tags go on the release commit itself. A candidate makes none: its tag stays
-// on the release commit, with relative imports.
+// and the tags go on the release commit itself. A candidate makes one like a final,
+// so its tag's consumers pin the candidate modules it published.
 //
 // Usage:
 //   node scripts/publication-commit.mjs --release <commit> --tag <tag> [--tag <tag>…] [--dry-run | --push]
@@ -51,7 +51,6 @@ export const PUBLICATION_IDENTITY = {
   name: "github-actions[bot]",
   email: "41898282+github-actions[bot]@users.noreply.github.com",
 };
-const CANDIDATE_TAG = /^v\d+\.\d+\.\d+-/;
 
 function git(cwd, args, env) {
   return execFileSync("git", args, {
@@ -196,10 +195,6 @@ function options(argv) {
     throw new Error("usage: publication-commit.mjs --release <commit> --tag <tag> [--tag <tag>…] [--dry-run | --push]");
   }
   if (flags.size > 1) throw new Error("--dry-run and --push exclude each other.");
-  const candidate = tags.find((tag) => CANDIDATE_TAG.test(tag));
-  if (candidate) {
-    throw new Error(`${candidate} is a release candidate, which has no publication commit: its tag stays on the release commit.`);
-  }
   return { release, tags, dryRun: flags.has("--dry-run"), push: flags.has("--push") };
 }
 

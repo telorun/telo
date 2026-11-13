@@ -1,0 +1,4 @@
+units:
+  apps/hub: Fixed
+body: "The hub indexes final module versions only: a prerelease version is never listed,
+  and one already indexed is removed on the next reconcile pass."

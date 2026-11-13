@@ -1,0 +1,6 @@
+units:
+  release: Fixed
+body: "An npm layer digests the packed `package.json` with each dependency map in name
+  order: pnpm writes the workspace ranges it resolves in the order its resolution
+  finishes, so the same package packed twice could digest differently and be planned
+  again."

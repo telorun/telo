@@ -1,0 +1,4 @@
+units:
+  packages/editor-protocol: Fixed
+body: The handshake section of the README states the engine identity as the tree's
+  recorded version, `X+unreleased` in every build but the published package.

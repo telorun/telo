@@ -1,0 +1,10 @@
+units:
+  cli: Added
+  packages/ide-support: Added
+body: "A newer prerelease's `restrictions:` no longer narrow a version `telo upgrade` or
+  the editor's version selection considers; they are read only with `telo upgrade
+  --include-prerelease`, so a restriction first published in a candidate takes effect
+  when the final repeats it. `telo publish` measures a `requires: telo` floor equal to
+  the surface of a release published only as candidates with the newest published
+  `<surface>-rc.N` CLI, and its refusal for a floor nothing published reaches now says
+  no candidate exists either."

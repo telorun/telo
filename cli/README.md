@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, formats manifests with `telo format`, lists what an application reads from the environment with `telo needs report`, writes its `.env` / `.env.local` with `telo env template`, ships an application as a single executable with `telo package`, and lists the built-in vocabulary with `telo builtins`, selects the files a change reaches with `telo changed`, plans module version bumps with `telo release`, and publishes module artifacts to an OCI registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, formats manifests with `telo format`, lists what an application reads from the environment with `telo needs report`, writes its `.env` / `.env.local` with `telo env template`, ships an application as a single executable with `telo package`, and lists the built-in vocabulary with `telo builtins`, selects the files a change reaches with `telo changed`, plans version bumps for modules, packages, crates, images and charts with `telo release`, and publishes module artifacts to an OCI registry with `telo publish`.
 
 For installation and a first run, see the [getting started guide](/learn/getting-started).
 
@@ -350,27 +350,29 @@ Output is one file per line, or `{ base, diffed, affected, unaffected }` under `
 
 ### `telo release <subcommand>`
 
-Plan and apply module version bumps across a workspace. Full guide: [Releasing modules](/extend/releasing-modules).
+Plan and apply version bumps for every release unit of a workspace — Telo modules, and the npm packages, crates, images and charts beside them. A unit is a directory with one version and one changelog. Full guide: [Releasing modules](/extend/releasing-modules).
 
 | Subcommand | What it does |
 | --- | --- |
-| `add` | Write a pending fragment (`.changes/pending/*.yaml`) describing a change: `--module <path>` (repeatable, required), `--body <changelog line>` (required), `--kind Added\|Changed\|Deprecated\|Removed\|Fixed\|Security` (default `Fixed`) |
+| `add` | Write a pending fragment (`.changes/pending/*.yaml`) describing a change: `--unit <path>` (repeatable, required; a polyglot component by its parent directory), `--body <changelog line>` (required), `--kind Added\|Changed\|Deprecated\|Removed\|Fixed\|Security` (default `Fixed`) |
 | `status` | Show what would bump and why |
-| `order` | List the workspace's modules in publish order, a dependency before its dependents |
+| `order` | One row per unit and anchor in publish order, a dependency before its dependents: `{ key, ecosystem?, path, version, destination?, group? }` |
 | `check` | Fail when no consistent release plan can be formed |
-| `apply` | Write versions, changelogs and the ledger, and consume the fragments; `--date YYYY-MM-DD` sets the changelog date (default today) |
+| `apply` | Write versions, changelogs and the ledger, and consume the fragments; `--candidate[=<id>]` versions each planned unit `<final>-<id>.<k>` (default `rc`) and consumes none; `--date YYYY-MM-DD` sets the changelog date (default today) |
+| `tag` | Tag the commit it runs at `<unit key>@<version>` for each unit the last `apply` moved; `--dry-run` lists them |
+| `adopt changesets` | One-time import of a changesets setup: marker entries, groups, pending change files as fragments, the published npm layers |
 | `verify` | Reconcile the ledger against the registry; `--write` re-records the ledger from what the registry serves |
 | `stage` | Fetch and verify the files each module's `sources:` block declares; `--module <path>` (repeatable) limits it, `--pin` writes their pins into `telo.yaml` |
 | `imports <paths..>` | Write each import of a workspace module in its published or its relative form — see below |
 
 **Options (every subcommand):**
 
-- `--registry <oci://host/org>` - Publish destination base for modules whose workspace entry declares none. Outranked by an authored `release.registry`; falls back to `TELO_OCI_REGISTRY`, then each module's own recorded base.
+- `--registry <oci://host/org>` - Publish destination base for modules whose anchor and `release.ecosystems.telo` declare none; falls back to `TELO_OCI_REGISTRY`, then each module's own recorded base.
 - `--base <ref>` - Git ref the changed-files reading diffs against (default `origin/main`). It decides only whether a changelog entry is requested.
 - `--carried-by <ref>` - Git ref whose fragments are already carried (`status`, `check`, `apply`): a pending fragment of the same path and content at its merge base with `HEAD`, or written on it since, is dropped from the plan. Without it nothing is dropped.
 
 ```bash
-telo release add --module modules/sql --kind Fixed --body "Closes the pool on shutdown"
+telo release add --unit modules/sql --kind Fixed --body "Closes the pool on shutdown"
 telo release status
 ```
 
@@ -468,7 +470,7 @@ image for an architecture other than the build machine's.
 - `--bump patch|minor|major` — Bump all controller package versions before publishing. Also bumps `metadata.version` in the manifest.
 - `--dry-run` — Show what would happen without writing files or publishing anything.
 - `--annotation <key>=<value>` — Write an annotation onto the pushed OCI manifest (repeatable). The key is reverse-domain (`com.example.note`); the `org.opencontainers.image.*` keys telo derives from `metadata` are refused. The pushed set replaces what a republish carried. Annotations are outside the integrity pin.
-- `--skip-controllers` — Skip the controller build/publish/PURL-rewrite loop and only run static analysis and push the artifact to the OCI registry. Use this when controller packages have already been published by another tool (e.g. Changesets in CI). Mutually exclusive with `--bump`.
+- `--skip-controllers` — Skip the controller build/publish/PURL-rewrite loop and only run static analysis and push the artifact to the OCI registry. Use this when controller packages have already been published by another tool (e.g. `telo release order` rows published by a CI script). Mutually exclusive with `--bump`.
 
 A version that is already published can be pushed again only when it produces an identical `telo.yaml`; a changed one is refused, because a published version's pin never moves.
 

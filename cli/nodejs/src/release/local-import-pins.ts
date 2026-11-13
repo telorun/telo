@@ -19,20 +19,15 @@
  * pin is read from the registry, and its absence is "not published yet".
  */
 
-import {
-  isLocalPathSource,
-  parseVersionedRef,
-  splitIntegrity,
-  type LedgerEntry,
-  type PlannedModule,
-} from "@telorun/analyzer";
+import { isLocalPathSource, parseVersionedRef, splitIntegrity } from "@telorun/analyzer";
+import type { LedgerEntry, PlannedUnit } from "@telorun/release";
 import { defaultTransportRegistry, type TransportRegistry } from "@telorun/kernel";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import semver from "semver";
 import { findWorkspaceRoot } from "../workspace-marker.js";
 import { readLedger } from "./ledger-store.js";
-import { describeReason } from "./render.js";
+import { describeReason } from "@telorun/release/node";
 import { resolveTargets, type RegistryRungs, type ResolvedTargets } from "./targets.js";
 import { releaseWorkspaceAt, type DiscoveredModule, type Workspace } from "./workspace.js";
 import { planWorkspace, type WorkspacePlan } from "./workspace-plan.js";
@@ -81,7 +76,7 @@ export interface ModuleReleaseState {
   /** Where the module publishes, absent when no destination resolved. */
   readonly destination: string | undefined;
   /** The module's entry in the release plan, when the plan bumps it. */
-  readonly planned: PlannedModule | undefined;
+  readonly planned: PlannedUnit | undefined;
   /** What the ledger records as published. */
   readonly published: LedgerEntry | undefined;
 }
@@ -147,7 +142,7 @@ export async function verdictForModule(
 export interface LocalImportPinnerOptions {
   readonly rungs: RegistryRungs;
   /** Called per module while a workspace's plan is being built. */
-  readonly onModule?: (module: DiscoveredModule, index: number, total: number) => void;
+  readonly onUnit?: (unit: { readonly key: string }, index: number, total: number) => void;
   readonly registry?: TransportRegistry;
 }
 
@@ -216,8 +211,8 @@ export class LocalImportPinner {
       {
         module,
         destination: planned.targets.get(module.key)?.destination,
-        planned: planned.plan.modules.find((candidate) => candidate.key === module.key),
-        published: planned.ledger.modules.get(module.key),
+        planned: planned.plan.units.find((candidate) => candidate.key === module.key),
+        published: planned.ledger.units.get(module.key),
       },
       this.registry,
     );
@@ -260,7 +255,7 @@ export class LocalImportPinner {
         // The changed-files reading only asks for changelog entries, which this
         // caller does not report.
         baseRef: "HEAD",
-        ...(this.options.onModule ? { onModule: this.options.onModule } : {}),
+        ...(this.options.onUnit ? { onUnit: this.options.onUnit } : {}),
       });
       this.plans.set(workspace.root, plan);
     }

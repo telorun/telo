@@ -32,7 +32,7 @@ function write(dir: string, name: string, body: string): void {
   fs.writeFileSync(path.join(root, dir, name), body);
 }
 
-function markWorkspace(body = "release:\n  modules:\n    - modules/*\n"): void {
+function markWorkspace(body = "release:\n  units:\n    - { path: modules/*, ecosystem: telo }\n"): void {
   fs.writeFileSync(path.join(root, "telo-workspace.yaml"), body);
 }
 
@@ -96,7 +96,7 @@ describe("resolveEnvFiles", () => {
       fs.mkdirSync(path.join(inner, "apps"), { recursive: true });
       fs.writeFileSync(
         path.join(inner, "telo-workspace.yaml"),
-        "release:\n  modules:\n    - apps/*\n",
+        "release:\n  units:\n    - { path: apps/*, ecosystem: telo }\n",
       );
       const manifest = path.join(inner, "apps", "app.yaml");
       fs.writeFileSync(manifest, "kind: Telo.Application\n");
@@ -143,7 +143,7 @@ describe("the env: block", () => {
   it("stops the walk at the nearest env.roots match", async () => {
     // The case the block exists for: collapsing per-vendor workspaces into one
     // anchor would otherwise widen every vendor app's walk to the repo root.
-    markWorkspace("release:\n  modules:\n    - vendor/*/*\nenv:\n  roots:\n    - vendor/*\n");
+    markWorkspace("release:\n  units:\n    - { path: vendor/*/*, ecosystem: telo }\nenv:\n  roots:\n    - vendor/*\n");
     const manifest = manifestAt("vendor/aws/s3");
     write(".", ".env", "SHARED=repo\n");
     write("vendor/aws", ".env", "VENDOR=aws\n");
@@ -154,7 +154,7 @@ describe("the env: block", () => {
   });
 
   it("leaves a directory no pattern matches walking to the marker", async () => {
-    markWorkspace("release:\n  modules:\n    - modules/*\nenv:\n  roots:\n    - vendor/*\n");
+    markWorkspace("release:\n  units:\n    - { path: modules/*, ecosystem: telo }\nenv:\n  roots:\n    - vendor/*\n");
     const manifest = manifestAt("modules/sql");
     write(".", ".env", "SHARED=repo\n");
 
@@ -163,7 +163,7 @@ describe("the env: block", () => {
 
   it("collects the files env.files names, later winning within one directory", async () => {
     markWorkspace(
-      "release:\n  modules:\n    - apps/*\nenv:\n  files:\n    - .env\n    - .env.production\n",
+      "release:\n  units:\n    - { path: apps/*, ecosystem: telo }\nenv:\n  files:\n    - .env\n    - .env.production\n",
     );
     const manifest = manifestAt("apps/one");
     write("apps/one", ".env", "MODE=base\n");
@@ -178,7 +178,7 @@ describe("the env: block", () => {
   });
 
   it("collects nothing for an empty env.files", async () => {
-    markWorkspace("release:\n  modules:\n    - apps/*\nenv:\n  files: []\n");
+    markWorkspace("release:\n  units:\n    - { path: apps/*, ecosystem: telo }\nenv:\n  files: []\n");
     const manifest = manifestAt("apps/one");
     write("apps/one", ".env", "MODE=base\n");
 
@@ -189,7 +189,7 @@ describe("the env: block", () => {
     // Degrading to the marker-wide bound would read files the block was written
     // to keep out, so a block that opted into a boundary and got nothing is a
     // defect rather than a default.
-    markWorkspace("release:\n  modules:\n    - apps/*\nenv:\n  files: ['cfg/.env']\n");
+    markWorkspace("release:\n  units:\n    - { path: apps/*, ecosystem: telo }\nenv:\n  files: ['cfg/.env']\n");
     const manifest = manifestAt("apps/one");
     write(".", ".env", "SHARED=repo\n");
 
@@ -202,7 +202,7 @@ describe("the env: block", () => {
   it("reports a problem outside env: and still resolves", async () => {
     // A run has no interest in a release typo, and aborting every app in a
     // workspace over one is not a trade to make silently.
-    markWorkspace("release:\n  modules:\n    - apps/*\n  nope: 1\n");
+    markWorkspace("release:\n  units:\n    - { path: apps/*, ecosystem: telo }\n  nope: 1\n");
     const manifest = manifestAt("apps/one");
     write(".", ".env", "SHARED=repo\n");
 

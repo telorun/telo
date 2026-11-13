@@ -42,7 +42,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const RUNTIME = /^(kernel|analyzer|sdk|templating|cel|cli|modules)\//;
 const SHARED =
   /^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig[^/]*\.json|vitest[^/]*|\.npmrc|\.github\/workflows\/test\.yml|scripts\/select-package-tests\.mjs)$/;
-const INERT = /\.md$|^(docs|\.changeset|\.changes|\.claude|\.github|\.vscode)\//;
+const INERT = /\.md$|^(docs|\.changes|\.claude|\.github|\.vscode)\//;
 const SUITES = /^(examples|starters|blueprints)\//;
 const RUST = /(^|\/)rust\/|\.rs$|(^|\/)Cargo\.(toml|lock)$|^rust-toolchain/;
 

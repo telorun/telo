@@ -69,7 +69,7 @@ a value an older release reads, they also include:
   can see it;
 - compatibility: what a manifest, module or package of the previous release does against this
   one — the `requires:` floor, a migration — and how a command in this repo proves it;
-- release bookkeeping: which packages and modules need a changeset or release fragment, and which
+- release bookkeeping: which released units need a release fragment (`telo release add --unit <path> …`), and which
   docs and the authoring-agent primer the change makes wrong;
 - verification: which acceptance the repo's suites cannot reach, and what proves it instead.
 

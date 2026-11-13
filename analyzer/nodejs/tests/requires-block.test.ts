@@ -145,7 +145,7 @@ describe("validateRequires", () => {
     ]);
   });
 
-  // The running build is unreleased exactly when a telo-line changeset is pending.
+  // The running build is unreleased in every build but a published package's.
   it("meets '>=unreleased' exactly when this build is of the pending release", () => {
     const codes = validateRequires([doc({ telo: ">=unreleased" })]).map((d) => d.code);
     expect(codes).toEqual(TELO_RUNNING_SURFACE.endsWith("+unreleased") ? [] : ["MODULE_REQUIRES_NEWER_RUNTIME"]);

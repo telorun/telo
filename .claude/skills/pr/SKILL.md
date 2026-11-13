@@ -51,7 +51,7 @@ never yours.
     report: there is nothing to open the pull request against without publishing that other work.
 
     **A stacked pull request gets no CI here**: the workflows run for pull requests against `main`
-    only. Run the changeset gate and the suites the change reaches locally, say in the body and in
+    only. Run the release gate and the suites the change reaches locally, say in the body and in
     the report that its checks are waiting on its base, and skip step 3 — there is nothing to
     watch. Once the base merges, the next `/pr` on that branch rebases it onto `origin/main`
     (`git rebase --onto origin/main <the base's last commit>`), retargets it
@@ -125,16 +125,16 @@ never yours.
     which files. Re-run what the conflicted files' tests cover before pushing.
   - **Any other conflict:** `git rebase --abort`, then stop and report the files and the two
     sides. Never pick a side to get past it.
-- **Run the changeset gate before every push**, after the branch is up to date:
-  `node scripts/check-changeset-status.mjs origin/main` — against `origin/main` for a stacked
-  branch too, since that is what CI compares with. It must exit 0. It reads committed state, so
-  run it after the commit, and again after each amend.
-  - **A published package it names as changed with no changeset** is fixed inside the change:
-    add the package to the changeset that describes that work, or write a new one under
-    `.changeset/` when none does, with the bump the change calls for. An empty changeset covers
-    nothing. Fold the fix into the commit (`git commit --amend --no-edit`) and run the gate again.
-  - **Any other failure it reports** (a `teloInlines` list, a Rust twin's version, the ignore
-    list) is fixed the same way when the change caused it, and reported when it did not.
+- **Run the release gate before every push**, after the branch is up to date:
+  `node ./cli/nodejs/bin/telo.mjs release check --base origin/main` — against `origin/main` for a
+  stacked branch too, since that is what CI compares with. It must exit 0. It reads committed
+  state, so run it after the commit, and again after each amend.
+  - **A changed released unit with no fragment** (`CHANGELOG_ENTRY_REQUESTED`) is fixed inside the
+    change: write one with `telo release add --unit <path> --kind <Kind> --body "…"` — never by
+    hand — naming every unit the work changed. Fold the fix into the commit
+    (`git commit --amend --no-edit`) and run the gate again.
+  - **Any other failure it reports** (a version location that disagrees with its twin, a bump above
+    `maxBump`) is fixed the same way when the change caused it, and reported when it did not.
 
   A push the gate would fail costs a full CI round to learn what one local command says.
 - **Push** with `git push -u origin <branch>`; once the branch has been rebased after a push,
@@ -171,7 +171,7 @@ never yours.
   - **A fix inside this change:** make it, re-run the failing suite locally, then
     `git commit --amend --no-edit` (still no footer). **Never add a new commit** to fix CI. Do
     not push yet — sweep first (below).
-  - **Sweep CI before every push.** Bring the branch up to date and run the changeset gate as in
+  - **Sweep CI before every push.** Bring the branch up to date and run the release gate as in
     step 2; then, as the last thing before the push, read the checks once more
     (`gh pr checks <n> --json name,bucket,link`). Every failing check there must be either fixed
     in the commit you are about to push or an infrastructure error awaiting its re-run (below). One that is
@@ -227,7 +227,7 @@ A stop for any other reason gets the same message, saying where it stopped and w
 - Guess a file into or out of a named scope.
 - Add a new commit to fix CI; amend instead.
 - Push a branch that does not contain its base's head, or over commits its own remote holds.
-- Push while `node scripts/check-changeset-status.mjs origin/main` fails.
+- Push while `telo release check --base origin/main` fails.
 - Wait for the remaining checks before fixing a failed one, or push a CI fix while a check that
   failed from this change is not yet fixed locally.
 - Commit onto a branch whose pull request has already been merged or closed.

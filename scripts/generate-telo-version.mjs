@@ -1,119 +1,116 @@
 #!/usr/bin/env node
-// Generates `analyzer/nodejs/src/telo-version.ts` — the manifest SURFACE
-// GENERATION this build of the analyzer implements — and two IDENTITIES of the
-// build made from this tree: `packages/language-server/src/engine-version.ts`,
-// what the editor engine reports in its handshake, and
-// `cel/nodejs/src/engine-version.ts`, what `@telorun/cel` writes into every
-// emitted module's cache key and integrity header.
+// Generates the version modules of the telo line: the manifest SURFACE
+// GENERATION the analyzer implements (`analyzer/nodejs/src/telo-version.ts`) and
+// three IDENTITIES of the build made from this tree —
+// `packages/language-server/src/engine-version.ts`, what the editor engine
+// reports in its handshake; `cel/nodejs/src/engine-version.ts`, what
+// `@telorun/cel` writes into every emitted module's cache key and integrity
+// header; and `kernel/nodejs/src/telo-runtime-version.ts`, what the kernel says
+// it is on `Kernel.Starting`.
 //
-// The telo runtime packages share ONE version line: the changesets `fixed` group
-// that contains `@telorun/analyzer` (sdk, templating, analyzer, kernel, cli,
-// ide-support, language-server). A package belongs to it exactly when its content
-// is bound to one telo generation, so every member's version IS the generation it
-// implements, and a module's `requires.telo` range is written against that one
-// scale. Reading the group from `.changeset/config.json` rather than naming a
-// package keeps this constant, the number `changeset version` writes and the
-// number `requires:` verification installs (`npx @telorun/cli@<edge>`) one fact.
+// All of them are read from the line's RECORDED version `V` (`version-line.mjs`),
+// never from a plan: a build embedding a planned version makes the plan depend on
+// itself. The surface is `V`'s triple, so a candidate reports the release it
+// previews. The identity is `V+unreleased` in every build — that build implements
+// `V` but is not the `V` that is published, and an editor tells engines apart by
+// the whole identity (`@telorun/editor-protocol` § Handshake); build metadata
+// leaves semver precedence alone, so it still satisfies `>=V` and `>=unreleased`.
+// Only `--published`, which a package's `prepack` passes when it makes the payload
+// that ships, embeds exactly `V`.
 //
-// The generation is the group's version as changesets will write it next, read
-// from changesets' OWN release plan (`.changeset/pre.json` included) so the two
-// cannot disagree. Pending changesets count because `package.json` holds the LAST
-// PUBLISHED version while this constant claims the generation this build
-// IMPLEMENTS. Between releases those differ, and the difference lands on exactly
-// the commit where it hurts: a module adopting new syntax declares the floor of
-// the release that will carry it, and the workspace would otherwise reject its own
-// module with `MODULE_REQUIRES_NEWER_RUNTIME`. In candidates (prerelease mode)
-// the next version is `0.85.0-rc.N`, and the surface is its TRIPLE: a candidate
-// reports the release it previews, so a floor of `>=0.85.0` holds in it. Identity
-// below keeps the `-rc.N`.
+// `@telorun/cel`'s copy is the identity for the reason it is a cache-key
+// component: a module cached by one build must never be loaded by another, and
+// the line's version is a number both halves of the polyglot runtime carry.
 //
-// Refuses to run when `@telorun/analyzer` is in no `fixed` group: without the line
-// there is no single number a module's range could be compared against, and
-// guessing one (the CLI's, the analyzer's own) would silently gate every module on
-// a scale nothing else uses.
+// Run from the repository root (the root `prepare`) it writes the module of every
+// package the checkout holds — an image's build context holds only some. Run
+// from one of the four packages (its `build`, or its `prepack` with
+// `--published`) it writes that package's module alone, so a pack writes only
+// inside the package being packed. The language server inlines the analyzer's
+// and cel's modules into its bundle; its published bundle takes them from
+// `versionModules` at bundle time instead of from their source trees.
 //
-// The computation is `teloGeneration` in `version-line.mjs`, which
-// `render-builtin-vocabulary.mjs` shares to stamp the archive's version.
+// Every destination is gitignored AND must stay untracked — `.gitignore` has no
+// effect on a tracked file, so committing one would turn it into a second place
+// the version lives, stale after every bump.
 //
-// Generating it is what lets a browser-safe analyzer answer "what version am I?"
-// with no CLI to ask and no filesystem to read — the same problem
-// `copy-value-type-entries.mjs` and `copy-migration-entries.mjs` solve by putting
-// data into the source tree before it is bundled.
-//
-// The engine identity is the next version `X` (`0.85.0`, or a candidate's
-// `0.85.0-rc.1`) when no line release is pending — the build IS that release —
-// and `X+unreleased` while one is: that build implements `X` but is not the `X`
-// that will be published, and an editor tells engines apart by the whole identity,
-// so a development or main-branch build never passes for a published engine
-// (`@telorun/editor-protocol` § Handshake). Build metadata leaves semver precedence
-// alone, so the build still satisfies a module forward-declaring `>=X`.
-//
-// `@telorun/cel`'s copy is the same identity for the same reason, and it is the
-// component of an emitted module's key that no environment digest can reach: a
-// module cached by one build must never be loaded by another, and the line's
-// version is a number BOTH halves of the polyglot runtime already carry, where a
-// digest over the engine's own implementation tables would have to be reproduced
-// byte-identically by a Rust engine sharing the cache root — and would in any case
-// be blind to a change that moves no declaration, which is precisely the change
-// that serves stale code.
-//
-// Runs from the root `prepare` (pnpm, on workspace install, so a fresh clone
-// builds) and from the `prepare` of the analyzer, the language-server and
-// `cel/nodejs` (npm, before pack/publish, so a published tarball carries it —
-// `@telorun/cel` publishes `src/**` and its `bun` and `source` conditions resolve
-// there, so the generated file must exist at pack time).
-//
-// Both destinations are gitignored AND must stay untracked — `.gitignore` has no
-// effect on a tracked file, so committing it once would silently turn it into a
-// second place the version lives, stale after every bump.
-//
-// Usage: node scripts/generate-telo-version.mjs
+// Usage: node scripts/generate-telo-version.mjs [--published]
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import { ROOT, teloGeneration } from "./version-line.mjs";
 
-const DEST = join(ROOT, "analyzer", "nodejs", "src", "telo-version.ts");
-const ENGINE_DEST = join(ROOT, "packages", "language-server", "src", "engine-version.ts");
-const CEL_DEST = join(ROOT, "cel", "nodejs", "src", "engine-version.ts");
-const KERNEL_DEST = join(ROOT, "kernel", "nodejs", "src", "telo-runtime-version.ts");
+/** Each generated module: its package directory and its file inside it. */
+export const VERSION_MODULES = {
+  analyzer: { pkg: join(ROOT, "analyzer", "nodejs"), file: join("src", "telo-version.ts") },
+  languageServer: { pkg: join(ROOT, "packages", "language-server"), file: join("src", "engine-version.ts") },
+  cel: { pkg: join(ROOT, "cel", "nodejs"), file: join("src", "engine-version.ts") },
+  kernel: { pkg: join(ROOT, "kernel", "nodejs"), file: join("src", "telo-runtime-version.ts") },
+};
 
-function fail(message) {
-  console.error(`generate-telo-version: ${message}`);
-  process.exit(1);
-}
-
-let generation;
-try {
-  generation = await teloGeneration();
-} catch (error) {
-  fail(error.message);
-}
-const { surface, identity, highest, next, bump } = generation;
-
-const contents = `// GENERATED by scripts/generate-telo-version.mjs — do not edit.
+/** The source of every version module, keyed as `VERSION_MODULES`. */
+export function versionModules({ published = false } = {}) {
+  const { surface, identity } = teloGeneration({ published });
+  return {
+    analyzer: `// GENERATED by scripts/generate-telo-version.mjs — do not edit.
 //
-// The manifest SURFACE GENERATION this build implements: the version of the telo
-// version line (the changesets \`fixed\` group of the runtime packages), with any
-// pending bump applied. Every package on the line carries it as its own version,
-// and it is the scale a module's \`requires.telo\` range is written against.
+// The manifest SURFACE GENERATION this build implements: the triple of the telo
+// version line's recorded version, the scale a module's \`requires.telo\` range
+// is written against.
 
 /** The surface generation this analyzer implements. */
 export const TELO_SURFACE_VERSION = ${JSON.stringify(surface)};
 
 /** The surface generation as a \`requires:\` gate compares it: marked \`+unreleased\`
- *  while the release carrying it is pending, which is what satisfies \`>=unreleased\`. */
+ *  in every build but the published one, which is what satisfies \`>=unreleased\`. */
 export const TELO_RUNNING_SURFACE = ${JSON.stringify(identity.includes("+unreleased") ? `${surface}+unreleased` : surface)};
-`;
-
-const engineContents = `// GENERATED by scripts/generate-telo-version.mjs — do not edit.
+`,
+    languageServer: `// GENERATED by scripts/generate-telo-version.mjs — do not edit.
 //
 // The identity this engine reports as \`serverInfo.version\`: the telo version it
-// implements, with \`+unreleased\` while that release is still pending.
+// implements, with \`+unreleased\` in every build but the published one.
 
 /** This engine's identity. */
 export const TELO_ENGINE_VERSION = ${JSON.stringify(identity)};
-`;
+`,
+    cel: `// GENERATED by scripts/generate-telo-version.mjs — do not edit.
+//
+// Which build of this engine an emitted module was written by: the telo version
+// this build implements, with \`+unreleased\` in every build but the published
+// one. It is a component of every emitted module's cache key and a field of its
+// integrity header, so a module one build wrote is never run by another.
+
+/** This build of the CEL engine, as an emitted module names it. */
+export const ENGINE_VERSION = ${JSON.stringify(identity)};
+`,
+    kernel: `// GENERATED by scripts/generate-telo-version.mjs — do not edit.
+//
+// What this kernel says it is on \`Kernel.Starting\`: the telo version it
+// implements, with \`+unreleased\` in every build but the published one. A runner
+// passes it on and an editor compares it with the version it asked to run on.
+
+/** This runtime's identity. */
+export const TELO_RUNTIME_VERSION = ${JSON.stringify(identity)};
+`,
+  };
+}
+
+/** The modules a run from `cwd` writes: one package's, or every one from the root. */
+export function modulesFor(cwd) {
+  const inside = Object.keys(VERSION_MODULES).filter((key) => {
+    const from = relative(VERSION_MODULES[key].pkg, cwd);
+    return from === "" || (!from.startsWith("..") && !from.startsWith(sep) && !from.includes(":"));
+  });
+  if (inside.length > 0) return inside;
+  // A checkout holding only some packages (an image's build context) generates theirs.
+  if (relative(ROOT, cwd) === "") return Object.keys(VERSION_MODULES).filter((key) => existsSync(join(VERSION_MODULES[key].pkg, "package.json")));
+  throw new Error(
+    `run it from the repository root (every module) or from one of ${Object.values(VERSION_MODULES)
+      .map(({ pkg }) => relative(ROOT, pkg))
+      .join(", ")} (that package's module); ${cwd} is neither.`,
+  );
+}
 
 // Idempotent: skip a write when unchanged, so a no-op install does not churn
 // mtimes and retrigger every downstream build that watches these files.
@@ -123,39 +120,19 @@ function write(dest, text) {
   return true;
 }
 
-if (write(DEST, contents)) {
-  console.log(
-    `generate-telo-version: wrote surface generation ${surface}` +
-      (bump ? ` (${highest} to ${next}, a pending ${bump} bump)` : ""),
-  );
-}
-const celContents = `// GENERATED by scripts/generate-telo-version.mjs — do not edit.
-//
-// Which build of this engine an emitted module was written by: the telo version
-// this build implements, with \`+unreleased\` while that release is still pending.
-// It is a component of every emitted module's cache key and a field of its
-// integrity header, so a module one build wrote is never run by another.
-
-/** This build of the CEL engine, as an emitted module names it. */
-export const ENGINE_VERSION = ${JSON.stringify(identity)};
-`;
-
-const kernelContents = `// GENERATED by scripts/generate-telo-version.mjs — do not edit.
-//
-// What this kernel says it is on \`Kernel.Starting\`: the telo version it
-// implements, with \`+unreleased\` while that release is still pending. A runner
-// passes it on and an editor compares it with the version it asked to run on.
-
-/** This runtime's identity. */
-export const TELO_RUNTIME_VERSION = ${JSON.stringify(identity)};
-`;
-
-if (write(KERNEL_DEST, kernelContents)) {
-  console.log(`generate-telo-version: wrote kernel runtime identity ${identity}`);
-}
-if (write(ENGINE_DEST, engineContents)) {
-  console.log(`generate-telo-version: wrote engine identity ${identity}`);
-}
-if (write(CEL_DEST, celContents)) {
-  console.log(`generate-telo-version: wrote CEL engine identity ${identity}`);
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  try {
+    const published = process.argv.includes("--published");
+    const keys = modulesFor(process.cwd());
+    const sources = keys.length > 0 ? versionModules({ published }) : {};
+    for (const key of keys) {
+      const { pkg, file } = VERSION_MODULES[key];
+      if (write(join(pkg, file), sources[key])) {
+        console.log(`generate-telo-version: wrote ${relative(ROOT, join(pkg, file))} (${teloGeneration({ published }).identity})`);
+      }
+    }
+  } catch (error) {
+    console.error(`generate-telo-version: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 }

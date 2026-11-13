@@ -13,6 +13,10 @@
 # - `oci://example.test/not-telo@0.119.0`: the built-in vocabulary, served at a
 #   ref other than the one the hub tracks it at.
 #
+# - `oci://example.test/with-candidate` (1.0.0-rc.1, 1.0.0): a final and its
+#   release candidate; the hub indexes finals only and drops a candidate it
+#   already indexed. Its manifests are never read.
+#
 # And the built-in vocabulary at the ref the hub's tests track it at, with a
 # module written against it:
 #
@@ -70,6 +74,9 @@ steps:
         - { version: 0.118.0, digest: sha256:telo-0.118.0 }
       oci://example.test/not-telo:
         - { version: 0.119.0, digest: sha256:not-telo-0.119.0 }
+      oci://example.test/with-candidate:
+        - { version: 1.0.0-rc.1, digest: sha256:with-candidate-1.0.0-rc.1 }
+        - { version: 1.0.0, digest: sha256:with-candidate-1.0.0 }
   # What `module manifest` reports.
   - name: manifests
     value:

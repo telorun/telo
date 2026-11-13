@@ -2,27 +2,12 @@
 // Push importable module manifests (`modules/**`, `blueprints/**`) to the
 // destination the release model gives each.
 //
-// SEPARATE FROM THE NPM RELEASE, deliberately. This used to be the tail of
-// `scripts/publish-packages.mjs`, which ran `changeset publish` and then decided
-// module questions — ordering, presence, payload drift — in the same process. Two
-// things were wrong with that:
-//
-//   * It coupled two INDEPENDENT LEDGERS. Nothing here resolves from npm — the
-//     artifacts are built by the workspace CLI (`node ./cli/nodejs/bin/telo.mjs`,
-//     `--skip-controllers`) — so there is no ordering requirement between the two
-//     in either direction, and there is deliberately no `needs:` edge in the
-//     workflow. What the old arrangement DID create was a gate on the npm path
-//     demanding module versions be moved first, which failed the release after
-//     npm packages and git tags were already out, where nothing could retry it.
-//   * `telo release` owns module identity, ordering and drift; a second
-//     implementation of the release planner living in the npm publish script drifts
-//     from it silently.
-//
-// So: `pnpm changeset publish` publishes packages, this publishes modules, and the
-// payload-drift question stays where it is answered — `telo release status`, whose
-// plan is what moves `metadata.version` in the module Version PR. A module whose
-// bytes moved without a version bump is therefore reported as a pending bump in
-// that PR, not as a failure of an unrelated npm release.
+// SEPARATE FROM THE NPM RELEASE, deliberately: `scripts/publish-packages.mjs`
+// publishes the npm rows of `telo release order`, this publishes its module rows.
+// `telo release` owns module identity, ordering and drift, so this decides none of
+// them: a module whose bytes moved without a version bump is a pending bump in the
+// release plan, not a failure here. It runs after the npm packages publish,
+// because a module's `requires: telo` floor is measured with a published CLI.
 //
 // A manifest is pushed when its current metadata.version is not yet published at
 // the OCI repo — a per-version presence check that catches a version moved in this
@@ -131,7 +116,7 @@ async function ociVersions(dest) {
 // entirely, so a fork or local run never pushes to someone else's registry off
 // ambient Docker credentials. Where each module publishes comes from the release
 // model (`telo release order`), which reads the workspace's authored
-// `release.registry` — per subtree where one is declared — and falls back to this
+// `release.ecosystems.telo.registry` — per anchor where one is declared — and falls back to this
 // variable for a workspace that authors none.
 const ociRegistry = process.env.TELO_OCI_REGISTRY?.replace(/\/+$/, "");
 if (!ociRegistry) {

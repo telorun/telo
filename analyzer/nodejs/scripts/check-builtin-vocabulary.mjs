@@ -3,16 +3,15 @@
 // the built-in vocabulary of telo `X`. The publish workflow reconciles
 // `oci://<registry>/telo@X` from exactly this package's
 // `src/builtin-vocabulary/` (`scripts/publish-builtins.mjs`), so an archive of
-// another version — `X+unreleased`, rendered while a line changeset is pending —
-// would publish the wrong bytes under the release's tag.
+// another version — `X+unreleased`, which every build but the published one
+// renders — would publish the wrong bytes under the release's tag.
 //
-// It renders the archive from the tree (both generators, in the installed workspace) and
-// refuses the tarball unless three things hold: `builtins.yaml` carries exactly
+// It runs after the prepack rendered the archive with `--published` and rebuilt
+// the package, and refuses the tarball unless three things hold: `builtins.yaml` carries exactly
 // the package version, the `BUILTIN_VOCABULARY_ARCHIVE` constant this package
 // exports — the source module and the built one — is that file's bytes, and the
 // `LICENSE` beside it is `sdk/LICENSE`.
 
-import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,14 +25,6 @@ function refuse(message) {
   process.exit(1);
 }
 
-for (const script of ["generate-telo-version.mjs", "render-builtin-vocabulary.mjs"]) {
-  try {
-    execFileSync(process.execPath, [join(ROOT, "scripts", script)], { stdio: "inherit" });
-  } catch {
-    refuse(`the built-in vocabulary could not be rendered from this tree (scripts/${script} said why above).`);
-  }
-}
-
 const { version } = JSON.parse(readFileSync(join(PACKAGE, "package.json"), "utf8"));
 const archive = readFileSync(join(ARCHIVE_DIR, "builtins.yaml"), "utf8");
 
@@ -44,9 +35,9 @@ const written = /^ {2}version: (.+)$/m.exec(metadata)?.[1];
 const archiveVersion = written?.startsWith('"') ? JSON.parse(written) : written;
 if (archiveVersion !== version) {
   refuse(
-    `src/builtin-vocabulary/builtins.yaml is the vocabulary of telo ${archiveVersion}, not ${version}: a ` +
-      `changeset of the telo version line is still pending. Publish after the Version PR has moved the line ` +
-      `to the release.`,
+    `src/builtin-vocabulary/builtins.yaml is the vocabulary of telo ${archiveVersion}, not ${version}: the ` +
+      `prepack renders it with \`render-builtin-vocabulary.mjs --published\`; pack the package rather than ` +
+      `publishing its files.`,
   );
 }
 

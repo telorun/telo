@@ -1,23 +1,13 @@
 #!/usr/bin/env node
-// Renders the module Version PR's body from a release plan.
+// Renders the release PR's unit section from a release plan: every unit merging
+// the PR publishes — npm packages, crates, images, charts and modules alike — the
+// version it moves to, and the changelog entries that ship with it.
 //
-// WHY A SEPARATE PR AT ALL. Modules and npm packages are two release tracks with
-// two ledgers: changesets owns `@telorun/*` versions, `telo release` owns each
-// module's `metadata.version` and the payload digest in `.changes/ledger.yaml`.
-// Folding the module bumps into the changesets "version packages" PR made one
-// review cover both, so a reviewer approving a patch to one npm package was also
-// approving sixty module republishes they could not see. Splitting them means
-// each PR is reviewable against its own ledger.
-//
-// WHY THE BODY IS GENERATED RATHER THAN STATIC. Merging this PR publishes every
-// module it lists. A body that says "versions moved" describes the mechanism and
-// hides the decision; what a reviewer needs is the same thing the changesets PR
-// shows — every module that will publish, the version it moves to, and the
-// changelog entries that will ship with it. All of that is already in the plan,
-// so restating it here costs nothing and leaves nothing to be taken on trust.
-//
-// The plan MUST be captured before `telo release apply`, which consumes the
-// fragments the entries come from.
+// WHY THE BODY IS GENERATED RATHER THAN STATIC. Merging the release PR publishes
+// every unit it lists. A body that says "versions moved" describes the mechanism
+// and hides the decision; what a reviewer needs is every unit that will publish,
+// its version and its entries. All of that is in the plan `telo release apply`
+// printed before it consumed the fragments the entries come from.
 //
 // Usage: node scripts/module-release-pr-body.mjs <plan.json> [> body.md]
 
@@ -36,10 +26,13 @@ const MAX_BODY = 60_000;
  *  when the full body does not fit. */
 const MAX_ENTRY = 600;
 
-/** Modules first, then apps: an app is a deployable rather than a dependency, so
- *  a reviewer scanning for "what will other people consume" reads the top. */
+/** Packages first, then modules, then apps: an app is a deployable rather than a
+ *  dependency, so a reviewer scanning for "what will other people consume" reads
+ *  the top. */
+const SECTIONS = ["Packages", "Modules", "Apps"];
 function sectionOf(key) {
-  return key.startsWith("apps/") ? "Apps" : "Modules";
+  if (key.startsWith("apps/")) return "Apps";
+  return /^(modules|blueprints)\//.test(key) ? "Modules" : "Packages";
 }
 
 function bulletsFor(entries, entryLimit) {
@@ -57,7 +50,7 @@ function bulletsFor(entries, entryLimit) {
       const text = body.replace(/\s+/g, " ").trim();
       const shown =
         entryLimit && text.length > entryLimit
-          ? `${text.slice(0, entryLimit).trimEnd()}… _(trimmed — full text in the module's CHANGELOG)_`
+          ? `${text.slice(0, entryLimit).trimEnd()}… _(trimmed — full text in the unit's CHANGELOG)_`
           : text;
       lines.push(`  - **${kind}** — ${shown}`);
     }
@@ -74,29 +67,29 @@ function bulletsFor(entries, entryLimit) {
  * full one and cannot drift into describing a different release.
  */
 function build(plan, { entryLimit, tableRows }) {
-  const modules = plan.modules ?? [];
-  const declared = modules.filter((m) => m.entries.length > 0);
-  const inferred = modules.filter((m) => m.entries.length === 0);
+  const units = plan.units ?? [];
+  const declared = units.filter((m) => m.entries.length > 0);
+  const inferred = units.filter((m) => m.entries.length === 0);
 
   const out = [];
   out.push(
-    `Merging this publishes **${modules.length} module${modules.length === 1 ? "" : "s"}** — ` +
+    `Merging this publishes **${units.length} unit${units.length === 1 ? "" : "s"}** — ` +
       `${declared.length} with a declared change, ${inferred.length} whose payload moved ` +
       "underneath them. Versions, changelogs and `.changes/ledger.yaml` were written by " +
-      "`telo release apply`; the ledger records the payload digest each module ships, so the " +
+      "`telo release apply`; the ledger records the payload digest each unit ships, so the " +
       "next release compares against what actually published.",
     "",
   );
 
   if (declared.length > 0) {
     out.push("## Declared changes", "");
-    for (const section of ["Modules", "Apps"]) {
+    for (const section of SECTIONS) {
       const members = declared.filter((m) => sectionOf(m.key) === section);
       if (members.length === 0) continue;
       if (declared.some((m) => sectionOf(m.key) !== section)) out.push(`### ${section}`, "");
-      for (const module of members) {
-        out.push(`**\`${module.key}\`** &nbsp; ${module.from} → ${module.to} _(${module.level})_`);
-        out.push(...bulletsFor(module.entries, entryLimit));
+      for (const unit of members) {
+        out.push(`**\`${unit.key}\`** &nbsp; ${unit.from} → ${unit.to} _(${unit.level})_`);
+        out.push(...bulletsFor(unit.entries, entryLimit));
         out.push("");
       }
     }
@@ -106,24 +99,24 @@ function build(plan, { entryLimit, tableRows }) {
     out.push(
       "## Republished with no declared change",
       "",
-      "Their payload digest moved without anyone describing a change — a shared library or a " +
-        "toolchain bump reaching their bundles. Expected, and a patch; listed so a republish is " +
-        "never silent.",
+      "Their payload digest moved without anyone describing a change — a shared library, an " +
+        "inlined dependency or a toolchain bump reaching what they ship. Expected, and a patch; " +
+        "listed so a republish is never silent.",
       "",
     );
     if (tableRows) {
-      out.push("| Module | Version | Why |", "| --- | --- | --- |");
-      for (const module of inferred) {
-        const why = [...new Set(module.reasons ?? [])].filter((r) => r !== "unattributed");
+      out.push("| Unit | Version | Why |", "| --- | --- | --- |");
+      for (const unit of inferred) {
+        const why = [...new Set(unit.reasons ?? [])].filter((r) => r !== "unattributed");
         out.push(
-          `| \`${module.key}\` | ${module.from} → ${module.to} | ${why.join(", ") || "payload changed"} |`,
+          `| \`${unit.key}\` | ${unit.from} → ${unit.to} | ${why.join(", ") || "payload changed"} |`,
         );
       }
     } else {
       out.push(
         inferred.map((m) => `\`${m.key}\` ${m.to}`).join(", ") + ".",
         "",
-        "_Listed compactly — the per-module reasons did not fit; each module's CHANGELOG has them._",
+        "_Listed compactly — the per-unit reasons did not fit; each unit's CHANGELOG has them._",
       );
     }
     out.push("");
@@ -154,8 +147,8 @@ function build(plan, { entryLimit, tableRows }) {
  * to have.
  */
 function render(plan) {
-  if ((plan.modules ?? []).length === 0) {
-    return "No module version moved — every module matches the ledger.\n";
+  if ((plan.units ?? []).length === 0) {
+    return "No unit version moved — every unit matches the ledger.\n";
   }
 
   for (const level of [
@@ -172,8 +165,8 @@ function render(plan) {
   // declared changes, and say plainly that the rest was cut.
   const body = build(plan, { entryLimit: 200, tableRows: false });
   const notice =
-    "\n\n> **Trimmed to fit GitHub's body limit.** The remaining modules are in " +
-    "`.changes/ledger.yaml` and each module's CHANGELOG in this PR's diff.\n";
+    "\n\n> **Trimmed to fit GitHub's body limit.** The remaining units are in " +
+    "`.changes/ledger.yaml` and each unit's CHANGELOG in this PR's diff.\n";
   // Cut on a line boundary: a body ending mid-word reads as corruption rather
   // than as the deliberate trim the notice describes.
   const room = MAX_BODY - notice.length;

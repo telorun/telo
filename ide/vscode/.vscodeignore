@@ -1,6 +1,7 @@
 # The extension ships as one esbuild bundle (`dist/extension.js`) plus the
 # bundled telo engine (`dist/engine/language-server.mjs`), so
-# nothing that produced it needs to travel with it.
+# nothing that produced it needs to travel with it. `dist/vsix/` is the staged
+# copy of what ships, never part of it.
 .vscodeignore
 .gitignore
 src/**
@@ -12,4 +13,6 @@ tsconfig.json
 esbuild.mjs
 **/*.ts
 **/*.map
+**/*.meta.json
+dist/vsix/**
 *.vsix

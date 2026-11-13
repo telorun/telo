@@ -46,7 +46,7 @@ describe("telo publish — floor refusals", () => {
     const { ok, error } = await preflight('requires:\n  telo: ">=unreleased"\n');
     expect(ok).toBe(false);
     expect(error).toContain(
-      "telo.yaml holds '>=unreleased' at requires.telo; publish after the telo release that carries it, once the Version PR has written the number.",
+      "telo.yaml holds '>=unreleased' at requires.telo; publish after `telo release apply` has written the line version that carries it.",
     );
   });
 
@@ -55,7 +55,7 @@ describe("telo publish — floor refusals", () => {
       'requires:\n  telo: ">=0.80.0"\nrestrictions:\n  - requires: { telo: ">=unreleased" }\n    reason: Needs the next kernel.\n',
     );
     expect(ok).toBe(false);
-    expect(error).toContain("holds '>=unreleased' at restrictions[0].requires.telo; publish after the telo release");
+    expect(error).toContain("holds '>=unreleased' at restrictions[0].requires.telo; publish after `telo release apply`");
   });
 
   it("refuses an upper bound on requires.telo, naming the restrictions entry that holds a ceiling", async () => {

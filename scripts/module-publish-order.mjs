@@ -26,6 +26,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // `AGENT_MODULE_REF`; its chat library ships inside that artifact.
 const IMPORTABLE_AREAS = ["modules/", "blueprints/", "apps/authoring-agent"];
 
+/** The module rows of `telo release order`: one per unit and package, so a unit
+ *  shipping an image or an npm package beside its module has other rows too. */
 function releaseOrder() {
   return JSON.parse(
     execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
@@ -33,7 +35,7 @@ function releaseOrder() {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "inherit"],
     }),
-  ).order;
+  ).order.filter((row) => row.ecosystem === "telo");
 }
 
 /**

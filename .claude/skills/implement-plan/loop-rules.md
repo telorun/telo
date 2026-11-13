@@ -298,8 +298,8 @@ by then it is built on, which is why it is caught here:
   primitive. Generic describes the *shape* of what the card builds, not how many other callers it
   fixes.
 - **Docs and release bookkeeping as someone else's problem.** A card touching a module carries
-  that module's docs; a card touching a published package or module carries its changeset or
-  release fragment. `CLAUDE.md` makes both mandatory, so they are acceptance criteria, not
+  that module's docs; a card touching a released unit (published package, module, image or chart) carries a
+  release fragment (`telo release add --unit <path> …`, never hand-written). `CLAUDE.md` makes both mandatory, so they are acceptance criteria, not
   chores to sweep up at the end.
 - **A major version bump.** Breaking changes ship as minors here, deliberately.
 

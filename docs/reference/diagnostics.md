@@ -415,20 +415,22 @@ Text shown to a person is typed `Text` (a message, or a message with a context),
 | `LOG_SINK_ON_FULL_UNSUPPORTED` | The sink does not support the requested `on_full:` policy. |
 | `SINK_UNATTACHED` | A **warning**: a resource whose kind is a sink (capability `Telo.Sink`) that nothing references and its module does not export. The runtime attaches only the sinks the root Application lists in `logging.sinks` / `tracing.sinks`, so this one receives nothing. List it (`- !ref <name>`), or remove it. A sink declared as a `with:` scope member is always reported: no list can name it, so declare it at the module's top level. |
 
-### Releasing modules (`telo release`)
+### Releasing units (`telo release`)
 
 These come from the release planner rather than from `telo check`. See
 [Releasing modules](/extend/releasing-modules).
 
 | Code | What it means and what to do |
 | --- | --- |
-| `CHANGELOG_ENTRY_REQUESTED` ⚠️ | A module's own files changed but no fragment under `.changes/pending/` names it, so its changelog will not mention this release. `telo release add --module <path> --kind <Kind> --body "…"`. |
-| `FRAGMENT_UNKNOWN_MODULE` | A fragment names a module key that is not in the workspace (`release.modules` in `telo-workspace.yaml`). |
-| `MAJOR_BUMP_REJECTED` | A fragment declares a `Changed` / `Removed` kind, which induces a major bump. The repo is deliberately pre-1.0 and ships breaking changes as minors — use `Added` or `Fixed`. |
-| `LEDGER_VERSION_MISMATCH` | A module's `metadata.version` disagrees with what `.changes/ledger.yaml` records as published. Reconcile with `telo release verify`. |
-| `LEDGER_REGISTRY_MISMATCH` | A module's ledger digests were taken against a different registry base than this run built against, so nothing can be compared. Per module, because a workspace may publish its subtrees to different bases. |
-| `NO_DESTINATION_KNOWN` | A module has never published, its `release.modules` entry declares no `registry:` and neither does the block. Declare one, pass `--registry`, or set `TELO_OCI_REGISTRY`. |
-| `DESTINATION_COLLISION` | Two modules resolve to one ref, because a ref is the registry base plus the module's own directory name. Rename a directory, or give one subtree its own `registry:`. |
+| `CHANGELOG_ENTRY_REQUESTED` ⚠️ | A unit's own files changed but no fragment under `.changes/pending/` names it, so its changelog will not mention this release (the unit still ships, as an unattributed patch). `telo release add --unit <path> --kind <Kind> --body "…"`. |
+| `FRAGMENT_UNKNOWN_UNIT` | A fragment names a unit key that is not in the workspace (`release.units` in `telo-workspace.yaml`). A key is the unit's workspace-relative directory; a polyglot component is its parent directory (`kernel`, not `kernel/nodejs`). |
+| `MAX_BUMP_EXCEEDED` | A unit needs a bump above `release.maxBump` — a fragment of kind `Changed` / `Removed`, or a dependency that bumped at that level. The repo is deliberately pre-1.0 and ships breaking changes as minors: use `Added` or `Fixed`, or raise `maxBump`. |
+| `REQUIRES_FLOOR_TOO_LOW` / `REQUIRES_FLOOR_TOO_HIGH` | `telo release check` found a module's `requires.telo` below, or above, what the published CLIs need to read it; a `>=unreleased` floor in a plan that moves no telo version is `TOO_HIGH`, since no release would carry the syntax it waits for. Run `telo release floor --module <path>`. |
+| `UNIT_VERSION_MISMATCH` | A unit's version locations disagree — the `package.json`, `Cargo.toml`, `Chart.yaml` or `telo.yaml` of its anchors and its `versionFiles` — or one holds no version. `telo release apply` writes them together; do not edit one. |
+| `LEDGER_VERSION_MISMATCH` | A unit's version disagrees with what `.changes/ledger.yaml` records as published. Reconcile with `telo release verify`. |
+| `LEDGER_REGISTRY_MISMATCH` | A unit's ledger digests were taken against a different registry base than this run built against, so nothing can be compared. Per unit, because a workspace may publish its subtrees to different bases. |
+| `NO_DESTINATION_KNOWN` | A `telo`, `docker` or `helm` anchor has never published and its cascade ends with no `registry`: neither the anchor, `release.ecosystems.<ecosystem>`, nor (for `telo`) `--registry`, `TELO_OCI_REGISTRY` or a ledger base names one. Reported by `check`, `order` and `verify`. |
+| `DESTINATION_COLLISION` | Two `order` rows resolve to one destination — for a module, the registry base plus its own directory name. Rename a directory, give one a `name` (docker), or give one subtree its own `registry:`. |
 | `IMPORT_TARGET_NOT_RELEASED` | A workspace module imports by relative path a manifest outside its own directory that the workspace does not release on its own — a library inside another module's directory, say. Publishing writes such an import as its target's assigned ref, so there is none to write. Import a module the workspace releases, or move the library inside the importing module. |
 | `WORKSPACE_MODULE_NESTED` | A module the workspace lists lies inside the directory of a module that imports it, so it ships inside that module's artifact and is not released on its own. Drop its entry from `telo-workspace.yaml`. |
 
@@ -439,12 +441,17 @@ Reported by `telo release`, and by the editor as you type. See
 
 | Code | What it means and what to do |
 | --- | --- |
-| `WORKSPACE_MODULES_MOVED` | `modules:` is at the top level. It is release scope — indent it under `release:`. |
-| `WORKSPACE_UNKNOWN_KEY` | A key nothing reads. A near-miss of a known one is an error, since its settings would go silently unapplied; an unrecognized top-level block is a warning, so a marker written for a newer telo still runs. |
-| `WORKSPACE_INVALID_VALUE` | A wrong type, an entry that is neither a string nor a mapping carrying its key (`path:` for `release.modules`, `name:` for `env.files`), an `env.files` entry that is a path or a glob, or an empty `release.modules`. |
-| `WORKSPACE_ENTRY_MATCHES_NOTHING` ⚠️ | A `release.modules` pattern under which no directory holds a `telo.yaml`, or an `env.roots` pattern matching no directory — usually a typo in a subtree name. |
-| `WORKSPACE_ENTRY_SHADOWED` ⚠️ | Every module an entry matches is also matched by a later one, so last-match-wins leaves this entry's settings applying to nothing. |
-| `WORKSPACE_MARKER_SHADOWED` ⚠️ | Another marker sits above this one, so everything beneath it takes a different cache root, different module keys and a different release scope. |
+| `WORKSPACE_MODULES_MOVED` | `release.modules` or `release.registry` (or a top-level `modules:`) is written. List the subtrees as `release.units` entries with `ecosystem: telo` and put the base under `release.ecosystems.telo`; a flat `registry:` on a unit entry is refused the same way. |
+| `WORKSPACE_UNKNOWN_KEY` | A key nothing reads: in `env:`, a near-miss of a known key; in a unit entry, a key none of its ecosystems reads, or an ecosystem key written where the ecosystem does not read it (flat on the entry, or at an anchor of another ecosystem) — the message names the ecosystem. A near-miss of a known key is an error, since its settings would go silently unapplied; an unrecognized top-level block is a warning, so a marker written for a newer telo still runs. |
+| `WORKSPACE_INVALID_VALUE` | A wrong type, an entry that is neither a string nor a mapping carrying its key (`path:` for `release.units`, `name:` for `env.files`), an `env.files` entry that is a path or a glob, or an empty list. |
+| `WORKSPACE_ECOSYSTEM_UNAVAILABLE` | An entry names an ecosystem this host registered no adapter for (`telo` under `telo-release`, which serves `npm`, `cargo`, `docker` and `helm`). The message names the host that serves it. |
+| `WORKSPACE_UNIT_VERSION_UNRESOLVED` | The entry has no `version:` and zero or several anchors whose ecosystem keeps a version location. Declare `version:`, naming the file that holds the unit's version. |
+| `WORKSPACE_UNIT_PAYLOAD_EMPTY` | The entry lists no ecosystem and declares no `payload:`, or ships nothing digestible (a private npm package). List the ecosystem it ships through, declare `payload:`, or exclude it with `!`. |
+| `WORKSPACE_ANCHOR_INVALID` | An anchor that is a pattern, leaves the unit, or is not what its ecosystem recognises on a literal unit path (`npm`: a `package.json` with a version; `cargo`: a `Cargo.toml`; `docker`: a Dockerfile; `helm`: a `Chart.yaml`; `telo`: a module doc with a version); or a docker `context` that is a pattern, leaves the workspace, or is not a directory. |
+| `WORKSPACE_ANCHOR_CLAIMED` | One package directory is claimed by two units, naming both. |
+| `WORKSPACE_ENTRY_MATCHES_NOTHING` ⚠️ | A `release.units` pattern matching no unit, or an `env.roots` pattern matching no directory — usually a typo in a subtree name. |
+| `WORKSPACE_ENTRY_SHADOWED` ⚠️ | Every unit an entry matches is also matched by a later one, so last-match-wins leaves this entry's settings applying to nothing. |
+| `WORKSPACE_MARKER_SHADOWED` ⚠️ | Another marker sits above this one, so everything beneath it takes a different cache root, different unit keys and a different release scope. |
 
 ⚠️ = warning, ℹ️ = information; everything else is an error.
 

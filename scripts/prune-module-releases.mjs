@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 // Deletes GitHub Releases that are really MODULE releases.
 //
-// Until `scripts/github-releases.mjs` took over, `changesets/action` created a
-// release for every package `changeset publish` published — module-owned packages
-// included, since their versions are moved by `telo release apply` and the action
-// has no filter. Modules are released as OCI artifacts and discovered through the
+// Before `scripts/github-releases.mjs` made the releases, the npm release tooling
+// created one for every package it published — module-owned packages included,
+// since their versions are moved by `telo release apply` and it had no filter. Modules are released as OCI artifacts and discovered through the
 // hub; their changelog lives in the module directory. They have no releases here.
 //
 // Classification is by MODULE DIRECTORY, not by current package name, because the

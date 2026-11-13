@@ -1,32 +1,17 @@
 /**
- * The release plan of one workspace: resolve, check the destinations, then
- * collect evidence.
- *
- * Shared by `telo release` and by `telo release imports` (and its deprecated
- * alias `telo upgrade --pin-local`), which asks the same question for another
- * reason — a module the plan would bump is one whose published artifact is not
- * what the working copy holds.
- *
- * The two destination checks run FIRST and short-circuit: both are decidable
- * from the manifests alone, and reporting them after sixty payload builds would
- * spend two minutes to say the workspace file is inconsistent — while the
- * payload builder's own refusal, which is what would fire instead, speaks about
- * a manifest published to two places rather than about the file that said so.
+ * The release plan of one workspace as `telo release status` forms it, for the
+ * callers that ask the same question for another reason: `telo release imports`
+ * (and its deprecated alias `telo upgrade --pin-local`) — a module the plan would
+ * bump is one whose published artifact is not what the working copy holds.
  */
 
-import {
-  planRelease,
-  type Ledger,
-  type ModuleKey,
-  type ReleasePlan,
-} from "@telorun/analyzer";
-import * as path from "node:path";
-import { ModulePayloadBuilder } from "../bundle/module-payload.js";
-import { carriedBy } from "./carried-changes.js";
-import { collectEvidence, type ModuleTarget } from "./evidence.js";
-import { readFragments, readLedger } from "./ledger-store.js";
-import { readImportGraph, resolveTargets, type RegistryRungs } from "./targets.js";
-import type { DiscoveredModule, Workspace } from "./workspace.js";
+import type { Ledger, ReleasePlan, UnitKey as ModuleKey } from "@telorun/release";
+import { planWorkspaceRelease } from "@telorun/release/node";
+import type { ModuleTarget } from "./evidence.js";
+import { readLedger } from "./ledger-store.js";
+import { resolveTargets, type RegistryRungs } from "./targets.js";
+import { teloReleaseHost } from "./telo-host.js";
+import type { Workspace } from "./workspace.js";
 
 export interface WorkspacePlanOptions {
   readonly rungs: RegistryRungs;
@@ -34,7 +19,7 @@ export interface WorkspacePlanOptions {
   readonly baseRef: string;
   /** Git ref whose carried fragments are dropped from the plan (`--carried-by`). */
   readonly carriedBy?: string;
-  readonly onModule?: (module: DiscoveredModule, index: number, total: number) => void;
+  readonly onUnit?: (unit: { readonly key: ModuleKey }, index: number, total: number) => void;
 }
 
 export interface WorkspacePlan {
@@ -43,39 +28,12 @@ export interface WorkspacePlan {
   readonly plan: ReleasePlan;
 }
 
-/** The pending fragments, less those `ref` carries: the same file at its merge
- *  base with HEAD, or written on it since. */
-export function pendingFragments(root: string, ref: string | undefined) {
-  const fragments = readFragments(root);
-  if (!ref) return fragments;
-  const carried = carriedBy({ cwd: root, files: fragments.map((fragment) => fragment.source), ref });
-  return fragments.filter((fragment) => !carried.has(fragment.source));
-}
-
-export async function planWorkspace(
-  workspace: Workspace,
-  options: WorkspacePlanOptions,
-): Promise<WorkspacePlan> {
-  const ledger = readLedger(workspace.root);
-  const fragments = pendingFragments(workspace.root, options.carriedBy);
-  const { targets, assigned, diagnostics } = resolveTargets(workspace, ledger, options.rungs);
-  const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo"), assigned });
-  const graph = await readImportGraph(workspace, targets, builder);
-  // The marker's own diagnostics travel with the plan, so an entry that
-  // discovers nothing is reported by CI and not only by the editor.
-  const upfront = [...workspace.diagnostics, ...diagnostics, ...graph.diagnostics];
-  if (upfront.some((diagnostic) => diagnostic.severity === "error")) {
-    return { ledger, targets, plan: { modules: [], fragments: [], diagnostics: upfront } };
-  }
-
-  const modules = await collectEvidence(workspace, {
-    targets,
-    builder,
-    imports: graph.imports,
+export async function planWorkspace(workspace: Workspace, options: WorkspacePlanOptions): Promise<WorkspacePlan> {
+  const host = teloReleaseHost({ rungs: () => options.rungs });
+  const run = await planWorkspaceRelease(host, workspace, {}, {
     baseRef: options.baseRef,
-    ...(options.onModule ? { onModule: options.onModule } : {}),
+    ...(options.carriedBy ? { carriedBy: options.carriedBy } : {}),
+    ...(options.onUnit ? { onUnit: options.onUnit } : {}),
   });
-
-  const plan = planRelease({ modules, ledger, fragments });
-  return { ledger, targets, plan: { ...plan, diagnostics: [...upfront, ...plan.diagnostics] } };
+  return { ledger: run.ledger, targets: resolveTargets(workspace, readLedger(workspace.root), options.rungs).targets, plan: run.plan };
 }

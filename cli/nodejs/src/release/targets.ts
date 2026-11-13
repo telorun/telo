@@ -19,12 +19,8 @@
  * that dependency is pushed to, whatever directory depth and base each sits at.
  */
 
-import {
-  checkDestinationCollisions,
-  type Ledger,
-  type ModuleKey,
-  type ReleaseDiagnostic,
-} from "@telorun/analyzer";
+import { checkDestinationCollisions } from "@telorun/analyzer";
+import type { Ledger, ReleaseDiagnostic, UnitKey as ModuleKey } from "@telorun/release";
 import * as path from "node:path";
 import type { AssignedDestinations, ModulePayloadBuilder } from "../bundle/module-payload.js";
 import { isInside } from "../bundle/nested-libraries.js";
@@ -69,16 +65,15 @@ export function resolveTargets(
 
   for (const module of workspace.modules) {
     const registry =
-      module.settings.registry ?? rungs.flag ?? rungs.env ?? ledger.modules.get(module.key)?.registry;
+      module.settings.registry ?? rungs.flag ?? rungs.env ?? ledger.units.get(module.key)?.registry;
     if (!registry) {
       diagnostics.push({
         severity: "error",
         code: "NO_DESTINATION_KNOWN",
         message:
-          `${module.key} has no publish destination. Nothing has been published from it, its ` +
-          `entry declares no 'registry:' and neither does the 'release:' block — so declare one ` +
-          `in telo-workspace.yaml (the entry's 'registry:' or the block's 'release.registry') or set ` +
-          `TELO_OCI_REGISTRY; \`telo release\` also takes --registry.`,
+          `${module.key} has no publish destination. Nothing has been published from it and its ` +
+          `'release.units' entry declares no 'registry:' — so declare one there in ` +
+          `telo-workspace.yaml or set TELO_OCI_REGISTRY; \`telo release\` also takes --registry.`,
       });
       continue;
     }
@@ -267,7 +262,7 @@ function unreleasedImport(
       `. Import a module the workspace releases, move the library inside ${module.key}, ` +
       (enclosing
         ? `or export what it offers from ${enclosing.key}.`
-        : `or list its directory under release.modules in telo-workspace.yaml.`),
+        : `or list it as a release.units entry with \`ecosystem: telo\` in telo-workspace.yaml.`),
   };
 }
 

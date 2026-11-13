@@ -1,0 +1,8 @@
+units:
+  apps/docker-runner: Fixed
+  apps/k8s-runner: Fixed
+  apps/hub-web: Fixed
+  apps/studio: Fixed
+body: "The image is built from only the files it uses: a `Dockerfile.dockerignore`
+  beside the Dockerfile admits the workspace packages it installs and the inputs of the
+  root `prepare`, and the install is filtered to this image's packages."

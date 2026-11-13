@@ -123,7 +123,7 @@ entry, never absorbed.
 diagnostic code, an error code, a field, an annotation, a kind, a CLI flag, a migration — and
 exactly what, is decided by `decider` together with the fix's shape, framed by the entry: what the
 entry needs to be fixed is in, anything beyond it is out. The batch builds what it decided with the
-docs, changesets, release fragments, `requires:` floors, `CLAUDE.md` / authoring-agent primer
+docs, release fragments, `requires:` floors, `CLAUDE.md` / authoring-agent primer
 updates and agreement-suite rows `CLAUDE.md` makes mandatory for it. The user approves that surface
 by reviewing the PR, so the PR body lists every piece of it (see `build`). Surface no decision
 named is not built.
@@ -239,8 +239,8 @@ Run the architect's phases on the batch, with its confirmed entries as the task 
 - **Gates.** Never a whole suite — the PR's CI runs those. Every card runs the manifest tests of
   every module it touched (`pnpm run test --include '<module>/tests/*.yaml'`, plus any root
   `tests/*.yaml` it added or changed), the unit tests of every package it touched, `pnpm run check`
-  on every manifest it touched, each of its entries' repros, `node scripts/check-changeset-status.mjs`,
-  and `telo release check` when it touched a module. A card touching the Rust half or a module the
+  on every manifest it touched, each of its entries' repros, `telo release check`
+  when it touched a released unit. A card touching the Rust half or a module the
   Rust kernel loads also runs `cargo check --workspace --locked` with each of
   `--features telorun-sdk/napi` and `--features telorun-sdk/native`, then `cargo test -p <crate>
   --locked` for each crate it touched. These scoped runs must be no less green than at

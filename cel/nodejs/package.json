@@ -36,16 +36,15 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
+    "build": "node ../../scripts/generate-telo-version.mjs && tsc -p tsconfig.lib.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:conformance": "vitest run --config vitest.conformance.config.ts",
     "check:types": "tsc -p tsconfig.json --noEmit",
     "check:browser-safe": "node scripts/check-browser-safe.mjs",
     "check:signatures": "pnpm run build && node scripts/check-signatures.mjs",
-    "prepare": "node -e \"const f='../../scripts/generate-telo-version.mjs';if(require('fs').existsSync(f))require('child_process').execFileSync(process.execPath,[f],{stdio:'inherit'})\"",
-    "prepack": "cp ../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
-    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE"
+    "prepack": "node ../../scripts/pack-backup.mjs . --save src/engine-version.ts dist && node ../../scripts/generate-telo-version.mjs --published && tsc -p tsconfig.lib.json && node ../../scripts/check-pack-identity.mjs cel && cp ../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE && node ../../scripts/pack-backup.mjs . --restore"
   },
   "dependencies": {
     "d3-format": "catalog:",

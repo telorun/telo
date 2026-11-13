@@ -1,14 +1,13 @@
 #!/usr/bin/env node
-// The body of a release PR that versions npm packages and modules both: the body
-// changesets/action wrote, then the module release plan as
-// `module-release-pr-body.mjs` renders it.
+// The body of a release PR: a line saying whether merging it publishes candidates
+// or finals, then the unit section `module-release-pr-body.mjs` renders from the
+// plan `telo release apply` printed.
 //
 // GitHub refuses a body over 65536 characters rather than truncating it, so the
-// module section degrades in stated stages until the whole fits: the full section,
-// then one line naming every module and its version, then a sentence with the count.
-// The changesets half is kept whole; the action already bounds it.
+// unit section degrades in stated stages until the whole fits: the full section,
+// then one line naming every unit and its version, then a sentence with the count.
 //
-// Usage: node scripts/release-pr-body.mjs <changesets-body.md> <plan.json> [> body.md]
+// Usage: node scripts/release-pr-body.mjs <plan.json> [--candidate] [> body.md]
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -17,38 +16,40 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const MAX_BODY = 65_000;
 
-/** The combined body. `modules` is the rendered module section, `plan` the plan it
- *  was rendered from. A plan moving no module adds nothing. */
-export function composeReleasePrBody({ changesets, modules, plan }) {
-  const moved = plan.modules ?? [];
-  const head = changesets.trimEnd();
-  if (moved.length === 0) return `${head}\n`;
-  const count = `${moved.length} module${moved.length === 1 ? "" : "s"}`;
+/** The whole body. `units` is the rendered unit section, `plan` the plan it was
+ *  rendered from, `candidate` whether the PR versions candidates. */
+export function composeReleasePrBody({ units, plan, candidate }) {
+  const moved = plan.units ?? [];
+  const head = candidate
+    ? "Merging this publishes the **candidates** below: every version is `<final>-rc.<k>` and moves no pointer."
+    : "Merging this publishes the **finals** below.";
+  if (moved.length === 0) return `${head}\n\nNo unit version moved.\n`;
+  const count = `${moved.length} unit${moved.length === 1 ? "" : "s"}`;
   const stages = [
-    modules.trim(),
-    `Merging this also publishes ${count}: ${moved.map((m) => `\`${m.key}\` ${m.from} → ${m.to}`).join(", ")}.\n\n` +
-      "_Listed compactly to fit GitHub's body limit; each module's CHANGELOG in this PR's diff has its entries._",
-    `Merging this also publishes ${count}. They did not fit GitHub's body limit: their versions and changelogs ` +
+    units.trim(),
+    `Merging this publishes ${count}: ${moved.map((m) => `\`${m.key}\` ${m.from} → ${m.to}`).join(", ")}.\n\n` +
+      "_Listed compactly to fit GitHub's body limit; each unit's CHANGELOG in this PR's diff has its entries._",
+    `Merging this publishes ${count}. They did not fit GitHub's body limit: their versions and changelogs ` +
       "are in this PR's diff and `.changes/ledger.yaml`.",
   ];
   for (const section of stages) {
-    const body = `${head}\n\n# Modules\n\n${section}\n`;
+    const body = `${head}\n\n${section}\n`;
     if (body.length <= MAX_BODY) return body;
   }
-  return `${head}\n\n# Modules\n\n${stages.at(-1)}\n`;
+  return `${head}\n\n${stages.at(-1)}\n`;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
-    const [changesetsFile, planFile] = process.argv.slice(2);
-    if (!changesetsFile || !planFile) throw new Error("usage: release-pr-body.mjs <changesets-body.md> <plan.json>");
+    const [planFile] = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
+    if (!planFile) throw new Error("usage: release-pr-body.mjs <plan.json> [--candidate]");
     const renderer = join(dirname(fileURLToPath(import.meta.url)), "module-release-pr-body.mjs");
-    const modules = execFileSync(process.execPath, [renderer, planFile], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    const units = execFileSync(process.execPath, [renderer, planFile], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     process.stdout.write(
       composeReleasePrBody({
-        changesets: readFileSync(changesetsFile, "utf8"),
-        modules,
+        units,
         plan: JSON.parse(readFileSync(planFile, "utf8")),
+        candidate: process.argv.includes("--candidate"),
       }),
     );
   } catch (error) {

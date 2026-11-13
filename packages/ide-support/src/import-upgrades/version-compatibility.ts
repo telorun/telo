@@ -55,12 +55,16 @@ export type VersionCompatibilityCheck = (
  *
  * The verdict is the analyzer's {@link selectionCompatibility}: an IDE reports
  * NO host versions, because it is not the machine that will run the manifest.
+ * A prerelease's `restrictions:` speak for no version unless `includePrerelease`,
+ * so selection agrees with `telo upgrade`.
+ *
  * Only the telo surface is checked here; a host requirement still surfaces at
  * the load gate when the manifest is actually run.
  */
 export function createVersionCompatibility(
   read: ModuleManifestReader,
   teloVersion: string = TELO_RUNNING_SURFACE,
+  options: { includePrerelease?: boolean } = {},
 ): VersionCompatibilityCheck {
   const cache = new Map<string, Promise<ModuleVersionRequirements>>();
   const requirementsOf = (baseRef: string, version: string): Promise<ModuleVersionRequirements> => {
@@ -88,6 +92,7 @@ export function createVersionCompatibility(
     const newer = await Promise.all(
       published
         .filter((v) => (compareModuleVersions(v, version) ?? 0) > 0)
+        .filter((v) => options.includePrerelease || parseModuleVersion(v)?.pre === null)
         .map((v) => requirementsOf(baseRef, v)),
     );
     return selectionCompatibility(candidate, newer, teloVersion);

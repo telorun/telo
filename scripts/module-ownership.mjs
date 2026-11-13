@@ -2,8 +2,8 @@
 //
 // A MODULE-OWNED package is one under `modules/`: its version is its MODULE's,
 // written by `telo release apply` into `telo.yaml`, `package.json` and `Cargo.toml`
-// together, and it is on `.changeset/config.json`'s `ignore` list so `changeset
-// version` leaves it alone. Everything else is on the changesets ledger.
+// together, and it publishes inside the module's artifact, never to npm. Every other
+// package is a release unit of its own (or an anchor of one) in `telo-workspace.yaml`.
 //
 // Three scripts asked this question and answered it three ways — two duplicated the
 // path rule verbatim, and the third (which DELETES GitHub Releases) resolved it by

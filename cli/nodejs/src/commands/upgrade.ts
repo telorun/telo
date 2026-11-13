@@ -105,7 +105,9 @@ async function readVersion(
  * beyond the manifests upgrade already reads. The walk stops at the pin when it
  * is published: `upgrade` moves pins forward, never backwards. Every rejection
  * newer than what it stops at is returned, or the pin is a silent ceiling and
- * *"up to date"* becomes the new confusing report.
+ * *"up to date"* becomes the new confusing report. A prerelease is neither a
+ * candidate nor a speaker unless `includePrerelease`: only then are prereleases,
+ * and their `restrictions:`, read.
  */
 async function walkVersions(
   transport: Transport,
@@ -122,23 +124,10 @@ async function walkVersions(
     .sort(semver.rcompare);
   const walk: Walk = { best: null, held: [], pinVerdict: null };
   const read: ModuleVersionRequirements[] = [];
-  // Prereleases speak only when no release does, as in the editor: a newer
-  // prerelease is never a candidate here, but it narrows one the walk is about to
-  // accept, so it is read — once — only then.
-  const prereleases = includePrerelease
-    ? []
-    : versions.filter((v) => semver.prerelease(v) !== null);
   for (const version of eligible) {
     if (pin !== null && semver.lte(version, pin) && !semver.eq(version, pin)) break;
     const candidate = await readVersion(transport, source, version);
-    let verdict = selectionCompatibility(candidate, read, runtime.telo, runtime.host);
-    if (verdict.compatibility === "yes" || verdict.compatibility === "unknown") {
-      for (const pre of prereleases) {
-        if (semver.lte(pre, version) || read.some((r) => r.version === pre)) continue;
-        read.push(await readVersion(transport, source, pre));
-      }
-      verdict = selectionCompatibility(candidate, read, runtime.telo, runtime.host);
-    }
+    const verdict = selectionCompatibility(candidate, read, runtime.telo, runtime.host);
     read.push(candidate);
     if (verdict.compatibility === "yes" || verdict.compatibility === "unknown") {
       walk.best = version;

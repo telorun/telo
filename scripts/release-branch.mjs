@@ -31,12 +31,12 @@ import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { refuse, setOutput } from "./release-actions-output.mjs";
 import { releaseCommitOf, releaseCommitsOf } from "./release-commit.mjs";
-import { ROOT, finalPublished, teloGeneration } from "./version-line.mjs";
+import { ROOT, finalPublished } from "./version-line.mjs";
 
 export const RELEASE_BRANCH = /^release\/(\d+)\.(\d+)$/;
 const CLI_MANIFEST = "cli/nodejs/package.json";
-const CANDIDATE_TAG = /^v\d+\.\d+\.\d+-/;
-const MACHINERY_HEAD = /^(changeset-release|release-record)\//;
+const CANDIDATE_TAG = /-rc\./;
+const MACHINERY_HEAD = /^(release-version|release-record)\//;
 // Tags on one commit order by the run that made them: modules after packages after v.
 const TAG_RANK = { v: 0, packages: 1, modules: 2 };
 
@@ -90,17 +90,37 @@ function listAt(cwd, ref, dir) {
   return out ? out.split("\n").filter(Boolean) : [];
 }
 
-/** What a branch holds that no release has carried yet: changeset files not
- *  already consumed by a candidate, then module fragments. */
+/** What a branch holds that no final has released yet: its pending fragments
+ *  (a candidate consumes none). */
 function unreleasedFiles(cwd, ref) {
-  const pre = readAt(cwd, ref, ".changeset/pre.json");
-  const consumed = new Set(pre ? (JSON.parse(pre).changesets ?? []) : []);
-  const changesets = listAt(cwd, ref, ".changeset").filter((path) => {
-    const file = basename(path);
-    return file.endsWith(".md") && file !== "README.md" && !consumed.has(file.slice(0, -3));
-  });
-  const fragments = listAt(cwd, ref, ".changes/pending").filter((path) => !basename(path).startsWith("."));
-  return [...changesets, ...fragments];
+  return listAt(cwd, ref, ".changes/pending").filter((path) => !basename(path).startsWith("."));
+}
+
+/**
+ * What main's release plan does to the telo line: `{ next, bump }` — the version
+ * the line's planned at and the level, or `{}` when the plan moves it not. Read
+ * from `telo release status` on the checkout (built), the line being the group
+ * holding `@telorun/analyzer`.
+ */
+export function linePlan({ cwd = ROOT } = {}) {
+  const plan = JSON.parse(
+    execFileSync(process.execPath, ["./cli/nodejs/bin/telo.mjs", "release", "status", "-o", "json", "--base", "HEAD"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+      maxBuffer: 64 * 1024 * 1024,
+    }),
+  );
+  const line = (plan.units ?? []).find((unit) => unit.key === "analyzer");
+  return line ? { next: line.to, bump: line.level } : {};
+}
+
+/** Whether a release branch has published a candidate: a `-rc.` tag of its line. */
+function candidatePublished(cwd, branch) {
+  const [, label] = /^(?:origin\/)?release\/(\d+\.\d+)$/.exec(branch);
+  return [`v${label}.0-rc.*`, `packages-${label}-rc.*`, `modules-${label}-rc.*`].some(
+    (pattern) => git(cwd, "tag", "--list", pattern) !== "",
+  );
 }
 
 /** The head branch of a PR the release workflows open, or undefined: its own
@@ -181,7 +201,7 @@ async function mainRecords(tag) {
  * maintainer would fix them: the live branch first (finish it, publish it, record
  * its newest release on main), then what main would cut.
  */
-export async function cutRefusal({ cwd = ROOT, ref, generation = () => teloGeneration(), records = mainRecords }) {
+export async function cutRefusal({ cwd = ROOT, ref, generation = () => linePlan({ cwd }), records = mainRecords }) {
   if (ref !== "main") return `Error: Start release candidates runs on main; ${ref} is not main.`;
 
   const plan = await generation();
@@ -195,7 +215,7 @@ export async function cutRefusal({ cwd = ROOT, ref, generation = () => teloGener
 
   if (live) {
     const liveRef = refOf(cwd, live.name);
-    if (readAt(cwd, liveRef, ".changeset/pre.json") !== undefined) {
+    if (candidatePublished(cwd, live.name) && !finalPublished({ cwd, branch: live.name })) {
       const version = JSON.parse(readAt(cwd, liveRef, CLI_MANIFEST) ?? "{}").version ?? "unreleased";
       return `Error: ${live.name} is in candidates (${version}). Finish it before cutting ${label}.`;
     }
@@ -210,39 +230,38 @@ export async function cutRefusal({ cwd = ROOT, ref, generation = () => teloGener
   }
 
   if (!plan.bump) {
-    return "Error: main's changesets plan no release. Add a minor changeset before cutting.";
+    return "Error: main's release plan moves no telo version. Add an Added fragment for the line before cutting.";
   }
   if (plan.bump === "patch") {
-    return `Error: main's changesets plan ${plan.next}, a patch. Add a minor changeset before cutting.`;
+    return `Error: main's release plan moves the telo line to ${plan.next}, a patch. Add an Added fragment for the line before cutting.`;
   }
   const plannedLabel = `${fromMain.major}.${fromMain.minor}`;
   if (releaseBranches(cwd).some((branch) => branch.name === `release/${plannedLabel}`)) {
-    return `Error: release/${plannedLabel} already exists. Land the change on it, or add a changeset for the next minor.`;
+    return `Error: release/${plannedLabel} already exists. Land the change on it, or add a fragment for the next minor.`;
   }
   return undefined;
 }
 
-/** The `<major>.<minor>` a cut from main makes: the minor main's changesets plan. */
-async function cutRelease(generation = () => teloGeneration()) {
+/** The `<major>.<minor>` a cut from main makes: the minor main's release plan reaches. */
+async function cutRelease(generation = () => linePlan()) {
   const [, major, minor] = /^(\d+)\.(\d+)\./.exec((await generation()).next);
   return `${major}.${minor}`;
 }
 
 /** Why Publish final release must not run at `ref`, or undefined. On main it cuts a
- *  release straight to its final, so it refuses what the cut refuses; elsewhere `cwd`
- *  is the checkout of `ref` itself, whose own `.changeset/pre.json` is asked about. */
+ *  release straight to its final, so it refuses what the cut refuses; elsewhere the
+ *  branch must have published a candidate and no final. */
 export async function finishRefusal({ cwd = ROOT, ref, generation, records }) {
   if (ref === "main") return cutRefusal({ cwd, ref, generation, records });
   if (!RELEASE_BRANCH.test(ref)) {
     return `Error: Publish final release runs on main or on a release/* branch in candidates; ${ref} is neither.`;
   }
-  const file = join(cwd, ".changeset", "pre.json");
-  if (!existsSync(file)) {
-    const [, major, minor] = RELEASE_BRANCH.exec(ref);
-    if (finalPublished({ cwd, branch: ref })) {
-      return `Error: ${ref} has published ${major}.${minor}.0 and takes patches only.`;
-    }
-    return `Error: ${ref} has published no candidate yet. Merge its rc Version PR ("chore(release): version") first, then finish.`;
+  const [, major, minor] = RELEASE_BRANCH.exec(ref);
+  if (finalPublished({ cwd, branch: ref })) {
+    return `Error: ${ref} has published ${major}.${minor}.0 and takes patches only.`;
+  }
+  if (!candidatePublished(cwd, ref)) {
+    return `Error: ${ref} has published no candidate yet. Merge its rc release PR ("chore(release): version") first, then finish.`;
   }
   return undefined;
 }

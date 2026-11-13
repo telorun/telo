@@ -394,4 +394,20 @@ describe("restrictions held by a newer version", () => {
     await markVersionCompatibility(GEOCODE, beforeLift, isCompatible);
     expect([...asked].sort()).toEqual([...publishedBeforeLift].sort());
   });
+
+  it("reads a newer prerelease's restrictions only when prereleases are asked for", async () => {
+    const { read } = reader({
+      ...geocodeHistory,
+      "1.3.0-rc.1": geocode("1.3.0-rc.1", ">=0.123.0", [
+        '  - versions: ">=1.2.0"',
+        '    requires: { telo: "<0.122.0" }',
+        "    reason: held by the candidate",
+      ]),
+    });
+    const withRc = [...published, "1.3.0-rc.1"].filter((v) => v !== "1.2.1" && v !== "1.3.1");
+    const plain = createVersionCompatibility(read, "0.122.0");
+    expect(await plain(GEOCODE, "1.2.0", withRc)).toMatchObject({ compatibility: "yes" });
+    const asked = createVersionCompatibility(read, "0.122.0", { includePrerelease: true });
+    expect(await asked(GEOCODE, "1.2.0", withRc)).toMatchObject({ compatibility: "too-old" });
+  });
 });

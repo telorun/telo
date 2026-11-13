@@ -913,7 +913,6 @@ steps:
     invoke: !ref Origin.moduleVersions
     inputs:
       ref: !cel "inputs.ref"
-      finalOnly: !cel "inputs.ref == variables.builtinsRef"
   - name: gate
     if: !cel "!steps.versions.result.ok"
     then:
@@ -929,6 +928,44 @@ steps:
     invoke: !ref exec
     inputs:
       sql: UPDATE modules SET last_tracked_at = NOW(), last_error = NULL WHERE id = $1
+      bindings:
+        - !cel "inputs.moduleId"
+  # A prerelease the hub indexed before it stopped tracking them is dropped,
+  # with its kinds, resources and ingest record. `latest_version` first moves to
+  # the newest final when that is already indexed; a prerelease still named
+  # latest stays until a final replaces it, so search never empties meanwhile.
+  - name: latestFinal
+    if: !cel "steps.versions.result.latest != ''"
+    then:
+      - name: set
+        invoke: !ref exec
+        inputs:
+          sql: >-
+            UPDATE modules SET latest_version = $2
+            WHERE id = $1 AND latest_version LIKE '%-%'
+              AND EXISTS (SELECT 1 FROM module_versions
+                          WHERE module_id = $1 AND version = $2)
+          bindings:
+            - !cel "inputs.moduleId"
+            - !cel "steps.versions.result.latest"
+  - name: dropPrereleases
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        DELETE FROM module_versions mv
+        USING modules m
+        WHERE m.id = mv.module_id AND mv.module_id = $1 AND mv.version LIKE '%-%'
+          AND mv.version IS DISTINCT FROM m.latest_version
+      bindings:
+        - !cel "inputs.moduleId"
+  - name: dropPrereleaseClaims
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        DELETE FROM version_ingest vi
+        USING modules m
+        WHERE m.id = vi.module_id AND vi.module_id = $1 AND vi.version LIKE '%-%'
+          AND vi.version IS DISTINCT FROM m.latest_version
       bindings:
         - !cel "inputs.moduleId"
   - name: each

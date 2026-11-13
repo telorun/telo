@@ -1,23 +1,19 @@
 /**
- * Writing a module's one version into every manifest it owns.
+ * Writing a module's version into its `telo.yaml`: the module doc's
+ * `metadata.version`, and the `pkg:npm` pins naming the module's own package.
+ * Find the scalar, splice over its span, touch nothing else — the
+ * `yaml-source-edit.ts` primitive the quick fix, `telo migrate` and `telo
+ * upgrade`'s pin rewrite use — so a bump is a one-line diff rather than a
+ * re-serialized manifest. The module's npm and Cargo packages are written by
+ * their own ecosystems' handlers (`@telorun/release`).
  *
- * A module has a single version across `telo.yaml`, `nodejs/package.json` and
- * `rust/Cargo.toml` — and, for a crate, in the `Cargo.lock` that records it.
- * Four formats, one rule: find the scalar, splice over its
- * span, touch nothing else. That is `yaml-source-edit.ts`'s primitive — the same
- * one the quick fix, `telo migrate` and `telo upgrade`'s pin rewrite use — so a
- * bump lands as a one-line diff instead of a re-serialized file that re-folds
- * every block scalar in a 900-line manifest.
- *
- * Each stamp returns `undefined` when the file carries no version to write,
- * which is not an error: a module may own only a `telo.yaml`, and 42 of the
- * standard library's packages have no Rust crate. A file that *has* a version in
- * a shape this cannot address is a hard error instead, because silently skipping
- * it would publish an artifact whose manifests disagree about what it is.
+ * A stamp returns `undefined` when the file carries no version to write; a
+ * version in a shape it cannot address is a hard error, because skipping it
+ * would publish an artifact whose files disagree about what it is.
  */
 
 import { defaultCustomTags } from "@telorun/templating";
-import { isScalar, parseAllDocuments, parseDocument, type Scalar } from "yaml";
+import { isScalar, parseAllDocuments, type Scalar } from "yaml";
 import { applyTextEdits, renderFixReplacement } from "../yaml-source-edit.js";
 
 export class VersionStampError extends Error {}
@@ -132,125 +128,4 @@ export function readManifestVersion(text: string): string | undefined {
   if (first?.kind !== "Telo.Application" && first?.kind !== "Telo.Library") return undefined;
   const version = first.metadata?.version;
   return typeof version === "string" ? version : undefined;
-}
-
-/**
- * The top-level `"version"` of a `package.json`.
- *
- * Parsed with the YAML reader rather than `JSON.parse`, because JSON is a YAML
- * subset and this one needs the node's *source range* — `JSON.parse` discards it,
- * and re-serializing with `JSON.stringify` would reformat a file whose
- * indentation, key order and trailing newline are all conventions someone chose.
- */
-export function stampPackageVersion(
-  text: string,
-  version: string,
-  where: string,
-): string | undefined {
-  const doc = parseDocument(text);
-  const node = doc.get("version", true);
-  if (!isScalar(node)) return undefined;
-  return spliceScalar(text, node, version, where);
-}
-
-/**
- * `version` in a `Cargo.toml`'s `[package]` table.
- *
- * Scanned rather than parsed: TOML is not YAML, adding a TOML parser to the
- * browser-safe analyzer for one scalar is not a trade worth making, and the
- * shape being addressed is the canonical one cargo itself writes. The scan is
- * bounded to the `[package]` table so a `version` under `[dependencies.x]`
- * cannot be hit, and a `[package]` whose version is not a simple quoted scalar
- * is refused rather than guessed at.
- */
-export function stampCrateVersion(
-  text: string,
-  version: string,
-  where: string,
-): string | undefined {
-  const table = /^[ \t]*\[package\][ \t]*$/m.exec(text);
-  if (!table) return undefined;
-  const bodyStart = table.index + table[0].length;
-  const next = /^[ \t]*\[/m.exec(text.slice(bodyStart));
-  const bodyEnd = next ? bodyStart + next.index : text.length;
-
-  const entry = /^([ \t]*version[ \t]*=[ \t]*)(".*?"|'.*?')[ \t]*$/m.exec(
-    text.slice(bodyStart, bodyEnd),
-  );
-  if (!entry) {
-    // A `[package]` with `version.workspace = true` inherits from the workspace
-    // and genuinely has nothing here to stamp; anything else is a shape this
-    // cannot address, and writing nothing would leave the crate behind.
-    if (/^[ \t]*version[ \t]*\.[ \t]*workspace[ \t]*=/m.test(text.slice(bodyStart, bodyEnd))) {
-      return undefined;
-    }
-    if (/^[ \t]*version[ \t]*=/m.test(text.slice(bodyStart, bodyEnd))) {
-      throw new VersionStampError(
-        `${where}: [package].version is not a quoted scalar on one line, so it cannot be ` +
-          `rewritten in place.`,
-      );
-    }
-    return undefined;
-  }
-
-  const start = bodyStart + entry.index + entry[1].length;
-  const quote = entry[2][0];
-  return applyTextEdits(text, [
-    { start, end: start + entry[2].length, newText: `${quote}${version}${quote}` },
-  ]);
-}
-
-/**
- * A workspace member's `version` in the `Cargo.lock` that governs it.
- *
- * The lockfile records every workspace member's own version, so stamping a crate
- * without stamping the lock leaves the two disagreeing — and a disagreement is
- * not a cosmetic one: any `cargo --locked` invocation then has to re-resolve,
- * which means reaching the network, which `--locked` forbids. That is a build
- * that fails on whichever machine runs a locked cargo command before an unlocked
- * one silently repairs the file.
- *
- * Scanned like a `Cargo.toml` and for the same reasons. Only a PATH package is
- * addressed — a workspace member carries no `source` key, while a registry
- * package of the same name is a different crate whose version is not ours to
- * move. A name recorded more than once without a source is refused rather than
- * guessed at.
- */
-export function stampLockedCrateVersion(
-  text: string,
-  crate: string,
-  version: string,
-  where: string,
-): string | undefined {
-  const headers = /^\[\[package\]\][ \t]*$/gm;
-  const edits: { start: number; end: number; newText: string }[] = [];
-
-  for (let header = headers.exec(text); header; header = headers.exec(text)) {
-    const bodyStart = header.index + header[0].length;
-    const next = /^[ \t]*\[/m.exec(text.slice(bodyStart));
-    const bodyEnd = next ? bodyStart + next.index : text.length;
-    const body = text.slice(bodyStart, bodyEnd);
-
-    if (/^[ \t]*name[ \t]*=[ \t]*"(.*?)"[ \t]*$/m.exec(body)?.[1] !== crate) continue;
-    if (/^[ \t]*source[ \t]*=/m.test(body)) continue;
-
-    const entry = /^([ \t]*version[ \t]*=[ \t]*)(".*?")[ \t]*$/m.exec(body);
-    if (!entry) {
-      throw new VersionStampError(
-        `${where}: the '${crate}' package records no version that can be rewritten in place, ` +
-          `so the lockfile would keep naming a version of it that no longer exists.`,
-      );
-    }
-    const start = bodyStart + entry.index + entry[1].length;
-    edits.push({ start, end: start + entry[2].length, newText: `"${version}"` });
-  }
-
-  if (edits.length === 0) return undefined;
-  if (edits.length > 1) {
-    throw new VersionStampError(
-      `${where}: '${crate}' is recorded ${edits.length} times as a path package, so which entry ` +
-        `is the workspace member cannot be decided.`,
-    );
-  }
-  return applyTextEdits(text, edits);
 }

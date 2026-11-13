@@ -1,0 +1,1730 @@
+{
+  "metadata": [
+    {
+      "name": "a binary links its normal and build closure, through members, across features and platforms",
+      "metadata": {
+        "packages": [
+          {
+            "id": "path+file:///ws/app#fx-app@1.0.0",
+            "name": "fx-app",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "bin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///ws/core#fx-core@1.0.0",
+            "name": "fx-core",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///elsewhere/local#fx-local@0.3.0",
+            "name": "fx-local",
+            "version": "0.3.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+            "name": "fx-gui",
+            "version": "1.0.1",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+            "name": "fx-build",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+            "name": "fx-dev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+            "name": "fx-devdeep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+            "name": "fx-both",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+            "name": "fx-win",
+            "version": "0.5.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+            "name": "fx-leaf",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+            "name": "fx-deep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+            "name": "fx-coredev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "git+https://example.com/fx-deep#0123abcd",
+            "name": "fx-macro",
+            "version": "0.1.0",
+            "source": "git+https://example.com/fx-deep#0123abcd",
+            "targets": [
+              {
+                "kind": [
+                  "proc-macro"
+                ]
+              }
+            ]
+          }
+        ],
+        "workspace_members": [
+          "path+file:///ws/app#fx-app@1.0.0",
+          "path+file:///ws/core#fx-core@1.0.0"
+        ],
+        "resolve": {
+          "nodes": [
+            {
+              "id": "path+file:///ws/app#fx-app@1.0.0",
+              "deps": [
+                {
+                  "pkg": "path+file:///ws/core#fx-core@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "build",
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    },
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": "cfg(windows)"
+                    }
+                  ]
+                },
+                {
+                  "pkg": "path+file:///elsewhere/local#fx-local@0.3.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "path+file:///ws/core#fx-core@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "path+file:///elsewhere/local#fx-local@0.3.0",
+              "deps": [
+                {
+                  "pkg": "git+https://example.com/fx-deep#0123abcd",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "git+https://example.com/fx-deep#0123abcd",
+              "deps": []
+            }
+          ]
+        }
+      },
+      "root": "path+file:///ws/app#fx-app@1.0.0",
+      "expected": {
+        "entry": "fx-both 1.0.0 registry+https://github.com/rust-lang/crates.io-index\nfx-build 1.0.0 registry+https://github.com/rust-lang/crates.io-index\nfx-deep 1.0.0 registry+https://github.com/rust-lang/crates.io-index\nfx-gui 1.0.1 registry+https://github.com/rust-lang/crates.io-index\nfx-leaf 1.0.0 registry+https://github.com/rust-lang/crates.io-index\nfx-local 0.3.0\nfx-macro 0.1.0 git+https://example.com/fx-deep#0123abcd\nfx-win 0.5.0 registry+https://github.com/rust-lang/crates.io-index\n"
+      }
+    },
+    {
+      "name": "a library links nothing",
+      "metadata": {
+        "packages": [
+          {
+            "id": "path+file:///ws/app#fx-app@1.0.0",
+            "name": "fx-app",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "bin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///ws/core#fx-core@1.0.0",
+            "name": "fx-core",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///elsewhere/local#fx-local@0.3.0",
+            "name": "fx-local",
+            "version": "0.3.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+            "name": "fx-gui",
+            "version": "1.0.1",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+            "name": "fx-build",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+            "name": "fx-dev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+            "name": "fx-devdeep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+            "name": "fx-both",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+            "name": "fx-win",
+            "version": "0.5.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+            "name": "fx-leaf",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+            "name": "fx-deep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+            "name": "fx-coredev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "git+https://example.com/fx-deep#0123abcd",
+            "name": "fx-macro",
+            "version": "0.1.0",
+            "source": "git+https://example.com/fx-deep#0123abcd",
+            "targets": [
+              {
+                "kind": [
+                  "proc-macro"
+                ]
+              }
+            ]
+          }
+        ],
+        "workspace_members": [
+          "path+file:///ws/app#fx-app@1.0.0",
+          "path+file:///ws/core#fx-core@1.0.0"
+        ],
+        "resolve": {
+          "nodes": [
+            {
+              "id": "path+file:///ws/app#fx-app@1.0.0",
+              "deps": [
+                {
+                  "pkg": "path+file:///ws/core#fx-core@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "build",
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    },
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": "cfg(windows)"
+                    }
+                  ]
+                },
+                {
+                  "pkg": "path+file:///elsewhere/local#fx-local@0.3.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "path+file:///ws/core#fx-core@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "path+file:///elsewhere/local#fx-local@0.3.0",
+              "deps": [
+                {
+                  "pkg": "git+https://example.com/fx-deep#0123abcd",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "git+https://example.com/fx-deep#0123abcd",
+              "deps": []
+            }
+          ]
+        }
+      },
+      "root": "path+file:///ws/core#fx-core@1.0.0",
+      "expected": {
+        "entry": null
+      }
+    },
+    {
+      "name": "a cdylib beside a lib target links",
+      "metadata": {
+        "packages": [
+          {
+            "id": "path+file:///ws/app#fx-app@1.0.0",
+            "name": "fx-app",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "bin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///ws/core#fx-core@1.0.0",
+            "name": "fx-core",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              },
+              {
+                "kind": [
+                  "cdylib"
+                ]
+              },
+              {
+                "kind": [
+                  "example"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///elsewhere/local#fx-local@0.3.0",
+            "name": "fx-local",
+            "version": "0.3.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+            "name": "fx-gui",
+            "version": "1.0.1",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+            "name": "fx-build",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+            "name": "fx-dev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+            "name": "fx-devdeep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+            "name": "fx-both",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+            "name": "fx-win",
+            "version": "0.5.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+            "name": "fx-leaf",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+            "name": "fx-deep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+            "name": "fx-coredev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "git+https://example.com/fx-deep#0123abcd",
+            "name": "fx-macro",
+            "version": "0.1.0",
+            "source": "git+https://example.com/fx-deep#0123abcd",
+            "targets": [
+              {
+                "kind": [
+                  "proc-macro"
+                ]
+              }
+            ]
+          }
+        ],
+        "workspace_members": [
+          "path+file:///ws/app#fx-app@1.0.0",
+          "path+file:///ws/core#fx-core@1.0.0"
+        ],
+        "resolve": {
+          "nodes": [
+            {
+              "id": "path+file:///ws/app#fx-app@1.0.0",
+              "deps": [
+                {
+                  "pkg": "path+file:///ws/core#fx-core@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "build",
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    },
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": "cfg(windows)"
+                    }
+                  ]
+                },
+                {
+                  "pkg": "path+file:///elsewhere/local#fx-local@0.3.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "path+file:///ws/core#fx-core@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "path+file:///elsewhere/local#fx-local@0.3.0",
+              "deps": [
+                {
+                  "pkg": "git+https://example.com/fx-deep#0123abcd",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "git+https://example.com/fx-deep#0123abcd",
+              "deps": []
+            }
+          ]
+        }
+      },
+      "root": "path+file:///ws/core#fx-core@1.0.0",
+      "expected": {
+        "entry": "fx-deep 1.0.0 registry+https://github.com/rust-lang/crates.io-index\nfx-leaf 1.0.0 registry+https://github.com/rust-lang/crates.io-index\n"
+      }
+    },
+    {
+      "name": "an example, test or bench links nothing",
+      "metadata": {
+        "packages": [
+          {
+            "id": "path+file:///ws/app#fx-app@1.0.0",
+            "name": "fx-app",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "bin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///ws/core#fx-core@1.0.0",
+            "name": "fx-core",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              },
+              {
+                "kind": [
+                  "example"
+                ]
+              },
+              {
+                "kind": [
+                  "test"
+                ]
+              },
+              {
+                "kind": [
+                  "bench"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///elsewhere/local#fx-local@0.3.0",
+            "name": "fx-local",
+            "version": "0.3.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+            "name": "fx-gui",
+            "version": "1.0.1",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+            "name": "fx-build",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+            "name": "fx-dev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+            "name": "fx-devdeep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+            "name": "fx-both",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+            "name": "fx-win",
+            "version": "0.5.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+            "name": "fx-leaf",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+            "name": "fx-deep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+            "name": "fx-coredev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "git+https://example.com/fx-deep#0123abcd",
+            "name": "fx-macro",
+            "version": "0.1.0",
+            "source": "git+https://example.com/fx-deep#0123abcd",
+            "targets": [
+              {
+                "kind": [
+                  "proc-macro"
+                ]
+              }
+            ]
+          }
+        ],
+        "workspace_members": [
+          "path+file:///ws/app#fx-app@1.0.0",
+          "path+file:///ws/core#fx-core@1.0.0"
+        ],
+        "resolve": {
+          "nodes": [
+            {
+              "id": "path+file:///ws/app#fx-app@1.0.0",
+              "deps": [
+                {
+                  "pkg": "path+file:///ws/core#fx-core@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "build",
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    },
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": "cfg(windows)"
+                    }
+                  ]
+                },
+                {
+                  "pkg": "path+file:///elsewhere/local#fx-local@0.3.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "path+file:///ws/core#fx-core@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                },
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": "dev",
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "path+file:///elsewhere/local#fx-local@0.3.0",
+              "deps": [
+                {
+                  "pkg": "git+https://example.com/fx-deep#0123abcd",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+              "deps": [
+                {
+                  "pkg": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+                  "dep_kinds": [
+                    {
+                      "kind": null,
+                      "target": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+              "deps": []
+            },
+            {
+              "id": "git+https://example.com/fx-deep#0123abcd",
+              "deps": []
+            }
+          ]
+        }
+      },
+      "root": "path+file:///ws/core#fx-core@1.0.0",
+      "expected": {
+        "entry": null
+      }
+    },
+    {
+      "name": "an answer read with no resolve",
+      "metadata": {
+        "packages": [
+          {
+            "id": "path+file:///ws/app#fx-app@1.0.0",
+            "name": "fx-app",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "bin"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///ws/core#fx-core@1.0.0",
+            "name": "fx-core",
+            "version": "1.0.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "path+file:///elsewhere/local#fx-local@0.3.0",
+            "name": "fx-local",
+            "version": "0.3.0",
+            "source": null,
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-gui@1.0.1",
+            "name": "fx-gui",
+            "version": "1.0.1",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-build@1.0.0",
+            "name": "fx-build",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-dev@1.0.0",
+            "name": "fx-dev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-devdeep@1.0.0",
+            "name": "fx-devdeep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-both@1.0.0",
+            "name": "fx-both",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-win@0.5.0",
+            "name": "fx-win",
+            "version": "0.5.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-leaf@1.0.0",
+            "name": "fx-leaf",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-deep@1.0.0",
+            "name": "fx-deep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "registry+https://github.com/rust-lang/crates.io-index#fx-coredev@1.0.0",
+            "name": "fx-coredev",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "targets": [
+              {
+                "kind": [
+                  "lib"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "git+https://example.com/fx-deep#0123abcd",
+            "name": "fx-macro",
+            "version": "0.1.0",
+            "source": "git+https://example.com/fx-deep#0123abcd",
+            "targets": [
+              {
+                "kind": [
+                  "proc-macro"
+                ]
+              }
+            ]
+          }
+        ],
+        "workspace_members": [
+          "path+file:///ws/app#fx-app@1.0.0",
+          "path+file:///ws/core#fx-core@1.0.0"
+        ],
+        "resolve": null
+      },
+      "root": "path+file:///ws/app#fx-app@1.0.0",
+      "expected": {
+        "error": "cargo metadata carries no resolve, so the closure of 'path+file:///ws/app#fx-app@1.0.0' cannot be read."
+      }
+    }
+  ],
+  "locks": [
+    {
+      "name": "a published crate's lockfile, its own edges read from its packaged manifest",
+      "lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"fx-app\"\nversion = \"2.0.0\"\ndependencies = [\n \"fx-both\",\n \"fx-build\",\n \"fx-core\",\n \"fx-dev\",\n \"fx-gui\",\n \"fx-win\",\n]\n\n[[package]]\nname = \"fx-both\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"aa\"\n\n[[package]]\nname = \"fx-build\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"bb\"\n\n[[package]]\nname = \"fx-core\"\nversion = \"2.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"cc\"\ndependencies = [\n \"fx-leaf 1.0.0\",\n]\n\n[[package]]\nname = \"fx-deep\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"dd\"\n\n[[package]]\nname = \"fx-deep\"\nversion = \"1.0.0\"\nsource = \"git+https://example.com/fx-deep#0123abcd\"\n\n[[package]]\nname = \"fx-dev\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ee\"\ndependencies = [\n \"fx-deep 1.0.0 (git+https://example.com/fx-deep#0123abcd)\",\n \"fx-leaf 2.0.0\",\n]\n\n[[package]]\nname = \"fx-gui\"\nversion = \"1.0.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ff\"\ndependencies = [\"fx-leaf 1.0.0\"]\n\n[[package]]\nname = \"fx-leaf\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"11\"\ndependencies = [\n \"fx-deep 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)\",\n]\n\n[[package]]\nname = \"fx-leaf\"\nversion = \"2.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"22\"\n\n[[package]]\nname = \"fx-win\"\nversion = \"0.5.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"33\"\n",
+      "manifest": "# THIS FILE IS AUTOMATICALLY GENERATED BY CARGO\n\n[package]\nedition = \"2021\"\nname = \"fx-app\"\nversion = \"2.0.0\"\nbuild = false\npublish = true\n\n[[bin]]\nname = \"fx-app\"\npath = \"src/main.rs\"\n\n[dependencies.fx-both]\nversion = \"1\"\n\n[dependencies.fx-core]\nversion = \"2.0.0\"\n\n[dependencies.gui]\nversion = \"1\"\noptional = true\npackage = \"fx-gui\"\n\n[dev-dependencies.fx-both]\nversion = \"1\"\n\n[dev-dependencies.fx-dev]\nversion = \"1\"\nfeatures = [\n    \"a\",\n    \"b\",\n]\n\n[build-dependencies]\nbuildy = { version = \"1\", package = \"fx-build\" }\n\n[target.'cfg(target_os = \"windows\")'.dependencies.fx-win]\nversion = \"0.5\"\n\n[features]\ngui = [\"dep:gui\"]\n",
+      "root": {
+        "name": "fx-app",
+        "version": "2.0.0"
+      },
+      "members": [
+        "fx-app",
+        "fx-core"
+      ],
+      "expected": {
+        "entry": "fx-both 1.0.0 registry+https://github.com/rust-lang/crates.io-index\nfx-build 1.0.0 registry+https://github.com/rust-lang/crates.io-index\nfx-deep 1.0.0 registry+https://github.com/rust-lang/crates.io-index\nfx-gui 1.0.1 registry+https://github.com/rust-lang/crates.io-index\nfx-leaf 1.0.0 registry+https://github.com/rust-lang/crates.io-index\nfx-win 0.5.0 registry+https://github.com/rust-lang/crates.io-index\n"
+      }
+    },
+    {
+      "name": "a lockfile recording no such root",
+      "lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"fx-app\"\nversion = \"2.0.0\"\ndependencies = [\n \"fx-both\",\n \"fx-build\",\n \"fx-core\",\n \"fx-dev\",\n \"fx-gui\",\n \"fx-win\",\n]\n\n[[package]]\nname = \"fx-both\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"aa\"\n\n[[package]]\nname = \"fx-build\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"bb\"\n\n[[package]]\nname = \"fx-core\"\nversion = \"2.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"cc\"\ndependencies = [\n \"fx-leaf 1.0.0\",\n]\n\n[[package]]\nname = \"fx-deep\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"dd\"\n\n[[package]]\nname = \"fx-deep\"\nversion = \"1.0.0\"\nsource = \"git+https://example.com/fx-deep#0123abcd\"\n\n[[package]]\nname = \"fx-dev\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ee\"\ndependencies = [\n \"fx-deep 1.0.0 (git+https://example.com/fx-deep#0123abcd)\",\n \"fx-leaf 2.0.0\",\n]\n\n[[package]]\nname = \"fx-gui\"\nversion = \"1.0.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ff\"\ndependencies = [\"fx-leaf 1.0.0\"]\n\n[[package]]\nname = \"fx-leaf\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"11\"\ndependencies = [\n \"fx-deep 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)\",\n]\n\n[[package]]\nname = \"fx-leaf\"\nversion = \"2.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"22\"\n\n[[package]]\nname = \"fx-win\"\nversion = \"0.5.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"33\"\n",
+      "manifest": "# THIS FILE IS AUTOMATICALLY GENERATED BY CARGO\n\n[package]\nedition = \"2021\"\nname = \"fx-app\"\nversion = \"2.0.0\"\nbuild = false\npublish = true\n\n[[bin]]\nname = \"fx-app\"\npath = \"src/main.rs\"\n\n[dependencies.fx-both]\nversion = \"1\"\n\n[dependencies.fx-core]\nversion = \"2.0.0\"\n\n[dependencies.gui]\nversion = \"1\"\noptional = true\npackage = \"fx-gui\"\n\n[dev-dependencies.fx-both]\nversion = \"1\"\n\n[dev-dependencies.fx-dev]\nversion = \"1\"\nfeatures = [\n    \"a\",\n    \"b\",\n]\n\n[build-dependencies]\nbuildy = { version = \"1\", package = \"fx-build\" }\n\n[target.'cfg(target_os = \"windows\")'.dependencies.fx-win]\nversion = \"0.5\"\n\n[features]\ngui = [\"dep:gui\"]\n",
+      "root": {
+        "name": "fx-app",
+        "version": "9.9.9"
+      },
+      "members": [
+        "fx-app"
+      ],
+      "expected": {
+        "error": "fx-app-2.0.0.crate/Cargo.lock: the lockfile records no single 'fx-app 9.9.9' path package."
+      }
+    },
+    {
+      "name": "a dependency the lockfile cannot tell apart",
+      "lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"fx-app\"\nversion = \"2.0.0\"\ndependencies = [\n \"fx-both\",\n \"fx-build\",\n \"fx-core\",\n \"fx-dev\",\n \"fx-gui\",\n \"fx-win\",\n]\n\n[[package]]\nname = \"fx-both\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"aa\"\n\n[[package]]\nname = \"fx-build\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"bb\"\n\n[[package]]\nname = \"fx-core\"\nversion = \"2.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"cc\"\ndependencies = [\n \"fx-leaf\",\n]\n\n[[package]]\nname = \"fx-deep\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"dd\"\n\n[[package]]\nname = \"fx-deep\"\nversion = \"1.0.0\"\nsource = \"git+https://example.com/fx-deep#0123abcd\"\n\n[[package]]\nname = \"fx-dev\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ee\"\ndependencies = [\n \"fx-deep 1.0.0 (git+https://example.com/fx-deep#0123abcd)\",\n \"fx-leaf 2.0.0\",\n]\n\n[[package]]\nname = \"fx-gui\"\nversion = \"1.0.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ff\"\ndependencies = [\"fx-leaf 1.0.0\"]\n\n[[package]]\nname = \"fx-leaf\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"11\"\ndependencies = [\n \"fx-deep 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)\",\n]\n\n[[package]]\nname = \"fx-leaf\"\nversion = \"2.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"22\"\n\n[[package]]\nname = \"fx-win\"\nversion = \"0.5.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"33\"\n",
+      "manifest": "# THIS FILE IS AUTOMATICALLY GENERATED BY CARGO\n\n[package]\nedition = \"2021\"\nname = \"fx-app\"\nversion = \"2.0.0\"\nbuild = false\npublish = true\n\n[[bin]]\nname = \"fx-app\"\npath = \"src/main.rs\"\n\n[dependencies.fx-both]\nversion = \"1\"\n\n[dependencies.fx-core]\nversion = \"2.0.0\"\n\n[dependencies.gui]\nversion = \"1\"\noptional = true\npackage = \"fx-gui\"\n\n[dev-dependencies.fx-both]\nversion = \"1\"\n\n[dev-dependencies.fx-dev]\nversion = \"1\"\nfeatures = [\n    \"a\",\n    \"b\",\n]\n\n[build-dependencies]\nbuildy = { version = \"1\", package = \"fx-build\" }\n\n[target.'cfg(target_os = \"windows\")'.dependencies.fx-win]\nversion = \"0.5\"\n\n[features]\ngui = [\"dep:gui\"]\n",
+      "root": {
+        "name": "fx-app",
+        "version": "2.0.0"
+      },
+      "members": [
+        "fx-app"
+      ],
+      "expected": {
+        "error": "fx-app-2.0.0.crate/Cargo.lock: 'fx-leaf' names 2 packages in the lockfile."
+      }
+    }
+  ]
+}

@@ -39,14 +39,16 @@ leaves transports, credentials, caches and integrity checks with the host.
 The host sends a standard `initialize`. The engine answers:
 
 - `serverInfo: { name: "telo", version: "<identity>" }` — the engine's
-  **identity**. For a release build it is `X`, the telo version the engine
+  **identity**. The published package reports `X`, the telo version the engine
   implements (the surface generation `requires: telo:` ranges are written
   against) and exactly the version of the `@telorun/language-server` package it
-  was published as. A build made while that release is still pending — a
-  development checkout, a main-branch deployment — reports `X+unreleased`: it
-  implements `X` but is not the `X` that will be published, so it never shares
-  an identity with a published engine. An engine built as a release candidate
-  reports `X.Y.Z-rc.N`; hosts read its precedence as `X.Y.Z`. A host orders
+  was published as. Every other build — a development checkout, a main-branch
+  deployment — reports `X+unreleased`, `X` being the version the tree records (read from
+  the tree alone, never from a release plan; only a package's own pack embeds
+  exactly `X`): it implements `X` but is not the published `X`, so it never
+  shares an identity with a published engine. An engine published as a release
+  candidate reports `X.Y.Z-rc.N`, and a checkout recording one
+  `X.Y.Z-rc.N+unreleased`; hosts read their precedence as `X.Y.Z`. A host orders
   identities and tests them against `requires: telo:` intervals by semver
   precedence (build metadata ignored), and tells engines apart by the whole
   string.

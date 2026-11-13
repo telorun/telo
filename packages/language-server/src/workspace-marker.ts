@@ -24,17 +24,12 @@ import { basenameOf, dirnameOf, joinSource, uriOfSource } from "./document-uri.j
 import type { HostClient } from "./host-client.js";
 import { toLspDiagnostic } from "./lsp-diagnostic.js";
 
-interface Listing {
-  readonly all: string[];
-  readonly withManifest: string[];
-}
-
 export class WorkspaceMarkers {
   /** Per marker directory. Pruned with the shared set and to no depth cap,
    *  because this answers the question `telo release` answers and a narrower
    *  walk reports a correct entry as matching nothing. Cached rather than walked
    *  per keystroke; dropped when a `telo.yaml` appears or disappears. */
-  private readonly listings = new Map<string, Promise<Listing>>();
+  private readonly listings = new Map<string, Promise<string[]>>();
 
   constructor(private readonly host: HostClient) {}
 
@@ -63,14 +58,13 @@ export class WorkspaceMarkers {
     ]);
     return {
       match: lastMatchIndex,
-      directories: () => listing.all,
-      moduleDirectories: () => listing.withManifest,
+      directories: () => listing,
       enclosingMarkers: () => outer,
       recordedRegistries: () => registries,
     };
   }
 
-  private listing(root: string): Promise<Listing> {
+  private listing(root: string): Promise<string[]> {
     const cached = this.listings.get(root);
     if (cached) return cached;
     const pending = this.walk(root);
@@ -81,15 +75,11 @@ export class WorkspaceMarkers {
     return pending;
   }
 
-  private async walk(root: string): Promise<Listing> {
+  private async walk(root: string): Promise<string[]> {
     const all: string[] = [];
-    const withManifest: string[] = [];
     const visit = async (dir: string, rel: string): Promise<void> => {
       const entries = await this.host.request(TeloMethod.listDirectory, { uri: uriOfSource(dir) });
       if (!entries) return;
-      if (rel !== "" && entries.some((e) => e.kind === "file" && e.name === "telo.yaml")) {
-        withManifest.push(rel);
-      }
       const children = entries.filter((e) => e.kind === "directory" && !GLOB_PRUNE_DIRS.has(e.name));
       for (const child of children) all.push(rel === "" ? child.name : `${rel}/${child.name}`);
       await Promise.all(
@@ -99,7 +89,7 @@ export class WorkspaceMarkers {
       );
     };
     await visit(root, "");
-    return { all: all.sort(), withManifest: withManifest.sort() };
+    return all.sort();
   }
 
   /** Directories above this marker's own that hold a marker, nearest first. */

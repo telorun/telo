@@ -9,7 +9,7 @@ const env = (over: Partial<Parameters<typeof workspaceDiagnostics>[1]> = {}) => 
 
 describe("marker diagnostics", () => {
   it("anchors each one on its own key", () => {
-    const text = ["release:", "  registry: 7", "  nope: 1", ""].join("\n");
+    const text = ["release:", "  units: [{ path: m, ecosystem: { telo: { '.': { registry: 7 } } } }]", "  nope: 1", ""].join("\n");
     const found = workspaceDiagnostics(text);
 
     expect(found.map((d) => [d.code, d.range.start.line])).toEqual([
@@ -29,11 +29,11 @@ describe("marker diagnostics", () => {
     expect(workspaceDiagnostics("# just an anchor\n")).toEqual([]);
   });
 
-  it("names an entry that discovers no module", () => {
-    const text = "release:\n  modules:\n    - modules/*\n    - tooling/*\n";
+  it("names an entry that names no unit", () => {
+    const text = "release:\n  units:\n    - { path: modules/*, ecosystem: telo }\n    - { path: tooling/*, ecosystem: telo }\n";
     const found = workspaceDiagnostics(
       text,
-      env({ moduleDirectories: () => ["modules/sql", "modules/ai"] }),
+      env({ directories: () => ["modules", "modules/sql", "modules/ai"] }),
     );
 
     expect(found.map((d) => d.code)).toEqual(["WORKSPACE_ENTRY_MATCHES_NOTHING"]);
@@ -43,10 +43,10 @@ describe("marker diagnostics", () => {
   it("distinguishes an entry a later one shadows from one that matches nothing", () => {
     // Last-match-wins makes the first entry inert rather than absent, and the
     // two want different fixes, so they are different diagnostics.
-    const text = "release:\n  modules:\n    - modules/*\n    - modules/**\n";
+    const text = "release:\n  units:\n    - { path: modules/*, ecosystem: telo }\n    - { path: modules/**, ecosystem: telo }\n";
     const found = workspaceDiagnostics(
       text,
-      env({ moduleDirectories: () => ["modules/sql"] }),
+      env({ directories: () => ["modules", "modules/sql"] }),
     );
 
     expect(found.map((d) => d.code)).toEqual(["WORKSPACE_ENTRY_SHADOWED"]);
@@ -55,14 +55,14 @@ describe("marker diagnostics", () => {
 
   it("reports a marker nested under another", () => {
     const found = workspaceDiagnostics(
-      "release:\n  modules:\n    - apps/*\n",
-      env({ moduleDirectories: () => ["apps/one"], enclosingMarkers: () => ["/repo"] }),
+      "release:\n  units:\n    - { path: apps/*, ecosystem: telo }\n",
+      env({ directories: () => ["apps", "apps/one"], enclosingMarkers: () => ["/repo"] }),
     );
     expect(found.map((d) => d.code)).toEqual(["WORKSPACE_MARKER_SHADOWED"]);
   });
 
   it("skips the repo-shaped checks with no environment", () => {
-    expect(workspaceDiagnostics("release:\n  modules:\n    - tooling/*\n")).toEqual([]);
+    expect(workspaceDiagnostics("release:\n  units:\n    - { path: tooling/*, ecosystem: telo }\n")).toEqual([]);
   });
 });
 
@@ -75,24 +75,24 @@ describe("marker completion", () => {
   it("offers a block's own keys inside it", () => {
     const text = "release:\n  \n";
     const items = workspaceCompletions(text, { line: 1, character: 2 });
-    expect(items.map((i) => i.label)).toEqual(["registry", "ignore", "modules"]);
+    expect(items.map((i) => i.label)).toEqual(["units", "ecosystems", "groups", "ignore", "maxBump"]);
   });
 
-  it("offers directories holding a manifest under release.modules", () => {
-    const text = "release:\n  modules:\n    - \n";
+  it("offers directories under release.units", () => {
+    const text = "release:\n  units:\n    - \n";
     const items = workspaceCompletions(
       text,
       { line: 2, character: 6 },
-      env({ moduleDirectories: () => ["modules/sql", "apps/hub"] }),
+      env({ directories: () => ["modules/sql", "apps/hub"] }),
     );
     expect(items.map((i) => i.label)).toEqual(["modules/sql", "apps/hub"]);
   });
 
-  it("offers the ledger's recorded base at release.registry", () => {
-    const text = "release:\n  registry: \n";
+  it("offers the ledger's recorded base at the telo ecosystem's registry", () => {
+    const text = "release:\n  ecosystems:\n    telo:\n      registry: \n";
     const items = workspaceCompletions(
       text,
-      { line: 1, character: 12 },
+      { line: 3, character: 16 },
       env({ recordedRegistries: () => ["oci://ghcr.io/telorun"] }),
     );
     expect(items.map((i) => i.label)).toEqual(["oci://ghcr.io/telorun"]);
@@ -104,20 +104,34 @@ describe("marker completion", () => {
   });
 
   it("reads a flow mapping, which a line scanner cannot see", () => {
-    const text = "release: {registry: oci://x/y, modules: [a]}\n";
+    const text = "release: {maxBump: minor, units: [a]}\n";
     const items = workspaceCompletions(
       text,
       // Inside the flow sequence at `[a]`.
-      { line: 0, character: 41 },
-      env({ moduleDirectories: () => ["modules/sql"] }),
+      { line: 0, character: 34 },
+      env({ directories: () => ["modules/sql"] }),
     );
     expect(items.map((i) => i.label)).toEqual(["modules/sql"]);
   });
 
-  it("offers an entry's own keys inside a modules entry", () => {
-    const text = "release:\n  modules:\n    - path: vendor/aws/*\n      \n";
+  it("offers an ecosystem's own keys in its settings, never flat on an entry", () => {
+    const text = "release:\n  ecosystems:\n    docker:\n      \n";
+    expect(workspaceCompletions(text, { line: 3, character: 6 }).map((i) => i.label)).toEqual(["registry", "name", "context"]);
+  });
+
+  it("offers an entry's own keys inside a units entry", () => {
+    const text = "release:\n  units:\n    - path: vendor/aws/*\n      \n";
     const items = workspaceCompletions(text, { line: 3, character: 6 });
-    expect(items.map((i) => i.label)).toEqual(["path", "registry", "ignore"]);
+    expect(items.map((i) => i.label)).toEqual([
+      "path",
+      "ecosystem",
+      "version",
+      "payload",
+      "metafile",
+      "versionFiles",
+      "ignore",
+      "maxBump",
+    ]);
   });
 
   it("offers name and sensitive inside an env.files entry, and true / false for the mark", () => {
@@ -143,10 +157,10 @@ describe("an entry that claims nothing", () => {
   it("says so differently when a later negation is what emptied it", () => {
     // "matches no directory holding a telo.yaml" would be factually wrong here
     // and would send the author hunting for a typo in a correct pattern.
-    const text = "release:\n  modules:\n    - modules/*\n    - '!modules/**'\n";
+    const text = "release:\n  units:\n    - { path: modules/*, ecosystem: telo }\n    - '!modules/**'\n";
     const found = workspaceDiagnostics(
       text,
-      env({ moduleDirectories: () => ["modules/sql"] }),
+      env({ directories: () => ["modules/sql"] }),
     );
     expect(found.map((d) => d.code)).toEqual(["WORKSPACE_ENTRY_SHADOWED"]);
     expect(found[0].message).toContain("excluded by");

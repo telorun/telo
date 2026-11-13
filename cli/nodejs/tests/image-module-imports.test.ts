@@ -27,7 +27,7 @@ beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "telo-image-imports-"));
   write(
     "telo-workspace.yaml",
-    "release:\n  registry: oci://registry.example/acme\n  modules:\n    - modules/*\n    - apps/*\n",
+    "release:\n  ecosystems: { telo: { registry: oci://registry.example/acme }, docker: { registry: registry.example/acme } }\n  units:\n    - { path: modules/*, ecosystem: telo }\n    - { path: apps/*, ecosystem: [telo, docker] }\n",
   );
   write("modules/lib/telo.yaml", lib());
   write(
@@ -40,9 +40,9 @@ beforeEach(async () => {
   const planned = await planWorkspace(workspace, { rungs: {}, baseRef: "HEAD" });
   writeLedger(
     root,
-    await recordLedger(root, planned.targets, {
+    await recordLedger(root, {
       ...planned.plan,
-      modules: workspace.modules.map((module) => ({
+      units: workspace.modules.map((module) => ({
         key: module.key,
         name: module.name,
         from: module.version,
@@ -60,16 +60,18 @@ afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe("an image module's import edges", () => {
   it("plans nothing when nothing changed", async () => {
-    expect((await plan()).modules).toEqual([]);
+    expect((await plan()).units).toEqual([]);
   });
 
   it("bumps the image module, naming the sibling, when only the sibling's payload changed", async () => {
     write("modules/lib/telo.yaml", lib("  description: changed\n"));
-    const modules = (await plan()).modules;
+    const modules = (await plan()).units;
 
     expect(modules.map((module) => module.key).sort()).toEqual(["apps/site", "modules/lib"]);
-    expect(modules.find((module) => module.key === "apps/site")?.reasons).toEqual([
-      { kind: "imports", module: "modules/lib" },
-    ]);
+    // Its own module artifact pins the sibling, so its manifest layer moved too.
+    expect(modules.find((module) => module.key === "apps/site")?.reasons).toContainEqual({
+      kind: "imports",
+      unit: "modules/lib",
+    });
   });
 });

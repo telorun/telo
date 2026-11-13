@@ -4,8 +4,9 @@
  * The marker is not a manifest — it declares no `kind:`, which is exactly how a
  * host decides a YAML file is Telo's — so nothing here goes through the analysis
  * registry. What it shares with every other surface is the RULE: the shape is
- * declared once as data in the analyzer, the reader is lenient, and this is one
- * of its two consumers. An editor offering a key the checker rejects is the
+ * declared once as data (`@telorun/release` for `release:`, the analyzer for
+ * `env:` and the ecosystems a Telo host serves), the reader is lenient, and this
+ * is one of its two consumers. An editor offering a key the checker rejects is the
  * failure a second key list produces, so there is not one.
  *
  * **Two tiers of diagnostic, and the second is optional.** Everything decidable
@@ -18,15 +19,22 @@
 
 import {
   DiagnosticSeverity,
+  TELO_ECOSYSTEM,
+  TELO_RELEASE_ADAPTERS,
   WORKSPACE_SCHEMA,
   readWorkspaceConfig,
-  settingsForModule,
   type PatternMatch,
   type Position,
   type Range,
+} from "@telorun/analyzer";
+import {
+  BUMP_LEVELS,
+  decidingEntry,
+  normalizeUnitKey,
+  type UnitEntry,
   type WorkspaceDiagnostic,
   type WorkspaceKeySchema,
-} from "@telorun/analyzer";
+} from "@telorun/release";
 import { isMap, isSeq, parseDocument, type Document, type Node } from "yaml";
 import type { CompletionResult, NormalizedDiagnostic } from "../types.js";
 
@@ -39,11 +47,8 @@ import type { CompletionResult, NormalizedDiagnostic } from "../types.js";
 export interface WorkspaceEnvironment {
   /** Gitignore-style matching, from the glob package the host already has. */
   readonly match: PatternMatch;
-  /** Workspace-relative POSIX directories, for `env.roots`. */
+  /** Workspace-relative POSIX directories, for `release.units` and `env.roots`. */
   readonly directories?: () => readonly string[];
-  /** Workspace-relative POSIX directories holding a `telo.yaml`, for
-   *  `release.modules`. */
-  readonly moduleDirectories?: () => readonly string[];
   /** Markers above this one, workspace-relative, nearest first. */
   readonly enclosingMarkers?: () => readonly string[];
   /** Registry bases `.changes/ledger.yaml` records, most common first. */
@@ -62,39 +67,34 @@ export function workspaceDiagnostics(
 
   if (!env) return out;
 
-  const modules = config.release?.modules ?? [];
-  const moduleDirs = env.moduleDirectories?.();
-  if (moduleDirs) {
-    // A pattern under which no directory holds a manifest is overwhelmingly a
-    // typo in a subtree name — the failure a four-way workspace split hid for
-    // months, because nothing ever said the entry was doing nothing.
-    const claimed = modules.map(() => new Set<string>());
-    for (const dir of moduleDirs) {
-      const settings = settingsForModule({ modules }, dir, env.match);
-      if (settings) claimed[settings.entry]!.add(dir);
+  const release = config.release;
+  const dirs = env.directories?.();
+  if (release && dirs) {
+    // A pattern under which no directory exists is overwhelmingly a typo in a
+    // subtree name — nothing else would ever say the entry is doing nothing.
+    const claimed = release.units.map(() => new Set<string>());
+    for (const dir of dirs) {
+      const entry = decidingEntry(release, dir);
+      if (entry) claimed[release.units.indexOf(entry)]!.add(dir);
     }
-    for (const [index, entry] of modules.entries()) {
+    for (const [index, entry] of release.units.entries()) {
       if (entry.path.startsWith("!")) continue;
-      const at: (string | number)[] = ["release", "modules", index];
+      const at: (string | number)[] = ["release", "units", entry.index];
       if (claimed[index]!.size !== 0) continue;
 
       // Three ways an entry can claim nothing, and they send an author to three
       // different places: a pattern that matches no directory at all is a typo,
       // while one every later entry re-claims or every later negation removes is
-      // correct and inert. Reporting the last two as "matches no directory" is
-      // factually wrong and starts a hunt for a typo that is not there.
-      const overtaken = modules.findIndex(
+      // correct and inert.
+      const overtaken = release.units.findIndex(
         (later, laterIndex) =>
-          laterIndex > index &&
-          moduleDirs.some(
-            (dir) => env.match(dir, [entry.path]) >= 0 && env.match(dir, [later.path]) >= 0,
-          ),
+          laterIndex > index && dirs.some((dir) => entryMatches(entry, dir, env.match) && entryMatches(later, dir, env.match)),
       );
       if (overtaken < 0) {
         out.push(
           make(
             "WORKSPACE_ENTRY_MATCHES_NOTHING",
-            `'${entry.path}' matches no directory holding a telo.yaml, so it discovers no module.`,
+            `'${entry.path}' matches no directory, so it names no unit.`,
             at,
             doc,
             text,
@@ -103,14 +103,14 @@ export function workspaceDiagnostics(
         );
         continue;
       }
-      const later = modules[overtaken]!;
+      const later = release.units[overtaken]!;
       out.push(
         make(
           "WORKSPACE_ENTRY_SHADOWED",
           later.path.startsWith("!")
-            ? `'${entry.path}' claims no module: every one it matches is excluded by ` +
+            ? `'${entry.path}' claims no unit: every directory it matches is excluded by ` +
                 `'${later.path}', which comes later and therefore wins.`
-            : `'${entry.path}' claims no module: every one it matches is also matched by ` +
+            : `'${entry.path}' claims no unit: every directory it matches is also matched by ` +
                 `'${later.path}', which comes later and therefore wins. Its settings apply to ` +
                 `nothing.`,
           at,
@@ -122,7 +122,6 @@ export function workspaceDiagnostics(
     }
   }
 
-  const dirs = env.directories?.();
   if (dirs && config.env?.roots) {
     for (const [index, pattern] of config.env.roots.entries()) {
       if (pattern.startsWith("!")) continue;
@@ -157,6 +156,13 @@ export function workspaceDiagnostics(
   }
 
   return out;
+}
+
+/** Whether an entry's path, its `!` aside, names `dir`: a literal path its own
+ *  directory only, a pattern gitignore-style. */
+function entryMatches(entry: UnitEntry, dir: string, match: PatternMatch): boolean {
+  const path = entry.path.replace(/^!/, "");
+  return /[*?]/.test(path) ? match(dir, [path]) >= 0 : normalizeUnitKey(path) === dir;
 }
 
 function normalize(
@@ -252,16 +258,16 @@ function positionAt(text: string, offset: number): Position {
  * What may be written at the cursor.
  *
  * Keys come from the same declared shape the strict half walks. Values come from
- * the repo where a host can see it: directories holding a manifest at
- * `release.modules`, any directory at `env.roots`, and the base the ledger
- * already records at `release.registry` — that value is written down, and
- * retyping it differently is exactly what `LEDGER_REGISTRY_MISMATCH` exists to
- * catch.
+ * the repo where a host can see it: directories at `release.units` and
+ * `env.roots`, and the base the ledger already records at a `telo` `registry`
+ * (under `release.ecosystems.telo` or at a module anchor)
+ * — that value is written down, and retyping it differently is exactly what
+ * `LEDGER_REGISTRY_MISMATCH` exists to catch.
  *
  * **The cursor is located on the SAME parsed document the diagnostics use.** A
  * line/indent scanner beside an AST is two structural readings of one file, and
  * the cheaper one cannot see a flow mapping, a block scalar or a comment
- * containing `key:` — so `release: {modules: [x]}` would silently offer nothing.
+ * containing `key:` — so `release: {units: [x]}` would silently offer nothing.
  * Indentation is consulted only where the parser genuinely has no node to offer:
  * a half-typed line is not yet part of any collection, which is exactly when
  * completion is asked.
@@ -274,27 +280,32 @@ export function workspaceCompletions(
   const doc = parseDocument(text);
   const at = contextAt(doc, text, position);
 
+  const settingsOf = ecosystemSettingsAt(at.path);
   if (at.kind === "value") {
+    if (settingsOf?.ecosystem === TELO_ECOSYSTEM && settingsOf.key === "registry") {
+      return (env?.recordedRegistries?.() ?? []).map((base) => ({
+        label: base,
+        kind: "value" as const,
+        detail: "recorded in .changes/ledger.yaml",
+      }));
+    }
     switch (at.path.join(".")) {
-      case "release.registry":
-        return (env?.recordedRegistries?.() ?? []).map((base) => ({
-          label: base,
-          kind: "value" as const,
-          detail: "recorded in .changes/ledger.yaml",
-        }));
-      case "release.modules":
-        return (env?.moduleDirectories?.() ?? []).map((dir) => ({
-          label: dir,
-          kind: "folder" as const,
-          detail: "holds a telo.yaml",
-        }));
+      case "release.units":
+      case "release.units.path":
+        return (env?.directories?.() ?? []).map((dir) => ({ label: dir, kind: "folder" as const }));
+      case "release.units.ecosystem":
+        return valuesFrom(TELO_RELEASE_ADAPTERS.map((adapter) => adapter.ecosystem));
+      case "release.maxBump":
+      case "release.units.maxBump":
+        return valuesFrom(BUMP_LEVELS);
       case "release.ignore":
-        return valuesFrom(WORKSPACE_SCHEMA.release.properties.ignore.examples);
+      case "release.units.ignore":
+        return valuesFrom(WORKSPACE_SCHEMA.release!.properties.ignore!.examples);
       case "env.roots":
         return (env?.directories?.() ?? []).map((dir) => ({ label: dir, kind: "folder" as const }));
       case "env.files":
       case "env.files.name":
-        return valuesFrom(WORKSPACE_SCHEMA.env.properties.files.examples);
+        return valuesFrom(WORKSPACE_SCHEMA.env!.properties.files!.examples);
       default:
         return keySchemaAt(at.path)?.type === "boolean" ? valuesFrom(["true", "false"]) : [];
     }
@@ -306,15 +317,37 @@ export function workspaceCompletions(
       keyItem(name, schema.description),
     );
   }
+  // An ecosystem's settings: under `release.ecosystems.<ecosystem>`, or at an
+  // anchor of `ecosystem: { <ecosystem>: { <anchor>: { … } } }`.
+  if (settingsOf && settingsOf.key === undefined) {
+    return Object.entries(WORKSPACE_SCHEMA.release?.ecosystems?.[settingsOf.ecosystem] ?? {}).map(([name, schema]) =>
+      keyItem(name, schema.description),
+    );
+  }
+  if (at.path.join(".") === "release.ecosystems") {
+    return Object.keys(WORKSPACE_SCHEMA.release?.ecosystems ?? {}).map((name) => keyItem(name, `Settings every ${name} anchor takes.`));
+  }
   const [block, ...rest] = at.path;
   const blockSchema = WORKSPACE_SCHEMA[block!];
   if (!blockSchema) return [];
-  // Inside one entry of an entry list (`release.modules`, `env.files`) the keys
+  // Inside one entry of an entry list (`release.units`, `env.files`) the keys
   // are the entry's, not the block's.
   const entry = rest.length > 1 ? blockSchema.properties[rest[0]!]?.entry : undefined;
   return Object.entries(entry?.properties ?? blockSchema.properties).map(([name, schema]) =>
     keyItem(name, schema.description),
   );
+}
+
+/** Where a path sits inside one ecosystem's settings, and on which key. */
+function ecosystemSettingsAt(path: readonly string[]): { ecosystem: string; key?: string } | undefined {
+  if (path[0] !== "release") return undefined;
+  if (path[1] === "ecosystems" && path[2] !== undefined && path.length <= 4) {
+    return { ecosystem: path[2], ...(path[3] !== undefined ? { key: path[3] } : {}) };
+  }
+  if (path[1] === "units" && path[2] === "ecosystem" && path[3] !== undefined && path[4] !== undefined && path.length <= 6) {
+    return { ecosystem: path[3], ...(path[5] !== undefined ? { key: path[5] } : {}) };
+  }
+  return undefined;
 }
 
 /** The declared schema of the key a value path names — a block's key, or a key

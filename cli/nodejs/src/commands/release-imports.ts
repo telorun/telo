@@ -189,7 +189,7 @@ export async function rewriteManifestFile(
 export function newImportPinner(rungs: RegistryRungs, log: Logger): LocalImportPinner {
   return new LocalImportPinner({
     rungs,
-    onModule: (module, index, total) =>
+    onUnit: (module, index, total) =>
       outProgress(log.err.dim(`  [${index + 1}/${total}] ${module.key}`)),
   });
 }

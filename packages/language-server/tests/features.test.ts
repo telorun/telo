@@ -195,11 +195,11 @@ describe("telo-workspace.yaml", () => {
   // The marker is opened as a buffer only: a real one here would re-root every
   // module beneath it for the repository's own release tooling.
   const MARKER = join(FIXTURES, "marker", "telo-workspace.yaml");
-  const TEXT = "release:\n  modules:\n    - apps/*\n    - tooling/*\n    - \n";
+  const TEXT =
+    "release:\n  units:\n    - { path: apps/*, ecosystem: telo }\n    - { path: tooling/*, ecosystem: telo }\n    - \n";
   const env = {
     match: lastMatchIndex,
     directories: () => ["apps", "apps/one"],
-    moduleDirectories: () => ["apps/one"],
     // The repository root, spelled as the engine's source for it: the path of
     // the URI the marker was opened under (`/D:/…` on Windows).
     enclosingMarkers: () => [decodeURIComponent(new URL(uri(REPO)).pathname)],

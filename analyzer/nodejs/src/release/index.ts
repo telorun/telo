@@ -1,105 +1,54 @@
 /**
- * The release model: module identity, fragments, the ledger, the edge graph,
- * level propagation and version planning.
- *
- * Browser-safe by construction — pure data in, plan out — so telo studio can
- * answer "what does changing this library bump?" from the same model the CLI
- * releases from. Everything Node-shaped (finding the workspace, running the
- * controller builder, building payloads, reading git, writing files) is
- * `cli/nodejs/src/release/`.
+ * The Telo module ecosystem's pure half of the release model — module identity,
+ * the `telo.yaml` version stamp, a module artifact's layer keys, destinations —
+ * and `telo-workspace.yaml` as a Telo host reads it. The generic planner is
+ * `@telorun/release`; everything Node-shaped is `cli/nodejs/src/release/`.
  */
-
-export {
-  FRAGMENT_KINDS,
-  FRAGMENT_KIND_ORDER,
-  applyBump,
-  compareVersions,
-  isFragmentKind,
-  isReleaseVersion,
-  levelOfKind,
-  maxLevel,
-} from "./bump-level.js";
-export type { BumpLevel, FragmentKind } from "./bump-level.js";
-
-export {
-  CHANGELOG_HEADER,
-  prependChangelogRelease,
-  renderChangelogRelease,
-} from "./changelog.js";
-export type { ChangelogRelease } from "./changelog.js";
-
-export { FragmentError, normalizeModuleKey, parseFragment, serializeFragment } from "./fragment.js";
-export type { ModuleKey, ReleaseFragment } from "./fragment.js";
-
-export { EMPTY_LEDGER, LEDGER_PATH, LedgerError, parseLedger, serializeLedger } from "./ledger.js";
-export type { Ledger, LedgerEntry } from "./ledger.js";
 
 export {
   LOCALLY_DERIVED_LAYERS,
   MANIFEST_LAYER,
-  diffLayerDigests,
   layerDigestKey,
 } from "./payload-digest.js";
-export type { LayerChange, LayerDigests } from "./payload-digest.js";
-
-export { orderByImports, planRelease } from "./release-plan.js";
-export type {
-  ArtifactKind,
-  BumpReason,
-  ChangelogEntry,
-  ModuleEvidence,
-  PlannedModule,
-  ReleaseDiagnostic,
-  ReleaseEvidence,
-  ReleasePlan,
-} from "./release-plan.js";
+export type { LayerDigests } from "./payload-digest.js";
 
 export {
   VersionStampError,
   readManifestVersion,
-  stampCrateVersion,
-  stampLockedCrateVersion,
   stampManifestVersion,
   stampSelfNpmPins,
-  stampPackageVersion,
 } from "./version-stamp.js";
+
+export {
+  MODULE_MANIFEST,
+  TELO_ECOSYSTEM,
+  TELO_RELEASE_ADAPTERS,
+  modulePackageFiles,
+  teloAdapter,
+  teloLegacyLedgerLayers,
+} from "./telo-adapter.js";
 
 export { checkDestinationCollisions } from "./destinations.js";
 export type { ModuleDestination } from "./destinations.js";
 
 export {
   DEFAULT_ENV_FILES,
-  DEFAULT_RELEASE_IGNORE,
   WORKSPACE_FILENAME,
-  WorkspaceConfigError,
-  diagnosticsFor,
-  hasError,
   matchesPatterns,
   readWorkspaceConfig,
-  requireReleaseSettings,
-  settingsForModule,
 } from "./workspace-config.js";
 export type {
   EnvFileEntry,
   EnvSettings,
-  ModuleEntry,
-  ModuleSettings,
   PatternMatch,
-  ReleaseSettings,
   WorkspaceConfig,
-  WorkspaceDiagnostic,
-  WorkspaceDiagnosticCode,
   WorkspaceRead,
 } from "./workspace-config.js";
 
 export {
+  ENV_BLOCK_SCHEMA,
   ENV_FILE_ENTRY_KEYS,
-  MODULE_ENTRY_KEYS,
   WORKSPACE_BLOCKS,
   WORKSPACE_SCHEMA,
-} from "./workspace-schema.js";
-export type {
-  WorkspaceBlockSchema,
-  WorkspaceEntrySchema,
-  WorkspaceKeySchema,
+  workspaceSchema,
 } from "./workspace-schema.js";

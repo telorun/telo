@@ -17,7 +17,7 @@ Report, for the area you were given:
 - What a card here would owe beyond the code, because a review will demand it: whether the
   area has a static-analysis half that must move with the runtime one, a twin in another
   language to keep aligned, docs that must be updated, and whether it is a published package
-  or module (so the change needs a changeset or a release fragment).
+  or module (so the change needs a release fragment (`telo release add --unit <path> …`)).
 - What is already broken or missing in the area, marked **pre-existing**. That is context the
   architect takes to the user, not work a card owes.
 - What you could not determine, stated plainly rather than guessed.

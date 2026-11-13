@@ -1,4 +1,4 @@
-# @telorun/language-server
+# Changelog
 
 ## 0.136.0
 

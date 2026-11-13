@@ -1,0 +1,33 @@
+units:
+  release: Added
+  analyzer: Added
+  cli: Added
+  packages/ide-support: Added
+body: "The release planner is its own MIT package, `@telorun/release`, with a
+  browser-safe entry holding the whole release model: release units listed in
+  `telo-workspace.yaml` under `release.units` (string-or-object entries, `!` excludes,
+  last match wins), each shipping through the ecosystems it lists — a name, an
+  order-free set, or a map of ecosystem to the anchor directories inside the unit
+  holding that ecosystem's package — with `version`, `payload`, `metafile`,
+  `versionFiles`, `ignore` and `maxBump` per entry, and `groups` and `maxBump` beside
+  them. It ships the `npm`, `cargo`, `docker` and `helm` ecosystems' recognition and
+  version files, resolves each unit's version from a declared `version:` or the one
+  anchor that keeps one (`WORKSPACE_UNIT_VERSION_UNRESOLVED` otherwise), refuses an
+  ecosystem no adapter serves (`WORKSPACE_ECOSYSTEM_UNAVAILABLE`), an anchor that is no
+  literal directory in the unit or holds no package (`WORKSPACE_ANCHOR_INVALID`), one
+  package claimed by two units (`WORKSPACE_ANCHOR_CLAIMED`), a unit left with no layer
+  (`WORKSPACE_UNIT_PAYLOAD_EMPTY`) and a key none of an entry's ecosystems reads
+  (`WORKSPACE_UNKNOWN_KEY`). The planner bumps a unit when its layers' digests move from
+  the ledger, at the level its fragments, import edges, inline edges and the version
+  locations of other units inside its payload give it; a group releases every member at
+  one version, a level above `maxBump` is refused (`MAX_BUMP_EXCEEDED`, replacing the
+  fixed rejection of `Changed` / `Removed`), locations that disagree are
+  `UNIT_VERSION_MISMATCH`, and a candidate plan versions units `<final>-<id>.<k>` beside
+  an untouched final entry. The ledger nests layers by ecosystem and anchor (`telo: {
+  \".\": … }`, `npm: { nodejs: … }`, `payload:`) and still reads the module ledger
+  shape; fragments name `units:` and still read `modules:`; a changelog started under
+  another heading becomes `# Changelog`. `release.modules` and `release.registry` are
+  refused naming `release.units`: a module is now an entry listing `ecosystem: telo`
+  with its `registry:`, an image module one listing `[telo, docker]`, and a module's npm
+  and Cargo packages are found from its controller locators and `sources:` crates rather
+  than fixed `nodejs/` and `rust/` subpaths."

@@ -1,6 +1,7 @@
 /**
  * A module's payload, reduced to one digest per layer — the exact answer to
- * "did this module's artifact change?".
+ * "did this module's artifact change?". These keys nest under the module's
+ * `telo` anchor in the ledger (`telo: { ".": { manifest: … } }`).
  *
  * It is exact because it is taken from the bytes: it fires for an inlined
  * sibling's edit, for a shared-library fix, and for a transitive bump the
@@ -16,7 +17,8 @@
 
 import { PLATFORM_AXES, type ArtifactSelector, type LayerRole } from "../artifact-selector.js";
 
-/** Per-layer integrity, keyed by `layerDigestKey`. */
+/** A module artifact's per-layer integrity, keyed by `layerDigestKey` — what
+ *  the `telo` ecosystem records under its anchor in the ledger. */
 export type LayerDigests = Readonly<Record<string, string>>;
 
 /** The ledger key for the module's `telo.yaml` layer. */
@@ -63,26 +65,4 @@ export function layerDigestKey(role: LayerRole | string, selector?: ArtifactSele
     (value): value is string => value !== undefined,
   );
   return `${role}/${parts.join("+")}`;
-}
-
-/** A layer whose digest differs between two readings, or that exists in only
- *  one of them. `before` / `after` are absent when the layer is absent there —
- *  a payload that gained or lost a layer changed just as much as one whose
- *  bytes moved. */
-export interface LayerChange {
-  readonly layer: string;
-  readonly before?: string;
-  readonly after?: string;
-}
-
-/** Every layer on which two readings disagree, in key order. Empty means the
- *  payloads are byte-identical. */
-export function diffLayerDigests(before: LayerDigests, after: LayerDigests): LayerChange[] {
-  const changes: LayerChange[] = [];
-  for (const layer of [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()) {
-    const a = before[layer];
-    const b = after[layer];
-    if (a !== b) changes.push({ layer, ...(a ? { before: a } : {}), ...(b ? { after: b } : {}) });
-  }
-  return changes;
 }
