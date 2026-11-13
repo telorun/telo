@@ -1,0 +1,2804 @@
+# Changelog
+
+## 0.136.0
+
+### Minor Changes
+
+- 330c28e: A `with:` scope's resources read the inputs of the call that opened the scope. A kind declares it with `x-telo-scope: { regions: [...], openedBy: dispatch }` (`Telo.Sequence` does); the members' creation-time fields then read `inputs`, typed by the holder's `inputType` under `telo check` (an undeclared field is `CEL_UNKNOWN_FIELD`, refused at load too) and offered by the editor's completion, while a scope in the string or list form binds nothing (`CEL_UNKNOWN_IDENTIFIER`). `openedBy: dispatch` on a kind nothing dispatches, or a malformed object form, is `SCOPE_OPENED_BY_INVALID` / `ERR_SCOPE_OPENED_BY_INVALID`.
+
+  `ScopeHandle.run` now takes the opening inputs as its first, required argument — an object on a scope opened by dispatch, `null` on any other; a legacy one-argument open reads as `null`, and a disagreement is `ERR_SCOPE_OPENING_INVALID`. Every run registers its own copy of the member declarations, so a run after the first no longer reuses the first run's injected instances.
+
+  A run is its contract applied to `{}`: the kernel fills an instance's input-contract defaults, validates them (`ERR_INPUT_INVALID`) and hands them to `run(ctx, inputs)` (`Controller.Run` gains `inputs`), so a sequence started as a boot target reads its defaults; `CONTRACT_INPUTS_AT_RUN_SITE` now refuses any contract `{}` fails.
+
+  Each scope run owns a redaction set — the opening inputs at the holder's `x-telo-sensitive` paths, matched by substring — applied to the logs, `Created` properties and trace payloads of the resources created in the run, to the trace payloads of the dispatches the holder issues inside it (`InvokeContext.scopeRun`, the step engine's per-dispatch identity from `ScopeContext.runIdentity`) and of the opening dispatch, and to an error that left the run. The module context's set never grows with call count.
+
+  A scope run lives until the streams leaving it settle. What `ScopeHandle.run`'s callback returns is handed back with every stream in it held, and the run is torn down once each has been read to its end, failed or been cancelled — in the background, a teardown failure logged on the holder as `scope.teardown.failed`; a run nothing leaves is torn down before `run` returns, as before. `Telo.Sequence` produces its `outputs` inside the scope, so a scoped resource's stream it returns, maps or hands to detached work keeps the resource alive. Every dispatch now carries its own `InvokeContext.owner` (inherited by `deriveContext`, `owner` on the controller protocol's dispatch contexts, additive within `telo-10`), which owns a held stream returned to it and cancels one it never reads when it ends; a source from `ctx.createCancellationSource()` is a root owner until it is disposed or cancelled, the boot runner one owner for its whole `targets:` run, and a context with no owner — `ctx.rootContext()` alone, the free `createCancellationSource()` — owns nothing, so a held stream reaching it is cancelled at once and a later pull raises `ERR_INVOKE_CANCELLED` naming the fix. A `Telo.Service`'s `run()` now runs with no ambient invocation context.
+
+### Patch Changes
+
+- @telorun/cel@0.136.0
+- @telorun/message-format@0.136.0
+
+## 0.135.0
+
+### Minor Changes
+
+- 07c52fa: `Telo.Value` is a built-in kind: an invocable that returns a value shaped from its inputs and optional named bindings, checked against its `inputType` and `outputType`, with no import. It answers exactly as `Run.Value` does, listed by `telo builtins`. The Rust kernel refuses it as it does the other CEL-evaluating built-ins.
+
+### Patch Changes
+
+- Updated dependencies [d036bfa]
+- Updated dependencies [d036bfa]
+  - @telorun/cel@0.135.0
+  - @telorun/message-format@0.135.0
+
+## 0.134.0
+
+### Minor Changes
+
+- 04094d3: `telo check` warns when a step inside a `replayed` region targets a kind with no declared `outputType` (`DURABLE_CONTRACT_REQUIRED`; a step in an `idempotent` region and a target whose result is typed from its own `outputs:` are exempt). The SDK's step engine can resume a durable body from a baseline: `DurableRunHandle` gains an optional `baseline(capture, completed)` and `executeSteps` an optional `durableBody` argument, so a run's journal can be compacted at a step boundary of the workflow's own steps.
+
+### Patch Changes
+
+- @telorun/cel@0.134.0
+- @telorun/message-format@0.134.0
+
+## 0.133.0
+
+### Minor Changes
+
+- 0c63ff5: An application can open its own page. The built-in `Telo.OpenUrl` takes an `http` or `https` URL, logs `telo.url.open_requested` with `url.full` on every call and hands the URL to the host, returning `null` at once; no outcome of opening a page is an error. `telo run` at a terminal opens it in the browser (`BROWSER` first, else the system opener, the URL passed as one argument), at most once per address in a session, so a `--watch` reload opens no new tab; `--no-input`, runner sessions and every other host only log it. The terminal opener now reports a failed launch on stderr, for the inspector's `--open` too. A literal URL of another scheme, or one holding a user or password, is refused by `telo check` and a computed one when the call runs, so credentials never reach the log; `telo check` no longer refuses every computed value at a URL slot that forbids a member; the Rust kernel refuses the kind with `ERR_UNSUPPORTED_MANIFEST_FEATURE`. A read of observed state before its resource has started is again reported as `ERR_OBSERVED_STATE_UNAVAILABLE` naming the expression, rather than as a bare missing-key failure. A templated kind's `run:` entry is now started through the kernel's run path, as its `targets:` are, so it may report observed state.
+- 0d833e3: A `Telo.HostPath` slot may say what media type its file holds: `x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png }`. The vocabulary is data in the value-type entry — `image/png`, `image/jpeg`, `image/gif`, `image/webp` and `application/pdf`, each with the signatures of the file's leading bytes — and a media type with none is `X_TELO_TYPE_ARGUMENT_INVALID`. `telo check` reads the head of a `!module-path` file through its manifest source (the optional `ManifestSource.readHead`, which the Node kernel's file source implements) and refuses one of another type, or a directory, as `HOST_PATH_CONTENT_MISMATCH` at a resource field and at a need parameter, naming the path, the type found (or that none known matched) and the one declared; a variable declared with another `mediaType` read into the field or passed to a library input declaring another is refused the same way, and at a call's `inputs:` as `CEL_TYPE_ARGUMENT_MISMATCH`. Both kernels refuse the same at creation, after the entry check, as `ERR_HOST_PATH_CONTENT_MISMATCH`, and the Node kernel an Application variable at load. An absent path is never refused, and the file's size is not judged.
+- 0d833e3: A process embedding the kernel can supply, per `tcp` port number, the connections of a socket it owns itself: `new Kernel({ listeners: new HostListeners({ ports, unavailable }) })`, then `listeners.admit(port, { socket, head, peer })` for each connection it admitted, `head` being the bytes it already read. A server configured with a held number claims the socket with `ctx.claimListener(port, accept)` (`ClaimedListener` / `HandedConnection` in the SDK) and binds nothing; each connection reaches it as an inbound byte stream beginning with `head` and an outbound writer. A connection admitted before any claim is held; one still unclaimed when startup ends, or when it fails, is answered `503` with the host's body, and the kernel warns naming the port's key. A released claim holds connections again until the port is claimed anew, and a second claim of one port is `ERR_LISTENER_CLAIMED`. The set follows the port number into a child application, and `Kernel.PortsResolved` / `getResolvedPorts()` gives a held port `address` and `suppliedBy: "host"`. The controller protocol gains `Listener.Claim`, `Listener.Accept` and `Listener.Release` in generation `telo-10`, and the channel purpose `connection`.
+- 93ef2a4: A module's `requires.telo` is now a measured floor and a published version can be restricted after the fact. `requires.telo` is floor-only (`>=<version>` or `>=unreleased`); an upper bound in a module's own source is refused. A new `restrictions:` list on a library or application states what measurement cannot see (a ceiling found after publish, a runtime feature, a Node bound), each entry with a reason, and a later version's entries hold earlier versions back: running above a ceiling is the new `MODULE_REQUIRES_OLDER_RUNTIME`, a malformed entry is `RESTRICTIONS_INVALID` in `telo check` and at load. The load gate now applies to imported libraries too. `telo release floor` measures each workspace module's floor by running published CLIs, `telo release check` verifies it (`REQUIRES_FLOOR_TOO_LOW` / `REQUIRES_FLOOR_TOO_HIGH`), `telo publish` refuses `>=unreleased` and a `requires.telo` upper bound, and `telo upgrade`, the editor's upgrade lenses and Studio's version picker name the restriction that holds a version back.
+- 0d833e3: The frame of the controller protocol's framed carrier is a public export: `encodeFrame` / `decodeFrame` for one frame and `FrameReader` for a byte stream arriving in arbitrary chunks, with `Frame`, `FrameRefusal` and `MAX_FRAME_LENGTH` (16 MiB, refused from the length prefix alone). A refusal is terminal for the reader, as the protocol requires. The codec knows the frame, not the envelope in its meta, so any carrier speaking the framing (the desktop-host control channel among them) builds its own envelope with `encodeTypedFrame` / `decodeTypedFrame`.
+
+### Patch Changes
+
+- Updated dependencies [228d94f]
+  - @telorun/cel@0.133.0
+  - @telorun/message-format@0.133.0
+
+## 0.133.0-rc.0
+
+### Minor Changes
+
+- 0c63ff5: An application can open its own page. The built-in `Telo.OpenUrl` takes an `http` or `https` URL, logs `telo.url.open_requested` with `url.full` on every call and hands the URL to the host, returning `null` at once; no outcome of opening a page is an error. `telo run` at a terminal opens it in the browser (`BROWSER` first, else the system opener, the URL passed as one argument), at most once per address in a session, so a `--watch` reload opens no new tab; `--no-input`, runner sessions and every other host only log it. The terminal opener now reports a failed launch on stderr, for the inspector's `--open` too. A literal URL of another scheme, or one holding a user or password, is refused by `telo check` and a computed one when the call runs, so credentials never reach the log; `telo check` no longer refuses every computed value at a URL slot that forbids a member; the Rust kernel refuses the kind with `ERR_UNSUPPORTED_MANIFEST_FEATURE`. A read of observed state before its resource has started is again reported as `ERR_OBSERVED_STATE_UNAVAILABLE` naming the expression, rather than as a bare missing-key failure. A templated kind's `run:` entry is now started through the kernel's run path, as its `targets:` are, so it may report observed state.
+- 0d833e3: A `Telo.HostPath` slot may say what media type its file holds: `x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png }`. The vocabulary is data in the value-type entry — `image/png`, `image/jpeg`, `image/gif`, `image/webp` and `application/pdf`, each with the signatures of the file's leading bytes — and a media type with none is `X_TELO_TYPE_ARGUMENT_INVALID`. `telo check` reads the head of a `!module-path` file through its manifest source (the optional `ManifestSource.readHead`, which the Node kernel's file source implements) and refuses one of another type, or a directory, as `HOST_PATH_CONTENT_MISMATCH` at a resource field and at a need parameter, naming the path, the type found (or that none known matched) and the one declared; a variable declared with another `mediaType` read into the field or passed to a library input declaring another is refused the same way, and at a call's `inputs:` as `CEL_TYPE_ARGUMENT_MISMATCH`. Both kernels refuse the same at creation, after the entry check, as `ERR_HOST_PATH_CONTENT_MISMATCH`, and the Node kernel an Application variable at load. An absent path is never refused, and the file's size is not judged.
+- 0d833e3: A process embedding the kernel can supply, per `tcp` port number, the connections of a socket it owns itself: `new Kernel({ listeners: new HostListeners({ ports, unavailable }) })`, then `listeners.admit(port, { socket, head, peer })` for each connection it admitted, `head` being the bytes it already read. A server configured with a held number claims the socket with `ctx.claimListener(port, accept)` (`ClaimedListener` / `HandedConnection` in the SDK) and binds nothing; each connection reaches it as an inbound byte stream beginning with `head` and an outbound writer. A connection admitted before any claim is held; one still unclaimed when startup ends, or when it fails, is answered `503` with the host's body, and the kernel warns naming the port's key. A released claim holds connections again until the port is claimed anew, and a second claim of one port is `ERR_LISTENER_CLAIMED`. The set follows the port number into a child application, and `Kernel.PortsResolved` / `getResolvedPorts()` gives a held port `address` and `suppliedBy: "host"`. The controller protocol gains `Listener.Claim`, `Listener.Accept` and `Listener.Release` in generation `telo-10`, and the channel purpose `connection`.
+- 93ef2a4: A module's `requires.telo` is now a measured floor and a published version can be restricted after the fact. `requires.telo` is floor-only (`>=<version>` or `>=unreleased`); an upper bound in a module's own source is refused. A new `restrictions:` list on a library or application states what measurement cannot see (a ceiling found after publish, a runtime feature, a Node bound), each entry with a reason, and a later version's entries hold earlier versions back: running above a ceiling is the new `MODULE_REQUIRES_OLDER_RUNTIME`, a malformed entry is `RESTRICTIONS_INVALID` in `telo check` and at load. The load gate now applies to imported libraries too. `telo release floor` measures each workspace module's floor by running published CLIs, `telo release check` verifies it (`REQUIRES_FLOOR_TOO_LOW` / `REQUIRES_FLOOR_TOO_HIGH`), `telo publish` refuses `>=unreleased` and a `requires.telo` upper bound, and `telo upgrade`, the editor's upgrade lenses and Studio's version picker name the restriction that holds a version back.
+- 0d833e3: The frame of the controller protocol's framed carrier is a public export: `encodeFrame` / `decodeFrame` for one frame and `FrameReader` for a byte stream arriving in arbitrary chunks, with `Frame`, `FrameRefusal` and `MAX_FRAME_LENGTH` (16 MiB, refused from the length prefix alone). A refusal is terminal for the reader, as the protocol requires. The codec knows the frame, not the envelope in its meta, so any carrier speaking the framing (the desktop-host control channel among them) builds its own envelope with `encodeTypedFrame` / `decodeTypedFrame`.
+
+### Patch Changes
+
+- Updated dependencies [228d94f]
+  - @telorun/cel@0.133.0-rc.0
+  - @telorun/message-format@0.133.0-rc.0
+
+## 0.132.0
+
+### Minor Changes
+
+- 1bcbfd7: A controller asks for the co-referrers of one of its `callsCoReferrers` slots with `ctx.resolveCoReferrers(slot)` — the controller protocol's new `Ref.CoReferrers` message, which makes the protocol generation `telo-10` (`9` is withdrawn, as `4`–`8` were). The answer is every module-scope declaration of the slot's co-referrer kind whose own slot names the same target in the same module instance, live and in application load order: the root, then its imports depth-first in `imports:` order (a `shared` library at its first reach), each module instance's documents in the order they are read, a template instance's body entries — a `!for-each` family in family order — after them. It is read at the call from an index the kernel builds once the application has initialized and rebuilds after each reconcile, so a caller is ordered after none of its co-referrers and a reconcile adding one reaches the next call; asked before the application has initialized, it is `ERR_LOCAL_REF_PENDING`, and while a reconcile rebuilds it, `ERR_INVOKE_CANCELLED`, as a dispatch to a resource the reconcile unwound is. `telo check` sees the same set: an importer's check holds every imported library's co-referrers, holders and the paths reaching them, so a library's handler is checked against every emit of the application — a requirement of its target is reported at the importer's emit, or at the `imports:` entry reaching the library when only the importer's composition of two libraries makes it — while a library's own check covers its own handlers and its imports'. The caller dispatches each one itself through `ctx.invokeResolved`, so each gets its own span under the caller's and runs inside the caller's zones and cancellation. The kernel refuses a malformed `callsCoReferrers` when the kind registers (`ERR_X_TELO_REF_INVALID_CALLS_CO_REFERRERS`) and a co-referrer declared in a `with:` / `x-telo-scope` scope when the scope's holder is wired (`ERR_CO_REFERRER_SCOPED`), each worded as `telo check` words its twin. A `Telo.Import` declared in a `with:` scope is now loaded and checked as an `imports:` entry is — its import refusals reported at the member and refused at load, its library a module instance beneath its holders (its needs named `TELO_NEED_<HOLDER>__<MEMBER>__…`), giving the scope its exported instances (`!ref <Member>.<name>`, `resources.<Member>.<name>`) and no kinds or functions — and its library's co-referrers are indexed per scope run, a co-referrer there whose target outlives the run being refused (`CO_REFERRER_SCOPED` / `ERR_CO_REFERRER_SCOPED`).
+
+### Patch Changes
+
+- e457b1a: The README links into the repository are relative paths, resolved to the release tag when the package is packed, instead of absolute links pinned to `main`.
+- Updated dependencies [e457b1a]
+  - @telorun/cel@0.132.0
+  - @telorun/message-format@0.132.0
+
+## 0.132.0-rc.0
+
+### Minor Changes
+
+- 1bcbfd7: A controller asks for the co-referrers of one of its `callsCoReferrers` slots with `ctx.resolveCoReferrers(slot)` — the controller protocol's new `Ref.CoReferrers` message, which makes the protocol generation `telo-10` (`9` is withdrawn, as `4`–`8` were). The answer is every module-scope declaration of the slot's co-referrer kind whose own slot names the same target in the same module instance, live and in application load order: the root, then its imports depth-first in `imports:` order (a `shared` library at its first reach), each module instance's documents in the order they are read, a template instance's body entries — a `!for-each` family in family order — after them. It is read at the call from an index the kernel builds once the application has initialized and rebuilds after each reconcile, so a caller is ordered after none of its co-referrers and a reconcile adding one reaches the next call; asked before the application has initialized, it is `ERR_LOCAL_REF_PENDING`, and while a reconcile rebuilds it, `ERR_INVOKE_CANCELLED`, as a dispatch to a resource the reconcile unwound is. `telo check` sees the same set: an importer's check holds every imported library's co-referrers, holders and the paths reaching them, so a library's handler is checked against every emit of the application — a requirement of its target is reported at the importer's emit, or at the `imports:` entry reaching the library when only the importer's composition of two libraries makes it — while a library's own check covers its own handlers and its imports'. The caller dispatches each one itself through `ctx.invokeResolved`, so each gets its own span under the caller's and runs inside the caller's zones and cancellation. The kernel refuses a malformed `callsCoReferrers` when the kind registers (`ERR_X_TELO_REF_INVALID_CALLS_CO_REFERRERS`) and a co-referrer declared in a `with:` / `x-telo-scope` scope when the scope's holder is wired (`ERR_CO_REFERRER_SCOPED`), each worded as `telo check` words its twin. A `Telo.Import` declared in a `with:` scope is now loaded and checked as an `imports:` entry is — its import refusals reported at the member and refused at load, its library a module instance beneath its holders (its needs named `TELO_NEED_<HOLDER>__<MEMBER>__…`), giving the scope its exported instances (`!ref <Member>.<name>`, `resources.<Member>.<name>`) and no kinds or functions — and its library's co-referrers are indexed per scope run, a co-referrer there whose target outlives the run being refused (`CO_REFERRER_SCOPED` / `ERR_CO_REFERRER_SCOPED`).
+
+### Patch Changes
+
+- e457b1a: The README links into the repository are relative paths, resolved to the release tag when the package is packed, instead of absolute links pinned to `main`.
+- Updated dependencies [e457b1a]
+  - @telorun/cel@0.132.0-rc.0
+  - @telorun/message-format@0.132.0-rc.0
+
+## 0.131.0
+
+### Minor Changes
+
+- c578599: Durations accept the units `d` (24 hours) and `w` (7 days), in CEL's `duration()` and in every `Telo.Duration` slot, in the Node and Rust runtimes alike: `ttl: 30d`, `duration('1w')`, `1d12h` and `1.5d` all read. Months and years stay out, having no fixed length. A duration still prints in seconds (`86400s`). The Rust plain-encoding reader now uses the same grammar as Node, so text such as a bare `s` with no number is refused there too.
+
+### Patch Changes
+
+- Updated dependencies [c578599]
+  - @telorun/cel@0.131.0
+  - @telorun/message-format@0.131.0
+
+## 0.130.0
+
+### Minor Changes
+
+- 6aa9a85: An omitted argument map is now checked. Where a call through a reference slot paired by `x-telo-ref` `inputs:`, or a step, writes no `inputs:`, `telo check` judges it as the `default:` its property declares against the target's input contract and reports `CONTRACT_INPUTS_MISMATCH` at the reference, naming the default and asking for `inputs:`. A kind whose paired argument-map property may be omitted without a literal object `default:` (or whose pointer names no declared property) is refused at the declaring module as `ARGUMENT_MAP_DEFAULT_INVALID`, so `telo publish` refuses it. The built-in invoke step (a `Telo.Sequence` step and an Application's inline boot target) declares `inputs` with `default: {}`.
+- 6aa9a85: A controller can name the kernel instance that owns its resource: `ctx.kernelInstanceId` is an opaque string, unique in the process, fixed for the kernel's whole life (a reconcile keeps it) and never reused, and a child manifest started through `ctx.runtime.run` or `App.Instance` has one of its own. In-process state every resource of one application must share is keyed by it rather than held module-global, since one process may run several kernels over the same controller bundle. The Rust SDK reads it as `ResourceContext::kernel_instance_id()`, `None` from a host that carries none (a kernel released before it, and the Rust kernel, whose `abi=telo-3` carries no session). The controller protocol now states that a session is one kernel instance for its whole life and is what a controller keys such state by.
+- ba87b7a: A failure written to a log from the Node runtime carries a Telo stack trace instead of the JavaScript stack. The record's `error` gains `frames` (the resources and manifest positions the failure passed through, innermost first, bounded at 64 with `dropped_frames_count` counting the cut) and its `stack` is those frames as text with files relative to the entry module's directory; `pretty` shows the same lines with files relative to the working directory. A host stack is written as `host_stack` only for an uncoded failure (a `TypeError`, a library's exception, `ERR_FATAL`), on the entry that is one. The step engine and the boot runner state where each call is made (`calledAt` on the dispatch context), a `throw` step starts a fresh trace whose `cause` keeps the caught failure's frames, and `telo: failed to start` prints the Telo trace. The SDK exports the frame type, `errorValueOf` and the trace helpers; frames never reach a catch context, a durable record or a trace payload.
+
+### Patch Changes
+
+- @telorun/cel@0.130.0
+- @telorun/message-format@0.130.0
+
+## 0.129.0
+
+### Minor Changes
+
+- b9f2b23: The Node kernel reads the root Application's `translations.catalogs` and layers them into one set the whole application is translated through, an imported library's texts included: per language a later catalog's translation of a text and context replaces an earlier one's. `Telo.TextTranslations` gets its built-in controller. A controller reaches the set as `ctx.translations` (also on a native function's context): `fallback` (the Application's `lang:`, `und` without one), `languages()` (the fallback and every catalog's language), `negotiate(preferences)` (RFC 4647 lookup per entry, malformed or unserved entries skipped, else the fallback) and `translate(lang, record)` / `translateAll(lang, records)` (the translation as a text record in the language reached, or the record itself). It is the controller protocol's new `Translations.Lookup`, in generation 8. The `x-telo-text-catalog-set` judgement is gone from the kernel, and with it the analyzer's `declaresTextCatalogSet`, `textCatalogSetMembers`, `textCatalogSetDuplicates` and `textCatalogSetProblems` exports and `ERR_TEXT_CATALOG_SET_INVALID`. The Rust kernel refuses `translations:` and a `Telo.TextTranslations` resource with `ERR_UNSUPPORTED_MANIFEST_FEATURE`.
+- bfc0827: A `Telo.Duration` slot reads an integer written in a manifest as that many milliseconds — `initialDelay: 250` and `initialDelay: 250ms` are one duration — at every site its text is decoded: a resource's own configuration, a call's `inputs:`, a schema-derived slot, an import's `variables:` / `secrets:`, a `default:` and a transport's inbound value. The rule is data on the value type's entry (`integerForm: { unit: ms }`), read by the Node and the Rust SDK alike. A digit-only string stays text, and a CEL `int` is not a duration.
+
+  The shared retry policy (`telo://manifest#/$defs/RetryPolicy`) takes durations: `initialDelay` / `maxDelay` (250ms / 32s when omitted) and a step's per-attempt `timeout:` are `Telo.Duration` slots, so manifests writing integer milliseconds keep working unchanged. `nonRetryable` moves into the policy, so every holder of it — `Http.Request` included — ends the loop on a listed code. A new `retryAfter` is CEL over the failure just caught (`error`): a duration it yields replaces the computed backoff, capped by `maxDelay`, and null keeps it. `telo check` warns `NON_RETRYABLE_CODE_NOT_THROWN` for a step's `nonRetryable` code its target cannot throw, types `error.data` in `retryAfter` against the target's declared codes, and refuses a negative delay or a non-positive timeout through the bounds the policy's duration slots declare. The deprecated `delay` string is still read.
+
+- a16bc53: A library declares its own texts by key in a built-in `Telo.KeyedTranslations` (`keys:` of a message or `{ message, values?, description? }`, in the library's `lang:`), which registers the kind `<Module>.Translations` extending `Telo.Translations` with `lang` and a closed `messages:` map checked per key against its declared values. Per key and served language the source wording is the lowest layer and the application's listed catalogs of that kind apply over it in order. `x-telo-text-keys: [<Alias>.<Kind>]` on a kind's schema root names the keyed sets its resources show, and a kind naming none shows those of the nearest kind along `extends` naming any; written anywhere else — below the root, in `status:`, a contract, a named shape or a callable's parameters — it is refused (`TEXT_KEYS_INVALID` / `ERR_TEXT_KEYS_INVALID`); a controller reads them as `ctx.translations.keyed()`. The controller protocol's `Translations.Lookup` response gains the required `keyed`. The Rust kernel refuses `Telo.KeyedTranslations` with `ERR_UNSUPPORTED_MANIFEST_FEATURE`.
+- bfc0827: A controller asks for the zone its kind requires at the schema ROOT with the field-less `ctx.requireZone(ctx?)` / `ctx.findZone(ctx?)` — the same matching, correlation (a key crossing a `!ref` included) and `ERR_ZONE_REQUIRED` message as the field form — so a kind whose requirement is unconditional never raises the code itself. The controller protocol's `Zone.Require` / `Zone.Find` take the same lookup with no `field`.
+
+  A referrer rule may bind `coReferrers: /<slot>`: the other declarations of the `referrer:` kind reaching the same resource through that slot, each with its references resolved one level as `peers` resolves them — so a table refuses two stores claiming one name in it (`!coReferrers.exists(o, o.name == referrer.name)`) and nothing across tables. A pointer naming no reference slot of the referrer kind, or a rule without `referrer:`, is `REFERRER_RULE_INVALID`.
+
+  A literal at a union of encoded instance types (`anyOf: [Telo.Duration, Telo.Timestamp]`) is read by the one branch whose encoding reads it — `2s` a duration, RFC 3339 text a timestamp, an integer a duration in milliseconds — at every decode site, statically and at runtime alike.
+
+  `x-telo-retry-for: { slot: /<field>, codes? }` on a kind's retry-policy field relates it to the reference slot it re-attempts, so `telo check` judges its `nonRetryable` (`NON_RETRYABLE_CODE_NOT_THROWN`) and types `retryAfter`'s `error.data` against that slot's throws plus the codes the kind raises into the loop; a malformed annotation is `RETRY_FOR_INVALID`.
+
+  `x-telo-value-schema-from: /<ref>/outputType` (or `inputType`) reads the referenced resource's contract as a contract resolves — its own field, else the nearest declaration along its kind's `extends` — and a member read through such a node, or through any `allOf` of a document-local `$ref`, is judged, so a typo there is `CEL_UNKNOWN_FIELD`.
+
+  A `Telo.Duration` slot may bound its value: `x-telo-type: { name: Telo.Duration, minimum: 0s }`, and likewise `maximum`, `exclusiveMinimum` and `exclusiveMaximum`, each written as a duration or integer milliseconds. A literal outside a bound is refused by `telo check` at a resource's field and at a call's `inputs:`, and the kernel refuses the same value when the resource is created, a computed result after evaluation and a contract at dispatch, each naming the bound and the value (`must be a Telo.Duration at least 0s, not -1s`). The bound is data on the value type's entry (a parameter's `bound`), read by the Node and Rust SDKs alike. The shared retry policy's delays are bounded `minimum: 0s` and a step's `timeout:` `exclusiveMinimum: 0s`, replacing the dedicated `DURATION_OUT_OF_RANGE` check this release had introduced.
+
+  `x-telo-serializable: true` on a slot holding a shape (`x-telo-ref` with `use: schema`, or a JSON-Schema-valued field) says that shape's values are stored or serialized: a shape holding a `Telo.Stream` at any depth is refused by `telo check` (`SCHEMA_NOT_SERIALIZABLE`, naming the path) and when the resource is created (`ERR_SCHEMA_NOT_SERIALIZABLE`); a misplaced or malformed mark is `SERIALIZABLE_ANNOTATION_INVALID`. `DURABLE_UNJOURNALABLE_RESULT` now warns for a declared output holding a stream at any depth, not only at its root.
+
+  `ctx.traceCarrier(ctx?)` returns the current span as W3C Trace Context headers (`{ traceparent, tracestate? }`), or `undefined` when tracing is off: a controller records it with work it stores or sends, and `openSpan(…, { inbound: carrier })` continues it as that span's child, in its trace. The controller protocol gains `Span.Carrier`, and its generation moves to `9`.
+
+  A context binding typed by `x-telo-context-ref-from`, `-from-root` or `-from-ref-kind` keeps the nullability its own node declares (`type: [object, "null"]`), so an unguarded member read through it is `CEL_NULLABLE_ACCESS`.
+
+  `@telorun/sdk` exports the step engine's retry pieces for every holder that runs its own loop over the shared retry policy (a queue worker re-attempting a delivery): `isRetryable(err, nonRetryable?)` — false for a cancellation, a suspension, an ambient contract error, the kernel's verdicts on the call and a listed code — `retryMaxDelayMs(policy)`, `retryErrorView(err)` (the `error` a policy's CEL reads) and `retryAfterMs(policy, err, evaluate, { describe, data? })`, beside the already exported `retryBackoffMs`. The step engine's own retry loop calls the same functions.
+
+  A literal of an encoded value type inside an object typed by `x-telo-value-schema-from` (a timestamp, a duration as text or integer milliseconds, bytes, an unsigned integer) is decoded by the type its referenced shape declares, at a call's `inputs:` and at a config field, where it was refused. A member read through a union — `anyOf: [{ type: "null" }, …]` included — is judged against every alternative that can hold an object, so a typo there is `CEL_UNKNOWN_FIELD`, and a read through a union holding `null` without a guard is `CEL_NULLABLE_ACCESS`. A `Telo.Abstract` extending another module's abstract registers with its ancestors folded in its own scope, so a kind two modules down accepts the fields the root abstract declares at run as `telo check` already did.
+
+### Patch Changes
+
+- @telorun/cel@0.129.0
+- @telorun/message-format@0.129.0
+
+## 0.128.0
+
+### Patch Changes
+
+- @telorun/cel@0.128.0
+- @telorun/message-format@0.128.0
+
+## 0.127.0
+
+### Patch Changes
+
+- @telorun/cel@0.127.0
+- @telorun/message-format@0.127.0
+
+## 0.126.0
+
+### Minor Changes
+
+- 769b40d: The expansion tags `!if`, `!switch` and `!for-each` and the `...` splice key are read by every loader, and a misplaced or misshapen one is refused before the app runs. Each tag sits on a mapping and loads as that mapping with the marker `__expand` first; `...` is a plain key; studio's save, `telo migrate` and `telo publish` write all of them back where they were written. A tag where nothing is chosen (`BRANCH_POSITION_INVALID`: a module document outside `targets:`, a kind document outside its template body, a file's first document), a repeat outside a template body (`REPEAT_OUTSIDE_TEMPLATE`), a repeat at a field's value or a `...` key holding no repeat (`REPEAT_POSITION_INVALID`), and a tag mapping that does not fit its position (`BRANCH_SHAPE_INVALID` / `REPEAT_SHAPE_INVALID`, held to the eight new built-in fragments `IfValue` … `ForEachStepRepeat`) are each reported once, at the tag, with nothing else reported beneath it; a library's are refused when an import loads it, as `ERR_MANIFEST_VALIDATION_FAILED` carrying each under its own code, which an import's refusal of a library it analyzes now carries too. `!ref` gains its indexed form, `!ref <family>[<binding>.key]`: the `!ref` engine owns the grammar, the loader attaches its verdict to the sentinel (`parsed` or `refusal`), a text outside it is `REF_MEMBER_INVALID`, and every resolved reference carries `indexes` (`KindRef.indexes` in `@telorun/sdk`, whose `refSentinelTarget` reads the verdict and refuses an indexed or refused sentinel as `ERR_REF_UNRESOLVED`). The Rust loader reads the same sentinels in the same key order and the Rust kernel refuses every expansion construct as `ERR_UNSUPPORTED_MANIFEST_FEATURE`. The parsed-YAML cache format moves to 2. A `Telo.Definition` whose `schema:` holds a refused expansion construct reports that refusal alone: the body's reads of `self` are no longer reported as consequences.
+- 9c17f98: A failure can now say which of its inputs it is about, and a caller can say where it wrote those inputs. An `InvokeError` takes an optional `inputPointer` — a JSON Pointer into the inputs of the dispatch that raised it (`/expected/rows`) — and carries a `location` (`{ kind, name, module?, pointer? }`, the resource whose declaration holds the offending value and a pointer into it) that is only ever attached once: the first location given is kept. An invocation context may carry `inputsAt`, a JSON Pointer to where the calling resource's declaration writes this call's inputs (`/steps/1/inputs`); it belongs to the one dispatch carrying it, so a context derived from it for another call drops it unless restated. Neither member reaches a `catch:` branch's `error`, nor an error's JSON. A step body run with the place its list is written (`/steps`) sends every invoke step's `inputsAt` — branches, loop bodies, switch cases (keys escaped), and `try:` / `catch:` / `finally:` included — and a body run without one sends none — never the `inputsAt` its own invocation arrived with. A step whose target is an instance no dispatch identifies is sent no `inputsAt`, and marks a pointer raised there as one no dispatch exit may anchor, rethrowing the failure unchanged. The controller protocol gains these as additive members within generation `telo-7`: `inputsAt` on the `Dispatch.Invoke` / `Dispatch.InvokeResolved` context, and `inputPointer` and `location` on a failure.
+
+  `telo run` and a child run (`Test.Suite`, `Assert.Manifest`) now report a failure that left a step's dispatch at the place it was caused: `<file>:<line>:<col>  error  <message>  <code>`, the node inside the failing step's `inputs:` — the first difference of an `Assert.Equals`, the field an `inputType` refuses — in the innermost sequence that ran it, whether the target is declared inline or by `!ref`, and an inline boot target's `targets[<i>].inputs`. The kernel attaches the `location` where an unlocated failure leaves a dispatch, naming the resource whose controller issued it (an `ERR_EXECUTION_FAILED` wrap's diagnostic carries it too, as `RuntimeDiagnostic.location`), and `Kernel.failureDiagnostics(err)` answers the diagnostics a failure is reported with, each located one carrying the `origin` the analyzer's `locateDiagnostic` resolves. A position is given only where the running declaration provably is the written one — a step a template body declares, the parent an inherited kind builds, or a step list an `!if` / `!for-each` reshaped names the resource and gives no position. A refused child's stderr (controller protocol §9.2) writes that position before the located failure's line. The analyzer exports `writtenFailureSite`, the resolution behind it.
+
+- 9c17f98: A reference read from a declaration means what it means where it was written. Every reference to a named shape now carries the shape's canonical id (`$ref: "telo:<module>/<Type>"`) beside it, set in the module that wrote it and kept by every later reading, so a controller reading a model out of another module's declaration reads that module's shape; and `ctx.lookupSchema` reads a bare type name as the asking resource's module's shape before any same-named shape another module registered. Where two modules declared a shape of the same name, a collection whose filters or relations `telo check` accepted was refused at boot, or judged against the other module's shape. `ctx.resolveDeclaredManifest(name, alias, holder)` resolves a name read off `holder` — a declaration a lookup returned — in the scope of the module that declared it, its own imports' aliases included; a holder the runtime did not hand out is refused with `ERR_REF_UNRESOLVED`. The controller protocol's `Ref.Declaration` carries the same as additive members of `telo-7`: an answer's `declaration` handle and a request's `holder`. A rule's `resolve:` pointer continuing through a collection whose entries hold a reference (`/table/foreignKeys/*/references/table`) now reads the declaration each entry names, where it used to stop at the collection.
+- 769b40d: A template body's `!if`, `!switch` and `!for-each` are now checked. `telo check` checks a `Telo.Definition`'s body with no consumer: every `!for-each` in a list or under a `...` splice emits one representative element, its binding (`each`, or the name `as:` gives) a closed record of `value` typed from the source's element schema, `index`, and `key` for a map source only, in scope in every expression its `emit:` holds; every branch of every choice is checked, a choice over a closed domain (`enum`, `const`, boolean — at a `self.` path, a binding's element, past a reference into the referenced kind's own schema, or a module input) for exhaustiveness, reachability and case keys, and a comparison of open values as an atom — two conditions written as the same comparison, or its negation, take matching branches. The body is expanded once per assignment of the choices that decide which entries exist, their kinds or the references they hold, and each entry once per assignment of what it reads, so an entry's checks do not multiply with choices it cannot meet. A finding arising for only some values ends with them (`(when self.mode is b)`, `(when 'self.a < self.b' is false)`), and carries `data.configurations` only for the module inputs it varies over. Each consumer of a templated kind expands the body by what it wrote — choices decided by its literal values, read through bare `self.` / `<binding>.value.` forwards and across a reference into its own module's declarations, or by a dimension a value is chained to — and what it forwards is checked as the entry's own field at the consumer's path. A templated `targets:` accepts an inline declaration and an `!if` / `!switch` / `!for-each` choosing or emitting `!ref <entry>` or inline declarations. New diagnostics: `REPEAT_SOURCE_INVALID`, `REPEAT_COMPUTED`, `REPEAT_KEY_INVALID`, `REPEAT_KEY_DUPLICATE`, `REPEAT_NUMERIC_KEY`, `REPEAT_EMIT_INVALID`, `BINDING_NAME_RESERVED`, and `BRANCH_*` for a template's choices (a read no consumer can decide — `request`, `inputs`, `steps` — is `BRANCH_UNDECIDABLE` at the template). A library's template refusals are raised when an import loads it. The analyzer exports `expandTemplateBody`, the one expansion of a body, with `emittedIdentity` and `describeEmitted`. The kernel expands a templated body for each instance when it initializes: choices are decided from the instance as written (a reference crossed is read through the declaration it names, defaults filled, never through what it publishes) and the library's inputs, repeats iterate the instance's own collections, an expression an emitted item holds keeps its loop's binding, an inline declaration an emitted item holds is created once per element, and the `targets:` an instance starts are computed after the expansion — so the example runs (a mount whose routes repeat per hook, one server or two decided by the ports, entries started per element in order) start. The analyzer's consumer check and the kernel's expansion are one function with two seams, and what an instance's expansion refuses is raised together as one `ERR_MANIFEST_VALIDATION_FAILED` carrying each under its static code. A template's `targets:` is judged on each instance's expansion, and a dependency's own declaration of another library's templated kind is expanded with its choices decided through the import binding and refused, whatever the code, at the `imports:` entry that reaches it. An emitted inline declaration is named by `emittedIdentity` in the analysis and the kernel alike. A loop binding that a `x-telo-bindings-from` key of the emitted entry also names is `BINDING_NAME_RESERVED`.
+
+  A `!for-each` at a template body's `resources:` entry (or an `x-telo-scope` member) declares a family: one member per element of the consumer's collection, named by the family's name and the element's index path as CEL index literals (`crons['nightlyReport']`, `stores[0]`, `ops['users']['list']`) — its registry name, its `telo.resource.name` on spans and in events, and keyed by the element, so adding an element leaves every other member's name unchanged. A member is referenced with `!ref <family>[<binding>.key]` / `[<binding>.index]`, one index per family depth, and the reference is proven at the definition: a family named without an index, an index on a name that is no family, the wrong depth, a binding not in scope or iterating another source than the family's, `key` over a list (or `index` over a map), and any indexed `!ref` outside a template body are `REF_MEMBER_INVALID`; a sequence, a `metadata` or an `!if` with no `else:` in a family's `emit:` is `REPEAT_EMIT_INVALID`, a family named like a sibling entry `DUPLICATE_RESOURCE_NAME`, and a declaration-position choice whose branches declare one resource in one and a family (or families of different depths) in another `BRANCH_CASE_INVALID`. A templated `targets:` may start family members through `!for-each` items of indexed references. A `!for-each` in a step list emits steps, each carrying `__emitted` — the identity the expansion gives it in place of `name:`, declared by the `Step` and `InvokeStep` fragments through the new `EmittedStep` fragment, a step holding exactly one of the two; a named repeat (`name:` on the tag) files each result under `steps.<name>` as a map by element key, typed from the emitted step, and an unnamed one publishes nothing. An emitted step carrying `name:`, and a sequence or a nested repeat in a named repeat's `emit:`, are `REPEAT_EMIT_INVALID`; a step written with `__emitted` is `REPEAT_POSITION_INVALID`. The SDK adds the one index-path renderer (`renderIndexPath`, `indexLiteral`, `memberIdentity`), the emitted-step identity (`EmittedStepIdentity`, `emittedStepIdentity`, `stepLabel`, `stepJournalPath`, `fileStepResult`), and `stepPath` accepts a `{ key }` qualifier: the step engine journals an emitted step under `<list path>/<repeat>['<key>']` (or `[<index>]`), so a resumed durable run replays each element by its key, and `ERR_STEP_NAME_REQUIRED` now means a step with neither `name` nor `__emitted`.
+
+  Inside a template body the CEL `resources` record holds the body's own entries over the defining module's readings, under the module's rules: a step or any other site of the body reads a sibling (`resources.server.url`, `resources.tally.status.runs`) typed from its kind, a family is a map from element key to member reading (`resources.crons[each.key].status.lastRun`, `string` keys typed, `int` keys of a list source open), a body name shadows a module resource of the same name as its `!ref` does, a reading republished after a member runs is seen on the next read, and a compile-eval read of a non-Provider sibling's observed state is `OBSERVED_STATE_IN_STARTUP_FIELD`. A module resource reading a body's entry is `CEL_UNKNOWN_FIELD`. The kernel publishes each entry into an instance-own record layered over the module's at read time, one write per member whatever the family's size. A status read through a family's index (`resources.crons[k].status.x`) is judged like any other status read, and the editor's scope query, a body's loop sources and a choice's conditions see the body's entries too. The analyzer exports `bodyResourcesFor`, `templateBodyResourcesOf` and `analyzedKind`. A body entry's startup read of a `Telo.Provider` sibling's observed state, plain or through a family's index (`resources.eps['a'].status.port`), is evaluated when the entry is created, after the provider, where it failed at run with `no such key` while `telo check` was clean.
+
+### Patch Changes
+
+- 769b40d: An integer a consumer writes now reaches CEL as an integer inside a template body, as `telo check` already typed it: `self.factor * 10` and `each.value.factor * 10` over a declared `integer` no longer fail at run with "no overload of * takes (double, int)". `self`, a loop's binding and the values a choice or repeat is decided over are read through the schema the kind declares (a map's values and a list's items included), and a collection with no declared type follows the rule a pure step's literal `value:` does. A bare `self.<path>` forwarded into an entry still reaches its controller as written. `@telorun/sdk` exports `literalStepValue`, the literal rule the step engine already used.
+  - @telorun/cel@0.126.0
+  - @telorun/message-format@0.126.0
+
+## 0.125.1
+
+### Patch Changes
+
+- @telorun/cel@0.125.1
+- @telorun/message-format@0.125.1
+
+## 0.125.0
+
+### Patch Changes
+
+- @telorun/cel@0.125.0
+- @telorun/message-format@0.125.0
+
+## 0.124.0
+
+### Patch Changes
+
+- @telorun/cel@0.124.0
+- @telorun/message-format@0.124.0
+
+## 0.123.1
+
+### Patch Changes
+
+- @telorun/cel@0.123.1
+- @telorun/message-format@0.123.1
+
+## 0.123.0
+
+### Minor Changes
+
+- 3a59a93: A child application's own needs can be supplied by name. `ctx.runtime.run(source, { inputs: { needs } })` takes the fields of each of the child's root `needs:`, keyed by need name, and the child answers a need supplied that way before its environment (`env:`-bound name or `TELO_NEED_…`) and before the host values (`TELO_HOST_STATE_DIR`, the address templates); a `supply: root` type is accepted. The child refuses at load a need name it does not declare (`ERR_MANIFEST_VALIDATION_FAILED`, naming the needs it declares), a field its type does not declare or whose value it refuses, a required field left out (`ERR_NEED_PARTIALLY_SUPPLIED`), and a durable directory it cannot use (`ERR_NEED_DIRECTORY_UNUSABLE`, naming the calling resource). The controller protocol's `Runtime.Run.inputs` gains `needs`, which is protocol generation `telo-7`.
+- da3791b: A failure now carries two messages: `message`, the developer's, for logs and traces, and `displayMessage`, the text a person is shown for it, as a text record in the language it was written in. `throws.codes.<CODE>.displayMessage` declares a code's display message — a `Text` in the module's `lang:` whose placeholders may name only the required string or number properties of the code's `data` schema, stated by the new annotation `x-telo-text-values-from: "0/data"` (`MESSAGE_PLACEHOLDER_UNBOUND` / `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`, refused at registration by both kernels too). Where an error leaves a dispatch of the declaring kind, the kernel attaches it as `InvokeError.displayMessage` unless one is already attached, after holding `data` to the code's `data` schema — a mismatch is `ERR_OUTPUT_INVALID` naming the original code. The runtime's own codes (`ERR_INPUT_INVALID`, `ERR_OUTPUT_INVALID`, `ERR_CONTRACT_UNRESOLVABLE`, `ERR_SCHEMA_PROJECTION_UNRESOLVED`, `ERR_FUNCTION_FAILED`, `ERR_PREDICATE_NOT_BOOLEAN`) carry built-in English display messages, kept as data under `sdk/error-codes/`, printed by `telo builtins ERR_INPUT_INVALID` and carried as the `errorCodes` section of the `Telo.Builtins` archive; a catalog translating one is never `MESSAGE_TEXT_UNUSED`. Every catch context's `error` gains `displayMessage`, a nullable text record, beside `message`.
+
+  A `throw` step is `{ code, message?, displayMessage?, data? }`. `message` stays a string and may be computed; `displayMessage` is a literal `Text` whose placeholders name members of `data`, or a caught error's `error.displayMessage` — any other expression is `TEXT_ARGUMENT_COMPUTED` at check and `ERR_TEXT_ARGUMENT_COMPUTED` at run. Without `message` the developer message is the display message formatted with `data`, else the code. A `throw` inside a `catch:` records the caught failure as its `cause`, written in the log record's cause chain. The new step `rethrow: {}` re-raises the caught failure unchanged — code, messages, data, cause and stack — and is legal only inside a `catch:` (`RETHROW_WITHOUT_CAUGHT_ERROR` at check, `ERR_RETHROW_WITHOUT_CAUGHT_ERROR` at run, in a `finally:` or outside every `catch:`); its throw-union contribution is the enclosing `try`'s.
+
+  A literal `throws.codes` list is now legal on a kind of every capability; only an invocable's or a runnable's feeds throw unions and ceilings, and `inherit` / `passthrough` stay limited to them.
+
+  Controllers read a kind's display message for a refusal outside any dispatch with `ctx.declaredDisplayMessage(code, data)`. A Rust controller's `ControllerError` gains `data` and `display_message` (`with_data`, `with_display_message`), carried through the C ABI and the napi bridge; the controller protocol's error payload gains an optional `displayMessage` member within `telo-7`, and `ctx.declaredDisplayMessage` is its new message `Throws.DisplayMessage`.
+
+- da3791b: A finding about a refused value is now written in one closed vocabulary, kept as data under `sdk/issue-keywords/` (one file per keyword, `{ keyword, params }`, copied in by the root `prepare`): each finding is `{ pointer, keyword, params }` — a JSON Pointer to the value, the JSON Schema keyword violated with only the params its entry names, and anything outside the vocabulary `invalid` with none — and carries no prose. `@telorun/sdk` exports `valueIssue(pointer, keyword, params)`, `issueKeywords()`, `jsonPointerSegment` and `formatDisplayMessage(record, data)`, the one formatter of an error's display message in its own language that a `throw` step's default developer message and a transport's problem `detail` share. The vocabulary is read by the Node runtime only; the Rust kernel embeds no copy and the `Telo.Builtins` archive does not carry it.
+
+  Breaking: the `issues` an `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` carries for a value type that does not build at a contract boundary or in `ctx.readPlainEncoded` are `{ pointer, keyword: format, params: { format: <type name> }, code }`; `path`, `message` and `reason` leave the entries and stay in the error's message, and the value itself is the empty pointer. A schema refusal in `ctx.readPlainEncoded` carries its findings the same way — `format` for a value type that does not read, `required` with `missingProperty` (the pointer naming the property), anything else `invalid` — in place of `{ path, message }`. The analyzer's `SchemaIssue` gains `pointer`, the issue's place as a JSON Pointer.
+
+### Patch Changes
+
+- @telorun/cel@0.123.0
+- @telorun/message-format@0.123.0
+
+## 0.122.0
+
+### Minor Changes
+
+- 327907c: A module variable or secret declared `type: integer` or `type: number` now holds that representation for every reader, at the root Application and in every Library import — whether the value came from a default, the environment, the command line, a literal an importer wrote or an importer's own variable (an integer, as long as int64 can hold it). `!cel "variables.boost * 20"` used to pass `telo check` and fail at run with `no overload of "*" takes (double, int)`; it now runs. Two imports of a `lifecycle: shared` library supplying the same integer in different spellings (a literal and a forwarded variable) now agree.
+
+  A number written literally in a pure `value:` step now reads in CEL as the same number written in CEL would: an int when it is integral and within int64, a double otherwise — as the whole value and at any depth of a literal map or list. `value: 3` then `!cel "steps.count.result * 2"` used to pass `telo check` and fail at run with `no overload of "*" takes (double, int)`; it now runs. The rule reads the value, not its spelling, so `3.0` and `1e3` are ints, and an integral number outside int64 (`1e30`) stays a double. A number a `!cel` or `!interpolate` member computes is left as computed.
+
+  `telo check` types `steps.<name>.result` of a literal step by the same rule: a literal map is a closed record, and a list is typed by its elements when they all agree. So that such a record still meets a map across a condition, the CEL type join now reads a record as the string-keyed map it is: a record against a map, or against a record of another shape, joins to `map<string, …>` over their value types — `cond ? steps.flags.result : {'ok': true}` checks — where the branches used to be refused as not one type; a record against a scalar or a list is still refused.
+
+  **Behaviour changes:**
+
+  - A declared integer variable or secret is an int64 for every reader, not only for CEL, so a controller handed `!cel "variables.x"` at a config slot receives an int64 (a `BigInt`) where it used to receive a plain number. A controller doing arithmetic on such a slot reads it with `integerInput` from `@telorun/sdk`.
+  - `value: 3` then `steps.count.result * 2.0` ran before and is now refused — `CEL_TYPE_ERROR` from `telo check`, and `telo run` refuses the manifest at load. Write `value: !cel "3.0"` for a double 3, or multiply by an int.
+  - A literal step's result is typed, so an expression that only worked because it was untyped is a static error: `value: 3.5` then `* 2`, `value: 3` then `+ "a"`, a literal string passed to a function that takes a number.
+  - A literal step's result no longer meets `null` in a condition: `has(steps.x) ? steps.x.result : null` over a literal-map step is `CEL_TYPE_ERROR`, as `true ? 1 : null` always was. Write `has(steps.x) ? dyn(steps.x.result) : null`.
+  - A member a literal map does not hold is `CEL_UNKNOWN_FIELD` — `steps.flags.result.misspelled`, and also under `has(steps.flags.result.absent)`, which used to answer `false`.
+  - `steps.<name>.result` is typed only when every step of that name produces the same type, where the last step written used to type the name alone. A pair that disagrees (`then: value: 3` / `else: value: !cel "2.5"`) is untyped, and an expression step reads its own name as what the other steps of that name produce: a loop seed `value: 0` advanced with `!cel "steps.i.result + 1.0"` is refused by both halves — write `+ 1`.
+  - A misspelled step name in a body with a `value:` step is reported once, as `"frist" is not declared here (declared: …)`, where it was reported twice in two wordings.
+  - A literal step's integers reach a controller as an int64 when forwarded — `value: 5000` then `timeoutMs: !cel "steps.t.result"` hands the controller a `BigInt` where it received a plain number. A controller reads such a slot with `integerInput` from `@telorun/sdk`.
+  - A durable run resumed from a journal written before this change replays the double it recorded for a literal step, not an int.
+  - `value: !cel "self.<field>"` in a step body a templated kind declares — in a body entry or in a `with:` member nested in one — or a `base:` mapping builds for its parent, is now evaluated when the step runs rather than resolved once when the instance is created, as is any expression inside a step's `value:` there. A number the instance supplies is therefore never read as one written in the step: `ratio: 3` declared `type: number` stays a double.
+
+### Patch Changes
+
+- Updated dependencies [327907c]
+  - @telorun/cel@0.122.0
+  - @telorun/message-format@0.122.0
+
+## 0.121.0
+
+### Minor Changes
+
+- ad5633d: A browser entry a resource names is held to what its kind accepts, and a controller can serve an entry a library it imports ships. `x-telo-browser-export` gains two optional keys: `abi`, the generations the kind accepts (each `<family>-<version>`), and `external`, the bare specifiers the kind supplies. An entry whose own `abi` is not listed (or which declares none) is `BROWSER_ENTRY_ABI_UNSUPPORTED`, and one leaving to its host a specifier the kind does not supply is `BROWSER_ENTRY_IMPORT_UNSUPPLIED`, both at the field naming the entry, refused at creation as `ERR_BROWSER_ENTRY_ABI_UNSUPPORTED` / `ERR_BROWSER_ENTRY_IMPORT_UNSUPPLIED`. A resource an imported library declares is now judged by `telo check` too — against that library's own `exports.browser`, for the version the application loads — and all four browser-export codes (`BROWSER_ENTRY_UNKNOWN` and `BROWSER_EXPORT_UNKNOWN` included) are reported once, at the `imports:` entry through which the library is first reached; before, a dependency's mistake passed `telo check` and failed the run. The annotation's own shape is checked: anything but `{ entry: <JSON Pointer>, abi?: [<family>-<version>…], external?: [<specifier>…] }` is `BROWSER_EXPORT_ANNOTATION_INVALID` at the kind (at the `imports:` entry for a dependency's) and `ERR_BROWSER_EXPORT_ANNOTATION_INVALID` when the kernel registers it. `ctx.resolveControllerBrowserEntry(specifier)` resolves against the kind's own module first and, when it declares no such entry, against the one module it imports directly that does; two such imports are `ERR_BROWSER_ENTRY_AMBIGUOUS`, naming both. The analyzer exports `browserExportAnnotationProblems`.
+- a6d17ff: The built-in text vocabulary. A field or a function parameter holding text shown to a person is typed by the new fragment `telo://manifest#/$defs/Text` — a MessageFormat 2 pattern with `{$name}` placeholders, a plural selection `{ plural, cases }`, or either with a `context` — beside `Message` and `TextCatalog` (`{ lang, texts: [{ text, context?, translation }] }`). A module declares the language its texts are written in with the new top-level key `lang:` on `Telo.Application` / `Telo.Library`, and two Telo formats join `css-selector`: `language-tag` (RFC 5646) and `message-pattern`. Two annotations: `x-telo-text-context` gives a data schema node's title, description and enum values a context, and `x-telo-text-values-for: /<pointer>` names the `Text` an object holds the values of. `telo check` refuses, each where it is written and judged in the language of the module that wrote it (a template body's text by its library, a value a template or `base:` forwards by its consumer): `MESSAGE_SYNTAX_INVALID`, `MESSAGE_PLURAL_CATEGORY_INVALID`, `MESSAGE_SOURCE_LANGUAGE_MISSING`, `MESSAGE_PLACEHOLDER_UNKNOWN`, `MESSAGE_PLACEHOLDER_UNBOUND`, `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`, `MESSAGE_ENTRY_COMPUTED`, `MESSAGE_ENTRY_DUPLICATE`, `TEXT_ARGUMENT_COMPUTED` (a `Text` parameter takes only a literal argument) and `TEXT_VALUES_FOR_INVALID`, and warns `MESSAGE_TEXT_UNUSED` (a catalog entry no text of its module's imports shows) and `TEXT_CONTEXT_MISPLACED`. The kernel raises each as `ERR_<code>` at creation and when it binds a call — for a computed text, computed values and a dependency's own texts — and hands a controller each `Text` as the record `{ text, context, lang, computed }`: `TextRecord` / `MessageSource` / `isTextRecord` in `@telorun/sdk`. `CompiledValue.callArguments` records how each module call's arguments are written. A recursive fragment is now hoisted into the root of the schema holding the reference — including a callable's parameter and result schemas and a need type's `parameters` and `fields` — so a parameter typed `Text` checks and binds; `argumentRecordSchema` and `liftFragmentDefs` are the analyzer's readers for a schema composed over such roots (`parameterContextProperties` is removed in favour of the first). A text a controller evaluates per call — in an `x-telo-eval: runtime` field or a CEL region — is settled when it is evaluated: `ctx.expandValue` judges it in the language of the module that wrote it, hands each `Text` back as its record (`computed: true`) and judges the values the same evaluation produces; `Value.Expand` lists the five `ERR_MESSAGE_*` codes and its result's `Text` is its record. A kind typing a text at or beneath an `x-telo-eval: accessor` field is refused — `TEXT_SLOT_ACCESSOR` at the kind (at the `imports:` entry for a dependency's), `ERR_TEXT_SLOT_ACCESSOR` when the kernel registers it — and a values map whose entries are accessor fields is read as its bindings, a chain typed by `telo check`. The Rust kernel refuses a resource whose kind holds a `Text` (`ERR_UNSUPPORTED_MANIFEST_FEATURE`).
+- a6d17ff: A native function holds its dependencies as data. A `Telo.Callable` kind with its own controller may name any kind but a need type at a `use: dependency` slot (`CALLABLE_DEFINITION_INVALID` no longer refuses it), and at `create()` its controller receives there the referent's configuration as the referent's own controller received it — compile-time expressions evaluated, accessor fields as their bindings, texts as records, every reference inside replaced the same way — without `kind` and `metadata`, deep-cloned and frozen, one copy per referenced resource, never an instance. The reference stays a dependency of the function, so creation order, deferral, reconcile and the rebinding of its callers follow it. A slot is a data slot only when every use it can take is `dependency`; a native function calling a function it holds declares that slot `use: call` — a breaking change for one that held a function at `use: dependency` and called it. `telo check` refuses a referent whose configuration is not data with the new `CALLABLE_REFERENCE_NOT_DATA` at the function's slot — an expression evaluated after creation (a runtime-eval field, a CEL region, a step or function body), a scope, a need, or a reference cycle — and judges a library's resource input at each import supplying it; the kernel refuses the same at creation (`ERR_CALLABLE_REFERENCE_NOT_DATA`). A native function in a template body receives what the body reaches: a sibling entry as the template created it, or an instance through the defining module's imports; a resource of the defining module is refused at the definition and at creation (the body's lookup does not reach it — declare it in `resources:` or hand it in through a bare `self.<field>`), and what a consumer forwards is judged at the consumer's own path. A function kind with a body inheriting such a slot is refused at it, and a deterministic claim is no longer judged against what a data slot holds. The analyzer exports the reader both halves use: `isDataSlot`, `isDataSite`, `isNativeCallableKind`, `callableReferenceNotDataMessage`.
+- 062d4d0: A `Telo.HostPath` slot may say what its path names: `x-telo-type: { name: Telo.HostPath, entry: directory }` (or `entry: file`). Omitted means either, and an absent path is never refused. `telo check` refuses a `!module-path` naming the other kind of entry, a variable declared with the other `entry` read into the field, and one an import passes to a library input declaring the other (`HOST_PATH_ENTRY_MISMATCH`); at a call's `inputs:` the mismatch is `CEL_TYPE_ARGUMENT_MISMATCH`, and a token outside `file` / `directory` is `X_TELO_TYPE_ARGUMENT_INVALID`. The kernel refuses an existing path of the other kind when it creates the resource holding it (`ERR_HOST_PATH_ENTRY_MISMATCH`) and one the filesystem will not answer for (`ERR_HOST_PATH_UNREADABLE`), and an Application variable or secret declaring `entry` at load, inside `ERR_MANIFEST_VALIDATION_FAILED`. `!module-path` completion offers only directories at a directory slot. The value-type data gains a parameter flag, `hostEntry`, which both SDK readers accept on a `fromHost` type only. `ManifestSource.exists` is replaced by `entryAt(base, relative)`, answering `file`, `directory` or nothing; the loader stamps what a single-claim tag names on it. `Telo.DurableDirectory.path` declares `entry: directory`. The Rust kernel now refuses both at creation as the Node kernel does — a path of the other kind (`ERR_HOST_PATH_ENTRY_MISMATCH`) and a relative one, literals included since it runs no analysis (`ERR_HOST_PATH_RELATIVE`) — and both kernels answer one set of vectors, `analyzer/host-path-conformance/`.
+- a6d17ff: New package `@telorun/message-format` (with its Rust twin `telorun-message-format`): Telo's message core. It reads a closed profile of Unicode MessageFormat 2 — text with `{$name}` placeholders and the escapes `\{`, `\}`, `\\`, and plural selections `{ plural: count, cases: { "=0": …, one: …, other: … } }` that nest — into a plain-JSON model, and identifies a source text by its all-`other` pattern plus its context. It finds a catalog language by RFC 4647 lookup (`pl-Latn-PL` → `pl-Latn` → `pl`). It formats numbers and selects plural categories from pinned CLDR 48.2 data for every locale, using no `Intl`, so Node, Rust and the browser give the same answer. A number's text depends on its value alone: int64 and uint64 are written exactly, and a double is rounded half-to-even to the language's pattern. `@telorun/sdk` now depends on the core and re-exports it.
+- 832f24b: A reference is told from an inline declaration by a marker, never by a `name` field: every resolved reference carries `__ref: true`, and any other object with a `kind` at a reference slot is an inline declaration of that kind, checked against its schema. A kind whose configuration has a field called `name` can now be declared inline — `icon: { kind: UiLucide.Icon, name: house }` — where it used to be refused as the removed `{ kind, name }` reference form.
+
+  `INVALID_REFERENCE_FORM` keeps its wording and its `!ref <name>` repair: it is reported for `{ kind, name }` when the kind's schema declares no `name` field (an open schema included), and for an author-written `__ref` key. What the per-resource checks would say about such an object, read as a declaration, is not reported a second time. Both are refused in the entry's own modules only. A dependency's `{ kind, name }` — what published artifacts carry — is still read as the reference it means, marked at normalization, so an application pinning such a library boots as before; an author-written `__ref` key in a library is refused when an import loads it (`ERR_INVALID_REFERENCE_FORM`). Whether a kind declares `name` is read through local `$ref`s, `allOf` conjuncts and union branches of its author schema. The analyzer exports the reader (`isResolvedReference`, `isInlineDeclaration`, `resolvedReference`, `declaresNameField`, `RESOLVED_REFERENCE_MARKER`); `ensureKindRef` returns a marked reference.
+
+  In `@telorun/sdk`, `KindRef` carries the `__ref` marker, and `resolveRefInstance` and a step's dispatch read a value as a reference only when it is marked or a `!ref` sentinel: a hand-built `{ kind, name }` handed to `ensureKindRef` / `resolveRef` is now an inline declaration of that kind. A controller building a reference in code writes `kindRef(kind, name, alias?)`; `isKindRef` and `refSentinelTarget` answer what a value is. The editor support reads a slot's reference the same way, so a navigation entry's inline `icon: { kind: UiLucide.Icon, name: house }` is no reference to `house`.
+
+  The Rust kernel judges reference forms only at reference slots, so a resource whose kind declares a `name` field is no longer refused; it reads a library's `{ kind, name }` as a reference and refuses its `__ref` key, and refuses a bare `targets:` entry written `{ kind, name }` as `ERR_INVALID_REFERENCE_FORM`.
+
+  A compile-eval result outside its slot's `enum` is refused in the words every schema refusal uses — `must be one of <count> allowed values; did you mean 'house'?`, or the values themselves when there are 20 or fewer — instead of naming only the slot's type.
+
+### Patch Changes
+
+- ad5633d: A step's `timeout:` also holds when its target's answer is delivered before the deadline timer has run: an answer at or past the deadline now fails the step `ERR_STEP_TIMEOUT`, as an elapsed timer does. Before, a busy event loop could hand the step a late answer as a success, so the same call timed out or succeeded depending on which of the two the runtime processed first.
+- Updated dependencies [a6d17ff]
+  - @telorun/message-format@0.121.0
+  - @telorun/cel@0.121.0
+
+## 0.120.1
+
+### Patch Changes
+
+- Updated dependencies [f59cacb]
+  - @telorun/cel@0.120.1
+
+## 0.120.0
+
+### Patch Changes
+
+- @telorun/cel@0.120.0
+
+## 0.119.0
+
+### Minor Changes
+
+- 63c81d0: A failed import is reported the same way by `telo check`, by `ctx.runtime.check` and by a run.
+
+  - **Breaking for a caller of `ctx.runtime.check` that read `loadError` on an import failure.** The seam now answers with exactly the diagnostics `telo check` reports — built by the same assembler, with the same codes, messages and locations (`line` / `column` set wherever `telo check` locates one) — so a failed import is its coded diagnostic at `imports.<alias>` (`INVALID_IMPORT_SOURCE`, `IMPORT_UNRESOLVED`, `INVALID_IMPORT_TARGET`, `KIND_PREFIX_RESERVED`), and `loadError` is set only when the graph could not be loaded at all (an unreadable entry, a refused partial). It used to stop at the first failed import and return its loader message as `loadError`, and to stop at a parse failure before analysing the rest.
+  - **A run refused for a failed import carries every import's static diagnostic** under `ERR_INVALID_IMPORT_SOURCE`, `ERR_IMPORT_UNRESOLVED`, `ERR_INVALID_IMPORT_TARGET` or `ERR_KIND_PREFIX_RESERVED` (a loader error carrying a code of its own keeps it), so `telo run` prints the `imports:` line `telo check` prints and a refused child writes `[<CODE>] <message>` for it. The Node kernel used to raise the loader's bare error for every import failure but a reserved prefix. An import of the built-in vocabulary archive is `ERR_INVALID_IMPORT_TARGET` in both kernels (it was `ERR_MANIFEST_VALIDATION_FAILED`). A `Telo.Import` declared in a `with:` scope is loaded, when its scope opens, by the same per-import step the graph walk runs and refused the same way: an unresolvable source is `ERR_IMPORT_UNRESOLVED` and a malformed one `ERR_INVALID_IMPORT_SOURCE` (both were the bare loader error), an application target is `ERR_INVALID_IMPORT_TARGET` in the loader's words (it was `ERR_MANIFEST_VALIDATION_FAILED`), and so is a target with no `Telo.Library` (it was an uncoded error). `@telorun/analyzer` exports that step, `loadImportTarget`, and `importFailureDiagnostics` for it.
+  - **A failed `Kernel.reconcile()` leaves the kernel as it was.** A reconcile refused while loading (a failed import, a parse failure) used to keep the refused graph, so the next reconcile diffed against it — missing a library edit, or reporting a spurious `restartRequired` after the edit was reverted.
+  - **Breaking for a consumer of `@telorun/ide-support`'s diagnostic assembly**: `assembleGraphDiagnostics`, `compromisedFiles`, `findPositions` and `resolveRange` moved to `@telorun/analyzer`, which also exports `locateDiagnostic` (a diagnostic's file and range, as every host reports it). `@telorun/ide-support` no longer exports them.
+
+### Patch Changes
+
+- 63c81d0: A child manifest started through `ctx.runtime.run` that is refused — at load or before it finishes starting — now writes every diagnostic its failure carries to its stderr, after the unchanged headline: one `  [<CODE>] <message>` line each, a diagnostic's `details` beneath it, an import's nested root causes one level further in, and entries that failed only because another did left out. A refusal by the load's analysis used to write `Manifest validation failed` alone, so `Test.Suite`, `App.Instance` and `Assert.Manifest` could show — and a `runFails:` could match — nothing about its cause. The form is documented on `RuntimeSeam.run` and in the controller protocol spec (§9.2) as what every kernel writes for a refused child.
+  - @telorun/cel@0.119.0
+
+## 0.118.0
+
+### Minor Changes
+
+- ae999ff: An application declares the addresses it is reached at as needs of two kernel-declared types: `Telo.PublicUrl` (field `url`, an http/https origin; parameters `port`, `primary`, `customDomains`) and `Telo.PublicHostPattern` (field `pattern`, `https://*.tenants.example` or `https://*-tenants.example`; parameter `port`). `Telo.NeedType` gains `supply: root`: a need of such a type is fulfilled only through a root need forwarded whole, and a self-supplied fulfilment, a field-by-field supply or a library need reaching the root unforwarded is `NEED_ROOT_SUPPLY_REQUIRED` / `ERR_NEED_ROOT_SUPPLY_REQUIRED`. A root address need names a `tcp` port, and at most one is `primary` and one per port takes `customDomains` (`NEED_PARAMETERS_INVALID`). The kernel answers an unset `Telo.PublicUrl` from the host values `TELO_HOST_PUBLIC_URL_TEMPLATE` and `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` (`ERR_NEED_HOST_VALUE_INVALID` for a bad template or derived label), refuses two addresses no host could route apart with `ERR_NEED_PUBLIC_URL_COLLISION`, announces each port's hosts as `publicUrls` on `Kernel.PortsResolved`, hides both host values from controllers and strips them from a started child's environment. `ctx.resolveNeed` answers an address need with the number of its port. `Telo.Url` gains the `user`, `password`, `path` and `query` member parameters. A presence test `has(a.b)` in a resource or referrer rule condition reads only `a`'s keys, so a dynamic value at `a.b` no longer skips the rule. A port an address need names counts as used (no `UNUSED_DECLARATION`). `telo needs report` lists a kernel-declared type under `type.module: Telo`, and a field whose value type's sensitive member the slot forbids (a `Telo.PublicUrl`'s password) is not reported sensitive. A main template holding `{label}` is refused, and the templates are read only when the application declares a `Telo.PublicUrl`. The controller protocol's `Need.Resolve` response gains an optional `port`.
+
+### Patch Changes
+
+- Updated dependencies [8d2a6a7]
+  - @telorun/cel@0.118.0
+
+## 0.117.0
+
+### Minor Changes
+
+- 972e899: A kind can consume a need's fulfilment whole and verify the need's constraints. `Telo.NeedType` gains `version: semver` and `features: [names]`, and a need may state `version` (a range in explicit comparators, `>=15.0.0`, whose refusals explain themselves in need terms) and `features` (names its type lists). A reference slot whose kind is a need type takes the fulfilment whole, and `x-telo-ref` gains `observes: [version, features]`: the kind reports what it found and the kernel compares it with the outermost need of the whole-forward chain. In Node a controller opens the fulfilment with `ctx.resolveNeed(pointer)` — its handle, fields, sensitive field names, and the outermost need's constraints and parameters — and reports with `ctx.verifyNeed(pointer, { version, features })`; a mismatch is `ERR_NEED_UNMET`, whose `data` holds `need`, `type`, `source`, `required` and `actual`. An observing slot not reported by the end of startup (`init()` for a provider, `run()` for a service, the first `run()` / `invoke()` otherwise), or a malformed report, is `ERR_NEED_OBSERVATION_INVALID`. Phase-5 injection no longer places a fulfilment in a slot.
+
+  `telo check` refuses `X_TELO_REF_INVALID_OBSERVES` (an `observes` that is malformed, on a non-need slot, naming a constraint the type does not declare, or on a kind with no observation deadline or no controller of its own — `ERR_X_TELO_REF_INVALID_OBSERVES` at definition registration), `NEED_CONSTRAINT_UNVERIFIED` (a stated constraint reaching no observing slot among the module's resources, their inline declarations and its templated kinds' body entries, or through a whole forward), `NEED_OPTIONAL_REFERENCED` (an optional need at a reference slot), and the version / features cases of `NEED_FORWARD_INCOMPATIBLE` and `NEED_PARAMETERS_INVALID`, each raised by the kernel at load as its `ERR_` twin — including when the analysis refused the load, which now reports the twin rather than `ERR_MANIFEST_VALIDATION_FAILED`. The analysis builds every imported library whole (`collectModuleDocuments` returns every imported library, and the zone stage selects the ones exporting instances), and reports an imported library's need-table defect once at the `imports:` entry that reaches it. `telo needs report` entries gain `version` (or `null`) and `features`.
+
+  The controller protocol moves to generation `telo-6`, withdrawing `5`: two messages, `Need.Resolve` and `Need.Verify`; every conformance vector, every handshake included, states `6`, which `check:controller-protocol` now verifies.
+
+- f3071ab: `Telo.Url` — a URL that may carry credentials, held as its members `scheme`, `host`, `port`, `user`, `password`, `path` and `query`. In CEL it is a type of its own whose members are fields, read by `.`, `.?` and `has()` (any other name is `CEL_UNKNOWN_FIELD`), and `string(url)` is its text. It is written as its text or as an object of its members, each a literal or an expression, which the type escapes by RFC 3986 component rules; a CEL `string` is accepted where one is wanted and read as its text when the resource is created, or — for a call's argument or result, and a transport's inbound value — when the call is dispatched. The `scheme` type argument restricts the scheme with a schema: `x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }`. A literal that does not read, or whose scheme the slot refuses, is `URL_INVALID` at `telo check` wherever it is written — a resource's own field, an import's field-by-field need supply, a call's `inputs:`, a slot typed by another field or kind, a `variables:` / `secrets:` `default:` — while every other finding there keeps its site's code. A computed one is `ERR_URL_INVALID` at creation; at a call's dispatch it is `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` whose `data.issues` carries the entry (`pointer`, `code: ERR_URL_INVALID`, `reason`), so what a dispatch can throw stays the closed contract union, catchable and never retried; an environment value or a `default:` that is not one is an entry of the application's `ERR_MANIFEST_VALIDATION_FAILED` carrying `ERR_URL_INVALID`. Each names the field or variable and the schemes, never the value. A value holding a password is written as `[redacted]` by every log record (attributes and errors), trace payload, span attribute and refusal message quoting a value, wherever it was built and whichever module writes it, and one holding none as its text; a value read at load — a resource's configuration, an environment value, a fulfilment, an import's supply, at any depth inside it — also adds its whole text and its password to the redaction set of every module context it reaches, so text derived from it is redacted too, while a value built at dispatch adds to no set. Its host is never redacted. A need-type field of the type is sensitive in `telo needs report`, and `ctx.resolveNeed` marks it sensitive when it holds a password.
+
+  An import's `variables:` and `secrets:`, and the library's own `default:` standing in for one it does not supply, are now read against the entries the library declares, for every value type: decoded through each instance type's plain encoding (a timestamp's RFC 3339 text is a timestamp inside the library, a URL's text a URL), then validated. A literal the declaration refuses is `SCHEMA_VIOLATION` at the import (`URL_INVALID` for a URL, `HOST_PATH_RELATIVE` for a relative host path, which is now reported once), an expression of the wrong type `CEL_TYPE_ERROR`; when the import initializes the kernel refuses the same supply as `ERR_URL_INVALID`, `ERR_HOST_PATH_RELATIVE` or `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`, naming the import and the variable, never the value. This newly refuses a manifest passing a library variable of the wrong type, which used to fail later or not at all. Two imports of a `lifecycle: shared` library agree when their values are equal as built (`SHARED_LIBRARY_CONFLICT` / `ERR_SHARED_LIBRARY_CONFLICT`), so two spellings of one URL are one value. A URL crosses the typed frame, a journal and the controller protocol tagged with its type and carrying its text (`{"$telo":"Telo.Url","value":"<url-text>"}`), so a replayed or delivered one is still a URL.
+
+  The value-type vocabulary gains `members` (an instance's member schemas: its CEL fields, its object authoring form, and through `x-telo-sensitive` what of it is redacted), `acceptsText: { code }` (a CEL string stands at the slot, refused under `code`) and a parameter's `member` (its argument is a schema that member must satisfy); the `url-text` plain encoding is pinned by `sdk/value-types/encodings/url-text.json`, which the Node and Rust codecs both run. `@telorun/cel`: a registered named type may declare `fields`, read at check and by the member-read seam at evaluation, and carried in the environment digest and the definition listing. `@telorun/templating` registers every value type's CEL face where it builds the dialect environment, so the runtime and every analyzer clone carry the same types; `registerValueBrands` is removed. `@telorun/sdk` adds `holdsSensitiveMember` (the value rule's one predicate, read from the type's entry; the Rust SDK's `holds_sensitive_member` reads the same entry), `redactedTextsOf`, `membersEntryOfValue`, `sensitiveMembersOf` and `membersOf`, writes a URL as its text in plain JSON, and derives the typed frame's tag set from the entries. `@telorun/analyzer` exports the reader of such a slot (`membersSlotOf`, `readMembersValue`, `membersValueRefusal`, `membersAuthoringSchema`, …), `explainValueTypeErrors` and `valueTypeRefusalCode` (the one reader of which code a value type's refusal reports under), accepts a value type written as text where a need-type field is marked sensitive, and bumps `VALUE_TYPE_KEYWORD_VERSION`, so cached validators are recompiled.
+
+### Patch Changes
+
+- Updated dependencies [f3071ab]
+  - @telorun/cel@0.117.0
+
+## 0.116.0
+
+### Minor Changes
+
+- f72827b: A `Telo.Provider` reports observed state from `init()`, and that status is readable in another resource's startup (compile-eval) fields. A provider has no `run()`, so its `init()` is where it becomes what it provides: it may acquire external resources there when each acquisition is an effect whose inverse releases it completely, and `ctx.setStatus(...)` there is no longer `ERR_OBSERVED_STATE_BEFORE_START`. The report is published when `init()` returns and discarded with an attempt that fails or defers. `telo check` no longer reports `OBSERVED_STATE_IN_STARTUP_FIELD` or `OBSERVED_STATE_NEVER_RUN` for a read whose target's effective capability (through `extends`) is `Telo.Provider` — except a provider declared in a `with:` scope, which is created when the scope opens and stays `OBSERVED_STATE_IN_STARTUP_FIELD` (naming the scope) in a scoped sibling's startup field; the read stays typed and closed, so a misspelled field is `CEL_UNKNOWN_FIELD`. Such a read is an init-order edge: the producer — or the import a `resources.<Alias>.<name>.status` read crosses — is initialized first, a loop of such reads is `DEPENDENCY_CYCLE`, and the kernel defers a reader whose producer has not initialized yet with `ERR_LOCAL_REF_PENDING`. Every other capability keeps the old rules, and a read whose target resolves to nothing is still refused. A kind declaring `status:` now publishes its reading even when its controller has no `snapshot()`.
+
+### Patch Changes
+
+- @telorun/cel@0.116.0
+
+## 0.115.2
+
+### Patch Changes
+
+- @telorun/cel@0.115.2
+
+## 0.115.1
+
+### Patch Changes
+
+- Updated dependencies [9fe8a24]
+  - @telorun/cel@0.115.1
+
+## 0.115.0
+
+### Patch Changes
+
+- Updated dependencies [e4e9203]
+  - @telorun/cel@0.115.0
+
+## 0.114.0
+
+### Patch Changes
+
+- @telorun/cel@0.114.0
+
+## 0.113.0
+
+### Patch Changes
+
+- @telorun/cel@0.113.0
+
+## 0.112.0
+
+### Minor Changes
+
+- 71da112: Five manifest primitives, each checked by `telo check` and enforced by the kernel.
+
+  **A reference slot inside a named shape is a slot of the kind.** A `!ref` written at an `x-telo-ref` slot a `Telo.JsonSchema` declares — reached from a kind's schema by `$ref: "telo://Self/<Shape>"` or `telo://<Alias>/<Shape>`, at any depth of a shape recursing with `$ref: "#"` — is now checked (`UNRESOLVED_REFERENCE`, `REFERENCE_KIND_MISMATCH`), resolved to the live instance, and may be an inline declaration. Before, such a slot was read as plain data: a missing target passed `telo check` and the controller received a name. A stdlib or third-party kind whose schema reaches a shape holding reference slots now has those references validated; one that named a missing or wrong-kind target is newly refused.
+
+  **A computed value at or above a reference slot is refused in a runtime-eval field too.** `REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED` used to cover only fields evaluated at creation; a `!cel`, `!interpolate` or `!sql` at or above a slot inside an `x-telo-eval: runtime` field is now refused at check and when the resource is created. Values beside or below a slot stay computable. This is a break for a manifest that computed such a value: write the slot as `!ref`.
+
+  **`x-telo-eval: accessor`.** A third value of the annotation: the field holds a plain `!cel` chain rooted at one of its `x-telo-context` bindings, or a literal. The chain is type-checked and never evaluated, with no `CEL_NULLABLE_ACCESS`; the controller receives `{ root, path }` for a chain and `{ value }` for a literal. Anything else is `ACCESSOR_NOT_PLAIN_CHAIN` / `ERR_ACCESSOR_NOT_PLAIN_CHAIN`. Editors agree with the checker there: tag completion offers `!cel` alone at an accessor field and no tag beneath it, in VS Code and in studio's form, and CEL completion inside the expression offers only the field's bindings and their members. For a caller of the analyzer, `celEvalModeAt` (and `AnalysisRegistry.celEvalModeAt`) now answers `"accessor"` at or beneath such a field, where a field that is not evaluated otherwise answers `null`; `offeredValueTags` takes that mode and a third argument saying whether the position is the field itself.
+
+  **A template's `provide:` reaches a provider.** The target is read through `invoke()` when it has one and through its own `provide()` otherwise, with `result:` applied to either; before, a provide-only target failed with a capability error. `inputs:` beside a provide-only target is refused at dispatch.
+
+  **Browser entries.** A `Telo.Library` declares the ES modules it ships for a browser under `exports.browser:` (`specifier`, `path`, `source`, optional `abi`, `external`, `exports`); a malformed entry, a repeated specifier or a platform axis on one is `BROWSER_ENTRY_INVALID`. The kernel builds them — into `<cache-root>/browser-src/` on first use in a checkout, into a new `browser` artifact layer at `telo publish` / `telo release` — with entries declaring the same `external` list built together so they share chunks; a failed build is `ERR_BROWSER_BUILD_FAILED`. Controllers reach one through the new `ctx.resolveBrowserEntry(specifier)` and `ctx.resolveControllerBrowserEntry(specifier)`, which return the built file, its sibling files, a content digest, `abi`, `external` and `exports`. The sibling files are the ones the entry's build recorded beside it in `<path>.siblings.json` (`{ "files": [ { "path": … } ] }`); a list that is missing, malformed or names a file outside the layer or build directory is `ERR_BROWSER_ENTRY_UNAVAILABLE`, and `telo publish` / `telo package` refuse a module declaring a file of its own at that reserved name. A string field annotated `x-telo-browser-export: { entry: <pointer> }` must name an export of a browser entry its own module declares (`BROWSER_ENTRY_UNKNOWN` / `BROWSER_EXPORT_UNKNOWN`, `ERR_`-prefixed at creation). `telo install` and `telo package` always include browser layers; the Rust kernel reads the role and skips it.
+
+  **The computed-reference refusal covers every evaluated field.** `REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED` also apply where a CEL region covers a field that carries no `x-telo-eval` (`x-telo-context`, `x-telo-error-context`, a step context): an `Http.Api` route's `handler: !cel …` is now that one diagnostic instead of `INVALID_REFERENCE`, and a computed container above a route's `returns[].content.*.encoder` is newly refused at check and at creation. A computed leaf beside a slot stays legal.
+
+  **An expression inside a reference slot's value branch no longer breaks the branch.** Where a slot takes a reference or a list of entries (each a reference beside other fields), an entry holding `when: !cel …` was reported as `INVALID_REFERENCE` at the slot; the list is now judged with the expression standing in, and an entry of the wrong shape is still refused.
+
+  **A rule skips only for what it reads through a comprehension.** In `x-telo-resource-rules` and `x-telo-referrer-rules`, a condition such as `self.routes.all(r, r.path != "")` reads each element's `path` alone, so an expression in another field of an element no longer makes the rule `RESOURCE_RULE_SKIPPED` / `REFERRER_RULE_SKIPPED`; a rule skipped before may now report a violation. The skip message names the value by the chain that reads it (`self.routes[1].path`). `@telorun/templating` exports `extractReadChains` and `EACH_SEGMENT`.
+
+  **A tagged union's failure is read by its tag.** Where a union's branches each pin a discriminator member with `const` / `enum`, a correctly tagged value's own problem is reported as that branch's — `must NOT have additional properties ('<key>' is not allowed)`, `is missing required property '<key>'` — instead of `matches no alternative`, and a value whose tag no branch accepts is reported once, at the tag, listing every allowed value. The message text of such `SCHEMA_VIOLATION` / `ERR_*_INVALID` failures changes accordingly.
+
+  **A disposed effect leaves its frame.** `dispose()` on a `.perform()` result, and the release a synchronous registration returns, now remove the effect from its resource's frame as the specification says, in constant time; before, the entry stayed for the life of the resource with everything its inverse closed over, so a resource performing one effect per connection grew without bound.
+
+  **The computed-reference refusal no longer depends on a concrete item.** A computed value above a slot reached through a named shape — `children: !cel "[]"` where each child is a shape holding a reference slot — is `REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED` even when the resource writes no item of that shape anywhere; before, it was refused only when some list in the resource held one.
+
+  **A browser entry's files stay inside its module.** An `exports.browser` entry whose `path` or `source` is absolute or points above the module root is `BROWSER_ENTRY_INVALID`, and the entry does not exist for a resource or controller naming its specifier.
+
+### Patch Changes
+
+- @telorun/cel@0.112.0
+
+## 0.111.0
+
+### Minor Changes
+
+- 587220a: `@telorun/cel`, `@telorun/sdk` and `@telorun/templating` are released under the MIT License from this version, and a published module carries its own license text.
+
+  The three packages declare `"license": "MIT"` and ship the MIT text; their Rust twins (`telorun-sdk`, `telorun-sdk-core`, `telorun-sdk-macros`, `telorun-abi`, `telo-templating`) declare `license = "MIT"`. The analyzer, kernel, CLI and editor packages stay under the Sustainable Use License, and versions already published keep the license they shipped with.
+
+  `telo publish` and `telo package` now carry a `LICENSE` file at a module's root with no `files:` entry: it ships in the artifact's `common` layer, beside the notices a `sources:` entry names. A module that keeps a `LICENSE` beside its `telo.yaml` therefore publishes one more file than before, which moves the pin of its published `telo.yaml` — republishing such a module at a version that is already published is refused, and needs a new `metadata.version`.
+
+### Patch Changes
+
+- Updated dependencies [587220a]
+  - @telorun/cel@0.111.0
+
+## 0.110.0
+
+### Patch Changes
+
+- @telorun/cel@0.110.0
+
+## 0.109.0
+
+### Minor Changes
+
+- 3fe9d3d: **One seam a CEL value crosses on its way out to a host reader, and every boundary goes through it.** A map has two representations in the value domain — a `CelMap`, whose entries are keyed by each key's own typed value so one container holds CEL's four key types and no key can ever be a property name, and the plain object a host hands one over as. `hostValueOf` (`@telorun/sdk`) converts the first into the second, recursively and by identity where nothing moved, and is applied at each boundary rather than restated at any: the result of a compiled value, a module function's arguments, a host-backed catalog function's arguments. A map with an int, uint or bool key is left exactly as it is, because a plain object cannot hold one and converting would collapse the four key types to text. It converts the map representation and nothing else — a `uint`, an instant, a duration and bytes cross unchanged, since a host reader of a typed slot must receive the value its contract declares.
+
+  **Every host reader of a map now reads one through the value domain rather than through `instanceof Map`.** A host `Map` is not a CEL value, and nothing had been moved with the representation: the **plain-JSON writer** wrote a map as its carrier (`{"entries":{}}`) at every boundary read outside Telo — an HTTP body, a log line, CLI JSON — and the **typed frame** could neither write one nor read one back, so a durable journal could not record a map and now refuses a host `Map` by name, which is what finds a controller still building one. `celMapFromEntries` is the only way a controller builds a map with a non-string key, and `isCelMap` the only way a reader recognises one; both are on the SDK's surface beside `isCelUint` / `isCelDuration`.
+
+  Four consequences a manifest can see:
+
+  - **A module function receives its arguments as data.** `WebSearch.sealCursor('searxng', {'query': 'q'}, '1-0')` reached the callable as `{"query":{"entries":{}}}` and was refused for a property its author had written (`ERR_INPUT_INVALID`), which also hid every engine's own `ERR_INVALID_INPUT` behind it.
+  - **`json(dyn)` writes the value, not its representation.** The host handler behind it writes through the plain-JSON writer — the one writer for a reader that is not a Telo runtime — so `json({'a': 1})` is `{"a":1}` rather than `{"entries":{}}`. Four other forms move with it, each to the one plain form its type declares: a `uint` to its decimal digits rather than `{"value":"7"}`, bytes to base64url, an instant to RFC 3339, a duration to its `5400s` text, a map with non-string keys keyed by each key's text (the protobuf JSON rule, with a key two of them would share refused rather than dropped).
+  - **A log attribute and the debug wire carry a map's contents**, where both put `{entries: {}}` on the wire for every map.
+  - **An `!interpolate` hole that holds a map says so**, both representations alike, rather than naming the host class of whichever carrier it was.
+
+  **A host hands a map over as a plain object, and the boundary of that is the prototype.** `Object.prototype` or `null` is a map; an object carrying a prototype of its own is not, however data-like it looks, because the member-read seam resolves a key against a value's own entries and cannot tell a bag from an instance with methods — which is what stops a computed key (`request.query[k]`) from ever reaching `length`, `call` or `constructor`. The engine deliberately does not widen to meet a host object: the host converts at its own boundary, and `modules/http-server` now does so for the transport's query and parameter bags, whose prototype is its parser's own.
+
+- 3fe9d3d: **An engine change invalidated controller bundles that are already published, and the repair is on the side that ships with the engine.** `@telorun/sdk` is external to a controller bundle and collapsed to the running kernel's own copy, so a module's published artifact imports whatever SDK the kernel carries. Two consequences of the value domain reached every app with such an artifact in its lock file, and neither can be fixed by a `requires: telo:` floor — the floor would have to have been declared in an artifact that is already published.
+
+  **A host's own bag is brought into the value domain where it enters an activation.** `request`, `inputs`, `item` and every other binding a controller hands over is a CEL binding, so each member of it has to BE a CEL value; the member-read seam resolves a string key against an object whose prototype is `Object.prototype` or `null` and answers "this value holds no members" for anything else, never performing a host property read — which is what stops a computed key (`request.query[k]`) from reaching a prototype, a method or `constructor`. Fastify's query parser builds each bag as a null-prototype object, so `request.query.name` answered 500 on every handler. Measured: no published `http-server` carries the module-side repair (0.32.0, 0.33.0 and 0.34.0 all lack it), so the kernel is the only side that can reach them.
+
+  Exactly one shape converts: prototype-free data, whose prototype is itself prototype-free and carries nothing. A value already readable returns by identity — which covers every branded value, since a brand is a plain object carrying a type key, and rebuilding one from its entries would drop the symbol and turn a duration into a pair of numbers. Everything that keeps a real prototype is left alone: a `Date`, a `Map`, a typed array, a `Stream`, a live resource instance. The test is the prototype's own shape rather than a list of host classes to exclude, and it is deliberately narrow — a controller binding a class instance still reaches the engine's refusal, which is the honest answer, because that value is not a map and no normalization makes it one.
+
+  **`Duration` and `UnsignedInt` are kept as deprecated shims.** Removing an exported name breaks every artifact importing it with a `SyntaxError` at load (`Export named 'Duration' not found`), which is what `record-stream@0.18.0` and `@0.19.0` hit. A shim produces a value in the DOMAIN rather than an instance of a class: `fromMilliseconds` returns the branded value, so what a published controller hands onward is a real CEL duration every reader accepts. The two things the old surface offered and a brand does not are supplied around it — `instanceof` answers through `Symbol.hasInstance`, which is `isCelDuration`, and `getMilliseconds()` is a non-enumerable own property, so published code reaches it while every walk that reads a value by its entries cannot see it.
+
+  The method rides on every duration a published controller can receive, not only on one the shim built: the guard in the published code is `if (!(value instanceof Duration)) throw …; return value.getMilliseconds()`, so both have to hold for a duration the shim never saw — one decoded from a manifest slot, and one the engine computed from `duration('30s')`. Answering `instanceof` without the method only converts the crash into that function's own `ERR_INVALID_VALUE`. So it is attached at the plain encoding's decode and at `hostValueOf`, the seam that already exists to say what a CEL value is to a host reader and the one point both paths cross.
+
+  Deprecated on arrival; a module moves to `celDurationFromNanos` / `durationNanos` / `isCelDuration` and `celUint` / `isCelUint` as it is touched. `Duration` is measured against published artifacts; `UnsignedInt` is precautionary, with no recorded consumer, and is shimmed because it was an exported name that was removed.
+
+  **Nothing about a converted value is cached.** A conversion produces a COPY, and the bag it was copied from is a live host object the framework still owns: a route's validator coerces the query _in place_, and a request guard reads the binding before that happens. Memoizing the copy served the guard's pre-coercion snapshot to the handler, so a boolean query parameter arrived as the string it was parsed as and failed the contract it was declared against — visible only on a route that has a guard, which is why a probe without one answered correctly. Caching a copy of a value someone else mutates is the defect; the conversion is cheap and runs per expression instead.
+
+### Patch Changes
+
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+  - @telorun/cel@0.109.0
+
+## 0.108.0
+
+### Minor Changes
+
+- 8c94cc0: **One seam a CEL value crosses on its way out to a host reader, and every boundary goes through it.** A map has two representations in the value domain — a `CelMap`, whose entries are keyed by each key's own typed value so one container holds CEL's four key types and no key can ever be a property name, and the plain object a host hands one over as. `hostValueOf` (`@telorun/sdk`) converts the first into the second, recursively and by identity where nothing moved, and is applied at each boundary rather than restated at any: the result of a compiled value, a module function's arguments, a host-backed catalog function's arguments. A map with an int, uint or bool key is left exactly as it is, because a plain object cannot hold one and converting would collapse the four key types to text. It converts the map representation and nothing else — a `uint`, an instant, a duration and bytes cross unchanged, since a host reader of a typed slot must receive the value its contract declares.
+
+  **Every host reader of a map now reads one through the value domain rather than through `instanceof Map`.** A host `Map` is not a CEL value, and nothing had been moved with the representation: the **plain-JSON writer** wrote a map as its carrier (`{"entries":{}}`) at every boundary read outside Telo — an HTTP body, a log line, CLI JSON — and the **typed frame** could neither write one nor read one back, so a durable journal could not record a map and now refuses a host `Map` by name, which is what finds a controller still building one. `celMapFromEntries` is the only way a controller builds a map with a non-string key, and `isCelMap` the only way a reader recognises one; both are on the SDK's surface beside `isCelUint` / `isCelDuration`.
+
+  Four consequences a manifest can see:
+
+  - **A module function receives its arguments as data.** `WebSearch.sealCursor('searxng', {'query': 'q'}, '1-0')` reached the callable as `{"query":{"entries":{}}}` and was refused for a property its author had written (`ERR_INPUT_INVALID`), which also hid every engine's own `ERR_INVALID_INPUT` behind it.
+  - **`json(dyn)` writes the value, not its representation.** The host handler behind it writes through the plain-JSON writer — the one writer for a reader that is not a Telo runtime — so `json({'a': 1})` is `{"a":1}` rather than `{"entries":{}}`. Four other forms move with it, each to the one plain form its type declares: a `uint` to its decimal digits rather than `{"value":"7"}`, bytes to base64url, an instant to RFC 3339, a duration to its `5400s` text, a map with non-string keys keyed by each key's text (the protobuf JSON rule, with a key two of them would share refused rather than dropped).
+  - **A log attribute and the debug wire carry a map's contents**, where both put `{entries: {}}` on the wire for every map.
+  - **An `!interpolate` hole that holds a map says so**, both representations alike, rather than naming the host class of whichever carrier it was.
+
+  **A host hands a map over as a plain object, and the boundary of that is the prototype.** `Object.prototype` or `null` is a map; an object carrying a prototype of its own is not, however data-like it looks, because the member-read seam resolves a key against a value's own entries and cannot tell a bag from an instance with methods — which is what stops a computed key (`request.query[k]`) from ever reaching `length`, `call` or `constructor`. The engine deliberately does not widen to meet a host object: the host converts at its own boundary, and `modules/http-server` now does so for the transport's query and parameter bags, whose prototype is its parser's own.
+
+- 8c94cc0: **An engine change invalidated controller bundles that are already published, and the repair is on the side that ships with the engine.** `@telorun/sdk` is external to a controller bundle and collapsed to the running kernel's own copy, so a module's published artifact imports whatever SDK the kernel carries. Two consequences of the value domain reached every app with such an artifact in its lock file, and neither can be fixed by a `requires: telo:` floor — the floor would have to have been declared in an artifact that is already published.
+
+  **A host's own bag is brought into the value domain where it enters an activation.** `request`, `inputs`, `item` and every other binding a controller hands over is a CEL binding, so each member of it has to BE a CEL value; the member-read seam resolves a string key against an object whose prototype is `Object.prototype` or `null` and answers "this value holds no members" for anything else, never performing a host property read — which is what stops a computed key (`request.query[k]`) from reaching a prototype, a method or `constructor`. Fastify's query parser builds each bag as a null-prototype object, so `request.query.name` answered 500 on every handler. Measured: no published `http-server` carries the module-side repair (0.32.0, 0.33.0 and 0.34.0 all lack it), so the kernel is the only side that can reach them.
+
+  Exactly one shape converts: prototype-free data, whose prototype is itself prototype-free and carries nothing. A value already readable returns by identity — which covers every branded value, since a brand is a plain object carrying a type key, and rebuilding one from its entries would drop the symbol and turn a duration into a pair of numbers. Everything that keeps a real prototype is left alone: a `Date`, a `Map`, a typed array, a `Stream`, a live resource instance. The test is the prototype's own shape rather than a list of host classes to exclude, and it is deliberately narrow — a controller binding a class instance still reaches the engine's refusal, which is the honest answer, because that value is not a map and no normalization makes it one.
+
+  **`Duration` and `UnsignedInt` are kept as deprecated shims.** Removing an exported name breaks every artifact importing it with a `SyntaxError` at load (`Export named 'Duration' not found`), which is what `record-stream@0.18.0` and `@0.19.0` hit. A shim produces a value in the DOMAIN rather than an instance of a class: `fromMilliseconds` returns the branded value, so what a published controller hands onward is a real CEL duration every reader accepts. The two things the old surface offered and a brand does not are supplied around it — `instanceof` answers through `Symbol.hasInstance`, which is `isCelDuration`, and `getMilliseconds()` is a non-enumerable own property, so published code reaches it while every walk that reads a value by its entries cannot see it.
+
+  The method rides on every duration a published controller can receive, not only on one the shim built: the guard in the published code is `if (!(value instanceof Duration)) throw …; return value.getMilliseconds()`, so both have to hold for a duration the shim never saw — one decoded from a manifest slot, and one the engine computed from `duration('30s')`. Answering `instanceof` without the method only converts the crash into that function's own `ERR_INVALID_VALUE`. So it is attached at the plain encoding's decode and at `hostValueOf`, the seam that already exists to say what a CEL value is to a host reader and the one point both paths cross.
+
+  Deprecated on arrival; a module moves to `celDurationFromNanos` / `durationNanos` / `isCelDuration` and `celUint` / `isCelUint` as it is touched. `Duration` is measured against published artifacts; `UnsignedInt` is precautionary, with no recorded consumer, and is shimmed because it was an exported name that was removed.
+
+  **Nothing about a converted value is cached.** A conversion produces a COPY, and the bag it was copied from is a live host object the framework still owns: a route's validator coerces the query _in place_, and a request guard reads the binding before that happens. Memoizing the copy served the guard's pre-coercion snapshot to the handler, so a boolean query parameter arrived as the string it was parsed as and failed the contract it was declared against — visible only on a route that has a guard, which is why a probe without one answered correctly. Caching a copy of a value someone else mutates is the defect; the conversion is cheap and runs per expression instead.
+
+### Patch Changes
+
+- Updated dependencies [8c94cc0]
+- Updated dependencies [8c94cc0]
+- Updated dependencies [8c94cc0]
+- Updated dependencies [8c94cc0]
+  - @telorun/cel@0.108.0
+
+## 0.107.0
+
+## 0.106.0
+
+### Minor Changes
+
+- f37047a: A reference slot is now reached wherever a kind's schema writes it: behind a local `$ref` (`target: { $ref: "#/$defs/Target" }`), inside a root `anyOf` / `oneOf` / `allOf` branch, under a root `additionalProperties` (every key but the declared ones and `kind` / `metadata`), and at every depth of a recursive `$defs` shape, as deep as the resource's data goes. Before, `telo check` was clean at such a slot while the kernel handed a `!ref` to the controller raw, never created an inline declaration written there (the run failed with "must be a `!ref`"), and `!ref nosuch` there went unreported. Now a `!ref` arrives as the live instance, an inline declaration is extracted and runs, and a missing target is `UNRESOLVED_REFERENCE` at its concrete path — the same as a plain `properties` slot. Every consumer — Phase-5 injection, scope creation, the inherited-controller path, inline extraction, `!ref` resolution, reference validation, the dependency and call graphs, invocation contracts, observed state, peer binding, template bodies and the editor's port list — reads one enumeration of the kind's reach, so `telo check` and the kernel cannot disagree about where a reference is. A step body is still not a slot — a step's `invoke:` resolves at dispatch — except a step list whose items are themselves references, as an Application's `targets:` are. `TEMPLATE_REF_COMPUTED` and a module graph's forwarded edges now find a value written above a reference slot at any depth of a recursive shape too. An `x-telo-schema-from` failure the kind alone decides (`INVALID_SCHEMA_FROM`, an alias-qualified anchor naming nothing) is still reported for every resource of the kind at the declared pattern, now also at patterns behind a local `$ref` or in a root branch; `CONTRACT_SLOT_INPUTS_UNSATISFIABLE` and `CONTRACT_INPUTS_AT_RUN_SITE` name the concrete path.
+
+  A reference slot is paired with an argument map by its own `x-telo-ref` `inputs:` pointer, at every shape the reach covers. A site where a slot declares one is checked at the call site against the target's contract (`CONTRACT_INPUTS_MISMATCH`) and is exempt from `CONTRACT_SLOT_INPUTS_UNSATISFIABLE` / `CONTRACT_INPUTS_AT_RUN_SITE` — so a route behind a `$ref`, in a root branch or under a root `additionalProperties` whose `inputs:` supplies what its target requires checks clean and runs, exactly as a plain route does. A sibling marked `x-telo-topology-role: inputs` no longer pairs a reference slot on its own. A case map's selector `default:` and the editor's port `use` are read from the object enclosing the slot as the reach recorded it, so a slot under a root `additionalProperties`, behind a `#/definitions/` pointer or inside a schema-from anchor classifies as a plain slot does; a default a sibling branch declares is never read.
+
+  A key one `anyOf` / `oneOf` branch declares a reference slot and a sibling branch a plain value (`target: { type: string }`) — at the schema root or any depth below it — takes that value where the whole object fits that branch: `target: hello` checks clean and reaches the controller as written. One level below the root this was refused as `INVALID_REFERENCE_FORM` at check and at boot. In a discriminated union the rest of the object decides — `{ mode: ref, target: hello }` beside a `mode: text` branch declaring `target` a string is still `INVALID_REFERENCE_FORM`, while `{ mode: text, target: hello }` is a value. A value no branch accepts is still refused, and an `allOf` member or a base `properties` entry beside a branch is not an alternative. Each value branch is validated against the document its slot is declared in, so one using `#/$defs/…` compiles.
+
+  `x-telo-scope` is legal only on a named top-level property — one in the schema root's `properties` or in a root variant's, written directly or through a local `$ref` — and a scope there (a root `anyOf` branch, a `$ref`'d `with:`) is now stood up. Anywhere else (nested under an object, on an array item, under `additionalProperties`, inside a recursive shape, below an `x-telo-schema-from`) is `SCOPE_SLOT_MISPLACED` at `telo check`, and the kernel refuses the definition at registration with `ERR_SCOPE_SLOT_MISPLACED`, a dependency's kind included.
+
+  `@telorun/analyzer`'s field-map API is replaced by the reach: `buildReferenceFieldMap`, `isRefEntry`, `isScopeEntry`, `ReferenceFieldMap` and `shapeMatches` are removed from the package exports; `reachSites` and `scopeSlotProblems` (with the types `ReachSite`, `ReachRef`, `DeclaredReach`, `DeclaredReference`, `SchemaFromResolver`, `ScopeSlotProblem`) are added, and a kind's declared patterns are read through `DefinitionRegistry.declaredReachOf`. A `ReachRef` carries its slot's schema `node`, the `enclosing` conjunct declarations of the object holding it, and its value `alternatives` at the site, each with the union members it diverged through and the value at each union's position. `PeerBinderRegistry` takes `declaredReachOf` and `referenceSites` in place of `getFieldMap` / `getFieldMapForKind`. `ProjectionScope.referenceSlots` / `ProjectionModules.referenceSlots` return CONCRETE paths (`tables[0]`) rather than patterns (`tables[]`) — a host still returning patterns matches no hop. `AnalysisRegistry.iterateFieldEntries` is replaced by `referenceSitesOf`; `ModuleGraphDeps` gains `refSites` and `refPositions`, and each `refFields` entry a required `uses`; a `RefSiteEvent` carries the site's `refs` and a `StepGraphNode.refSlots` entry its `uses`; a `PeerBinderEnv` supplies `refSitesOf` beside `refSlotsOf`.
+
+### Patch Changes
+
+- 31b22f5: A `try:` step lets a cancellation of its own invocation through untouched, as it already did a durable suspension: when the invocation running the steps has been cancelled — a caller's step `timeout:`, a stopped run — neither `catch:` nor `finally:` runs. A caller's step `timeout:` on a target that guards its own work with `try:` / `catch:` now fails the caller with `ERR_STEP_TIMEOUT`, where before the target's `catch:` turned the cancellation into its own failure code. An `ERR_INVOKE_CANCELLED` raised while the invocation is not cancelled (a recorded failure re-raised, for example) is caught like any other failure, and every other failure still reaches `catch:` and `finally:` as before.
+
+## 0.105.0
+
+### Patch Changes
+
+- 9f62699: The Telo controller protocol's conformance vectors: `sdk/controller-protocol/vectors/framing.json` (the framed carrier byte for byte, and the frames a reader refuses), `messages.json` (every message's request and response body against its schema, each refusal naming the RFC 6901 instance pointer it reports), `sequences.json` (whole exchanges — correlation, id parity, the reentrant interleave, channel credit and ordering, signals against errors) and `carrier-equivalence.json` (the framed frame and the ABI buffer carry the same payload bytes). One runner in each language executes all four with no skip path — a vitest suite in `@telorun/sdk` and a test module in `telorun-sdk`, each with its own framing codec written from the spec's prose. `@telorun/sdk`'s published `package.json` gains `ajv` as a dev-dependency only; no runtime code, export or dependency of `@telorun/sdk` changes, so the release carrying it is a patch of the telo version line.
+
+## 0.104.0
+
+### Minor Changes
+
+- 4641afc: Breaking: `OpenSpanOptions.inbound` is the W3C Trace Context carrier, `{ traceparent, tracestate? }`, exactly as a transport received it (it was `{ traceId, parentSpanId? }`). The kernel's `openSpan` parses it: a valid `traceparent` makes the span a child of the upstream span, in the upstream trace, and the upstream parent id is exported verbatim as the span's `parentSpanId` (also `Telo.LogTraceSink`'s `telo.span.parent_span_id`); an invalid or all-zero one is ignored in full and the span roots a new trace. The step engine's `TryStep.when` is typed as the predicate it is, a boolean or a compiled `!cel` expression. A templated kind's `mount:` now forwards every argument of the transport's `register` call to its mount child, not only `app` and `prefix`, so a templated mount receives `Http.Server`'s request scope.
+- 4641afc: Added: trace export. A root Application's `tracing: { sinks: [...] }` turns tracing on as soon as one trace sink is attached, and every finished span — each `invoke` / `run` dispatch, the application's boot run, and every span a controller opens — reaches the attached sinks with its `traceId`, `spanId`, `parentSpanId`, name, start and end, `outcome` (`ok | rejected | failed | cancelled | parked`), `error.type` on a failure, `telo.cancellation.reason` on a cancellation, and its declared attributes; never its inputs, outputs or scope. `tracing:` is evaluated at load like `logging:`, and on a `Telo.Library` it is refused.
+
+  Sink lists: an entry of `tracing.sinks` and of `logging.sinks` is a sink (`!ref` or inline) or `{ sink, when }`, `when` a boolean (default `true`) evaluated once at load; `false` leaves the sink created and unattached. The kernel attaches exactly the sinks the lists name, right after creating each (an import's exported instance once the graph is up), and the undo flushes, detaches and closes it. A listed instance that does not expose the sink contract (`sinkId`, `write`, `flush`, `flushSync`, `close`) is refused with `ERR_SINK_CONTRACT_MISSING`. Breaking: a sink no longer attaches itself, so a sink declared but not listed — at the top level or in an imported library — receives nothing, and `telo check` warns `SINK_UNATTACHED` at it. When no listed log sink is attached, the zero-config console sink is added, as if `sinks:` were omitted.
+
+  New built-in kinds: `Telo.TraceSink`, the abstract every trace sink extends, and `Telo.LogTraceSink`, which writes each finished span as one `telo.span` record through the logging pipeline at its `level` (default `info`), carrying the span's own trace and span ids.
+
+  New annotation: `x-telo-span-attribute: "<name>"` on a scalar property of an `inputType` / `outputType` puts that value on the resource's dispatch span under that name. A mark is read wherever the contract reaches it through `properties`, following `$ref` into `$defs` entries and named shapes; `telo check` runs the kernel's own walk over the same contract. It reports a malformed or runtime-reserved name as `SPAN_ATTRIBUTE_INVALID`, and as `SPAN_ATTRIBUTE_MISPLACED` a non-scalar mark or one beside `x-telo-sensitive: true` (at the mark), a mark reached at the contract root or through an array item or map value (at the property that reaches it), and a mark no contract reaches; the kernel refuses such a contract at first dispatch with `ERR_SPAN_ATTRIBUTE_INVALID`. `x-telo-sensitive` follows the same reachability: a mark in a `$defs` entry or named shape a contract reaches is now read and redacted, and only an unreached one is `SENSITIVE_ANNOTATION_MISPLACED`.
+
+  SDK: the `SpanRecord` / `TraceSinkInstance` contract for trace sinks; `ctx.logging.attach` / `detach` are removed (a sink controller returns the sink as its instance and attaches nothing); `openSpan` now parents a span under the span its base context carries (a span opened inside a dispatch is its child), and `settle` accepts `attributes` merged over the ones the span was opened with; `RecordBuffer` is generic over its record type. `@telorun/sdk` exports `errorTypeOf`, the one rule for a span's `error.type` (an error's structured code, else its class name), which the kernel's dispatch spans and a module's own spans both use.
+
+  The Rust kernel refuses a module doc's `tracing:` with `ERR_UNSUPPORTED_MANIFEST_FEATURE`.
+
+  Breaking: predicates are booleans. A step's `when` (an invoke step's and a `try:` step's), `if`, `elseif[].if` and `while`, and a boot target's `when` (gated `{ ref, when }` or inline `{ invoke, when }`), must evaluate to `true` or `false`; anything else is refused with the new ambient code `ERR_PREDICATE_NOT_BOOLEAN` (`data: { site, produced }`; catchable, never retried, never counted toward `throws:`) instead of being read by truthiness — a string `"false"` used to run the branch. `InvokeStep.when` and a gated target's `when` are now `type: boolean`, and a `try:` step declares its `when` (`type: boolean`). `telo check` now types every `!cel` value inside a union-typed slot against the one branch the value selects, and where several branches fit the written value, against every one of them (reported only when none accepts the expression's type), so a predicate, a sink entry's `when` or any other union-held field whose expression is typed wrong is `CEL_TYPE_ERROR` at its own path (`tracing.sinks[0].when`, `targets[0].when`, `steps[0].if`); `selectUnionBranch` also selects over a union beside a shared base. At runtime every compile-eval result is held to its slot's schema once expanded: the root Application's `logging:` / `tracing:` at load (`ERR_MANIFEST_VALIDATION_FAILED`, before any sink is created — a sink `when` of `"false"` no longer attaches it) and a resource's compile-eval fields at creation (`ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`, after the host-path and format refusals). Where the written value does not decide a union's branch, the evaluated subtree is held to the whole union rather than to a guessed branch. Validation fills no schema defaults: the controller receives exactly what the expression produced, and an object an expression returned (`variables.x`, a published resource) is never modified. The SDK exports `predicateResult` and `ERR_PREDICATE_NOT_BOOLEAN`; the analyzer exports `compiledResultSlots` / `formatSlotPath`.
+
+## 0.103.2
+
+## 0.103.1
+
+## 0.103.0
+
+## 0.102.0
+
+### Minor Changes
+
+- eadb75a: Changed: the telo runtime packages share one version line. `@telorun/sdk`, `@telorun/templating`, `@telorun/analyzer`, `@telorun/kernel`, `@telorun/cli`, `@telorun/ide-support` and `@telorun/language-server` form one changesets `fixed` group (the `linked` group is gone): a changeset naming any of them releases all of them at one version, so this release puts every member on the same number, and that number is the manifest surface generation a module's `requires: telo:` range is written against. `TELO_SURFACE_VERSION` is the line's version with any pending bump applied, and the Rust twins (`telo-kernel`, `telo-cli`, `telo-analyzer`, `telo-templating`, `telorun-sdk`) carry their Node twin's version in `Cargo.toml` and `Cargo.lock`.
+
+## 0.101.0
+
+### Minor Changes
+
+- 5c3ec2f: Added: the `!interpolate` tag — literal text with `${{ expr }}` holes, always a string. Its meaning is exactly the CEL expression joining the text with `string(<hole>)` for each hole, so a hole converts through CEL's own overloads (RFC 3339 for a timestamp, UTF-8 for bytes) rather than the host's. `telo check` type-checks each hole, reports one whose type CEL cannot convert to text as `INTERPOLATION_HOLE_NOT_CONVERTIBLE` and a nullable one as `CEL_NULLABLE_ACCESS`, and checks the result against the field like any other string — an integer field is a type mismatch, a `Telo.HostPath` field `HOST_PATH_UNTYPED_SOURCE`. A `dyn` hole that is null, a list or a map at runtime fails with `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE`, naming the hole. `!sql` and `!interpolate` read holes with one grammar that understands CEL string literals, so a hole may hold a map literal or a string containing `}`, and `${{ '${{' }}` yields a literal `${{`. The CEL catalog gains `string(duration)`, rendering the `Telo.Duration` plain encoding (`5400s`, `1.5s`), and a value brand whose base is not a string renders as text statically too, so `string(ports.http)` and a port in a hole type-check.
+
+  Added: `TemplatingEngine.expressionRegions(source)` says where a tag's CEL sits — the whole `!cel` scalar, each hole of a tag with holes — and `celExpressionsOf(engine, source)` reads it; editors colour, complete, hover and rename inside the holes of any tag through it. The migration vocabulary gains `match.scalar` (`lone-hole` | `interpolated`, an untagged string scalar by its text; a core entry may pair it with `inKind` / `under` `*`) and `set-tag`'s `source: text | hole`.
+
+  Changed: a plain string holding `${{` is no longer an expression. The core migration `untagged-interpolation` rewrites it at load — a lone hole to `!cel "<expr>"`, text with holes to `!interpolate` with the text unchanged — and reports `DEPRECATED_UNTAGGED_INTERPOLATION` in the entry module's own files; `telo migrate` writes the same rewrite to disk. One read without migrations, or a `${{` no hole can be read out of, is refused: `UNTAGGED_INTERPOLATION` at `telo check` — in an imported library, at the consumer's import of it — and `ERR_UNTAGGED_INTERPOLATION` at load. Under `!interpolate` a hole that is null at runtime is an error where the untagged form printed an empty string. `compileString`, `toParameterized`, `TEMPLATE_REGEX`, `EXACT_TEMPLATE_REGEX` and `CompiledValue.parts` are removed; `readInterpolationHoles` / `interpolationShape` replace them.
+
+  Changed: a deferred runtime expression in a `Created` event's `properties` — and in an expression failure's message — is rendered as the tag it was written with (`!cel "request.body"`, `!interpolate "hi ${{ name }}"`) rather than as `${{ source }}`.
+
+## 0.100.0
+
+### Minor Changes
+
+- fd9e61f: Added: a root Application reads its command line through declared bindings. A `variables:` entry may carry `arg:` beside or instead of `env:` — a flag name, `{ flag, short? }`, or `{ position }` — and one bound by `arg:` alone needs a `default:`, since a runner session supplies inputs through the environment; a `ports:` entry may add `arg:` beside the `env:` it still requires. Precedence is a value supplied by name, then the command line, then the environment, then `default:`. A repeated flag fills an array-typed entry, each token read by `items.type`; a boolean is `--x` / `--no-x`; `--` ends options. An argument nothing declares, a missing flag value, a surplus positional or a value failing its type is refused before boot in `ERR_MANIFEST_VALIDATION_FAILED`, naming what the application declares, and `--help` prints the usage the bindings describe instead of running — a synopsis (`[<name>] [--tag|-t <string>]... [--[no-]verbose]`) then one line per argument; the analyzer exports the same rendering (`renderArgumentSynopsis`, `renderApplicationUsage`) for other hosts. `telo check` reports a malformed `arg:` as a schema violation, a conflicting binding as `ARG_BINDING_INVALID`, a secret bound to the command line as `ARG_BINDING_ON_SECRET`, and `arg:` in a library as `LIBRARY_ARG_KEY_REJECTED`.
+
+  Changed: every argument after the manifest path now belongs to the application — `telo run [options] <path> [application arguments]`, as `node [options] app.js [args]` — so `telo run app.yaml --watch` becomes `telo run --watch app.yaml`. Before the path, `--inspect` reads a following `[host:]port`; a bare host is written `--inspect=<host>`. Controllers no longer receive the command line: `ctx.args`, `ParsedArgs` and a controller's `args` export are removed from the SDK (the kernel still hands an already-published controller an empty `args`).
+
+## 0.98.0
+
+### Minor Changes
+
+- 95762d6: Host paths and module paths: a path is anchored by what declares it
+
+  `x-telo-type: Telo.HostPath` is a new value type for an absolute path on the machine running the application. In CEL it is a type of its own: extend one with the new `.joinPath('sub/dir')`, which joins with the host's separator (`\` on Windows) and keeps it a host path, and read it as text with `string(path)`; a plain string where a host path is required is a static error. Every value-type brand now converts to its base the same way (`int(ports.http)`). A relative one is refused wherever it is held — `HOST_PATH_RELATIVE` at `telo check`, with a repair to `!module-path`, and `ERR_HOST_PATH_RELATIVE` at creation for a relative path an expression computes — except in an Application `variables:` / `secrets:` entry typed `Telo.HostPath`, whose env value or `default:` is resolved against the working directory at load. That is the directory `.env` is read from, and for a packaged executable started by double-click, the one it sits in.
+
+  Nothing else anchors a relative host path, and `telo check` says so where it is written: a relative `default:` at a host-path field of a kind's schema or a library variable is `HOST_PATH_RELATIVE` at the declaring document, and a plain CEL reference feeding a host-path field from a source declared as something else (a `type: string` variable) is `HOST_PATH_UNTYPED_SOURCE` — at the resource field, and where an import supplies a library's host-path variable. A relative literal an import passes to a library's host-path variable, and an expression starting with a relative literal (`'data/' + variables.name`), are `HOST_PATH_RELATIVE` as well. A union field with a constant branch (`":memory:"`) beside a path now reads each value as the branch it names, statically and at runtime.
+
+  `!module-path <path>` is a new tag naming a file or directory that ships with the module by its location. The kernel resolves it at resource creation to the absolute path on disk (`ERR_MODULE_PATH_NOT_FOUND` when nothing is there). `telo publish` and `telo package` carry everything beneath a named directory with no `files:` entry and refuse one that is missing or empty (`MODULE_PATH_NOT_FOUND` / `MODULE_PATH_EMPTY`). A missing one in the entry module is also reported by `telo check`, VS Code and Studio: the loader asks the new optional `ManifestSource.exists(base, relative)`, implemented by the Node, VS Code, Tauri and File System Access sources, and records it as `LoadedGraph.modulePathDiagnostics`. A tag on a document that is never instantiated is `MODULE_PATH_OUTSIDE_RESOURCE`, and `DiagnosticFix.tag` gains `module-path`. The Rust templating crate reads the tag and the Rust kernel resolves it.
+
+  Studio offers `!module-path` as a path tag wherever its produced `Telo.HostPath` fits the field.
+
+## 0.97.0
+
+### Patch Changes
+
+- 2cbf883: Templated kinds can start several entries with `targets:`
+
+  A templated `Telo.Service` / `Telo.Runnable` definition may list `targets:` — `!ref`s to its `resources:` entries, started in order when an instance runs — instead of a single `run:`, so a kind can start a server beside the poller that feeds it. `telo check` reports `TEMPLATE_TARGETS_INVALID`, `TEMPLATE_TARGET_UNKNOWN`, `TEMPLATE_TARGETS_CAPABILITY` and `TEMPLATE_TARGETS_WITH_RUN`; the kernel refuses the same definitions at registration as `ERR_<code>`.
+
+  Two template fixes ship with it: `self` now reads the schema's `default:` values, at every depth, wherever the instance leaves a field out; and an expression calling a non-deterministic function (`uuidv4()`, `nowMillis()`) or any module function (`Self.fn()`) is no longer evaluated once for the whole instance — the compiled value carries a new `volatile` flag for the former.
+
+## 0.96.0
+
+### Patch Changes
+
+- abe08ab: Close three `telo check` gaps and make declared integers CEL integers on the way in
+
+  - `inputs` inside a step body is typed from the resource's resolved input
+    contract, so `inputs.<typo>` is `CEL_UNKNOWN_FIELD` — including in a handler
+    declared inline in a route, whose open `inputs` view no longer wins over the
+    contract. Open only where no `inputType` is declared.
+  - A handler with no `outputType` whose `outputs:` map carries
+    `x-telo-value-schema-from: outputType` is typed by that map's keys, so
+    `result.<typo>` in a route's `returns:` (and `steps.<name>.result.<typo>` after
+    a step invoking it) is reported.
+  - A pure `value:` step's computed result is typed by the scalar its expression
+    checks to, so `steps.a.result + steps.b.result` over a `double` and an `int` is
+    `CEL_TYPE_ERROR` rather than a dispatch failure.
+  - A value an input contract declares `integer` is an int64 wherever the resource
+    evaluates CEL over it; controllers still receive arguments as the call site
+    produced them. `ctx.readPlainEncoded` also normalizes declared scalars, so a
+    transport's declared `integer` request field reaches CEL as an int.
+
+## 0.93.0
+
+### Minor Changes
+
+- 814cd18: `ctx.runtime.run` takes a child's declared inputs by name, and a child is now reachable as a text channel.
+
+  `RuntimeRunOptions.inputs` carries values for the child manifest's `variables:` / `secrets:` / `ports:` under the names the child declares, rather than the environment variables it binds them to. The child validates each value against its own declaration, and a name it does not declare is refused with the names it does declare in the message — previously a caller could only hand over an environment map, which nothing could check and which let a caller set keys the child never declared.
+
+  `RuntimeRun` also gains `stdin` — a `TextChannelInput` with `write(text)` and `end()` — and `started`, which settles once the child's own `targets:` have been dispatched (so a server it declares is listening) or as soon as it exits. Input is a handle written to over time rather than a value handed over at the start, because the useful case is a conversation: answer the prompt the child just printed, read what it says next, answer that. `started` is separate from `run()` returning because an interactive child blocks on its first prompt and never finishes dispatching its targets, so a caller holding a conversation must not wait for it.
+
+  The SDK exports the two shapes a channel implementation composes: `TextChannel` (`openOutput()` plus `input`) and `TextChannelInput`. `cancel()` now ends the child's input before cancelling, so a child parked on a read wakes rather than being killed mid-wait.
+
+## 0.92.0
+
+### Minor Changes
+
+- 8f12158: Timestamps, durations and unsigned integers join the value-type vocabulary. `x-telo-type: Telo.Timestamp` and `Telo.Duration` hold CEL's native timestamp and duration (typed `google.protobuf.Timestamp` / `google.protobuf.Duration` by `telo check`); `Telo.Uint64` is an integer CEL reads as `uint`, and a declared output normalizes to one. A new catalog function `now()` returns the current instant as a timestamp (non-deterministic).
+
+  Every non-live instance value type declares its plain `encoding` — `Telo.Bytes` base64url without padding, `Telo.Timestamp` RFC 3339 (written in UTC `Z`), `Telo.Duration` any CEL duration string within CEL's range of ±315576000000s (written as seconds, `5400s`). A string literal is decoded from it wherever a value arrives from outside: a resource's own config slot, an Application `variables:` / `secrets:` env var or `default:`, and every slot typed from elsewhere — a call's argument map (a step's `inputs:`, a reference slot's `inputs:` pointer, a template's top-level `inputs:` — read against its body entry's contract with any named shape in it resolved in the declaring module, at the root, nested or under `$defs` — a boot target's inline step), an `x-telo-schema-from` slot and an `x-telo-value-schema-from` row. One reader enumerates those sites for `telo check` and for kernel creation alike, so a literal is read once against one schema; text the encoding does not read is left as written, so `telo check` refuses it at every one of those sites and the runtime refuses it again wherever that slot's own assertion runs — a config slot when the resource is created, an argument map when the call is dispatched. A computed value is never decoded, and neither is an embed's text — the kernel decodes before `!include-*` resolves. A `Telo.Uint64` value outside `0…2^64-1` is refused (`SCHEMA_VIOLATION` / `ERR_OUTPUT_INVALID`), and so is a plain number beyond 2^53 − 1, which is already some other integer — the message says to write it as a CEL uint (`!cel "18446744073709551615u"`); `@telorun/sdk` exports `markExactRendering`, with which a host validating a BigInt-normalized view marks the doubles it rendered from exact integers so they are not refused, a CEL expression may fill an instance-typed slot (its stand-in is the instance), an instance's CEL type no longer satisfies a JSON-typed slot and vice versa, and `integerInput` accepts a uint.
+
+  `@telorun/sdk` now depends on `@marcbachmann/cel-js`, pinned to exactly `7.6.1`, and exports `Duration` and `UnsignedInt` plus `PLAIN_ENCODINGS`, `CEL_SCALAR_FORMS` and `decodePlainText`; templating, analyzer and kernel pin the same version. `@telorun/templating` refuses to load when its CEL engine is a different copy than the SDK's, and the kernel refuses to build a controller bundle that inlines `@marcbachmann/cel-js`. `@telorun/analyzer` gains `derived-slots.ts` — the one reader of a resource's call-argument maps and schema-derived slots, consumed by the step-inputs, schema-from and value-schema-from checks and by kernel creation (`AnalysisRegistry.derivedSlotsOf`). The kernel's compiled-validator cache key now covers the value-type vocabulary, so a validator baked before a vocabulary change is recompiled rather than served stale.
+
+- 8f12158: `decideValue(ctx, invokeCtx, path, kind, compute)` is the single seam every durable decision point goes through — the step engine's `if` / `while` / `switch` / `value`, and a composer that drives its own body and therefore evaluates its collection or its per-turn condition before the engine ever sees a step list. Outside a durable run, and inside a collapsed region, it is `compute()` and nothing else.
+
+  `assertJournalable` now refuses everything the typed frame refuses, not only what `JSON.stringify` throws on. A class instance offering a `toJSON` stringified happily and replayed as a plain object — a value of a different type, with nothing reported anywhere — and is now `ERR_DURABLE_UNJOURNALABLE_VALUE`, carrying `data.valuePath`, the JSON Pointer of the offending node inside the value, beside the step path in `data.path`. A root `undefined` is not a value and is not refused: a step that produced nothing is journaled as an entry carrying no value. It returns the frame text it produced, so a backend records that rather than encoding the value a second time.
+
+  The recorded-value codec every backend follows is in the SDK beside the typed frame: `RECORDED_VALUE_CODEC_VERSION`, `writeRecordedValue(value, where)` (absent object members dropped, then `assertJournalable`), `withoutAbsentMembers` and `readRecordedValue(run, path, version, written)` — a value with no version read as its store read it before the codec, an unknown version refused with `ERR_DURABLE_ENTRY_UNDECODABLE`, and a frame that does not decode reported as `ERR_DURABLE_JOURNAL_CORRUPT` naming the run and path.
+
+  An invoke step's `when:` guard is journaled inside a durable run (`<step>/@when`, decision `predicate` — `GUARD_DECISION_SEGMENT`, a segment no step name can spell, so a step named `when` in the body the guarded step dispatches is not handed the guard's value), as a `try:` step's already was: re-derived on a resume, a guard reading a clock or observed state could turn false for a step whose effect had already happened, skipping it and leaving `steps.<name>` unset.
+
+- 8f12158: CEL resolves a call whose receiver is one of the declaring module's names — its `imports:` keys, `Self`, its `metadata.name` and `Telo` — into a late-bound module call, carrying the qualified name as written. A bare name is still always the core catalog, so `format(…)` and `Billing.format(…)` never collide, and `a.b.c(x)` is an ordinary method call. Resolution happens on the parsed tree at compile, so diagnostic ranges and the expression a trace shows stay the author's; a partial compiles with the names of the module including it, and the loader's parse cache is keyed on them.
+
+  Every CEL analysis reads the resolved tree rather than re-parsing: access chains, a compiled value's `refs`, binding dependency order, module-graph data edges, scope-reach and the unused-declaration walk never take a module name for a root identifier; `CEL_UNKNOWN_FUNCTION` / `CEL_WRONG_CALL_FORM` skip a module call, and no catalog determinism or host-backed flag is attached to one. `CompiledValue` gains `calls`, the expression's qualified calls, beside `refs`. The analyzer registers a module's own `metadata.name` as an alias beside `Self`, which the kernel already did.
+
+  Evaluating a module call that nothing bound fails with `unbound function '<qualified>'`. A rule condition calling one is refused at the declaring kind, since a rule is evaluated where no module's functions are bound.
+
+  `BINDING_NAME_RESERVED` extends to a comprehension variable or `cel.bind` name equal to one of the module's names, and to an `x-telo-bindings-from` key equal to one. An import alias a kind already puts in CEL scope is `IMPORT_ALIAS_SHADOWS_CONTEXT`, reported at that `imports:` key. `CEL_UNKNOWN_IDENTIFIER` on a call receiver says a module call needs an `imports:` alias, where the name could denote a module at all.
+
+- 8f12158: Functions run. The kernel creates `Telo.Function` resources and any other callable resource, and binds every module call a resource's manifest makes — `Self.fn(…)`, `<ModuleName>.fn(…)`, `<Alias>.fn(…)` — when it creates that resource, before its compile-time fields evaluate, once per module scope per name. A call then evaluates wherever an expression does: a compile-time field, a step guard, a step, a template body (which calls through the library that defined the template). Two isolated imports of a library bind to two instances, a shared library to one. A `Telo.Function` body sees its parameters and the functions its module can call, nothing else; an omitted optional parameter takes its declared `default` or `null`. A function publishes no reading, so `resources.<name>` does not contain it.
+
+  A call is refused when its resource is created: `ERR_FUNCTION_UNRESOLVED` (nothing by that name), `ERR_FUNCTION_NOT_EXPORTED` (the imported library keeps it private), `ERR_FUNCTION_NOT_CALLABLE` (a resource that is not a function); a callee not yet initialized defers the caller like a pending reference, and a wrong argument count is `ERR_FUNCTION_ARITY_MISMATCH`. A function resource with a signature holding a required parameter after an optional one or a shape named as a bare string, a function named after a CEL macro, or an instance of a native function kind declaring `deterministic`, is refused at creation with `ERR_CALLABLE_DEFINITION_INVALID`, as `telo check` reports it. A `Telo.Function` declaring `deterministic` fails its kind's schema (`ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`): a body's determinism is derived, never claimed.
+
+  Whatever a function throws fails the expression as `ERR_FUNCTION_FAILED`, carrying the function's qualified name and the thrown code and message. It is a new ambient code (`@telorun/sdk` exports `ERR_FUNCTION_FAILED` in `AMBIENT_CONTRACT_ERROR_CODES`): a `try:` or `catches:` can catch it, and a retry policy does not re-attempt it. A failed expression now keeps a coded error's code and data instead of rewrapping it as an uncoded error.
+
+  A call is a dependency of the resource making it, so editing a function in the entry module rebuilds its callers on reconcile; a kind definition in the impact set now reports `restartRequired`, since a kind registers once per kernel. `@telorun/templating` exports `MODULE_CALL_DISPATCH_KEY` and `ModuleCallDispatch`; `@telorun/analyzer` exports `callableInstanceIssues`.
+
+- 8f12158: A native function has a contract. `@telorun/sdk` exports `FunctionController`, `FunctionInstance`, `FunctionContext` and `ERR_FUNCTION_ASYNC`: a callable kind's controller receives a context offering only `resolveControllerFile`, `resolveNativeFile`, `log` and `effect`, and returns an instance whose `call(args)` is synchronous — a `call` returning a promise fails the TypeScript build. A kind that extends a native callable kind and inherits its controller, with `base:` or by merge, creates its ancestor's instance as any inheriting kind does.
+
+  The kernel binds every function's `call` — a `Telo.Function` as well as a native one — to its signature when it creates the instance, so every holder reaches the bound one: defaults fill (a fresh copy per call), declared scalars normalize, and arguments and result are validated (`ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID`); anything else the function throws is `ERR_FUNCTION_FAILED` naming it as `<kind>/<name>`. A CEL call is bound and validated once. A promise returned at runtime is `ERR_FUNCTION_ASYNC`, and its later rejection is logged; a controller with no `create`, an instance with no `call` or an `async` `call` is `ERR_CONTROLLER_INVALID` naming the function. What `create` allocates through `ctx.effect` is released at teardown and reload. The analyzer exports `callableBodyField` and `parameterSchemaOf`, which the kernel uses to tell a native function from one written in CEL; `callArgumentBinding` gains `name`, and `bindNamed` leaves an omitted required parameter absent for validation to report.
+
+- 8f12158: Every boundary read outside Telo writes a CEL value in its plain encoding, never type-tagged. `@telorun/sdk` exports the writer — `toPlainJson`, `writePlainJson`, `plainScalar`, `plainMapKey` — and `plainSchemaOf`, the schema of the text an instance-typed slot is written as; each plain encoding now carries that `schema`. A timestamp is RFC 3339 text in UTC, a duration is seconds (`"5400s"`), bytes are base64url, a `uint` is its digits, NaN and ±Infinity are `"NaN"` / `"Infinity"` / `"-Infinity"`, a negative zero is `0`, and a map with int or bool keys is an object keyed by their text; a map two of whose keys share one text is refused with `ERR_PLAIN_JSON_UNWRITABLE`.
+
+  Log attributes (`json`, `pretty` and `otlp`), debug-wire payloads and CLI JSON documents (`-o json`, `telo cel eval --json`) now write a duration, a `uint` and an int-keyed map in that form, where they used to write an empty object or a `[Duration]` marker; a debug-wire payload holding a map whose keys share a text or are not CEL map keys writes it as its `[key, value]` pairs rather than failing the call it observes. `ResourceContext.readPlainEncoded(value, schema)` decodes a value that arrived from outside — a transport body — at every slot declaring a plain-encoded value type, through the walk a YAML literal is read with, and refuses text the encoding does not read with `ERR_INPUT_INVALID`, whose `data.issues` lists each refusal as `{ path, message }`.
+
+- 8f12158: A diagnostic's repair can be a tagged scalar. `DiagnosticFix` gains an optional `tag` (`ref` | `cel`), carried by `telo check -o json` (`fix.tag`), by `CheckDiagnostic` on the SDK's runtime seam, and by ide-support's `replace` suggestion; `renderFixReplacement` takes it as a third argument and writes `!ref <replacement>` or `!cel "<replacement>"`, so the VS Code quick fix now writes the tag instead of quoting it into the value.
+
+  `FUNCTION_TYPE_NAME_FORM` now repairs `schema: Money` as `{ replacement: "Money", tag: "ref" }` rather than the untaggable value `!ref Money`. `INVALID_REFERENCE_FORM` gains a repair for a bare-name string reference (`handler: onMessage` → `!ref onMessage`) — not for a dotted FQN or the `{ kind, name }` object, whose target would be a guess — and an untagged rule `condition:` (`RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID`) is repaired by tagging the same expression `!cel`.
+
+- 8f12158: `encodeTypedFrame` / `decodeTypedFrame` write and read the typed frame: one schema-independent JSON form covering the whole CEL value domain, so a value read back has the CEL type it was written with. An `int`, `uint`, bytes, timestamp or duration is written as `{"$telo":"<CEL type>","value":"<plain encoding>"}`, as is a double that JSON cannot carry (NaN, ±Infinity, negative zero); a map with a non-string key or the key `$telo` is a tagged list of pairs; everything else is plain JSON, and an untagged number reads as a double. The text is canonical (RFC 8785 member order and number form), so identical values produce identical bytes. A value outside the domain — a class instance, including one with `toJSON`, a function, a symbol, `undefined`, a `Map` with a key CEL cannot hold or with two keys CEL reads as one (an `int` and a `uint` of the same number), a list carrying a property beside its items, a cycle — throws `ERR_TYPED_FRAME_UNENCODABLE`; a malformed frame, an unknown tag, a non-canonical payload, an object repeating a member name, or a number beyond a double's range (`1e400`) throws `ERR_TYPED_FRAME_UNDECODABLE`. Both carry `data.path`, the JSON Pointer of the offending node, a key's unpaired surrogates written as U+FFFD. `TYPED_FRAME_TAGS` lists the closed tag vocabulary. The format and its conformance vectors are specified in `kernel/specs/durable-execution.md` §6.
+
+## 0.91.0
+
+### Minor Changes
+
+- 3372dac: Add `ctx.resolveControllerFile(relative)`, which resolves a module-relative reference against the module that declares the resource's controller rather than the module that declared the resource, so a controller can reach its own module's assets. A `sources:` entry may now stage a file an `assets:` pattern selects: it ships in the `assets` layer, publish reads it from its pin, and in a source checkout every staged file at or beneath a resolved reference is brought to its pin (`ERR_MODULE_FILES_UNAVAILABLE` when it cannot be) — for `ctx.resolveModuleFile`, `ctx.resolveControllerFile` and `!include-*` alike. A module whose `sources:` block does not read resolves no module file.
+
+  A kernel running from a source checkout now stages a `sources:` file on first use: a missing or stale native file, module file or prebuilt `napi` addon is fetched from its archive under a per-archive lock in the module's `.telo/staging/` and written only once it matches its pin, so a fresh clone runs a manifest with no `telo release stage` step; the kernel prints one line naming the entry and URL when a fetch starts. A module-file reference stages only the module files beneath it (asset-claimed entries and notices), never another platform's native file. An unpinned entry is still refused. A prebuilt controller whose archive cannot be fetched falls through to the next candidate and a stale copy on disk is never opened; an archive not holding the pinned file is `ERR_STAGED_FILE_INVALID`, and any other staging failure (a lock, a write) is the new `ERR_STAGING_FAILED`. The staging sequence moves from the CLI into `@telorun/kernel`, and `telo release stage` runs it under the same lock.
+
+## 0.90.0
+
+### Minor Changes
+
+- 40a5d50: The shared decorator dispatcher (`resolveInvocableDispatcher`) now dispatches a run-only target — one with `run()` and no `invoke()` — exactly as a step's `invoke:` does: through `invokeResolved`, which starts it with `run()` and drops the arguments it cannot take. A kind whose slot accepts `Telo.Executable` (`Schedule.Interval`, `Schedule.Cron`, `Lease.Critical`, `Idempotency.Once`, `Stream.Tap`) therefore runs a run-only target that `telo check` already accepted, where it used to fail at dispatch with `Resource must have 'kind' property`. `Cache.View` and `Run.Detach` constrain their slot to `Telo.Invocable`, so a run-only target stays refused there statically. An injected instance that can be neither invoked nor run is refused with a message naming the owning resource, the slot and the target.
+
+  `telo check` now refuses a value written literally at a slot whose value type is live (`Telo.Stream`) — at a call's arguments (`CONTRACT_INPUTS_MISMATCH`) and in a resource's own configuration (`SCHEMA_VIOLATION`) — because a literal can never be a live instance: `must be a live Telo.Stream — a value written in the manifest can never be one; pass the result of a step that produces it, with a !cel expression`. A `!cel` value at such a slot is unaffected, and a literal another union branch accepts still passes. The rule is static only: at dispatch a live value stays exempt from validation, and the stage that pulls from it keeps its own refusal. A manifest carrying such a literal passed `telo check` and could only fail at run time; it now reports an error.
+
+- 40a5d50: Inline declarations inside a step body are now extracted when a manifest loads, at every nesting depth (`then` / `elseif` / `else` / `do` / `cases` / `default` / `try` / `catch` / `finally`), together with whatever those declarations hold inline in turn. Before, the composer registered only a step's own inline `invoke:` target at `init()`, so a declaration nested inside it — a stream handler, a command's `host:` — passed `telo check` and failed at run (`Resource 'Unnamed…' not found`, `'host' must be a !ref`). An `inherit` kind written inline in a step now has an exact throws union, so a `catches:` entry may name the code its target documents.
+
+  An extracted step target keeps the name the step engine always gave it (`<OwnerKind><ownerName><step path><stepName>`), carries no declaration pointer, and so keeps the durable identity a journal recorded it under. The rule is `inlineStepTargetName`, exported from `@telorun/sdk` and used by both the load pass and `StepEngine.resolveInvokes`, which now names only bodies assembled at runtime. For an `extends` child the owner is the kind whose controller runs the body, and a `base:`-form child's body keeps the parent field it is mapped onto; a body `base:` reshapes other than verbatim is left for the runtime to name.
+
+  A declaration inside a `with:`-scoped resource is created in that scope, and an inline entry in a sequence's `targets:` is created in the sequence's scope — it failed at run with `ERR_RESOURCE_NOT_RUNNABLE` before. A step target written beside a `with:` block is still created where its sequence is, so a reference from inside it to a name that block declares — by `!ref` or as `resources.<name>` in CEL — is now the error `SCOPED_NAME_OUT_OF_REACH` instead of a run-time failure. This and the newly type-checked CEL inside inline step targets can report errors on a manifest that checked clean before — notably an inline target still declaring its contract as an `inputs:` property map, which is now `CONTRACT_INPUTS_SCHEMA_FORM` exactly as it is on a named resource; move the map to `inputType:`.
+
+  A CEL context binding whose type cannot be resolved (`x-telo-context-from-root` / `-from-ref-kind` naming a field the resource leaves out, such as `Stream.Scan`'s `acc` without `accType:`) is now untyped rather than an open map, so `acc + item.text` no longer reports `no such overload: map<dyn, dyn> + dyn`.
+
+  What extraction pulls out of an imported library's exported instance is stamped as that library's code (`forwardedInternal`) and is never counted as an export, so a consumer's analysis treats it exactly as the export it came from.
+
+  A consumer's CEL `resources` now holds only its own resources and its own import aliases, which is what the kernel publishes. It used to also list a library's exports by their bare names (read as `resources.<Alias>.<name>`), the names extraction generates inside them, and the aliases a library imports for itself — so `resources.<such name>` passed `telo check` and failed at run with `cannot read '<name>'`. It is now `CEL_UNKNOWN_FIELD`, and neither those messages nor editor completion offer those names.
+
+  Diagnostics about an inline step target now name the extracted resource and anchor at the inline position. Editing an inline step target and reconciling a running kernel rebuilds the target and the sequence holding it, instead of failing with `ERR_DUPLICATE_RESOURCE`; at teardown the sequence now unwinds before its targets.
+
+- d47a229: Controller code can reach a module's platform-specific file by its logical name with `ctx.resolveNativeFile(name)`, which returns a `file://` URI. The name resolves against the module declaring the controller the resource runs — the kind's declaring module, or the ancestor a concrete-`extends` kind inherits its controller from — and the first `native:` entry of that name, in declaration order, matching the host wins. From a published artifact only that entry's `native` layer is fetched, verified and extracted; from a source checkout a file a `sources:` entry stages is verified against its pin, no native file is read while the module's `sources:` block does not read, a checked-in file no source names is read as it is, and a checked-in link only when it leads to a file inside the module; nothing is ever fetched. Every failure rejects with `ERR_NATIVE_FILE_UNAVAILABLE`, naming the host tuple (undetermined axes marked) and every tuple shipped for that name, or the cause — an undeclared name, a staged file unpinned, missing or not matching its pin (naming `telo release stage`), an unreadable `sources:` block, a link leading outside the module. `telo install --platform … --abi …` now warms the `native` layers matching its target, and reports the abi-constrained ones it skips without `--abi`. The kernel exports `checkStagedEntry`, the staged-file check `telo release stage` now shares with it.
+
+## 0.87.0
+
+### Minor Changes
+
+- 61ad85e: `turnStepPath` — the journal prefix for one turn of a composer that drives its
+  own body.
+
+  A composer running its body N times journals under the prefix the kernel hands
+  it for the whole dispatch. Sharing that one prefix across turns is not merely
+  imprecise: the journal takes the first writer at a key, so turns 2..N found a
+  record already there and replayed turn 1's outcome instead of executing — work
+  silently skipped, run still successful. The step engine's own `while` already
+  qualified each turn this way; a controller driving the body itself now has one
+  spelling to reach for rather than three.
+
+## 0.86.0
+
+### Minor Changes
+
+- ad690e8: Resolving a sibling by name is now recorded, so a host reconciling a changed
+  manifest can tell when it must not narrow.
+
+  A declared `x-telo-ref` slot is the only thing that puts an edge in the manifest,
+  and that edge is what orders teardown and what says which resources become
+  invalid when one is rebuilt. `ctx.moduleContext.getInstance(name)` has neither:
+  nothing says the caller is holding what it got. A reconciler built on the edges
+  alone would rebuild such a target and leave the holder pointing at a dead
+  instance.
+
+  `getInstance` therefore records the name it resolved while the module is still
+  initializing — the window in which a caller can keep what it gets. A resolution
+  taken afterwards is not recorded, because it re-resolves on the next dispatch and
+  there is nothing to invalidate. That discriminator is the one the method already
+  turned on to tell a dependency deferral from a genuine not-found, so it costs
+  nothing new.
+
+  `ModuleContext.resolveDeclaredInstance(name)` is the same lookup without the
+  recording, for a name that came out of a declared slot already — a `!ref` that
+  reached a controller as a raw sentinel rather than being injected. `resolveRef`
+  uses it, so a declared reference is never recorded. The polarity is deliberate:
+  the method a module author reaches for is the one that records, and only code
+  that already knows its edge is declared opts out.
+
+  `EvaluationContext.impactedBy` returns the closure together with the names it
+  cannot cover, rather than absorbing them. A closure reaching a by-name resolution
+  is not an answer, so those names are reported and the caller escalates naming
+  them; expanding the set to "every resource here" would sweep in the module
+  document, which is not a resource anything can unwind and re-register, and would
+  present a whole-context rebuild as a narrowing.
+
+  The standard library needs no changes. Only `Config.Variables` and
+  `Config.Secrets` resolve a store by name, and `config` is deprecated in favour of
+  declaring variables and secrets on the application directly; the escalation
+  covers them exactly, at the cost of a context-wide rebuild for an app still using
+  them.
+
+## 0.83.0
+
+### Minor Changes
+
+- 46295b2: **Resource inputs on a library** — a `Telo.Library` gains a third input block
+  beside `variables:` and `secrets:`, declaring the instances it requires from
+  whoever imports it. The importer supplies references at the import's object form
+  (`resources: { connection: !ref db }`).
+
+  Instances used to flow up and never down: `exports.resources` hands one to an
+  importer, and nothing handed one the other way. Each import declaration also
+  builds its own child module context with its own instances, so two libraries
+  importing a third get two of everything in it — measured, an application
+  importing two libraries that each import one library owning a SQLite connection
+  fails with `no such table`, because the writer and the reader are on different
+  connections. Any set of libraries that must share a resource therefore had to be
+  linearized into a total order with every layer re-exporting the union of
+  everything beneath it, which gives away the self-containment a split is for. It
+  is a correctness constraint rather than a preference: a journal attests
+  exactly-once only when it writes on the same connection as the work it records.
+
+  - **An entry is constrained by KIND, with no `use:`.** The boundary is a
+    dependency edge for init order whatever the library does with the instance, so
+    the token would carry nothing the edge model reads — and the flattened
+    application analysis drops the library doc, so an app-level claim about
+    internal call sites is one nothing could check.
+  - **An entry synthesizes a kind-only DECLARATION in the library's own scope**, so
+    `!ref connection` at a reference slot and `resources.connection.<field>` in CEL
+    answer exactly as they do for a locally declared resource. Kind-only is enough
+    because it is already what a reference slot gets: the `status:` half types from
+    the kind and the flat half stays open.
+  - **Borrowed, not owned.** An injected resource's effect frame belongs to the
+    scope that declared it, so the child context never tears it down. Its published
+    reading is mirrored into the library's own `resources` scope on every
+    publication, because a reading is not a snapshot — the owner republishes after
+    `run()`, after every `invoke()` and on every `setStatus()`.
+  - **Diagnostics**: `RESOURCE_INPUT_KIND_UNRESOLVED` at the library that declared
+    the constraint; `RESOURCE_INPUT_MISSING`, `RESOURCE_INPUT_UNKNOWN`,
+    `RESOURCE_INPUT_UNRESOLVED` and `RESOURCE_INPUT_KIND_MISMATCH` at the import
+    that supplied (or failed to supply) it. Kind acceptance is the same transitive
+    rule an ordinary reference slot applies, shared rather than re-derived.
+  - **Two declaration-derived checks move to the injection site**, where the real
+    declaration is: a projection through an injected input reports nothing at the
+    library (a new `injected` projection-failure reason), and
+    `OBSERVED_STATE_NEVER_RUN` treats an injected name as reachable, since a
+    library cannot answer whether its consumer starts what it was handed.
+  - **Init order** falls out of the existing graph: a `Telo.Import` gains a
+    dependency edge per injected target — to a local resource, or to the import
+    that exports a cross-module one, which is the projection
+    `localDependencyNames` already makes at runtime. A cycle among those is
+    reported as a cycle; one closing through an imported instance still surfaces
+    as an init-loop failure, since nothing connects a forwarded export back to its
+    owning import. An import whose target is not yet initialized defers with
+    `ERR_LOCAL_REF_PENDING` before doing any load work, and binding a borrowed
+    instance is an EFFECT on the create frame — it registers a publication mirror
+    on the owner, and an import whose `init()` fails is discarded and re-created,
+    so an unregistered mirror would be appended again on every pass.
+  - **An input name listed in `exports.resources` is `RESOURCE_INPUT_EXPORTED`.**
+    An input is borrowed, so exporting it would forward the kind-only stand-in into
+    the consumer's flattened set as a resource the library declares — a phantom
+    with nothing behind it but a kind constraint.
+
+  New syntax on a module document, so a module using it must declare
+  `requires: telo: ">=…"`. Guide: `docs/extend/library-resource-inputs.md`.
+
+- 46295b2: **Library singletons** — `lifecycle:` on a `Telo.Library` decides how many times
+  it is instantiated in one application. `isolated` (the default) is today's
+  behaviour: one child scope per import declaration. `shared` makes the library a
+  singleton every import resolves to, at any depth.
+
+  The field was declared on `Telo.Application` and read by nothing. It is the
+  other half of the problem `resources:` solves: that block hands ONE instance down
+  to several libraries, and this one lets several libraries reach ONE library that
+  owns an instance — without linearizing them into a chain that re-exports the
+  union of everything beneath it.
+
+  - **The root owns it; every import borrows it** — the same rule an injected
+    resource follows. The child scope is spawned under the ROOT rather than under
+    whichever import reached it first, because otherwise tearing that importer down
+    would close a library two others still hold, and which importer that is depends
+    on init order.
+  - **Torn down after every other root child.** `teardownPriority` is now a
+    property of a CONTEXT as well as of a resource instance, and the child cascade
+    sorts by it: a singleton registered during a nested import's init would
+    otherwise be reverse-registration-ordered ahead of the library that borrowed
+    it, so a borrower's inverse could run against a library already gone.
+  - **Initialization is memoized on the ENTRY, not on an import.** The import that
+    REGISTERS a singleton is not necessarily the one whose `init()` runs first — a
+    root import registers it during the create sub-phase, while a nested import
+    inside another library borrows it during that library's init — so the builder
+    travels with the registry entry and whoever gets there first runs it.
+  - **Every import of a singleton must agree**: different variables, secrets or
+    resource instances names both aliases and the key that differs, never a
+    secret's value. Reported at BOTH ends — `SHARED_LIBRARY_CONFLICT` at
+    `telo check` wherever it is decidable there, `ERR_SHARED_LIBRARY_CONFLICT` at
+    boot, which holds resolved values and live instances and is authoritative. The
+    static half compares only what it can: a value holding a `!cel` is skipped
+    (two expressions may evaluate equal, and identical text in two modules may
+    not), and a reference is compared only between imports declared in the same
+    module, since a bare name means the same instance only in one scope. It groups
+    on the target's RESOLVED SOURCE — the identity the kernel keys its registry on
+    — because `resolvedModuleName` would collapse two versions of one module.
+    Resolving a conflict by init order would make the winner whichever import was
+    created first, silently, which is the failure this feature removes rather than
+    relocates.
+  - **A per-import `logging:` / `runtime:` override is refused** —
+    `SHARED_LIBRARY_OVERRIDE` statically, `ERR_SHARED_LIBRARY_OVERRIDE` at runtime.
+    Both scope a subtree that is no longer one import's subtree. A singleton's
+    logging scope is the library's own module name for the same reason.
+  - **A second import costs nothing**: the registry is keyed on the resolved module
+    URL and holds only shared libraries, so the hit IS the answer to "is this
+    shared" — no fetch, no parse, no analysis pass.
+
+  Default `isolated` rather than `shared` — the opposite of the Application
+  field's — because flipping it would silently collapse every existing app's
+  resource graph and turn per-import `variables:` into a conflict. New syntax on a
+  module document, so a module using it must declare `requires: telo: ">=…"`.
+
+- 46295b2: **A template body is a declaration of its own kind.** CEL inside a
+  `Telo.Definition`'s `resources:` entry is now resolved through the NESTED kind's
+  own annotations — its `x-telo-context` regions, its step body, its error branches
+  — with `self` merged in from the enclosing definition's `schema:`.
+
+  It was resolved in the ENCLOSING definition's scope against one fixed permissive
+  context (`self`, plus open `request` / `result` / `steps` / `error`). So `inputs`
+  and `item` were undefined wherever the nested kind declares them — a step's
+  `inputs.bindings` reading the call's own arguments failed as `'inputs' is not
+defined`, and an iteration's `item` the same way — while `error` was offered
+  everywhere regardless of whether a `catch:` was in scope. That is why no standard
+  library template has a body of more than one dispatch.
+
+  - **The kernel stops keying deferral on a name list.** A node survives `init()`
+    unexpanded when the nested kind marks its path `x-telo-eval: runtime` or covers
+    it with a CEL-bearing region, read through the containment matcher both halves
+    already share. The old list — `request`, `result`, `steps`, `error` — had to be
+    extended for every name any kind ever binds, and `inputs` and `item` were
+    simply absent from it. A deferred node naming only `self` is still resolved at
+    `init()`: `self` is fixed for the life of the instance.
+  - **`self` is bound into the template's child context**, as the published-reading
+    view, so a node the nested kind evaluates later can read the enclosing
+    resource's configuration beside the call-time names that kind binds. This
+    removes the restriction that one expression may not mix `self` with a
+    call-time name.
+  - **`invoke:` / `run:` / `provide:` / `mount:` accept a `!ref`** naming a sibling
+    `resources:` entry — the spelling every other reference uses — and a `!ref`
+    naming no entry is `TEMPLATE_DISPATCH_UNKNOWN`, with the nearest sibling as a
+    fix. A `Telo.Definition` is in both reference-skip sets and these slots carry no
+    `x-telo-ref`, so nothing would otherwise resolve them: introducing the tag at a
+    slot no reference pass reaches would be worse than the string form it replaces,
+    since `!ref` is the one spelling that advertises static resolution. Decidable
+    only when every sibling name is literal — a template routinely names entries
+    with CEL, and an expression could expand to the referenced name.
+  - **A nested body's root-anchored bindings resolve against the BODY.** Its
+    context scopes were rebased under `resources[i]` but every annotation inside
+    them that anchors at a root — `x-telo-context-element-from`,
+    `-collection-from`, `-from-root`, `x-telo-bindings-from` — was still resolved
+    against the enclosing `Telo.Definition`. So an iteration's `collection:` was
+    looked up on a document that has no such field, `item` typed open, and a typo
+    below it went unreported: the one place a nested declaration did not answer as
+    the same declaration written at the top level. `self` is substituted before the
+    annotations run, being the single binding that genuinely belongs to the
+    enclosing definition.
+  - **`x-telo-context-from` navigating a dynamic node types OPEN, not empty.** A
+    route whose `request.schema.body` is `!cel "self.model.schema"` declares a body
+    whose shape is only known once the template is instantiated; resolving it to
+    nothing reported `request.body` as undefined, blaming the reader for the
+    writer's dynamism.
+  - **`getManifestItem` resolves a scope with concrete indices.** It built a regex
+    from the scope string, in which `resources[4]` is a character class — so every
+    nested scope silently resolved to the whole document instead of the array item,
+    and every `x-telo-context-from` beneath one navigated from the wrong root.
+  - **`precompileDoc` carries `refs` through.** It rebuilds every tagged
+    sentinel's compiled value by hand and dropped the AST-derived root identifiers
+    the engine had just computed — so `refs` was absent for every `!cel` in every
+    manifest, and a consumer asking what an expression READS had nothing but the
+    source text to scan. (`!sql` dropped them one level down, for the same reason.)
+    That is what a template body's deferral decision needs, and scanning text
+    cannot tell an identifier from a word inside a string literal.
+  - **`collectResourceRefs` stops at anything it has already seen.** A re-created
+    resource is rebuilt from the manifest as registered, but Phase-5 injection
+    mutated that object in place on the previous pass — so a reference slot can
+    already hold a live instance, whose object graph is cyclic, and the walk
+    overflowed the stack instead of reporting the init failure that caused the
+    re-create.
+
+## 0.82.1
+
+### Patch Changes
+
+- c829d25: No runtime change. The landed `invocable-errors` plan was removed from
+  `sdk/nodejs/plans/`, and the Rust half's `mirror-nodejs-docs` plan from
+  `sdk/rust/plans/`, as part of clearing plans whose work has shipped — a plan
+  describes the current state of the world, not how it was reached.
+
+  `plans/` is outside the package's `files`, so the published payload is
+  unchanged. The changeset exists because the PR gate is path-based and cannot
+  tell an unpublished directory from a published one.
+
+## 0.82.0
+
+### Minor Changes
+
+- 6dd29e6: `init()` and `run()` now RETURN what undoes them, and `teardown()` is removed.
+
+  An effect is a forward action paired with its inverse. `ctx.effect(reason, body)`
+  returns a lazy chain, `.effect(...)` extends it — threading each step's result
+  into the next body, which is how an inverse gets the handle it has to close — and
+  a controller hands the chain back for the kernel to execute:
+
+  ```ts
+  init(ctx) {
+    return ctx.effect("pool", async () => {
+      const pool = await openPool(url);
+      return { result: pool, inverse: () => pool.end() };
+    });
+  }
+  ```
+
+  The signature is the point. An optional `teardown()` is one an author can forget,
+  and so was an opt-in `ctx.effect` beside it; returning the chain asks "what undoes
+  this" at the one place every controller already writes. A subclass extends its
+  parent's chain (`super.init(ctx).effect(…)`) and unwinds in reverse construction
+  order automatically.
+
+  The chain is lazy — nothing runs until the kernel executes it, so sequencing and
+  recovery are the kernel's — and deliberately not a thenable, since an `async`
+  function would unwrap it and hand the kernel a result instead of a chain. Execute
+  one in place with `.perform()` for an allocation whose lifetime is an _operation_
+  rather than the resource (a hold taken per durable run inside `invoke()`); it
+  returns an idempotent, unordered `dispose()`.
+
+  Inverses live on frames — one per `create()`, `init()`, `run()` — and unwind
+  last-in-first-out. A failed `init()` unwinds and the instance is DISCARDED, so the
+  multi-pass loop's retry constructs a fresh one; a controller no longer needs
+  resumability bookkeeping to survive a second `init()` call. A deferral
+  (`ERR_LOCAL_REF_PENDING` / `ERR_CROSS_MODULE_REF_PENDING`) is not a failure and
+  keeps the instance. An inverse that refuses during recovery withholds the
+  resource; one that refuses at teardown aggregates into
+  `ERR_EFFECT_RECOVERY_FAILED` and the cascade continues.
+
+  `inverse` is optional: a step that allocated nothing returns its result alone,
+  since a chain also sequences lifecycle work and a required no-op closure would
+  read the same as a forgotten undo.
+
+  `acquireHold` keeps its signature and now registers nothing — which frame owns a
+  hold is the caller's fact, so it returns the raw inverse to place in a chain
+  (`inverse: ctx.acquireHold()`), and a per-operation hold taken inside `invoke()`
+  is performed and disposed when that operation ends. The detached-task drain is no
+  longer folded into `instance.teardown` — it waits for in-flight work rather than
+  undoing anything, so the cascade calls it after the frames unwind.
+
+  A module whose controllers return chains must declare `requires: telo: ">=0.82.0"`:
+  an older kernel calls `init()`, discards the chain, and allocates nothing.
+
+  A scope that has fully unwound is closed: an effect registered after teardown is
+  refused (`ERR_EFFECT_SCOPE_CLOSED`) before its body runs, rather than recording an
+  inverse nothing will ever execute.
+
+  `@telorun/ide-support` carries only the capability hover text for `Telo.Service`,
+  which described the retired `teardown()`.
+
+  Normative contract: `kernel/specs/revertible-effects.md`. No manifest surface
+  changes.
+
+## 0.80.0
+
+### Minor Changes
+
+- d267c7f: `ResourceContext.resolveDeclaredManifest(name, alias?)` — the manifest a name was DECLARED with, resolved in the context that owns the resource. The counterpart to `resolveRef` for a slot that wants a fact about its target rather than the target itself: a declaration is readable whether or not the resource has been constructed, so such a slot needs no ordering edge and can name the resource reading it. The kernel already implemented it; only the interface withheld it from module authors.
+
+## 0.79.0
+
+### Minor Changes
+
+- 7463386: Declarative SQL schema support.
+
+  - **SDK**: the duration grammar gains a day unit (`30d`), so a grace window can be
+    written as one, and its error message lists it. Grace windows are measured in days and every other duration in
+    the runtime already goes through this one parser.
+  - **Kernel**: member access on a resource instance reads its **published state**.
+    A ref slot holds the live instance after Phase-5 injection, which CEL cannot
+    read a member off at all, so a template body could not read a scalar off a
+    resource it references. `self.<ref>.<field>` now answers exactly as
+    `resources.<name>.<field>` does — the same fact, the same reading. A whole-value
+    `${{ self.connection }}` is unchanged: that form is navigated directly and still
+    yields the instance itself.
+  - **Analyzer**: `x-telo-schema-map` / `x-telo-schema-projection` let a kind whose
+    configuration is a collection of typed entries declare what that collection
+    means as a JSON Schema object, and `x-telo-schema-projection-from` lets a
+    consumer type a slot from the declaration it references. Generic over typed-field
+    declarations — nothing in them says SQL, column or table. `SCHEMA_PROJECTION_INVALID`,
+    `SCHEMA_MAP_INCOMPLETE` and `SCHEMA_PROJECTION_FROM_UNRESOLVED` report a projection
+    that would silently type nothing — on the declaring side and the consuming side
+    alike, since the consuming side is where the typing is actually wanted.
+
+- 321f153: Durable execution: the replay seam, the normative contract, and the step engine's journaling.
+
+  `@telorun/sdk` gains `DurableRunHandle` — `step(path, target, inputs, execute)`, `decide(path, kind, compute)`, `park`, and the `writesInside(zone)` question — plus `stepPath` and the collapse rule. The handle rides `InvokeContext.durable`, which the kernel carries and never calls: it is a pure conduit, so a backend is an ordinary module and this member deliberately does not cross the ABI.
+
+  `step` mediates execution rather than merely recording it. Lookup-plus-record is a leaky decomposition — two halves of one operation, split so the CALLER performs the effect in between — which silently fixes the step engine and the resource graph in one process. Where an effect executes is a real architectural axis, so `step` takes a declaration-site target identity even though the local backend resolves it in process.
+
+  The step engine now journals its DECISIONS, not only its outcomes: resolved inputs, predicates, loop conditions, switch keys and pure value steps. A run's replay-closed state is its journal, which is what makes replay a pure function of `(journal, manifest)` — recording only outcomes would leave every decision re-derived in a fresh process from a scope carrying live readings.
+
+  The analyzer gains `validate-durable-regions`: `DURABLE_DETACH_FORBIDDEN`, `DURABLE_NONDETERMINISM` (keyed on `idempotent`, where it states something true) and `DURABLE_UNJOURNALABLE_RESULT`. All are consumers of the one containment walk, parameterized over a zone attribute, so no kind is named in analyzer code.
+
+  Normative contract: `kernel/specs/durable-execution.md`.
+
+- b5dc9d5: Durable step targets can now cross a process boundary. `encodeDurableTarget` / `decodeDurableTarget` fix the wire form of a step's declaration-site identity — JSON with a canonical key order and a version, so two runtimes producing the same identity produce the same bytes and a reader receiving an unknown version refuses it rather than reading the fields it recognises. An identity too incomplete to resolve elsewhere is refused at the SENDER, where the manifest that produced it is still in reach.
+
+  For that to be worth anything the identity has to be derived, and a step's `invoke:` slot is not a Phase-5 injection site — it resolves at dispatch — so a step target arrives carrying no stamp of its own. The kernel now stamps the declaration site at `create()`, its single instance-production site and the one point where an instance and the context that DECLARED it are both in hand (at injection the context is the consumer's), and the step leaf recovers it by resolving the reference the same way the dispatch does.
+
+  A `with:`-scoped target is refused rather than encoded: `DurableTarget.scoped` records that a name resolved inside a scope, which the step engine knows because the resolution is what answered it, separately from the tuple identifying which scope RUN, which needs a step path a scope handle is built without. Without that flag such a target is indistinguishable from a module-level one and would ship — and resolve, at the far end, to a different resource that merely shares the name.
+
+  `DurableRunHandle.noteCollapsed` is replaced by `noteZoneMode`, which reports every atomic or idempotent region and how it resolved — `collapsed` or `perStep` — rather than only the collapsed ones. `perStep` is the exactly-once regime and is reached by a runtime attestation, so the affirmative answer is the one an operator most needs.
+
+- 7463386: A DECLARATION-derived contract (`x-telo-schema-projection-from`) is now resolved
+  at dispatch as well as at `telo check`. It was static-only, which is a contract
+  with a hole exactly where a value is COMPUTED rather than written: a misspelled
+  column written as a literal was rejected, and the identical key arriving from a
+  CEL expression reached the database — which for a repository kind means arbitrary
+  caller text in a SQL identifier position.
+
+  `ProjectionScope` becomes a resolver over the raw slot value rather than a list of
+  manifests, because the two hosts see different things there: the analyzer sees the
+  `{kind, name, alias?}` reference, while the kernel binds contracts after Phase-5
+  injection has replaced it with the live instance. That also makes reference
+  resolution alias-aware, so an unambiguous `!ref Alias.users` is no longer refused
+  as ambiguous merely because two libraries each export a `users`.
+
+  `x-telo-schema-projection` is read from `schema:` as well as from the kind
+  document and reported when it is found there — ignoring a misplaced annotation
+  moved the failure onto the consumer's slot and blamed the wrong author.
+
+  A ref slot inside a kind's `schema:` is typed as the published reading it yields,
+  so `self.<ref>.status.<field>` is checked instead of being read off the annotation
+  node. The runtime view is memoized against a publication counter rather than
+  rebuilt on every dispatch.
+
+  A resource rule that throws or exhausts its budget is anchored on the declaring
+  definition, and is a warning rather than an error when that definition belongs to
+  a published dependency — an error there blocked `telo check` on a line the
+  consumer could not change.
+
+  A projection that cannot resolve at dispatch now raises
+  `ERR_SCHEMA_PROJECTION_UNRESOLVED` instead of leaving the slot open — the
+  analyzer's report is entry-module-scoped, so a dependency's consumer slot was
+  unreported at both ends. Rule-declaration validation reads the same merged schema
+  the evaluation reads, so a rule declared on an abstract resolves its `in:` pointer
+  against the fields a child declares.
+
+  `telo publish` reads the npm controller candidates it may push from the PURL
+  parser it already uses, and the self-pin rewrite is anchored on the `controllers:`
+  scalars, so a PURL mentioned in a description is no longer a rewrite target. Its
+  package directory comes from the candidate's `local_path` rather than an assumed
+  layout, an unreachable npm registry is no longer read as "not published", and a
+  malformed `package.json` fails instead of silently skipping the pin stamp.
+
+- 321f153: Retry parity: a step's retry policy gains `nonRetryable` (error codes that end the loop immediately) and a step gains a per-attempt `timeout:`.
+
+  The leaf's built-in exclusions are the ones decidable without judgement — cancellation, and the kernel's verdicts on the shape of the call. Whether a DOMAIN failure is worth re-attempting is not decidable there at all, so without `nonRetryable` every terminal domain failure was retried to exhaustion. It sits as a sibling of the shared `RetryPolicy` fragment rather than inside it (the way `Http.Request.retry` adds `honorRetryAfter`), because it matches an error CODE while an HTTP retry classifies on a response STATUS.
+
+  `timeout:` bounds ONE attempt, matching Temporal's start-to-close, and is enforced by cancellation: the step mints a scope linked to the caller's token and threads it into the dispatch, so a target that honours cancellation stops rather than running on unobserved. On elapse the step fails `ERR_STEP_TIMEOUT` — a code of its own rather than a cancellation, since the two want opposite follow-ups and `catch:` can only tell them apart by code.
+
+- 9ac2b8a: The step grammar becomes shared vocabulary, and its execution moves to the SDK.
+
+  `$ref: "telo://manifest#/$defs/Step"` on an array's items declares a step body —
+  `invoke` / `value` / `if` / `while` / `switch` / `try` / `throw`, the
+  `steps.<name>.result` accumulator and the `error` variable inside a `catch:`. Any
+  kind can carry one now; a composite kind that wraps a region of work no longer
+  needs a `!ref` to an executable and a second document to hold it. The grammar was
+  declared four times inside `modules/run/telo.yaml`, and `$defs` are local to the
+  schema that declares them, so four kinds in one module could not share one.
+
+  `StepEngine` moves from `modules/run` to `@telorun/sdk` beside the
+  `executeInvokeStep` leaf it already delegated to, against a structural context
+  (`StepEngineContext`) so it depends on neither the kernel nor `run`. The SDK is
+  the one name the bundle loader symlinks onto the kernel's own copy, so the engine
+  is one version per process and reachable from a controller bundle and the
+  kernel's boot runner alike.
+
+  Two consequences for a kind author. `while/do` is admitted in every step body —
+  a fragment cannot be narrowed by its consumer, and the copies that dropped it did
+  so editorially rather than for soundness. And `x-telo-step-context` is now the
+  legacy spelling: it is read forever (published artifacts carry it, and no
+  migration entry can synthesize a `$ref`) but a new step body is declared by
+  pointing at the fragment, which the derived `x-telo-fragment: Step` stamp makes
+  recognizable with no marker to remember.
+
+  A forward-declared `requires.telo` lower bound is now its own verification state.
+  Adopting new syntax means declaring the release that will carry it, so on that
+  commit the edge names a version npm does not have — and spawning
+  `npx @telorun/cli@<unpublished>` there produced an `ETARGET` wrapped in install
+  noise, reported as "could not run", indistinguishable from being offline. The
+  registry is now asked before any edge runs, such an edge is never spawned, and it
+  is reported as `pending` alongside the latest published version (which is what
+  makes a typo'd bound visible). Informational in `telo release check`, fatal in
+  `telo publish`, where npm has already published and the floor must exist.
+
+- 321f153: Zone attributes: a body slot that establishes an execution zone can now declare what the region guarantees about everything inside it.
+
+  `x-telo-provides-zone` gains an object form carrying its correlation key as `key` beside the attributes — `atomic`, `idempotent`, `noSuspend`, `replayed`. The vocabulary is CLOSED and ships as data (`sdk/zone-attributes/*.json`), so both kernels read one vocabulary rather than one written in TypeScript; each attribute's value is the author's REASON, which whatever enforces it quotes verbatim, and `requires:` on an entry compiles to JSON Schema's `dependentRequired` so `atomic ⇒ noSuspend` lives in the data rather than in a validator.
+
+  The analyzer gains a downward **containment walk** (`findZoneRegions`), parameterized over the attribute that opens a region rather than over any kind, plus `ZONE_ATTRIBUTE_UNKNOWN` and `ZONE_ATTRIBUTE_INCOMPLETE`. The kernel gains `ctx.zoneAttributes()`, which resolves the attributes off the declaring kind's schema — never off the `ZoneEntry`, which stays three identities so it remains ABI-serializable — and returns them without branching on any name.
+
+### Patch Changes
+
+- 321f153: A nested step body records under the step that dispatched it, instead of restarting its journal paths at the root.
+
+  `InvokeContext` gains `durablePath`, the other half of the carriage the design specified: without it a nested body recorded `steps/<name>` for every body in a run, so two nested bodies with a same-named step shared one key. First-writer-wins then handed the second the first's RESULT — and when both dispatched the same target there was no mismatch to detect, so the run continued with a value produced for a different step.
+
+  The dispatching step's path now rides the context, so a nested engine hangs its keys under it (`steps/importAll/work` rather than a second `steps/work`). That is also what makes "a crash inside a nested body resumes inside it" true rather than aspirational.
+
+- 321f153: Durable-execution correctness fixes found in review.
+
+  **A live value is now actually refused.** `assertJournalable` used `JSON.stringify`, which SUCCEEDS on a stream and returns `{}` — so the case the contract names first was recorded as an empty object and replayed as one. Detection is now structural, through the value-type vocabulary's own binding table, and lives in `@telorun/sdk` because it is a property of the contract rather than of one journal. The static half is only a warning precisely because "the runtime is the gate"; the gate was open.
+
+  **`DURABLE_NONDETERMINISM` reads parsed call sites** (`auditCalls`) instead of a regex over CEL source. A regex fires on a name inside a string literal and on an unrelated receiver method, and re-derives what the registry's `deterministic` flag already answers — the text-matching this repo retired elsewhere.
+
+  **`ctx.zoneAttributes` resolves along `extends`** so a child inheriting a zone-providing slot reports what that slot declares, and no longer memoizes an unresolved kind (which would make a transient miss permanent).
+
+  **A step with no name is refused** rather than defaulting to an empty path segment, where two such steps would share one journal key and the second would be handed the first's result. The shared `Step` schema requires `name`, so a manifest cannot reach this; a caller assembling steps in code can.
+
+  Also: the CEL walk now stops at a nested `{ kind }` declaration rather than reporting that resource's expressions against its enclosing one, and the unused `zoneAttributesSchema()` is removed — the property it was meant to guarantee (the `atomic ⇒ noSuspend` rule living in the data) is already true, since the validator reads `requires:` off the entry.
+
+## 0.77.0
+
+### Patch Changes
+
+- 987decd: A slot that holds author-written JSON Schema now says so, instead of being
+  declared `type: object` and nothing more. `telo://manifest#/$defs/JsonSchema7`
+  (plain data — an `inputType:`, a `status:` block, an API route's
+  `request.schema`) and `#/$defs/KindSchema` (a kind's own `schema:`, where the
+  `x-telo-*` vocabulary belongs) join the shared fragment set, and the built-in
+  `Telo.Definition` / `Telo.Abstract` / `Telo.JsonSchema` slots point at them.
+
+  The gain is that every surface reading a kind schema now knows what lives there:
+  completion offers the keyword set from the first key down and recurses into a
+  property's own schema, hover has titles and descriptions to show, and a `status:`
+  block is checked as a schema at `telo check` — anchored on the offending
+  keyword's line — rather than at dispatch. Which vocabulary a slot admits is the
+  fragment NAME, read off the derived `x-telo-fragment` stamp: the annotations are
+  offered inside a kind's schema and withheld inside a data schema, where they
+  would configure a slot that does not exist.
+
+  Wired at the built-in slots only — `Telo.Definition` / `Telo.Abstract`'s
+  `schema:` and `status:`, and `Telo.JsonSchema.schema`. A module's own
+  schema-valued slots still declare `type: object`: `inputType:` / `outputType:`
+  are `x-telo-ref` slots accepting four forms and need an `anyOf` branch rather
+  than a replacement, and a slot reached through `x-telo-schema-from` is
+  transplanted into the consumer's schema, where a document-local pointer resolves
+  against a root that has no such entry.
+
+  These two are the first RECURSIVE fragments, so they are not expanded in place
+  like the others — a shape containing itself has no expanded form. A reference is
+  rewritten to the document-local `#/$defs/telo:<Name>` pointer with one copy
+  hoisted to the root of the schema a validator compiles, which is the only
+  reference form the editor's resolver accepts and the one AJV resolves natively.
+  The key is reserved rather than plain, so a kind declaring its own
+  `$defs: { KindSchema: … }` cannot silently become what every slot pointing at the
+  fragment validates against; for the same reason `mergeTypeSchemas` now merges
+  `$defs` key-wise like `properties`, since an `extends` child declaring any would
+  otherwise erase the parent's hoisted entry. Siblings written beside the `$ref`
+  reach the human surfaces but not AJV, which draft-07 makes exclusive; a slot may
+  add a title, not narrow the shape.
+
+  Landing the check surfaced an abort that predates it: AJV's `addSchema`
+  meta-validates and THROWS, and the throw escaped the whole analyze pass, so one
+  author schema carrying `minimum: "3"` ended the run with AJV's unanchored text
+  and took every other diagnostic in the file with it. A schema AJV refuses is now
+  left unregistered — a `$ref` lookup entry that could not have resolved anyway —
+  and reported by the anchored checks that run afterwards.
+
+  The fragment body stays open (`additionalProperties: true`) and carries no
+  literal `x-telo-*` property names. Both are load-bearing rather than incidental:
+  closing it would reject the next annotation a module invents, and a `properties`
+  map holding a key spelled `x-telo-ref` reads to the annotation walkers as an
+  annotated node, inventing diagnostics about a slot nobody wrote. The vocabulary
+  completion offers therefore lives in the analyzer (`schema-keywords.ts`), on the
+  side of the boundary no manifest walk reaches.
+
+## 0.75.0
+
+### Minor Changes
+
+- 831c0c4: A step's `retry:` is implemented in the step leaf, where all four dispatch
+  branches pass through. It was previously handed to `ctx.invoke` on one branch and
+  read by nothing, so a `!ref` step — the dominant shape — silently got a single
+  attempt however many it asked for. It takes `Http.Request`'s field names
+  (`attempts`, `initialDelay`, `factor`, `maxDelay`, `jitter`), because two
+  spellings of backoff in one standard library make the word change meaning with
+  where it is written; `delay` survives as the older duration-string spelling, and
+  a malformed one throws instead of falling back to a silently different backoff.
+  A domain failure is retried; a cancellation and a contract violation
+  (`ERR_INPUT_INVALID` and its siblings) are not — the latter is a property of the
+  manifest, so every re-attempt fails identically and the budget is spent between
+  a typo and the message naming it. `InvokeByNameOptions.retry` is removed: the
+  leaf owns the policy now, and a key nothing reads is a second inert way to ask
+  for it.
+
+  A resolution failure — `ERR_RESOURCE_NOT_FOUND`, `ERR_RESOURCE_NOT_INVOKABLE` —
+  joins the contract errors as unretryable: a misspelled target does not become
+  spelled correctly after eight seconds of backoff.
+
+  `InvokeStepState` gains `invokeCtx`, so the wait between attempts is cancellable.
+  Every other point in a sequence already was — the kernel refuses a dispatch
+  reached after the tree was cancelled — but a backoff is time inside the leaf,
+  where that gate cannot see it and the ambient context store is deliberately not
+  on the SDK surface, being one runtime's mechanism. The failure that caused the
+  wait rides on the cancellation as `data.pendingFailure` rather than being lost
+  to it.
+
+  A dispatch site is now one shape the analyzer owns —
+  `telo://manifest#/$defs/InvokeStep`, `{ invoke, inputs, when, retry, name? }` —
+  referenced by every `Run` step array and by an Application's `targets:` instead
+  of being hand-restated by each composer. The runtime always had exactly one
+  (`InvokeStep` / `executeInvokeStep`); only the schema half was duplicated, and it
+  had drifted, which is why `retry:` worked in a sequence step and was a schema
+  error one line away at boot. Boot targets now accept it, and the boot runner
+  forwards the whole entry rather than rebuilding it field by field, which is what
+  had been dropping the field it did not know about.
+
+  The fragments live in `@telorun/analyzer` because the editor validates in a
+  browser through it and the analyzer cannot depend on the kernel; they moved off
+  `@telorun/templating`, which no longer exports `ResourceRefSchema`,
+  `ManifestRootSchema` or `MANIFEST_SCHEMA_URI` — import them from
+  `@telorun/analyzer` (or the kernel's re-export). They are expanded in place at
+  load — for every consumer, ungated: they are the analyzer's own closed set
+  rather than authoring sugar, and the editor's schema resolver handles
+  document-local refs only and throws on anything else. They are merged with their
+  siblings so a `$ref` composes on draft-07, stamped with the fragment they came
+  from, and the set is deep-frozen so an embedder cannot rewrite it in place.
+  `builtins.ts` embeds an expanded copy, since it is not a manifest and never meets
+  the loader.
+
+  That stamp replaced `x-telo-retry`, which is removed: the analyzer reports
+  `LIVE_VALUE_RETRIED` where a `live` value is passed to a
+  dispatch that may repeat — a stream is consumed by reading, so a re-attempt would
+  pass nothing. Neither half names a kind: the value's liveness comes from its
+  value type, and the re-attempt from the shape the field was declared with, which
+  also says where the budget is — a policy object's `attempts` or a bare count —
+  so the deprecated scalar spelling is covered with no special case. Read on the
+  step and on the invoked target alike, and only when the budget is a statically
+  known non-zero. The chain root resolves against the enclosing kind's own
+  `inputType` as well as the step map: the shape a live value takes when it was
+  produced outside the resource forwarding it.
+
+  CEL's `slice` is overloaded by parameter type, so a wrong receiver is rejected.
+  It returns `dyn`: cel-js refuses a `dyn` parameter variant alongside concrete
+  ones, and concrete returns would resolve an untyped receiver to whichever
+  overload registered first and mistype it — slicing an untyped byte buffer came
+  back `string`.
+
+## 0.74.0
+
+### Minor Changes
+
+- ccf56f5: Value types can declare which of their type parameters is the **element** — what
+  iterating a value of that type yields. `Telo.Stream`'s `of` is the first entry to
+  carry it, and the Rust reader accepts the key so both runtimes keep reading the
+  identical vocabulary.
+
+  The analyzer consumes that rather than naming a type: `x-telo-context-element-from`
+  resolves an element as an array's `items`, else the argument bound to whichever
+  parameter the resolved value type declares as its element. It also resolves the
+  collection chain through a kind's declared `inputType`, not just the legacy
+  `inputs:` property map — without which `item` was silently untyped in every kind
+  that declares a contract. A new `x-telo-context-collection-from` types a binding
+  that names the collection itself and withholds it when the resolved type is
+  `live`, since re-exposing a cursor a consumer is draining is unsafe.
+
+  `checkSchemaCompatibility` and `celTypeSatisfiesJsonSchema` now distribute over
+  union branches instead of returning compatible the moment either side is one — a
+  mismatch is reported only when no source-branch/target-branch pair agrees. A
+  union used to switch both checks off by construction, which is exactly what a
+  slot admitting several shapes needs them for.
+
+  A union-typed slot can now hold a whole-field CEL expression at all. Both
+  placeholder paths — `celPlaceholderForSchema` and the kernel's twin in
+  `schema-compiled-values.ts` — handed such a leaf a stand-in no branch accepts,
+  so a field declared `anyOf: [array, boolean]` was statically and dynamically
+  unwritable as an expression; a slot whose union happened to contain a `live`
+  branch escaped only by accident. Both now take the first branch that yields a
+  placeholder, and the kernel resolves which branch a value was written against
+  through the analyzer's newly exported `selectUnionBranch`, so the static and
+  dispatch halves cannot disagree.
+
+  CEL gains `slice(sequence, start, end)` over strings, bytes and lists, plus
+  `bytesFromBase64` / `bytesToBase64`. The existing `base64Encode` / `base64Decode`
+  keep their UTF-8 string-to-string meaning and are documented as text-only.
+
+- 35e1a58: A produced value is normalized to the representation its contract declares, so
+  the declaration is true rather than merely satisfied.
+
+  A declared shape says what a value IS, not only what it must pass — the service
+  a JSON Schema gives an HTTP response serializer. Telo's CEL layer already took
+  it literally: `type: integer` types as CEL `int`, and a CEL int is an int64. A
+  controller handing back a plain JS number at such a slot therefore made its own
+  contract a lie that surfaced nowhere until an expression composed it —
+  `!cel "steps.call.result.n + 1"` type-checked statically and then died at
+  dispatch with `no such overload: dyn<double> + int`, which is what pushed
+  authors to `double(...)` and `int(...)` casts an int64 should never need.
+
+  `declaredScalarPaths` (analyzer, browser-safe) reads the declared representation
+  off a contract schema, and `bindContract` normalizes the produced value along
+  exactly those paths. It is **representation-driven, not integer-specific**: a
+  value type is read through the same rule rather than beside it, so a `json`
+  representation contributes its `base` (`Telo.TcpPort` is an int64 slot) while an
+  `instance` one replaces the JSON layer — bytes and streams are already their own
+  representation, nothing converts to them, and the walk stops rather than
+  descending into a value that is not a plain container. `type: number` is the
+  symmetric case and normalizes the other way.
+
+  Only an EXACT conversion is performed. An integral number becomes an int64; an
+  int64 becomes a double only when the round-trip is lossless. A fractional number
+  at an integer slot, a string, a magnitude no double can hold — all arrive
+  unchanged, so a value that genuinely violates the contract is still rejected
+  rather than quietly repaired, and a 64-bit integer is never truncated to reach a
+  `number` slot. Bounded by the schema, so a contract declaring no such scalar
+  walks nothing at dispatch.
+
+  **Outputs only, deliberately.** Normalization states what a value is to whoever
+  reads it next. On the way out that reader is CEL, which already types the
+  declaration as `int` — there the declaration and the value genuinely disagree.
+  On the way in it is a controller written in the host language, where handing it
+  an int64 would change the authoring surface of every module rather than repair a
+  false declaration.
+
+  **This changes what crosses a module boundary.** A controller that reads another
+  resource's declared-integer output with `Number.isInteger(...)`, `setTimeout`, or
+  plain arithmetic now receives an int64 and must accept both representations —
+  `integerInput` (new, `@telorun/sdk`) is that read. Modules in this repo are
+  fixed; a published module doing the same breaks until republished.
+
+## 0.73.0
+
+### Minor Changes
+
+- a434722: Manifest migrations: one registry and one driver for rewriting a legacy
+  spelling to the current one.
+
+  Telo rewrote a manifest between parsing it and analyzing it in six places, and
+  two different things were tangled there. Most are **normalizations** — sugar
+  folded into the internal form, never written back, correctly invisible. A
+  growing minority are **migrations**: an old spelling rewritten because published
+  artifacts carry it and cannot be edited. Each re-invented the same four things by
+  hand — where to walk, how to report without blaming a dependency the author
+  cannot fix, how an author is meant to _act_ on the warning, and when the code may
+  be deleted. The last two were usually skipped: a deprecation warning told an
+  author something was wrong and offered no repair but hand editing.
+
+  Adding a migration is now one JSON file in `analyzer/migrations/`. **An entry
+  contains no code** — both what a rule matches and what it patches are data, so
+  one file is read identically by every kernel; a predicate expressed in one
+  language would mean one artifact is read two ways, invisibly, since a migration
+  that succeeds is silent. JSON rather than YAML because it is the only format all
+  three runtimes embed with no generation step (Rust `include_str!`, Go
+  `//go:embed`, TypeScript `resolveJsonModule` and nothing else).
+
+  - **The patch names what it targets**: `rename-key`, `set-value`, `set-tag`,
+    `insert-item`, `remove-entry`. Every operation has a known YAML edit form,
+    which is what makes a migration applicable to a _file_ and what lets the driver
+    **derive** whether a quick fix exists — read off the verb, never declared, so a
+    missing repair is stated rather than silent. A lone `set-value` yields a
+    `DiagnosticFix`; anything else says `no quick fix (removes an entry) — run
+\`telo migrate\``instead of offering one that would corrupt the file. A
+written value must be a scalar, refused when the entry is *read*: the file
+applier re-quotes a value in the author's own style at the node's own span,
+which has no meaning for a mapping, so accepting one would hide the limitation
+until a user ran`telo migrate` and was told, permanently, to fix it by hand.
+  - **The matcher's containment is positive and required**: `inKind` names the
+    document kinds a rule may touch and `under` the region within them it may
+    reach; nothing outside is reachable. `under` is **anchored at the document
+    root** — it names top-level keys — which is what makes that claim true rather
+    than decorative: a `Telo.Definition`'s `resources:` template body carries other
+    kinds' configuration, so a rule matching "any path segment spelled `schema`"
+    would reach the very user JSON blob the positive form exists to keep out.
+    Walking everything and subtracting cannot be made sound — the set to subtract
+    is unbounded, since any kind whose config carries a user JSON blob can hold
+    something shaped like the node a rule looks for — and it cannot express the
+    guarantee the module surface is promised to carry. Both halves are closed
+    vocabularies at every level; an unknown token is refused, `$comment` aside.
+    Both gates bound the _walk_ rather than filter its output, so a document no
+    rule targets is never walked and a region no rule names is never descended
+    into — this runs on the kernel's boot path for every file in the graph.
+  - **The phase runs in the loader**, after parse and before both the CEL
+    precompile and import desugaring, so a rule only ever matches author-written
+    nodes — a synthetic import manifest has no YAML document to edit, would record
+    a path the file never had, and shares `variables` / `secrets` by reference with
+    the module doc.
+  - **Composition is the driver's guarantee**: one pass with the match set frozen
+    against the pre-migration tree, rules ordered within an entry, entries
+    independent. Idempotency follows from that rather than from every author
+    getting it right. A patch that cannot apply in full applies not at all. A
+    frozen match reaches through a sequence by index, and an index is not an
+    identity, so a match under an array a sibling patch resized is refused rather
+    than rewriting the element that patch produced.
+  - **Rewrite always, report locally.** Every file in the graph is rewritten, so a
+    module published years ago keeps loading; only the entry module's own files
+    report, because a published dependency is not the consumer's to fix.
+    `LoadedGraph` gains `migrationDiagnostics`, `LoadedFile` gains `migrations`.
+  - **Path provenance is in the driver's contract.** Each rewrite records the path
+    it matched beside the migrated one, and every downstream diagnostic is mapped
+    back through it before its position is resolved — without which a key rename
+    would silently downgrade every squiggle on that node to a parent squiggle, and
+    let a fix among them write across a parent's span. The general index is by
+    FILE, so a diagnostic that names only its file (as many do) and a rewrite in a
+    document with no `metadata.name` (every `Telo.Import`) are both reachable;
+    resource identity narrows within a file rather than being the only key.
+  - **A migration is reported everywhere the manifest is read.** `telo run` warns
+    through the kernel logger, alongside the version-hoist warning it already
+    emitted — otherwise the one command an author actually uses would be the only
+    surface that rewrote their manifest silently. The SDK's `check` seam remaps
+    paths like every other consumer, so a module acting on `path` and an editor
+    rendering a squiggle never disagree about what a manifest says.
+  - **`LoadOptions.migrate`** is a new, opt-in third cache axis beside `compile`
+    and `desugarImports`. Every resolved consumer passes it; a round-trip view must
+    not, since the editor writes its manifest/YAML pair back on save.
+    `ctx.loadModule`'s `LoadOptions` (SDK) gains the same flag.
+  - **`telo migrate <paths..>`** applies pending migrations to a file, through
+    byte-level splices — comments, indentation, block scalars and quote style are
+    preserved, exactly as `telo upgrade`'s rewrite already is. Imported modules are
+    left alone. A location whose YAML cannot carry the edit is reported rather than
+    silently skipped, since the diagnostic that sent the author here says to run
+    this command. Removing a mapping entry that _opens_ a sequence item
+    (`- type: string`, the shape a legacy `anyOf` branch takes) splices out to the
+    following key instead of deleting the line, which would take the `- ` with it.
+
+  - **The scalar re-quoting rule and the byte-splice loop are one primitive**
+    (`yaml-source-edit.ts` in `@telorun/analyzer`, browser-safe), read by the
+    migration applier, `@telorun/ide-support`'s quick fix and `telo upgrade`'s pin
+    rewrite. Three surfaces now write repairs into the same files; two copies of a
+    subtle quoting rule would eventually quote one value two ways and nothing would
+    catch it. `@telorun/ide-support` re-exports `renderFixReplacement`,
+    `quoteStyleOf` and `isPlainSafe` unchanged.
+
+  **Breaking:** `normalizeRefSlots` is removed from `@telorun/templating`. It
+  dropped the legacy scalar `type:` at an `x-telo-ref` slot at every
+  schema-compile site, which the shipped `ref-slot-scalar-type` entry now does once
+  at load. Keeping both would have left one rewrite with two traversals that match
+  different node sets, and it falsified the design's own safety property — a
+  consumer who forgot `migrate` behaved identically apart from the missing warning,
+  so the entry could not prove the mechanism it demonstrates. Nothing outside this
+  repo is known to call it; a manifest still carrying that spelling is repaired by
+  the migration on every load, and `telo migrate` fixes the file.
+
+- c8d457b: One value-type annotation: `x-telo-type` says what a value IS, and the
+  vocabulary is data both runtimes read.
+
+  Three annotations answered one question — _what is the value at this slot, beyond
+  what JSON Schema's `type` vocabulary can say?_ — and each answered it
+  differently: `x-telo-type: TcpPort` (a nominal brand from a closed kernel table),
+  `x-telo-binary: true` (raw bytes, the one annotation that emitted validation
+  code), `x-telo-stream: true` (a live handle, exempt from schema walks). They
+  differ in _posture_ toward the JSON Schema layer — refine, replace, exempt — not
+  in kind, so a fourth cost eleven files across four packages, and three defects
+  followed from the spread: an unrecognized brand degraded silently, a byte slot's
+  expression typed as `dyn` because nothing consulted `x-telo-binary`, and a module
+  string-matched the keyword because a module may import `@telorun/sdk` and there
+  was nothing there to read.
+
+  - **The vocabulary is DATA; the binding to a language is not.** A type is one
+    JSON file under `sdk/value-types/`, copied into the SDK by its `prepare` and
+    embedded by Rust with `include_str!` — the `analyzer/migrations/` arrangement,
+    for the same reason. An entry declares `name`, `representation` (`json` + a
+    `base`, or `instance` + a symbolic `binding`), `live`, `parameters` and a
+    `description`, and nothing about any runtime. Each runtime carries its own
+    table mapping `binding` to its own identity; a binding with **no row is a hard
+    startup error**, never a skipped assertion, because a type that cannot be
+    asserted would silently exempt every slot declaring it.
+  - **`registerTeloKeywords`** replaces five drifted AJV registration sites — the
+    analyzer's `createAjv` and the kernel's `schema-validator`, `resource-context`,
+    `observed-state` and `manifest-schemas`, which registered overlapping lists of
+    twelve, four, one and one. Drift there is not cosmetic: a keyword that emits
+    code was simply missing from any instance that forgot it, so one schema
+    validated two ways depending on which AJV saw it.
+  - **Exemption is a property of the TYPE, not of a position.** The old walk
+    neutralized only a key it found in a `properties` map, so an array-of-streams
+    element was reached and left constrained even though it descended into `items`.
+    Reading liveness off the declared type makes an item, a union branch and a
+    property one case. It is exemption from **validation**, never from **typing**:
+    a live type's arguments still travel through every schema-typing walk.
+  - **Value types are generic.** An entry declares named type parameters and the
+    annotation's object form supplies arguments — `{ name: Telo.Stream, of:
+Telo.Bytes }`. An argument is a schema node, so it nests with no new grammar,
+    and a bare name is sugar for a node carrying only the annotation, normalized in
+    the single reader. Comparison is **covariant and gradual**: an omitted argument
+    is _any_ in both directions, so every producer and consumer that has not
+    declared an element keeps checking exactly as it did. A definite conflict is
+    `CEL_TYPE_ARGUMENT_MISMATCH`, reported where a produced value's schema meets a
+    consuming slot's — a step's `inputs:` against the invoked target's contract,
+    which is the one place both halves are in hand.
+  - **A shape is named with `!ref`**, Telo's one reference grammar, and `use:
+schema` has been in the `x-telo-ref` vocabulary for exactly this relation all
+    along. The loader normalizes it to the canonical `telo:<module>/<Type>` `$ref`
+    — authoring surface and internal form, the split `resolveRefSentinels` and
+    `resolveSchemaRefKinds` already have. Normalizing rather than inlining is what
+    preserves schema identity (the compiled-validator cache is keyed on it) and
+    leaves a recursive shape expressible; carrying the owning module is what makes
+    resolution alias-aware, where matching a bare `metadata.name` across a
+    flattened list silently dropped the alias.
+  - **A tag's produced type is declared by its ENGINE.** `TemplatingEngine` gains
+    `producedType()`; `!include-bytes` declares `Telo.Bytes` and `!include-text`
+    declares `type: string`, and `substituteCelFields` loses its tag-name branch —
+    the only place a tag's produced type was written down, written in the consumer.
+  - **`X_TELO_TYPE_UNKNOWN`** (Levenshtein-suggested) and
+    **`X_TELO_TYPE_ARGUMENT_UNKNOWN`** replace the silent degrade, on every
+    schema-bearing field of every manifest — not only definition docs, since an
+    inline `inputType:` on an ordinary resource carries a schema too.
+  - **The migration selector gains a schema region.** `inSchema: true` bounds a
+    rule to the kernel's own schema-valued keys, and only with it may `inKind` /
+    `under` be `["*"]`, and only for a rule keyed on an `x-telo-*` annotation. That
+    pairing is the containment: an annotation keyword occurs in author-written
+    schema fragments inside ordinary resource documents, and that set of kinds is
+    open, so enumerating it would be both incomplete and a violation of the
+    topology-driven constraint.
+
+  **Breaking:** `x-telo-binary` and `x-telo-stream` are rewritten to `x-telo-type`
+  at load by the `normalize-value-types` migration, so every published manifest
+  keeps working and `telo migrate` repairs a file in place. `binaryKeyword` /
+  `isBinarySlot` / `X_TELO_BINARY` are removed from `@telorun/analyzer` in favour
+  of `registerTeloKeywords` and the SDK accessors; `withStreamPropertiesSkipped` is
+  now `withLiveValuesSkipped`. Value brands are `Telo.`-qualified (`TcpPort` →
+  `Telo.TcpPort`), which the same migration rewrites.
+
+## 0.72.0
+
+### Minor Changes
+
+- 55a7bef: Make CEL diagnostics actionable, and let an instant leave an expression.
+
+  cel-js reports one sentence for three unrelated mistakes, and two of the three
+  readings actively mislead: `no matching overload for 'startsWith(dyn, string)'`
+  names argument types, so the repair looks like a cast when the real fix is
+  `key.startsWith('x')`; `no matching overload for 'now()'` reads as wrong arity
+  when the function does not exist. Each wrong repair cost a full check cycle and
+  landed back on the same message.
+
+  Every call is now classified against the CEL function registry
+  (`Environment.getDefinitions()`), which reports call form and parameters for
+  cel-js built-ins and Telo's catalog alike. Name existence, call form and arity
+  are decided by lookup, so nothing parses cel-js's message text and a cel-js
+  version bump cannot silently degrade the classification. New codes:
+  `CEL_UNKNOWN_FUNCTION`, `CEL_WRONG_CALL_FORM`, and
+  `CEL_NONDETERMINISTIC_IN_COMPILE_FIELD` (a warning: `nowIso()` in an
+  `x-telo-eval: compile` field bakes once at load).
+
+  - **Breaking:** `TemplatingEngine.analyze` returns `AnalyzeResult`
+    (`{ diagnostics, type?, calls }`) instead of `EngineDiagnostic[]`. The engine
+    now owns the type-check, so one expression produces one verdict against one
+    environment — previously two passes with two environments let the opaque
+    residual survive beside the diagnostic that explained it, and left `${{ }}`
+    interpolations chain-validated but never type-checked.
+  - **Breaking:** CEL failures no longer report as `SCHEMA_VIOLATION`; the
+    residual type error is `CEL_TYPE_ERROR`.
+  - **Breaking:** `NormalizedDiagnostic.suggestions` entries are
+    `kind: "replace"` (was `"replace-kind"`).
+    Diagnostics with a decidable repair stamp a generic `fix` (`{ replacement }`
+    — the whole corrected value, with no sub-range) that flows unchanged to CLI
+    JSON and IDE CodeActions; `UNDEFINED_KIND`'s suggestion collapses into it.
+  - The VS Code extension offers those repairs as quick fixes. `ide-support`
+    gains `renderFixReplacement`, which re-quotes a replacement in the style the
+    author used: the span a fix replaces is the value node as written, so it
+    includes the scalar's quotes (the YAML tag sits outside it), and writing a
+    bare CEL expression into a quoted span would unquote text that a `: ` or a
+    trailing `#` stops parsing as one scalar. Shared with the Tauri editor so
+    both surfaces write a repaired scalar identically. It refuses a multi-line
+    span: a block scalar's span covers its `|`/`>-` indicator and its trailing
+    newline, so a single-line replacement would delete the break that ended the
+    mapping entry and glue the next key onto the value — the quick fix is simply
+    not offered there.
+  - `telo check -o json` diagnostics gain `resource`, `path` and `fix`.
+  - `telo cel functions` lists CEL's own built-ins alongside Telo's catalog,
+    grouped by receiver type (appended to the `--json` array as
+    `category: "builtin"`, so an existing consumer keeps working). They were
+    absent entirely — which is why an author could read that command end to end
+    and still call a method as a global, and why every new diagnostic pointing at
+    it would otherwise have pointed at a list missing the functions it was about.
+  - `CheckDiagnostic` (the SDK's static-analysis seam, `ctx.runtime.check()`) gains
+    `resource`, `path` and `fix`, so a module can act on a repair instead of
+    recovering it from prose. `path` travels with `fix` because the repair
+    replaces the value AT that path — a consumer holding only `line`/`column`
+    could not apply it to a parsed manifest.
+  - CEL gains `string(timestamp)` (RFC 3339) and `int(timestamp)` (epoch
+    seconds), the two conversions cel-go defines and cel-js omits. Without them
+    an expiry could be computed and not stored, which is also why three parallel
+    encodings of "now" exist.
+  - `UNCOVERED_THROW_CODE` reports one diagnostic per `catches:` block naming
+    every uncovered code and the handler, instead of one per code.
+
+## 0.70.0
+
+### Minor Changes
+
+- 0ea1b8b: A CEL integer crosses a JSON boundary without a cast.
+
+  CEL models `int` as int64, which this runtime evaluates to a BigInt, and both doors out were shut. A JSON response body with no declared schema reached `JSON.stringify`, which throws on a BigInt; declaring the schema traded that for an AJV rejection (`must be integer` — its type check is `typeof data == "number"`) before the value was ever serialized. The only way through was `double(...)`, a cast that says "float" about a value that is an integer and silently truncates past 2^53 — and it had spread into the standard library's own examples, its docs, and the hub.
+
+  The kernel now installs `BigInt.prototype.toJSON` at `boot()` (`enableBigIntJson`, exported from `@telorun/kernel` — installing a global is a composition-root action, not something a controller should reach for), built on `JSON.rawJSON` so a BigInt serializes as its exact decimal digits rather than a lossy Number or a type-changing string. The rule is normative in `kernel/specs/invocation-contract.md` §4.4, so a second-language runtime has something to implement against. That is not a new policy: it is what `fast-json-stringify` already emitted for a schema-typed `integer`, so the runtime's two JSON serializers now agree at every magnitude instead of only below 2^53. Being a process-global patch — in the same spirit as the existing `process.env` guardrail — it covers every JSON boundary in the process: the kernel's, the standard library's, a third-party module's, and one not yet written.
+
+  The validator half moved with it. `ctx.validateSchema` and every `SchemaValidator.compile()` validator now check a BigInt-normalized view and merge the `useDefaults` fills back, so a computed integer satisfies a declared `integer` slot while the value that reaches the controller keeps its 64-bit range. That merge now recurses index-wise through arrays: AJV writes a default at every level it finds one, `items` included, and stopping at the array boundary dropped those fills silently. The contract binding no longer normalizes on its own — one layer owns the concern, and a contracted dispatch no longer walks its input and output trees twice.
+
+  Serializers that deliberately encode a BigInt differently were updated to keep doing so, since `toJSON` runs before a replacer: `encodeJsonValue` still tags one so a persisted value replays as the same type, the `json` log encoding still quotes a value beyond the safe range as OTLP does for its 64-bit fields, and the `pretty` console encoding still renders one as text. `bigIntAt` is exported from `@telorun/sdk` for a sink or codec that needs the same.
+
+## 0.68.0
+
+### Minor Changes
+
+- 2373398: `ctx.createSchemaValidator` no longer persists to the on-disk validator cache.
+
+  The schema it compiles is author data in a **resource field**, which the build-time warm does not walk — so a disk entry for it could only ever miss and be rewritten on every boot, the last source of EACCES noise on a read-only image. `SchemaValidator.compile` takes a `persist: false` option that drops the disk layer in both directions; the in-memory layers still collapse a repeat compile within the process, but a non-persisted entry is tracked as such, so it can never suppress a later persisting caller's write of the same content. Compiling through the kernel's validator is unchanged, which is what keeps one engine — its formats, its `x-telo-*` keywords, its non-strict mode — for every schema in the process.
+
+## 0.67.0
+
+### Minor Changes
+
+- 8a9b494: Execution zones — a resource can declare that it must be reached through
+  another resource's body (a transaction, a durable run, a batch), checked
+  statically and enforced at dispatch. Normative contract in
+  `kernel/specs/execution-zones.md`.
+
+  **SDK.** `ZoneEntry` and `InvokeContext.zones` (the ambient zone stack, ordered
+  outermost first); `deriveContext(base, overrides)`, the one way to build a
+  context from another — a fresh object literal at a rebuild site drops every
+  field it does not restate, which for `zones` would mean the stack surviving with
+  tracing off and vanishing under `--debug`. `ResourceInstanceId` /
+  `ResourceHandle` / `sameResource`: a kernel-minted per-instance identity that is
+  a compared string rather than an object reference, so an entry crosses the ABI
+  and no controller can read another module's instance off the stack. New
+  `ResourceContext` members: `self`, `withZone(slot, fn)`, `requireZone(field)`,
+  `findZone(field)`, `zonesFor(instance)`, `rootContext(opts?)`.
+
+  **Kernel.** The handle is minted at `create()`, the single instance-production
+  site, so an instance is never observable unbound; the instance → handle map has
+  no reverse direction. `withZone` derives every field of the entry from the
+  slot's `x-telo-provides-zone` annotation (resolved in the kind's _declaring_
+  scope) — a controller names its own annotation site, never a kind, because it
+  has no alias scope of its own. Clearing is the default state rather than a list
+  of sites: `runDetached` already replaces the ambient context and a
+  `Telo.Service`'s `run()` establishes none, so the only residue is a
+  `trigger.inbound` registered from inside an invocation by a non-Service, which
+  `rootContext()` names as a conformance obligation. `Http.Api`, `Mcp` tools and
+  `Schedule.Cron` / `Interval` dispatch through it.
+
+  **Analyzer.** `resolve-zone-requirements.ts`, a consumer of the call-graph
+  service with no traversal of its own: requirements propagate along `call` edges,
+  discharge at providing slots under the correlation rule (`extends`-aware), and
+  fire at edges the runtime guarantees are cleared. `zone-slot.ts` is the single
+  reader of both annotations, the `ref-slot.ts` precedent. Per-library export
+  derivation runs as its own stage in `analyze()` over each library's full
+  documents, cached in a host-lifetime cache the caller owns, keyed
+  `(source identity, content signature)`. `validate-zone-slots.ts` is the strict half of the same accessor split
+  `validate-ref-slots.ts` has, and is not optional: the two annotations fail in
+  opposite directions (an unreadable requirement is silently unenforced, an
+  unreadable provision invents failures), and a correlation key written as a bare
+  field name would be read by the kernel's pointer walk but skipped by the
+  checker — the two halves disagreeing about what a manifest means. New
+  diagnostics: `ZONE_REQUIREMENT_UNSATISFIED` (error),
+  `ZONE_REQUIREMENT_DEFERRED` (warning), `ZONE_EXPORT_UNSATISFIABLE` (error, at
+  the exporting library only), `ZONE_PROVIDER_UNRESOLVED` (error),
+  `ZONE_ANNOTATION_INVALID` (error).
+
+  `ResourceContext.invoke`'s fourth parameter is now a typed
+  `InvokeByNameOptions` bag (`{ ctx?, retry? }`) rather than `any`. It always
+  carried `retry`; `ctx` joins it so an inbound registrant can seed the
+  invocation context, which a positional parameter could not do safely —
+  `ResourceContext` satisfies `InvokeStepContext` structurally, so a positional
+  context would silently receive a step's retry options.
+
+  Also fixes a latent bug in `buildCallGraph`: it resolved a resource's definition
+  by raw kind, but a manifest carries the kind as authored (`Run.Sequence`) while
+  the registry is keyed canonically (`run.Sequence`). Every alias-form kind — that
+  is, every kind in a real manifest — missed silently, so step collection found no
+  step list and a step's declared `use` never reached its edge, and a case map's
+  selector found no schema `default`. Definitions now resolve in the scope of the
+  module that declared the resource, matching `expandedFieldMapForResource`.
+
+## 0.65.0
+
+### Minor Changes
+
+- 0bbbc3f: Named CEL bindings: a kind can declare a `bindings:` map whose names are in scope inside its own expressions.
+
+  A kind opts in with `x-telo-bindings-from: "<field>"` on the `x-telo-context` node of every field that sees the names — the same annotation family as `x-telo-context-from` / `x-telo-context-element-from`, so no kind is named in analyzer code. `analyzer/nodejs/src/cel-bindings.ts` (exported as `resolveBindingOrder` / `findBindingSites` / `bindingContextProperties` / `bindingPathChain` / `schemaAtChain`) derives each binding's dependencies from the **root of every member-access chain its expression parses to** — never from a token scan, which would read `inputs.total` as depending on a sibling binding named `total` and reject a correct manifest — merges the names into the CEL context so they type-check, and reports `BINDING_CYCLE`, `BINDING_NAME_RESERVED` (any name `buildCelEnvironment` already binds at that site, kernel globals included, plus CEL's keywords, which can never be read as a reference) and `BINDING_FIELD_AMBIGUOUS` (a kind whose contexts point the annotation at two different fields).
+
+  The kernel adds `ctx.bindScope(bindings, scope)` (`ControllerContext` / `EvaluationContext`), which extends a scope with accessor properties evaluated lazily and memoised per returned scope, so a binding nothing reads is never evaluated and one read repeatedly is computed once. `expandWith` merges such a scope by property descriptor rather than by value — copying the values would force every getter at merge time — so the returned scope must reach `expandValue` by identity. A name already in scope is skipped, the caller's own and the **ambient globals on the context** alike, which bounds a reserved name the static check did not foresee to a dead binding rather than a hijacked global. A binding that reaches itself raises `ERR_BINDING_CYCLE`.
+
+  `x-telo-step-context` accepts an optional `value` field naming the step key that produces a result without dispatching. Such a step registers `steps.<name>.result` typed from its expression when that expression is a plain chain into something already typed (an earlier step's result, the kind's `inputType`), and permissively otherwise.
+
+## 0.64.0
+
+### Patch Changes
+
+- 642b057: Fix the broken `structured-errors.md` link in the README. It was a relative path
+  into `modules/run/docs/`, which resolves from a repo checkout but not from the
+  published package or the docs site; it now points at the file on GitHub. README
+  text only — no API change.
+
+## 0.63.0
+
+### Minor Changes
+
+- e52a2bf: Add `ctx.runtime` — the host's own manifest machinery, exposed to controllers as a versioned SDK contract.
+
+  `ctx.runtime.run(source, { env })` loads and starts a child manifest isolated from the caller's, resolving as soon as it has **started** with `{ stdout, stderr, exitCode, cancel }`: the two streams are `Stream<string>`, `exitCode` settles at completion, and `cancel()` stops the child and resolves once it has torn down. `ctx.runtime.check(source, { desugarImports })` runs the static-analysis pass and resolves to plain-data diagnostics plus a `loadError`.
+
+  This exists so a module that needs either — `test` runs child manifests, `assert`'s `Manifest` kind analyzes one — stops importing `@telorun/kernel` / `@telorun/analyzer`. Importing them made kernel internals an unversioned ABI between a published artifact and whatever kernel loaded it, with a mismatch surfacing as a `TypeError` inside a controller. Every shape crossing the seam is serializable data or a `Stream`, so a kernel in any language can implement it, and isolation stays the kernel's choice (an in-process child kernel today, a subprocess later).
+
+  Output is a stream rather than captured text because forwarding it live and retaining it to print on failure are both the caller's to choose, and a value produced at the end forecloses one of them. A stream does not by itself bound the host's memory — an unread one still accumulates — which is why `cancel()` is on the contract from the start rather than added later: it is both the way to stop an open-ended sub-manifest and the only real bound on its output.
+
+  `RecordBuffer` — the bounded sink buffer of logging spec §10.3 — moves from `@telorun/kernel` to `@telorun/sdk`, beside the sink contract it composes with. A third-party sink is an ordinary module, so the piece it needs to honour `on_full` belongs on the module-author surface. The kernel re-exports it through `logging/log-sink.ts`, so its own sinks keep one spelling.
+
+  The bundled-controller loader learns a `local_path` qualifier naming the TypeScript source `path=` was built from. When the declaring module carries **no artifact handle**, that source resolves on disk, and esbuild is available, the kernel builds it and imports the result — so a checkout runs with no build step, and editing a controller and re-running picks the edit up. The guard is the absence of an artifact rather than the shape of the base URI: a published module served from the on-disk manifest cache also has a local base, and its payload is still its layer.
+
+  esbuild is checked at resolve time, so an install that skipped optional dependencies selects the prebuilt `path=` file instead of failing — the fallback belongs to this same PURL, and a candidate list could not supply it. A build _failure_ still surfaces; only a missing bundler falls back.
+
+  Workspace TS libraries are inlined from their `source` export condition rather than their `dist/`, so building a controller does not depend on having built every library it inlines. Builds are cached under `<entry-dir>/.telo/controller-src/`, keyed on a signature over every input esbuild reported plus the build options, so a changed input is a different key rather than something to invalidate, and concurrent kernel processes write identical bytes to identical paths. Each build prunes the bundle it replaced. `telo run --watch` takes its watch set from that same input list, so an edit to a shared library one directory over restarts the run.
+
+## 0.62.0
+
+### Patch Changes
+
+- 89ffea7: `telo run` points a manifest error at its line again, exactly as `telo check` does.
+
+  A failure the kernel raises from static analysis converted the analyzer's diagnostics into `RuntimeDiagnostic`s while dropping their `data` — the file, the field path within it, and the owning resource. That is precisely what `findPositions` resolves a position from, so the CLI had nothing left to locate and printed the message alone. The same manifest checked with `telo check` still named the line, which made the two commands disagree about the same error.
+
+  `RuntimeDiagnostic` gains `origin` (`DiagnosticOrigin`: `filePath`, field `path`, `resource`, and the diagnostic's own `range`), carried through verbatim so a renderer resolves `file:line:col` against the loaded graph rather than re-parsing a rendered message. `range` is what locates a failure with no field path to look up: a YAML parse error knows where the syntax broke but has no parsed tree to index.
+
+  All four raise sites now go through one mapper (`static-analysis-diagnostics.ts`, sibling of the init-failure one): the pre-flight validation pass, Phase-3 reference resolution, YAML parse failures, and major-version conflicts. The last two used to flatten their diagnostics into a joined message string, so a syntax error and a bad `imports:` pin were the two failures `run` could not locate at all. Their `error.message` is unchanged for consumers that only read it. The loaded graph is now recorded before the parse-failure throw, since that is the failure that most needs to name a line.
+
+  The position itself comes from `resolveRange`, the rule the VS Code extension already uses, rather than a third copy of it in the CLI: it walks parent paths when the exact field path is absent from the index (an `imports.<alias>` conflict lands on the import entry) and prefers an entry's key over its value. `resolveRange` now takes just the position half of a `DiagnosticContext`, so a caller holding only a located file does not have to invent an `AnalysisRegistry` to reuse it. A located static failure renders byte-identically under `run` and `check`. A diagnostic nothing can locate falls back to naming the resource rather than pointing at line 1 — a wrong line sends the reader somewhere the error is not. Runtime failures are unchanged: they are pinned to a resource, not to a spot in the YAML, and keep the kind + name form.
+
+## 0.61.0
+
+### Minor Changes
+
+- bf324d2: Init failures now report the root cause instead of the whole cascade.
+
+  When a resource fails to initialize, every resource downstream of it is unfinished too, and the multi-pass init loop used to report all of them flat — shadows first, since a resource that never got created was listed before one whose `init()` threw. A ten-resource chain printed one actionable line buried under nine repetitions of it.
+
+  The kernel now classifies the failure set before raising `ERR_RESOURCE_INITIALIZATION_FAILED`. An entry is **derived** — collapsible — only when it carries `ERR_LOCAL_REF_PENDING` or `ERR_CROSS_MODULE_REF_PENDING`: a deferral, which says the resource never ran and so has nothing of its own to report. A reference edge into the failure set is **attribution only**, never grounds for collapsing: it proves an edge exists, not that this entry's failure came from it, so a resource that references a failed dependency _and_ fails its own validation keeps its line. `RuntimeDiagnostic` gains `derived` and `blockedBy` — the **root** of the chain, not the immediate blocker, since that is the name to go fix. If no entry survives as a root, the whole set is reported unclassified rather than collapsed to nothing.
+
+  A nested context's failures — an import initializing its library's resources — are attached to the importing entry as `RuntimeDiagnostic.children` instead of being flattened into its message, so the child's own root causes stay distinguishable from the child's cascade and the CLI's error count reflects the real leaves rather than one `Telo.Import`. They are reported even when the wrapping entry is itself collapsed.
+
+  `ModuleContext.getInstance` no longer reports a declared-but-uninitialized resource as `Resource 'X' not found in module context. Available resources: …`. That message listed the module's imports and read as a typo in a name that was in fact declared right there. While the context is still initializing the name now defers with `ERR_LOCAL_REF_PENDING`, exactly as Phase-5 injection does, so the loop retries and the failure is attributed to the dependency. **After** init — at dispatch, where no later pass is coming — it raises `ERR_RESOURCE_NOT_FOUND` saying the resource was declared but never initialized, rather than promising a retry that will never happen. An unknown name still gets the original message.
+
+  The CLI prints root causes in full and collapses each blocked chain to a single line (`3 resources blocked by GrantDb: GrantStore, GuardedWork, OnceWork`); `--verbose` prints every entry.
+
+- 2ee3598: A resource's declared invocation contract is now enforced.
+
+  `inputType` / `outputType` were declared all over the standard library and read almost nowhere: a declared `default:` never applied, a misspelled input, a wrong-typed value and a misread result field were all silent, and three modules of roughly forty validated anything at all — each re-deciding it for itself. Underneath was a naming collision: `inputs:` meant _a schema_ on the six `modules/run` kinds and _values_ at every call site, so the run kinds' whole declared contract was inert.
+
+  One invariant now holds everywhere: **`inputs`/`outputs` are values; `inputType`/`outputType` are schemas.** The normative rules are in `kernel/specs/invocation-contract.md`.
+
+  **Resolution.** A shared resolver answers "what is this target's contract" for both halves — `telo check` and the runtime — layering the instance's own declaration over the kind's. A kind's contract resolves to the **nearest declaration along `extends`** and **replaces** rather than merges: config and observed state merge because construction and reported state are additive, but a call signature is not, and merging a child's required inputs into its parent's yields a union no caller can satisfy. This also fixes multi-level chains, which previously resolved to nothing.
+
+  A child that inherits its controller and declares its own contract must bridge it — `inputType` needs `inputs:`, `outputType` needs `result:` — because the inherited controller understands only the shape it was written for. That combination used to pass `telo check`, run, exit 0 and do nothing at all.
+
+  **Enforcement.** The kernel binds the resolved contract to the instance at creation, so **an instance is never observable unbound**. Enforcing at a handoff would have meant enforcing at every handoff — injection, explicit resolution, scope handles, template dispatch, the chokepoint — and the dominant path is injection: a consumer reads the reference off its own config and invokes it directly. `invoke` and `provide` are bound; `run()` is parameterless and void, so a resource whose contract requires inputs is rejected statically at a run site. Defaults are filled and both directions validated on every call, skipping `x-telo-stream` properties in **both** directions.
+
+  Violations raise the ambient `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` as structured errors: catchable and typo-checked by name in a `catches:` block, never counted toward a kind's own declared union. `JS.Script`, `Starlark.Script` and `Run.Choice` drop their controller-side validators, and `Run.Choice`'s duplicate `ERR_OUTPUT_INVALID` declaration goes with them; `Image.Blank`, `Image.Overlay`, `Pdf.Rasterizer` and `Pdf.FormFields` drop the input guards that duplicated their own declared bounds, keeping only what a schema cannot express (a CSS colour's validity, a PDF's decodability, a page against the document's real page count).
+
+  **`Telo.JsonSchema` is now a kernel built-in.** Declaring a data shape stopped being optional once any kind can carry a contract: writing `inputType:` should not require an import, and a library declaring its own contract should not import a module purely to describe itself — the same reasoning that keeps the mandatory log sinks in the kernel. `modules/type` is deprecated and unchanged, so `Type.JsonSchema` and every published manifest importing it keep working; the standard library, examples and templates now write the built-in and have dropped the import.
+
+  The six `modules/run` kinds declare `inputType:` / `outputType:` in place of the `inputs:` property map, and each result slot is annotated `x-telo-value-schema-from: outputType` so every branch is checked statically — including ones no input selects. Consumers in this repo are migrated; a manifest pinning a published `run` by digest keeps the old spelling and keeps working.
+
+  A `Telo.JsonSchema` rule's declared `code:` now reaches a `catch` block. Rules raise an error that carries a code but not the marker a catch matches on, so `error.code` was the generic plain-failure code and every `catches:` entry naming a rule code silently never matched — the behaviour `modules/type` has always documented was never the behaviour. Contract enforcement re-raises a rule failure structurally, preserving the author's code; only a structural schema failure becomes the ambient contract code.
+
+  CEL evaluates an integer literal to a BigInt, which a JSON Schema validator does not accept as `integer` — so with enforcement on, every computed integer reaching a declared integer input would have been rejected for a reason no author could act on. Validation runs against a view where those read as ordinary numbers while the callee still receives the original values, and `Assert.Equals` no longer throws while rendering one.
+
+  `Type.JsonSchema` is now a controller-less `extends: Telo.JsonSchema` alias rather than a second copy of the same controller, so the deprecated module has no implementation left to drift.
+
+  **Statically**, `telo check` now validates each call site's `inputs:` against the target's contract, rejects an unmapped contract replacement, rejects a contract-requiring resource wired where the caller cannot supply arguments, and rejects a contract naming a type that is not declared in scope — which the runtime would otherwise only discover at the first dispatch through it, and which was invisible on a KIND because `Telo.Definition` is excluded from ordinary reference validation.
+
+  Several latent bugs surfaced and are fixed. A wrapped `invoke` dropped every argument after the first, discarding the InvokeContext — so a detached body never observed cancellation and anything holding a resource across it was never released. `base:` validation demanded `metadata` and then rejected it, making any `base:` child of `JS.Script` impossible. The canonical type-schema id carried a URI authority (`telo://<module>/<Type>`), which no JSON Schema validator can resolve, so a `$ref`-based contract was uncompilable; the internal id is now authority-free, with the authored form unchanged.
+
+  CEL placeholder substitution — how the checker avoids judging a value it cannot know — gained the same discipline: bounds it ignored (`exclusiveMinimum`, `minLength`, `minItems`, `required`, `allOf`-inherited constraints) are now honoured, a `oneOf` / `anyOf` is resolved to the single branch a value is written against so leaves underneath are typed rather than nulled, and a finding located AT a substituted path is dropped outright — a `pattern`-constrained string cannot be satisfied by any stand-in, so the checker declines to judge it. Structural findings survive, because they are located at the container.
+
+### Patch Changes
+
+- bf324d2: Fix `with:`-scoped resources in an imported library resolving their kinds against the **application's** import aliases.
+
+  A `Run.Sequence` declared in a library can open a scope over kinds the library imports:
+
+  ```yaml
+  kind: Run.Sequence
+  metadata: { name: Authorize }
+  with:
+    - kind: OAuth.RedirectListener # `OAuth` is an alias of THIS library
+      metadata: { name: SignInListener }
+  ```
+
+  Phase-5 injection built the scope handle with `this.rootContext.createScopeHandle(...)` — the root context, unconditionally — so when the scope opened, its inline declarations resolved their kinds through the **root Application's** aliases. A library kind the app does not import failed with `Kind 'OAuth.RedirectListener': no module imported with alias 'OAuth'. Known aliases: Telo, SheetRows, Console, Run`, naming aliases from a file that never declared the resource. Only an app that happened to import the same modules under the same alias spellings worked.
+
+  The scope handle now hangs off the context that OWNS the resource, matching the rule the rest of the kernel already follows ("a controller's `ctx` is scoped to the context that owns its resource"). `PreInitHook` gains a fourth `owner: EvaluationContext` argument carrying it; a scope nested inside a scoped resource forwards its opening scope's context rather than replacing it, so kinds keep resolving through the declaring module at any depth.
+
+  `PreInitHook` is a kernel-internal contract — only the kernel installs one — so the added argument affects no module author.
+
+## 0.60.0
+
+### Minor Changes
+
+- d23de89: Layered module artifacts: a published module is now one artifact of several layers instead of one tarball, and each layer is materialized only when something needs it.
+
+  `telo.yaml` gets its own layer, so reading a manifest no longer downloads (and discards) the whole payload. The rest of `files:` is partitioned into one layer per bundled-controller selector — `format` plus optional `os`/`arch`/`libc` PURL qualifiers — plus an `assets` layer for what the new optional `assets:` list claims and a `common` layer for everything else. A Node kernel never fetches a `napi` layer, a `linux/amd64` host never fetches the `darwin/arm64` binary, and an app that imports a module for its API alone never fetches its frontend.
+
+  This fixes a cold-start failure: bundled controllers used to resolve against an `oci://` base URI that was read as a filesystem path, because the payload was written to disk by a CLI hook running _after_ `kernel.load()`. The first run of any OCI-imported module with bundled controllers failed and the second succeeded. Controller layers now materialize at resolve time through a module-scoped `ModuleArtifact`, built during load where the pinned import ref and the verified manifest are both available — so verification stays anchored to the importer's `#sha256-` pin rather than to whatever is in the cache.
+
+  `ctx.resolveModuleFile(relative)` is the new, URI-returning way to reach a file that ships with a module; it materializes the asset layer on first use. `Http.Static`, `mcp-client`, `assert`'s manifest loader and `Test.Suite` all use it, which also fixes a silent bug where a non-`file://` module resolved a relative root against the process working directory and served the wrong directory instead of failing.
+
+  Also: `telo install --platform os/arch[/libc]` pre-fetches layers for a platform other than the build machine's, the layer index and selector grammar are specified normatively in `kernel/specs/module-artifact.md`, and the cross-process cache lock is shared between the npm loader and layer materialization instead of duplicated.
+
+  Modules published before layers keep resolving: the manifest read path still accepts a single-blob artifact, which contains `telo.yaml` — so nothing that ships no payload needs anything done to it, and npm-backed modules are entirely unaffected. What such an artifact cannot supply is a layer index, so a module that _does_ ship a payload resolves its manifest and then fails at the controller with an actionable "republish" error. That is the six modules shipping `files:` — `oauth-client`, `scheduler`, `kv-store-memory`, `kv-store-redis`, `kv-store-sql`, `idempotency` — which must be republished, with consumers bumping to the new versions.
+
+## 0.59.0
+
+### Minor Changes
+
+- 6376a66: Authenticate HTTP requests through the client, and resolve `!ref` inside a scope.
+
+  `http-client` gains an `Http.Credential` abstract and a `credential` slot on
+  `Http.Client`. A credential is consulted once per request and receives the request
+  about to be sent — method, URL, headers, query — so a scheme that signs the request
+  satisfies the same contract as one that adds a bearer token; what it returns is
+  merged into the outgoing request. A `401` re-invokes it with `forceRefresh: true`
+  and retries the call once, so every credential type inherits that behaviour rather
+  than re-expressing it.
+
+  The analyzer now types a route's `result` from the referenced handler's **kind**
+  when the handler instance declares no `outputType`, the same layering
+  `steps.<name>.result` already applies. A kind with one fixed output shape declares
+  it once on its `Telo.Definition` and every `returns[].when` reading it is
+  checked — previously such a handler fell back to an open schema and typos passed.
+
+  `ctx.resolveRef` and `resolveInvocableDispatcher` both resolve a `!ref` that
+  reaches a controller unrewritten inside an `x-telo-scope` array, and resolve a bare
+  name scope-local first with the enclosing module as the fallback — matching
+  `ScopeContext.getInstance` and the CEL `resources` layering, so a `with:`-scoped
+  resource can reference a scoped sibling. `RefResolveContext` gains an optional
+  `resolveLocalInstance` hook and `DispatchContext` an optional `ensureKindRef`, so
+  neither resolution path is rescued while the other is not.
+
+  The analyzer now applies that same precedence, in both the reference diagnostics
+  and the Phase 2.5 sentinel rewrite. Previously it resolved a scoped bare name
+  against the module-level resource while the runtime bound the scope-local one, so a
+  shadowed name could type-check against a resource that never runs (or be reported
+  as a kind mismatch naming one).
+
+## 0.58.0
+
+### Minor Changes
+
+- 8353d0e: Resources can now declare and report **observed state** — what they learn while running, as opposed to what their author configured. A kind declares it with a `status:` JSON Schema block on its `Telo.Definition` (or `Telo.Abstract`, so a contract can mandate what its implementations report); a controller returns it under the reserved `status` key of `snapshot()`; the kernel publishes it at `resources.<name>.status.<field>`. The flat half — `resources.<name>.<field>` — keeps whatever meaning it has today and is neither typed nor changed. Documented in `kernel/docs/observed-state.md`.
+
+  Configured state is pulled, observed state is pushed, and they never share a payload. `snapshot()` returns what the author configured and the kernel pulls it whenever it needs it — it is a function of the manifest, so re-deriving it is always correct. What a resource LEARNS goes the other way: `ResourceContext.setStatus(...)` reports it at the moment it is known, because nothing but the controller knows when that is. Splitting the two is what keeps each shape described in one place — a controller never rebuilds observed state inside `snapshot()` from a field it stashed only for that purpose, and with two channels there is no reserved key to collide over. Reporting replaces rather than merges, is AJV-checked against `status:` at the call that made it, and is an error before the resource has started (`ERR_OBSERVED_STATE_BEFORE_START`) — `init()` performs no I/O, so nothing is observed there. The reading is sticky: the kernel holds it until teardown, so a dispatch that reports nothing leaves a listener's bound address in place rather than blanking it. A kind that declares `status:` may not also return a flat `status` field (`ERR_OBSERVED_STATE_KEY_COLLISION`); one that declares none may use the name freely. A publication is now a reading rather than a live window: the published value is detached from what the controller returned (plain objects and arrays are rebuilt; class instances and functions pass through, since copying one would break it), so a controller that mutates the structure it reported cannot rewrite an already-published value. Previously the only mechanism for reporting anything learned at runtime was that aliasing accident — the kernel stored the props object by reference, and no schema check could catch a value rewritten behind CEL's back because the shape never changed.
+
+  The segment exists only once the resource reports. Defaulting every field in `snapshot()` (`?? ""` / `?? 0`) is the prevailing controller style, and a pull-based design would publish that from `init()` as placeholders indistinguishable from a real report — the exact failure this replaces. With reporting pushed, there is nothing to withhold: no call, no segment.
+
+  The `status:` chain is folded in the scope that DECLARED each definition, never the consumer's — an `extends` alias belongs to the file it was written in. The kernel stamps the folded block onto the definition at registration (in the defining module context, beside the existing `effectiveAuthorSchema` stamping); the analyzer re-scopes per declaring module. Without that, an abstract's `status:` would vanish for any consumer importing only the implementation — the sanctioned "one import instead of two" — and the reserved-key check, which keys off exactly that, would then reject a correct manifest. Stamping also makes the folded schema a stable object, so the publication path's AJV validator cache hits instead of recompiling on every snapshot.
+
+  Reads are checked statically. `OBSERVED_STATE_IN_STARTUP_FIELD` rejects any path through `.status` in a field that resolves at startup (`x-telo-eval: compile`, or implied by `Telo.Provider`) — a purely syntactic rule, so it covers kinds that declare nothing. `OBSERVED_STATE_NEVER_RUN` rejects a read of a resource nothing can start: reachability is computed from every slot that can reach `run()` — a `targets:` entry and a step's `invoke:`, both keyed on the declared `Telo.Runnable` / `Telo.Service` contract rather than on any field name or kind. Fields under `.status` are type-checked — including cross-module, where an import's exported instances are indexed under `resources.<Alias>.<name>` so a typo fails exactly where a local one does — so a typo is `CEL_UNKNOWN_FIELD` instead of resolving to nothing; the `resources` root and every resource node stay permissive, so no read that validates today can begin to fail. `required:` inside `status:` is `OBSERVED_STATE_REQUIRED_FORBIDDEN`, a dedicated diagnostic naming the rule and the fix rather than an AJV `not:` that could only say "must NOT be valid" — every declared field is mandatory once the resource has run, and a sometimes-absent one is declared with a nullable type, which `CEL_NULLABLE_ACCESS` already guards.
+
+  What genuine ordering leaves is three runtime errors rather than one hedge, because each needs a different action and only the kernel can tell them apart: a resource that has not started names the `targets:` to fix; one that started but whose `run()` has not returned raced a service still coming up; and one whose `run()` returned while a declared field is still missing is a defect in the producing module, which the message names. That last case is unreachable for a long-lived Service, whose `run()` never returns — so a slow bind is never blamed on someone else's code. None yields an empty value or a bare `No such key`.
+
+  `with:`-scoped resources now publish like any other. Each `ScopeHandle.run()` gets its own map of the scope's resources, layered at read time over the enclosing module's — read time, not scope entry, because `setResource` replaces the module's map wholesale on every publish, so a copy would go stale the moment an outer resource republished — with scope-local names winning — matching `ScopeContext.getInstance`'s resolution order, so CEL and `!ref` never disagree, and two concurrent runs of the same sequence never observe each other. `ScopeContext` gains `run(name)`, which dispatches a scope target through the kernel's chokepoint (traced, records that it started, publishes its snapshot) instead of calling `instance.run()` directly, and `resources`, the map itself. `Run.Sequence` uses both. Previously `resources.<scopedName>` resolved to nothing at all.
+
+  Fix a controller's `ctx` targeting the wrong context for a `with:`-scoped resource. `ResourceContextImpl` resolved everything through the enclosing MODULE context, but a scoped resource is owned by the per-run scope child — so registering a manifest, resolving a sibling by name, expanding CEL, spawning a child context and dispatching all went to the wrong place. Registration was the visible one: an inline definition a scoped resource resolves during `init()` landed in the module's pending queue, which the module's init loop had already drained at boot, so the resource was never created and the dispatch failed with `ERR_RESOURCE_NOT_FOUND`. Those members now go through the owning context; `ctx.moduleContext` keeps its meaning and is reserved for what genuinely belongs to the module — imports, the controller policy, and the logging scope, all of which a scope child inherits rather than owns. By-NAME lookup (dispatch, `getResourcesByName`, kind resolution) resolves scope-local first and falls back to the enclosing module, the order `ScopeContext.getInstance` and the CEL `resources` layering already use — a scoped `Http.Server` whose `notFoundHandler` targets a module-level invocable still finds it. Registration deliberately does not fall back: a new manifest belongs to the context that owns the resource creating it.
+
+## 0.56.0
+
+### Minor Changes
+
+- f3b044d: Remove `metadata.namespace` as a structural field. Five subsystems read it;
+  each now uses something the module already has.
+
+  `x-telo-ref` names its target as an **alias-qualified kind** — the same grammar
+  `kind:` and `extends:` use: `KvStore.Store` for a module in this file's
+  `imports:` map, `Self.Store` for a kind in this library, `Telo.Invocable` for a
+  built-in. The analyzer canonicalizes each constraint in the _declaring_ module's
+  scope before registration, so the definition registry answers ref queries with
+  no module context and a constraint stays correct whatever alias a consumer
+  picks. The legacy `"<namespace>/<module>#<Kind>"` identity form still resolves
+  for already-published module versions and now warns as
+  `X_TELO_REF_LEGACY_IDENTITY`; `metadata.namespace` feeds nothing else.
+
+  A constraint whose prefix names no alias is now `X_TELO_REF_UNRESOLVED` (or
+  `KIND_NOT_EXPORTED` when the alias is known but the target gates the kind),
+  quoting the slot's path and the aliases in scope. Previously — and for the old
+  identity form before it — an unresolvable constraint made the reference check
+  treat the slot as partial context and skip it, so a typo silently let the slot
+  accept any resource. All three diagnostics are scoped to the modules the author
+  can edit, so a published dependency never reports against its consumers.
+
+  Definition schema `$id`s move onto `telo://<module>/<Name>`, the scheme named
+  `Telo.Type`s already register under. One id space per module means a kind and a
+  named type may no longer share a name; that collision is reported as
+  `DUPLICATE_SCHEMA_ID` rather than silently dropping the type's schema.
+
+  Version reconciliation keys on the **import ref minus its version** rather than
+  `<namespace>/<name>`, so OCI and `https://` modules are hoisted for the first
+  time and two same-named modules published to different origins are no longer
+  conflated. A relative path addresses one file on disk, not a published
+  location, and is not reconciled.
+
+  `Transport.cacheLocation` is replaced by `Transport.cacheCoords`, returning the
+  `{ transport, host, path, version }` coordinates that `manifestCacheKey`
+  renders. The local manifest cache therefore uses the same layout as the
+  discovery hub's static bucket:
+  `.telo/manifests/<transport>/<host>/<path…>/<version>/<file>`. Registry entries
+  now carry the registry host, so two registries' copies of one path and version
+  no longer share a cache entry. **Existing `.telo/manifests` trees are orphaned
+  by the new layout and are re-downloaded on the next `telo install`.**
+
+  `telo publish` derives a relative sibling import's ref from the publish
+  destination — the destination's last segment is the module's own directory, so
+  `../bar` under `oci://ghcr.io/acme/foo` resolves to `oci://ghcr.io/acme/bar` —
+  and reads only the sibling's version from its manifest. `SiblingIdentity` is
+  gone.
+
+## 0.54.0
+
+### Minor Changes
+
+- 942c176: Rename `ctx.resolveChildren` to `ctx.ensureKindRef`. The old name stays as a
+  deprecated delegate.
+
+  The method never resolved anything: it takes a nested slot value — an inline
+  `{ kind, …config }` definition, a `{ kind, name }` ref, or a `!ref` sentinel —
+  and produces a `KindRef`, registering the inline case as a manifest (under a
+  supplied or generated name) on the way. `ensure` carries that create-if-needed
+  side effect; `KindRef` is what comes back.
+
+  It also reads correctly next to `ctx.resolveRef`, which runs the other direction
+  — ref to live instance. Two `resolve*` methods on one interface returning
+  opposite categories was the ambiguity; this fixes it at the source rather than
+  lengthening the name of the method that was right.
+
+- adc8459: Add `encodeJsonValue` / `decodeJsonValue` — JSON encoding for values that cross
+  a persistence boundary.
+
+  `JSON.stringify` throws on a BigInt, and CEL integers surface as BigInt in this
+  runtime, so any controller persisting a CEL-computed result hits it. BigInt is
+  encoded as a tagged object rather than a string or a Number: a string comes back
+  a different type than went in, and Number is lossy past 2^53 — a replayed value
+  must equal the freshly-produced one.
+
+- adc8459: Add `ctx.resolveRef<T>(value, guard, describe, expects?)` on `ResourceContext` —
+  resolve a `!ref` config field to a live instance. The standalone
+  `resolveRefInstance(value, ctx, guard, describe, expects?)` remains exported for
+  callers that hold only a `{ moduleContext }` slice; the method delegates to it,
+  and `resolveInvocableDispatcher` now resolves through it too, so alias semantics
+  live in exactly one place.
+
+  Failures are coded and name the contract: `ERR_REF_REQUIRED` for an unset slot,
+  `ERR_REF_UNRESOLVED` for one that is set but does not resolve — e.g.
+  ``Cache.Entry "page": 'store' reference 'Redis.store' did not resolve to a
+resource satisfying `std/cache#Store` ``.
+
+  Phase 5 injection normally replaces the slot with the live instance (local and
+  cross-module refs alike), so the common path is the guard short-circuit. A raw
+  `KindRef` still reaches a controller where injection does not reach the slot — a
+  kind whose definition yields no field map, or a ref obtained via
+  `ctx.resolveChildren`. Both are gaps worth closing in the kernel; until they are,
+  this helper is the single place that handles the fallback.
+
+## 0.50.0
+
+### Minor Changes
+
+- c1fef72: Implement the structured logging specification (`kernel/specs/logging.md`).
+
+  Records carry an OTel severity number, a message, structured attributes, the
+  emitting resource's identity, its import-alias scope, and the active dispatch
+  span's trace and span ids — all attached automatically. Controllers emit through
+  the new ambient `ctx.log`.
+
+  Logging is configured by a `logging:` block on the root `Telo.Application`:
+  `level`, `attributes`, `redact`, `sampling`, and a `sinks:` list of ref-or-inline
+  entries. `Telo.ConsoleSink` and `Telo.FileSink` are kernel built-ins resolvable
+  without an import; omitting `sinks:` yields exactly one console sink, so the
+  zero-config case stays "pretty on a terminal, JSON when piped". An `imports:`
+  entry may carry its own `logging:` block to raise verbosity for that dependency's
+  subtree; config cascades and may be narrowed at each hop. There is no
+  `TELO_LOG_*` variable and no logging CLI flag — a level derived from the host
+  environment goes through a `variables:` entry read with `!cel`.
+
+  New `Telo.Sink` capability and `Telo.LogSink` abstract, so the sink set is open
+  to the ecosystem: a third party ships a sink by publishing a module whose kind
+  extends `Telo.LogSink`. The new `std/otlp` module does exactly that.
+
+  Behaviour changes:
+
+  - The CLI now honours `NO_COLOR` and implements the spec's full color-precedence
+    order. `FORCE_COLOR=0` disables color rather than enabling it.
+  - `TracePayload.spanId` / `parentSpanId` on the debug wire are now 16-character
+    lowercase hex strings rather than numeric counters, matching the ids log
+    records carry. The internal counter is unchanged; hex is rendered only at the
+    encoding boundary and is salted per process so two services in one distributed
+    trace cannot mint the same id.
+  - `Http.Server`'s `logger:` field now means "enable request logging" rather than
+    being a raw Fastify passthrough. Fastify's Pino instance is replaced with a
+    Telo-backed adapter, so request records inherit the root `logging:` block's
+    level, encoding, redaction, and sinks.
+  - The kernel no longer writes diagnostics to `process.stderr` or `console.*`;
+    everything routes through the logger. The ad-hoc `TELO_BUNDLE_DEBUG` env var is
+    replaced by ordinary trace-level records.
+  - `on_full: block` and invalid redaction paths are now caught by `telo check`
+    (static analysis), not only at boot — `on_full: block` is unimplementable on a
+    single-threaded runtime and a bad redaction path would otherwise silently fail
+    to redact. Both remain enforced at runtime as a backstop.
+
+  Two pre-existing bugs fixed along the way:
+
+  - A CEL expression feeding **any** enum-constrained field produced a spurious
+    `SCHEMA_VIOLATION`, because the placeholder substituted for the expression
+    satisfied `type` but violated `enum`. Fixed in both the analyzer and the
+    kernel.
+  - `teardownResources` aborted the whole cascade on the first throwing resource,
+    with no aggregation and no reporting. Failures are now collected into
+    `ERR_TEARDOWN_FAILED` so one bad teardown cannot skip the rest — including the
+    log sinks, which are pinned to tear down last.
+  - The inline `imports:` desugaring silently dropped unknown entry fields, so a
+    per-import `logging:` block never reached the import controller.
+
+## 0.49.0
+
+### Minor Changes
+
+- 2395a4a: Make network failures actionable instead of `fetch failed`.
+
+  `fetch` rejects with an opaque `TypeError: fetch failed` for DNS, connection
+  refusal, and TLS alike; the real cause (`ENOTFOUND`, `ECONNREFUSED`, …) sits on
+  `error.cause`, which nothing in the repo read. A misconfigured host surfaced as
+  `INTERNAL_ERROR: fetch failed` with nothing to act on — no host, no reason, no
+  indication of which manifest field was wrong.
+
+  `fetchOrThrow` in `@telorun/sdk` wraps a transport failure as an `InvokeError`
+  with code `ERR_NETWORK_UNREACHABLE`, carrying structured `data` — `operation`,
+  `url`, `host`, `port`, `cause`, the underlying `detail`, and the `resource` +
+  `setting` to change — plus a default message composed from them. A non-OK
+  response is returned untouched — a status code is a reply the caller interprets,
+  often from the provider's own error body — so it drops into existing call sites
+  without changing status handling. Cancellation is re-thrown as-is.
+
+  Every part is structured, including the actionable one: a call site passes
+  `resource` (the instance's `metadata.name`) and `setting` (`baseUrl`) as bare
+  identifiers, and the sentence is composed in one place. Prose at the call site
+  would be exactly what another language's SDK has to retype and keep in sync,
+  whereas `cause: "ENOTFOUND"` and `setting: "baseUrl"` are the same symbols
+  everywhere — so a kernel-side renderer can later format from `data` without any
+  SDK changing.
+
+  Wrapping never loses what was thrown: the original error is preserved as
+  `cause` (`InvokeError` gained an optional `{ cause }`), its message is kept in
+  `data.detail`, and for a code the mapping does not recognise that message is
+  appended to the rendered text — so an unmapped code reads as strictly more than
+  the raw `fetch failed` it replaces, never less.
+
+  Also fixes a live misclassification in `Http.Request`: `mapNetworkError`
+  selected its error kind by substring-matching the message, but the message is
+  always the literal `"fetch failed"`, so `enotfound`/`ssl` never matched and every
+  network failure — DNS and TLS included — was reported as `CONNECTION_REFUSED`.
+  It now classifies on the cause chain's code, via the exported `networkCauseCode`.
+  `Mcp.Client` had the same opaque-message problem in its transport error and is
+  fixed the same way.
+
+## 0.48.0
+
+### Minor Changes
+
+- 8af345f: The `Telo.Definition` schema is now the sole resource-config contract.
+
+  A controller module's exports become the controller instance verbatim, so an
+  `export const schema` silently won over the manifest's `schema:`. The analyzer
+  never loads controllers, so those overrides were invisible to `telo check` and
+  to the editor, could not be pre-compiled by the validator warm (recompiling on
+  every boot, and failing to persist on a read-only image), and were free to drift
+  from the manifest they shadowed.
+
+  `ControllerInstance.schema` is removed, and the kernel now validates every
+  resource against its definition's schema. All 35 controller-exported schemas are
+  gone: 26 were `additionalProperties: true` catch-alls that merely _disabled_ the
+  manifest's stricter validation, and 9 kept their TypeBox for `Static<typeof …>`
+  typing but no longer export it.
+
+  Two manifests had already drifted and are corrected:
+
+  - `S3.Bucket` was missing `accessKeyId` / `secretAccessKey` entirely, though its
+    controller required both. They are now declared (and required) in the manifest.
+  - `Assert.ModuleContext` was missing `resources` / `variables` / `secrets`.
+
+  Controller authors: declare config in `telo.yaml`, not in code. An
+  `export const schema` is now inert.
+
+## 0.47.0
+
+### Minor Changes
+
+- ec524cd: Enforce the `exports.kinds` gate statically. The analyzer's gate was dead code — it read `exports.kinds` off the `Telo.Import` doc, which has no such field, so the list was always empty and no unexported kind was ever rejected. `flattenForAnalyzer` now stamps the target library's resolved `exports.kinds` (re-exports included) onto each `Telo.Import` as `metadata.exportedKinds`, and the analyzer registers it, so `telo check` agrees with the kernel instead of being silently more permissive.
+
+  An unexported kind now reports `KIND_NOT_EXPORTED` naming the module and its exported kinds, rather than an `UNDEFINED_KIND` whose "did you mean" echoed back the kind just rejected.
+
+  `registerImport` / `registerModuleImport` take `kinds?: readonly string[]`, separating cases the previous empty array conflated: a declared gate (`["A"]`), a gate that exports nothing (`[]`), and a target declaring no `exports.kinds` at all (`undefined`, the legacy permissive default). This is the groundwork for making kinds private by default; that default is unchanged for now, since already-published module versions cannot gain the block retroactively.
+
+  The gate is consulted before any definition-registry lookup. The registry is keyed `<module>.<Kind>`, so a library whose `metadata.name` equals the alias it is imported under made the raw kind string a valid key — the definition resolved directly and an unexported kind was accepted, while the kernel threw at boot.
+
+  `resolveExportedKinds` distinguishes a module that declares no `exports.kinds` from one that declares an empty list, so a re-export (`exports.kinds: [Alias.Kind]`) whose source module is ungated still resolves, matching the kernel instead of rejecting a manifest that runs.
+
+  `registerUngatedAlias` replaces the ungated form of `registerImport` for `Self` and the `Telo` built-ins. Those cross no import boundary and must never be gated; keeping them on a separate method leaves the legacy permissive import as the only remaining ungated `registerImport` call, so making kinds private by default is a single greppable site.
+
+  `AnalysisRegistry.registerImport` takes the gate as optional too, and gains `registerUngatedAlias`, so IDE/editor consumers express the same three intents as the kernel.
+
+## 0.44.0
+
+### Minor Changes
+
+- 8c24da2: General kind inheritance: a `Telo.Definition` may now `extends` **any** kind —
+  concrete or abstract — with single inheritance. A child that declares no own
+  `controllers:`/template body inherits the parent's controller by delegation: the
+  kernel evaluates the child's new `base:` mapping (CEL over `self`) and returns the
+  native parent instance verbatim, so the child duck-types as its parent. Capability
+  is inherited and immutable (`EXTENDS_CAPABILITY_MISMATCH` on a conflicting
+  restatement); `x-telo-ref` slots accept a target kind and every kind that
+  transitively extends it (Liskov-substitutable). With `base:`, the child's
+  author-facing schema narrows to its own; without it, it is `merge(parent, own)`.
+  `Telo.Abstract` is retained as the non-instantiable base. `EXTENDS_NON_ABSTRACT`
+  is removed. Both paths run end-to-end: `base:` narrowing and the no-`base:`
+  additive merge (the child carries the parent's config fields directly). The
+  analyzer statically validates `base:` against the parent config schema
+  (`BASE_MISSING_REQUIRED` / `BASE_UNKNOWN_FIELD` / `BASE_SCHEMA_MISMATCH`), and the
+  field map, `self` typing, and per-instance validation all resolve against the
+  effective (inheritance-aware) schema. The http-client request controller now
+  resolves a `client` slot through the live instance so an inherited Client works
+  inside a scope.
+
+## 0.41.0
+
+### Minor Changes
+
+- 721a241: `Lease.Critical` learns `op: cancel`: a running **detached** body can be ended
+  early by invoking the lease with `{ op: cancel, key, holder? }`. The body runs
+  under a lease-owned cancellation scope, so the cancel trips its cancellation
+  token — every honoring leaf (a model call, a `Timer.Delay`, a fetch) aborts —
+  and the lease releases on the body's terminal. The `holder` guard refuses a
+  stale cancel aimed at a newer occupant of the key, and a body ending because it
+  was cancelled is treated as an expected terminal, not a detached failure.
+
+  SDK: `resolveInvocableDispatcher`'s returned thunk accepts an optional
+  `InvokeContext` second argument, letting a decorator seed the dispatch's
+  cancellation scope (backwards compatible — omitted means the ambient context
+  applies unchanged).
+
+## 0.38.0
+
+### Minor Changes
+
+- a9ac4ba: Resolve `Type.JsonSchema` `extends` into a single self-contained object schema (a deep-merge of the parent schemas and the own schema) instead of an `allOf` wrapper, and expose the resolved schema as readable `schema` state on the Type instance.
+
+  The merge is now a single shared function, `mergeTypeSchemas` in `@telorun/sdk`, called by both the runtime `type` controller and the analyzer — so static analysis and runtime validation can never disagree on a type's effective shape. This fixes a false `CEL_UNKNOWN_FIELD` the analyzer raised when CEL accessed a field inherited through `extends` (it previously saw only a child type's own properties).
+
+  The merged form carries no `$ref`s, so a named type's effective shape is directly usable as a validation schema (e.g. an HTTP request body) without bundling, and it removes the `allOf` + `additionalProperties: false` footgun where each branch independently rejects the other branch's properties. `required` is unioned across all levels and child properties win on a key conflict. Composition keywords (`allOf` / `oneOf` / `anyOf`) declared on a parent or own schema are preserved as intersected `allOf` branches — never silently dropped — so an inherited constraint still applies.
+
+- a125804: Give resources spawned by a templated kind a hierarchical identity, so the debug graph nests them under their parent and stops collapsing collisions.
+
+  A `Telo.Definition` with a `resources:` block (e.g. `std/crud`'s `Crud.Resource`) expands into child resources whose `kind` + `name` are identical across every instance of the kind — two `Crud.Resource`s both spawn `SqlRepo.Read.reader`. The debug stream keyed nodes by name, so those children collided and only one appeared, with no link back to the owning resource.
+
+  - **Kernel / SDK**: every resource now carries a full hierarchical `id` (`<owner.id>/<kind>.<name>`, or `<kind>.<name>` at the top level). A template controller stamps the owning resource onto the child context it registers its `resources:` into (`EvaluationContext.owner`), so the children's `Created` / `Initialized` / `Teardown` and dispatch events carry that `owner` and a unique `id`; dependency edges are id-qualified too. `ResourceContext.ownerPrefix` exposes the composing prefix so the identity stays unique when templates nest. The dependency-edge collector also skips `schema` for the system kinds whose `schema:` is definitionally a JSON-Schema contract (`Telo.Definition` / `Telo.Abstract` / `Telo.Type`): a `{kind, name}`-shaped value in a schema `examples` block is documentation data, not a `!ref`, and previously surfaced as a phantom dependency edge (e.g. every `Telo.Definition` wiring itself to a resource named in its example). Other kinds' `schema` fields are still walked, so a genuine `schema: !ref X` resolves.
+  - **Resolved properties**: each `Created` event now also carries `properties` — the resource's config "after templating", with compile-time `${{ }}` / `!cel` reduced to concrete values, resolved `!ref`s (and injected live instances) shown as `{kind,name}`, deferred runtime expressions as their `${{ source }}` text, and known secret values scrubbed to `[secret]`. The node detail panel renders it as a **Properties** section above Inputs/Outputs.
+  - **Wire** (`@telorun/debug-wire`): lifecycle and dispatch payloads gain `id` on the resource `ref` and an optional `owner` pointer (`WireOwner`, `WireResourceRef`, `LifecyclePayload`); `Created` adds `properties`. Additive — a legacy producer that omits `id` falls back to name-keyed identity.
+  - **Debug UI**: the Graph view keys nodes by `id` and renders a templated resource as one node with an "n internal" badge. Clicking it opens a drill-down panel showing that resource plus the children it spawned (`subtreeGraph`), wired into a tree — the children connected by their own dependency edges, and the parent linked by a dashed ownership edge only to children not already reached through a sibling (so a handler reached via the Http.Api isn't also tied directly to the parent). Drilling into a child pushes another panel onto a cascading stack (recursive to any depth); panels beneath peek out on the left and click to pop back, so the main canvas never reflows. The node-detail aside now scrolls as one unit — previously its flex body collapsed each inputs/outputs payload into a tiny nested scrollbar.
+
+## 0.36.0
+
+### Minor Changes
+
+- dded615: Templated definitions can now produce a mountable HTTP surface, and their dispatch targets are created once instead of per call.
+
+  - **`mount:` template dispatch** — a `Telo.Definition` with `capability: Telo.Mount` may declare `mount: <child>` (sibling to `invoke:` / `run:` / `provide:`) naming a `resources:` entry that is itself a `Telo.Mount` (e.g. an `Http.Api`). The template instance's `register()` delegates to that persistent child, so a library can ship a self-contained, declarative HTTP resource. The analyzer validates the new field (`MOUNT_ON_NON_MOUNT`, `MOUNT_DISPATCHER_CONFLICT`, `MOUNT_TARGET_UNKNOWN`, `MOUNT_TARGET_NOT_MOUNTABLE`).
+  - **Persistent dispatch targets** — the template controller no longer re-creates its `invoke:` / `run:` / `provide:` target on every call (`withEphemeral` is removed). Every `resources:` entry is created once at `init()` and reused; per-call data flows exclusively through the top-level `inputs:` sibling. A resource body may reference only `self`; `${{ inputs.* }}` inside a target body is no longer supported (move it to the top-level `inputs:`).
+  - **Library-scoped child resolution** — a template's `resources:` are spawned in a child context rooted on the _defining_ library's module context (new `EvaluationContext.spawnChildContext()`), so their internal kind aliases and `!ref`s resolve against the library's own imports rather than the consumer's.
+  - **http-server** — a route declared at `/` now sits at the mount root (`/todos` + `/` → `/todos`) instead of a trailing-slash variant Fastify treats as a distinct, unmatched URL, so collection-style mounts respond at the mount path itself.
+
+## 0.34.0
+
+### Minor Changes
+
+- d7fda97: Add module-scoped JSON Schema `$ref`s for named `Telo.Type` resources. A `Type.JsonSchema` now registers its schema under a canonical URI `$id` of `telo://<module>/<name>`, so any `inputType` / `outputType` / config `schema` can reference it with a standard JSON Schema `$ref`. Authors write the reference through an import — `telo://Self/<name>` for the declaring module's own type, `telo://<Alias>/<name>` for an imported module's — and the loader resolves the authority to the module name (the version is carried by the `imports:` entry, never the URI).
+
+  - `@telorun/sdk` exports `canonicalTypeSchemaId`, `parseTeloTypeRef`, and `TELO_TYPE_SCHEME`.
+  - `@telorun/analyzer` rewrites `telo://Self|Alias/Type` schema refs to their canonical id in both `analyze` and `normalize` (so the kernel runtime, import loads, and static analysis agree), registers named-type schemas in its AJV, and emits `SCHEMA_TYPE_REF_UNRESOLVED` / `SCHEMA_TYPE_REF_UNKNOWN_ALIAS` diagnostics for refs that resolve to nothing.
+  - `@telorun/type` registers each `Type.JsonSchema` under its canonical `telo://` id in the runtime schema registry.
+
+  This lets a module declare a shared schema fragment once (e.g. a filter grammar) and reference it from several definitions without duplicating it, while keeping references statically analyzable and version-pinned through the import.
+
+## 0.33.0
+
+### Minor Changes
+
+- 95f168e: Cache, rate-limit, and background-task primitives, plus a comprehensive URL-shortener example.
+
+  - New `cache` family: the backend-pluggable `Cache.Store` abstract with `Cache.Lookup` / `Cache.Entry` (freshness-aware: `ttl` fresh window + optional `staleTtl` grace window, `state` of `miss`/`fresh`/`stale`) and the `Cache.View` read-through decorator (single-flight background revalidation). Backends ship as `cache-memory` (`CacheMemory.Store`) and `cache-redis` (`CacheRedis.Store`, with observable degrade-to-`fallback`).
+  - New `rate-limit` module: `RateLimit.Guard`, a non-throwing sliding-window limiter whose counters live in any `Cache.Store`.
+  - `run` gains `Run.Detach` (generic, zero-config fire-and-forget).
+  - SDK + kernel: `ResourceContext.runDetached(fn)` runs a function detached from the caller's cancellation/trace scope; the kernel tracks each detached task against its owning resource and drains it (bounded) when that resource tears down, routing failures to the EventBus. Used by `Run.Detach` and `Cache.View`'s background revalidation.
+  - `http-server`: `Http.Server.trustProxy` and a derived `request.ip` in the handler CEL context (canonical client address for rate-limit keys).
+
+### Patch Changes
+
+- 95f168e: Fix `ERR_RESOURCE_NOT_INVOKABLE` when mounting an imported library's `Http.Api` whose route handler is a library-internal resource.
+
+  Phase-5 dependency injection now defers a resource whose **local** (`!ref name`) reference points at another resource that is registered in the same context but not yet initialized, mirroring the existing cross-module (`!ref Alias.name`) deferral. Previously such a local ref was silently left unresolved when create-success order diverged from init order — e.g. an importer that preloads the `Http.Api` controller lets the API create and inject before its internal handler's controller has loaded — leaving the handler slot as a raw `{kind, name}` sentinel that failed at request time. `PreInitHook` gains an `isPending` predicate so the injection walk can tell a pending dependency apart from a genuinely absent reference.
+
+## 0.32.0
+
+### Minor Changes
+
+- a8c99ab: Generic dispatch tracing: trace every capability dispatch (invoke and run) through one instrumented chokepoint and carry trace data in a structured event payload instead of the event name.
+
+  - Dispatch events drop the kind from the name (`<name>.Invoked` / `.Run`, plus error/cancel variants). The payload now carries `{ spanId, parentSpanId, capability, phase, outcome, ref: { kind, name }, … }`; consumers read the payload and never parse the dotted name. Lifecycle events (`Kind.name.Created` / `.Initialized` / `.Teardown`) are unchanged.
+  - `run()` is now span-instrumented like `invoke()`: it mints and propagates a trace id, so Runnables (e.g. a `Run.Sequence` boot target) appear in the trace and their nested invokes re-parent correctly instead of detaching as false roots. Long-lived Services emit a `<name>.Running` start span. Run failures emit `<name>.RunFailed` (rethrown, never swallowed).
+  - Invoke/run emit a `<name>.Invoking` / `.Running` start span when tracing is on.
+  - SDK: new `REF_IDENTITY` / `stampRefIdentity` / `getRefIdentity`. The kernel stamps a resolved `!ref`'s kind+name onto the injected instance so `executeInvokeStep` routes pre-injected live instances through the traced chokepoint instead of calling `.invoke()` directly and escaping instrumentation.
+  - The boot `targets` run is wrapped in an application span (`<appName>.Run`, `ref.kind: "Telo.Application"`), so the application is the trace root with its targets nested beneath. Pre-resolved `!ref` boot targets now dispatch through a new `EvaluationContext.runResolved` (the `run()` analog of `invokeResolved`) instead of calling `instance.run()` directly, so they emit their own run spans nested under the app.
+  - A `Telo.Service`'s long-lived `run()` no longer establishes the cancellation/trace ALS scope (its token is delivered via the explicit `run(invokeCtx)` argument instead). This stops the boot scope leaking onto async resources the service creates — e.g. an HTTP server's socket — so inbound work (each request) starts as its own root trace with no inherited boot cancellation token, instead of nesting under the bootstrap trace. Runnables keep the ALS scope so their steps still nest and inherit cancellation.
+  - `EventBus.emit` short-circuits in O(1) when there are no subscribers, keeping the always-through-the-chokepoint dispatch effectively free when nobody is listening.
+  - OpenTelemetry-ready trace model: every span carries a `traceId` (OTel-compatible 16-byte hex), minted at the root and inherited by descendants, so an exporter groups a trace without walking the parent chain. New generic `ctx.openSpan(base, { ref, label, attributes, inbound? })` primitive opens an inbound-boundary span (capability `"request"`) that roots its own trace; `inbound` allows continuing an upstream distributed trace later. The `TracePayload` gains `traceId`, `label`, and `attributes`.
+  - `http-server`: each inbound request opens a request span attributed to the `Http.Api` and labelled with the route (`"POST /feedback"`, attributes `{ method, path }`); the handler invoke and its subtree nest under it, as a trace separate from the bootstrap.
+  - Trace context capture: a trace's root span carries `payload.context` — a redacted snapshot of the CEL root scope available to the trace (`variables`, `resources` snapshots, `ports`, and `secrets` with values masked to `"[secret]"`; host `env` omitted). Lets a debug consumer see what data an execution could reference beyond its own inputs/outputs. The UI renders it as an "Available context" section on the root node.
+
+## 0.31.0
+
+### Minor Changes
+
+- b41012f: sdk: `InvokeContext` gains optional `invocationId` + `parentInvocationId` (the trace correlation a controller can read while a debug consumer is attached). `EmitEvent` gains an optional `metadata` argument, and a new `Tracer` type + `EvaluationContext.tracer` slot expose the kernel's invocation tracer. All additive — existing call sites are unaffected.
+
+## 0.26.0
+
+### Minor Changes
+
+- 1ddd803: Add a single, threaded cache-root resolution and a read-only cache mode for ephemeral runs.
+
+  - **`TELO_CACHE_DIR` reinstated** as the override for the `.telo` cache root, resolved once per load via the new `resolveCacheRoot(entryUrl)` and threaded to the manifest cache, compiled validators, analysis stamp, and npm install root — no consumer re-derives it or reads the env independently. `Kernel.load` gains a `cacheDir` option so a CLI caller resolves it once and the kernel reads no env.
+  - **`telo run --no-cache-write`** (kernel `writeCache: false`) keeps the cache read-only: baked validators/manifests are still loaded, anything uncached validates in-memory, and nothing is persisted — so a read-only, ephemeral session rootfs validates without touching (or failing to write) the cache. Validation errors still surface normally.
+  - **SDK**: `ResourceContext` gains `getInstallRoot()`, the threaded npm install root, so controllers honour a relocated cache root.
+
+## 0.23.0
+
+### Minor Changes
+
+- 8586b39: Resolve resource references uniformly across import boundaries and execution scopes.
+
+  - **http-server**: `mounts[].type` is now an injected `Telo.Mount` reference (`!ref <name>`, or `!ref <Alias>.<name>` for a mount exported by an imported library) instead of a dotted kind-string. The server consumes the live injected instance, so an `Http.Api` / `Mcp.HttpEndpoint` defined in another library can be mounted across the boundary. The bare `Kind.Name` string form is removed.
+  - **s3**: `bucketRef` is now an `x-telo-ref: "std/s3#Bucket"` slot (`!ref <bucket>` / `!ref <Alias>.<bucket>`); controllers consume the injected `S3.Bucket` instance, so S3 operations can reference a bucket exported by another library. The `{ name }` form is removed.
+  - **analyzer**: `resolveRefSentinels` recurses into `x-telo-scope` resources, so a `!ref` inside a scoped resource (e.g. a `Run.Sequence` `with:` server's mount) is canonicalized to `{kind, name}` like any top-level slot.
+  - **kernel**: Phase-5 dependency injection targets the (compile-CEL-expanded) resource the controller actually receives, so injected instances reach reference fields that also carry `x-telo-eval: compile` (e.g. `Http.Server.mounts`).
+  - **sdk**: `CreatedResource` gains an optional `resource`, letting a factory return the expanded manifest the controller was created with.
+
+## 0.21.0
+
+### Minor Changes
+
+- 64debb5: Add the `!sql` templating engine for safe, dialect-neutral SQL interpolation. A `!sql "… ${{ expr }} …"` scalar evaluates to a parameterized value — literal fragments plus the separately-evaluated value of each interpolation — instead of a joined string, so consumers can emit driver-native placeholders and bind the values rather than splicing them into the SQL text.
+
+  Supporting additions: `@telorun/sdk` gains an optional `parts` field on `CompiledValue` (an interpolated template's segments before they are joined) plus the shared `ParameterizedSql` type and `isParameterizedSql` guard (the marker contract producers and consumers single-source). `@telorun/templating` adds `toParameterized(value, ctx)`, which splits a value into `{ fragments, values }` and backs the new engine.
+
+## 0.19.0
+
+### Minor Changes
+
+- 5331205: Add cooperative invoke cancellation via an out-of-band `InvokeContext`.
+
+  Every `invoke(inputs, ctx?)` now receives a second argument carrying a read-only
+  cancellation token (`ctx.cancellation`): poll `isCancelled`, subscribe via
+  `onCancelled`, bail with `throwIfCancelled`, or hand its `signal` to a Web API.
+  The SDK exposes the source/token split (`createCancellationSource`,
+  `CancellationSource`/`CancellationToken`), a never-cancellable sentinel, and the
+  `isCancellationError` helper. Deadlines are scheduled cancellation
+  (`source.cancelAt(epochMs)` / `cancelAfter(ms)`).
+
+  The kernel mints one cancellation scope per invocation tree (inherited by nested
+  invokes via a kernel-internal `AsyncLocalStorage`, always passed to controllers
+  as the explicit argument), refuses a not-yet-dispatched invoke whose tree was
+  cancelled with `ERR_INVOKE_CANCELLED`, and emits a scoped `InvokeCancelled`
+  event. `Kernel.invoke(ref, inputs, opts?)` accepts `{ signal, deadlineAt }`.
+  Sources are allocated lazily, so invokes that never touch cancellation pay no
+  extra allocation.
+
+  The boot `targets` run is also cancellable: `Runnable.run(ctx?)` now receives
+  the token, `Kernel.cancel(reason?)` cancels the boot scope, and the CLI's
+  SIGINT/SIGTERM handler calls it so Ctrl-C cooperatively stops honoring targets
+  and in-flight invoke trees (then unblocks graceful exit via `forceIdle`).
+
+  Honoring leaves: `Ai.Text` / `Ai.TextStream` / `Ai.Agent` forward the token's
+  signal into the model (aborting a live LLM stream on cancel); `http-client`
+  merges it with its request timeout. Triggers: `http-server` cancels on client
+  disconnect and returns 499; `lambda` arms cancellation at the AWS deadline.
+
+## 0.18.0
+
+### Minor Changes
+
+- d2294de: Type `inputType` / `outputType` on `ResourceDefinition` (they were read through an untyped cast). Add `AnalysisRegistry.refFieldsForResource()`, `capabilityForRef()`, and `inputTypeForKind()`. `refFieldsForResource` returns every `x-telo-ref` field a resource's definition declares — path, arity (`isArray`), accepted constraints, and the capabilities each slot may target — derived purely from the schema field map, so it lists slots even when the manifest leaves them empty. `capabilityForRef` resolves an `x-telo-ref` constraint to the base capability it targets (a user-defined abstract's declared `capability`, not its kind). `inputTypeForKind` resolves a kind's `invoke()` input schema (own `inputType`, falling back to the `extends`-declared abstract's). Together they let editor hosts render reference fields as node ports (drag-to-wire for node-capability targets, inline picker for ambient ones) and edit an edge's invocation `inputs` as a typed form — without hardcoding any resource kind.
+
+## 0.17.0
+
+### Minor Changes
+
+- 0cd36a1: inline imports — `imports:` map on Telo.Application / Telo.Library
+
+  Add an optional name-keyed `imports:` map to `Telo.Application` and
+  `Telo.Library` as additive sugar for separate `Telo.Import` documents. Each
+  entry's key is the PascalCase alias; its value is either a bare source string
+  (`Console: std/console@1.2.3`, shorthand for `{ source }`) or the full object
+  form carrying `variables` / `secrets` / `runtime`. Authored `Telo.Import`
+  documents keep working unchanged and both forms may coexist.
+
+  The loader desugars inline entries into synthetic `Telo.Import` manifests via a
+  new `desugarImports` `LoadOptions` flag (folded into the file cache key; mirrored
+  on the SDK's `ResourceContext.loadModule` options). The flag is on for every
+  resolved consumer — the kernel's analysis and runtime loads, the
+  import-controller's child-module load, the analyzer, `telo check`, and the
+  `Assert.Manifest` test helper — and off for the editor's round-trip view, which
+  reads the raw `imports:` map and pairs manifests to YAML nodes by index. Inline
+  imports therefore resolve and execute identically to authored docs.
+
+  Adds a `DUPLICATE_IMPORT_ALIAS` diagnostic: an alias declared twice in one
+  module scope (across either form) is now an error instead of silently
+  shadowing.
+
+## 0.16.0
+
+### Minor Changes
+
+- 55b4ec5: Add exported resource instances: a `Telo.Library` can declare a resource and export it as a ready-made singleton via `exports.resources`, and consumers reference it across the import boundary with `!ref Alias.name` (and read value-flow exports in CEL as `${{ resources.Alias.name }}`). `std/console` now exports `writeLine` / `readLine` singletons, so a consumer can `!ref Console.writeLine` instead of declaring its own `Console.WriteLine` instance.
+
+  Reference grammar: every `!ref` is `<Alias>.<name>`, split on the first dot — a bare name (or `Self.`-qualified) resolves locally; a non-`Self` alias resolves into that import's `exports.resources`. A resource name may no longer contain a dot (new `INVALID_RESOURCE_NAME` diagnostic), since the dot separates alias from name.
+
+  `Self` now resolves a library's own kinds **ungated** (no longer bound to `exports.kinds`) — `exports` gates importers, not internal use — and the kernel registers `Self` in each import's child context, so a library can declare an instance of a kind it doesn't export (`kind: Self.WriteLine`).
+
+  `std/assert` likewise exports its config-free assertions (`equals`, `matches`, `contains`) as singletons, so a test can `!ref Assert.equals` — including inside a `Run.Sequence` step — instead of declaring an `Assert.Equals` instance.
+
+  Mechanics: the analyzer forwards a library's exported instances across the import boundary (gate = what's forwarded), and the kernel injects/boots them from the import's child context. Cross-module refs resolve on every consumption surface — Phase 5 injection (threads the alias; an unresolved ref defers to a later init pass), flat boot targets, `Run.Sequence` step invokes (via `resolveChildren` + `executeInvokeStep`), and CEL `${{ resources.Alias.name }}`. Lifecycle is unchanged — an exported instance is the import child context's existing singleton.
+
+## 0.13.0
+
+### Minor Changes
+
+- ae0bf77: Add flat invoke steps and conditional `when` guards to Application `targets`, so a
+  runnable app can sequence and gate boot-time work without importing `std/run`.
+
+  Alongside the existing bare reference, a `targets` entry now accepts:
+
+  - a gated reference `{ ref: <Runnable/Service>, when?: <CEL> }` — `run()` only when
+    the guard holds;
+  - an inline invoke step `{ name?, invoke: <Invocable/Runnable ref>, inputs?, when? }`
+    — call an Invocable on boot, with `steps.<name>.result` plumbed into later
+    targets and an optional `when` guard.
+
+  The flat invoke leaf (`when` + `inputs` expansion + ref resolution + `retry` +
+  `steps.<name>.result`) is now a single shared primitive `executeInvokeStep` in
+  `@telorun/sdk`. The kernel boot runner and the `Run.Sequence` controller both
+  consume it, so the leaf semantics are single-sourced — `Run.Sequence` keeps
+  control flow (`if`/`while`/`switch`/`try`), `with:` scopes, and the callable
+  `inputs`/`outputs` wrapper.
+
+  The analyzer's reference-field-map descends into object `anyOf` variants on a ref
+  node, so nested refs like `targets[].invoke` register and resolve; reference
+  validation skips the item-level `{kind, name}` check for the inline/gated object
+  forms.
+
+  `targets` are ref-only for now: inline targets reference declared resources
+  (`!ref` / `{kind, name}`); inline resource definitions remain a `Run.Sequence`
+  feature. Static CEL type-checking of target `when`/`inputs` and editor support
+  for the new target forms are follow-ups.
+
+## 0.12.0
+
+### Minor Changes
+
+- 849f57a: Add `provide:` template target to `Telo.Definition` and an optional typed `provide()` member to `Telo.Provider`.
+
+  Manifest authors can now declare a `Telo.Provider` in pure YAML without a TypeScript controller:
+
+  ```yaml
+  kind: Telo.Definition
+  metadata: { name: TokenProvider }
+  capability: Telo.Provider
+  extends: Auth.SessionProvider
+  resources:
+    - kind: Http.Request
+      metadata: { name: "${{ self.name }}-read" }
+      inputs: { url: "https://vault/v1/secret/${{ self.vaultPath }}" }
+  provide:
+    kind: Http.Request
+    name: "${{ self.name }}-read"
+  result:
+    sessionId: "${{ result.body.data.session_id }}"
+  ```
+
+  The synthesized `provide()` spawns the dispatch target as an ephemeral, calls its `invoke()` with the top-level `inputs:` map (CEL-expanded against `{ self, variables, secrets, resources.* }`), optionally reshapes the result via the top-level `result:` map (CEL-expanded against `{ self, result }` where `result` is typed from the target's `outputType`), and tears the ephemeral down. No caching: each call re-runs the target.
+
+  `Telo.Provider`'s `ProviderInstance` gains an optional `provide?(): Promise<T>` member, where `T` is JSON-schema-typed via the abstract's `outputType` when the definition `extends` one. Existing handle-shaped Providers (Sql.Connection, Http.Client, etc.) continue to work unchanged — they don't implement `provide()` and remain outside the typed value-flow contract.
+
+  Analyzer coherence validators reject:
+
+  - `PROVIDE_ON_NON_PROVIDER` — `provide:` on a non-`Telo.Provider` definition.
+  - `PROVIDE_DISPATCHER_CONFLICT` — `provide:` co-existing with `invoke:` or `run:`.
+  - `PROVIDE_TARGET_UNKNOWN` — `provide.name` not matching any `resources:` entry.
+  - `PROVIDE_TARGET_NOT_INVOCABLE` — `provide:` target resolving to a non-`Telo.Invocable` kind.
+  - `PROVIDER_MISSING_IMPLEMENTATION` — `Telo.Provider` definition lacking both `controllers:` and `provide:`.
+
+  Top-level `result:` is a general post-call mapping: it works as a sibling of either `provide:` or `invoke:`. The kernel applies it after the inner invoke returns; the analyzer types `result` inside CEL from the dispatch target's `outputType` (looked up via `provide.kind` first, falling back to `invoke.kind`) and validates the produced mapping against the abstract's `outputType` when the definition `extends` one. `x-telo-context-from-ref-kind` now accepts either a single path or an array of fallback paths.
+
+- be79957: Move `@telorun/sdk` to `peerDependencies` across the kernel, analyzer, templating, and every module.
+
+  The SDK carries the `Stream` class registered with `@marcbachmann/cel-js` for stream-typed CEL values. cel-js identifies object types by constructor identity, so a second copy of `@telorun/sdk` in the install tree silently breaks streaming-typed evaluations with `Unsupported type: Stream`. The contract was previously enforced with three layered mechanisms (a generated `dist/generated/runtime-deps.json` driving install-root `dependencies`, `overrides` + `pnpm.overrides` blocks, and a `globalThis`-keyed singleton in `stream.ts`); the build artifact silently degraded when the kernel was run without a build step, defeating the layering.
+
+  The new shape:
+
+  - Every package that imports `@telorun/sdk` declares it as a `peerDependency`. Consumers (the kernel's install root, the CLI, apps) provide a single copy and `peerDependencies` cause npm/pnpm to resolve every transitive import to it.
+  - The kernel's `NpmControllerLoader` no longer reads `runtime-deps.json`; the realm-collapse name list is a hardcoded constant (`REALM_COLLAPSE_NAMES = ["@telorun/sdk"]`) in `npm-loader.ts`. The install-root `package.json` it writes drops the `overrides` and `pnpm.overrides` blocks — peer-dep resolution makes them redundant.
+  - `scripts/generate-runtime-deps.mjs` and the generated artifact are removed; `scripts/prepack-bake-overrides.mjs` no longer chains the runtime-deps regeneration.
+  - The `globalThis` singleton in `sdk/nodejs/src/stream.ts` is **kept** as a safety net for environments that still end up with mismatched SDK copies (e.g. a controller install from a tarball that predates this change).
+
+  Consumers installing `@telorun/kernel` or any module directly must now ensure `@telorun/sdk` is present in their dependency tree. The kernel already lists it via the install root for any manifest it boots, so kernel-driven usage is unaffected.
+
+## 0.11.1
+
+### Patch Changes
+
+- 58362c4: Make `Stream` a `globalThis`-keyed singleton so its constructor identity survives multiple `@telorun/sdk` copies in a single process. cel-js identifies CEL object types by constructor identity, and the kernel + an npm-loaded controller (e.g. `S3.Get`) routinely resolve to different sdk installs (workspace vs `.telo/npm/<hash>/...`). Before this change, a `Stream` value produced by a controller threw `Unsupported type: Stream` at runtime whenever it flowed through a CEL expression like `${{ steps.fetch.result.output }}` — even though both copies declared the same `Stream` class — because the registered constructor on the kernel side wasn't the constructor that produced the value. The fix is contained in the sdk's `stream.ts`: the first copy to load registers its `Stream` class on `globalThis` under `Symbol.for("@telorun/sdk:Stream")`; later copies discard their local class declaration at export time and re-export the registered one. No build artifact, `file:` symlink, or kernel-side realm-collapse install is required for class identity to hold.
+
+## 0.10.0
+
+### Minor Changes
+
+- f1c35bc: Split `Kernel.start()` into `boot()` / `runTargets()` / `teardown()`, add public `Kernel.invoke()`, rename `Kernel.shutdown()` → `Kernel.forceIdle()`.
+
+  Embedders that want "boot once, invoke many" (e.g. an AWS Lambda managed-runtime adapter, IDE previews, programmatic tests) can now drive each lifecycle phase explicitly without owning the wait loop. `start()` stays as a convenience method with no observable behaviour change — its `try` widens to cover `boot()` and `runTargets()` so init-time failures still drive teardown and still emit `Kernel.Stopping` / `Kernel.Stopped`, matching the pre-split contract that the CLI and test runner rely on.
+
+  **New methods**:
+
+  - `boot(): Promise<void>` — initialize resources, emit `Kernel.Initialized`. Does not run targets, does not wait.
+  - `runTargets(): Promise<void>` — emit `Kernel.Starting`, run `targets:` from the manifest, emit `Kernel.Started`. Throws `ERR_KERNEL_STATE_INVALID` if called before `boot()` or after `teardown()`, or a second time.
+  - `teardown(): Promise<void>` — emit `Kernel.Stopping`, tear down every initialized resource, emit `Kernel.Stopped`. Idempotent on the second call (no-op, no re-emit). Tolerates partial state — a `boot()` that threw mid-init still cleans up.
+  - `invoke<TInputs, TOutput>(ref, inputs): Promise<TOutput>` — invoke a `Telo.Invocable` resource by `<Kind>.<Name>` (dot-form string) or `{ kind, name }`. Throws `ERR_KERNEL_STATE_INVALID` before `boot()` or after `teardown()`.
+
+  **Breaking**:
+
+  - `Kernel.shutdown(): void` is renamed to `Kernel.forceIdle(): void`. Same semantics (force-resolve a pending `waitForIdle()` regardless of active holds; used by SIGINT/SIGTERM handlers). The name disambiguates from the new `teardown()`. The only known external caller is the CLI's signal handler, updated in this changeset.
+  - New `ERR_KERNEL_STATE_INVALID` runtime error code on `RuntimeErrorCode`.
+
+  No migration needed for callers that only use `start()` — its semantics are unchanged.
+
+- 47f7d83: Single-realm controller install: every controller in a kernel process now resolves through one `<entry-manifest-dir>/.telo/npm/` tree, with the kernel's own `@telorun/sdk` wired in as a `file:` dep. The realpath collapse this produces fixes class-identity bugs across the kernel/controller boundary — most visibly cel-js's `registerType("Stream", Stream)` matching `Stream` instances created on either side of the realm split.
+
+  - `@telorun/kernel`: `Kernel.load(url)` records the entry URL; `getEntryUrl()` is exposed via `ResourceContext`. `NpmControllerLoader` rewrites every load — registry tag or `local_path` — as an `npm install <spec>` into the per-manifest install root. A filesystem lock at `<root>/.lock` (atomic `fs.open(path, 'wx')`, PID + start-time inside) makes the install cross-process safe; a hash of the materialized `package.json` short-circuits repeat installs. The legacy `~/.cache/telo/npm/` global cache is no longer consulted (existing trees are safe to delete by hand). `TELO_PKG_MANAGER` overrides the default `npm` invocation.
+  - `@telorun/cli`: `telo install` passes the manifest's entry URL through to the kernel-side loader so the install root lands next to the manifest. `TELO_CACHE_DIR` is no longer consumed.
+  - `@telorun/sdk`: `ResourceContext` gains a `getEntryUrl()` method.
+  - `@telorun/assert`: `package.json` `exports` map now declares the Bun/Node conditional split (`bun → src/*.ts`, `import → dist/*.js`). The previous bare-`./src/*.ts` entries only worked because the old controller loader silently rewrote `src→dist`; that rewriter is gone.
+
+## 0.7.0
+
+### Minor Changes
+
+- b62e535: Streaming-Invocable convention, format-codec packages, and `Http.Api` `content:` map rewrite.
+
+  **Breaking** (`@telorun/http-server`, `@telorun/ai`):
+
+  - `Http.Api.routes[].returns[]` and `routes[].catches[]` (and the equivalent `Http.Server.notFoundHandler` lists) drop top-level `body` / `schema` in favour of a per-MIME `content:` map. Buffer-mode entries use `content[<mime>].body` / `content[<mime>].schema`; stream-mode entries use `content[<mime>].encoder` (ref to any `Codec.Encoder`). The map key is the canonical `Content-Type` — declaring `Content-Type` in `headers:` is rejected at load time. Multi-key `content:` maps are negotiated against the request's `Accept` header (RFC 9110 §12.5.1). Mismatch → `406 Not Acceptable`.
+  - `mode: stream` is forbidden in `catches:` (catches fire pre-stream; no upstream iterable to feed an encoder).
+  - Migration: every existing `returns: [..., body: ..., schema: ..., headers: { Content-Type: ... }]` rewrites mechanically to `returns: [..., content: { <mime>: { body, schema } }]`. In-tree manifests (`apps/registry`, `examples/*`, `tests/*`, `benchmarks/*`) migrated.
+  - `Ai.TextStream`: `format` field removed; controller no longer encodes the wire — it returns `{ output: Stream<StreamPart> }`. Pair with a format-codec encoder (`Ndjson.Encoder`, `Sse.Encoder`, `PlainText.Encoder`) for HTTP responses or other byte transports. `text-stream-drain-controller.ts` removed (replaced by inline source → encoder → decoder steps).
+  - `StreamPart.error` shape changed from native `Error` to `{ message, code?, data? }` so generic encoders can JSON-serialize error frames without bespoke translation.
+
+  **New** (`@telorun/codec`, `@telorun/plain-text-codec`, `@telorun/ndjson-codec`, `@telorun/sse-codec`, `@telorun/octet-codec`):
+
+  - `@telorun/codec` ships the `Encoder` and `Decoder` abstracts (no controllers — pure contracts).
+  - Format-codec packages each carry one or both directions: `PlainText.Encoder/.Decoder` (UTF-8 collect + emit), `Ndjson.Encoder` (one JSON record per line), `Sse.Encoder` (Server-Sent Events frames), `Octet.Encoder/.Decoder` (raw bytes pass-through and collect).
+  - All encoders implement `invoke({input}): Promise<{output: Stream<Uint8Array>}>` per the streaming-Invocable convention.
+
+  **New** (`@telorun/sdk`):
+
+  - `Stream<T>` class wrapping `AsyncIterable<T>`. Producers wrap their iterables in `new Stream(...)` so the value's constructor is recognized by CEL's runtime type-checker (which rejects unrecognized constructors like `AsyncGenerator` and Node `Readable`). The analyzer registers `Stream` as a CEL object type.
+
+  **Annotation** (`@telorun/kernel`, `@telorun/analyzer`):
+
+  - `x-telo-stream: true` schema annotation on input/output properties marks them as carrying a `Stream<T>`. CEL passes the value through by reference; analyzer's chain validator rejects `.field` / `[index]` access past a stream-marked property. Convention: streaming Invocables put the stream on `input` (inputs) and `output` (result).
+  - `Self.<Abstract>` magic alias auto-registered for every Telo.Library/Application — lets concrete kinds in the same library use `extends: Self.<Abstract>` without a self-import that would loop the loader.
+  - Analyzer's `buildReferenceFieldMap`, `resolveFieldValues`, `extractInlinesAtPath`, and `injectAtPath` (Phase 5) now recurse into `additionalProperties` via a `{}` path-segment marker. Required for refs nested inside open-keyed maps like `content[<mime>].encoder`.
+  - `isInlineResource` widened: bare-kind refs (`{kind: X}` with no `name` and no extra config) are now treated as inline-singleton definitions and Phase 2 extracts them as fresh stateless resources. Previously `{kind: X}` raised `INVALID_REFERENCE` (treated as a malformed named ref). This matches the runtime-side `resolveChildren` semantics already documented for `Run.Throw`-style stateless inlines, and lets `encoder: {kind: Ndjson.Encoder}` work without boilerplate. Manifests that had `{kind: X}` with the (broken) intent of resolving to an existing named resource will now silently extract a fresh resource — extremely unlikely in practice (those refs were already failing analysis), but worth flagging for downstream consumers.
+
+  **Behaviour changes worth flagging** (`@telorun/http-server`):
+
+  - **Single-key `content:` maps now do `Accept` negotiation.** A route declaring only `content: { application/json: ... }` returns `406 Not Acceptable` for `Accept: image/png` — RFC 9110 §15.5.7 compliant. Pre-PR, the legacy top-level `body:` shape ignored `Accept` entirely. To preserve "always send" behaviour, declare `*/*` as an explicit key.
+  - **Accept matching ignores media-type parameters** beyond the first `;`. `Accept: text/plain; charset=ascii` matches `content: { 'text/plain; charset=utf-8': ... }`. Q-values are still parsed for ranking; only the matching predicate ignores params. Authors needing parameter-level preference must declare distinct keys per parameter combo.
+  - **Load-time validators reject misconfigured `content:` shapes.** `validateContentEntryShape` rejects `body+encoder` together (mutually exclusive), missing `encoder` under `mode: stream`, `body` under `mode: stream`, and `encoder` under `mode: buffer`. Previously some of these slipped through to runtime where they manifested as 500-on-negotiation.
+  - **Mid-stream `pipeline()` failures emit `Http.Api.streamFailed` events.** Once `reply.hijack()` runs, mid-stream errors (encoder throws, broken pipe) bypass `catches:` by design (response is committed). They now emit a structured event with `path`, `method`, `status`, `mime`, and the error so operators can observe failures that would otherwise be silent.
+
+  **Other** (`@telorun/http-client`, `@telorun/javascript`):
+
+  - `HttpClient.Request` `mode: stream` returns `{ output: Stream<Uint8Array> }` instead of a bare `Readable` — fits the streaming-Invocable convention, pairs with `Octet.Encoder` for HTTP pass-through.
+  - `JS.Script` injects `Stream` into every script's scope (via the second function argument, destructured at the top of the wrapper). User code can `new Stream(asyncGen)` directly.
+
+  **Tests**:
+
+  - New Layer 1 hermetic streaming-contract test (`modules/ai/tests/text-stream-streaming-contract.yaml`) — three sub-targets, byte-exact NDJSON / SSE / PlainText.
+  - New Layer 2 live OpenAI streaming smoke (`modules/ai-openai/tests/openai-live-text-stream.yaml`) — env-gated; exercises `Ai.TextStream → Ndjson.Encoder → PlainText.Decoder` against the real provider.
+  - New http-server integration test (`modules/http-server/tests/text-stream-via-http.yaml`) — exercises three single-format routes plus a four-format negotiated route with five Accept variants.
+
+## 0.6.0
+
+### Minor Changes
+
+- dccd3a6: Kernel quick-wins cleanup plus per-module import isolation.
+
+  **Per-module import isolation.** `Telo.Import` aliases now register on the declaring module's own `ModuleContext` instead of all collapsing into the root context's alias table. Sibling modules that declare the same alias name no longer overwrite each other; runtime kind dispatch resolves through the resource's owning module and walks up the parent chain so children still inherit root-level built-ins like `Telo`. This was a latent isolation bug — visible as wrong-target alias resolution whenever two modules used the same alias name.
+
+  **SDK breaking changes.**
+
+  - `ModuleContext.importAliases: Map<string, string>` is removed from the public interface; replaced with `hasImport(alias: string): boolean`. Callers that need to test alias presence should use `hasImport`; the underlying map is now `private` on the kernel implementation.
+  - `ResourceContext.getResources(kind)` and `ResourceContext.teardownResource(kind, name)` are removed. They were always stubs that threw `"not implemented"`.
+  - `ControllerContext.once(event, handler)` and `ControllerContext.off(event, handler)` are removed. Same reason — stubs that threw on call.
+  - `ResourceContext.registerModuleImport(alias, target, kinds)` is unchanged in shape but now writes to the caller's own `ctx.moduleContext` rather than going through the kernel's discarded `_declaringModule` indirection.
+
+  **Kernel internals.**
+
+  - `kernel.getModuleContext`, `kernel.resolveModuleAlias`, `kernel.registerModuleImport` and `kernel.registerImportAlias(alias, target, kinds)` deleted. Runtime alias storage lives on `ModuleContext` itself.
+  - `kernel._createInstance` resolves kinds via the resource's enclosing `ModuleContext` (walking parents) instead of always going through the root.
+  - `EvaluationContext` no longer swallows `instance.snapshot()` errors with `.catch(() => ({}))` — failures now propagate into the existing init-loop diagnostics. Previously a provider whose snapshot threw silently produced an empty `${{ resources.X.* }}` namespace downstream.
+  - Spurious `console.log("Registering resource:", kind, name)` in `ManifestRegistry.register()` removed.
+
+  **Removed packages.** `@telorun/tracing` is deleted. The module's controllers depended exclusively on the now-removed `getResources`/`off` stubs, was wired into no tests, and had no external consumers in the workspace.
+
+  **Assert.ModuleContext controller** was the only user of the removed `(ctx as any).resolveModuleAlias(...)` shim; it now calls `ctx.moduleContext.hasImport(alias)`.
+
+- 2e0ad31: In-memory kernel bootstrap and `Adapter` → `Source` rename.
+
+  **Breaking changes:**
+
+  - `Kernel.loadFromConfig(path)` → `Kernel.load(url)`. The new method dispatches the URL through the registered `ManifestSource` chain unchanged — no implicit `file://` cwd-wrapping. The `loadDirectory` deprecation shim is removed.
+  - `KernelOptions.sources: ManifestSource[]` is now required. Callers must pass an explicit list, e.g. `new Kernel({ sources: [new LocalFileSource()] })`. The previous hardcoded `LocalFileAdapter` registration in the `Kernel` constructor is gone.
+  - `ManifestAdapter` interface renamed to `ManifestSource`. Per-scheme classes renamed: `LocalFileAdapter` → `LocalFileSource`, `HttpAdapter` → `HttpSource`, `RegistryAdapter` → `RegistrySource`. Files and directories renamed in turn (`manifest-adapters/` → `manifest-sources/`, `analyzer/.../adapters/` → `.../sources/`).
+  - `LoaderInitOptions` field renames: `extraAdapters` → `extraSources`, `includeHttpAdapter` → `includeHttpSource`, `includeRegistryAdapter` → `includeRegistrySource`.
+  - The dead-stub `kernel/nodejs/src/manifest-adapters/manifest-adapter.ts` (an unused parallel interface that drifted from the live one in `@telorun/analyzer`) is deleted.
+
+  **New:**
+
+  - `MemorySource`: an in-memory `ManifestSource` for embedders and tests. Available as a top-level export from `@telorun/kernel` and as a subpath export at `@telorun/kernel/memory-source`. Bare module names register under `<name>/telo.yaml` (mirroring disk's "module is a directory containing telo.yaml" convention) so relative imports (`./sub`, `../sibling`) work transparently with POSIX path resolution. `set(name, content)` accepts either YAML text or an array of parsed manifest objects (serialized via `yaml.stringify`).
+
+  **Internal:**
+
+  - `Loader.moduleCache` is now per-instance rather than `private static readonly`. Multiple in-process kernels (the headline use case for `MemorySource` — test runners, IDE previews) no longer share a process-wide cache.
+
+## 0.5.0
+
+### Minor Changes
+
+- f76dd0f: kernel/analyzer: library-declared Telo.Abstract + first-class `extends` + in-place invoke wrap.
+
+  - Kernel: new runtime meta-controller for `kind: Telo.Abstract` so libraries can declare abstract contracts that importers resolve at runtime (not just in static analysis). Fixes the latent "No controller registered for kind 'Telo.Abstract'" failure when importing modules like `std/workflow` that declare an abstract.
+  - Kernel: `_createInstance` now overrides `invoke` in-place on the controller's returned instance instead of wrapping it in a new object. The previous `{ ...instance, invoke }` shape (and a later prototype-preserving variant) split object identity: `init()` ran on the wrapper while the wrapper's `invoke` delegated back to the original instance, so any state `init` set on `this` was invisible at invocation time. Mutating in place keeps all lifecycle methods on the same object and incidentally preserves the prototype chain for class-based controllers.
+  - Analyzer: `Telo.Definition` gains an `extends: "<Alias>.<Abstract>"` field (alias-form, resolved against the declaring file's `Telo.Import` declarations — same pattern as kind prefixes). This pins the target's module version through the import source. `DefinitionRegistry.extendedBy` is populated from both `extends` and `capability` (union-merged), so third-party modules using the legacy `capability: <UserAbstract>` overload keep working. A `CAPABILITY_SHADOWS_EXTENDS` warning prompts migration.
+  - Analyzer: new `validateExtends` pass emits `EXTENDS_MALFORMED` / `EXTENDS_UNKNOWN_TARGET` / `EXTENDS_NON_ABSTRACT` / `CAPABILITY_SHADOWS_EXTENDS` diagnostics. The pass skips defs forwarded from imported libraries — those are validated in their own analysis context, where the source library's aliases are in scope.
+  - Analyzer: Phase 1 registration loop now also registers `kind: Telo.Abstract` docs (previously only `Telo.Definition`), so cross-package `x-telo-ref` references to library-declared abstracts actually resolve.
+  - Analyzer + kernel: the `Telo.Abstract` schema is now open (`additionalProperties: true`) — abstracts carry `schema` plus any forward-compatible fields (e.g. `inputType` / `outputType` from the typed-abstracts plan). `controllers` and `throws` remain forbidden on abstracts.
+  - Loader: imported libraries' `Telo.Import` docs are now forwarded alongside their `Telo.Definition` / `Telo.Abstract` docs. Alias resolution remains the analyzer's responsibility — the loader just exposes the imports.
+  - Analyzer: alias resolution is now per-scope. The consumer's aliases live in the main resolver; each imported library gets its own `AliasResolver` built from the `Telo.Import` docs forwarded under its `metadata.module`. Forwarded defs' `extends` and `capability` are normalized in their declaring library's scope, so `extendedBy` stays keyed by canonical kind even when a consumer imports the same dependency under a different alias name (or omits a transitive dependency it doesn't directly use).
+  - SDK: `ResourceDefinition` type gains `extends?: string`.
+  - Assert: `Assert.Manifest` supports `expect.warnings` alongside `expect.errors`.
+  - Migration: `modules/workflow-temporal/telo.yaml` moves from `capability: Workflow.Backend` to canonical `capability: Telo.Provider, extends: Workflow.Backend`, and gains a self-referential `Telo.Import` (`name: Workflow, source: ../workflow`) so the alias on `extends` resolves against the library's own imports. No behavioural change for existing consumers.
+
+- fc4a562: Polyglot controller support — Rust controllers via N-API. See `modules/starlark/plans/polyglot-rust-poc.md` for the full design.
+
+  **SDK additions (additive, non-breaking):**
+
+  - `ControllerPolicy` type — resolved selection policy: an ordered list of PURL-type prefixes optionally containing a single wildcard sentinel `"*"`.
+  - `ResourceContext.getControllerPolicy()` and `ModuleContext.getControllerPolicy()` / `setControllerPolicy()` — produced by `Telo.Import`, consumed by `Telo.Definition.init`.
+
+  **Kernel:**
+
+  - `controller-loader.ts` is now a scheme dispatcher that picks a per-PURL sub-loader: `controller-loaders/npm-loader.ts` (existing logic, extracted) and `controller-loaders/napi-loader.ts` (new). The dispatcher applies the resolved policy: candidates are filtered/ordered by PURL-type prefix and the wildcard tail, and env-missing failures (`ControllerEnvMissingError`) advance to the next candidate while user-code failures (`ERR_CONTROLLER_BUILD_FAILED`, `ERR_CONTROLLER_INVALID`) fail hard.
+  - `NapiControllerLoader` (dev mode only): probes `rustc --version`, runs `cargo build --release --features napi` in `local_path`, locates the dylib via `cargo metadata`, copies to `<libname>.node`, loads via `createRequire`. Distribution mode (per-platform npm packages) is out of scope and reports env-missing.
+  - `runtime-registry.ts` — new module: label-to-PURL mapping (`nodejs ↔ pkg:npm`, `rust ↔ pkg:cargo`), kernel-native label, and `normalizeRuntime(value)` that resolves the user-facing `runtime:` field (string or array) into a `ControllerPolicy`. Reserved tokens: `auto` (kernel-native + wildcard), `native` (kernel-native only), `any` (wildcard).
+  - `Telo.Import` schema gains a `runtime` field (string or array of strings); `Telo.Import` controller normalizes and stamps the resolved policy on the spawned child `ModuleContext` only when `runtime:` is explicit.
+  - `Telo.Definition.init` reads the policy via `ctx.getControllerPolicy()` and forwards it to `ControllerLoader.load`.
+  - `ControllerRegistry` is now keyed by `(kind, runtimeFingerprint)`. Lookup falls through three tiers: exact fingerprint, then `"default"` (built-ins), then any registered entry for the kind (root-context resources that reference an imported kind). Two `Telo.Import`s of the same library with divergent runtime selections each get their own cached controller instance.
+
+  **Analyzer:**
+
+  - `Telo.Definition` for `Import` in `analyzer/nodejs/src/builtins.ts` accepts the `runtime` property so static analysis doesn't reject manifests using the new field.
+
+  **Tests:**
+
+  - `kernel/nodejs/tests/napi-echo/` — Rust crate fixture exercising the napi-rs build + `.node` load path.
+  - `kernel/nodejs/tests/__fixtures__/napi-test/telo.yaml` — Telo.Library wrapper around napi-echo.
+  - `kernel/nodejs/tests/napi-echo-loads.yaml` — proves the loader dispatches `pkg:cargo` correctly with default `auto` resolution.
+  - `kernel/nodejs/tests/napi-echo-runtime-rust.yaml` — proves explicit `runtime: rust` selects the cargo PURL.
+
+  Repo gains a workspace-level `Cargo.toml` listing all telorun Rust crates as members; the existing Tauri crate is unaffected.
+
+  No user-facing change for manifests that don't use `runtime:` or `pkg:cargo` — the existing npm load path is preserved exactly.
+
+## 0.3.2
+
+### Patch Changes
+
+- 3c4ac58: Resource initialization errors now carry the resource `kind`, an underlying error `code`, and a structured `details` block extracted from the original error — AWS SDK service exceptions expose HTTP status / request ID / fault, pg database errors expose severity / detail / hint / SQLSTATE / routine, Node system errors expose syscall / address / port, and the full `cause` chain is walked. The CLI renders runtime diagnostics distinctly from static-analysis diagnostics: no redundant file path, `kind` and `name` shown as the heading, details indented below.
+
+## 0.3.0
+
+### Minor Changes
+
+- 353d7e5: feat: invocable errors — structured error channel end-to-end
+
+  Invocables and runnables now have a first-class structured-error channel for domain failures (`InvokeError`), distinct from operational failures (plain `Error` / `RuntimeError`). Route handlers branch on named codes via `catches:`; sequences catch with `error.code` / `error.message` / `error.data` / `error.step` context.
+
+  **SDK** (`@telorun/sdk`)
+
+  - New `InvokeError` class + `isInvokeError` guard. Symbol-based discrimination (`Symbol.for("telo.InvokeError")`) is dual-realm-safe across pnpm hoist splits, registry modules, and future sandbox isolation.
+  - `ResourceDefinition.throws`: declared-throw contract (`codes` map, `inherit: true`, `passthrough: true`).
+  - `ResourceContext` / `EvaluationContext` gain `invokeResolved(kind, name, instance, inputs)` for callers that already hold a resolved instance.
+
+  **Kernel** (`@telorun/kernel`)
+
+  - Single emission point for invoke-level events: `Invoked` / `InvokeRejected` / `InvokeFailed` / `InvokeRejected.Undeclared`. All call paths (direct invoke, sequence scope path, HTTP route handler) route through the same wrapper.
+  - `Telo.Definition.throws:` schema with per-capability restrictions (rule 8: only on Invocable / Runnable).
+  - `resolveChildren` now auto-registers bare-kind inline refs when a resource name is supplied without an explicit name on the ref — lets stateless invocables like `Run.Throw` be used inline via `invoke: {kind: Run.Throw}`.
+
+  **Analyzer** (`@telorun/analyzer`)
+
+  - New dataflow resolver (`resolve-throws-union.ts`) for `inherit: true` / `passthrough: true` declarations. Walks `x-telo-step-context` arrays generically, applies `try`/`catch` subtraction, detects cycles, memoises per manifest.
+  - New coverage validator (`validate-throws-coverage.ts`) — rules 1/2/4/7 for `catches:` lists. Coverage-proving CEL parser recognises `error.code == 'X'`, disjunctions, and `error.code in [...]`. Typed `error.data.<field>` access against per-code `data:` schemas, with intersection narrowing for disjunctive `when:` clauses.
+  - New error codes: `UNDECLARED_THROW_CODE`, `UNCOVERED_THROW_CODE`, `UNBOUNDED_UNION_NEEDS_CATCHALL`, `CATCHALL_NOT_LAST`, `INHERIT_WITHOUT_STEP_CONTEXT`.
+
+  **Run module** (`@telorun/run`)
+
+  - `Run.Sequence` declares `throws: { inherit: true }`. Its effective union is resolved from step invocables at analysis time.
+  - New `Run.Throw` invocable: takes `{code, message, data?}` and throws `InvokeError`. Declared with `throws: { passthrough: true }`; the analyzer resolves constant / `error.code`-inside-catch forms at each call site.
+  - Sequence `try`/`catch` `error` context gains `data?: unknown` and now branches on `isInvokeError`.
+
+  **HTTP server module** (`@telorun/http-server`) — **breaking**
+
+  - Route-level `response:` is replaced by two channel lists: `returns:` (how to render handler results) and `catches:` (how to render `InvokeError` throws). Applies to both `Http.Api` routes and `Http.Server.notFoundHandler`.
+  - Plain `Error` / `RuntimeError` throws skip `catches:` and fall through to Fastify's default 5xx renderer — operational vs. domain failures are now distinct on the wire.
+  - `catches:` entries reject `mode: stream` at schema validation (structured errors always render as JSON).
+  - Unmatched `returns:` dispatch now throws (surfaces via Fastify's error handler) instead of rendering a silent 500.
+  - Every `response:` occurrence across the repo (apps, benchmarks, examples, tests) migrated to `returns:` — no manifest carries the old shape.
+
+  See `sdk/nodejs/plans/invocable-errors.md` for the full design and rollout phasing.
+
+## 0.2.8
+
+### Patch Changes
+
+- Automated release.
+
+## 0.2.7
+
+### Patch Changes
+
+- Automated release.
+
+## 0.2.6
+
+### Patch Changes
+
+- Automated release.
+
+## 0.2.5
+
+### Patch Changes
+
+- Automated release.
+
+## 0.2.4
+
+### Patch Changes
+
+- Automated release.
+
+## 0.2.3
+
+### Patch Changes
+
+- Automated release.
+
+## 0.2.2
+
+### Patch Changes
+
+- Automated release.

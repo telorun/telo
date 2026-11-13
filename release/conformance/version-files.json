@@ -1,0 +1,330 @@
+{
+  "versionFiles": [
+    {
+      "name": "package-json",
+      "file": "package.json",
+      "text": "{\n  \"name\": \"a\",\n  \"version\": \"1.0.0\",\n  \"dependencies\": { \"b\": \"1.0.0\" }\n}\n",
+      "version": "1.1.0",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "{\n  \"name\": \"a\",\n  \"version\": \"1.1.0\",\n  \"dependencies\": { \"b\": \"1.0.0\" }\n}\n"
+        }
+      }
+    },
+    {
+      "name": "package-json-no-version",
+      "file": "package.json",
+      "text": "{ \"name\": \"a\" }\n",
+      "version": "1.1.0",
+      "expected": {
+        "read": {
+          "value": null
+        },
+        "write": {
+          "error": "package.json carries no version to write."
+        }
+      }
+    },
+    {
+      "name": "cargo-toml",
+      "file": "Cargo.toml",
+      "text": "[package]\nname = \"a\"\nversion = \"1.0.0\" # pinned\n\n[dependencies]\nversion = \"9\"\n",
+      "version": "1.1.0",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "error": "Cargo.toml: [package].version is not a quoted scalar on one line, so it cannot be rewritten in place."
+        }
+      }
+    },
+    {
+      "name": "cargo-toml-single-quotes",
+      "file": "Cargo.toml",
+      "text": "[package]\nname = 'a'\nversion = '1.0.0'\n",
+      "version": "2.0.0",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "[package]\nname = 'a'\nversion = '2.0.0'\n"
+        }
+      }
+    },
+    {
+      "name": "cargo-toml-workspace-version",
+      "file": "Cargo.toml",
+      "text": "[package]\nname = \"a\"\nversion.workspace = true\n",
+      "version": "2.0.0",
+      "expected": {
+        "read": {
+          "value": null
+        },
+        "write": {
+          "error": "Cargo.toml carries no version to write."
+        }
+      }
+    },
+    {
+      "name": "cargo-toml-crlf",
+      "file": "Cargo.toml",
+      "text": "[package]\r\nname = \"a\"\r\nversion = \"1.0.0\"\r\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "[package]\r\nname = \"a\"\r\nversion = \"1.0.1\"\r\n"
+        }
+      }
+    },
+    {
+      "name": "chart-with-app-version",
+      "file": "Chart.yaml",
+      "text": "apiVersion: v2\nname: c\nappVersion: \"1.0.0\"\nversion: 1.0.0\n",
+      "version": "1.2.0",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "apiVersion: v2\nname: c\nappVersion: \"1.2.0\"\nversion: 1.2.0\n"
+        }
+      }
+    },
+    {
+      "name": "chart-without-app-version",
+      "file": "Chart.yaml",
+      "text": "apiVersion: v2\nname: c\nversion: '1.0.0'\ndescription: x\n",
+      "version": "1.2.0",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "apiVersion: v2\nname: c\nversion: '1.2.0'\nappVersion: \"1.2.0\"\ndescription: x\n"
+        }
+      }
+    },
+    {
+      "name": "chart-last-line",
+      "file": "Chart.yaml",
+      "text": "name: c\nversion: 1.0.0",
+      "version": "1.2.0",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "name: c\nversion: 1.2.0\nappVersion: \"1.2.0\"\n"
+        }
+      }
+    },
+    {
+      "name": "plain-version-file",
+      "file": "VERSION",
+      "text": "\n  1.0.0  \n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "\n  1.0.1  \n"
+        }
+      }
+    },
+    {
+      "name": "plain-two-lines",
+      "file": "VERSION",
+      "text": "1.0.0\n2.0.0\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": null
+        },
+        "write": {
+          "error": "VERSION is read as a plain version file, but it does not hold a single version line."
+        }
+      }
+    },
+    {
+      "name": "json-pointer",
+      "file": "meta.json",
+      "pointer": "/release/version",
+      "text": "{ \"release\": { \"version\": \"1.0.0\" } }",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "{ \"release\": { \"version\": \"1.0.1\" } }"
+        }
+      }
+    },
+    {
+      "name": "yaml-pointer-escaped",
+      "file": "meta.yaml",
+      "pointer": "/a~1b/v~0",
+      "text": "a/b:\n  v~: 1.0.0 # c\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "a/b:\n  v~: 1.0.1 # c\n"
+        }
+      }
+    },
+    {
+      "name": "yaml-pointer-index",
+      "file": "list.yml",
+      "pointer": "/items/1",
+      "text": "items: [0.1.0, '1.0.0']\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "items: [0.1.0, '1.0.1']\n"
+        }
+      }
+    },
+    {
+      "name": "yaml-pointer-block",
+      "file": "meta.yaml",
+      "pointer": "/v",
+      "text": "v: |\n  1.0.0\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": "1.0.0\n"
+        },
+        "write": {
+          "error": "meta.yaml#/v: the version is written as '|\n  1.0.0\n', which cannot be rewritten in place. Write it as a plain or quoted scalar on one line."
+        }
+      }
+    },
+    {
+      "name": "toml-pointer",
+      "file": "tool.toml",
+      "pointer": "/tool/meta/version",
+      "text": "[tool]\nx = 1\n[tool.meta]\n\"version\" = \"1.0.0\"\n[other]\nversion = \"9\"\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "[tool]\nx = 1\n[tool.meta]\n\"version\" = \"1.0.1\"\n[other]\nversion = \"9\"\n"
+        }
+      }
+    },
+    {
+      "name": "toml-pointer-root",
+      "file": "v.toml",
+      "pointer": "/version",
+      "text": "version = \"1.0.0\"\n[t]\nversion = \"2\"\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "version = \"1.0.1\"\n[t]\nversion = \"2\"\n"
+        }
+      }
+    },
+    {
+      "name": "pointer-into-text-file",
+      "file": "notes.txt",
+      "pointer": "/v",
+      "text": "1.0.0\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "error": "notes.txt#/v: a pointer reads only a JSON, YAML or TOML file."
+        },
+        "write": {
+          "error": "notes.txt#/v: a pointer reads only a JSON, YAML or TOML file."
+        }
+      }
+    },
+    {
+      "name": "unhandled-json",
+      "file": "other.json",
+      "text": "{ \"version\": \"1.0.0\" }",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "error": "other.json is JSON, and no handler here reads a version from a file of that name. Name the version with { file, pointer }."
+        },
+        "write": {
+          "error": "other.json is JSON, and no handler here reads a version from a file of that name. Name the version with { file, pointer }."
+        }
+      }
+    },
+    {
+      "name": "number-at-pointer",
+      "file": "n.json",
+      "pointer": "/v",
+      "text": "{ \"v\": 1 }",
+      "version": "2",
+      "expected": {
+        "read": {
+          "value": null
+        },
+        "write": {
+          "error": "n.json#/v holds no string at /v."
+        }
+      }
+    }
+  ],
+  "lockfiles": [
+    {
+      "name": "path-package-moves",
+      "text": "# lock\n[[package]]\nname = \"a\"\nversion = \"1.0.0\"\n\n[[package]]\nname = \"a\"\nversion = \"0.9.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n[[package]]\nname = \"b\"\nversion = \"1.0.0\"\ndependencies = [\n \"a\",\n]\n",
+      "crate": "a",
+      "version": "1.1.0",
+      "expected": {
+        "text": "# lock\n[[package]]\nname = \"a\"\nversion = \"1.1.0\"\n\n[[package]]\nname = \"a\"\nversion = \"0.9.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n[[package]]\nname = \"b\"\nversion = \"1.0.0\"\ndependencies = [\n \"a\",\n]\n"
+      }
+    },
+    {
+      "name": "absent",
+      "text": "[[package]]\nname = \"b\"\nversion = \"1.0.0\"\n",
+      "crate": "a",
+      "version": "1.1.0",
+      "expected": {
+        "text": null
+      }
+    },
+    {
+      "name": "twice",
+      "text": "[[package]]\nname = \"a\"\nversion = \"1.0.0\"\n\n[[package]]\nname = \"a\"\nversion = \"1.0.0\"\n",
+      "crate": "a",
+      "version": "1.1.0",
+      "expected": {
+        "error": "Cargo.lock: 'a' is recorded 2 times as a path package, so which entry is the workspace member cannot be decided."
+      }
+    },
+    {
+      "name": "no-version",
+      "text": "[[package]]\nname = \"a\"\n",
+      "crate": "a",
+      "version": "1.1.0",
+      "expected": {
+        "error": "Cargo.lock: the 'a' package records no version that can be rewritten in place, so the lockfile would keep naming a version of it that no longer exists."
+      }
+    }
+  ]
+}

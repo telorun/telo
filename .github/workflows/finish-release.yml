@@ -1,19 +1,19 @@
 name: Publish final release
 
-# Builds the final Version PR itself, `chore(release): version` from
-# `changeset-release/<branch>`: the npm versions and, out of candidates, the modules
-# (`release-pr-version.mjs`). Merging it publishes the final and its modules, and that
+# Builds the final release PR itself, `chore(release): version` from
+# `release-version/<branch>`: `telo release apply` versions every planned unit as a
+# final (`release-pr-version.mjs --final`). Merging it publishes the final, and that
 # Publish run dispatches Record release (record-release.yml), whose PR brings the
 # release's state to main. Two refs:
 #
 # - A release branch in candidates (`gh workflow run finish-release.yml --ref
-#   release/0.85`): leaves prerelease mode and versions the branch, replacing an open
-#   rc Version PR (which is then never published); `.changeset/pre.json` is deleted in
-#   that same PR. The branch's own copy of this file and its scripts do the work.
+#   release/0.85`): versions the branch as the final, replacing an open rc release PR
+#   (which is then never published). Its head now records final versions, so every
+#   later Publish rebuild of it stays the final. The branch's own copy of this file
+#   and its scripts do the work.
 # - Main (`--ref main`): a cut straight to the final, with no candidates. It refuses
 #   what Start release candidates refuses, creates `release/<major>.<minor>` at the
-#   dispatched commit and versions it from the pending changesets; no
-#   `.changeset/pre.json` is ever written.
+#   dispatched commit and versions it from the pending fragments.
 
 on:
   workflow_dispatch:
@@ -52,8 +52,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # On main the check reads main's release plan with the Node build of the CLI.
+      - name: Build workspace
+        run: pnpm -r --if-present build
+
       # Under bun: on main this is the cut's own check, which asks the record and
-      # reads the analyzer from source (no build).
+      # reads the analyzer from source.
       - name: Check
         id: check
         run: pnpm exec bun scripts/release-branch.mjs finish-check --ref "$GITHUB_REF_NAME"
@@ -67,7 +71,7 @@ jobs:
       pull-requests: write
       actions: read
     # On main, the new branch's Publish group: the Publish run its creation starts
-    # waits until the Version PR is open, then rebuilds it as the final.
+    # waits until the release PR is open, then rebuilds it as the final.
     concurrency:
       group: ${{ needs.check.outputs.direct == 'true' && format('publish-refs/heads/{0}', needs.check.outputs.branch) || format('finish-release-job-{0}', github.ref) }}
       cancel-in-progress: false
@@ -122,13 +126,21 @@ jobs:
           git fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
           git checkout --quiet -B "$BRANCH" "origin/$BRANCH"
 
+      - name: Build workspace
+        run: pnpm -r --if-present build
+
+      # A linking crate's cargo layer reads its closure across every platform
+      # (`cargo metadata --locked --offline`), so every platform's crates are fetched first.
+      - name: Fetch every platform's crates
+        run: cargo fetch --locked
+
       - name: Version the final
         env:
           TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
           RELEASE_PLAN_FILE: ${{ runner.temp }}/release-plan.json
         run: node scripts/release-pr-version.mjs --final --branch "$BRANCH"
 
-      - name: Describe the Version PR
+      - name: Describe the release PR
         env:
           DIRECT: ${{ needs.check.outputs.direct }}
         run: |
@@ -136,21 +148,21 @@ jobs:
             echo "Publishes \`$RELEASE.0\` from \`$BRANCH\`, cut from main at $GITHUB_SHA with no release candidates. Merging it publishes and tags the final." > /tmp/finish-body.md
           else
             {
-              echo "Publishes \`$RELEASE.0\` from \`$BRANCH\`: leaves prerelease mode and deletes \`.changeset/pre.json\`. Merging it publishes and tags the final."
+              echo "Publishes \`$RELEASE.0\` from \`$BRANCH\` as its final. Merging it publishes and tags the final."
               echo
-              echo "An rc Version PR that was open is replaced by this one and its candidate is not published."
+              echo "An rc release PR that was open is replaced by this one and its candidate is not published."
             } > /tmp/finish-body.md
           fi
-          node scripts/release-pr-body.mjs /tmp/finish-body.md "$RUNNER_TEMP/release-plan.json" > /tmp/release-body.md
+          { cat /tmp/finish-body.md; echo; node scripts/release-pr-body.mjs "$RUNNER_TEMP/release-plan.json"; } > /tmp/release-body.md
 
       # TELO_BOT_TOKEN so the branch's required checks run on the PR. Publish's
-      # changesets step rebuilds this same branch and PR.
-      - name: Open the Version PR
+      # release-pr job rebuilds this same branch and PR.
+      - name: Open the release PR
         id: pr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.TELO_BOT_TOKEN }}
-          branch: changeset-release/${{ needs.check.outputs.branch }}
+          branch: release-version/${{ needs.check.outputs.branch }}
           base: ${{ needs.check.outputs.branch }}
           title: "chore(release): version"
           commit-message: "chore(release): version"
@@ -162,11 +174,11 @@ jobs:
           DIRECT: ${{ needs.check.outputs.direct }}
         run: |
           if [ -z "$NUMBER" ]; then
-            echo "::error::Error: the Version PR was not opened; nothing differs from $BRANCH."
+            echo "::error::Error: the release PR was not opened; nothing differs from $BRANCH."
             exit 1
           fi
           if [ "$DIRECT" = "true" ]; then
             echo "Opened #$NUMBER \"chore(release): version\" into $BRANCH: $RELEASE.0, with no candidates."
           else
-            echo "Opened #$NUMBER \"chore(release): version\" into $BRANCH: $RELEASE.0, with .changeset/pre.json deleted."
+            echo "Opened #$NUMBER \"chore(release): version\" into $BRANCH: $RELEASE.0, the final over its candidates."
           fi

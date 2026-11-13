@@ -903,15 +903,12 @@ engine version and the environment digest and would re-record on every release.
 
 **`ENGINE_VERSION` is GENERATED, never hand-written** (`scripts/generate-telo-version.mjs` writes
 `src/engine-version.ts` at `prepare`, gitignored and required to stay untracked, exactly as it writes the
-analyzer's surface generation and the language-server's engine identity). Its value is the telo line's
-surface generation with `+unreleased` while a line changeset is pending. A hand-written constant held to
-`package.json` by a test was the first shape and was wrong twice over: `package.json` holds the **last
-published** version while a build implements the **next** generation, so under a pending bump the
-assertion is false rather than merely weak — and the sentence claiming a test held it named a file that
-did not exist. A content digest over the engine's own declared surface was the other candidate and is
-blind in exactly the direction this field exists to look: that same temporaries defect leaves such a
-digest byte-identical, and a Rust engine sharing a cache root would have to reproduce it byte for byte,
-where the line's version is a number both halves already carry.
+analyzer's surface generation and the language-server's engine identity). Its value is the recorded
+version of the analyzer unit — `V+unreleased` in every build, and exactly `V` only in a package's `prepack` —
+read with no release plan, so a dev build never assembles one. A content digest over the engine's own
+declared surface was the other candidate and is blind in exactly the direction this field exists to look:
+that same temporaries defect leaves such a digest byte-identical, and a Rust engine sharing a cache root
+would have to reproduce it byte for byte, where the line's version is a number both halves already carry.
 
 ## `matches` is RE2
 

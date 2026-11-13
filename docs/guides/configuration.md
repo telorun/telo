@@ -243,8 +243,8 @@ DATABASE_URL=postgres://localhost/dev
 It reads the manifest's own directory, and — when a `telo-workspace.yaml` sits
 somewhere above it — every directory up to and including that one, so a
 monorepo keeps shared development values in one file at the root instead of a
-copy beside every manifest. The marker's `release.modules` list has no say here,
-so a manifest outside every release subtree is covered too. With no marker above
+copy beside every manifest. The marker's `release.units` list has no say here,
+so a manifest outside every release unit is covered too. With no marker above
 the manifest, only its own directory is read.
 
 A marker can narrow both halves of that — how far the walk climbs, and which

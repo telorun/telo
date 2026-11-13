@@ -8,19 +8,69 @@
 # requires one, and run falls back to reading the manifest's own directory alone,
 # exactly as it did before this file existed.
 release:
-  registry: oci://ghcr.io/telorun
-  # The subtrees that may hold modules, which is not derivable — hundreds of
-  # manifests elsewhere in this tree carry a `metadata.version`, and a whole-tree
-  # scan would read every example and every cached `.telo/manifests` copy as a
-  # released module.
-  modules:
-    - modules/*
-    - apps/*
-    # A blueprint is a whole-application kind, published apart from the module
-    # namespace: `oci://ghcr.io/telorun/blueprints/<name>`.
+  # Breaking changes ship as minors: the repository stays pre-1.0.
+  maxBump: minor
+  # Each ecosystem's publish base, unless an anchor names its own.
+  ecosystems:
+    telo: { registry: oci://ghcr.io/telorun }
+    docker: { registry: docker.io/telorun }
+    helm: { registry: oci://ghcr.io/telorun/charts }
+  # The release units — listed, not derived: hundreds of manifests elsewhere in
+  # this tree carry a `metadata.version`. Last match wins; an entry names a
+  # directory or a pattern of them.
+  units:
+    - { path: modules/*, ecosystem: telo }
+    # Applications that also ship an image (and, for the hub, a chart). The
+    # module's `telo.yaml` holds the one version every anchor carries.
+    - path: apps/hub
+      ecosystem: { telo: ., docker: ., helm: chart }
+      version: telo.yaml
+    - { path: apps/authoring-agent, ecosystem: [telo, docker] }
+    # Blueprints publish apart from the module namespace.
     - path: blueprints/*
-      registry: oci://ghcr.io/telorun/blueprints
-    # One generated module per Tesseract language, published as a family apart
-    # from the flat module namespace: `oci://ghcr.io/telorun/tesseract-lang/<code>`.
+      ecosystem: { telo: { ".": { registry: oci://ghcr.io/telorun/blueprints } } }
+    # One generated module per Tesseract language, published as a family.
     - path: modules/tesseract-lang/*
-      registry: oci://ghcr.io/telorun/tesseract-lang
+      ecosystem: { telo: { ".": { registry: oci://ghcr.io/telorun/tesseract-lang } } }
+    # The telo version line: one generation, so one version for every member.
+    # Each polyglot component is one unit — its npm package and its crates are
+    # anchors, so a change confined to a crate releases the line too.
+    - { path: kernel, ecosystem: { npm: nodejs, cargo: rust }, version: nodejs/package.json }
+    - { path: templating, ecosystem: { npm: nodejs, cargo: rust }, version: nodejs/package.json }
+    - { path: analyzer, ecosystem: { npm: nodejs, cargo: rust }, version: nodejs/package.json }
+    - { path: message-format, ecosystem: { npm: nodejs, cargo: rust }, version: nodejs/package.json }
+    - { path: cel, ecosystem: { npm: nodejs, cargo: [rust, rust/value] }, version: nodejs/package.json }
+    # `rust/abi` (telorun-abi) is versioned by the ABI generation its consumers
+    # name, never by the line, but an ABI-only change still releases the line.
+    - path: sdk
+      ecosystem: { npm: nodejs, cargo: [rust, rust/core, rust/macros] }
+      version: nodejs/package.json
+      payload: [rust/abi/**]
+    - { path: cli, ecosystem: { npm: nodejs, cargo: [rust, rust/desktop-host] }, version: nodejs/package.json }
+    - { path: packages/language-server, ecosystem: npm, metafile: dist/language-server.meta.json }
+    - { path: packages/ide-support, ecosystem: npm }
+    # The release planner itself, off the line.
+    - { path: release, ecosystem: { npm: nodejs, cargo: rust }, version: nodejs/package.json }
+    - { path: packages/debug-ui, ecosystem: npm }
+    - { path: packages/debug-wire, ecosystem: npm }
+    - { path: packages/editor-protocol, ecosystem: npm }
+    - { path: packages/glob, ecosystem: { npm: nodejs, cargo: rust }, version: nodejs/package.json }
+    - { path: packages/language-host, ecosystem: npm }
+    - { path: packages/runner-core, ecosystem: npm }
+    # Images built from the repository root: each Dockerfile's
+    # `Dockerfile.dockerignore` admits only what that image builds from.
+    - path: apps/studio
+      ecosystem: { npm: ., docker: { ".": { context: ., registry: ghcr.io/telorun, name: studio-web } }, helm: chart }
+      version: package.json
+    - path: apps/k8s-runner
+      ecosystem: { npm: ., docker: { ".": { context: . } }, helm: chart }
+      version: package.json
+    - { path: apps/docker-runner, ecosystem: { npm: ., docker: { ".": { context: . } } } }
+    - { path: apps/hub-web, ecosystem: { npm: ., docker: { ".": { context: . } } } }
+    # The VS Code extension: a .vsix, whose files are what `stage-vsix.mjs` stages and vsce packs.
+    - path: ide/vscode
+      version: package.json
+      payload: { command: node scripts/stage-vsix.mjs }
+      metafile: dist/vsix.meta.json
+  groups:
+    telo: [kernel, templating, analyzer, message-format, cel, sdk, cli, packages/language-server, packages/ide-support]

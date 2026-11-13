@@ -108,12 +108,12 @@ async function serve(versions: string[]): Promise<void> {
 const app = (pin: string): string =>
   `kind: Telo.Application\nmetadata:\n  name: StoreLocator\n  version: 1.0.0\nimports:\n  Geocode: oci://${HOST}/${REPO}@${pin}#sha256-PINNED\n`;
 
-async function upgradeOn(telo: string, node: string, pin: string, versions: string[]) {
+async function upgradeOn(telo: string, node: string, pin: string, versions: string[], includePrerelease = false) {
   await serve(versions);
   const input = app(pin);
   const { content, result } = await upgradeManifest({
     content: input,
-    includePrerelease: false,
+    includePrerelease,
     log,
     runtime: { telo, host: { node } },
   });
@@ -159,14 +159,14 @@ describe("telo upgrade — restrictions", () => {
     expect(onNode22.content).toContain(`oci://${HOST}/${REPO}@1.2.1`);
   });
 
-  it("lets a prerelease restrict a version when no release speaks, and never when one does", async () => {
+  it("ignores a prerelease's restrictions unless prereleases are asked for", async () => {
     const pre = await upgradeOn("0.122.0", "22.0.0", "1.1.0", ["1.1.0", "1.2.0", "1.3.0-rc.1"]);
-    expect(pre.content).toBe(pre.input);
-    expect(pre.printed).toContain(`held back: 1.2.0 — ${BROKEN}`);
+    expect(pre.content).toContain(`oci://${HOST}/${REPO}@1.2.0`);
+    expect(pre.printed).not.toContain("held back");
 
     nock.cleanAll();
     stdout = "";
-    const released = await upgradeOn("0.122.0", "22.0.0", "1.1.0", ["1.1.0", "1.2.0", "1.3.0-rc.1", "1.4.0"]);
-    expect(released.content).toContain(`oci://${HOST}/${REPO}@1.2.0`);
+    const asked = await upgradeOn("0.122.0", "22.0.0", "1.1.0", ["1.1.0", "1.2.0", "1.3.0-rc.1"], true);
+    expect(asked.printed).toContain("held back: 1.3.0-rc.1 requires telo '>=0.123.0'");
   });
 });

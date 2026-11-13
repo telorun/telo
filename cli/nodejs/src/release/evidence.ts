@@ -1,76 +1,53 @@
 /**
- * Collecting what the planner needs: one `ModuleEvidence` per module.
+ * The `telo` ecosystem's evidence half: a module's layers, edges, destination
+ * and read-back.
  *
- * Three separate readings, because the plan asks three separate questions:
- *
- * - **The payload digest** — built through the shared `ModulePayloadBuilder`, so
- *   the number recorded here is the number `telo publish` computes against the
- *   registry. That equality is the whole point of the ledger.
- * - **The edge graph** — from the build's own metafile (which module's source
- *   got inlined into whose artifact) and from in-repo relative `imports:`. A
- *   declared-dependency graph cannot see `--external`, so `@telorun/sdk` —
- *   declared by 54 modules, inlined by none — would bump the entire standard
- *   library on every SDK change.
- * - **Own changed files** — a git diff, path-scoped. It used to decide the
- *   version, which is why its guesswork had to be sound; here it decides only
- *   whether a changelog line is requested.
+ * - **Layers** — built through the shared `ModulePayloadBuilder`, so the number
+ *   recorded here is the number `telo publish` computes against the registry;
+ *   that equality is the whole point of the ledger.
+ * - **Edges** — in-repo relative `imports:` (an import edge: publishing writes
+ *   the sibling's version into the manifest) and the build's own metafile (an
+ *   inline edge: which unit's source got inlined into the artifact).
+ * - **Destination** — `<registry>/<directory name>`, the registry from the
+ *   anchor's settings, `release.ecosystems.telo`, `--registry`,
+ *   `TELO_OCI_REGISTRY`, then the base the module's ledger entry recorded.
+ * - **Read-back** — the published layers index. The `manifest` digest is derived
+ *   locally and is kept across a reconciliation, since no registry answers it.
  */
 
 import {
+  LOCALLY_DERIVED_LAYERS,
   MANIFEST_LAYER,
+  TELO_ECOSYSTEM,
   layerDigestKey,
-  matchesPatterns,
+  stampSelfNpmPins,
   type LayerDigests,
-  type ModuleEvidence,
-  type ModuleKey,
 } from "@telorun/analyzer";
+import { PACKAGE_JSON, diffLayers, type UnitKey as ModuleKey } from "@telorun/release";
+import { owningUnit, type EvidenceAdapter, type EvidenceSession, type ReadBack } from "@telorun/release/node";
 import { computeFilesIntegrity } from "@telorun/kernel";
-import { changedFilesSinceBase } from "./changed-since-base.js";
-import { lastMatchIndex, selectByPatterns } from "@telorun/glob";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ModulePayloadBuilder, ModulePayload } from "../bundle/module-payload.js";
-import { dockerignorePatterns } from "./dockerignore-patterns.js";
-import type { DiscoveredModule, Workspace } from "./workspace.js";
+import { readPublishedDigests } from "../bundle/payload-drift.js";
+import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
+import { readImportGraph, resolveTargets, type RegistryRungs } from "./targets.js";
+import { discoverModules, type Workspace } from "./workspace.js";
 
-/** Where one module publishes: the resolved base, and the ref it derives. */
 export interface ModuleTarget {
   readonly registry: string;
   readonly destination: string;
 }
 
-export interface EvidenceOptions {
-  /** Per module, because a workspace may declare a base per subtree. Resolved
-   *  by the caller, which owns the flag / env / ledger rungs of the cascade. */
-  readonly targets: ReadonlyMap<ModuleKey, ModuleTarget>;
-  /** Git ref the changed-files reading diffs against. */
-  readonly baseRef: string;
-  /** Called before each module is built, so a long batch shows progress. */
-  readonly onModule?: (module: DiscoveredModule, index: number, total: number) => void;
-  /** The builder the caller read the import graph through, which carries the
-   *  workspace's assigned destinations — so the manifest transform is not
-   *  repeated per module, and siblings are written where they publish. */
-  readonly builder: ModulePayloadBuilder;
-  /** The in-repo import edges `readImportGraph` read; an image module takes its
-   *  edges from here, having no payload to read them from. */
-  readonly imports: ReadonlyMap<ModuleKey, readonly ModuleKey[]>;
-}
-
 /**
  * A built payload reduced to the per-layer digest map the ledger records.
  *
- * ONE function, because there are two write paths into the ledger — `apply`
- * recording what it is about to publish, and `verify --write` re-recording what
- * the registry actually serves — and the gates only work if they produce the
- * same map. Two hand-built copies that drifted would make `verify --write`
- * record numbers `check` cannot reproduce, and every module would then report
- * permanent phantom drift: the exact failure the ledger's "both gates compute
- * the same number" premise rests on not happening.
+ * ONE function, because `apply` recording what it is about to publish and
+ * `verify --write` re-recording what the registry serves must produce the same
+ * map, or every module reports permanent phantom drift.
  */
 export async function digestPayload(payload: ModulePayload): Promise<LayerDigests> {
-  // The manifest is not one of `partitionLayers`' layers — the transport writes
-  // it as its own — but it is the layer that changes when a dependency's version
-  // or pin moves, which is most of what propagation is about.
+  // The manifest is not one of `partitionLayers`' layers, but it is the layer
+  // that changes when a dependency's version or pin moves.
   const layers: Record<string, string> = {
     [MANIFEST_LAYER]: await computeFilesIntegrity([
       { name: MANIFEST_LAYER, content: Buffer.from(payload.manifest, "utf8") },
@@ -85,222 +62,118 @@ export async function digestPayload(payload: ModulePayload): Promise<LayerDigest
       { name: MANIFEST_LAYER, content: Buffer.from(nested.manifest, "utf8") },
     ]);
     for (const layer of nested.layers) {
-      layers[`${nested.path}:${layerDigestKey(layer.role, layer.selector)}`] =
-        await computeFilesIntegrity(layer.files);
+      layers[`${nested.path}:${layerDigestKey(layer.role, layer.selector)}`] = await computeFilesIntegrity(layer.files);
     }
   }
   return layers;
 }
 
-export async function collectEvidence(
-  workspace: Workspace,
-  options: EvidenceOptions,
-): Promise<ModuleEvidence[]> {
-  const byDir = new Map(workspace.modules.map((module) => [path.resolve(module.dir), module]));
-  const changed = changedModules(workspace, options.baseRef);
-  const builder = options.builder;
+function only(layers: LayerDigests, keep: (layer: string) => boolean): LayerDigests {
+  return Object.fromEntries(Object.entries(layers).filter(([layer]) => keep(layer)));
+}
 
-  const evidence: ModuleEvidence[] = [];
-  for (const [index, module] of workspace.modules.entries()) {
-    options.onModule?.(module, index, workspace.modules.length);
-    const target = options.targets.get(module.key);
-    if (!target) throw new Error(`no publish destination was resolved for '${module.key}'.`);
-    evidence.push(
-      module.artifactKind === "image"
-        ? await imageEvidence(module, target, changed, options.imports.get(module.key) ?? [])
-        : await registryEvidence(workspace, module, byDir, builder, target, changed),
+/** The `telo` evidence half, its registry rungs read from the command's options. */
+export function teloEvidence(rungsOf: (argv: Readonly<Record<string, unknown>>) => RegistryRungs): EvidenceAdapter {
+  return {
+    ecosystem: TELO_ECOSYSTEM,
+    async open(released, { ledger, argv }): Promise<EvidenceSession> {
+      const workspace: Workspace = { ...released, modules: discoverModules(released.root, released.units) };
+      const byKey = new Map(workspace.modules.map((module) => [module.key, module]));
+      const { targets, assigned, diagnostics } = resolveTargets(workspace, ledger, rungsOf(argv));
+      const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo"), assigned });
+      const graph = await readImportGraph(workspace, targets, builder);
+      const moduleOf = (key: ModuleKey) => {
+        const module = byKey.get(key);
+        if (!module) throw new Error(`'${key}' anchors the telo ecosystem but holds no module with a version.`);
+        return module;
+      };
+
+      return {
+        // Destination collisions are judged across every ecosystem's rows.
+        diagnostics: [
+          ...diagnostics.filter((diagnostic) => diagnostic.code !== "DESTINATION_COLLISION"),
+          ...graph.diagnostics,
+        ],
+        async collect({ unit }) {
+          const module = moduleOf(unit.key);
+          const target = targets.get(unit.key);
+          if (!target) throw new Error(`no publish destination was resolved for '${unit.key}'.`);
+          const payload = await builder.payload(module.manifestPath, target.destination);
+          const inlines = new Map<ModuleKey, string[]>();
+          for (const input of payload.buildInputs) {
+            const relative = path.relative(workspace.root, path.resolve(input)).split(path.sep).join("/");
+            const owner = owningUnit(workspace.units, relative);
+            if (!owner || owner.key === unit.key || relative.startsWith("..")) continue;
+            inlines.set(owner.key, [...(inlines.get(owner.key) ?? []), relative].sort());
+          }
+          const dir = path.relative(workspace.root, module.dir).split(path.sep).join("/");
+          return {
+            layer: await digestPayload(payload),
+            files: payload.layers.flatMap((layer) => layer.files.map((file) => (dir ? `${dir}/${file.name}` : file.name))),
+            imports: graph.imports.get(unit.key) ?? [],
+            inlines,
+            registry: target.registry,
+          };
+        },
+        async imports({ unit }) {
+          return graph.imports.get(unit.key) ?? [];
+        },
+        destination: ({ unit }) => targets.get(unit.key)?.destination,
+        registry: ({ unit }) => targets.get(unit.key)?.registry,
+        async readBack({ unit }, version, recorded): Promise<ReadBack> {
+          const target = targets.get(unit.key);
+          if (!target) return { kind: "unverifiable", reason: "no registry names where the module is published" };
+          const published = await readPublishedDigests(target.destination, version);
+          if (published === null) return { kind: "absent" };
+          const before = typeof recorded === "object" ? recorded : {};
+          const verifiable = (layer: string) => !LOCALLY_DERIVED_LAYERS.has(layer);
+          const drift = diffLayers(
+            { ecosystems: { [TELO_ECOSYSTEM]: { ".": only(before, verifiable) } } },
+            { ecosystems: { [TELO_ECOSYSTEM]: { ".": only(published, verifiable) } } },
+          ).map((change) => change.path.join("/"));
+          return {
+            kind: "published",
+            layer: { ...only(before, (layer) => !verifiable(layer)), ...published },
+            drift: recorded === undefined ? [] : drift,
+          };
+        },
+        /** A module delivering its controller from npm pins its OWN package in
+         *  the manifest; that pin is part of its version too. */
+        async afterStamp({ unit }, version) {
+          const module = moduleOf(unit.key);
+          const written: string[] = [];
+          for (const location of unit.versionLocations) {
+            if (path.posix.basename(location.file) !== PACKAGE_JSON) continue;
+            const ownPackage = readPackageName(path.join(workspace.root, location.file));
+            if (!ownPackage) continue;
+            const before = fs.readFileSync(module.manifestPath, "utf8");
+            const after = stampSelfNpmPins(before, ownPackage, version);
+            if (after === before) continue;
+            fs.writeFileSync(module.manifestPath, after, "utf8");
+            written.push(path.relative(workspace.root, module.manifestPath).split(path.sep).join("/"));
+          }
+          return written;
+        },
+      };
+    },
+  };
+}
+
+/**
+ * The package a module ships itself, when it is published. A MALFORMED file is
+ * refused rather than read as none: it decides whether the manifest's self-pin is
+ * stamped, so skipping it would ship a manifest naming a version that never moved.
+ */
+function readPackageName(file: string): string | undefined {
+  if (!fs.existsSync(file)) return undefined;
+  let pkg: { name?: string; private?: boolean };
+  try {
+    pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (err) {
+    throw new Error(
+      `${file} is not valid JSON: ${(err as Error).message}. It decides whether this module's ` +
+        `manifest pins its own package, so it cannot be skipped.`,
     );
   }
-  return evidence;
-}
-
-/**
- * A registry artifact module: the layers `telo publish` builds, digested.
- */
-async function registryEvidence(
-  workspace: Workspace,
-  module: DiscoveredModule,
-  byDir: ReadonlyMap<string, DiscoveredModule>,
-  builder: ModulePayloadBuilder,
-  target: ModuleTarget,
-  changed: ReadonlySet<ModuleKey>,
-): Promise<ModuleEvidence> {
-  const payload = await builder.payload(module.manifestPath, target.destination);
-
-  return {
-    key: module.key,
-    name: module.name,
-    version: module.version,
-    artifactKind: "registry",
-    registry: target.registry,
-    layers: await digestPayload(payload),
-    inlines: attributeInputs(workspace, payload.buildInputs, module, byDir),
-    imports: payload.relativeImports
-      .map((entry) => byDir.get(path.resolve(path.dirname(entry.manifestPath)))?.key)
-      .filter((key): key is ModuleKey => key !== undefined && key !== module.key),
-    ownFilesChanged: changed.has(module.key),
-  };
-}
-
-/**
- * An image module: the file set its Docker ignore file defines, digested.
- *
- * The ignore file is already the authored statement of what the image contains,
- * so it is read rather than the `COPY` directives parsed. Without a digest here
- * the demoted changed-files rule would be authoritative again for a third of the
- * set — which is precisely the guesswork this design moves off the critical path.
- *
- * The base image is deliberately outside it: a kernel change alters `apps/hub`'s
- * image while this digest does not move. That exposure is closed elsewhere —
- * every app image publishes `:latest` and `:sha-<short>` on each push, so the
- * change reaches the deployed app regardless, and the immutable `:<version>` tag
- * is what a version move is for.
- */
-async function imageEvidence(
-  module: DiscoveredModule,
-  target: ModuleTarget,
-  changed: ReadonlySet<ModuleKey>,
-  imports: readonly ModuleKey[],
-): Promise<ModuleEvidence> {
-  return {
-    key: module.key,
-    name: module.name,
-    version: module.version,
-    artifactKind: "image",
-    registry: target.registry,
-    layers: { image: await imageDigest(module) },
-    inlines: new Map(),
-    imports: [...imports],
-    ownFilesChanged: changed.has(module.key),
-  };
-}
-
-/** BuildKit's per-Dockerfile ignore file, then the classic one. Both image
- *  modules here carry the former, and looking for only `.dockerignore` would
- *  digest every excluded file in both. */
-const DOCKERIGNORE_NAMES = ["Dockerfile.dockerignore", ".dockerignore"];
-
-export async function imageDigest(module: DiscoveredModule): Promise<string> {
-  const ignoreFile = DOCKERIGNORE_NAMES.map((name) => path.join(module.dir, name)).find((file) =>
-    fs.existsSync(file),
-  );
-  const ignored = ignoreFile
-    ? dockerignorePatterns(fs.readFileSync(ignoreFile, "utf8"), ignoreFile)
-    : [];
-
-  // An ignore file EXCLUDES, so it goes in `exclude:` rather than being read as
-  // a selector — `*` followed by `!*.yaml` means "nothing but the YAML", and
-  // treating those as includes would digest exactly the files Docker drops.
-  // Read with Docker's anchoring, a file outside the image (the chart a release
-  // stamps after recording the ledger) cannot move the digest.
-  //
-  // The same digest primitive the artifact layers use, so "did this module's
-  // payload change?" is one question with one answer regardless of which of the
-  // two file sets stands behind it.
-  const files = selectByPatterns(listFiles(module.dir), ["**"], {
-    applyDefaultIgnore: false,
-    exclude: ignored,
-  });
-  return computeFilesIntegrity(
-    [...files].sort().map((file) => ({
-      name: file,
-      content: fs.readFileSync(path.join(module.dir, file)),
-    })),
-  );
-}
-
-function listFiles(root: string): string[] {
-  const found: string[] = [];
-  const walk = (dir: string): void => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === "node_modules" || entry.name === ".git" || entry.name === ".telo") continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.isFile()) found.push(path.relative(root, full).split(path.sep).join("/"));
-    }
-  };
-  walk(root);
-  return found;
-}
-
-/**
- * Attribute each build input to the workspace module that owns it.
- *
- * A module's own sources are excluded — they are covered by its digest and by
- * the changed-files reading, and listing them as an inline edge would make every
- * module inline itself. An input under no module (a third-party package, a
- * changesets-owned library) is deliberately not attributed: that is the
- * *unattributed* case, reported rather than papered over.
- */
-function attributeInputs(
-  workspace: Workspace,
-  inputs: readonly string[],
-  module: DiscoveredModule,
-  byDir: ReadonlyMap<string, DiscoveredModule>,
-): Map<ModuleKey, string[]> {
-  const owners = new Map<ModuleKey, string[]>();
-  for (const input of inputs) {
-    const owner = ownerOf(path.resolve(input), byDir);
-    if (!owner || owner.key === module.key) continue;
-    const list = owners.get(owner.key);
-    const relative = path.relative(workspace.root, input).split(path.sep).join("/");
-    if (list) list.push(relative);
-    else owners.set(owner.key, [relative]);
-  }
-  for (const files of owners.values()) files.sort();
-  return owners;
-}
-
-/** The nearest enclosing module directory, by walking up. Nearest rather than
- *  any, so a nested module is credited to itself. */
-function ownerOf(
-  file: string,
-  byDir: ReadonlyMap<string, DiscoveredModule>,
-): DiscoveredModule | undefined {
-  let dir = path.dirname(file);
-  for (;;) {
-    const owner = byDir.get(dir);
-    if (owner) return owner;
-    const parent = path.dirname(dir);
-    if (parent === dir) return undefined;
-    dir = parent;
-  }
-}
-
-/**
- * Modules with a change of their own on this branch.
- *
- * Which of a module's paths are not release-relevant is that module's resolved
- * `ignore` list — the workspace's, or its entry's override, or the built-in
- * default — matched module-relative and gitignore-style. It no longer decides a
- * version, so a false positive costs one sentence rather than a spurious
- * republish.
- *
- * Attribution is to the NEAREST enclosing module, matching how build inputs are
- * already attributed: the shortest matching key is the wrong answer the moment a
- * nested module would be judged against an enclosing entry's ignore list.
- *
- * No merge base — a shallow clone, a fresh repo — means the reading cannot be
- * taken, and guessing would ask for a changelog entry at random. The digest is
- * unaffected: it compares against the ledger, not against a ref, which is why it
- * needs no merge base in the first place.
- */
-function changedModules(workspace: Workspace, baseRef: string): Set<ModuleKey> {
-  let files: string[];
-  try {
-    files = changedFilesSinceBase(workspace.root, baseRef);
-  } catch {
-    return new Set();
-  }
-
-  const nearestFirst = [...workspace.modules].sort((a, b) => b.key.length - a.key.length);
-  const changed = new Set<ModuleKey>();
-  for (const file of files) {
-    const module = nearestFirst.find((candidate) => file.startsWith(`${candidate.key}/`));
-    if (!module) continue;
-    const rest = file.slice(module.key.length + 1);
-    if (matchesPatterns(rest, module.settings.ignore, lastMatchIndex)) continue;
-    changed.add(module.key);
-  }
-  return changed;
+  return pkg.private ? undefined : pkg.name;
 }

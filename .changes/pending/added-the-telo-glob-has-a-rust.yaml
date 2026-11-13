@@ -1,0 +1,4 @@
+units:
+  packages/glob: Added
+body: The Telo glob has a Rust twin, `telorun-glob` (`packages/glob/rust`), answering
+  the same conformance suite as this package.

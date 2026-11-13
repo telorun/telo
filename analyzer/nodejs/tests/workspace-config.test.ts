@@ -1,14 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { lastMatchIndex } from "@telorun/glob";
-import { checkDestinationCollisions } from "../src/release/destinations.js";
 import {
-  DEFAULT_ENV_FILES,
+  AdapterRegistry,
   DEFAULT_RELEASE_IGNORE,
   diagnosticsFor,
+  resolveUnits,
+  type WorkspaceTree,
+} from "@telorun/release";
+import { checkDestinationCollisions } from "../src/release/destinations.js";
+import {
+  TELO_RELEASE_ADAPTERS,
+  modulePackageFiles,
+  teloLegacyLedgerLayers,
+} from "../src/release/telo-adapter.js";
+import {
+  DEFAULT_ENV_FILES,
   matchesPatterns,
   readWorkspaceConfig,
-  requireReleaseSettings,
-  settingsForModule,
 } from "../src/release/workspace-config.js";
 
 const read = (text: string) => readWorkspaceConfig(text, "telo-workspace.yaml");
@@ -21,39 +29,43 @@ describe("the marker's shape", () => {
     expect(config).toEqual({});
   });
 
-  it("names the move when 'modules:' is still at the top level", () => {
-    // Not a generic unknown-field rejection: the key is recognized, and what an
-    // author needs is where it went.
+  it("names release.units when 'modules:' sits at the top level", () => {
     const { diagnostics } = read("modules:\n  - modules/*\n");
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].code).toBe("WORKSPACE_MODULES_MOVED");
-    expect(diagnostics[0].path).toEqual(["modules"]);
-    expect(diagnostics[0].message).toContain("under 'release:'");
+    expect(diagnostics.map((d) => [d.code, d.path.join(".")])).toEqual([["WORKSPACE_MODULES_MOVED", "modules"]]);
+    expect(diagnostics[0]!.message).toContain("release.units");
   });
 
   it("reports every problem, not just the first — an editor wants all of them", () => {
-    const { diagnostics } = read(
-      "release:\n  registry: 7\n  nope: 1\nenv:\n  filez: []\n",
-    );
+    const { diagnostics } = read("release:\n  units: [{ path: m, ecosystem: telo, registry: 7 }]\n  nope: 1\nenv:\n  filez: []\n");
     expect(diagnostics.map((d) => d.path.join("."))).toEqual([
       "release.nope",
-      "release.registry",
+      "release.units.0.registry",
       "env.filez",
     ]);
   });
 
+  it("reads a telo anchor's registry, and refuses it flat on an entry or on another ecosystem", () => {
+    const release = read(
+      "release:\n  ecosystems: { telo: { registry: oci://x/base } }\n  units:\n    - { path: modules/*, ecosystem: { telo: { '.': { registry: oci://x/y } } } }\n",
+    ).config.release!;
+    expect(release.units[0]!.anchorSettings.get("telo")?.get(".")).toEqual({ registry: "oci://x/y" });
+    expect(release.ecosystems.get("telo")).toEqual({ registry: "oci://x/base" });
+    expect(codes("release:\n  units:\n    - { path: modules/*, ecosystem: telo, registry: oci://x/y }\n")).toEqual([
+      "WORKSPACE_UNKNOWN_KEY",
+    ]);
+    expect(codes("release:\n  units:\n    - { path: p, ecosystem: { npm: { '.': { registry: oci://x/y } } } }\n")).toEqual([
+      "WORKSPACE_UNKNOWN_KEY",
+    ]);
+  });
+
   it("errors on a near-miss block and warns on one it is merely too old to know", () => {
-    // A typo's settings would otherwise go silently unapplied; an unrecognized
-    // block is a version skew, so the next one ships without breaking runs.
-    expect(codes("relase:\n  modules: [x]\n")).toEqual(["WORKSPACE_UNKNOWN_KEY"]);
-    expect(read("relase:\n  modules: [x]\n").diagnostics[0].severity).toBe("error");
-    expect(read("telemetry:\n  sink: x\n").diagnostics[0].severity).toBe("warning");
+    expect(read("relase:\n  units: [x]\n").diagnostics[0]!.severity).toBe("error");
+    expect(read("telemetry:\n  sink: x\n").diagnostics[0]!.severity).toBe("warning");
   });
 
   it("refuses a path or a glob in env.files, since the walk's reach is env.roots", () => {
     const { diagnostics } = read("env:\n  files: ['.env', 'cfg/.env']\n");
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].path).toEqual(["env", "files", 1]);
+    expect(diagnostics.map((d) => d.path)).toEqual([["env", "files", 1]]);
   });
 
   it("reads an env.files entry as a filename or { name, sensitive }", () => {
@@ -73,7 +85,7 @@ describe("the marker's shape", () => {
       ["WORKSPACE_UNKNOWN_KEY", "env.files.0.sensitve"],
       ["WORKSPACE_INVALID_VALUE", "env.files.1.sensitive"],
     ]);
-    expect(diagnostics[0].message).toContain("Did you mean 'sensitive'?");
+    expect(diagnostics[0]!.message).toContain("Did you mean 'sensitive'?");
   });
 
   it("reports a null sensitive: inside env.files, anchored at the key", () => {
@@ -81,98 +93,90 @@ describe("the marker's shape", () => {
     expect(diagnostics.map((d) => [d.code, d.severity, d.path.join(".")])).toEqual([
       ["WORKSPACE_INVALID_VALUE", "error", "env.files.0.sensitive"],
     ]);
-    expect(diagnostics[0].message).toContain("must be true or false");
-    expect(diagnosticsFor(diagnostics, "env")).toHaveLength(1);
+    expect(diagnostics[0]!.message).toContain("must be true or false");
   });
 
   it("reports a null name: in an env.files entry", () => {
     const { diagnostics } = read("env:\n  files:\n    - name:\n");
-    expect(diagnostics.map((d) => [d.code, d.path.join(".")])).toEqual([
-      ["WORKSPACE_INVALID_VALUE", "env.files.0.name"],
-    ]);
-    expect(diagnostics[0].message).toContain("names nothing");
-  });
-
-  it("reports a null path: in a release.modules entry", () => {
-    const { diagnostics } = read("release:\n  modules:\n    - { path: }\n");
-    expect(diagnostics.map((d) => [d.code, d.path.join(".")])).toEqual([
-      ["WORKSPACE_INVALID_VALUE", "release.modules.0.path"],
-    ]);
-  });
-
-  it("normalizes a bare string entry and reads an object one", () => {
-    const { config } = read(
-      "release:\n  modules:\n    - modules/*\n    - path: vendor/aws/*\n      registry: oci://ghcr.io/telorun/aws\n",
-    );
-    expect(config.release?.modules).toEqual([
-      { path: "modules/*" },
-      { path: "vendor/aws/*", registry: "oci://ghcr.io/telorun/aws" },
-    ]);
+    expect(diagnostics.map((d) => [d.code, d.path.join(".")])).toEqual([["WORKSPACE_INVALID_VALUE", "env.files.0.name"]]);
+    expect(diagnostics[0]!.message).toContain("names nothing");
   });
 });
 
 describe("what a caller does with the diagnostics", () => {
   it("scopes them per block, so a release typo does not reach the run path", () => {
     const { diagnostics } = read("release:\n  nope: 1\nenv:\n  files: ['a/b']\n");
-    expect(diagnosticsFor(diagnostics, "env").map((d) => d.path.join("."))).toEqual([
-      "env.files.0",
-    ]);
+    expect(diagnosticsFor(diagnostics, "env").map((d) => d.path.join("."))).toEqual(["env.files.0"]);
   });
 
-  it("throws for `telo release` when the block is absent", () => {
-    expect(() => requireReleaseSettings(read("# anchor\n"), "telo-workspace.yaml")).toThrow(
-      /declares no 'release\.modules'/,
-    );
+  it("ignores a nested test suite at any depth beneath a unit", () => {
+    expect(matchesPatterns("nodejs/tests/sql.test.ts", DEFAULT_RELEASE_IGNORE, lastMatchIndex)).toBe(true);
+    expect(matchesPatterns("chat/tests/authors.yaml", DEFAULT_RELEASE_IGNORE, lastMatchIndex)).toBe(true);
+    expect(matchesPatterns("nodejs/src/index.ts", DEFAULT_RELEASE_IGNORE, lastMatchIndex)).toBe(false);
   });
 });
 
-describe("the cascade", () => {
-  const config = read(
-    [
-      "release:",
-      "  registry: oci://ghcr.io/telorun",
-      "  ignore: ['**/tests/**']",
-      "  modules:",
-      "    - modules/*",
-      "    - '!modules/scratch'",
-      "    - path: vendor/aws/*",
-      "      registry: oci://ghcr.io/telorun/aws",
-      "    - path: modules/sql",
-      "      ignore: []",
-    ].join("\n"),
-  ).config.release!;
+describe("the telo ecosystem", () => {
+  const manifest = [
+    "kind: Telo.Library",
+    "metadata: { name: Console, version: 0.18.0 }",
+    "sources:",
+    "  napi:",
+    "    version: 1.0.0",
+    "    url: https://example.com/x.tar.gz",
+    "    archive: tar.gz",
+    "    notices: [LICENSE]",
+    "    entries:",
+    "      ./native/out.node: { upstream: x, member: out.node }",
+    "    build: { cargo: native }",
+    "---",
+    "kind: Telo.Definition",
+    "metadata: { name: WriteLine }",
+    "capability: Telo.Invocable",
+    "controllers:",
+    "  - pkg:telo/local/js?path=./node/console.mjs&local_path=./node/src/index.ts#WriteLine",
+    "  - pkg:cargo/telorun-console?local_path=./rust#write_line",
+    "",
+  ].join("\n");
 
-  const settings = (key: string) => settingsForModule(config, key, lastMatchIndex);
+  it("finds a module's packages from its controller locators and sources, not fixed subpaths", () => {
+    const files = new Set(["node/package.json", "rust/Cargo.toml", "native/Cargo.toml", "package.json"]);
+    expect(modulePackageFiles(manifest, (relative) => files.has(relative))).toEqual([
+      "native/Cargo.toml",
+      "node/package.json",
+      "rust/Cargo.toml",
+    ]);
+  });
 
-  it("merges key-wise: an entry naming only registry keeps the block's ignore", () => {
-    expect(settings("vendor/aws/s3")).toEqual({
-      entry: 2,
-      registry: "oci://ghcr.io/telorun/aws",
-      ignore: ["**/tests/**"],
+  it("resolves a module unit whose version is its telo.yaml and whose packages carry it too", () => {
+    const files: Record<string, string> = {
+      "modules/console/telo.yaml": manifest,
+      "modules/console/node/package.json": '{ "name": "@telorun/console-build", "version": "0.18.0", "private": true }',
+      "modules/console/rust/Cargo.toml": '[package]\nname = "telorun-console"\nversion = "0.18.0"\n',
+      "modules/notes/README.md": "not a module",
+    };
+    const tree: WorkspaceTree = {
+      directories: () => ["modules", "modules/console", "modules/console/node", "modules/console/rust", "modules/notes"],
+      filesUnder: () => [],
+      readFile: (path) => files[path],
+    };
+    const { config, diagnostics } = read("release:\n  units:\n    - { path: modules/*, ecosystem: telo }\n");
+    expect(diagnostics).toEqual([]);
+    const resolved = resolveUnits(config.release!, tree, new AdapterRegistry(TELO_RELEASE_ADAPTERS));
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.units.map((u) => [u.key, u.versionLocations.map((l) => l.file)])).toEqual([
+      [
+        "modules/console",
+        ["modules/console/telo.yaml", "modules/console/node/package.json", "modules/console/rust/Cargo.toml"],
+      ],
+    ]);
+  });
+
+  it("nests a module ledger's flat layers under the module's anchor, an image digest under docker", () => {
+    expect(teloLegacyLedgerLayers("apps/hub", { image: "sha256-i" })).toEqual({ ecosystems: { docker: { ".": "sha256-i" } } });
+    expect(teloLegacyLedgerLayers("modules/sql", { manifest: "sha256-m" })).toEqual({
+      ecosystems: { telo: { ".": { manifest: "sha256-m" } } },
     });
-  });
-
-  it("gives a later, more specific entry the last word", () => {
-    expect(settings("modules/sql")?.ignore).toEqual([]);
-    expect(settings("modules/ai")?.ignore).toEqual(["**/tests/**"]);
-  });
-
-  it("treats a negation entry as an exclusion, which supplies nothing", () => {
-    expect(settings("modules/scratch")).toBeUndefined();
-  });
-
-  it("falls back to the built-in ignore where nothing declares one", () => {
-    const bare = read("release:\n  modules: [modules/*]\n").config.release!;
-    expect(settingsForModule(bare, "modules/ai", lastMatchIndex)?.ignore).toBe(
-      DEFAULT_RELEASE_IGNORE,
-    );
-  });
-
-  it("ignores a nested test suite, which the module-root anchoring missed", () => {
-    const ignore = DEFAULT_RELEASE_IGNORE;
-    expect(matchesPatterns("nodejs/tests/sql.test.ts", ignore, lastMatchIndex)).toBe(true);
-    expect(matchesPatterns("chat/tests/authors.yaml", ignore, lastMatchIndex)).toBe(true);
-    expect(matchesPatterns("nodejs/src/index.ts", ignore, lastMatchIndex)).toBe(false);
   });
 });
 
@@ -183,14 +187,13 @@ describe("destinations", () => {
       { key: "vendor/google/storage", destination: "oci://ghcr.io/acme/storage" },
       { key: "modules/sql", destination: "oci://ghcr.io/acme/sql" },
     ]);
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].code).toBe("DESTINATION_COLLISION");
-    expect(diagnostics[0].message).toContain("vendor/aws/storage and vendor/google/storage");
+    expect(diagnostics.map((d) => d.code)).toEqual(["DESTINATION_COLLISION"]);
+    expect(diagnostics[0]!.message).toContain("vendor/aws/storage and vendor/google/storage");
   });
 });
 
 describe("env defaults", () => {
-  it("keeps the pair the walk hardcoded, in the order it applied them, .env.local sensitive", () => {
+  it("keeps .env then .env.local, the second sensitive", () => {
     expect(DEFAULT_ENV_FILES).toEqual([
       { name: ".env", sensitive: false },
       { name: ".env.local", sensitive: true },

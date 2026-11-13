@@ -31,7 +31,7 @@ const ordered = JSON.parse(
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
   }),
-).order;
+).order.filter((row) => row.ecosystem === "telo");
 
 const candidates = ordered.filter((entry) => IMPORTABLE.some((p) => entry.key.startsWith(p)));
 const unaddressed = candidates.filter((entry) => !entry.destination);

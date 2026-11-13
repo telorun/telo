@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -53,33 +53,33 @@ describe("rewriteMarkdownLinks", () => {
 });
 
 describe("rewrite-pack-links", () => {
-  it("rewrites the packed markdown to the package's tag and restores a tracked file", () => {
+  it("rewrites the packed markdown to its release unit's own tag and restores a tracked file", () => {
     const root = tree({
       "scripts/repo-links.cjs": readFileSync(join(SCRIPTS, "repo-links.cjs"), "utf8"),
       "scripts/rewrite-pack-links.mjs": readFileSync(join(SCRIPTS, "rewrite-pack-links.mjs"), "utf8"),
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: tool, ecosystem: { npm: nodejs } }\n",
       "kernel/specs/a.md": "",
-      "pkg/package.json": JSON.stringify({ name: "@telorun/pkg", version: "1.2.3" }),
-      "pkg/README.md": "[a](../kernel/specs/a.md)\n",
+      "tool/nodejs/package.json": JSON.stringify({ name: "@telorun/tool", version: "1.2.3" }),
+      "tool/nodejs/README.md": "[a](../../kernel/specs/a.md)\n",
     });
+    // The unit is read through the release package's and the analyzer's built dist.
+    for (const dir of ["release/nodejs", "analyzer/nodejs"]) {
+      mkdirSync(dirname(join(root, dir)), { recursive: true });
+      symlinkSync(join(SCRIPTS, "..", dir), join(root, dir));
+    }
     const script = join(root, "scripts", "rewrite-pack-links.mjs");
-    const run = (...args) => spawnSync(process.execPath, [script, join(root, "pkg"), ...args], { encoding: "utf8" });
+    const run = (...args) => spawnSync(process.execPath, [script, join(root, "tool", "nodejs"), ...args], { encoding: "utf8" });
     const git = (...args) => spawnSync("git", args, { cwd: root, encoding: "utf8" });
     git("init", "-q");
     git("add", "-A");
 
-    const withTag = (tag) => spawnSync(process.execPath, [script, join(root, "pkg")], { encoding: "utf8", env: { ...process.env, TELO_PACK_LINKS_TAG: tag } });
-    assert.equal(withTag("packages-0.85-2").status, 0);
+    const packed = run();
+    assert.equal(packed.status, 0, packed.stdout + packed.stderr);
     assert.equal(
-      readFileSync(join(root, "pkg", "README.md"), "utf8"),
-      "[a](https://github.com/telorun/telo/blob/packages-0.85-2/kernel/specs/a.md)\n",
+      readFileSync(join(root, "tool", "nodejs", "README.md"), "utf8"),
+      "[a](https://github.com/telorun/telo/blob/tool@1.2.3/kernel/specs/a.md)\n",
     );
     assert.equal(run("--restore").status, 0);
-    assert.equal(readFileSync(join(root, "pkg", "README.md"), "utf8"), "[a](../kernel/specs/a.md)\n");
-
-    const local = spawnSync(process.execPath, [script, join(root, "pkg")], { encoding: "utf8", env: { ...process.env, TELO_PACK_LINKS_TAG: "" } });
-    assert.match(local.stdout, /links to main/);
-    assert.match(readFileSync(join(root, "pkg", "README.md"), "utf8"), /blob\/main\/kernel\/specs\/a\.md/);
-    assert.equal(run("--restore").status, 0);
-    assert.equal(readFileSync(join(root, "pkg", "README.md"), "utf8"), "[a](../kernel/specs/a.md)\n");
+    assert.equal(readFileSync(join(root, "tool", "nodejs", "README.md"), "utf8"), "[a](../../kernel/specs/a.md)\n");
   });
 });

@@ -1,0 +1,347 @@
+{
+  "fragments": [
+    {
+      "name": "short",
+      "units": {
+        "packages/core": "Fixed"
+      },
+      "body": "Short fix.",
+      "expected": {
+        "text": "units:\n  packages/core: Fixed\nbody: Short fix.\n"
+      }
+    },
+    {
+      "name": "two-units",
+      "units": {
+        "kernel": "Added",
+        "cel/rust": "Added"
+      },
+      "body": "One body for two.",
+      "expected": {
+        "text": "units:\n  kernel: Added\n  cel/rust: Added\nbody: One body for two.\n"
+      }
+    },
+    {
+      "name": "long-plain-folds",
+      "units": {
+        "a": "Added"
+      },
+      "body": "A body with enough words to make the YAML writer fold it across more than one line of eighty-eight characters.",
+      "expected": {
+        "text": "units:\n  a: Added\nbody: A body with enough words to make the YAML writer fold it across more than one line\n  of eighty-eight characters.\n"
+      }
+    },
+    {
+      "name": "colon-space-quotes",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "Breaking: A body with enough words to make the YAML writer fold it across more than one line of eighty-eight characters.",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: \"Breaking: A body with enough words to make the YAML writer fold it across more\n  than one line of eighty-eight characters.\"\n"
+      }
+    },
+    {
+      "name": "hash-comment",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "Fixes #123 and #456 in the parser",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: \"Fixes #123 and #456 in the parser\"\n"
+      }
+    },
+    {
+      "name": "single-quote-inside",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "It's: fixed",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: \"It's: fixed\"\n"
+      }
+    },
+    {
+      "name": "double-quote-inside",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "Say \"hi\": now",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: 'Say \"hi\": now'\n"
+      }
+    },
+    {
+      "name": "both-quotes",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "Both ' and \": here",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: \"Both ' and \\\": here\"\n"
+      }
+    },
+    {
+      "name": "looks-like-a-number",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "1.5",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: \"1.5\"\n"
+      }
+    },
+    {
+      "name": "looks-like-a-boolean",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "true",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: \"true\"\n"
+      }
+    },
+    {
+      "name": "leading-indicator",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "- a list-looking line",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: \"- a list-looking line\"\n"
+      }
+    },
+    {
+      "name": "multi-line-literal",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "First line.\n\nSecond paragraph:\n  indented code\nlast",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: |-\n  First line.\n\n  Second paragraph:\n    indented code\n  last\n"
+      }
+    },
+    {
+      "name": "multi-line-long-folds",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "A body with enough words to make the YAML writer fold it across more than one line of eighty-eight characters. A body with enough words to make the YAML writer fold it across more than one line of eighty-eight characters.\n\nNext paragraph.",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: >-\n  A body with enough words to make the YAML writer fold it across more than one line of\n  eighty-eight characters. A body with enough words to make the YAML writer fold it\n  across more than one line of eighty-eight characters.\n\n\n  Next paragraph.\n"
+      }
+    },
+    {
+      "name": "trailing-newline",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "Ends with a newline\n",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: |\n  Ends with a newline\n"
+      }
+    },
+    {
+      "name": "key-needing-quotes",
+      "units": {
+        "@scope/pkg": "Fixed",
+        "a: b": "Fixed",
+        "true": "Fixed"
+      },
+      "body": "Keys.",
+      "expected": {
+        "text": "units:\n  \"@scope/pkg\": Fixed\n  \"a: b\": Fixed\n  \"true\": Fixed\nbody: Keys.\n"
+      }
+    },
+    {
+      "name": "unicode",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "Ünïcödé — and an emoji 😀 in a line long enough to fold somewhere past eighty-eight units.",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: Ünïcödé — and an emoji 😀 in a line long enough to fold somewhere past\n  eighty-eight units.\n"
+      }
+    },
+    {
+      "name": "control-character",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "bell\u0007 here",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: \"bell\\a here\"\n"
+      }
+    },
+    {
+      "name": "document-marker",
+      "units": {
+        "a": "Fixed"
+      },
+      "body": "--- not a document",
+      "expected": {
+        "text": "units:\n  a: Fixed\nbody: --- not a document\n"
+      }
+    }
+  ],
+  "ledgers": [
+    {
+      "name": "empty",
+      "text": "",
+      "expected": {
+        "serialized": "# Generated by `release apply` — what each unit looks like as published.\n# A cache of the registries' answers, so a PR gate needs no credentials.\n# `release verify` reconciles it against the registries.\nunits: {}\n"
+      }
+    },
+    {
+      "name": "units-empty",
+      "text": "units:\n",
+      "expected": {
+        "serialized": "# Generated by `release apply` — what each unit looks like as published.\n# A cache of the registries' answers, so a PR gate needs no credentials.\n# `release verify` reconciles it against the registries.\nunits: {}\n"
+      }
+    },
+    {
+      "name": "full",
+      "text": "units:\n  z: { version: 2.0.0, registry: oci://ghcr.io/acme, layers: { telo: { .: { manifest: sha256-m, controller: sha256-c } }, payload: sha256-p } }\n  ./a/: { version: 1.0.0, layers: { npm: { nodejs: sha256-n }, cargo: { rust/value: sha256-v, rust: sha256-r } }, candidate: { version: 1.1.0-rc.1, layers: { npm: { nodejs: sha256-n2 } } } }\n  fresh: { candidate: { version: 0.1.0-rc.3, layers: {} } }\n  '.': { version: 0.0.1 }\n",
+      "expected": {
+        "serialized": "# Generated by `release apply` — what each unit looks like as published.\n# A cache of the registries' answers, so a PR gate needs no credentials.\n# `release verify` reconciles it against the registries.\nunits:\n  .:\n    version: 0.0.1\n    layers: {}\n  a:\n    version: 1.0.0\n    layers:\n      cargo:\n        rust: sha256-r\n        rust/value: sha256-v\n      npm:\n        nodejs: sha256-n\n    candidate:\n      version: 1.1.0-rc.1\n      layers:\n        npm:\n          nodejs: sha256-n2\n  fresh:\n    candidate:\n      version: 0.1.0-rc.3\n      layers: {}\n  z:\n    version: 2.0.0\n    registry: oci://ghcr.io/acme\n    layers:\n      telo:\n        .:\n          controller: sha256-c\n          manifest: sha256-m\n      payload: sha256-p\n"
+      }
+    },
+    {
+      "name": "legacy-refused",
+      "text": "modules:\n  a: { version: 1.0.0 }\n",
+      "expected": {
+        "error": "ledger.yaml is written in the module ledger shape (a top-level 'modules:' map), which this host cannot re-key into units. Rewrite it with a host serving the ecosystem that wrote it."
+      }
+    },
+    {
+      "name": "unknown-field",
+      "text": "units: {}\nother: 1\n",
+      "expected": {
+        "error": "ledger.yaml: unknown field 'other'. The ledger carries 'units:'."
+      }
+    },
+    {
+      "name": "no-version",
+      "text": "units:\n  a: { layers: {} }\n",
+      "expected": {
+        "error": "ledger.yaml: entry 'a' has no major.minor.patch 'version'. The ledger records the version each digest was taken at; without it the digest says nothing."
+      }
+    },
+    {
+      "name": "bad-candidate",
+      "text": "units:\n  a: { version: 1.0.0, candidate: { version: 1.0.0 } }\n",
+      "expected": {
+        "error": "ledger.yaml: entry 'a': 'candidate.version' must be a candidate version, '<final>-<id>.<k>'."
+      }
+    },
+    {
+      "name": "layers-without-version",
+      "text": "units:\n  a: { layers: {}, candidate: { version: 1.0.0-rc.1 } }\n",
+      "expected": {
+        "error": "ledger.yaml: entry 'a' records layers but no 'version'. Layers are taken at a published version."
+      }
+    },
+    {
+      "name": "bad-digest",
+      "text": "units:\n  a: { version: 1.0.0, layers: { npm: { .: [x] } } }\n",
+      "expected": {
+        "error": "ledger.yaml: entry 'a': layer 'npm' '.' must be a mapping."
+      }
+    },
+    {
+      "name": "not-a-mapping",
+      "text": "- a\n",
+      "expected": {
+        "error": "ledger.yaml must be a YAML mapping."
+      }
+    }
+  ],
+  "fragmentTexts": [
+    {
+      "name": "plain",
+      "source": ".changes/pending/a.yaml",
+      "text": "units:\n  ./packages/a/: Added\nbody: '  Trimmed.  '\n",
+      "expected": {
+        "units": {
+          "packages/a": "Added"
+        },
+        "body": "Trimmed."
+      }
+    },
+    {
+      "name": "legacy-modules",
+      "source": ".changes/pending/b.yaml",
+      "text": "modules:\n  modules/sql: Fixed\nbody: Legacy.\n",
+      "expected": {
+        "units": {
+          "modules/sql": "Fixed"
+        },
+        "body": "Legacy."
+      }
+    },
+    {
+      "name": "both-fields",
+      "source": "f.yaml",
+      "text": "units: { a: Fixed }\nmodules: { a: Fixed }\nbody: x\n",
+      "expected": {
+        "error": "f.yaml carries both 'units:' and 'modules:'. 'modules:' is the older spelling of 'units:'; move its entries into 'units:'."
+      }
+    },
+    {
+      "name": "unknown-kind",
+      "source": "f.yaml",
+      "text": "units: { a: Broke }\nbody: x\n",
+      "expected": {
+        "error": "f.yaml: 'a' declares kind 'Broke', which is not a release kind. Use Added, Changed, Deprecated, Removed, Fixed or Security."
+      }
+    },
+    {
+      "name": "numeric-kind",
+      "source": "f.yaml",
+      "text": "units: { a: 3 }\nbody: x\n",
+      "expected": {
+        "error": "f.yaml: 'a' declares kind '3', which is not a release kind. Use Added, Changed, Deprecated, Removed, Fixed or Security."
+      }
+    },
+    {
+      "name": "empty-units",
+      "source": "f.yaml",
+      "text": "units: {}\nbody: x\n",
+      "expected": {
+        "error": "f.yaml: 'units' is empty, so this fragment releases nothing. Name at least one unit by its workspace-relative path."
+      }
+    },
+    {
+      "name": "no-body",
+      "source": "f.yaml",
+      "text": "units: { a: Fixed }\nbody: '   '\n",
+      "expected": {
+        "error": "f.yaml: 'body' must be the changelog line for this change."
+      }
+    },
+    {
+      "name": "unknown-field",
+      "source": "f.yaml",
+      "text": "units: { a: Fixed }\nbody: x\nextra: 1\n",
+      "expected": {
+        "error": "f.yaml: unknown field 'extra'. A fragment carries 'units:' and 'body:'."
+      }
+    },
+    {
+      "name": "units-a-list",
+      "source": "f.yaml",
+      "text": "units: [a]\nbody: x\n",
+      "expected": {
+        "error": "f.yaml: 'units' must be a mapping of unit path to kind, e.g. { modules/sql: Fixed }."
+      }
+    },
+    {
+      "name": "not-a-mapping",
+      "source": "f.yaml",
+      "text": "just text\n",
+      "expected": {
+        "error": "f.yaml must be a YAML mapping."
+      }
+    }
+  ]
+}

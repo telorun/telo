@@ -1,0 +1,4 @@
+units:
+  ide/vscode: Fixed
+body: The shipped `.vsix` embeds the exact published version of the language engine it
+  bundles, and its payload is exactly the file set `vsce` packages.

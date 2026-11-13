@@ -1,0 +1,160 @@
+kind: Telo.Application
+metadata:
+  name: HubOriginCandidatesTest
+  version: 1.0.0
+  description: |
+    The hub indexes final module versions only. A module whose origin lists a
+    release candidate beside its final, with the candidate already indexed and
+    named latest, loses the candidate on the next reconcile pass: its
+    `module_versions` row and ingest record are gone, `latest_version` names the
+    final, and the final's rows stay.
+
+    The origin reads run the fixture `__fixtures__/recorded-origin`. The
+    manifest bucket and the embedder are never reached: the final is seeded as
+    already ingested at the digest the origin reports.
+
+    NEEDS A LIVE POSTGRES — a database `pnpm run test:e2e:hub` supplies from its
+    own stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME. Run
+    only by the hub's own suite through that command.
+imports:
+  Run: ../../../../modules/run
+  Sql: ../../../../modules/sql
+  Postgres: ../../../../modules/postgres
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Shell: ../../../../modules/shell
+  Embedding: ../../../../modules/embedding
+  OpenAI: ../../../../modules/openai
+  HttpClient: ../../../../modules/http-client
+  VectorStore: ../../../../modules/vector-store
+  VectorStorePgvector: ../../../../modules/vector-store-pgvector
+  Timer: ../../../../modules/timer
+  RateLimit: ../../../../modules/rate-limit
+  CacheMemory: ../../../../modules/cache-memory
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources:
+      connection: !ref db
+  Ingest:
+    source: ../../hub-ingest.yaml
+    resources:
+      connection: !ref db
+      bucketPut: !ref putManifest
+      embedPassage: !ref embedPassage
+      vectorUpsert: !ref vectorUpsert
+      vectorRemove: !ref vectorRemove
+      shellHost: !ref localShell
+    variables:
+      # Every read runs the recorded origin, which answers the arguments appended.
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts, recorded-origin]
+      ingestRev: 6
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref Schema.migrations
+  - !ref candidateDropped
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: !cel "variables.dbUser"
+      password: !cel "variables.dbPassword"
+      path: !cel "'/' + variables.dbName"
+---
+kind: Shell.LocalHost
+metadata: { name: localShell }
+cwd: !module-path __fixtures__
+---
+kind: S3.Put
+metadata: { name: putManifest }
+bucketRef:
+  kind: S3.Bucket
+  bucketName: unused
+  endpoint: http://127.0.0.1:1
+  forcePathStyle: true
+  accessKeyId: unused
+  secretAccessKey: unused
+---
+kind: Embedding.Passage
+metadata: { name: embedPassage }
+model:
+  kind: OpenAI.EmbeddingModel
+  model: unused
+  request:
+    kind: HttpClient.Request
+    client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:1 }
+---
+kind: VectorStorePgvector.Store
+metadata: { name: vectorIndex }
+connection: !ref db
+dimensions: 3
+metric: cosine
+table: resource_vectors
+---
+kind: VectorStore.Record
+metadata: { name: vectorUpsert }
+store: !ref vectorIndex
+---
+kind: VectorStore.Removal
+metadata: { name: vectorRemove }
+store: !ref vectorIndex
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: candidateDropped }
+steps:
+  - name: reset
+    invoke: !ref exec
+    inputs: { sql: DELETE FROM modules WHERE id = 9313 }
+  - name: seedModule
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport, latest_version)
+        VALUES (9313, 'oci://example.test/with-candidate', 'oci', '1.0.0-rc.1')
+  - name: seedVersions
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_versions (module_id, version, digest, manifest_key)
+        VALUES (9313, '1.0.0', 'sha256:with-candidate-1.0.0', 'unused'),
+               (9313, '1.0.0-rc.1', 'sha256:with-candidate-1.0.0-rc.1', 'unused')
+  - name: seedIngest
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO version_ingest (module_id, version, digest, ingest_rev, attempt, completed_at)
+        VALUES (9313, '1.0.0', 'sha256:with-candidate-1.0.0', 6, 1, NOW()),
+               (9313, '1.0.0-rc.1', 'sha256:with-candidate-1.0.0-rc.1', 6, 1, NOW())
+  - name: reconcile
+    invoke: !ref Ingest.scheduleDueVersions
+  - name: state
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT (SELECT latest_version FROM modules WHERE id = 9313) AS "latest",
+               ARRAY(SELECT version FROM module_versions WHERE module_id = 9313 ORDER BY version) AS "versions",
+               ARRAY(SELECT version FROM version_ingest WHERE module_id = 9313 ORDER BY version) AS "claims"
+  - name: assert
+    inputs:
+      actual: !cel "steps.state.result.rows"
+      expected:
+        - { latest: 1.0.0, versions: [1.0.0], claims: [1.0.0] }
+    invoke: { kind: Assert.Equals }

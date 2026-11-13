@@ -1,0 +1,93 @@
+[
+  {
+    "name": "new-file",
+    "existing": null,
+    "version": "1.1.0",
+    "date": "2026-01-02",
+    "entries": [
+      {
+        "kind": "Fixed",
+        "body": "B."
+      },
+      {
+        "kind": "Added",
+        "body": "A."
+      },
+      {
+        "kind": "Fixed",
+        "body": "C."
+      }
+    ],
+    "expected": {
+      "text": "# Changelog\n\n## 1.1.0 - 2026-01-02\n### Added\n* A.\n### Fixed\n* B.\n* C.\n"
+    }
+  },
+  {
+    "name": "existing-changelog",
+    "existing": "# Changelog\n\n## 1.0.0 - 2025-12-01\n### Added\n* First.\n",
+    "version": "1.1.0",
+    "date": "2026-01-02",
+    "entries": [
+      {
+        "kind": "Security",
+        "body": "S."
+      }
+    ],
+    "expected": {
+      "text": "# Changelog\n\n## 1.1.0 - 2026-01-02\n### Security\n* S.\n\n## 1.0.0 - 2025-12-01\n### Added\n* First.\n"
+    }
+  },
+  {
+    "name": "other-heading",
+    "existing": "# @scope/pkg\n\n## 1.0.0\n\n### Patch Changes\n\n- x\n",
+    "version": "1.0.1",
+    "date": "2026-01-02",
+    "entries": [
+      {
+        "kind": "Fixed",
+        "body": "F."
+      }
+    ],
+    "expected": {
+      "text": "# Changelog\n\n## 1.0.1 - 2026-01-02\n### Fixed\n* F.\n\n## 1.0.0\n\n### Patch Changes\n\n- x\n"
+    }
+  },
+  {
+    "name": "no-heading",
+    "existing": "\n\nloose text\n",
+    "version": "0.1.0",
+    "date": "2026-01-02",
+    "entries": [
+      {
+        "kind": "Removed",
+        "body": "R."
+      },
+      {
+        "kind": "Deprecated",
+        "body": "D."
+      },
+      {
+        "kind": "Changed",
+        "body": "C."
+      }
+    ],
+    "expected": {
+      "text": "# Changelog\n\n## 0.1.0 - 2026-01-02\n### Changed\n* C.\n### Deprecated\n* D.\n### Removed\n* R.\n\nloose text\n"
+    }
+  },
+  {
+    "name": "heading-only-no-newline",
+    "existing": "# Changelog",
+    "version": "0.1.0",
+    "date": "2026-01-02",
+    "entries": [
+      {
+        "kind": "Added",
+        "body": "A."
+      }
+    ],
+    "expected": {
+      "text": "# Changelog\n\n## 0.1.0 - 2026-01-02\n### Added\n* A.\n"
+    }
+  }
+]

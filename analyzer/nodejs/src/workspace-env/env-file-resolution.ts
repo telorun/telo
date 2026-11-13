@@ -18,7 +18,7 @@
  * to win. Whether the host's own environment outranks the files is the host's
  * policy, not this function's: a run lets the shell win, Studio has no shell.
  *
- * **Only `env:` can stop a resolution.** A typo under `release.modules` is
+ * **Only `env:` can stop a resolution.** A typo under `release.units` is
  * reported and the values still resolve; an error inside `env:` is fatal,
  * because degrading to the marker-wide bound would WIDEN the walk, and a block
  * that opted into a boundary and got nothing is a defect rather than a default.
@@ -31,15 +31,13 @@
  * listing would otherwise refuse — and applies and prints nothing.
  */
 
+import { diagnosticsFor, hasError, type WorkspaceDiagnostic } from "@telorun/release";
 import {
   DEFAULT_ENV_FILES,
   WORKSPACE_FILENAME,
-  diagnosticsFor,
-  hasError,
   matchesPatterns,
   readWorkspaceConfig,
   type EnvFileEntry,
-  type WorkspaceDiagnostic,
 } from "../release/workspace-config.js";
 import { lastMatchIndex } from "@telorun/glob";
 import { envFileValues } from "./env-file-format.js";

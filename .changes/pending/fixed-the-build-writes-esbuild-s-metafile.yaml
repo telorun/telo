@@ -1,0 +1,5 @@
+units:
+  packages/language-server: Fixed
+body: The build writes esbuild's metafile beside the engine
+  (`dist/language-server.meta.json`), which the release planner reads as the engine's
+  inline edges; the `teloInlines` list in `package.json` is gone.

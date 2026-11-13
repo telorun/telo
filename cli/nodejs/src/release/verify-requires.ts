@@ -28,7 +28,12 @@
  * `telo upgrade` would refuse the version it is about to receive.
  */
 
-import { isNewerModuleVersion, newestModuleVersion, type Restriction } from "@telorun/analyzer";
+import {
+  compareModuleVersions,
+  isNewerModuleVersion,
+  newestModuleVersion,
+  type Restriction,
+} from "@telorun/analyzer";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
@@ -82,21 +87,36 @@ export async function verifyFloor(
     return { status: "passed", floor: declared, checkedWith: floor.version };
   }
   const latestPublished = unreleasedEdge(floor.version, options.publishedVersions ?? null);
-  if (latestPublished !== undefined) return { status: "pending", floor: declared, latestPublished };
+  // During candidates the floor is the surface of a release only its `-rc.N`
+  // CLIs are published for: the newest of those is the measuring CLI.
+  let measuringCli = floor.version;
+  if (latestPublished !== undefined) {
+    const candidate = newestCandidateOf(floor.version, options.publishedVersions ?? []);
+    if (candidate === undefined) return { status: "pending", floor: declared, latestPublished };
+    measuringCli = candidate;
+  }
 
   try {
     const verdict = (
-      await new FloorProbe(options.runner ?? npxRunner).probe(floor.version, floor.version, [
+      await new FloorProbe(options.runner ?? npxRunner).probe(measuringCli, floor.version, [
         { key: manifestPath, manifestPath, text },
       ])
     ).get(manifestPath)!;
     return verdict.accepted
-      ? { status: "passed", floor: declared, checkedWith: floor.version }
+      ? { status: "passed", floor: declared, checkedWith: measuringCli }
       : { status: "failed", floor: declared, reading: describeReading(verdict.reading) };
   } catch (err) {
     if (!(err instanceof FloorMeasurementError)) throw err;
     return { status: "unavailable", floor: declared, reason: err.message };
   }
+}
+
+/** The newest published `<surface>-rc.<n>` CLI, `undefined` when there is none. */
+export function newestCandidateOf(surface: string, published: readonly string[]): string | undefined {
+  const candidates = published
+    .map((v) => (v.startsWith("v") ? v.slice(1) : v))
+    .filter((v) => new RegExp(`^${surface.replace(/\./g, "\\.")}-rc\\.\\d+$`).test(v));
+  return candidates.sort((a, b) => (compareModuleVersions(b, a) ?? 0))[0];
 }
 
 /**

@@ -1,79 +1,68 @@
-import type { ReleasePlan } from "@telorun/analyzer";
+import type { ReleasePlan } from "@telorun/release";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { writePlannedVersions } from "../src/release/apply-plan.js";
+import { strandedUnreleasedFloors, writeUnreleasedFloors } from "../src/release/unreleased-floors.js";
 import { loadWorkspace } from "../src/release/workspace.js";
 
-/** A workspace holding one module whose Rust half is a member of a cargo
- *  workspace at the same root — the standard-library layout. */
-function workspaceWithCrate(lock: string): string {
+/** A workspace whose telo line is a group holding the analyzer's npm unit, and
+ *  a module whose floor waits for that line's next release. */
+function workspace(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "telo-apply-plan-"));
-  fs.writeFileSync(path.join(root, "telo-workspace.yaml"), "release:\n  modules:\n    - modules/*\n");
-  fs.writeFileSync(path.join(root, "Cargo.lock"), lock);
-
-  const dir = path.join(root, "modules", "console");
-  fs.mkdirSync(path.join(dir, "rust"), { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, "telo.yaml"),
-    "kind: Telo.Library\nmetadata:\n  name: Console\n  version: 0.18.0\n",
+  const write = (file: string, text: string) => {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), text);
+  };
+  write(
+    "telo-workspace.yaml",
+    "release:\n  units:\n    - { path: analyzer, ecosystem: { npm: nodejs } }\n    - { path: cli, ecosystem: { npm: nodejs } }\n" +
+      "    - { path: modules/*, ecosystem: telo }\n  groups:\n    telo: [analyzer, cli]\n",
   );
-  fs.writeFileSync(
-    path.join(dir, "rust", "Cargo.toml"),
-    '[package]\nname = "telorun-console"\nversion = "0.18.0"\nedition = "2021"\n',
+  write("analyzer/nodejs/package.json", '{ "name": "@telorun/analyzer", "version": "0.136.0" }\n');
+  write("cli/nodejs/package.json", '{ "name": "@telorun/cli", "version": "0.136.0" }\n');
+  write(
+    "modules/console/telo.yaml",
+    "kind: Telo.Library\nmetadata:\n  name: Console\n  version: 0.18.0\nrequires:\n  telo: '>=unreleased'\nrestrictions:\n" +
+      "  - { versions: '<=0.18.0', requires: { telo: \">=unreleased\" }, reason: x }\n",
   );
   return root;
 }
 
-const plan = (): ReleasePlan => ({
-  modules: [
-    {
-      key: "modules/console",
-      name: "Console",
-      from: "0.18.0",
-      to: "0.18.1",
-      level: "patch",
-      reasons: [{ kind: "unattributed" }],
-      changed: [],
-      entries: [],
-    },
-  ],
+const moving = (key: string, to: string): ReleasePlan => ({
+  units: [{ key, name: key, from: "0.136.0", to, level: "minor", reasons: [], changed: [], entries: [] }],
   fragments: [],
   diagnostics: [],
 });
 
-const LOCK = [
-  "version = 4",
-  "",
-  "[[package]]",
-  'name = "telorun-console"',
-  'version = "0.18.0"',
-  "",
-].join("\n");
+let root: string | undefined;
+afterEach(() => {
+  if (root) fs.rmSync(root, { recursive: true, force: true });
+  root = undefined;
+});
 
-describe("writePlannedVersions", () => {
-  let root: string | undefined;
-
-  afterEach(() => {
-    if (root) fs.rmSync(root, { recursive: true, force: true });
-    root = undefined;
+describe("apply's >=unreleased rewrite", () => {
+  it("writes the surface of the telo line's planned version, a candidate's included, keeping quotes", () => {
+    root = workspace();
+    expect(writeUnreleasedFloors(loadWorkspace(root), moving("cli", "0.137.0-rc.1"))).toEqual(["modules/console/telo.yaml"]);
+    const text = fs.readFileSync(path.join(root, "modules/console/telo.yaml"), "utf8");
+    expect(text).toContain("telo: '>=0.137.0'");
+    expect(text).toContain('requires: { telo: ">=0.137.0" }');
   });
 
-  it("moves the crate's version in the lockfile that records it", () => {
-    root = workspaceWithCrate(LOCK);
-    const applied = writePlannedVersions(loadWorkspace(root), plan(), "2026-09-19");
-
-    expect(fs.readFileSync(path.join(root, "Cargo.lock"), "utf8")).toContain('version = "0.18.1"');
-    expect(applied[0]!.files).toContain("Cargo.lock");
+  it("writes nothing when the plan does not move the line", () => {
+    root = workspace();
+    expect(writeUnreleasedFloors(loadWorkspace(root), moving("modules/console", "0.19.0"))).toEqual([]);
   });
+});
 
-  it("writes no lockfile when none records the crate", () => {
-    root = workspaceWithCrate(LOCK);
-    fs.rmSync(path.join(root, "Cargo.lock"));
-    const applied = writePlannedVersions(loadWorkspace(root), plan(), "2026-09-19");
-
-    expect(fs.existsSync(path.join(root, "Cargo.lock"))).toBe(false);
-    expect(applied[0]!.files).toEqual(["telo.yaml", "rust/Cargo.toml"]);
+describe("check's stranded >=unreleased floor", () => {
+  it("refuses a >=unreleased floor in a plan that does not move the telo line, and none in one that does", () => {
+    root = workspace();
+    const ws = loadWorkspace(root);
+    expect(strandedUnreleasedFloors(ws, moving("modules/console", "0.19.0")).map((f) => [f.module, f.code])).toEqual([
+      ["modules/console", "REQUIRES_FLOOR_TOO_HIGH"],
+    ]);
+    expect(strandedUnreleasedFloors(ws, moving("cli", "0.137.0"))).toEqual([]);
   });
 });

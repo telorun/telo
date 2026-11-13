@@ -27,10 +27,7 @@ requires:
   # `resources:` inputs and `lifecycle:` on a library.
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
-imports:
-  Shell: ../../modules/shell
-  Yaml: ../../modules/yaml
-  Run: ../../modules/run
+imports: { Shell: ../../modules/shell, Yaml: ../../modules/yaml, Run: ../../modules/run }
 resources: { shellHost: { kind: Shell.LocalHost, description: Where the telo CLI runs. } }
 variables:
   # The command these reads run: a program and its leading arguments, to which
@@ -69,8 +66,8 @@ value: !cel "inputs.ref.startsWith('oci://') ? inputs.ref + '@' + inputs.version
 # The versions a ref actually resolves to, newest-first, each with its digest
 # (or, when that one tag's digest cannot be read, the reason, with `digest`
 # empty), and with the `latest` tag dropped — it is an alias, not a version, and
-# ingesting it would store the same content twice under two names. With
-# `finalOnly`, release candidates (`X.Y.Z-rc.N`) are dropped too.
+# ingesting it would store the same content twice under two names. Prerelease
+# versions (`X.Y.Z-rc.N`) are dropped too: only finals are ever indexed.
 #
 # One CLI process reads every digest: the reconcile pass reads every version of
 # every tracked module, and a process per version was most of its cost.
@@ -81,7 +78,7 @@ inputType:
   schema:
     type: object
     additionalProperties: false
-    properties: { ref: { type: string }, finalOnly: { type: boolean } }
+    properties: { ref: { type: string } }
     required: [ref]
 outputType:
   kind: Telo.JsonSchema
@@ -123,8 +120,7 @@ steps:
       - name: concrete
         value: !cel >-
           steps.docs.result.docs[0]
-            .filter(e, string(e.version) != 'latest'
-                       && !(inputs.?finalOnly.orValue(false) && string(e.version).contains('-')))
+            .filter(e, string(e.version) != 'latest' && !string(e.version).contains('-'))
             .map(e, {
             'version': string(e.version),
             'digest': 'digest' in e ? string(e.digest) : '',

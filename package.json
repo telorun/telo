@@ -46,15 +46,12 @@
     "imports": "node scripts/release-imports.mjs",
     "check:release-imports": "node scripts/check-release-imports.mjs",
     "publication-commit": "node scripts/publication-commit.mjs",
-    "release": "changeset publish",
     "publish-modules": "node scripts/publish-modules.mjs",
     "register-modules": "node scripts/register-modules.mjs",
     "version-release": "node scripts/release-version.mjs",
-    "version-packages": "changeset version && node scripts/version-line.mjs && node scripts/stamp-chart-version.mjs",
-    "check:charts": "node scripts/stamp-chart-version.mjs --check"
+    "publish-packages": "node scripts/publish-packages.mjs"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.8",
     "bun": "^1.4.2",
     "esbuild": "catalog:",
     "yaml": "^2.8.3"

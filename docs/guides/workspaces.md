@@ -12,7 +12,7 @@ looking for it and anchors the module cache (`.telo`) at the directory that hold
 it, so every app in the repo resolves a shared dependency once into one cache
 instead of once per app. The same location bounds the walk that collects `.env`
 files, and every path the release system names — a module key, a ledger entry, a
-changelog fragment — is relative to it.
+changelog fragment, a unit's version — is relative to it.
 
 **For a deployment**, the marker decides where `telo install` writes the cache and
 where `telo run` looks for it: an image that copies only the app directory ships
@@ -26,29 +26,29 @@ which is all a session workspace ever needs.
 
 ## Every field lives in a block scoped to what it governs
 
-`release:` is read by `telo release` — where modules live, where they publish,
-which of their paths are not release-relevant. `env:` is read by `telo run` when
+`release:` is read by `telo release` — what the workspace releases, where each
+thing publishes, which paths are not release-relevant. `env:` is read by `telo run` when
 it resolves a manifest's environment. Nothing reads across: a run never consults
-`release.modules`, which is why a manifest under `examples/`, in no release
+`release.units`, which is why a manifest under `examples/`, in no release
 subtree at all, still gets the full env walk.
 
 Here is every key, with the default each omission falls back to.
 
 ```yaml
-# telo-workspace.yaml — the anchor. Its LOCATION is what module keys, ledger
+# telo-workspace.yaml — the anchor. Its LOCATION is what unit keys, ledger
 # entries and fragment paths are measured from, and where the `.telo` cache
 # lives. Every FIELD lives in a block scoped to what it governs. Every block,
 # and every key in it, is optional.
 
 # ── how `telo release` behaves ───────────────────────────────────────────────
 release:
-  # Publish destination base. A module's ref is `<registry>/<its own directory
-  # name>`. Omitted: --registry, then TELO_OCI_REGISTRY, then the base each
-  # module's own ledger entry recorded.
-  registry: oci://ghcr.io/telorun
+  # The highest bump a release may make: patch, minor or major (the default).
+  # A plan that needs more is refused (`MAX_BUMP_EXCEEDED`). A unit entry may
+  # set its own.
+  maxBump: minor
 
-  # Paths under a module whose changes are not release-relevant, so no changelog
-  # fragment is asked for. Module-relative, gitignore-style. Declaring it
+  # Paths under a unit whose changes are not release-relevant, so no changelog
+  # fragment is asked for. Unit-relative, gitignore-style. Declaring it
   # REPLACES the built-in default (shown here verbatim); `[]` ignores nothing.
   ignore:
     - "**/tests/**"
@@ -57,37 +57,61 @@ release:
     - "**/README.md"
     - "**/CHANGELOG.md"
 
-  # The subtrees that may hold modules — a place to look, never a module: what
-  # makes a directory a module is its `telo.yaml` carrying `metadata.version`.
-  # Workspace-relative, gitignore-style, LAST match wins.
-  modules:
-    # Bare string: an entry with no overrides. Inherits both keys above.
-    - modules/*
-    - apps/*
+  # Per-ecosystem defaults: any key an ecosystem reads at an anchor may be set
+  # here instead, and an anchor's own settings override it.
+  ecosystems:
+    telo: { registry: oci://ghcr.io/telorun }
+    docker: { registry: ghcr.io/telorun }
+    helm: { registry: oci://ghcr.io/telorun/charts }
 
-    # A `!` entry is an exclusion. It supplies nothing — a module the last
-    # match excludes is not a module of this workspace at all.
+  # The release units. A unit is a directory with one version, one changelog
+  # (`<unit>/CHANGELOG.md`) and one fragment target; its key is its
+  # workspace-relative path. Bare string or object, LAST match wins, a `!`
+  # entry excludes. A directory is at most one unit.
+  units:
+    # A Telo module: `ecosystem` names the ecosystem, anchor `.`.
+    - { path: modules/*, ecosystem: telo }
     - "!modules/scratch"
 
-    # Object form. `path:` is required; `registry:` and `ignore:` override the
-    # block's, key-wise. This one overrides only the destination, so it still
-    # ignores the block's five patterns above.
+    # Object form. This subtree overrides the destination at its `telo` anchor.
     - path: vendor/aws/*
-      registry: oci://ghcr.io/telorun/aws
+      ecosystem: { telo: { ".": { registry: oci://ghcr.io/telorun/aws } } }
 
-    # Overriding both. This subtree ignores only its own three patterns, so a
-    # `docs/` edit here DOES ask for a fragment.
+    # One unit, several ecosystems: an npm package and its Rust twin share ONE
+    # version and one changelog. Anchors are literal directories inside the
+    # unit. `version` says which file holds the version, because two anchors
+    # keep one.
+    - path: kernel
+      ecosystem: { npm: nodejs, cargo: [rust, rust/macros] }
+      version: nodejs/package.json
+
+    # A package with an image and a chart beside it. `context` is the
+    # workspace-relative build context; `name` the image repository name.
+    - path: apps/api
+      ecosystem:
+        npm: .
+        docker: { ".": { context: ., name: api } }
+        helm: chart
+      version: package.json
+
+    # No ecosystem: the unit declares its version and what it ships.
+    - path: ide/vscode
+      version: package.json
+      payload: { command: pnpm exec vsce ls --no-dependencies }
+
+    # A bundled package: a bundler metafile whose inputs from other units are
+    # inline edges.
+    - { path: packages/language-server, ecosystem: npm, metafile: dist/meta.json }
+
+    # A change only to this subtree's docs DOES ask for a fragment here.
     - path: vendor/acme/*
-      registry: oci://registry.acme.internal/platform
-      ignore:
-        - "**/tests/**"
-        - "**/__snapshots__/**"
-        - "spec/**"
+      ecosystem: telo
+      ignore: ["**/tests/**"]
 
-    # A later, more specific entry overriding one module inside a subtree an
-    # earlier entry already matched. Legal — last match wins.
-    - path: modules/sql
-      ignore: []
+  # Units sharing one version: every member releases at the highest level any
+  # member needs.
+  groups:
+    core: [packages/core, packages/client]
 
 # ── how `telo run` resolves a manifest's environment ─────────────────────────
 env:
@@ -109,14 +133,53 @@ env:
       sensitive: true
 ```
 
-Most workspaces need far less. A single-destination repo is two keys:
+Most workspaces need far less. A single-destination repo of modules is two keys:
 
 ```yaml
 release:
-  modules:
-    - modules/*
-    - apps/*
+  ecosystems:
+    telo: { registry: oci://ghcr.io/acme }
+  units:
+    - { path: modules/*, ecosystem: telo }
 ```
+
+### What a unit entry holds
+
+- **`path`** — the directory, or a pattern of them. A directory is at most one unit.
+- **`ecosystem`** — what the unit ships through, each served by an adapter the host
+  registered: `telo` (modules), `npm`, `cargo`, `docker`, `helm`. A name (`npm`),
+  an order-free set (`[npm, docker]`) or a map of ecosystem to anchor, anchor list,
+  or anchor to settings (`{ npm: nodejs, cargo: [rust, rust/value] }`). An
+  **anchor** is a literal directory inside the unit holding exactly one package of
+  that ecosystem, recognised by its adapter (`npm`: a `package.json` with a
+  version; `cargo`: a `Cargo.toml`; `docker`: a Dockerfile; `helm`: a `Chart.yaml`;
+  `telo`: a module doc with a version); the name and set forms mean anchor `.`.
+  An anchor is one package and covers nothing beneath it. Absent: the unit
+  declares `version:` and `payload:` itself. A module lists no anchors for its own
+  npm and Cargo packages; they are read from the module doc.
+- **`version`** — where the version lives: a file a handler reads, or
+  `{ file, pointer }` into JSON, YAML or TOML. Required unless exactly one anchor's
+  ecosystem defaults a location (`docker` defaults none). Every anchor's location
+  and every `versionFiles` entry is written with it, and `telo release check`
+  refuses a unit whose locations disagree.
+- **`payload`** — a declared file set, patterns or `{ command }` printing
+  unit-relative paths, one more layer beside the ecosystems' own. Required when no
+  anchor contributes a layer (a private npm package supplies its version, not a
+  layer).
+- **`metafile`** — a bundler metafile whose entries are inline edges.
+- **`versionFiles`** — patterns or `{ path, pointer }` of further files carrying the
+  unit's version; a `Cargo.toml` also moves its `Cargo.lock` entry.
+- **`ignore`**, **`maxBump`** — as the block's, for this entry.
+
+An ecosystem's own keys sit at an anchor or in `release.ecosystems.<ecosystem>`,
+never flat on the entry: `registry` for `telo`, `docker` and `helm` (the base
+a package publishes under — `<registry>/<unit directory name>`, `<registry>/<name>`
+and `<registry>/<Chart.yaml name>`; `npm` and `cargo` read none, since the package
+says where it goes), docker `name` (default the anchor directory's name) and
+docker `context` (default the anchor directory; the ignore file is
+`<Dockerfile>.dockerignore` beside the Dockerfile, else `<context>/.dockerignore`,
+its patterns anchored at the context). A key none of the entry's ecosystems reads
+is `WORKSPACE_UNKNOWN_KEY`, naming the ecosystem.
 
 ## Two rules to keep in mind
 
@@ -127,21 +190,26 @@ pattern means writing the whole set. The set in force is then always exactly one
 authored list, readable in one place, rather than something you have to assemble
 from a built-in you cannot see.
 
-**`release:`'s own `registry:` and `ignore:` are defaults its entries override,
-key-wise.** An entry naming only `registry:` keeps the block's `ignore:`, and the
-other way round.
+**`release:`'s own `ignore:` and `maxBump:` are defaults its entries override,
+key-wise, and an ecosystem key an anchor does not set falls back to
+`release.ecosystems.<ecosystem>`.** Below that, the adapter's own rungs apply —
+for `telo` only: `--registry`, `TELO_OCI_REGISTRY`, then the base the module's own
+ledger entry recorded.
 
-## Where modules publish
+## Where units publish
 
 A module's ref is its registry base plus its **own directory name** — so
 `vendor/aws/s3` under `oci://ghcr.io/telorun/aws` publishes to
-`oci://ghcr.io/telorun/aws/s3`. Two rules follow, and `telo release` checks both
-before it builds anything:
+`oci://ghcr.io/telorun/aws/s3`; an image is `<registry>/<name>`, a chart
+`<registry>/<Chart.yaml name>`. A `telo`, `docker` or `helm` anchor whose cascade
+ends with no `registry` is `NO_DESTINATION_KNOWN`, reported by `check`, `order` and
+`verify`. Two rules follow, and `telo release` checks both before it builds
+anything:
 
-- **Two modules must not resolve to one ref.** `vendor/aws/storage` and
+- **Two units must not resolve to one ref** — the check covers every `order` row. `vendor/aws/storage` and
   `vendor/google/storage` inheriting a single base would overwrite one artifact
   (`DESTINATION_COLLISION`). Rename a directory, or give one subtree its own
-  `registry:`.
+  `registry:` at its anchor.
 - **A relative import leaving a module must name a module the workspace
   releases.** Publishing writes `imports: ../../modules/sql` as the ref the
   workspace assigns `modules/sql`, whatever base and depth the importer sits at,
@@ -225,12 +293,14 @@ telo still runs on an older one; a near-miss of a known block (`relase:`) is an
 error, because its settings would otherwise go silently unapplied.
 
 Three checks need to see the repo rather than just the file, and `telo release`
-runs them alongside the editor: a `release.modules` entry that discovers no
-module (`WORKSPACE_ENTRY_MATCHES_NOTHING`), one every later entry re-claims or
+runs them alongside the editor: a `release.units` entry that discovers no
+unit (`WORKSPACE_ENTRY_MATCHES_NOTHING`), one every later entry re-claims or
 every later `!` removes (`WORKSPACE_ENTRY_SHADOWED`), and a marker nested under
 another (`WORKSPACE_MARKER_SHADOWED`). They are warnings — an inert entry is not
 a reason to fail a release — but they are never only a squiggle.
 
-If you are moving from a marker that carried a top-level `modules:` list, indent
-it under `release:`. `telo release` names the move rather than reporting an
-unknown field.
+If you are moving from a marker that carried `release.modules` and `release.registry`
+(or a top-level `modules:` list), write the same subtrees as `release.units` entries
+with `ecosystem: telo` and the base under `release.ecosystems.telo`. `telo release`
+names the move (`WORKSPACE_MODULES_MOVED`) rather than reporting an unknown field, and
+refuses a flat `registry:` on a unit entry the same way.

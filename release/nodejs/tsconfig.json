@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "customConditions": ["source"],
+    "lib": ["ES2022"],
+    "types": [],
+    "strict": true,
+    "esModuleInterop": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/node/**"]
+}

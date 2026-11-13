@@ -10,11 +10,10 @@
  * unrelated: it stays keyed on what a manifest declares as secret.
  */
 
+import { diagnosticsFor, hasError } from "@telorun/release";
 import {
   DEFAULT_ENV_FILES,
   WORKSPACE_FILENAME,
-  diagnosticsFor,
-  hasError,
   readWorkspaceConfig,
   type EnvFileEntry,
 } from "../release/workspace-config.js";

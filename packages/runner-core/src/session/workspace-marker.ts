@@ -26,14 +26,14 @@ export const WORKSPACE_MARKER_CONTENTS = `# Marks the root of this session's wor
 # cache instead of once per app. It also bounds the walk that collects .env and
 # .env.local for a run.
 #
-# Nothing else is declared: 'release:' (where modules live, and where they
+# Nothing else is declared: 'release:' (the release units, and where they
 # publish) is read by \`telo release\`, which does not run in a session.
 `;
 
 /**
  * The marker for a session's workspace as it stands, unless it already holds
  * one. A user whose project
- * really is a Telo workspace has a marker with a real \`release.modules\` list,
+ * really is a Telo workspace has a marker with a real \`release.units\` list,
  * and overwriting it would silently change what \`telo release\` discovers.
  */
 export function workspaceMarkerWrite(

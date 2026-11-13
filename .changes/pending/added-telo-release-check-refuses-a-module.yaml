@@ -1,0 +1,5 @@
+units:
+  cli: Added
+body: "`telo release check` refuses a module whose `requires: telo` is `>=unreleased`
+  when the release plan moves no telo version (`REQUIRES_FLOOR_TOO_HIGH`): no release
+  would carry the syntax that floor waits for."

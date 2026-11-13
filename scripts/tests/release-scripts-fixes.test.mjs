@@ -79,34 +79,6 @@ describe("module release tag of a re-run", () => {
   });
 });
 
-describe("check-no-major-bump over modules", () => {
-  function workspace(version) {
-    const root = repo();
-    mkdirSync(join(root, "scripts"));
-    cpSync(join(REPO, "scripts/check-no-major-bump.mjs"), join(root, "scripts/check-no-major-bump.mjs"));
-    // No node_modules: the release PR job runs this guard with no install.
-    put(
-      root,
-      "telo-workspace.yaml",
-      'release:\n  registry: oci://ghcr.io/telorun\n  modules:\n    - modules/*\n    # a comment\n    - "!modules/skipped"\n    - path: blueprints/*\n      registry: oci://ghcr.io/telorun/blueprints\nenv:\n  files: [.env]\n',
-    );
-    put(root, "modules/a/telo.yaml", moduleDoc(version));
-    put(root, "modules/skipped/telo.yaml", moduleDoc("1.0.0"));
-    put(root, "blueprints/b/telo.yaml", moduleDoc(version));
-    return spawnSync("node", ["scripts/check-no-major-bump.mjs"], { cwd: root, encoding: "utf8" });
-  }
-  it("fails naming a module at 1.0.0", () => {
-    const run = workspace("1.0.0");
-    assert.equal(run.status, 1);
-    assert.match(run.stderr, /modules\/a@1\.0\.0/);
-    assert.match(run.stderr, /blueprints\/b@1\.0\.0/);
-    assert.doesNotMatch(run.stderr, /modules\/skipped/);
-  });
-  it("passes a pre-1.0 module", () => {
-    assert.equal(workspace("0.9.0").status, 0);
-  });
-});
-
 describe("release-commit git cost", () => {
   it("classifies a publication commit touching 30 files in a constant number of git processes", async () => {
     const { isPublicationCommit } = await load("release-commit.mjs");

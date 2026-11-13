@@ -39,7 +39,7 @@ that cost a whole extra round:
   package owns and tests, no assertions on internals the task does not name.
 - **`JS.Script` is forbidden.** If a task seems to need one, stop and report that instead.
 - **Docs and release bookkeeping are part of the change.** A module you touch needs its docs
-  updated; a published package or module needs its changeset or release fragment. `CLAUDE.md`
+  updated; a released unit (published package, module, image or chart) needs a fragment (`telo release add --unit <path> --kind <Kind> --body "…"`, never written by hand). `CLAUDE.md`
   makes both mandatory.
 - **No major version bumps.** Breaking changes ship as minors here.
 - **Boundaries hold.** `kernel` and `sdk` learn nothing about `modules/`, `packages/`, the editor

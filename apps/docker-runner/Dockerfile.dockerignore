@@ -1,0 +1,108 @@
+# Read instead of the root's .dockerignore: this image builds from the repository
+# root (`docker build -f apps/docker-runner/Dockerfile .`) and needs only what is admitted
+# below. Everything else in the context is part of the image's release payload,
+# so an unrelated file here would plan the image again on every release.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+# The root `prepare`, which every `pnpm install` runs, reads these.
+!scripts/copy-value-type-entries.mjs
+!scripts/copy-zone-attribute-entries.mjs
+!scripts/copy-error-code-entries.mjs
+!scripts/copy-issue-keyword-entries.mjs
+!scripts/copy-migration-entries.mjs
+!scripts/copy-format-entries.mjs
+!scripts/generate-telo-version.mjs
+!scripts/version-line.mjs
+!scripts/render-builtin-vocabulary.mjs
+!scripts/generate-artifact-axes.mjs
+!sdk/value-types
+!sdk/zone-attributes
+!sdk/error-codes
+!sdk/issue-keywords
+!sdk/formats
+!sdk/builtins
+!sdk/translations
+!sdk/LICENSE
+!analyzer/migrations
+!analyzer/artifact-axes
+!apps/docker-runner
+!packages/runner-core
+!packages/debug-wire
+# The session supervisor's cargo build reads every workspace member's manifest
+# and target root, though it compiles only its own crate.
+!Cargo.toml
+!Cargo.lock
+!kernel/nodejs/tests/napi-echo/Cargo.toml
+!kernel/nodejs/tests/napi-echo/src/lib.rs
+!kernel/nodejs/tests/napi-controller-errors/Cargo.toml
+!kernel/nodejs/tests/napi-controller-errors/src/lib.rs
+!tests/__fixtures__/rust-functions/rust/Cargo.toml
+!tests/__fixtures__/rust-functions/rust/src/lib.rs
+!cel/rust/Cargo.toml
+!cel/rust/src/lib.rs
+!cel/rust/value/Cargo.toml
+!cel/rust/value/src/lib.rs
+!message-format/rust/Cargo.toml
+!message-format/rust/src/lib.rs
+!release/rust/Cargo.toml
+!release/rust/src/lib.rs
+!packages/glob/rust/Cargo.toml
+!packages/glob/rust/src/lib.rs
+!sdk/rust/Cargo.toml
+!sdk/rust/src/lib.rs
+!sdk/rust/core/Cargo.toml
+!sdk/rust/core/src/lib.rs
+!sdk/rust/abi/Cargo.toml
+!sdk/rust/abi/src/lib.rs
+!sdk/rust/macros/Cargo.toml
+!sdk/rust/macros/src/lib.rs
+!templating/rust/Cargo.toml
+!templating/rust/src/lib.rs
+!analyzer/rust/Cargo.toml
+!analyzer/rust/src/lib.rs
+!kernel/rust/Cargo.toml
+!kernel/rust/src/lib.rs
+!cli/rust/Cargo.toml
+!cli/rust/src/main.rs
+!cli/rust/desktop-host/Cargo.toml
+!cli/rust/desktop-host/src/lib.rs
+!cli/rust/desktop-host/src/main.rs
+!modules/console/rust/Cargo.toml
+!modules/console/rust/src/lib.rs
+!examples/local-modules/pow-rust/rust/Cargo.toml
+!examples/local-modules/pow-rust/rust/src/lib.rs
+# What a build writes: the image builds it again, and a workstation's copy is
+# not the source's.
+**/node_modules
+**/dist
+**/app-dist
+**/app-single
+**/build
+**/target
+**/.react-router
+**/*.tsbuildinfo
+**/.telo
+analyzer/nodejs/src/migrations/entries
+analyzer/nodejs/src/formats/entries
+analyzer/nodejs/src/builtin-entries
+analyzer/nodejs/src/builtin-vocabulary
+analyzer/nodejs/builtin-vocabulary-slices.json
+analyzer/nodejs/src/telo-version.ts
+analyzer/nodejs/src/artifact-axes.ts
+sdk/nodejs/src/value-types/entries
+sdk/nodejs/src/zone-attributes/entries
+sdk/nodejs/src/error-codes/entries
+sdk/nodejs/src/issue-keywords/entries
+cel/nodejs/src/engine-version.ts
+kernel/nodejs/src/telo-runtime-version.ts
+packages/language-server/src/engine-version.ts
+message-format/nodejs/src/cldr-data.ts
+# Release records and agent notes no build reads.
+**/CHANGELOG.md
+**/CLAUDE.md
+**/.DS_Store
+**/.env
+**/.env.*

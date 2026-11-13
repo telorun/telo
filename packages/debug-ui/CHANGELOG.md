@@ -1,4 +1,4 @@
-# @telorun/debug-ui
+# Changelog
 
 ## 0.6.11
 

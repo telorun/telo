@@ -543,7 +543,7 @@ describe("verdictForModule", () => {
           from: "0.2.7",
           to: "0.2.8",
           level: "patch",
-          reasons: [{ kind: "imports", module: "modules/sql" }],
+          reasons: [{ kind: "imports", unit: "modules/sql" }],
           changed: [],
           entries: [],
         },

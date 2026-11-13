@@ -26,7 +26,7 @@ import { setOutput } from "./release-actions-output.mjs";
 import { CONSUMER_ROOTS } from "./release-imports.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const RELEASE_TAG = String.raw`(?:v\d+\.\d+\.\d+|(?:modules|packages)-\d+\.\d+-\d+)`;
+const RELEASE_TAG = String.raw`(?:v\d+\.\d+\.\d+(?:-rc\.\d+)?|(?:modules|packages)-\d+\.\d+-(?:rc\.)?\d+)`;
 const SUBJECT = new RegExp(`^chore\\(release\\): publish ${RELEASE_TAG}$`);
 const SOURCE = (char) => String.raw`(?:oci://${char}+|\.\.?(?:/${char}*)?)`;
 const IMPORT_VALUE = `(?:"${SOURCE(String.raw`[^"\s]`)}"|'${SOURCE(String.raw`[^'\s]`)}'|${SOURCE(String.raw`\S`)})`;

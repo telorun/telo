@@ -1,8 +1,8 @@
 # Telo glob — matching spec
 
 The single, language-neutral contract for resolving a `.gitignore`-style pattern
-set against a list of relative POSIX file paths. Every Telo runtime (Node today;
-Rust / Go later) MUST implement this spec exactly. `glob.json` is the executable
+set against a list of relative POSIX file paths. Every implementation (`@telorun/glob`
+in Node, `telorun-glob` in Rust, any later one) MUST implement this spec exactly. `glob.json` is the executable
 conformance suite — load it, run each case through your `selectByPatterns`
 equivalent, and assert the output equals `selected`. If your implementation
 disagrees with a single case, it is wrong, not the fixture.
@@ -91,4 +91,6 @@ changes no result because the hard tier denies them regardless.
 See [`glob.json`](./glob.json). Each case is
 `{ name, patterns, paths, options?, selected }`. The Node implementation
 (`@telorun/glob`) is verified against it in
-`packages/glob/nodejs/tests/glob-conformance.test.ts`.
+`packages/glob/nodejs/tests/glob-conformance.test.ts`, the Rust one
+(`telorun-glob`, `packages/glob/rust`) in
+`packages/glob/rust/tests/glob_conformance.rs`.

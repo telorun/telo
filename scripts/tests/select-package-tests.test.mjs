@@ -23,7 +23,7 @@ describe("core test selection", () => {
   });
 
   it("runs nothing for a docs change", () => {
-    assert.equal(selectCoreTests(["docs/guides/logging.md", ".changeset/a.md"], packages).mode, "none");
+    assert.equal(selectCoreTests(["docs/guides/logging.md", ".changes/pending/a.yaml"], packages).mode, "none");
   });
 
   it("runs nothing for a package outside the core and not under it", () => {

@@ -348,8 +348,7 @@ export async function verifyDeclaredRequirements(
   }
   const waiting = (at: string) =>
     outErrLine(
-      `${log.err.error("error")}  ${shown} holds '>=unreleased' at ${at}; publish after the telo ` +
-        `release that carries it, once the Version PR has written the number.`,
+      `${log.err.error("error")}  ${shown} holds '>=unreleased' at ${at}; publish after \`telo release apply\` has written the line version that carries it.`,
     );
   if (requires.block.telo?.unreleased) {
     waiting("requires.telo");
@@ -399,8 +398,9 @@ export async function verifyDeclaredRequirements(
     case "pending":
       outErrLine(
         `${log.err.error("error")}  requires.telo '${outcome.floor}' needs a telo release that is ` +
-          `not published — the latest is ${outcome.latestPublished}. Publish the CLI release that ` +
-          `carries it first, or lower the floor to a version that exists.`,
+          `not published, and no ${outcome.floor.slice(2)}-rc.N candidate CLI of that surface is ` +
+          `either — the latest is ${outcome.latestPublished}. Publish the CLI release or a ` +
+          `candidate that carries it first, or lower the floor to a version that exists.`,
       );
       return false;
     case "unavailable":

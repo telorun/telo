@@ -1,0 +1,4572 @@
+# Changelog
+
+## 0.136.0
+
+### Patch Changes
+
+- Updated dependencies [4f3d623]
+- Updated dependencies [330c28e]
+  - @telorun/analyzer@0.136.0
+  - @telorun/kernel@0.136.0
+  - @telorun/sdk@0.136.0
+  - @telorun/ide-support@0.136.0
+  - @telorun/templating@0.136.0
+
+## 0.135.0
+
+### Minor Changes
+
+- 2189641: `telo run --inspect` (and `--debug`) now reports every `Telo.OpenUrl` call on the debug stream as a `Kernel.OpenUrlRequested` event carrying the URL, so a runner can open the page for the user. The event is sent for every call regardless of the manifest's `logging:` settings and even with `--no-input`, where nothing is opened locally; at a terminal the browser opener still runs once per URL as before.
+- c89d295: The pieces `telo run` acts as the desktop host with: the per-user application directory of a `Telo.DesktopHost`'s `identifier`, a single-instance lock per application, the window origin's remembered loopback port (`DESKTOP_ORIGIN_CHANGED` when it cannot be kept), the `telo-desktop-host` helper's location (the `TELO_HOST_DESKTOP_HELPER` path, the packaged copy, a cargo build in a source checkout, or the release download verified against `checksums.txt`), the availability checks behind `ERR_DESKTOP_HOST_UNAVAILABLE`, and the client of the helper's link. `TELO_HOST_DESKTOP_HELPER` is a host value: hidden from controllers and stripped from a started child application's environment.
+- c89d295: Every release publishes `telo-desktop-host`, the webview helper `telo run` drives as the desktop host: native windows and tray icons over a framed link on its stdin and stdout. It is attached to the CLI's release as `telo-desktop-host-<version>-<os>-<arch>[-<libc>]` for linux, macOS and Windows on amd64 and arm64, each listed in `checksums.txt`.
+- c89d295: `telo package` packages a root that declares a `Telo.DesktopHost` need as a desktop app, with no flag: the identity is read from the need table, an `icon` that is not a square PNG of at least 1024 px is refused with `ERR_DESKTOP_ICON_INVALID` before anything is written, the `telo-desktop-host` helper for the packaged platform rides in the payload (a failure to obtain it is `ERR_DESKTOP_HOST_UNAVAILABLE`), and the payload index gains `desktopHost: { identifier }`, which `telo package inspect` prints. A packaged desktop app reads its `.env` from the per-user application directory of its `identifier`, and once it hosts itself works there with `TELO_HOST_STATE_DIR` set to `<that directory>/state`, so its durable directories and child applications land beneath it. Linux is written as the plain executable with the helper in its payload. macOS is written as the application bundle `<out>.app`: an `Info.plist` from the need's `identifier`, `productName` and `showInDock` (`LSUIElement`) and the root's `metadata.version`, with `LSMinimumSystemVersion` 14.0, an `AppIcon.icns` built from the icon, the carrier at `Contents/MacOS/<productName>` and the helper beside it, both signed ad hoc so the operator's `codesign` and notarization apply to the bundle. Windows is written as a GUI-subsystem `<out>.exe` that opens no console, with the icon and a version resource (`ProductName`, `FileDescription`, `ProductVersion`, `FileVersion`) and the payload carried as the PE resource `RT_RCDATA` / `TELO_APP_PAYLOAD` rather than appended, so a `signtool`-signed executable still finds it; `telo package inspect` reports that placement as `pe-resource`, and takes a `.app` bundle's path.
+- c89d295: `telo run` is the desktop host of an application whose root declares a `Telo.DesktopHost` need while the environment sets neither of its fields: before anything initializes it takes the application's single-instance lock (a second start shows the first one's windows, prints `<productName> is already running (process <pid>, <source>); its windows are shown` and exits 0), binds the window origin on `127.0.0.1` at its remembered port, starts the `telo-desktop-host` helper, and serves `desktop_host-1` on a private control channel with a fresh token — supplying the port and the need to the kernel by name, so the port's variable needs no value. Every connection to the app's origin is admitted first: a window's first load exchanges a single-use code for the `telo-window` cookie on a second loopback origin of the host's own (`/admit`, a port assigned at every launch), which also serves every page the host shows in a window — the startup view, the inputs form and the sign-in replay — so a connection handed to the application is never read by the host again; a request without the cookie is refused with `403`. The application stops gracefully on `Desktop.Quit`, on an OS quit, and when the user closes the last window with no tray icon open; a same-origin `window.open` opens another window and other http(s) origins open in the system browser. Without a tray, hidden windows are shown. `telo run --watch` refuses to be the desktop host. The host opens its own startup window at once, which shows a startup view, asks the root's missing inputs in a form (a masked field for a secret, a select for an enum; `--no-input` refuses as before) and, when the application fails to boot, shows the diagnostics and exits 1 when the window is closed; the application's first visible window replaces it. The helper tells the host when the user hides a window declared `onClose: hide`, so hiding the last visible one stops the application as closing one does. The kernel takes `redactedValues`, secrets a host holds that every log record of the application redacts. A sign-in that leaves for an external identity provider returns through the window's origin: each navigation a window sends to the system browser arms one return, and the first request from the browser without the window's cookie to one of the need's `callbackPaths` (a GET, or a form POST of at most 64 KiB, from the provider's own origin) is answered with a "Return to <productName> to finish signing in." page, focuses the window and is replayed there — a POST as a single-use page of the host origin that submits the form to the app's origin, with the host origin as `Origin` — so the session lands in the window's cookies; any other such request is `403`.
+
+### Patch Changes
+
+- Updated dependencies [07c52fa]
+- Updated dependencies [c89d295]
+- Updated dependencies [c89d295]
+- Updated dependencies [2189641]
+- Updated dependencies [8e04ab6]
+- Updated dependencies [2189641]
+- Updated dependencies [b7fc7f2]
+  - @telorun/sdk@0.135.0
+  - @telorun/analyzer@0.135.0
+  - @telorun/kernel@0.135.0
+  - @telorun/templating@0.135.0
+  - @telorun/runner-core@0.25.0
+  - @telorun/ide-support@0.135.0
+
+## 0.134.0
+
+### Minor Changes
+
+- 292c41f: Inside a release workspace, `telo publish` and `telo release` write a relative import of another workspace module as that module's assigned destination (`oci://ghcr.io/telorun/sql@<version>#<pin>` from a blueprint's `../../modules/sql`), so modules at different depths and registry bases import each other relatively; `telo publish` refuses a destination the workspace does not assign (`destination_mismatch`) and a sibling the registry serves with other bytes than its pin (`import_pin_mismatch`), and `telo release` refuses a relative import of a manifest the workspace does not release (`IMPORT_TARGET_NOT_RELEASED`), replacing `IMPORT_DESTINATION_CONFLICT` and the analyzer's `checkImportDestinations` export.
+- b1a4cb7: The Node kernel records application startup as one trace span, `startup <application name>`, from the process start `telo run` passes (a kernel started any other way, from its creation) to the end of the init loop. It is exported with its real start time when a trace sink is attached and never created otherwise.
+- 292c41f: `telo release imports <paths..> --as=published|relative` writes each import of a release-workspace module in the named manifests either as the published, registry-pinned reference of the module's version in the tree or as the relative path to the module's directory; `--check` exits 1 listing every import not in that form, and an import of the module a manifest sits inside is always relative. `telo upgrade --pin-local` is deprecated and now runs `--as=published` on the manifests it names.
+- e74098b: `telo release status`, `check` and `apply` take `--carried-by <ref>`: a pending fragment of the same path and content at that ref's merge base with `HEAD`, or written on it since, is dropped from the plan, so a fragment a release branch already carries plans nothing a second time. Without the option nothing is dropped. The changed-files reading of `telo release check` is now the plain `base...HEAD` diff: files of commits contained in a `v*`, `modules-*` or `packages-*` tag are no longer left out.
+
+### Patch Changes
+
+- Updated dependencies [292c41f]
+- Updated dependencies [04094d3]
+- Updated dependencies [b1a4cb7]
+- Updated dependencies [e74098b]
+- Updated dependencies [1a2bc03]
+  - @telorun/analyzer@0.134.0
+  - @telorun/sdk@0.134.0
+  - @telorun/kernel@0.134.0
+  - @telorun/ide-support@0.134.0
+  - @telorun/templating@0.134.0
+
+## 0.133.0
+
+### Minor Changes
+
+- 0c63ff5: An application can open its own page. The built-in `Telo.OpenUrl` takes an `http` or `https` URL, logs `telo.url.open_requested` with `url.full` on every call and hands the URL to the host, returning `null` at once; no outcome of opening a page is an error. `telo run` at a terminal opens it in the browser (`BROWSER` first, else the system opener, the URL passed as one argument), at most once per address in a session, so a `--watch` reload opens no new tab; `--no-input`, runner sessions and every other host only log it. The terminal opener now reports a failed launch on stderr, for the inspector's `--open` too. A literal URL of another scheme, or one holding a user or password, is refused by `telo check` and a computed one when the call runs, so credentials never reach the log; `telo check` no longer refuses every computed value at a URL slot that forbids a member; the Rust kernel refuses the kind with `ERR_UNSUPPORTED_MANIFEST_FEATURE`. A read of observed state before its resource has started is again reported as `ERR_OBSERVED_STATE_UNAVAILABLE` naming the expression, rather than as a bare missing-key failure. A templated kind's `run:` entry is now started through the kernel's run path, as its `targets:` are, so it may report observed state.
+- 0d833e3: A child application — one started by a resource whose kind declares `x-telo-application-source`, such as `App.Instance` — is now packaged with its parent: `telo package` carries its manifest, files, import closure and built local modules, runs the portability check over them, lists them in `telo package inspect`, and the packaged app starts the child offline from the payload's sealed cache. Under a parent with `TELO_HOST_STATE_DIR` the child receives its own state directory, `<state dir>/apps/<module path and name>` (`apps/web`, `apps/Admin.web`), as its `TELO_HOST_STATE_DIR` instead of losing it, and the orphan rule covers `apps/` as it covers `needs/`: a renamed instance leaves its directory behind, which is `ERR_NEED_ORPHANED` when the load would create a fresh one and `NEED_ORPHANED` otherwise. A child never asks for a missing input; the refusal at its start now names the instance and the two repairs, supplying it under the instance or declaring it on the root, which asks.
+- 0d833e3: New kernel-declared need type `Telo.DesktopHost`, the desktop shell an application runs inside. Its fields are the shell's control channel, `endpoint` (a `unix:` or `npipe:` URL) and a sensitive `token`; its parameters are `identifier`, `productName`, an `icon` PNG written `!module-path`, `port` (a `tcp` key of `ports:`), `showInDock` and `callbackPaths`. It is `supply: root` and `unique: true`, read from `TELO_NEED_<NEED>__ENDPOINT` / `__TOKEN` like any root need, and listed by `telo needs report`. A `port` that is not a `tcp` key, a `callbackPaths` entry that is not a literal path starting with `/`, and parameters on a library's need are `NEED_PARAMETERS_INVALID`. `telo run` does not yet act as the host.
+- 93ef2a4: A module's `requires.telo` is now a measured floor and a published version can be restricted after the fact. `requires.telo` is floor-only (`>=<version>` or `>=unreleased`); an upper bound in a module's own source is refused. A new `restrictions:` list on a library or application states what measurement cannot see (a ceiling found after publish, a runtime feature, a Node bound), each entry with a reason, and a later version's entries hold earlier versions back: running above a ceiling is the new `MODULE_REQUIRES_OLDER_RUNTIME`, a malformed entry is `RESTRICTIONS_INVALID` in `telo check` and at load. The load gate now applies to imported libraries too. `telo release floor` measures each workspace module's floor by running published CLIs, `telo release check` verifies it (`REQUIRES_FLOOR_TOO_LOW` / `REQUIRES_FLOOR_TOO_HIGH`), `telo publish` refuses `>=unreleased` and a `requires.telo` upper bound, and `telo upgrade`, the editor's upgrade lenses and Studio's version picker name the restriction that holds a version back.
+- 0d833e3: A `Telo.NeedType` may declare `unique: true`: a module declares at most one need of the type, and a second is `NEED_DUPLICATE` at `telo check` and `ERR_NEED_DUPLICATE` at load, naming both needs. A need's `parameters:` accept `!module-path` at a parameter the type declares a `Telo.HostPath`: it is a module file claim like one on a resource — `telo publish` / `telo package` carry the file, a path naming nothing is `MODULE_PATH_NOT_FOUND` and one naming the other kind of entry than the parameter's `entry` is `HOST_PATH_ENTRY_MISMATCH` (`ERR_HOST_PATH_ENTRY_MISMATCH` at load) — resolved at load against the module declaring the need, so `ctx.resolveNeed` hands over the absolute path, and printed module-root-relative (`"./logo.png"`) by `telo needs report`. Every other tag in `parameters:` (`!cel`, `!interpolate`, `!include-text`, `!ref`), and a `!module-path` at a parameter that is not a host path, is `NEED_PARAMETERS_INVALID`, where an expression used to be judged as the placeholder object it loads as; a `!module-path` there is no longer `MODULE_PATH_OUTSIDE_RESOURCE`.
+
+### Patch Changes
+
+- Updated dependencies [0c63ff5]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0d833e3]
+- Updated dependencies [228d94f]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0d833e3]
+- Updated dependencies [93ef2a4]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0df6d94]
+- Updated dependencies [0d833e3]
+  - @telorun/sdk@0.133.0
+  - @telorun/analyzer@0.133.0
+  - @telorun/kernel@0.133.0
+  - @telorun/templating@0.133.0
+  - @telorun/ide-support@0.133.0
+  - @telorun/runner-core@0.24.2
+
+## 0.133.0-rc.0
+
+### Minor Changes
+
+- 0c63ff5: An application can open its own page. The built-in `Telo.OpenUrl` takes an `http` or `https` URL, logs `telo.url.open_requested` with `url.full` on every call and hands the URL to the host, returning `null` at once; no outcome of opening a page is an error. `telo run` at a terminal opens it in the browser (`BROWSER` first, else the system opener, the URL passed as one argument), at most once per address in a session, so a `--watch` reload opens no new tab; `--no-input`, runner sessions and every other host only log it. The terminal opener now reports a failed launch on stderr, for the inspector's `--open` too. A literal URL of another scheme, or one holding a user or password, is refused by `telo check` and a computed one when the call runs, so credentials never reach the log; `telo check` no longer refuses every computed value at a URL slot that forbids a member; the Rust kernel refuses the kind with `ERR_UNSUPPORTED_MANIFEST_FEATURE`. A read of observed state before its resource has started is again reported as `ERR_OBSERVED_STATE_UNAVAILABLE` naming the expression, rather than as a bare missing-key failure. A templated kind's `run:` entry is now started through the kernel's run path, as its `targets:` are, so it may report observed state.
+- 0d833e3: A child application — one started by a resource whose kind declares `x-telo-application-source`, such as `App.Instance` — is now packaged with its parent: `telo package` carries its manifest, files, import closure and built local modules, runs the portability check over them, lists them in `telo package inspect`, and the packaged app starts the child offline from the payload's sealed cache. Under a parent with `TELO_HOST_STATE_DIR` the child receives its own state directory, `<state dir>/apps/<module path and name>` (`apps/web`, `apps/Admin.web`), as its `TELO_HOST_STATE_DIR` instead of losing it, and the orphan rule covers `apps/` as it covers `needs/`: a renamed instance leaves its directory behind, which is `ERR_NEED_ORPHANED` when the load would create a fresh one and `NEED_ORPHANED` otherwise. A child never asks for a missing input; the refusal at its start now names the instance and the two repairs, supplying it under the instance or declaring it on the root, which asks.
+- 0d833e3: New kernel-declared need type `Telo.DesktopHost`, the desktop shell an application runs inside. Its fields are the shell's control channel, `endpoint` (a `unix:` or `npipe:` URL) and a sensitive `token`; its parameters are `identifier`, `productName`, an `icon` PNG written `!module-path`, `port` (a `tcp` key of `ports:`), `showInDock` and `callbackPaths`. It is `supply: root` and `unique: true`, read from `TELO_NEED_<NEED>__ENDPOINT` / `__TOKEN` like any root need, and listed by `telo needs report`. A `port` that is not a `tcp` key, a `callbackPaths` entry that is not a literal path starting with `/`, and parameters on a library's need are `NEED_PARAMETERS_INVALID`. `telo run` does not yet act as the host.
+- 93ef2a4: A module's `requires.telo` is now a measured floor and a published version can be restricted after the fact. `requires.telo` is floor-only (`>=<version>` or `>=unreleased`); an upper bound in a module's own source is refused. A new `restrictions:` list on a library or application states what measurement cannot see (a ceiling found after publish, a runtime feature, a Node bound), each entry with a reason, and a later version's entries hold earlier versions back: running above a ceiling is the new `MODULE_REQUIRES_OLDER_RUNTIME`, a malformed entry is `RESTRICTIONS_INVALID` in `telo check` and at load. The load gate now applies to imported libraries too. `telo release floor` measures each workspace module's floor by running published CLIs, `telo release check` verifies it (`REQUIRES_FLOOR_TOO_LOW` / `REQUIRES_FLOOR_TOO_HIGH`), `telo publish` refuses `>=unreleased` and a `requires.telo` upper bound, and `telo upgrade`, the editor's upgrade lenses and Studio's version picker name the restriction that holds a version back.
+- 0d833e3: A `Telo.NeedType` may declare `unique: true`: a module declares at most one need of the type, and a second is `NEED_DUPLICATE` at `telo check` and `ERR_NEED_DUPLICATE` at load, naming both needs. A need's `parameters:` accept `!module-path` at a parameter the type declares a `Telo.HostPath`: it is a module file claim like one on a resource — `telo publish` / `telo package` carry the file, a path naming nothing is `MODULE_PATH_NOT_FOUND` and one naming the other kind of entry than the parameter's `entry` is `HOST_PATH_ENTRY_MISMATCH` (`ERR_HOST_PATH_ENTRY_MISMATCH` at load) — resolved at load against the module declaring the need, so `ctx.resolveNeed` hands over the absolute path, and printed module-root-relative (`"./logo.png"`) by `telo needs report`. Every other tag in `parameters:` (`!cel`, `!interpolate`, `!include-text`, `!ref`), and a `!module-path` at a parameter that is not a host path, is `NEED_PARAMETERS_INVALID`, where an expression used to be judged as the placeholder object it loads as; a `!module-path` there is no longer `MODULE_PATH_OUTSIDE_RESOURCE`.
+
+### Patch Changes
+
+- Updated dependencies [0c63ff5]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0d833e3]
+- Updated dependencies [228d94f]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0d833e3]
+- Updated dependencies [93ef2a4]
+- Updated dependencies [0d833e3]
+- Updated dependencies [0df6d94]
+- Updated dependencies [0d833e3]
+  - @telorun/sdk@0.133.0-rc.0
+  - @telorun/analyzer@0.133.0-rc.0
+  - @telorun/kernel@0.133.0-rc.0
+  - @telorun/templating@0.133.0-rc.0
+  - @telorun/ide-support@0.133.0-rc.0
+  - @telorun/runner-core@0.24.2-rc.0
+
+## 0.132.0
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- e457b1a: `telo release check` no longer asks for a changelog entry for files a `v*`, `modules-*` or `packages-*` release tag already carries, so a release branch's merge-back passes. Floor verification names the newest published final release when a declared bound is not published yet, never a release candidate.
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [eac0220]
+- Updated dependencies [e457b1a]
+- Updated dependencies [ba2e682]
+- Updated dependencies [e457b1a]
+- Updated dependencies [1bcbfd7]
+  - @telorun/kernel@0.132.0
+  - @telorun/sdk@0.132.0
+  - @telorun/analyzer@0.132.0
+  - @telorun/glob@0.3.2
+  - @telorun/ide-support@0.132.0
+  - @telorun/runner-core@0.24.1
+  - @telorun/templating@0.132.0
+
+## 0.132.0-rc.0
+
+### Patch Changes
+
+- e457b1a: A published package's README and markdown links to files in the repository are rewritten to the git tag of the release run that publishes it (`v<version>`, or `packages-<x.y>-<n>`) when it is packed, instead of pointing at whichever ref a reader's browser happens to resolve them against. Source files are left as written.
+- e457b1a: `telo release check` no longer asks for a changelog entry for files a `v*`, `modules-*` or `packages-*` release tag already carries, so a release branch's merge-back passes. Floor verification names the newest published final release when a declared bound is not published yet, never a release candidate.
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [1bcbfd7]
+- Updated dependencies [eac0220]
+- Updated dependencies [e457b1a]
+- Updated dependencies [ba2e682]
+- Updated dependencies [e457b1a]
+- Updated dependencies [1bcbfd7]
+  - @telorun/kernel@0.132.0-rc.0
+  - @telorun/sdk@0.132.0-rc.0
+  - @telorun/analyzer@0.132.0-rc.0
+  - @telorun/glob@0.3.2-rc.0
+  - @telorun/ide-support@0.132.0-rc.0
+  - @telorun/runner-core@0.24.1-rc.0
+  - @telorun/templating@0.132.0-rc.0
+
+## 0.131.0
+
+### Patch Changes
+
+- Updated dependencies [c578599]
+  - @telorun/sdk@0.131.0
+  - @telorun/analyzer@0.131.0
+  - @telorun/kernel@0.131.0
+  - @telorun/ide-support@0.131.0
+  - @telorun/templating@0.131.0
+
+## 0.130.0
+
+### Minor Changes
+
+- ba87b7a: A failure written to a log from the Node runtime carries a Telo stack trace instead of the JavaScript stack. The record's `error` gains `frames` (the resources and manifest positions the failure passed through, innermost first, bounded at 64 with `dropped_frames_count` counting the cut) and its `stack` is those frames as text with files relative to the entry module's directory; `pretty` shows the same lines with files relative to the working directory. A host stack is written as `host_stack` only for an uncoded failure (a `TypeError`, a library's exception, `ERR_FATAL`), on the entry that is one. The step engine and the boot runner state where each call is made (`calledAt` on the dispatch context), a `throw` step starts a fresh trace whose `cause` keeps the caught failure's frames, and `telo: failed to start` prints the Telo trace. The SDK exports the frame type, `errorValueOf` and the trace helpers; frames never reach a catch context, a durable record or a trace payload.
+
+### Patch Changes
+
+- Updated dependencies [6aa9a85]
+- Updated dependencies [1b0ddbe]
+- Updated dependencies [6aa9a85]
+- Updated dependencies [2ee5ef4]
+- Updated dependencies [1b0ddbe]
+- Updated dependencies [1b0ddbe]
+- Updated dependencies [ba87b7a]
+- Updated dependencies [2ee5ef4]
+  - @telorun/analyzer@0.130.0
+  - @telorun/sdk@0.130.0
+  - @telorun/kernel@0.130.0
+  - @telorun/ide-support@0.130.0
+  - @telorun/templating@0.130.0
+
+## 0.129.0
+
+### Minor Changes
+
+- a16bc53: `telo check` warns `MESSAGE_TRANSLATION_MISSING` for each language an application serves (its `lang:` and every listed catalog's, `und` aside) that would show something in its source wording: one warning per keyed set naming every untranslated key, and one per language naming every literal `Text` written in another language — a resource's texts, a kind's declared display messages, a literal text argument. It is judged on the layered result of the listed catalogs by the run-time lookup rule, so `en` covers `en-GB` and a regional tag is not warned again for what its served shorter tag lacks; it is reported at the Application's `translations:`, or at its `lang:` without one. Nothing is refused at run time.
+
+  The built-in error codes' display messages arrive translated into `de`, `es`, `fr`, `hi`, `it`, `ja`, `ko`, `nl`, `pl`, `pt`, `ru`, `tr`, `uk` and `zh`. The `Telo.Builtins` archive gains a sixth section, `translations` — one text catalog per language, keyed by its `lang`, printed by `telo builtins <lang>` — which `readBuiltinVocabulary` refuses when an entry is not a text catalog, is keyed by another language, is written in `en`, fails the catalog judgement, translates a text no built-in error code shows or leaves one untranslated. The kernel layers them beneath every catalog an Application lists, so a listed catalog translating the same text and context wins, and they add no served language: an application written in `pl` answers a refused request in Polish with no catalog listed, while an `en` one asked for `pl` answers in English. `telo check` reads the same layer: the built-in display messages count as shown by every application, so `MESSAGE_TRANSLATION_MISSING` names them for a served language the built-in translations do not cover and never for one they do.
+
+### Patch Changes
+
+- Updated dependencies [b9f2b23]
+- Updated dependencies [b9f2b23]
+- Updated dependencies [bfc0827]
+- Updated dependencies [a16bc53]
+- Updated dependencies [a16bc53]
+- Updated dependencies [bfc0827]
+  - @telorun/kernel@0.129.0
+  - @telorun/sdk@0.129.0
+  - @telorun/analyzer@0.129.0
+  - @telorun/templating@0.129.0
+  - @telorun/ide-support@0.129.0
+
+## 0.128.0
+
+### Patch Changes
+
+- Updated dependencies [9013d2b]
+  - @telorun/analyzer@0.128.0
+  - @telorun/kernel@0.128.0
+  - @telorun/ide-support@0.128.0
+  - @telorun/sdk@0.128.0
+  - @telorun/templating@0.128.0
+
+## 0.127.0
+
+### Minor Changes
+
+- 614124e: Add `telo format`: rewrites manifests to the canonical layout (scalar lists and small scalar maps in flow style, everything else untouched), with `--check` for CI. The language server answers document formatting with the same engine and the VS Code extension turns format-on-save on for Telo manifests.
+
+### Patch Changes
+
+- Updated dependencies [614124e]
+  - @telorun/analyzer@0.127.0
+  - @telorun/ide-support@0.127.0
+  - @telorun/kernel@0.127.0
+  - @telorun/sdk@0.127.0
+  - @telorun/templating@0.127.0
+
+## 0.126.0
+
+### Minor Changes
+
+- 769b40d: `!if` and `!switch` outside template bodies now choose: a field's value, a list item (an Application `targets:` item included), a whole resource document and a `with:` scope member each take the branch the application's configuration selects, or nothing. A configuration is one value for every dimension a condition or selector reads — the whole value of a `variables:` entry declared `enum`, `const` or `type: boolean`, a member a `Telo.Url`-style argument closes (`secrets.databaseUrl.scheme`), or the presence of an entry declaring `default: null` — and a library's choice reads its inputs as each import binds them, a literal as a fact and a decidable expression as the importer's own dimensions. `telo check` analyses every configuration and reports each finding once, ending a message that holds in only some of them with the smallest description of those (`(when variables.dialect is postgres)`) and carrying them as `data.configurations`; the checks over the whole application run in each configuration, while a declaration's own checks — its schema, contracts, call inputs and outputs, derived schemas and CEL typing — run once for each distinct combination of its own expansion, the decided inputs it reads, and every declaration it reaches, so a declaration no choice reaches is checked once however many configurations there are; a finding only inside a branch no configuration takes says so and carries `data.configurations: []`. A whole-value chain to a dimension is held to its slot as that configuration's literal, in every eval mode, so a value the slot refuses is a `SCHEMA_VIOLATION` labelled with the configurations it falls outside. A condition may call a module function written in CEL, evaluated as rule conditions evaluate one, its arguments read as the condition's own; a native callee, one reaching a non-deterministic function or one reaching nothing is refused. A library imported more than once is analysed as one instance per import: a reference through each import reaches that import's instance, expanded by its own binding — a reference an exported declaration of a library makes included, and one a shared library makes through its own import — and an open binding is reported at each import writing one. New diagnostics: `BRANCH_UNDECIDABLE` (once per condition, naming every read not decided before boot, or at an import binding a library's choice to one), `BRANCH_CONDITION_INVALID`, `BRANCH_CASE_KEY_INVALID`, `BRANCH_NOT_EXHAUSTIVE`, `BRANCH_CASE_UNREACHABLE` (a warning; the branch is still checked) and `BRANCH_CASE_INVALID` (also for branches mixing a type and an instance under one name). A choice nothing decides — refused, undecidable, or matching no case in a configuration — stands in for its value and claims nothing, so only its own refusal is reported; a declaration-position choice's name is judged once against its namespace, at the level its branches' kinds declare. The kernel resolves the dimension inputs first and refuses a value outside its domain before any resource exists, expands the application's documents — and each imported library's, by that import's inputs — before registering any, so an unchosen branch is never created and its controller never loads, and `Kernel.Starting` carries `{ telo, configuration }`. A library's choice refusals are raised when an import loads it, as `ERR_MANIFEST_VALIDATION_FAILED` carrying each under its own code.
+
+  An input may now be absent: `default: null` on a `variables:` / `secrets:` entry, in an Application or a Library, is accepted whatever its `type:` (it was `DEFAULT_INVALID`), binds `null` when nothing supplies the input, may be supplied as `null` by a parent or an importer, and is read in CEL as nullable — an unguarded member read is `CEL_NULLABLE_ACCESS` where the input may be absent, and none is needed inside a branch proving it present. `default: null` on a `ports:` entry is `DEFAULT_INVALID` and refused at load: a port never admits absence. An optional need's presence (`resources.<need> != null`) and a member its type's field binds to an `enum` / `const` argument (`resources.<need>.url.scheme`) are dimensions too, keyed by the need's path whoever reads it — `resources.Orders.databaseAccess` for a library's need its import leaves to the environment, the root need's key for one forwarded whole from an optional root need, and no dimension for one an import supplies; inside a branch proving a need present it reads as non-null and a `!ref` to it is legal, so `NEED_OPTIONAL_REFERENCED` is reported only in the configurations where the need may be absent, and the kernel raises such a finding as `ERR_NEED_OPTIONAL_REFERENCED`. The kernel reads every need a choice reads from the environment before expanding (`ERR_NEED_PARTIALLY_SUPPLIED` there), `Kernel.Starting`'s `configuration` carries it, and an import's library choices read the needs the import bound. The analyzer exports `inputRequirements`, which derives the configurations requiring each Application input and need — reads in the resources and fields a configuration holds, a kind document's where its kind is instantiated, only the taken arm of a ternary a configuration decides, and a library's need translated through its import — and `requiredWhenOf` / `needDimensionKey` / `inputValueSchema` beside it.
+
+  An application now demands only the inputs and needs the configuration it starts in requires. An Application `variables:` / `secrets:` / `ports:` entry with no `default:` is required in exactly the configurations a manifest read reaches it, and a need that is not optional in exactly those its reads, `!ref`s or import forwards reach — a library's need translated through every import level between it and the application — so a provider chosen by `secrets.openaiApiKey != null` boots on either key alone, and an unmet need is `ERR_NEED_UNMET` naming only the variables the running configuration needs; one nothing supplies and no configuration requires is left out, or bound to nothing, while a value supplied anyway is still read and validated. The kernel resolves, before expanding, the presence of every optional need a library leaves to the environment, so `Kernel.Starting`'s `configuration` carries `resources.<need path>` for each. `telo run <app> --help` marks each input `required`, `required when <sentence>` or nothing, the sentence naming environment variables (`required when OPENAI_API_KEY is unset`, `none of A, B is set`), and lists every need with the variables it is read from and its requirement. `telo needs report` gains `dimensions` (`{ key, values, env }`, the env of a need's presence its required field names plus `TELO_HOST_STATE_DIR` / the URL template host values) and each need's `required` and `requiredWhen`, and its text prints the same sentence; `telo module manifest --json` analyses an application's whole graph and reports each input's derived `required` and `requiredWhen`, a `default` only where one is declared, and `application.dimensions` — an application the analysis refuses prints nothing and exits 1 — and `telo describe` and `telo env template` report the same requiredness. The analyzer's `readApplicationContract` and `renderApplicationUsage` now take the requirements as an argument, and it exports `requirementDimensionsOf`, `requirementDimensions`, `reportedDimensions`, `requirementSentence` and `needEnvNames`.
+
+  A library's `resources:` entry may declare `optional: true`, so a library can offer a default for an instance its importer may or may not hand over: inside the library `resources.<input>` is then nullable, its presence (`resources.<input> != null`) is a dimension of the library's own check, keyed `resources.<input>`, and the default is the library's own declaration-position `!if` on it, created only by an import that omits the input; at an importer whether the import supplies it is a literal fact, so nothing is enumerated and no label is printed, and a need the default alone reads is required only by the imports omitting the input. An optional entry missing at an import is no longer `RESOURCE_INPUT_MISSING`; `!ref <input>` outside a branch proving it present — at a reference slot, a step's target, or forwarded to another import — is the new `RESOURCE_INPUT_OPTIONAL_REFERENCED`, reported at the reference labelled with the configuration it is absent in, at the `imports:` entry of an importer omitting the input for a dependency, and raised by the kernel's import controller as `ERR_RESOURCE_INPUT_OPTIONAL_REFERENCED`. Two imports of a `lifecycle: shared` library, one supplying an optional input and one omitting it, are `SHARED_LIBRARY_CONFLICT` across modules and `ERR_SHARED_LIBRARY_CONFLICT` at boot. A reference through an import alias at a resource's own reference slot (`!ref Lib.table`) is now a hard init-order edge to that import, like a startup read of `resources.<Alias>.<name>`, so a resource handed to an import that holds an export of that same import is `DEPENDENCY_CYCLE` at the import (with a sentence saying why) and `ERR_CIRCULAR_DEPENDENCY` before the resources involved initialize, where it was an unclassified init-loop failure; a step's reference and a kind spelled through an alias stay creation-order edges. `StaticAnalyzer.omittedInputRefusals` is the check the import controller runs. A library's `exports.resources` may re-export (`Inner.db`) an instance its inner library declares behind `!if` / `!switch`: the consumer's reference reaches the instance the inner import's binding chose, `telo check` and `telo run` no longer fail with an uncoded error on it, and an open inner binding is the one `BRANCH_UNDECIDABLE` at that binding.
+
+- 9c17f98: `telo runner` refuses to start with `RUNNER_SESSION_USER` set (exit `2`, naming it): it is the container runners' session user, and a local runner's sessions run as whoever started it. The `telorun/node` image build context now excludes every `.env` / `.env.*` file, not only the checkout root's.
+- 769b40d: The editor reads configurations and the new `!ref` and `!for-each` forms. A diagnostic that holds in some configurations of an application and not all carries `data.configurations` — the assignments it holds in, each `{ "<dimension path>": value }` — in the language server's `Diagnostic.data` (the published `TeloDiagnosticData` gains the optional field; the protocol generation is unchanged) and in `telo check -o json`, beside the labelled message. `telo/viewModel` takes an optional `configuration` and the view model gains `configurations` (`{ dimensions: [{ key, values, default }], selected }`, present when the module writes a choice): the module graph is drawn in the picked configuration, every dimension — a library's `resources.<input>` presence included — starting at its `default:` (a presence dimension at `absent`) and otherwise the first value of its domain. A declaration-position `!if` / `!switch` is one box identified by its name, carrying `choice` (`{ path, tag, alternatives, selected }`, an `!if` with no `else:` also offering `absent`) — picking changes the box's kind, never its id — a choice in a field is listed in the box's `choices`, a template body's `!for-each` at a declaration position is one box with a `family` marker and a `!for-each` in a list is one `repeat` row identified by its source and its ordinal, and a step a repeat emitted is a row named by its `emitted` identity. An indexed `!ref` draws as an edge to its family's box. Rename edits a family's name at its declaration and at the head of every indexed reference, and renames an `as:` together with every index and CEL read naming it; go-to-definition takes a family reference's head to the family and a binding to its `as:`; completion inside `!ref <family>[` offers the bindings of the loops around the reference that iterate the family's source, and after the dot the member that source keys its elements by (`[` now triggers completion). The editor protocol README documents the wire changes.
+- 9c17f98: A failure can now say which of its inputs it is about, and a caller can say where it wrote those inputs. An `InvokeError` takes an optional `inputPointer` — a JSON Pointer into the inputs of the dispatch that raised it (`/expected/rows`) — and carries a `location` (`{ kind, name, module?, pointer? }`, the resource whose declaration holds the offending value and a pointer into it) that is only ever attached once: the first location given is kept. An invocation context may carry `inputsAt`, a JSON Pointer to where the calling resource's declaration writes this call's inputs (`/steps/1/inputs`); it belongs to the one dispatch carrying it, so a context derived from it for another call drops it unless restated. Neither member reaches a `catch:` branch's `error`, nor an error's JSON. A step body run with the place its list is written (`/steps`) sends every invoke step's `inputsAt` — branches, loop bodies, switch cases (keys escaped), and `try:` / `catch:` / `finally:` included — and a body run without one sends none — never the `inputsAt` its own invocation arrived with. A step whose target is an instance no dispatch identifies is sent no `inputsAt`, and marks a pointer raised there as one no dispatch exit may anchor, rethrowing the failure unchanged. The controller protocol gains these as additive members within generation `telo-7`: `inputsAt` on the `Dispatch.Invoke` / `Dispatch.InvokeResolved` context, and `inputPointer` and `location` on a failure.
+
+  `telo run` and a child run (`Test.Suite`, `Assert.Manifest`) now report a failure that left a step's dispatch at the place it was caused: `<file>:<line>:<col>  error  <message>  <code>`, the node inside the failing step's `inputs:` — the first difference of an `Assert.Equals`, the field an `inputType` refuses — in the innermost sequence that ran it, whether the target is declared inline or by `!ref`, and an inline boot target's `targets[<i>].inputs`. The kernel attaches the `location` where an unlocated failure leaves a dispatch, naming the resource whose controller issued it (an `ERR_EXECUTION_FAILED` wrap's diagnostic carries it too, as `RuntimeDiagnostic.location`), and `Kernel.failureDiagnostics(err)` answers the diagnostics a failure is reported with, each located one carrying the `origin` the analyzer's `locateDiagnostic` resolves. A position is given only where the running declaration provably is the written one — a step a template body declares, the parent an inherited kind builds, or a step list an `!if` / `!for-each` reshaped names the resource and gives no position. A refused child's stderr (controller protocol §9.2) writes that position before the located failure's line. The analyzer exports `writtenFailureSite`, the resolution behind it.
+
+- 769b40d: A diagnostic that holds in some configurations of an application now carries `data.configurations` (and `telo check -o json` `configurations`) as partial assignments: one entry per block of the irredundant cover its message label is read off, each naming only the dimensions it narrows, so a finding in one flag's configurations no longer lists every assignment of the others. A dimension an entry leaves out holds every value; the finding holds in a configuration when some entry agrees with it on every key it names. The entries denote the same configurations as before, and the label is unchanged. The editor protocol generation is now 2 (`TELO_EDITOR_PROTOCOL`, `teloEditorProtocol`), because a host reading entries as complete assignments would misread them; a host speaks both generations, since a complete assignment reads correctly as a partial one, so every published engine is still offered. An application input's `requiredWhen` is evaluated the same way at the running configuration, and a reported dimension of a member carries its `member` (`telo module manifest --json`, `telo needs report`).
+- 9c17f98: The `telorun/node` image now runs as the unprivileged `node` user (uid 1000) with `/workspace` owned by it. A derived image copies its app with `COPY --chown=node:node` before `telo install`, and switches to `USER root` only around steps that need it (such as `apt-get`), returning to `USER node` afterwards.
+
+### Patch Changes
+
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+  - @telorun/kernel@0.126.0
+  - @telorun/analyzer@0.126.0
+  - @telorun/ide-support@0.126.0
+  - @telorun/templating@0.126.0
+  - @telorun/sdk@0.126.0
+  - @telorun/runner-core@0.24.0
+
+## 0.125.1
+
+### Patch Changes
+
+- Updated dependencies [3df9817]
+  - @telorun/runner-core@0.23.0
+  - @telorun/sdk@0.125.1
+  - @telorun/templating@0.125.1
+  - @telorun/analyzer@0.125.1
+  - @telorun/kernel@0.125.1
+  - @telorun/ide-support@0.125.1
+
+## 0.125.0
+
+### Minor Changes
+
+- 8a09248: A library whose manifest lies inside the directory of the module being published now ships inside that module's OCI artifact instead of as a separate sibling artifact. `telo publish` keeps its import relative and pinned (`./chat#sha256-…`), places its manifest in the parent's manifest layer and pushes its own layers into the parent's repository; an import leaving the root still points at a separate artifact. The runtime resolves such an import to `oci://<host>/<repo>@sha256:<parent digest>/<path>`, checks it against the pin and materializes it inside the parent's directory; `telo install` and `telo package` record the parent's digest in `.origins.json` and warm the nested layers. A library inside another module's directory imported from outside it is refused at publish (`import_nested`), and `telo release` refuses a workspace module that ships inside another. Digest-addressed cache entries are now spelled `sha256-<hex>` (Windows-safe), and a tag spelled like a digest is refused. The Rust kernel refuses a relative import inside an artifact with `ERR_UNSUPPORTED_MANIFEST_FEATURE`.
+
+### Patch Changes
+
+- Updated dependencies [8a09248]
+  - @telorun/analyzer@0.125.0
+  - @telorun/kernel@0.125.0
+  - @telorun/ide-support@0.125.0
+  - @telorun/sdk@0.125.0
+  - @telorun/templating@0.125.0
+
+## 0.124.0
+
+### Minor Changes
+
+- ad18a4f: `telo runner` runs the co-resident agent named by `AGENT_MODULE_REF` as a `telo run` process in each session that asks for it, advertises it in `features.agents`, refuses `AGENT_IMAGE` at boot, and keeps the runner's `AGENT_*` variables out of every application run.
+
+### Patch Changes
+
+- Updated dependencies [ad18a4f]
+  - @telorun/runner-core@0.22.0
+  - @telorun/sdk@0.124.0
+  - @telorun/templating@0.124.0
+  - @telorun/analyzer@0.124.0
+  - @telorun/kernel@0.124.0
+  - @telorun/ide-support@0.124.0
+
+## 0.123.1
+
+### Patch Changes
+
+- Updated dependencies [7b1f7d5]
+- Updated dependencies [635b289]
+  - @telorun/analyzer@0.123.1
+  - @telorun/runner-core@0.21.1
+  - @telorun/kernel@0.123.1
+  - @telorun/ide-support@0.123.1
+  - @telorun/sdk@0.123.1
+  - @telorun/templating@0.123.1
+
+## 0.123.0
+
+### Minor Changes
+
+- 3a59a93: `telo check` follows a child application's source and holds what a resource hands it to the child's declarations. A new annotation, `x-telo-application-source: { variables?, secrets?, ports?, needs? }`, marks the top-level string field naming the application a resource runs, each key a JSON Pointer to the map feeding that block of the child. The loader resolves the source as it resolves an import and loads the child's graph (`LoadedGraph.applicationSources`); the analysis then reports, at the field, `IMPORT_UNRESOLVED` / `INVALID_IMPORT_SOURCE` / `INVALID_IMPORT_TARGET` for a source that cannot be obtained or is not a `Telo.Application`, `APPLICATION_INPUT_UNDECLARED` for a map key the child does not declare, `SCHEMA_VIOLATION` for a literal its declaration refuses (an expression is typed against it — for a resource declared at the top level only: an expression handed to a child declared in a `with:` scope or inline in a step is not type-checked against the child's declarations, while its literals are), and for a need `REFERENCE_KIND_MISMATCH` (a `!ref` to anything but a need or fulfilment of the child's type), `NEED_FORWARD_INCOMPATIBLE` (a need stating less than the child's) and the field-map refusals. A resource is judged wherever it is declared — at the top level, in a `with:` scope, or inline in a step. A durable directory forwarded whole to two child applications, or to a child application and a library import, is `NEED_DIRECTORY_FORWARDED_TWICE`. The child declarations reach the analysis beside the flattened set, as `AnalysisOptions.applicationSources` (`collectApplicationSources(graph)`), and the loader recognises an annotated kind by resolving each resource's kind through the declaring file's imports. A malformed annotation is `APPLICATION_SOURCE_ANNOTATION_INVALID`. The kernel's load runs the same analysis, so such a run is refused before anything starts, and its analysis cache covers every child file.
+- da3791b: A failure now carries two messages: `message`, the developer's, for logs and traces, and `displayMessage`, the text a person is shown for it, as a text record in the language it was written in. `throws.codes.<CODE>.displayMessage` declares a code's display message — a `Text` in the module's `lang:` whose placeholders may name only the required string or number properties of the code's `data` schema, stated by the new annotation `x-telo-text-values-from: "0/data"` (`MESSAGE_PLACEHOLDER_UNBOUND` / `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`, refused at registration by both kernels too). Where an error leaves a dispatch of the declaring kind, the kernel attaches it as `InvokeError.displayMessage` unless one is already attached, after holding `data` to the code's `data` schema — a mismatch is `ERR_OUTPUT_INVALID` naming the original code. The runtime's own codes (`ERR_INPUT_INVALID`, `ERR_OUTPUT_INVALID`, `ERR_CONTRACT_UNRESOLVABLE`, `ERR_SCHEMA_PROJECTION_UNRESOLVED`, `ERR_FUNCTION_FAILED`, `ERR_PREDICATE_NOT_BOOLEAN`) carry built-in English display messages, kept as data under `sdk/error-codes/`, printed by `telo builtins ERR_INPUT_INVALID` and carried as the `errorCodes` section of the `Telo.Builtins` archive; a catalog translating one is never `MESSAGE_TEXT_UNUSED`. Every catch context's `error` gains `displayMessage`, a nullable text record, beside `message`.
+
+  A `throw` step is `{ code, message?, displayMessage?, data? }`. `message` stays a string and may be computed; `displayMessage` is a literal `Text` whose placeholders name members of `data`, or a caught error's `error.displayMessage` — any other expression is `TEXT_ARGUMENT_COMPUTED` at check and `ERR_TEXT_ARGUMENT_COMPUTED` at run. Without `message` the developer message is the display message formatted with `data`, else the code. A `throw` inside a `catch:` records the caught failure as its `cause`, written in the log record's cause chain. The new step `rethrow: {}` re-raises the caught failure unchanged — code, messages, data, cause and stack — and is legal only inside a `catch:` (`RETHROW_WITHOUT_CAUGHT_ERROR` at check, `ERR_RETHROW_WITHOUT_CAUGHT_ERROR` at run, in a `finally:` or outside every `catch:`); its throw-union contribution is the enclosing `try`'s.
+
+  A literal `throws.codes` list is now legal on a kind of every capability; only an invocable's or a runnable's feeds throw unions and ceilings, and `inherit` / `passthrough` stay limited to them.
+
+  Controllers read a kind's display message for a refusal outside any dispatch with `ctx.declaredDisplayMessage(code, data)`. A Rust controller's `ControllerError` gains `data` and `display_message` (`with_data`, `with_display_message`), carried through the C ABI and the napi bridge; the controller protocol's error payload gains an optional `displayMessage` member within `telo-7`, and `ctx.declaredDisplayMessage` is its new message `Throws.DisplayMessage`.
+
+- 3a59a93: `telo runner` serves the durable workspace session (breaking). A session is a directory under the state root, `sessions/<sessionId>/` with `workspace/` (the application's files, its seeded `telo-workspace.yaml` and its `.telo` module cache) and `agent/`, all `0700`, kept by id across suspends and runner restarts; the session store is `sessions.sqlite` in the same state root. The state root is `--state-dir`, then `RUNNER_STATE_DIR` (which now names the whole state directory rather than the store's alone), then the per-user application-state directory — `$XDG_STATE_HOME/telo/runner` (`~/.local/state/telo/runner` when unset) on Linux, `~/Library/Application Support/telo/runner` on macOS, `%LOCALAPPDATA%\telo\state\runner` on Windows — instead of the system temp directory, so sessions survive a reboot; with none resolvable or writable (no `HOME`) the runner refuses to start (exit 2), naming `--state-dir` and `RUNNER_STATE_DIR`. The `-o json` result's `stateDir` is the root in use. Nothing runs until Run: each Run spawns the argv the runner core builds (`telo run --watch --no-input --inspect … --no-open <entry>`) of the running executable, or of the release an application names, in the session workspace as its own process group, with the run's env over the runner's own; Stop sends SIGTERM to the group and SIGKILL after the grace, and the run's exit code or signal is reported as the app's ending. Suspend ends the runs and keeps the directory; deleting the session or retention removes it. At boot every stored session that was running is suspended — a local run never outlives the runner — and the sweep removes only the session directories the store does not know, replacing the per-PID directories and their sweep. The runner offers no co-resident agent, so `features.agents` is absent. `--watch-sessions` and `features.watch` are removed, with one-shot run sessions and the bundle upload; the command's `-o json` result no longer carries `watch`.
+
+  The desktop app now starts its local runner with a state root under the app's local data directory (`runner/`) instead of the system temp directory, so a workspace's local session, its files and its module cache survive an editor restart.
+
+- 3a59a93: `telo run --watch` no longer holds the application open between edits (breaking). Each reload runs as a plain `telo run` would: an application that finishes — a script with no server — runs to completion, its resources are torn down, `Kernel.Stopped` carries its exit code on the `--debug` / `--inspect` stream and the session prints `[watch] finished with exit code <n>; waiting for changes`, then waits for the next change, kept alive by its file watchers and the `--inspect` endpoint. The next edit starts a new generation. A server is unchanged: it keeps serving until a change restarts it or the session is stopped.
+
+### Patch Changes
+
+- f55cc35: `telo check` now refuses two manifests it used to pass and the runtime refused at boot. A resource whose kind is spelled with the name of a module only a dependency imports (`kind: SQLite.Connection` in an application that imports a library which imports `SQLite`) is `UNDEFINED_KIND`, naming the alias to add or, when the module is imported under another alias, the spelling to write; and an alias that resolves is the only module its kind is looked up in. A read of an undeclared resource in a field with no CEL context of its own (`file: !cel "resources.dbFile"` on a connection) is `CEL_UNKNOWN_FIELD`, as it already was inside step bodies; a template's forward views, which nothing publishes, are no longer offered in that message's list of available names. A member read the type checker refuses is reported once, where a step body reported it twice. `telo module manifest oci://host/repo` with no version reads the newest published version instead of asking for a `latest` tag no module publishes.
+- f55cc35: `telo release` reads an image module's `Dockerfile.dockerignore` (or `.dockerignore`) as Docker does: every pattern is anchored at the module root, and a pattern naming a directory leaves out everything beneath it. The digest deciding whether such a module bumps now covers exactly the files the image build receives, so a file outside the image — a Helm chart a release stamps after recording `.changes/ledger.yaml`, a `tests/` directory — no longer moves it. This ends the version-modules pull request that republished `apps/hub` after every release with nothing changed. An ignore line using a character class (`[a-z]`) or an escape is refused, naming the file and line, rather than read differently from Docker.
+- Updated dependencies [da3791b]
+- Updated dependencies [f55cc35]
+- Updated dependencies [3a59a93]
+- Updated dependencies [3a59a93]
+- Updated dependencies [3a59a93]
+- Updated dependencies [3a59a93]
+- Updated dependencies [da3791b]
+- Updated dependencies [3a59a93]
+- Updated dependencies [da3791b]
+  - @telorun/analyzer@0.123.0
+  - @telorun/ide-support@0.123.0
+  - @telorun/templating@0.123.0
+  - @telorun/kernel@0.123.0
+  - @telorun/sdk@0.123.0
+  - @telorun/runner-core@0.21.0
+
+## 0.122.0
+
+### Minor Changes
+
+- 76a2de5: `telo module versions <ref> --digests` reports each version with the change-detection digest `telo module digest` prints for it, read in one process with bounded concurrency; `--json` writes `[{ version, digest }]`. A version whose digest cannot be read is reported as `{ version, error }` and named on stderr, so one unreadable tag does not hide the others. Without the flag the output is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [76a2de5]
+- Updated dependencies [327907c]
+- Updated dependencies [76a2de5]
+- Updated dependencies [76a2de5]
+- Updated dependencies [76a2de5]
+- Updated dependencies [76a2de5]
+- Updated dependencies [76a2de5]
+  - @telorun/analyzer@0.122.0
+  - @telorun/kernel@0.122.0
+  - @telorun/sdk@0.122.0
+  - @telorun/ide-support@0.122.0
+  - @telorun/templating@0.122.0
+
+## 0.121.0
+
+### Minor Changes
+
+- adf4eae: `telo run` at a terminal asks for the application inputs nothing supplies instead of failing. When the only reason a root Application cannot load is that `variables:` / `secrets:` / `ports:` entries or the required fields of its needs have no value, the CLI asks for each one on stderr (a secret or sensitive need field without echo), the kernel decodes and validates each answer exactly as it would the same text in the environment, re-asks one it refuses with its own sentence, and the run starts. Answers are the fifth and last source — after a value supplied by name, the command line, `env:` and `default:` — and are never written to the process environment, `ctx.env` or a started child's environment; a need field's answer goes only into that need. Once accepted, the CLI offers to save them (default no): secrets to the sensitive env file, everything else to the other, as `telo env template --write` places them. A watch session keeps its answers across reloads.
+
+  It asks only when stdin and stderr are both terminals and `--no-input` (a new `telo run` option) is not given. Without that, the refusal is unchanged (`ERR_MANIFEST_VALIDATION_FAILED`, `ERR_NEED_UNMET`, `ERR_NEED_PARTIALLY_SUPPLIED`) and adds a hint naming the missing variables; `Kernel.RunFailed` carries them as `unresolved`. The kernel's `load()` takes the asking side as an `inputResolver` option. Every runner backend now starts applications with `--no-input`, and the oldest telo a runner supervises moves to the release carrying it.
+
+- 84f7424: Every command line the CLI's argument parser refuses — an unknown flag, a missing argument or subcommand, a value outside an option's choices — now exits with status 2 instead of 1, with the usage and the reason on stderr and nothing on stdout. `-o yaml` is one of them: it used to end in a stack trace. The status contract is written in the README's "Exit status" section: 0 the command did its work, 1 the work failed, 2 the invocation was refused. `telo describe`, `telo needs report` and `telo env template` given a manifest that cannot be read now print one error line, as `telo check` does, rather than a stack trace.
+- 062d4d0: `Telo.DurableDirectory` — a kernel-declared need type for persistent storage on disk. Its field `path` is a `Telo.HostPath`; its parameters are `size` (a whole number followed by `Mi`, `Gi` or `Ti`, default `1Gi`) and `access` (`single-writer`, the default, or `shared`), neither measured nor enforced by the kernel. A host supplies each need through its env name (`TELO_NEED_UPLOADS__PATH`), or sets `TELO_HOST_STATE_DIR` once and every unset one is answered as `<state dir>/needs/<need path>`, created at load.
+
+  However a directory is supplied, the kernel checks it names a directory the process can write to and creates it when absent, refusing otherwise with `ERR_NEED_DIRECTORY_UNUSABLE` — before any resource initializes for one read from the environment, when the import initializes for a field-by-field supply, when created for a fulfilment the manifest writes. Under a state directory, an entry under `needs/` no need names (a renamed need or import alias) refuses a load that would create a fresh directory beside it with `ERR_NEED_ORPHANED`, naming both paths, and is otherwise a `NEED_ORPHANED` warning; nothing is moved or deleted. `TELO_HOST_STATE_DIR` is hidden from controllers like a need's env name and is not inherited by an application started with `App.Instance`.
+
+  `telo check` and the kernel refuse a `shared` directory forwarded whole to a `single-writer` need, and a smaller `size` forwarded to a larger one (`NEED_FORWARD_INCOMPATIBLE`), and one directory forwarded whole to two or more needs (`NEED_DIRECTORY_FORWARDED_TWICE` / `ERR_NEED_DIRECTORY_FORWARDED_TWICE`). `telo needs report` now lists every need's `parameters` with its type's schema defaults filled in, for every need type.
+
+- 062d4d0: A `Telo.HostPath` slot may say what its path names: `x-telo-type: { name: Telo.HostPath, entry: directory }` (or `entry: file`). Omitted means either, and an absent path is never refused. `telo check` refuses a `!module-path` naming the other kind of entry, a variable declared with the other `entry` read into the field, and one an import passes to a library input declaring the other (`HOST_PATH_ENTRY_MISMATCH`); at a call's `inputs:` the mismatch is `CEL_TYPE_ARGUMENT_MISMATCH`, and a token outside `file` / `directory` is `X_TELO_TYPE_ARGUMENT_INVALID`. The kernel refuses an existing path of the other kind when it creates the resource holding it (`ERR_HOST_PATH_ENTRY_MISMATCH`) and one the filesystem will not answer for (`ERR_HOST_PATH_UNREADABLE`), and an Application variable or secret declaring `entry` at load, inside `ERR_MANIFEST_VALIDATION_FAILED`. `!module-path` completion offers only directories at a directory slot. The value-type data gains a parameter flag, `hostEntry`, which both SDK readers accept on a `fromHost` type only. `ManifestSource.exists` is replaced by `entryAt(base, relative)`, answering `file`, `directory` or nothing; the loader stamps what a single-claim tag names on it. `Telo.DurableDirectory.path` declares `entry: directory`. The Rust kernel now refuses both at creation as the Node kernel does — a path of the other kind (`ERR_HOST_PATH_ENTRY_MISMATCH`) and a relative one, literals included since it runs no analysis (`ERR_HOST_PATH_RELATIVE`) — and both kernels answer one set of vectors, `analyzer/host-path-conformance/`.
+- 84f7424: A packaged executable is a manifest source: `telo describe ./orders`, `telo check ./orders`, `telo needs report ./orders`, `telo env template ./orders`, `telo cel functions ./orders` and `telo run ./orders` read its payload — unpacked into the directory the binary itself uses, against the payload's own cache — and execute nothing it carries. Only a run reclaims the application's older unpacked trees. The payload's cache is sealed: these commands read each module it holds as it is — an unpinned `oci://…@<tag>` import is not checked against its registry, so reading a binary needs no network — remove nothing from it and write nothing into it, and `telo check ./other ./orders` judges `./orders` against its own payload's copy rather than another path's cache.
+
+  `TELO_APP_CLI=1` makes a packaged binary the telo CLI it carries for one start (`TELO_APP_CLI=1 ./orders describe ./orders`, `TELO_APP_CLI=1 ./orders run --inspect --debug ./orders <args>`). Unset or empty means the application; any other value is refused before anything runs, with exit status 2 in every distribution. Every telo start removes the variable from its own environment, so no kernel, controller or child process sees it; `telo runner` sets it on the children it starts when the executable it re-runs carries a payload. `./orders <args>` is now exactly `TELO_APP_CLI=1 ./orders run ./orders <args>`, and `--debug`'s `.telo.debug.jsonl` is written where the env files are read — the working directory for a packaged binary. An executable carrying a payload is never `telo package`'s own carrier.
+
+  Breaking: `TELO_APP_INFO` is retired. A packaged binary started with it set refuses (exit status 2) and starts nothing, naming `TELO_APP_CLI=1 <binary> package inspect <binary>`, which prints the same index. The packaged-executable contract is written as `kernel/specs/packaged-application.md`.
+
+- 84f7424: `telo describe <manifest>` prints what an application or library does, read from its manifest with nothing booted: its inputs and the fields reading each, what it starts, every entry point labelled by what selects it with what its handler can throw and which `catches:` entry renders each code, and what nothing reaches; `-o json` prints the `outlineVersion: 1` document. Every value in it is carried as written in one encoding: a JSON scalar or array is itself, an expression or a reference is `{ tag, source, type? }`, and a literal mapping is `{ map: { … } }` at every depth, so a literal never reads as an expression; the analyzer's `readWrittenValue` reads it. An expression in an entry point's or a row's `match` carries its `type` like any other value, while the module graph's own `match`, from which row ids derive, carries none, so an id never moves when a type does. The text form quotes every string inside a list or a mapping, so a literal string spelling `!cel "x"` or `{a: b}` cannot read as an expression or a mapping. A manifest `telo check` refuses has no outline: its errors go to stderr, stdout stays empty, and the command exits 1.
+
+  The analyzer's `ManifestAnalysis.outline(deps, options)` builds that document over the module graph's own arguments, each item carrying the module graph's id; `ManifestAnalysis.moduleGraph` now keeps its graph only for the same `deps` and `options` objects. The `catches:` coverage check reads one catch ladder per code, so a code rendered by a catch-all on one enclosing server and by a named entry on another is covered, where before it was reported uncovered.
+
+  The need table lists a root's own needs whatever the root's kind. Under a Library root, every need reaching it unsupplied — its own included — is an entry of the new supply form `importer`, each field carrying `required` and `sensitive` and no environment name, and `environment` is empty: a library reads nothing from the environment, its importer supplies it. `NeedTableEntry` is now a union discriminated by `supply` (`NeedSuppliedEntry`, `NeedEnvironmentEntry`, `NeedImporterEntry`), `environment` is typed `NeedEnvironmentEntry[]`, and `NeedField` is the per-field shape `NeedEnvField` extends. A module graph row and a call-graph step node carry `predicateField`, the field holding `predicate` (`if`, `while`, `switch`, a dispatch's `when`; a boot target's `when`).
+
+### Patch Changes
+
+- a6d17ff: `telo publish` and `telo release` now give a relatively imported sibling the address of the path its manifest stands for. A `telo.yaml` is its directory's index, so `./timesheets` and `./timesheets/telo.yaml` both publish at `…/timesheets`. Any other manifest is addressed by its name without the extension, so `./example/app.yaml` publishes at `…/example/app`, and a relative import inside it resolves as it does on disk. A file-form import used to publish the sibling at `…/timesheets/telo.yaml`, one level deeper than its directory, so every relative import inside it resolved one level too deep, and a module reached through import chains of different depths was refused as "published to both" two addresses. Two manifests that would publish to one address (`example/app.yaml` beside `example/app/telo.yaml`) are now refused, naming both.
+- Updated dependencies [adf4eae]
+- Updated dependencies [ad5633d]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [ad5633d]
+- Updated dependencies [062d4d0]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [b9e6234]
+- Updated dependencies [832f24b]
+- Updated dependencies [062d4d0]
+- Updated dependencies [832f24b]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [832f24b]
+- Updated dependencies [832f24b]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [832f24b]
+- Updated dependencies [ad5633d]
+- Updated dependencies [84f7424]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [ad5633d]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [84f7424]
+  - @telorun/kernel@0.121.0
+  - @telorun/analyzer@0.121.0
+  - @telorun/runner-core@0.20.0
+  - @telorun/sdk@0.121.0
+  - @telorun/templating@0.121.0
+  - @telorun/ide-support@0.121.0
+
+## 0.120.1
+
+### Patch Changes
+
+- Updated dependencies [f59cacb]
+  - @telorun/kernel@0.120.1
+  - @telorun/analyzer@0.120.1
+  - @telorun/ide-support@0.120.1
+  - @telorun/sdk@0.120.1
+  - @telorun/templating@0.120.1
+
+## 0.120.0
+
+### Minor Changes
+
+- cc1a84e: `telo env template <manifest>` writes every environment variable an application reads — its `env:`-bound `variables:` / `secrets:` / `ports:` entries and every need field `telo needs report` lists — as commented-out `.env` / `.env.local` lines, one per variable, grouped by where it comes from, with a trailing comment for `required`, the entry's description and a need field's path. Secrets and need fields marked sensitive go to the workspace's sensitive env file (`.env.local` by default), everything else to `.env`. Nothing is uncommented: an empty `NAME=` would set the variable to the empty string, and a written default would override a later change to the manifest. A secret's default is never written. It prints both files by default; `--write` adds to the files beside the manifest only the variables they do not already mention, and warns when a sensitive file it wrote is not ignored by git.
+- cc1a84e: `telo run <app> --help` now also lists, under `Environment:`, every `variables:` / `secrets:` / `ports:` entry read from an environment variable alone — its type, its default or `required`, and the input it fills — so an application with no command-line arguments no longer answers with a bare `Usage: <name>`. A secret shows only its type and whether it is required. An application declaring `needs:` gets a last line naming them and pointing at `telo needs report`. `renderApplicationUsage` returns the same text.
+- cc1a84e: An `env.files` entry in `telo-workspace.yaml` may now be `{ name, sensitive }` beside a bare filename; with no `files:` declared, `.env.local` is sensitive and `.env` is not. An unknown key in an entry is `WORKSPACE_UNKNOWN_KEY` and a wrong type `WORKSPACE_INVALID_VALUE`, both inside `env:`, so `telo run` refuses on them; an older telo refuses the object form the same way. `telo env template` writes secrets and sensitive need fields to the last sensitive entry and everything else to the last other one, refuses naming `env.files` when the workspace declares no entry of the kind needed, and warns about every sensitive file it wrote that git does not ignore. `telo run` warns when a secret or sensitive need field takes its value from a file not marked sensitive (`[env] secret DB_PASSWORD is set in ./.env, which env.files does not mark sensitive — move it to a sensitive file`) and proceeds. The env-file walk, the marker's `env:` block and the env-file format now live in the analyzer as browser-safe exports — `resolveWorkspaceEnv` over one injected read, `parseEnvFile` (reading every file as `dotenv` 17 does), `spellEnvFileValue`, `setEnvFileValue` / `appendEnvFileValue` / `appendEnvFileLines` / `clearEnvFileValue`, `classifySensitiveEnvFiles`, `envFileDestination`, `sensitiveEnvironmentInputs`, `sensitiveValueFindings` — and the CLI no longer depends on `dotenv`. `DEFAULT_ENV_FILES` and `EnvSettings.files` are now lists of `{ name, sensitive }`. The editor completes `name` / `sensitive` inside an entry and `true` / `false` for the mark.
+
+### Patch Changes
+
+- Updated dependencies [cc1a84e]
+- Updated dependencies [cc1a84e]
+- Updated dependencies [cc1a84e]
+  - @telorun/analyzer@0.120.0
+  - @telorun/runner-core@0.19.1
+  - @telorun/ide-support@0.120.0
+  - @telorun/kernel@0.120.0
+  - @telorun/sdk@0.120.0
+  - @telorun/templating@0.120.0
+
+## 0.119.0
+
+### Minor Changes
+
+- 63c81d0: The built-in vocabulary of a release is a document you can read. Every telo release renders it as a `Telo.Builtins` YAML stream (`kernel/specs/builtin-vocabulary.md`): a root carrying every shared schema fragment, value type, zone attribute and string format, then one document per built-in kind in its authored form. `@telorun/analyzer` ships it as `src/builtin-vocabulary/builtins.yaml`, with its MIT `LICENSE` beside it, exports the same bytes as `BUILTIN_VOCABULARY_ARCHIVE`, and refuses to pack unless the archive carries exactly the package's version. `telo builtins` prints it, and `telo builtins Application Step Telo.Url` prints only those entries; an unknown name exits 1 listing every name there is. `@telorun/analyzer` also exports the archive's reader (`readBuiltinVocabulary`) and the selection both CLIs print with (`selectBuiltins`, `builtinVocabularyEntries`).
+
+  The archive is read, never run, declared or imported: as the entry of `telo check` / `telo run` it is one `UNDEFINED_KIND` saying what it is, and an import of it is `INVALID_IMPORT_TARGET` telling you its kinds need no import. `telo publish` accepts a `Telo.Builtins` root as a manifest-only artifact — no module analysis runs, the archive's own reader refuses a malformed one, and the published `telo.yaml` is the archive's bytes with only the `layers:` index appended — and `telo module manifest --json` reports one with `runtime: null` and `application: null`. Every release is published as `oci://ghcr.io/telorun/telo@<version>`.
+
+  `Telo` and `Self` are reserved: a module named either, an import aliased either, and an import reaching a library named either are refused as `KIND_PREFIX_RESERVED` by `telo check` and `ERR_KIND_PREFIX_RESERVED` by both kernels. This is a breaking change: a library named `Telo` used to be accepted and silently replaced the built-in definitions.
+
+- 63c81d0: A failed import is reported the same way by `telo check`, by `ctx.runtime.check` and by a run.
+
+  - **Breaking for a caller of `ctx.runtime.check` that read `loadError` on an import failure.** The seam now answers with exactly the diagnostics `telo check` reports — built by the same assembler, with the same codes, messages and locations (`line` / `column` set wherever `telo check` locates one) — so a failed import is its coded diagnostic at `imports.<alias>` (`INVALID_IMPORT_SOURCE`, `IMPORT_UNRESOLVED`, `INVALID_IMPORT_TARGET`, `KIND_PREFIX_RESERVED`), and `loadError` is set only when the graph could not be loaded at all (an unreadable entry, a refused partial). It used to stop at the first failed import and return its loader message as `loadError`, and to stop at a parse failure before analysing the rest.
+  - **A run refused for a failed import carries every import's static diagnostic** under `ERR_INVALID_IMPORT_SOURCE`, `ERR_IMPORT_UNRESOLVED`, `ERR_INVALID_IMPORT_TARGET` or `ERR_KIND_PREFIX_RESERVED` (a loader error carrying a code of its own keeps it), so `telo run` prints the `imports:` line `telo check` prints and a refused child writes `[<CODE>] <message>` for it. The Node kernel used to raise the loader's bare error for every import failure but a reserved prefix. An import of the built-in vocabulary archive is `ERR_INVALID_IMPORT_TARGET` in both kernels (it was `ERR_MANIFEST_VALIDATION_FAILED`). A `Telo.Import` declared in a `with:` scope is loaded, when its scope opens, by the same per-import step the graph walk runs and refused the same way: an unresolvable source is `ERR_IMPORT_UNRESOLVED` and a malformed one `ERR_INVALID_IMPORT_SOURCE` (both were the bare loader error), an application target is `ERR_INVALID_IMPORT_TARGET` in the loader's words (it was `ERR_MANIFEST_VALIDATION_FAILED`), and so is a target with no `Telo.Library` (it was an uncoded error). `@telorun/analyzer` exports that step, `loadImportTarget`, and `importFailureDiagnostics` for it.
+  - **A failed `Kernel.reconcile()` leaves the kernel as it was.** A reconcile refused while loading (a failed import, a parse failure) used to keep the refused graph, so the next reconcile diffed against it — missing a library edit, or reporting a spurious `restartRequired` after the edit was reverted.
+  - **Breaking for a consumer of `@telorun/ide-support`'s diagnostic assembly**: `assembleGraphDiagnostics`, `compromisedFiles`, `findPositions` and `resolveRange` moved to `@telorun/analyzer`, which also exports `locateDiagnostic` (a diagnostic's file and range, as every host reports it). `@telorun/ide-support` no longer exports them.
+
+### Patch Changes
+
+- 63c81d0: `telo module manifest --json` reports a need type's runtime reach. A `Telo.NeedType` declares a kind the kernel serves with its own need-type controller, and `runtime.kinds` now lists it as the kernels that register that controller — `{ runtimes: [nodejs], languages: [], portable: false }` today — where it used to be missing, so the hub stored every need type as runnable by no kernel and a `runtime` filter hid it. Which documents declare a kind is read through the analyzer's `kindDeclarationOf`, and a kernel candidate `{ runtime: kernel, entry }` is hosted by exactly the kernels registering `entry`: `@telorun/kernel` exports the entries it registers at boot as `BUILTIN_CONTROLLER_ENTRIES`, the keys of the one table it registers its built-in controllers from. A `Telo.Builtins` root still reports `runtime: null`.
+- 63c81d0: `telo --version` prints the telo identity: `X` for a release, and `X+unreleased` for a build made from a working copy while `X` is pending — the string a run's `Kernel.Starting` event and `telo builtins`' root `metadata.version` carry. It used to print the CLI package's number, which on a working copy named a release the build is not (`0.118.0` where the archive said `0.119.0+unreleased`). A release prints the same `X` as before. The Rust `telo` gains `--version` too, printing the same string, read from the built-in vocabulary it embeds.
+- Updated dependencies [63c81d0]
+- Updated dependencies [63c81d0]
+- Updated dependencies [63c81d0]
+- Updated dependencies [63c81d0]
+- Updated dependencies [63c81d0]
+  - @telorun/analyzer@0.119.0
+  - @telorun/kernel@0.119.0
+  - @telorun/ide-support@0.119.0
+  - @telorun/sdk@0.119.0
+  - @telorun/templating@0.119.0
+
+## 0.118.0
+
+### Minor Changes
+
+- ae999ff: An application declares the addresses it is reached at as needs of two kernel-declared types: `Telo.PublicUrl` (field `url`, an http/https origin; parameters `port`, `primary`, `customDomains`) and `Telo.PublicHostPattern` (field `pattern`, `https://*.tenants.example` or `https://*-tenants.example`; parameter `port`). `Telo.NeedType` gains `supply: root`: a need of such a type is fulfilled only through a root need forwarded whole, and a self-supplied fulfilment, a field-by-field supply or a library need reaching the root unforwarded is `NEED_ROOT_SUPPLY_REQUIRED` / `ERR_NEED_ROOT_SUPPLY_REQUIRED`. A root address need names a `tcp` port, and at most one is `primary` and one per port takes `customDomains` (`NEED_PARAMETERS_INVALID`). The kernel answers an unset `Telo.PublicUrl` from the host values `TELO_HOST_PUBLIC_URL_TEMPLATE` and `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` (`ERR_NEED_HOST_VALUE_INVALID` for a bad template or derived label), refuses two addresses no host could route apart with `ERR_NEED_PUBLIC_URL_COLLISION`, announces each port's hosts as `publicUrls` on `Kernel.PortsResolved`, hides both host values from controllers and strips them from a started child's environment. `ctx.resolveNeed` answers an address need with the number of its port. `Telo.Url` gains the `user`, `password`, `path` and `query` member parameters. A presence test `has(a.b)` in a resource or referrer rule condition reads only `a`'s keys, so a dynamic value at `a.b` no longer skips the rule. A port an address need names counts as used (no `UNUSED_DECLARATION`). `telo needs report` lists a kernel-declared type under `type.module: Telo`, and a field whose value type's sensitive member the slot forbids (a `Telo.PublicUrl`'s password) is not reported sensitive. A main template holding `{label}` is refused, and the templates are read only when the application declares a `Telo.PublicUrl`. The controller protocol's `Need.Resolve` response gains an optional `port`.
+
+### Patch Changes
+
+- Updated dependencies [8d2a6a7]
+- Updated dependencies [ae999ff]
+- Updated dependencies [ae999ff]
+  - @telorun/templating@0.118.0
+  - @telorun/analyzer@0.118.0
+  - @telorun/kernel@0.118.0
+  - @telorun/sdk@0.118.0
+  - @telorun/runner-core@0.19.0
+  - @telorun/ide-support@0.118.0
+
+## 0.117.0
+
+### Minor Changes
+
+- 972e899: A kind can consume a need's fulfilment whole and verify the need's constraints. `Telo.NeedType` gains `version: semver` and `features: [names]`, and a need may state `version` (a range in explicit comparators, `>=15.0.0`, whose refusals explain themselves in need terms) and `features` (names its type lists). A reference slot whose kind is a need type takes the fulfilment whole, and `x-telo-ref` gains `observes: [version, features]`: the kind reports what it found and the kernel compares it with the outermost need of the whole-forward chain. In Node a controller opens the fulfilment with `ctx.resolveNeed(pointer)` — its handle, fields, sensitive field names, and the outermost need's constraints and parameters — and reports with `ctx.verifyNeed(pointer, { version, features })`; a mismatch is `ERR_NEED_UNMET`, whose `data` holds `need`, `type`, `source`, `required` and `actual`. An observing slot not reported by the end of startup (`init()` for a provider, `run()` for a service, the first `run()` / `invoke()` otherwise), or a malformed report, is `ERR_NEED_OBSERVATION_INVALID`. Phase-5 injection no longer places a fulfilment in a slot.
+
+  `telo check` refuses `X_TELO_REF_INVALID_OBSERVES` (an `observes` that is malformed, on a non-need slot, naming a constraint the type does not declare, or on a kind with no observation deadline or no controller of its own — `ERR_X_TELO_REF_INVALID_OBSERVES` at definition registration), `NEED_CONSTRAINT_UNVERIFIED` (a stated constraint reaching no observing slot among the module's resources, their inline declarations and its templated kinds' body entries, or through a whole forward), `NEED_OPTIONAL_REFERENCED` (an optional need at a reference slot), and the version / features cases of `NEED_FORWARD_INCOMPATIBLE` and `NEED_PARAMETERS_INVALID`, each raised by the kernel at load as its `ERR_` twin — including when the analysis refused the load, which now reports the twin rather than `ERR_MANIFEST_VALIDATION_FAILED`. The analysis builds every imported library whole (`collectModuleDocuments` returns every imported library, and the zone stage selects the ones exporting instances), and reports an imported library's need-table defect once at the `imports:` entry that reaches it. `telo needs report` entries gain `version` (or `null`) and `features`.
+
+  The controller protocol moves to generation `telo-6`, withdrawing `5`: two messages, `Need.Resolve` and `Need.Verify`; every conformance vector, every handshake included, states `6`, which `check:controller-protocol` now verifies.
+
+- 972e899: Needs reaching the root are read from the environment, and `telo needs report` lists them. A `Telo.Application` declares `needs:` as a library does, plus `env: { <field>: <NAME> }` choosing the variable a field is read from. Every need reaching the root unsupplied — the application's own included — is read at load, before any resource initializes, from exactly one environment variable per field: the bound name, otherwise `TELO_NEED_` + the need path's segments and the field in upper snake case joined by `__` (`Orders.databaseAccess` field `url` → `TELO_NEED_ORDERS__DATABASE_ACCESS__URL`; `HTTPServer` → `HTTP_SERVER`). A supply at an import wins over the environment. Values are decoded against the field's schema as a root variable's are, a failure joining the application's `ERR_MANIFEST_VALIDATION_FAILED` without printing a sensitive value; some variables of a need set and a required one not is `ERR_NEED_PARTIALLY_SUPPLIED`; a required need with none set is `ERR_NEED_UNMET`, now naming every variable to set; an optional one is `null`. Those names are hidden by exact name from `process.env` and `ctx.env`. `telo check` reports `NEED_ENV_NAME_COLLISION` (two need fields reading one name, or one a `variables:` / `secrets:` / `ports:` entry binds; `ERR_NEED_ENV_NAME_COLLISION` at load), `LIBRARY_ENV_KEY_REJECTED` for a library need's `env:` (`ERR_LIBRARY_ENV_KEY_REJECTED`), and `NEED_FIELD_UNDECLARED` / `NEED_SLOT_MISMATCH` for an `env:` map. `telo needs report <manifest>` prints, with nothing booted, every need read from the environment with its fields' variables; `-o json` writes a versioned document (`reportVersion: 1`, `needs[]` of `path`, `declaredBy`, `type { module, name }`, `parameters`, `optional`, `fields { env, envSource, required, sensitive }`).
+
+  The analyzer's need table now lists those needs as `environment` (replacing `unmet`; a need's supply form `unsupplied` is now `environment`), each with its fields' environment names, and exports `needGraphScopeOf`, `derivedNeedEnvName`, `envNameSegment` and `NEED_ENV_PREFIX`.
+
+### Patch Changes
+
+- Updated dependencies [972e899]
+- Updated dependencies [972e899]
+- Updated dependencies [972e899]
+- Updated dependencies [972e899]
+- Updated dependencies [f3071ab]
+  - @telorun/analyzer@0.117.0
+  - @telorun/kernel@0.117.0
+  - @telorun/ide-support@0.117.0
+  - @telorun/sdk@0.117.0
+  - @telorun/templating@0.117.0
+
+## 0.116.0
+
+### Patch Changes
+
+- Updated dependencies [f72827b]
+- Updated dependencies [f72827b]
+- Updated dependencies [f72827b]
+  - @telorun/analyzer@0.116.0
+  - @telorun/kernel@0.116.0
+  - @telorun/sdk@0.116.0
+  - @telorun/runner-core@0.18.0
+  - @telorun/ide-support@0.116.0
+  - @telorun/templating@0.116.0
+
+## 0.115.2
+
+### Patch Changes
+
+- Updated dependencies [091f35d]
+  - @telorun/analyzer@0.115.2
+  - @telorun/kernel@0.115.2
+  - @telorun/ide-support@0.115.2
+  - @telorun/sdk@0.115.2
+  - @telorun/templating@0.115.2
+
+## 0.115.1
+
+### Patch Changes
+
+- @telorun/analyzer@0.115.1
+- @telorun/kernel@0.115.1
+- @telorun/ide-support@0.115.1
+- @telorun/sdk@0.115.1
+- @telorun/templating@0.115.1
+
+## 0.115.0
+
+### Patch Changes
+
+- @telorun/analyzer@0.115.0
+- @telorun/kernel@0.115.0
+- @telorun/ide-support@0.115.0
+- @telorun/sdk@0.115.0
+- @telorun/templating@0.115.0
+
+## 0.114.0
+
+### Patch Changes
+
+- Updated dependencies [4761218]
+- Updated dependencies [4761218]
+- Updated dependencies [e314d27]
+- Updated dependencies [4761218]
+- Updated dependencies [e0dc0bf]
+  - @telorun/analyzer@0.114.0
+  - @telorun/kernel@0.114.0
+  - @telorun/ide-support@0.114.0
+  - @telorun/sdk@0.114.0
+  - @telorun/templating@0.114.0
+
+## 0.113.0
+
+### Patch Changes
+
+- Updated dependencies [2aec2f7]
+- Updated dependencies [2aec2f7]
+- Updated dependencies [2aec2f7]
+  - @telorun/analyzer@0.113.0
+  - @telorun/kernel@0.113.0
+  - @telorun/ide-support@0.113.0
+  - @telorun/sdk@0.113.0
+  - @telorun/templating@0.113.0
+
+## 0.112.0
+
+### Minor Changes
+
+- 220c7bf: `telo upgrade --pin-local` rewrites a relative import of a released workspace module to its published pin once the published artifact matches the working copy, and keeps it relative — printing the release plan's reason — while a change to that module is unreleased. `telo upgrade -o json` now also lists each upgrade, repin and kept-local import with the manifest that holds it.
+- 71da112: Five manifest primitives, each checked by `telo check` and enforced by the kernel.
+
+  **A reference slot inside a named shape is a slot of the kind.** A `!ref` written at an `x-telo-ref` slot a `Telo.JsonSchema` declares — reached from a kind's schema by `$ref: "telo://Self/<Shape>"` or `telo://<Alias>/<Shape>`, at any depth of a shape recursing with `$ref: "#"` — is now checked (`UNRESOLVED_REFERENCE`, `REFERENCE_KIND_MISMATCH`), resolved to the live instance, and may be an inline declaration. Before, such a slot was read as plain data: a missing target passed `telo check` and the controller received a name. A stdlib or third-party kind whose schema reaches a shape holding reference slots now has those references validated; one that named a missing or wrong-kind target is newly refused.
+
+  **A computed value at or above a reference slot is refused in a runtime-eval field too.** `REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED` used to cover only fields evaluated at creation; a `!cel`, `!interpolate` or `!sql` at or above a slot inside an `x-telo-eval: runtime` field is now refused at check and when the resource is created. Values beside or below a slot stay computable. This is a break for a manifest that computed such a value: write the slot as `!ref`.
+
+  **`x-telo-eval: accessor`.** A third value of the annotation: the field holds a plain `!cel` chain rooted at one of its `x-telo-context` bindings, or a literal. The chain is type-checked and never evaluated, with no `CEL_NULLABLE_ACCESS`; the controller receives `{ root, path }` for a chain and `{ value }` for a literal. Anything else is `ACCESSOR_NOT_PLAIN_CHAIN` / `ERR_ACCESSOR_NOT_PLAIN_CHAIN`. Editors agree with the checker there: tag completion offers `!cel` alone at an accessor field and no tag beneath it, in VS Code and in studio's form, and CEL completion inside the expression offers only the field's bindings and their members. For a caller of the analyzer, `celEvalModeAt` (and `AnalysisRegistry.celEvalModeAt`) now answers `"accessor"` at or beneath such a field, where a field that is not evaluated otherwise answers `null`; `offeredValueTags` takes that mode and a third argument saying whether the position is the field itself.
+
+  **A template's `provide:` reaches a provider.** The target is read through `invoke()` when it has one and through its own `provide()` otherwise, with `result:` applied to either; before, a provide-only target failed with a capability error. `inputs:` beside a provide-only target is refused at dispatch.
+
+  **Browser entries.** A `Telo.Library` declares the ES modules it ships for a browser under `exports.browser:` (`specifier`, `path`, `source`, optional `abi`, `external`, `exports`); a malformed entry, a repeated specifier or a platform axis on one is `BROWSER_ENTRY_INVALID`. The kernel builds them — into `<cache-root>/browser-src/` on first use in a checkout, into a new `browser` artifact layer at `telo publish` / `telo release` — with entries declaring the same `external` list built together so they share chunks; a failed build is `ERR_BROWSER_BUILD_FAILED`. Controllers reach one through the new `ctx.resolveBrowserEntry(specifier)` and `ctx.resolveControllerBrowserEntry(specifier)`, which return the built file, its sibling files, a content digest, `abi`, `external` and `exports`. The sibling files are the ones the entry's build recorded beside it in `<path>.siblings.json` (`{ "files": [ { "path": … } ] }`); a list that is missing, malformed or names a file outside the layer or build directory is `ERR_BROWSER_ENTRY_UNAVAILABLE`, and `telo publish` / `telo package` refuse a module declaring a file of its own at that reserved name. A string field annotated `x-telo-browser-export: { entry: <pointer> }` must name an export of a browser entry its own module declares (`BROWSER_ENTRY_UNKNOWN` / `BROWSER_EXPORT_UNKNOWN`, `ERR_`-prefixed at creation). `telo install` and `telo package` always include browser layers; the Rust kernel reads the role and skips it.
+
+  **The computed-reference refusal covers every evaluated field.** `REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED` also apply where a CEL region covers a field that carries no `x-telo-eval` (`x-telo-context`, `x-telo-error-context`, a step context): an `Http.Api` route's `handler: !cel …` is now that one diagnostic instead of `INVALID_REFERENCE`, and a computed container above a route's `returns[].content.*.encoder` is newly refused at check and at creation. A computed leaf beside a slot stays legal.
+
+  **An expression inside a reference slot's value branch no longer breaks the branch.** Where a slot takes a reference or a list of entries (each a reference beside other fields), an entry holding `when: !cel …` was reported as `INVALID_REFERENCE` at the slot; the list is now judged with the expression standing in, and an entry of the wrong shape is still refused.
+
+  **A rule skips only for what it reads through a comprehension.** In `x-telo-resource-rules` and `x-telo-referrer-rules`, a condition such as `self.routes.all(r, r.path != "")` reads each element's `path` alone, so an expression in another field of an element no longer makes the rule `RESOURCE_RULE_SKIPPED` / `REFERRER_RULE_SKIPPED`; a rule skipped before may now report a violation. The skip message names the value by the chain that reads it (`self.routes[1].path`). `@telorun/templating` exports `extractReadChains` and `EACH_SEGMENT`.
+
+  **A tagged union's failure is read by its tag.** Where a union's branches each pin a discriminator member with `const` / `enum`, a correctly tagged value's own problem is reported as that branch's — `must NOT have additional properties ('<key>' is not allowed)`, `is missing required property '<key>'` — instead of `matches no alternative`, and a value whose tag no branch accepts is reported once, at the tag, listing every allowed value. The message text of such `SCHEMA_VIOLATION` / `ERR_*_INVALID` failures changes accordingly.
+
+  **A disposed effect leaves its frame.** `dispose()` on a `.perform()` result, and the release a synchronous registration returns, now remove the effect from its resource's frame as the specification says, in constant time; before, the entry stayed for the life of the resource with everything its inverse closed over, so a resource performing one effect per connection grew without bound.
+
+  **The computed-reference refusal no longer depends on a concrete item.** A computed value above a slot reached through a named shape — `children: !cel "[]"` where each child is a shape holding a reference slot — is `REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED` even when the resource writes no item of that shape anywhere; before, it was refused only when some list in the resource held one.
+
+  **A browser entry's files stay inside its module.** An `exports.browser` entry whose `path` or `source` is absolute or points above the module root is `BROWSER_ENTRY_INVALID`, and the entry does not exist for a resource or controller naming its specifier.
+
+### Patch Changes
+
+- Updated dependencies [71da112]
+  - @telorun/analyzer@0.112.0
+  - @telorun/kernel@0.112.0
+  - @telorun/sdk@0.112.0
+  - @telorun/ide-support@0.112.0
+  - @telorun/templating@0.112.0
+
+## 0.111.0
+
+### Minor Changes
+
+- 587220a: `@telorun/cel`, `@telorun/sdk` and `@telorun/templating` are released under the MIT License from this version, and a published module carries its own license text.
+
+  The three packages declare `"license": "MIT"` and ship the MIT text; their Rust twins (`telorun-sdk`, `telorun-sdk-core`, `telorun-sdk-macros`, `telorun-abi`, `telo-templating`) declare `license = "MIT"`. The analyzer, kernel, CLI and editor packages stay under the Sustainable Use License, and versions already published keep the license they shipped with.
+
+  `telo publish` and `telo package` now carry a `LICENSE` file at a module's root with no `files:` entry: it ships in the artifact's `common` layer, beside the notices a `sources:` entry names. A module that keeps a `LICENSE` beside its `telo.yaml` therefore publishes one more file than before, which moves the pin of its published `telo.yaml` — republishing such a module at a version that is already published is refused, and needs a new `metadata.version`.
+
+### Patch Changes
+
+- Updated dependencies [587220a]
+- Updated dependencies [587220a]
+  - @telorun/glob@0.3.1
+  - @telorun/sdk@0.111.0
+  - @telorun/templating@0.111.0
+  - @telorun/analyzer@0.111.0
+  - @telorun/kernel@0.111.0
+  - @telorun/ide-support@0.111.0
+
+## 0.110.0
+
+### Minor Changes
+
+- 9254474: Studio opens Telo Cloud workspaces: optional sign-in on the web and desktop builds, a local working copy of the workspace's git repository, commit, update with a per-file conflict choice, and publishing a module to the workspace's registry. The web build is also released as the container image `ghcr.io/telorun/studio-web`, with the Helm chart `oci://ghcr.io/telorun/charts/studio-web` to deploy it.
+
+  `telo publish -o json` reports one entry per manifest under `modules`: a stable failure `code` with its `details`, or the `version`, `digest` and `integrity` of what was pushed and whether it was `identical` to what is already published. Every unpublished sibling import is now reported, not only the first. A transport's publish result carries the pushed artifact's `digest`.
+
+  The `requires.telo` edge check now starts `npx` outside the module's directory, so a `.npmrc` beside the manifest no longer decides which registry `@telorun/cli` is installed from.
+
+### Patch Changes
+
+- Updated dependencies [9254474]
+  - @telorun/kernel@0.110.0
+  - @telorun/sdk@0.110.0
+  - @telorun/templating@0.110.0
+  - @telorun/analyzer@0.110.0
+  - @telorun/ide-support@0.110.0
+
+## 0.109.0
+
+### Minor Changes
+
+- 3fe9d3d: **The telo version a module is edited against is the version it runs on.** A session request may name, per application, the telo release it runs on (`telo` on each entry of `apps`, or on the request for a single-app session), and a runner advertising `features.teloVersions` runs exactly that version — never a substitute. What can be known without fetching anything is refused before a session exists: `400 telo_version_unavailable` carries `{ app, version, reason }`; a version sent to a runner that does not advertise the feature is `400 telo_version_unsupported`; text that is not a release version, or a session where only some apps name one, is `400 invalid_telo_version`. Fetching the version — an image pull, a release download — happens inside the session's start, with progress on its stream, and a fetch that fails is that session's failed start carrying the reason.
+
+  - **docker-runner and k8s-runner** run that application's container on `<RUNNER_TELO_IMAGE_REPOSITORY>:<version>-<RUNNER_TELO_IMAGE_VARIANT>` (default `telorun/node:<version>-slim`; chart `session.teloImages`). Which versions may run is the image source's own rule on both; the k8s base-image catalog is the menu `config.image` is picked from and gates nothing else. An unreleased build identity (`X+unreleased`) has no published image: it runs on `RUNNER_TELO_UNRELEASED_IMAGE` where the operator set one and is refused, naming that variable, otherwise. The runner's own `workspace` container never follows an application's version — it stays on the operator's kernel image (`RUNNER_IMAGE`, new on docker-runner). `config.image` and `config.pullPolicy` are **deprecated**: a client naming no version still sends them and gets the old behaviour, the advertised schema marks both `deprecated: true` and requires neither, and a request naming a version beside either is `400 invalid_config`. How a version's image is pulled is the operator's — `RUNNER_PULL_POLICY` (`missing` | `always` | `never`, default `missing`; chart `session.teloImages.pullPolicy`), which also governs the runner's own workspace container. A failed start's status now carries the daemon's own message beside the stage.
+  - **`telo runner`** runs its own version as itself and any other as that release's standalone binary for the platform — downloaded while the session starts, verified against the release's `checksums.txt`, cached per version. A cached binary is rehashed against the digest recorded when it was written, which detects a damaged file (the digest sits beside it, so this is not tamper protection). Another build's unreleased identity is refused up front; a failed download names its cause: no release or no binary for the platform, the HTTP status, a missing or non-matching checksum, no writable cache directory.
+  - **The runtime says which version it is.** `Kernel.Starting` carries `{ telo }` (`X`, or `X+unreleased` for a build made while `X` is pending; the kernel's own generated `TELO_RUNTIME_VERSION`), and the runner passes it on as `telo` on that generation's `run` `started` event. The runner compares nothing.
+  - **Studio** sends the version the language session reports for the module being run (`LanguageRouter.statusOf(uri)`, new in `@telorun/language-host`), shows a runner's refusal in the run dock with the runner's own reason, shows each application's reported version beside its generation, and warns — without stopping the run — when the runtime reports a different version than was asked for, or when the module has moved to another version since the run started. A module with no engine cannot be run until its version is resolved. The runner settings form leaves out every property its schema marks `deprecated`.
+
+  `RunnerBackend` gains the optional `supplyTelo(version, config)`, `BackendAppSpec` carries `telo`, and `ServerDeps.validateConfig` is now a `ConfigGate`, told whether the request names a version.
+
+  **The telo version picker no longer says whether a version's engine is cached** (`describeVersionMark` in `@telorun/language-host`, so in Studio and the VS Code extension alike): it changes nothing a reader would choose by, and "cached" is not a word every reader of that menu knows.
+
+  **An engine built before its release is shown as `X (local)`**, where it read `X (unreleased build)` — in the status label, the version picker and every sentence built from them (`describeEngineVersion`).
+
+  `@telorun/language-host` gains `describeAcceptance(mark)` and an `acceptance: false` option on `describeVersionMark`, for a host that marks acceptance with an icon rather than in the row's text, as Studio's menu now does.
+
+  **Also in this change, and not version alignment:**
+
+  - **A run's files sit in the session where the editor holds them, relative to the workspace root** (Studio's run bundle). An application at `<root>/apps/todo/telo.yaml` is now `apps/todo/telo.yaml` in the session workspace — `entryRelativePath` included — where a single-app run used to be rooted at the application's own directory. The agent's sync writes the editor's whole tree into the same volume relative to that root, and the two layouts disagreeing deleted a running app's files on the first agent turn. A relative path an app takes from an env value now resolves against the workspace root rather than the app's directory; `!module-path` is unaffected.
+  - **Deleting an application in Studio stops its running session and drops its runs**, and a save ends the session of an application that has vanished some other way, instead of failing every save with `Entry module not found`.
+  - **docker-runner's watch session passes telo's options before the manifest path.** They came after it, where every token is the application's, so an application declaring no arguments refused `--watch`, `--inspect` and `--no-open` at load.
+  - **Replacing a docker watch session's app set pulls the new images before removing the running containers**, so a pull that fails leaves the session as it was.
+  - **Studio's agent panel opens as a draft when no agent is reachable**, creating the conversation on the agent a send then launches — the first send no longer fails with `ERR_CONVERSATION_NOT_FOUND` — and draws no summary card for a turn that changed no file, ran nothing and was not reverted.
+  - **Studio's telo version menu** lists the ten newest minor releases with each one's other versions nested, puts a row's description under its title, marks acceptance with an icon, and its label reads `Telo X` with `(auto)` when Auto chose the version.
+  - The capability document gains `config.supersededByTelo` — the config properties a request leaves out once it names a version — and a release older than `MIN_SUPERVISABLE_TELO` (0.95.0, the oldest verified by execution) is refused before a session exists.
+
+### Patch Changes
+
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+  - @telorun/analyzer@0.109.0
+  - @telorun/ide-support@0.109.0
+  - @telorun/kernel@0.109.0
+  - @telorun/sdk@0.109.0
+  - @telorun/templating@0.109.0
+  - @telorun/runner-core@0.17.0
+
+## 0.108.0
+
+### Patch Changes
+
+- Updated dependencies [8c94cc0]
+- Updated dependencies [8c94cc0]
+- Updated dependencies [8c94cc0]
+- Updated dependencies [8c94cc0]
+- Updated dependencies [8c94cc0]
+- Updated dependencies [8c94cc0]
+- Updated dependencies [8c94cc0]
+  - @telorun/analyzer@0.108.0
+  - @telorun/ide-support@0.108.0
+  - @telorun/kernel@0.108.0
+  - @telorun/sdk@0.108.0
+  - @telorun/templating@0.108.0
+
+## 0.107.0
+
+### Minor Changes
+
+- ced88ae: A file an `!include-text` / `!include-bytes` names is now checked at load, like a `!module-path`: a missing one is `INCLUDE_FILE_NOT_FOUND` in `telo check` and every editor. Both checks now cover every module the entry reaches through a filesystem-path import (`source: ./lib`), not only the entry module, since such a module is never published and so never verified on its own. Registry imports are still left to their publish.
+
+  `telo run` and `telo install` refuse the load on either finding (`ERR_MANIFEST_VALIDATION_FAILED`), before any resource is created, rather than failing when the resource holding the tag is created.
+
+  Both findings name the absolute path checked and, when one entry of that directory is a plausible typo of the missing name, offer it as a fix (`Did you mean './primr.md'?`); when the directory itself is missing they say so instead.
+
+  `telo install` now exits 1 when its analysis pass fails, printing the kernel's diagnostics and an error count; it used to warn and succeed, so an image whose manifest could not boot built green.
+
+  API: `LoadedGraph.modulePathDiagnostics` is renamed `moduleFileDiagnostics`, `EngineFileClaim` gains a required `notFoundCode` — the code an engine's missing claim is reported under — and `ManifestSource` gains optional `locate` and `listDirectory`, implemented by `LocalFileSource`.
+
+- ced88ae: `telo publish` refuses to move the pin of a published version: when the `telo.yaml` it is about to push differs from the one already published at that `metadata.version`, the publish (and `--dry-run`) fails, naming `<destination>@<version>`, both pins, and each payload layer that moved — or that the manifest itself changed. Identical bytes still republish. Previously only payload layers were compared, so a manifest-only edit silently re-pinned a published version.
+
+  `telo publish --annotation <key>=<value>` (repeatable) writes author annotations onto the pushed OCI manifest beside the ones derived from `metadata`; a derived key is refused naming the `metadata` field to set, and the pushed set replaces the published one. Transports gain `checkAuthoredAnnotations` / `publishedAnnotations` and `PublishOptions.annotations`.
+
+  `telo module manifest --json` reports a `Telo.Application`'s declared `variables`, `secrets` and `ports` as `application` (`null` for a library), read by the analyzer's new `readApplicationContract`; no secret value is ever included.
+
+### Patch Changes
+
+- Updated dependencies [e620eef]
+- Updated dependencies [c5528e2]
+- Updated dependencies [c5528e2]
+- Updated dependencies [c5528e2]
+- Updated dependencies [789a410]
+- Updated dependencies [ced88ae]
+- Updated dependencies [ced88ae]
+- Updated dependencies [ced88ae]
+- Updated dependencies [789a410]
+- Updated dependencies [e620eef]
+- Updated dependencies [5b7e56e]
+  - @telorun/analyzer@0.107.0
+  - @telorun/templating@0.107.0
+  - @telorun/kernel@0.107.0
+  - @telorun/ide-support@0.107.0
+  - @telorun/sdk@0.107.0
+
+## 0.106.0
+
+### Patch Changes
+
+- Updated dependencies [31b22f5]
+- Updated dependencies [f37047a]
+- Updated dependencies [31b22f5]
+  - @telorun/analyzer@0.106.0
+  - @telorun/kernel@0.106.0
+  - @telorun/sdk@0.106.0
+  - @telorun/ide-support@0.106.0
+  - @telorun/templating@0.106.0
+
+## 0.105.0
+
+### Minor Changes
+
+- 57045e6: `x-telo-schema-projection-from` derives a projection rather than only naming a slot. Its pointer crosses references — only at a path the holding declaration's kind declares as a reference slot — continuing inside each declaration a reference names, with every hop resolved in the scope of the module that declared the declaration holding it; a hop into a library's internals resolves against that library's own documents, and a library resource input continues to what its importer supplies. The object form `{ from, pick?, omit? }` types a slot as one entry (`pick`) or without some (`omit`). Written on a kind document, it makes every declaration of the kind project as that derivation. `telo check` and the kernel's contract binding resolve all three identically: a hop that yields no single declaration, a kind-level cycle, or a selector naming an absent entry, holding no name or landing on an expression is `SCHEMA_PROJECTION_FROM_UNRESOLVED` / `ERR_SCHEMA_PROJECTION_UNRESOLVED`, and a malformed annotation is `SCHEMA_PROJECTION_INVALID`, reported wherever it is written inside a schema — a resource's own contract and a named shape as well as a definition. The kernel resolves a contract's projections when the resource is created, so an unresolvable one fails boot rather than the first call; a reference resolves only in its holder's module scope, never by name across the whole set. `ProjectionScope` gains `referenceSlots`, and `resolveManifest` / `resolveDefinition` take the holding declaration; `readProjectionFrom` returns the derivation instead of a string. Every analysis over a flattened set now takes the imported libraries' documents (`AnalysisOptions.moduleDocuments`) — `telo publish` passes them too.
+
+  An entry that omits a projection modifier reads the `default:` that applies to that entry: its field's own, or the one the selected `then` / `else` of an `if` over the entry declares, the `if` evaluated as JSON Schema against the entry as written (a computed value matches no `const`). A modifier default declared in more than one place — on the field and in a branch, or in two conditionals — or decided by an `if` that does not compile is `SCHEMA_PROJECTION_INVALID` at the kind.
+
+### Patch Changes
+
+- 75cde7b: A command piped into a reader that closes early (`telo module versions … | head -2`) no longer crashes with an unhandled `EPIPE` stack trace: when stdout or stderr reports the reader gone, the CLI exits with the code the command already set, else 0. Any other stream error still surfaces. `telo run` is unchanged — its streams carry the application's output.
+- Updated dependencies [9f62699]
+- Updated dependencies [57045e6]
+  - @telorun/sdk@0.105.0
+  - @telorun/analyzer@0.105.0
+  - @telorun/kernel@0.105.0
+  - @telorun/ide-support@0.105.0
+  - @telorun/templating@0.105.0
+
+## 0.104.0
+
+### Patch Changes
+
+- Updated dependencies [4641afc]
+- Updated dependencies [4641afc]
+- Updated dependencies [4641afc]
+  - @telorun/sdk@0.104.0
+  - @telorun/kernel@0.104.0
+  - @telorun/runner-core@0.16.0
+  - @telorun/analyzer@0.104.0
+  - @telorun/ide-support@0.104.0
+  - @telorun/templating@0.104.0
+
+## 0.103.2
+
+### Patch Changes
+
+- Updated dependencies [722c0a3]
+  - @telorun/ide-support@0.103.2
+  - @telorun/sdk@0.103.2
+  - @telorun/templating@0.103.2
+  - @telorun/analyzer@0.103.2
+  - @telorun/kernel@0.103.2
+
+## 0.103.1
+
+### Patch Changes
+
+- @telorun/sdk@0.103.1
+- @telorun/templating@0.103.1
+- @telorun/analyzer@0.103.1
+- @telorun/kernel@0.103.1
+- @telorun/ide-support@0.103.1
+
+## 0.103.0
+
+### Minor Changes
+
+- 8f53492: `x-telo-ref` gains an optional `outputType:` key — a JSON Schema the referenced target's output contract must be assignable to. `telo check` resolves the target's output the way `steps.<name>.result` is typed (the target's own `outputType`, its kind's, the keys of its `outputs:` map) and reports `REFERENCE_OUTPUT_MISMATCH` at the slot on a definite mismatch; a target declaring no output gets no verdict. A non-object value is `X_TELO_REF_INVALID_OUTPUT_TYPE`. The verdict is shared: `ManifestAnalysis.outputRefusal` and `AnalysisRegistry.outputRefusal` answer it for editors, and ide-support no longer completes a target (kind or resource) such a slot would refuse. Breaking for a module that adopts the key: an older analyzer refuses it as `X_TELO_REF_UNKNOWN_KEY`, so such a module declares a `requires: telo:` floor.
+
+### Patch Changes
+
+- Updated dependencies [8f53492]
+  - @telorun/analyzer@0.103.0
+  - @telorun/ide-support@0.103.0
+  - @telorun/kernel@0.103.0
+  - @telorun/sdk@0.103.0
+  - @telorun/templating@0.103.0
+
+## 0.102.0
+
+### Minor Changes
+
+- eadb75a: Changed: the telo runtime packages share one version line. `@telorun/sdk`, `@telorun/templating`, `@telorun/analyzer`, `@telorun/kernel`, `@telorun/cli`, `@telorun/ide-support` and `@telorun/language-server` form one changesets `fixed` group (the `linked` group is gone): a changeset naming any of them releases all of them at one version, so this release puts every member on the same number, and that number is the manifest surface generation a module's `requires: telo:` range is written against. `TELO_SURFACE_VERSION` is the line's version with any pending bump applied, and the Rust twins (`telo-kernel`, `telo-cli`, `telo-analyzer`, `telo-templating`, `telorun-sdk`) carry their Node twin's version in `Cargo.toml` and `Cargo.lock`.
+
+### Patch Changes
+
+- Updated dependencies [eadb75a]
+- Updated dependencies [eadb75a]
+- Updated dependencies [eadb75a]
+- Updated dependencies [eadb75a]
+  - @telorun/analyzer@0.102.0
+  - @telorun/ide-support@0.102.0
+  - @telorun/sdk@0.102.0
+  - @telorun/templating@0.102.0
+  - @telorun/kernel@0.102.0
+
+## 0.101.1
+
+### Patch Changes
+
+- Updated dependencies [53e8f07]
+- Updated dependencies [e42957e]
+- Updated dependencies [e42957e]
+  - @telorun/analyzer@0.84.0
+  - @telorun/templating@0.25.0
+  - @telorun/ide-support@0.24.0
+  - @telorun/kernel@0.101.1
+
+## 0.101.0
+
+### Minor Changes
+
+- 5c3ec2f: Added: the `!interpolate` tag — literal text with `${{ expr }}` holes, always a string. Its meaning is exactly the CEL expression joining the text with `string(<hole>)` for each hole, so a hole converts through CEL's own overloads (RFC 3339 for a timestamp, UTF-8 for bytes) rather than the host's. `telo check` type-checks each hole, reports one whose type CEL cannot convert to text as `INTERPOLATION_HOLE_NOT_CONVERTIBLE` and a nullable one as `CEL_NULLABLE_ACCESS`, and checks the result against the field like any other string — an integer field is a type mismatch, a `Telo.HostPath` field `HOST_PATH_UNTYPED_SOURCE`. A `dyn` hole that is null, a list or a map at runtime fails with `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE`, naming the hole. `!sql` and `!interpolate` read holes with one grammar that understands CEL string literals, so a hole may hold a map literal or a string containing `}`, and `${{ '${{' }}` yields a literal `${{`. The CEL catalog gains `string(duration)`, rendering the `Telo.Duration` plain encoding (`5400s`, `1.5s`), and a value brand whose base is not a string renders as text statically too, so `string(ports.http)` and a port in a hole type-check.
+
+  Added: `TemplatingEngine.expressionRegions(source)` says where a tag's CEL sits — the whole `!cel` scalar, each hole of a tag with holes — and `celExpressionsOf(engine, source)` reads it; editors colour, complete, hover and rename inside the holes of any tag through it. The migration vocabulary gains `match.scalar` (`lone-hole` | `interpolated`, an untagged string scalar by its text; a core entry may pair it with `inKind` / `under` `*`) and `set-tag`'s `source: text | hole`.
+
+  Changed: a plain string holding `${{` is no longer an expression. The core migration `untagged-interpolation` rewrites it at load — a lone hole to `!cel "<expr>"`, text with holes to `!interpolate` with the text unchanged — and reports `DEPRECATED_UNTAGGED_INTERPOLATION` in the entry module's own files; `telo migrate` writes the same rewrite to disk. One read without migrations, or a `${{` no hole can be read out of, is refused: `UNTAGGED_INTERPOLATION` at `telo check` — in an imported library, at the consumer's import of it — and `ERR_UNTAGGED_INTERPOLATION` at load. Under `!interpolate` a hole that is null at runtime is an error where the untagged form printed an empty string. `compileString`, `toParameterized`, `TEMPLATE_REGEX`, `EXACT_TEMPLATE_REGEX` and `CompiledValue.parts` are removed; `readInterpolationHoles` / `interpolationShape` replace them.
+
+  Changed: a deferred runtime expression in a `Created` event's `properties` — and in an expression failure's message — is rendered as the tag it was written with (`!cel "request.body"`, `!interpolate "hi ${{ name }}"`) rather than as `${{ source }}`.
+
+- cf3d802: `telo run` exits 1, saying so on stderr, when the process runs out of work before the application finishes — a wait nothing can resolve used to end the run with exit code 0 and no further output, so a test suite whose last test hung reported success without its summary.
+
+### Patch Changes
+
+- Updated dependencies [cf3d802]
+- Updated dependencies [cf3d802]
+- Updated dependencies [5c3ec2f]
+- Updated dependencies [cd12e1b]
+- Updated dependencies [cf3d802]
+- Updated dependencies [cf3d802]
+  - @telorun/analyzer@0.83.0
+  - @telorun/kernel@0.101.0
+  - @telorun/templating@0.24.0
+  - @telorun/sdk@0.101.0
+  - @telorun/ide-support@0.23.0
+  - @telorun/runner-core@0.15.1
+
+## 0.100.0
+
+### Minor Changes
+
+- fd9e61f: Added: a root Application reads its command line through declared bindings. A `variables:` entry may carry `arg:` beside or instead of `env:` — a flag name, `{ flag, short? }`, or `{ position }` — and one bound by `arg:` alone needs a `default:`, since a runner session supplies inputs through the environment; a `ports:` entry may add `arg:` beside the `env:` it still requires. Precedence is a value supplied by name, then the command line, then the environment, then `default:`. A repeated flag fills an array-typed entry, each token read by `items.type`; a boolean is `--x` / `--no-x`; `--` ends options. An argument nothing declares, a missing flag value, a surplus positional or a value failing its type is refused before boot in `ERR_MANIFEST_VALIDATION_FAILED`, naming what the application declares, and `--help` prints the usage the bindings describe instead of running — a synopsis (`[<name>] [--tag|-t <string>]... [--[no-]verbose]`) then one line per argument; the analyzer exports the same rendering (`renderArgumentSynopsis`, `renderApplicationUsage`) for other hosts. `telo check` reports a malformed `arg:` as a schema violation, a conflicting binding as `ARG_BINDING_INVALID`, a secret bound to the command line as `ARG_BINDING_ON_SECRET`, and `arg:` in a library as `LIBRARY_ARG_KEY_REJECTED`.
+
+  Changed: every argument after the manifest path now belongs to the application — `telo run [options] <path> [application arguments]`, as `node [options] app.js [args]` — so `telo run app.yaml --watch` becomes `telo run --watch app.yaml`. Before the path, `--inspect` reads a following `[host:]port`; a bare host is written `--inspect=<host>`. Controllers no longer receive the command line: `ctx.args`, `ParsedArgs` and a controller's `args` export are removed from the SDK (the kernel still hands an already-published controller an empty `args`).
+
+- ba6cece: Changed: `telo changed` now takes glob patterns and lists which matched files a change since `--base` reaches, instead of answering one yes/no for all its arguments — so CI can select the test manifests a pull request affects (`telo changed 'modules/*/tests/*.yaml' -o json` → `{ base, diffed, affected, unaffected }`). A `telo.yaml` is reached through its directory and its relative imports, any other Telo manifest through itself, its `__fixtures__/` and its relative imports, and any other file through itself; the closure now also follows the `workspace:` dependencies a module's controller source bundles. The exit code is 0 for any answer and non-zero only on failure, a diff that cannot be taken reports every matched file as affected, and `--fail-open` is removed. A directory argument is no longer accepted: name its `telo.yaml`.
+
+### Patch Changes
+
+- fd9e61f: Fixed: `telo release status` and `telo release check` no longer fail with `MODULE_PATH_NOT_FOUND` for a `!module-path` naming a file the module's own `sources:` block stages as a module file (an entry an `assets:` pattern selects, or a source's notice), or a directory such a file lies beneath, when that file is not yet staged on disk. Release commands digest staged files from their pins, so such a file ships from its pin, and a directory claim covers every staged file beneath it as well as what is on disk. `telo publish` and `telo package`, which read staged files from disk, still refuse a path with nothing there (`MODULE_PATH_NOT_FOUND`) and an empty directory (`MODULE_PATH_EMPTY`). The analyzer exports the shared rule (`stagedModuleFiles`, `pathsAtOrBeneath`) that `telo check` applies to the same question.
+- Updated dependencies [fd9e61f]
+- Updated dependencies [fd9e61f]
+- Updated dependencies [fd9e61f]
+- Updated dependencies [fd9e61f]
+- Updated dependencies [fd9e61f]
+  - @telorun/analyzer@0.82.0
+  - @telorun/kernel@0.100.0
+  - @telorun/sdk@0.100.0
+  - @telorun/ide-support@0.22.2
+  - @telorun/templating@0.23.0
+
+## 0.99.0
+
+### Minor Changes
+
+- 71fb621: The manifest loader parses a file's YAML once and derives every load variant from that parse — the load phase reads a module raw and each import reads it again compiled, which parsed the same text twice. Each variant takes its own copy of the parsed documents, so no variant can see another's migration, precompile or desugaring. An analysis registry no longer meta-validates the analyzer's own built-in schemas on construction (a test asserts their validity once), cutting a registry from ~33 ms to ~4 ms; one is built per imported library. The kernel reads each module's owner document (layers, `native:`, `sources:`, `exports.code:`) off the documents the loader already parsed instead of parsing every `telo.yaml` a second time (~0.6 s on a 30-module graph), and flattening no longer parses an expression to look for a library's own function calls when it does not spell the library's name.
+
+  A template kind — or a kind inheriting a controller through `extends` and `base:` — from a library imported more than once now runs in the context of the import its instance was declared through. It ran in the context of whichever import registered the kind last, so with two isolated imports supplying different `variables:`, `A.Greet` read `B`'s values; re-exported kinds were affected the same way. A kind is also registered once per kernel instead of once per import site: an import skips a definition an earlier import of the same library already registered under the same controller policy (on a 450-resource application, definition creations ~1,490 → 254 and resource creations 2,144 → 905).
+
+  Resources are created in dependency order and initialized as soon as each is created, so a manifest whose dependencies are all declared boots in one pass with no retries. The analyzer's creation order now places each `Telo.Import` before the resources whose kind is spelled through its alias, and each `Telo.Definition` before the resources of its kind and the definitions extending it — imports and definitions were missing from the order and sorted last, so every such resource failed its first creation. These declaration edges only order and never report a cycle. On a 450-resource application: 2,511 create attempts (269 failed) and 166 deferred initializations → 2,144 creates and none failed or deferred. A resource whose `!include-*` or `!module-path` failed to resolve no longer loses that error on its next creation attempt to a schema mismatch against the unresolved tag.
+
+  Creating a resource costs less CPU. The `resources.<name>` reads recorded for each created resource are derived once per expression text instead of re-parsing every expression at every import site, and the expression walk skips the template regex for strings without `${{` and no longer allocates an entry array per object (together ~660 ms → ~170 ms on a 450-resource application). A realm shim's source is built once per process rather than once per controller bundle directory (~230 ms → ~2 ms), and an artifact selector's key is computed once per selector rather than on every layer lookup.
+
+  A warm `telo run` parses no YAML. Parsed manifests are cached under `<cache-root>/yaml-parses/`, one entry per source file and runtime family that an edit or a version upgrade overwrites; an entry is served only for the exact text, runtime and analyzer, templating and `yaml` versions it was written for, so a warm load restores each document's value and position table instead of parsing (~1.3 s of a ~2 s load on a 30-module graph; `load` now ~0.8 s). The `yaml` documents are parsed only if something reads them, which the run path never does. `--no-cache-write` reads the cache without writing it, an entry that cannot be read is reported once and parsed instead, and `telo package` leaves `cache/yaml-parses/` out of the payload's analysis key. `Loader.setParseCache` and the `YamlParseCache` interface are new analyzer exports.
+
+  A template child holding a forwarded `self.<ref>` no longer costs a stack overflow per creation attempt. The child's declaration holds the LIVE instance, and two walks run over it on every attempt: `walkCelExpressions` recursed into the instance's cyclic graph until the stack overflowed (caught and retried, ~130 ms each), and the dependency-edge walk traversed most of the kernel's object graph behind it. Both now descend into plain containers only — the rule the include walk already followed.
+
+  An imported library is no longer analyzed a second time at boot. The load already registers every module's definitions and imports into the kernel's analysis registry; an import now normalizes and orders its library in that registry, seen from inside the library through the new `AnalysisRegistry.forModule(module)`, instead of building a registry of its own — a new AJV instance compiling the JSON Schema meta-schema plus a full analysis pass, which isolated imports used to pay per import site and later per library. A library the load did not reach is analyzed once, into the same registry; a library named like the application that imports it gets a registry of its own, since alias tables are keyed by module name. On a 450-resource application with 233 imports of 29 libraries, the imports' own time went from ~2.1 s to ~0.8–1.1 s. Each import site still gets its own manifest copies and its own child scope.
+
+  `telo run --startup-profile` writes profile `version: 2`: timing events carry `startedAtMs` and `heapDeltaBytes`, every row reports `selfMs` (its time minus the windows of resources nested inside it — a template's children, an import's library), `Telo.Import` timings are listed under a new `imports` section instead of being dropped, and `attribution` states how much of `resourceInitialization` the timed work accounts for. A timing event without `startedAtMs` is ignored, and resource rows are sorted by `selfMs`. A new `memory` section reports each phase's heap and resident-set change (`phases`), the process's memory when the report was written (`atReport`) and its peak resident set (`peakRssBytes`); each row reports `createHeapDeltaBytes`, `initializationHeapDeltaBytes`, `heapDeltaBytes` and `selfHeapDeltaBytes`. Heap readings include off-heap memory, and a collection inside a window makes its delta small or negative.
+
+- 6cb3e9f: `telo changed <paths..>` — answers whether anything a module entry point depends on moved since a git ref, so an expensive CI job can be gated on its own dependency graph instead of paying on every push. An argument is a module entry point (a directory holding `telo.yaml`, or a `telo.yaml` itself), walked transitively through its **relative** `imports:` edges — the same edges `telo release` propagates a version bump along, and no payload is built to follow them. Anything else, including a manifest under another name, is a glob matched literally against the diff. Patterns and the diff are both spelled relative to the repository root, so the answer does not depend on where the command runs from. Exits 0 for "changed", 1 for "unchanged"; when the diff cannot be taken at all it reports "changed" (`--no-fail-open` inverts that), and `-o json` carries the verdict, the resolved patterns and the matched files.
+
+### Patch Changes
+
+- Updated dependencies [71fb621]
+  - @telorun/kernel@0.99.0
+  - @telorun/templating@0.23.0
+  - @telorun/analyzer@0.81.0
+  - @telorun/ide-support@0.22.1
+
+## 0.98.0
+
+### Minor Changes
+
+- 95762d6: Host paths and module paths: a path is anchored by what declares it
+
+  `x-telo-type: Telo.HostPath` is a new value type for an absolute path on the machine running the application. In CEL it is a type of its own: extend one with the new `.joinPath('sub/dir')`, which joins with the host's separator (`\` on Windows) and keeps it a host path, and read it as text with `string(path)`; a plain string where a host path is required is a static error. Every value-type brand now converts to its base the same way (`int(ports.http)`). A relative one is refused wherever it is held — `HOST_PATH_RELATIVE` at `telo check`, with a repair to `!module-path`, and `ERR_HOST_PATH_RELATIVE` at creation for a relative path an expression computes — except in an Application `variables:` / `secrets:` entry typed `Telo.HostPath`, whose env value or `default:` is resolved against the working directory at load. That is the directory `.env` is read from, and for a packaged executable started by double-click, the one it sits in.
+
+  Nothing else anchors a relative host path, and `telo check` says so where it is written: a relative `default:` at a host-path field of a kind's schema or a library variable is `HOST_PATH_RELATIVE` at the declaring document, and a plain CEL reference feeding a host-path field from a source declared as something else (a `type: string` variable) is `HOST_PATH_UNTYPED_SOURCE` — at the resource field, and where an import supplies a library's host-path variable. A relative literal an import passes to a library's host-path variable, and an expression starting with a relative literal (`'data/' + variables.name`), are `HOST_PATH_RELATIVE` as well. A union field with a constant branch (`":memory:"`) beside a path now reads each value as the branch it names, statically and at runtime.
+
+  `!module-path <path>` is a new tag naming a file or directory that ships with the module by its location. The kernel resolves it at resource creation to the absolute path on disk (`ERR_MODULE_PATH_NOT_FOUND` when nothing is there). `telo publish` and `telo package` carry everything beneath a named directory with no `files:` entry and refuse one that is missing or empty (`MODULE_PATH_NOT_FOUND` / `MODULE_PATH_EMPTY`). A missing one in the entry module is also reported by `telo check`, VS Code and Studio: the loader asks the new optional `ManifestSource.exists(base, relative)`, implemented by the Node, VS Code, Tauri and File System Access sources, and records it as `LoadedGraph.modulePathDiagnostics`. A tag on a document that is never instantiated is `MODULE_PATH_OUTSIDE_RESOURCE`, and `DiagnosticFix.tag` gains `module-path`. The Rust templating crate reads the tag and the Rust kernel resolves it.
+
+  Studio offers `!module-path` as a path tag wherever its produced `Telo.HostPath` fits the field.
+
+- 95762d6: Add `telo run --startup-profile <file>` to write a low-overhead JSON breakdown of CLI-visible startup phases and per-resource create/initialization timings.
+
+### Patch Changes
+
+- 95762d6: No console windows on Windows
+
+  Telo Studio no longer opens a console window on Windows when it checks for Docker in settings or starts, stops or talks to a local runner (the `docker`, `telo runner` and `taskkill` processes now start without a window). `telo runner` also starts each session's `telo run` and its `taskkill` with their windows hidden.
+
+- Updated dependencies [95762d6]
+- Updated dependencies [95762d6]
+  - @telorun/sdk@0.98.0
+  - @telorun/templating@0.22.0
+  - @telorun/analyzer@0.80.0
+  - @telorun/kernel@0.98.0
+  - @telorun/ide-support@0.22.0
+
+## 0.97.0
+
+### Patch Changes
+
+- Updated dependencies [2cbf883]
+- Updated dependencies [2cbf883]
+- Updated dependencies [2cbf883]
+  - @telorun/analyzer@0.79.0
+  - @telorun/kernel@0.97.0
+  - @telorun/templating@0.21.1
+  - @telorun/sdk@0.97.0
+  - @telorun/ide-support@0.21.4
+
+## 0.96.0
+
+### Patch Changes
+
+- Updated dependencies [abe08ab]
+- Updated dependencies [abe08ab]
+- Updated dependencies [abe08ab]
+  - @telorun/analyzer@0.78.0
+  - @telorun/kernel@0.96.0
+  - @telorun/sdk@0.96.0
+  - @telorun/ide-support@0.21.3
+  - @telorun/templating@0.21.0
+
+## 0.95.0
+
+### Minor Changes
+
+- 21b3486: `telo package` — ship an application as one executable
+
+  `telo package <manifest> --out <file> [--platform os/arch[/libc]]` writes the
+  released `telo` binary for that platform with the application inside it: the
+  manifest, every local file its graph reaches, and the whole resolved import
+  closure, already warmed. The result runs on a machine with no Node.js, no telo
+  and no network. Every argument belongs to the application; `telo package inspect
+<file>` and `TELO_APP_INFO=1` report what a binary carries. Packaging a darwin
+  platform requires a macOS host. `docs/guides/packaging-an-app.md` has the rest.
+
+  A packaged app carries the telo that packaged it, and that is enforced: only a
+  released telo may download a carrier, because a working copy and the release of
+  the same version number are different code. From a source checkout, build that
+  checkout's own binary (`pnpm --filter @telorun/cli build:standalone`) and package
+  with it.
+
+  Two things a packaged app needs that everything else gets too:
+
+  - **`telo install` REFUSES an incomplete warm for a platform you NAME.** A layer
+    it could not materialize — a failed fetch, or one constraining an axis the
+    target leaves undetermined — was a warning on the grounds that `telo run`
+    fetches lazily. That is false for a baked image and for a payload, whose warmed
+    tree is the only cache they have, so the skip surfaced as a boot failure on
+    another machine. **An image build passing `--platform` without `--abi` over a
+    closure with abi-constrained native layers now fails where it used to warn**;
+    pass `--abi <family>-<version>`. A bare `telo install` is unchanged in spirit:
+    the target is this machine, its ABI is now used rather than discarded, and a
+    gap is a warning.
+  - **`Kernel.load` takes an `analysisKey`**, which changes how the analysis
+    verdict is FILED and how the files it covers are IDENTIFIED — under the key,
+    and relocatably (a remote module by its pinned ref, a local one relative to the
+    entry) rather than by absolute paths that do not survive a tree being used
+    somewhere other than where it was built. The signature still covers every
+    file's content, so a relocated cache hits while an edited one re-validates.
+
+### Patch Changes
+
+- Updated dependencies [21b3486]
+  - @telorun/kernel@0.95.0
+
+## 0.94.1
+
+### Patch Changes
+
+- f5e4967: Every standalone target now builds, packages and installs. Four of the seven
+  produced no installer at all — macOS ships bsdtar, which has no `--transform`;
+  rpm stripped a payload built for another architecture; WiX v7 refuses to run
+  until its EULA is accepted; and a musl binary cannot execute on a glibc host.
+
+  Release assets carry the packaged formats only. The bare `telo` / `telo.exe`
+  collided across every target's job, so the file called `telo` on the release
+  page was whichever platform finished last. Their checksums are now one
+  `checksums.txt` covering every asset, in `sha256sum -c` format, rather than a
+  `.sha256` beside each file.
+
+  `install.sh` and `install.ps1` read that file, and they resolve the version
+  from the newest release tagged `v<version>` — `releases/latest` is the newest
+  release in the repository whatever it releases, so the version they installed
+  could come from an unrelated one. The Alpine case now says what it needs: the
+  musl build is linked against `libstdc++`, which a bare Alpine does not carry.
+
+  The advertised install command is `https://telo.sh/install.sh`
+  (`irm https://telo.sh/install.ps1 | iex` on Windows), which serves the scripts
+  that shipped with the release they install. `https://telo.run/install.sh` keeps
+  working.
+
+## 0.94.0
+
+### Minor Changes
+
+- d6ccba0: Add `telo runner`: the `/v1` runner API served over local processes, so an editor — or any client — can run applications on this machine without Docker.
+
+  Each application in a session is a `telo run --watch --inspect` of the running executable, which is what makes the supervisor and the supervised one version by construction. Three things differ from the container backends and each is advertised rather than hidden: there is no PTY (`features.io` is `["streams"]`, and an explicit `io: "tty"` is refused rather than silently downgraded), there is no isolation (the workload inherits this process's environment and privileges), and ports are bound directly on the host instead of published.
+
+  **It is a code-execution API with no authentication, so it is closed by default in two directions.** It binds `127.0.0.1` and refuses a non-loopback bind without `--allow-remote`. And it allows **no browser origin** unless one is named with `--allow-origin` (or `RUNNER_CORS_ORIGINS`): every page a user visits can reach `127.0.0.1` from their browser, and a runner answering `Access-Control-Allow-Origin: *` would let one of them start a session. Native clients, which send no `Origin`, are unaffected. Session workspaces hold the user's source, so they are created `0700` under a per-process directory that the next runner reclaims if this one is killed.
+
+  The process backend lives in the CLI, beside the substrate it owns, exactly as the docker backend lives in the image that fronts a docker socket. What that required of `@telorun/runner-core` is the contract change below.
+
+  **Breaking, for a client that skipped the editor: `SessionConfig` and `ProbeConfig` no longer declare `image` and `pullPolicy`.** They were container vocabulary in the backend-neutral contract, invisible only while every backend ran containers. The session config is now an opaque bag the runner describes through `config.schema` on `/v1/capabilities` and enforces through `validateConfig` — the mechanisms that already existed and already were the authority the editor renders from. `POST /v1/sessions` no longer requires `config` at all. The two halves of a container backend's answer — the schema it advertises and the parser it reads back — moved to `@telorun/runner-core/container`, so the neutral entry point carries no image vocabulary.
+
+  Nothing changes for a client of docker-runner or k8s-runner: both still require an image and reject a config they cannot use with `400 invalid_config` naming the field (a probe reports it as `needs-setup` instead of rejecting the request, which is what a probe is for). The k8s gate is now unconditional — it used to exist only when a base-image catalog was configured, so a catalog-less deployment accepted a non-string image and an unknown pull policy, and started a pod on its default image without telling anyone.
+
+  Two smaller changes in core: a narrowed origin list is now **enforced by the runner** (`403 origin_not_allowed`) rather than left to the browser's CORS rule, since a client that ignores response headers is not bound by CORS at all; and `buildServer` takes an optional `logStream`, because a runner hosted inside a CLI cannot write its request log to stdout, where that stream is the machine surface.
+
+### Patch Changes
+
+- Updated dependencies [d6ccba0]
+  - @telorun/runner-core@0.15.0
+
+## 0.93.2
+
+### Patch Changes
+
+- ab9bbe9: Fix the standalone release so a `v<version>` release cannot be published without its installers.
+
+  Five of the seven build targets failed, so nothing was ever attached — and the release existed anyway, because the npm job creates it. It is now created as a draft and published only after every target has built and the packages have installed in containers with no Node.js; `releases/latest`, which the install scripts read, skips drafts, so a failed build leaves the previous release standing.
+
+  The four build failures behind it: Windows runners have PowerShell and not `zip`; the runner's own Node decided which runtime archive was fetched, and a Node 22 image asked for a musl build that does not exist, so the runtime the binary carries is pinned and checked against all seven targets; esbuild's per-target executable was installed by a workflow step naming two of the four cross-builds, and is now fetched by the build itself; and `rpmbuild` refuses a `BuildArch` its builder cannot run, so the architecture moved onto the command.
+
+  No change to what the package ships — `bin` and `dist` are untouched. The version moves because the release workflow is triggered by it, and that is what carries the fix into the next release.
+
+## 0.93.1
+
+### Patch Changes
+
+- 815f566: `telo release apply` now moves a module's crate version in the `Cargo.lock` that records it, beside `telo.yaml`, `nodejs/package.json` and `rust/Cargo.toml`. A lockfile left behind still named the crate's previous version, so every `cargo --locked` invocation had to re-resolve — which means reaching the network, which `--locked` forbids. Only a path package is addressed; a registry package of the same name is left alone, and a name recorded more than once without a source is refused rather than guessed at.
+- Updated dependencies [815f566]
+  - @telorun/analyzer@0.77.1
+  - @telorun/kernel@0.93.1
+  - @telorun/ide-support@0.21.2
+
+## 0.93.0
+
+### Minor Changes
+
+- 390b998: Ship `telo` as a standalone executable, and fix what a distribution without `node_modules` exposed.
+
+  The binaries are assets of the existing `v<version>` GitHub Release rather than a release of their own, named in Telo's own platform vocabulary (`telo-<version>-linux-amd64-gnu.tar.gz`, `…-windows-arm64.zip` — the tokens `native:` entries and `telo install --platform` already use). `curl -fsSL https://telo.run/install.sh | sh` installs it; on Windows, `irm https://telo.run/install.ps1 | iex`. The implementation language appears nowhere in a tag, an asset name or an install command: which kernel can host a kind is derived from its `controllers:` PURLs, so it is not a question to hand a user at download time.
+
+  - **A controller bundle now resolves `@telorun/sdk` through a generated package** re-exporting the instance the running kernel has loaded, instead of a symlink at the kernel's own package directory. A symlink needs that directory to exist, which it does not when the SDK is inside a single-file executable. The generated package works on Node and Bun alike, is content-checked so a cache shared between kernel versions converges, and replaces a symlink found in a writable slot rather than writing through it. The npm install root keeps its `file:` dependency: a package manager prunes what it did not install, so a generated package there would be replaced by a registry copy — two SDK instances in one process.
+  - **A cache is never keyed on an undeterminable version.** The kernel and analyzer versions behind the analysis stamp, and the ajv versions behind the compiled-validator cache, used to fall back to the string `unknown` — a key every version agrees on, so one version's entry was served to another. The cache is now disabled and the reason reported once. A build that can know the versions bakes them in.
+  - **A compiled validator that cannot be loaded is reported**, once, with its path and reason, instead of a per-entry warning; an integrity mismatch stays silent, because rewriting the file is the designed recovery. Cached validators also take ajv's runtime helpers from the running kernel, so the cache works where ajv is not on disk.
+  - **No loader probes for an external tool.** The `rustc --version` probe before every cargo build is gone; a missing `cargo` or package manager is recognised from the spawn's own failure and reported with what to install. `telo check` answers the same question ahead of time and warns (`CONTROLLER_TOOL_MISSING`), for kinds whose candidates all need a tool.
+  - **`telo --version` reports the version in every distribution**, including the binary, where it printed `unknown`.
+  - **A controller built from source may depend on a native binary.** A `.node` addon, and a bare package whose whole content is one, are left external instead of failing the build with "No loader is configured for .node files" — the same rule the npm-delivered path already applied. A module reaches its own native library through `native:` and `ctx.resolveNativeFile`; what this removes is a build-time failure standing between the two.
+
+### Patch Changes
+
+- Updated dependencies [0796a3c]
+- Updated dependencies [0796a3c]
+- Updated dependencies [0796a3c]
+- Updated dependencies [814cd18]
+- Updated dependencies [390b998]
+  - @telorun/analyzer@0.77.0
+  - @telorun/kernel@0.93.0
+  - @telorun/sdk@0.93.0
+  - @telorun/ide-support@0.21.1
+  - @telorun/templating@0.21.0
+
+## 0.92.0
+
+### Minor Changes
+
+- 8f12158: `telo cel functions <manifest>` lists, ahead of the catalog, the module functions that manifest can call — its own through `Self` and each import's exported ones through the alias — with their signature, description and derived determinism, naming the chain to a non-deterministic or host-backed leaf. Under `--json` each is an entry of category `module` carrying `deterministic`, `hostBacked`, `nondeterministicVia` and `hostBackedVia` wherever the analysis derived them, and none of the four where it did not. The manifest is loaded exactly as `telo check` loads it — through the `.telo/manifests` cache, with mutable `oci://` tags revalidated — and one that does not load, or that analysis reports errors in, is refused on stderr, each error located, with a non-zero exit. `@telorun/ide-support` exports `functionSignature`, the one rendering of a function's signature every surface shares.
+- 8f12158: Every boundary read outside Telo writes a CEL value in its plain encoding, never type-tagged. `@telorun/sdk` exports the writer — `toPlainJson`, `writePlainJson`, `plainScalar`, `plainMapKey` — and `plainSchemaOf`, the schema of the text an instance-typed slot is written as; each plain encoding now carries that `schema`. A timestamp is RFC 3339 text in UTC, a duration is seconds (`"5400s"`), bytes are base64url, a `uint` is its digits, NaN and ±Infinity are `"NaN"` / `"Infinity"` / `"-Infinity"`, a negative zero is `0`, and a map with int or bool keys is an object keyed by their text; a map two of whose keys share one text is refused with `ERR_PLAIN_JSON_UNWRITABLE`.
+
+  Log attributes (`json`, `pretty` and `otlp`), debug-wire payloads and CLI JSON documents (`-o json`, `telo cel eval --json`) now write a duration, a `uint` and an int-keyed map in that form, where they used to write an empty object or a `[Duration]` marker; a debug-wire payload holding a map whose keys share a text or are not CEL map keys writes it as its `[key, value]` pairs rather than failing the call it observes. `ResourceContext.readPlainEncoded(value, schema)` decodes a value that arrived from outside — a transport body — at every slot declaring a plain-encoded value type, through the walk a YAML literal is read with, and refuses text the encoding does not read with `ERR_INPUT_INVALID`, whose `data.issues` lists each refusal as `{ path, message }`.
+
+### Patch Changes
+
+- 8f12158: A diagnostic's repair can be a tagged scalar. `DiagnosticFix` gains an optional `tag` (`ref` | `cel`), carried by `telo check -o json` (`fix.tag`), by `CheckDiagnostic` on the SDK's runtime seam, and by ide-support's `replace` suggestion; `renderFixReplacement` takes it as a third argument and writes `!ref <replacement>` or `!cel "<replacement>"`, so the VS Code quick fix now writes the tag instead of quoting it into the value.
+
+  `FUNCTION_TYPE_NAME_FORM` now repairs `schema: Money` as `{ replacement: "Money", tag: "ref" }` rather than the untaggable value `!ref Money`. `INVALID_REFERENCE_FORM` gains a repair for a bare-name string reference (`handler: onMessage` → `!ref onMessage`) — not for a dotted FQN or the `{ kind, name }` object, whose target would be a guess — and an untagged rule `condition:` (`RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID`) is repaired by tagging the same expression `!cel`.
+
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+  - @telorun/analyzer@0.76.0
+  - @telorun/kernel@0.92.0
+  - @telorun/ide-support@0.21.0
+  - @telorun/sdk@0.92.0
+  - @telorun/templating@0.21.0
+
+## 0.91.0
+
+### Minor Changes
+
+- 3372dac: Add `ctx.resolveControllerFile(relative)`, which resolves a module-relative reference against the module that declares the resource's controller rather than the module that declared the resource, so a controller can reach its own module's assets. A `sources:` entry may now stage a file an `assets:` pattern selects: it ships in the `assets` layer, publish reads it from its pin, and in a source checkout every staged file at or beneath a resolved reference is brought to its pin (`ERR_MODULE_FILES_UNAVAILABLE` when it cannot be) — for `ctx.resolveModuleFile`, `ctx.resolveControllerFile` and `!include-*` alike. A module whose `sources:` block does not read resolves no module file.
+
+  A kernel running from a source checkout now stages a `sources:` file on first use: a missing or stale native file, module file or prebuilt `napi` addon is fetched from its archive under a per-archive lock in the module's `.telo/staging/` and written only once it matches its pin, so a fresh clone runs a manifest with no `telo release stage` step; the kernel prints one line naming the entry and URL when a fetch starts. A module-file reference stages only the module files beneath it (asset-claimed entries and notices), never another platform's native file. An unpinned entry is still refused. A prebuilt controller whose archive cannot be fetched falls through to the next candidate and a stale copy on disk is never opened; an archive not holding the pinned file is `ERR_STAGED_FILE_INVALID`, and any other staging failure (a lock, a write) is the new `ERR_STAGING_FAILED`. The staging sequence moves from the CLI into `@telorun/kernel`, and `telo release stage` runs it under the same lock.
+
+### Patch Changes
+
+- Updated dependencies [3372dac]
+  - @telorun/sdk@0.91.0
+  - @telorun/kernel@0.91.0
+  - @telorun/analyzer@0.75.0
+  - @telorun/templating@0.20.1
+  - @telorun/ide-support@0.20.2
+
+## 0.90.0
+
+### Minor Changes
+
+- d47a229: Module artifact selectors gain an `abi` axis, so a native file built for one runtime ABI can be declared on a bundled controller candidate (`&abi=node-137`), an `exports.code:` entry and a published layer selector, and is matched, keyed and described like `os`, `arch` and `libc`. Its value must be `<family>-<version>` (`node-137`, `telo-2`); a bare number is refused wherever a selector is read, with a message naming that form. The Node kernel reports `abi=node-<process.versions.modules>` and leaves it undetermined under Bun, so an abi-constrained layer never matches there. `telo install` gains `--abi <family>-<version>`; `--platform` parses as before, `abi` is never taken from the host, and without `--abi` no abi-constrained layer is warmed; install now reports every code layer it skips only because the target leaves an axis undetermined (an `abi`, or a `libc` that `--platform` omits). The axis names are now data (`analyzer/artifact-axes/axes.json`), generated into the analyzer at `prepare`; release ledger keys of layers without `abi` are unchanged.
+- d47a229: A `sources:` entry may name how its files are built in the repository, keyed by build system: `build: { cargo: <module-relative crate directory>, inputs: sha256-<base64url> }`, `inputs` being the digest of that crate's build inputs. `telo check` reports a `build.cargo` outside the module or a `build.inputs` not in that form as `SOURCE_INVALID`, and a `build` recording no `inputs` as `SOURCE_BUILD_UNPINNED`. `telo release stage --pin` records `build.inputs` as a byte splice: a digest over the files git tracks in the crate and in every path crate it reaches transitively — through a path dependency (with `workspace = true` resolved against `[workspace.dependencies]`) or a `[patch]` entry — the `Cargo.lock` packages those crates reach, every `.cargo/config(.toml)` and `rust-toolchain(.toml)` git tracks from the crate's directory up to the repository root, and from the workspace root's `Cargo.toml` the inherited `[workspace.dependencies]` entries, `[patch]`, `[replace]`, `[profile]` and `[workspace]`'s `resolver`, `package` and `lints`. A lock entry no such crate reaches and a file git does not track move nothing, and a crate git does not track is refused. `telo release check` recomputes it from the manifests without running cargo, and fails naming the module and the source when it differs, was never recorded, or the manifest does not parse.
+- d47a229: A module artifact layer can now carry executable files and symbolic links. Publish reads each file's kind from the module directory: a symbolic link selected by `files:` or named by the manifest ships as a link (never followed), and a file with any execute bit ships as executable, framed with mode `0o755`. A layer's `integrity` covers both — an executable's line is `<path>\0<digest>\0x` and a link's `<path>\0l\0<target>` — while a regular file's line is unchanged, so every published layer of regular files keeps its `blob` and `integrity`. Materialization restores the execute bit and creates the link. A link must resolve, within the module directory, to a file of its own layer (through other links if need be), and no entry path may repeat or run through another entry of its layer. Publish refuses a link that escapes, points at a directory, names a file in another layer or dangles, and extraction checks every entry before writing any, refusing such a layer with `ERR_MODULE_LAYER_INVALID`, each naming the entry's module-relative path and the reason; extraction also refuses to write beneath a directory that is not a real directory inside the module's cache directory. A symbolic link to a directory matched by `files:`, previously skipped, now fails publish. `include:` resolution still skips symbolic links.
+- d47a229: The Node kernel hosts `pkg:telo/local/napi` controller candidates: a prebuilt N-API addon at `path=` is loaded through `require`, from a source checkout or from the controller layer of a published artifact, and the PURL fragment selects a property of its exports object. A missing addon or a non-matching platform falls through to the next candidate, and a `pkg:telo/local/dylib` candidate always falls through on Node. In a source checkout an addon a `sources:` entry stages is checked against its pin first, once per file per loader, and a mismatch, a missing pin or an unreadable `sources:` block fails with `ERR_STAGED_FILE_INVALID`, naming `telo release stage`; an absent staged addon falls through with a message naming `telo release stage`. The kernel exports `NODE_HOSTED_FORMATS` and `ModuleArtifact.warmPlan(target)` — the layers a warm fetches and those it skips for want of an axis value — and `telo install` warms and reports only code layers of those formats plus `native` layers, so a Node image never warms a Rust kernel's `dylib` layer. `telo module manifest --json` reports a `napi` candidate as reaching `nodejs` and a `dylib` candidate as reaching `rust`, with no language for either, and a module declaring `native:` entries now carries `runtime.native` — the `os`/`arch`/`libc` platforms and the ABIs those entries cover.
+- d47a229: A `Telo.Library` or `Telo.Application` doc may declare its platform-specific files in a `native:` block, one closed entry per file per platform tuple (`name`, `format`, `os`, `arch`, optional `libc` and `abi`, module-relative `path`). `telo check` reports `NATIVE_NODE_ABI_MISSING` (a `format: node` entry without `abi`), `NATIVE_NAPI_ABI_FORBIDDEN` (a `format: napi` entry with one), `NATIVE_LIBC_OFF_LINUX`, `NATIVE_ENTRY_DUPLICATE` (one name, one selector, twice), `NATIVE_PATH_SHARED` (different selectors, one path), `NATIVE_PATH_NESTED` (a path running through another as a directory), `NATIVE_PATH_CLAIMED` (a path the module also names as a controller candidate's `path=`, an `exports.code:` entry or an `!include-*` embed, naming that declaration), `NATIVE_PATH_ESCAPES_MODULE` and `NATIVE_ENTRY_INVALID` (a name or selector value outside the token grammar), for the entry module's own block; a controller candidate and an `exports.code:` entry report the N-API and libc rules as `CONTROLLER_NAPI_ABI_FORBIDDEN` / `CONTROLLER_LIBC_OFF_LINUX` and `LIBRARY_NAPI_ABI_FORBIDDEN` / `LIBRARY_LIBC_OFF_LINUX`. The layer index recognizes `native` as a selector-carrying role, one layer per selector, where it was previously skipped as unknown. `telo publish` places each entry's file in its selector's `native` layer, ahead of `files:`, `assets:` and `siblings=` patterns selecting it; refuses a file also named by a controller candidate, an `exports.code:` entry or an `!include-*` embed; fails naming an entry whose file is absent; and publishes the `native:` block unchanged. A module adopting the block needs a `requires: telo:` floor at this release.
+- d47a229: Every `telo release` command digests a file a `sources:` entry stages from its pin, so a tree with nothing staged computes the same layer `integrity` as publish computes from the staged bytes; a layer holding such a file takes a stand-in `blob` (`sha256:` plus the hex of its integrity digest) that only the `manifest` ledger digest sees. `telo publish` reads staged files off disk, verifies each against its pin and frames the real bytes, and never fetches. The published `telo.yaml` no longer carries `sources:` — it is removed before any dependent's pin is derived, so editing only a source's `url` moves no digest — and each source's notice files ship in the `common` layer with no `files:` entry. Publish refuses a staged file that is missing, unpinned or does not match its pin, a `native:` path or platform-qualified candidate `path=` that no source stages and git does not track, an unreadable `sources:` block, and a source entry nothing in the manifest names. The module publish job runs `telo release stage` before pushing, over the modules it pushes and their in-repo import closure, which `telo release order -o json` now reports as each entry's `imports`. The kernel's layer integrity accepts a pinned entry (`PayloadPinnedFile`, `LayerEntry`, `isPinnedFile`), and the kernel exports its layer entry rules (`findLayerViolations`, `describeLayerViolations`).
+- d47a229: Controller code can reach a module's platform-specific file by its logical name with `ctx.resolveNativeFile(name)`, which returns a `file://` URI. The name resolves against the module declaring the controller the resource runs — the kind's declaring module, or the ancestor a concrete-`extends` kind inherits its controller from — and the first `native:` entry of that name, in declaration order, matching the host wins. From a published artifact only that entry's `native` layer is fetched, verified and extracted; from a source checkout a file a `sources:` entry stages is verified against its pin, no native file is read while the module's `sources:` block does not read, a checked-in file no source names is read as it is, and a checked-in link only when it leads to a file inside the module; nothing is ever fetched. Every failure rejects with `ERR_NATIVE_FILE_UNAVAILABLE`, naming the host tuple (undetermined axes marked) and every tuple shipped for that name, or the cause — an undeclared name, a staged file unpinned, missing or not matching its pin (naming `telo release stage`), an unreadable `sources:` block, a link leading outside the module. `telo install --platform … --abi …` now warms the `native` layers matching its target, and reports the abi-constrained ones it skips without `--abi`. The kernel exports `checkStagedEntry`, the staged-file check `telo release stage` now shares with it.
+- d47a229: A `Telo.Library` or `Telo.Application` doc may declare a `sources:` block beside `native:`: a map of named sources, each `{ version, url, archive, notices, entries }` with an optional `build`, whose entries are keyed by the module-relative path they produce and are either a file (`upstream`, `member`, and the pins `sha256` / `executable`) or a link (`target`). `url` is an `https://` template — plain `http://` only for a loopback host — and `archive` is `tar.gz`. `telo check` reports `SOURCE_URL_PLACEHOLDER_UNKNOWN`, `SOURCE_URL_INSECURE`, `SOURCE_ENTRY_UNCLAIMED` (a path no `native:` entry, platform-qualified controller `path=` or notice names), `SOURCE_ENTRY_UNPINNED` (a file entry with no pin), `SOURCE_LINK_TARGET_UNRESOLVED`, `SOURCE_LINK_CYCLE` (a link that never reaches a file), `SOURCE_ENTRY_INVALID`, `SOURCE_ENTRY_DUPLICATE`, `SOURCE_ENTRY_NESTED` (a path running through another) and `SOURCE_INVALID` for the entry module's own block; the analyzer exports the block's reader as `readModuleSources`, `resolveSourceUrl` and `sourceUrlProblem`. New `telo release stage [--pin] [--module <path>]` fetches each source's archive once per module, following at most ten redirects each vetted by the `url` rule before it is requested and bounded at five minutes, 512 MiB downloaded and 2 GiB decompressed; it extracts and verifies every file against its pin, writes it with its executable bit, creates link entries, and skips the fetch for a file already staged and matching its pin. `--pin` first writes `sha256` and `executable` into `telo.yaml` as a byte splice in block and flow mappings alike, keeping the file's line endings and leaving the rest of the file unchanged, and writes only when the edited text reads back with exactly the pins computed, replacing the file in one step. The kernel's `readTarGz` takes a `maxBytes` bound on the decompressed size.
+- 40a5d50: `throws: { inherit: true }` now counts dispatch through reference slots, not only step bodies. A kind declaring it gains the effective union of every `x-telo-ref` slot target whose `use`, resolved for that resource, can hand a failure back to its caller: `call` (the failure returns into the invocation) and `trigger.consumer` (the failure rejects the value the caller drains). `detached`, `trigger.inbound`, `dependency` and `schema` slots contribute nothing. A `use` case map is decided by the resource's own selector or the schema default; when neither decides (a `!cel` selector, a literal matching no case, or no selector and no default) the slot counts when any case would. Previously such a kind's escaping errors were missing from its union: a route using it was reported covered while the error escaped, and a `catches:` entry naming the target's code was `UNDECLARED_THROW_CODE`.
+
+  `Run.Sequence`'s union now includes what its `targets:` entries throw, so a route whose handler is a sequence can be asked to cover those codes (`UNCOVERED_THROW_CODE`).
+
+  A reference slot on the legacy bare-string form, which declares no `use`, now reads as `call` for every throws question — a kind's `inherit` union, and the denominator of a scope-level `catches:` list (`x-telo-catches-for: ""`), which previously skipped such a slot. A scope list may therefore name a code only such a slot's target throws without `UNDECLARED_THROW_CODE`, and a scope's union can grow, which a route relying on that scope for coverage sees. No standard-library kind carries a legacy slot these questions reach.
+
+  Every throws question now reads one set of slots: the reference field map's reach (nested objects, array items, `additionalProperties` map values, `oneOf` / `anyOf` / `allOf` branches) plus local `$ref`s, the root's own union branches, and a recursive shape followed as deep as the data goes. A slot a kind declares only behind a `$ref`, in a root-level union branch or under `additionalProperties` now contributes to its `inherit` union, its scope list's denominator and catch-scope enclosure, where before it was invisible to all three. Where several branches declare a slot at one place, every one counts — a branch that does not apply to the resource can only add codes — and an `additionalProperties` slot applies only to keys its schema does not declare, never to a resource's `kind` / `metadata`.
+
+  `INHERIT_WITHOUT_STEP_CONTEXT` keeps its code and is now raised only when a definition declaring `inherit: true` has, anywhere that walk reaches, neither a step body nor a reference slot whose use (for a case map, in any case; a slot declaring none counts as `call`) includes `call` or `trigger.consumer`. The check and the union read the same slots, so a slot the check accepts is one the union counts.
+
+### Patch Changes
+
+- Updated dependencies [d47a229]
+- Updated dependencies [d47a229]
+- Updated dependencies [40a5d50]
+- Updated dependencies [d47a229]
+- Updated dependencies [40a5d50]
+- Updated dependencies [d47a229]
+- Updated dependencies [d47a229]
+- Updated dependencies [d47a229]
+- Updated dependencies [d47a229]
+- Updated dependencies [d47a229]
+- Updated dependencies [d47a229]
+- Updated dependencies [40a5d50]
+- Updated dependencies [d47a229]
+- Updated dependencies [40a5d50]
+- Updated dependencies [40a5d50]
+  - @telorun/analyzer@0.74.0
+  - @telorun/kernel@0.90.0
+  - @telorun/sdk@0.90.0
+  - @telorun/ide-support@0.20.1
+  - @telorun/templating@0.20.1
+
+## 0.89.0
+
+### Minor Changes
+
+- 5e89ea5: `telo-workspace.yaml` gains per-subtree release settings and an `env:` block, and every field now lives in a block scoped to what it governs.
+
+  **`modules:` moves under `release:`.** This is a breaking edit to every existing marker: indent the list one level. Top-level `modules:` is a recognized-and-moved key whose message names the move rather than a generic unknown-field rejection, and no second spelling is kept. It is a release inventory, not an inventory of manifests, and leaving it at the top level made it read as a fact about the tree — which is why a runner had to seed `modules: ["*"]` into every session workspace to satisfy a reader that never runs there. A marker whose whole content is comments is now valid, so it seeds one.
+
+  `release:` carries `registry:` (the publish base), `ignore:` (module-relative gitignore-style paths whose changes ask for no changelog fragment — the built-in default is now `**/`-prefixed, so a nested `nodejs/tests/` suite stops being reported as a semantic change) and `modules:`. An entry is a bare pattern or `{path, registry?, ignore?}` overriding the block's keys key-wise, evaluated last-match-wins.
+
+  `env:` carries `roots:` (how far up `telo run` walks collecting env files) and `files:` (which filenames, later winning within one directory). Both default to today's behaviour exactly.
+
+  Also:
+
+  - **Destinations are checked before any payload is built.** `DESTINATION_COLLISION` when two modules resolve to one ref; `IMPORT_DESTINATION_CONFLICT` when a relative import does not agree about where its target publishes.
+  - **The registry cascade is entry → block → `--registry` → `TELO_OCI_REGISTRY` → the ledger.** The ledger is last, where it used to win; a disagreement is now a per-module `LEDGER_REGISTRY_MISMATCH` inside a plan that is still produced, rather than an abort.
+  - **The ledger records a base per entry**, unconditionally. A top-level `registry:` is read as every entry's and never written again.
+  - **`telo release order` emits `{key, destination}`**, so a publisher no longer derives a destination of its own.
+  - **`telo run` reads the marker's `env:` block** and nothing else in it: a problem elsewhere is printed and the run proceeds; one inside `env:` fails the run rather than widening the walk.
+  - **The marker gets diagnostics and completion**, in the editor and in `telo release` alike, including three checks that need to see the repo — an entry matching nothing, an entry a later one shadows, and a marker nested under another.
+  - **`@telorun/glob` gains `lastMatchIndex`**, which reports _which_ pattern decided a path rather than reducing the walk to a boolean. That is what makes a module's settings attributable to the entry that claimed it, and what the shadowed-entry check reads.
+  - **`@telorun/runner-core` seeds a marker with no blocks at all.** It used to write `modules: ["*"]` — release scope a session never reads — purely because an empty list was a parse error, so every session workspace carried a release claim the runner did not mean.
+
+### Patch Changes
+
+- f4ac842: **CEL gains `merge(map, map)`, right-hand precedence.** The map case had no
+  spelling at all — `+` joins lists and strings and refuses maps — so a child kind
+  inheriting a map-valued field could only REPLACE it. That turns a default the
+  parent set for a reason into something every consumer must restate, and a
+  consumer who restates it incompletely gets a system that works until the omitted
+  entry matters: an OAuth client whose `access_type: offline` was dropped issues a
+  refresh token until the first hour is up, and then does not. `merge(defaults,
+overrides)` makes adding to a map the short spelling and replacing it the
+  deliberate one. Maps only, since `+` already concatenates lists; a list argument
+  is named rather than coerced. The generated CEL reference picks it up from the
+  catalog, so the docs need no separate edit.
+
+  **`telo module digest --help` says which digest it prints.** It is a
+  transport-specific change-detection token — for an `oci://` ref, the registry's
+  own digest over the OCI manifest (`sha256:<hex>`) — and NOT the
+  `#sha256-<base64url>` an `imports:` entry pins with, which hashes `telo.yaml`.
+  The two are not inter-convertible, and only the local-path branch happens to emit
+  the pin form, so the command looked like a pin source from one direction and not
+  the other. The help line now says so and points at `telo upgrade`, which is what
+  writes a pin. A value that looks like the one you want is worse than no value.
+
+- Updated dependencies [f4ac842]
+- Updated dependencies [f4ac842]
+- Updated dependencies [f4ac842]
+- Updated dependencies [f4ac842]
+- Updated dependencies [f4ac842]
+- Updated dependencies [5e89ea5]
+  - @telorun/kernel@0.89.0
+  - @telorun/analyzer@0.73.0
+  - @telorun/templating@0.20.0
+  - @telorun/ide-support@0.20.0
+  - @telorun/glob@0.3.0
+
+## 0.88.0
+
+### Minor Changes
+
+- 2d93519: A `catches:` list can cover a whole scope, and coverage is judged at the dispatch site.
+
+  **`x-telo-catches-for` takes the empty pointer**, naming the resource the list is written
+  on rather than a sibling field holding a handler — the spelling
+  `x-telo-schema-projection-from` already uses for the same "this declaration, not one it
+  references" meaning. Such a list owes coverage of nothing on its own; it contributes to
+  every site it encloses, and its own denominator is everything its resource drives,
+  transitively.
+
+  That denominator is deliberately NOT `throws: { inherit: true }`. `inherit` is a
+  declaration that a kind's union is the union of what it dispatches, and a kind that has
+  not made that claim must not have it inferred — one holding a `call` ref it catches
+  internally would silently gain codes it never lets escape. It is also forbidden on a
+  `Telo.Service` and a `Telo.Mount`, rightly: what a router _renders_ is not what a router
+  _throws_. So the annotation carries the claim, where it is used.
+
+  **`x-telo-ref` gains `throwsThrough: true`** for a slot whose target's throws surface
+  through the declaring resource although control does not transfer through the slot itself —
+  `Http.Server.mounts[].mount` is a `dependency`, and a route's throw is still the server's
+  to render. Declared by the kind that holds, because only it knows this; following every
+  `dependency` edge instead would drag a connection's throws into a router's denominator.
+  It is one fact with two consequences, and they are the same fact: the edge the throws
+  closure crosses is the edge a catch scope encloses through.
+
+  **Coverage is asked once per dispatch site**, over the site's own list, its resource's
+  scope list, and every scope enclosing that resource — so `UNCOVERED_THROW_CODE` and
+  `UNBOUNDED_UNION_NEEDS_CATCHALL` no longer fire on a route that declares no `catches:`
+  under a router that renders everything. Left per-list they were not a missing check but a
+  false one, firing on precisely the manifests scope lists exist to enable.
+  `UNDECLARED_THROW_CODE`, `error.data` typing and `CATCHALL_NOT_LAST` stay per list, each
+  against that list's own denominator.
+
+  **Across several enclosing scopes it INTERSECTS.** Coverage claims a throw cannot escape
+  unrendered, so it holds only where every path to the site renders it: a router mounted on a
+  public server with a catch-all and an internal one without is covered on one path and bare
+  on the other, and unioning the two asserted full coverage while the internal server answered
+  with the built-in envelope. A resource with no encloser contributes nothing rather than
+  everything — treating "no paths" as "all paths agree" would assert coverage no list gives.
+
+  **`throwsThrough` gets a strict half.** It is read as `=== true`, so a typo or a quoted
+  `"true"` silently meant absent — and absent stops a server's list enclosing its mounts, so
+  every route under it reports as uncovered with nothing naming the cause. The structured
+  `x-telo-ref` object is now closed as well (`X_TELO_REF_UNKNOWN_KEY`,
+  `X_TELO_REF_INVALID_THROWS_THROUGH`), for the reason its token sets are.
+
+  **A `with:`-scoped declaration is now checked.** Scoped resources are not in the flat
+  manifest set, so every check in the throws pass skipped them: a scoped `Http.Server`'s own
+  catch list went unverified AND its coverage reached nothing it encloses. Standing a server
+  up around a test is exactly that shape, so the sanctioned pattern was the one the pass
+  could not see. They are discovered through the shared manifest visitor rather than a second
+  scope walk, which now carries each declaration's own path (`with[0]`) alongside the
+  visibility pointers — those name where a scoped name may be REFERENCED (`/steps`), never
+  where it is DECLARED, so a prefix derived from one points into the wrong field. A scoped
+  diagnostic routes through its owner, because position lookup finds top-level documents by
+  `(kind, name)`, while the message still names the scoped resource.
+
+  **`error.data` typing worked for no HTTP catch entry at all.** It read `entry.body`, while
+  an HTTP entry keeps its body at `content[<mime>].body`, and it matched only `${{ … }}`
+  strings while the formatter normalizes every expression to a `!cel` tag. Both are repaired,
+  so a misspelled field under a code's declared `data` payload is reported at every rung.
+
+  **Rule 8 is enforced statically.** `throws:` on a capability with no catchable dispatch
+  (`Telo.Service`, `Telo.Mount`, `Telo.Provider`, `Telo.Type`, `Telo.Sink`) was refused by
+  the kernel at `create()` and accepted by `telo check` — a manifest that could not boot,
+  passing. It is now `THROWS_ON_NON_DISPATCH_CAPABILITY` on the declaration.
+
+  **Schema-failure prose, three repairs.** A union branch failing a `const`/`enum` is no
+  longer a candidate reading at any depth — those keywords exist to discriminate, so a
+  mismatch is positive evidence of the wrong branch, and the depth tiebreak inverted exactly
+  there: a definition declaring a forbidden key was reported as `/capability must be equal to
+constant`, naming neither the key at fault nor a branch the value could ever have been. A
+  `false` schema and a `not` now have prose of their own rather than AJV's text about the
+  schema. And `ajvErrorToPath` decodes RFC 6901 escapes, so a diagnostic about a content map
+  (`application/json`) anchors on that key instead of falling back to its parent.
+
+  **`x-telo-schema-from` reports like a schema.** Its aliased-kind branch validated the
+  author's value raw while its sibling-reference branch substituted CEL placeholders first, so
+  one annotation meant two different things depending on which branch resolved it — a `when:`
+  typed `boolean` accepted a `!cel` at an inline slot and rejected the identical expression at
+  a slot anchored on the carrier declaring that very shape. Issues are also anchored at the
+  offending node inside the value rather than all on the slot, which for an array-valued slot
+  put every entry's complaint on one line.
+
+### Patch Changes
+
+- Updated dependencies [2d93519]
+- Updated dependencies [8cfb01c]
+- Updated dependencies [a9d05db]
+- Updated dependencies [2d93519]
+  - @telorun/analyzer@0.72.0
+  - @telorun/ide-support@0.19.0
+  - @telorun/templating@0.19.0
+  - @telorun/kernel@0.88.0
+
+## 0.87.0
+
+### Patch Changes
+
+- 61ad85e: Two defects a library's exported entry point exposed, and the diagnostic that
+  was missing behind one of them.
+
+  A `resources:` entry is constrained by kind alone, so its kind-only stand-in
+  routinely IS an abstract — and identity did not satisfy an abstract slot, so
+  every use of that name inside the library was reported as a kind mismatch
+  against the very kind the author wrote. Identity now satisfies it for that
+  stand-in and for nothing else: a resource genuinely declared `kind: <some
+abstract>` is refused by the kernel at `create()`, and is now reported as
+  `ABSTRACT_KIND_INSTANTIATED` at its declaration, carrying the same "instantiate
+  a concrete implementation: …" hint the kernel's own refusal does.
+
+  And the throws walk stopped at a `!ref` still carrying its parse-time sentinel,
+  reading "cannot see it" as "throws nothing": a consumer's flat set holds a
+  library's exported instances and not the siblings they invoke, so an entry point
+  that raises its own code through an internal guard presented an empty union and
+  had the consumer's `catches:` rejected for the code it documents. Such a name is
+  library-internal, so it resolves in the declaring library's own documents first —
+  asking the consumer's flat set first let any resource that happened to share the
+  name supply an unrelated union. An alias-qualified source resolves through the
+  declaring module's alias table; ambiguity, and a target in neither set, are
+  unbounded rather than empty.
+
+  The tag's grammar now has one reader (`refSentinelTarget`). Three passes had
+  grown their own parse and disagreed about what `!ref Alias.name` names; each
+  keeps its own reduction over the shared parse.
+
+  `ZoneModuleDocuments` is renamed `ModuleDocuments`: the zone stage's
+  per-library export derivation was its first consumer and the throws walk is
+  its second, so a third should not have to import "zone" to ask about
+  something else again. The CLI's patch is that call site and nothing more.
+
+- Updated dependencies [61ad85e]
+- Updated dependencies [7658f43]
+- Updated dependencies [61ad85e]
+- Updated dependencies [7658f43]
+  - @telorun/sdk@0.87.0
+  - @telorun/kernel@0.87.0
+  - @telorun/analyzer@0.71.0
+  - @telorun/templating@0.18.0
+  - @telorun/ide-support@0.18.3
+
+## 0.86.0
+
+### Patch Changes
+
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+  - @telorun/kernel@0.86.0
+  - @telorun/analyzer@0.70.0
+  - @telorun/sdk@0.86.0
+  - @telorun/ide-support@0.18.2
+  - @telorun/templating@0.18.0
+
+## 0.85.0
+
+### Minor Changes
+
+- 8dc6e35: Remove the Telo HTTP registry. Modules resolve over `oci://` and direct `https://` URLs only; the bare `<namespace>/<name>@<version>` ref form and the `registry.telo.run` origin are gone.
+
+  **Breaking.** A manifest whose `imports:` names a bare ref no longer resolves — rewrite it to the module's `oci://` ref. `--registry-url` (run / check / install / upgrade / migrate / module), `--registry` (publish), `TELO_REGISTRY_URL` and `TELO_REGISTRY_TOKEN` are removed, as is `Kernel`'s `registryUrl` option; `defaultTransports` / `defaultTransportRegistry` / `defaultSources` take no argument. `RegistryTransport` becomes `HttpTransport` — it keeps direct `https://` module URLs and the `.telo/manifests/url/…` cache subtree, and enumerates no versions. `RegistrySource`, `parseModuleRef` and `isRegistryRef` are removed from `@telorun/analyzer`, and `withRefVersion` now accepts only `oci://` refs. The `registry/<host>/…` manifest-cache subtree is no longer written or read. `SessionConfig.registryUrl` leaves the runner `/v1` contract, `sessionConfigSchema` loses its `registryUrl` option, and the k8s chart drops `build.teloRegistryUrl` (which also changes every per-app image tag, since the registry URL was a digest input).
+
+### Patch Changes
+
+- 48ecad1: Remove the `--snapshot-on-exit` flag. It was accepted by the parser and read by nothing, so passing it changed no behaviour. It no longer appears in `--help`; `telo run` now forwards it to the application's own arguments like any other unrecognised flag, and the strict commands reject it.
+- 48ecad1: `telo run` no longer forwards the global `-o` / `--output` flag and its value into the application's own arguments. The flag is consumed by the CLI like `--inspect`; previously `telo ./app.yaml -o text` handed `-o text` to the kernel's argv.
+- Updated dependencies [7ddd502]
+- Updated dependencies [8dc6e35]
+  - @telorun/analyzer@0.69.0
+  - @telorun/kernel@0.85.0
+  - @telorun/ide-support@0.18.1
+
+## 0.84.0
+
+### Patch Changes
+
+- Updated dependencies [d887374]
+- Updated dependencies [c15b198]
+  - @telorun/kernel@0.84.0
+  - @telorun/analyzer@0.68.0
+  - @telorun/ide-support@0.18.0
+
+## 0.83.0
+
+### Minor Changes
+
+- 46295b2: **Resource inputs on a library** — a `Telo.Library` gains a third input block
+  beside `variables:` and `secrets:`, declaring the instances it requires from
+  whoever imports it. The importer supplies references at the import's object form
+  (`resources: { connection: !ref db }`).
+
+  Instances used to flow up and never down: `exports.resources` hands one to an
+  importer, and nothing handed one the other way. Each import declaration also
+  builds its own child module context with its own instances, so two libraries
+  importing a third get two of everything in it — measured, an application
+  importing two libraries that each import one library owning a SQLite connection
+  fails with `no such table`, because the writer and the reader are on different
+  connections. Any set of libraries that must share a resource therefore had to be
+  linearized into a total order with every layer re-exporting the union of
+  everything beneath it, which gives away the self-containment a split is for. It
+  is a correctness constraint rather than a preference: a journal attests
+  exactly-once only when it writes on the same connection as the work it records.
+
+  - **An entry is constrained by KIND, with no `use:`.** The boundary is a
+    dependency edge for init order whatever the library does with the instance, so
+    the token would carry nothing the edge model reads — and the flattened
+    application analysis drops the library doc, so an app-level claim about
+    internal call sites is one nothing could check.
+  - **An entry synthesizes a kind-only DECLARATION in the library's own scope**, so
+    `!ref connection` at a reference slot and `resources.connection.<field>` in CEL
+    answer exactly as they do for a locally declared resource. Kind-only is enough
+    because it is already what a reference slot gets: the `status:` half types from
+    the kind and the flat half stays open.
+  - **Borrowed, not owned.** An injected resource's effect frame belongs to the
+    scope that declared it, so the child context never tears it down. Its published
+    reading is mirrored into the library's own `resources` scope on every
+    publication, because a reading is not a snapshot — the owner republishes after
+    `run()`, after every `invoke()` and on every `setStatus()`.
+  - **Diagnostics**: `RESOURCE_INPUT_KIND_UNRESOLVED` at the library that declared
+    the constraint; `RESOURCE_INPUT_MISSING`, `RESOURCE_INPUT_UNKNOWN`,
+    `RESOURCE_INPUT_UNRESOLVED` and `RESOURCE_INPUT_KIND_MISMATCH` at the import
+    that supplied (or failed to supply) it. Kind acceptance is the same transitive
+    rule an ordinary reference slot applies, shared rather than re-derived.
+  - **Two declaration-derived checks move to the injection site**, where the real
+    declaration is: a projection through an injected input reports nothing at the
+    library (a new `injected` projection-failure reason), and
+    `OBSERVED_STATE_NEVER_RUN` treats an injected name as reachable, since a
+    library cannot answer whether its consumer starts what it was handed.
+  - **Init order** falls out of the existing graph: a `Telo.Import` gains a
+    dependency edge per injected target — to a local resource, or to the import
+    that exports a cross-module one, which is the projection
+    `localDependencyNames` already makes at runtime. A cycle among those is
+    reported as a cycle; one closing through an imported instance still surfaces
+    as an init-loop failure, since nothing connects a forwarded export back to its
+    owning import. An import whose target is not yet initialized defers with
+    `ERR_LOCAL_REF_PENDING` before doing any load work, and binding a borrowed
+    instance is an EFFECT on the create frame — it registers a publication mirror
+    on the owner, and an import whose `init()` fails is discarded and re-created,
+    so an unregistered mirror would be appended again on every pass.
+  - **An input name listed in `exports.resources` is `RESOURCE_INPUT_EXPORTED`.**
+    An input is borrowed, so exporting it would forward the kind-only stand-in into
+    the consumer's flattened set as a resource the library declares — a phantom
+    with nothing behind it but a kind constraint.
+
+  New syntax on a module document, so a module using it must declare
+  `requires: telo: ">=…"`. Guide: `docs/extend/library-resource-inputs.md`.
+
+- d5b8228: Watch sessions: a session can now be a workspace that runs continuously instead
+  of one run. One pod holds a shared `/workspace` volume, a `workspace` container
+  serving the editor's file routes, one container per application under `telo run
+--watch`, and optionally a co-resident agent from the operator's app catalog — so
+  an edit costs a kernel reload rather than a pod. Off unless
+  `RUNNER_WATCH_SESSIONS` is set; run sessions are unchanged.
+
+  Session status and run outcome become two nouns on one stream. `status` is the
+  session's (`starting`/`running`/`suspended`/`stopped`/`failed`), while a new `run`
+  event carries one application's generation — so a one-shot Runnable finishing
+  leaves the session alive and the next edit starts the next generation. `run`
+  events are projected from the kernel debug stream rather than parsed out of a
+  terminal, and the CLI now emits `Kernel.RunFailed` for the one case that stream
+  did not carry: a manifest that fails to load at all.
+
+  Breaking, and the ripple is the reason the version moves rather than the size of
+  it: `RunnerFeatures.io` becomes a list of attach modes; `progress`, `debug`,
+  `reachability` and the byte channel are qualified by application (`/io` takes
+  `?app=`, and every binary frame gains a stream tag); and the `stdout` / `stderr`
+  `RunEvent` variants are deleted — nothing ever emitted them, so they were a
+  contract in shape only. Workload output travels the byte channel, as it always
+  did in practice.
+
+  `@telorun/debug-wire` gains no code — its README now writes down the four kernel
+  events a HOST derives behaviour from (`Kernel.Starting`, `Kernel.Stopped`,
+  `Kernel.RunFailed`, `Kernel.PortsResolved`) and the requirement that a stream
+  with a replay buffer carry a monotonic `id:` and honour `Last-Event-ID`. The
+  dotted event vocabulary is otherwise open; these four are the exception because a
+  kernel that omits them leaves a runner with no run outcomes and no way to
+  re-route a port, so a second runtime needs them written down.
+
+  The CLI also honours `CLICOLOR_FORCE` for Node's colour libraries, bridging it
+  onto `FORCE_COLOR` when that is not already set — one variable now reaches a
+  Rust, Go or Node workload alike, and `FORCE_COLOR=0` beside `CLICOLOR_FORCE=1`
+  keeps its meaning.
+
+### Patch Changes
+
+- Updated dependencies [7d49da2]
+- Updated dependencies [46295b2]
+- Updated dependencies [46295b2]
+- Updated dependencies [46295b2]
+  - @telorun/analyzer@0.67.0
+  - @telorun/kernel@0.83.0
+  - @telorun/sdk@0.83.0
+  - @telorun/templating@0.18.0
+  - @telorun/ide-support@0.17.1
+
+## 0.82.1
+
+### Patch Changes
+
+- b9c0dbe: Doc and comment updates for the Telo Editor -> Telo Studio rename. Prose only —
+  no behaviour, no API surface, and no shipped code path changes in any of these
+  packages.
+- Updated dependencies [cbc2a4d]
+- Updated dependencies [68aa6dc]
+- Updated dependencies [c829d25]
+- Updated dependencies [c829d25]
+- Updated dependencies [b9c0dbe]
+- Updated dependencies [c829d25]
+- Updated dependencies [c829d25]
+- Updated dependencies [c829d25]
+  - @telorun/analyzer@0.66.0
+  - @telorun/ide-support@0.17.0
+  - @telorun/templating@0.17.0
+  - @telorun/kernel@0.82.1
+  - @telorun/sdk@0.82.1
+
+## 0.82.0
+
+### Minor Changes
+
+- bf45f2a: Shrink the `telorun/node` Rust images from ~2.6 GB to ~1.08 GB.
+
+  The Rust toolchain is installed with `rustup set profile minimal`, which drops
+  rust-docs (796 MB of HTML the image can never serve) along with clippy and
+  rustfmt, which nothing invokes; the toolchain's `share/` tree and rustup's own
+  download caches go with them. rustc, cargo, rust-std and rustdoc remain, which is
+  everything a `pkg:cargo` controller build needs — verified by linking both a
+  binary and a cdylib in the built image.
+
+  The C build environment is stated rather than inherited: gcc, libc6-dev, make and
+  pkg-config. The non-slim base used to supply make, pkg-config, git and python3
+  incidentally; make and pkg-config are now installed explicitly (~1 MB), and git,
+  python3 and cmake are documented as absent.
+
+  There is no longer a non-slim Rust image. The toolchain needs nothing from the
+  fat base, which cost ~990 MB, so `telorun/node:<ver>-rust-<rust-ver>` and
+  `…-rust-<rust-ver>-slim` are now the same slim-based image under two names.
+
+### Patch Changes
+
+- Updated dependencies [ffe8ca5]
+- Updated dependencies [67cafc0]
+- Updated dependencies [ffe8ca5]
+- Updated dependencies [6dd29e6]
+  - @telorun/analyzer@0.65.0
+  - @telorun/kernel@0.82.0
+  - @telorun/ide-support@0.16.1
+  - @telorun/sdk@0.82.0
+  - @telorun/templating@0.16.0
+
+## 0.81.0
+
+### Patch Changes
+
+- 9f1d446: Key the npm controller install root per runner, so two runners over one workspace no longer corrupt each other's tree.
+
+  The root's `package.json` records `@telorun/sdk` as a `file:` dependency pointing at the running CLI's own copy, and npm rewrites that relative to the root — in `package.json`, in `package-lock.json`, and as the target of the symlink it materializes. Since the cache moved to the workspace root, a second runner read paths true only for the first: a host and a container bind-mounting the same checkout alternately broke each other's installs with `EMISSINGTARGET`, taking down every resource behind an npm-delivered controller.
+
+  Roots now live at `.telo/npm/<hash>/`, keyed by that relative path plus the host `os`/`arch`/`libc` — the string npm will write, so a root is shared exactly when everything recorded in it means the same thing on both sides. A different CLI installation, a workspace mounted at another depth, or another architecture or libc each get their own tree; a workspace copied to another directory at the same depth (`WORKDIR /build` … `COPY --from=build /build /srv`) keeps one, so an image still finds the tree `telo install` warmed for it. The key names the runner rather than the app, so every manifest in a workspace shares one root as before. Each root carries a `.telo-install-root.json` marker naming the key's inputs.
+
+  Existing roots are not migrated: the first run after upgrading installs into a fresh directory, and the old flat `.telo/npm/` contents can be deleted.
+
+- Updated dependencies [9f1d446]
+  - @telorun/kernel@0.81.0
+
+## 0.80.0
+
+### Minor Changes
+
+- b66a3bb: Anchor the `.telo` cache at `telo-workspace.yaml`, so one repo has one cache.
+
+  Every entry manifest used to get its own `.telo` beside it — 123 directories and
+  1.6 GB in this repo, overwhelmingly duplicated npm install trees, plus a
+  controller-bundle rebuild once per test because the test runner loads each test as
+  a child kernel that resolved its own root. Precedence is now `TELO_CACHE_DIR` >
+  the directory holding the marker > `<entry-dir>/.telo`, and only the marker's
+  LOCATION is read, never its `modules:` list. With no marker anywhere above an
+  entry the behaviour is exactly what it was, so the file enables the shared cache
+  rather than gating one.
+
+  The layout gains `analysis/` and `validators/` beside `manifests/` rather than
+  inside it — neither is a cached manifest — and the analysis stamp becomes one file
+  per entry. A single stamp file was per-app only because each app had its own
+  cache; shared, every app would overwrite the last, which is a permanent 100% miss
+  that reports nothing and only makes boots slower.
+
+  **Upgrading:** a warm cache goes cold. That costs only CPU for validators, bundles
+  and the npm tree, but manifests cost network, so both halves of a module are read
+  from the old `<entry-dir>/.telo/` on a miss — the manifest itself and the layers
+  that extract beside it — and a module already installed there boots offline
+  without a fetch. The npm tree cannot be covered that way, since a `node_modules`
+  tree is used whole or not at all: an offline upgrade of a module delivered through
+  npm needs one `telo install` against the new root. Baked images are unaffected —
+  `TELO_CACHE_DIR` still outranks the marker.
+
+  Both cargo loaders now build controller crates under `<cache>/cargo/<backend>/`,
+  keyed by SDK backend, so alternating between the Node kernel, `telo-rs` and a
+  plain `cargo build --workspace` no longer rebuilds the crate and its dependency
+  tree each time.
+
+### Patch Changes
+
+- Updated dependencies [b66a3bb]
+- Updated dependencies [d267c7f]
+- Updated dependencies [839fb45]
+  - @telorun/kernel@0.80.0
+  - @telorun/sdk@0.80.0
+  - @telorun/analyzer@0.64.0
+  - @telorun/ide-support@0.16.0
+  - @telorun/templating@0.16.0
+
+## 0.79.0
+
+### Minor Changes
+
+- 0910053: `telo run` now collects `.env` / `.env.local` from every directory between the manifest and the workspace root, instead of the manifest's own directory alone. `telo-workspace.yaml` is the bound — only its location, never its `modules:` list — so a monorepo keeps shared development values in one file at the root. With no marker above the manifest the behaviour is unchanged. The nearest declaration wins, `.env.local` beats `.env`, and the real environment still beats every file; `--debug` prints which files were loaded, and a file that exists but cannot be read is always reported rather than treated as absent.
+- 18a5d61: An unusable import is reported as itself, and an upgrade only offers a version this telo can run.
+
+  **One shape for every unusable import.** Loading no longer distinguishes _how_ an
+  import is broken. Unreachable, malformed, resolving to an application, resolving
+  to something that is not a library, resolving to a library that names no module —
+  each records a failure against that import, registers no dependency edge, and
+  lets the rest of the graph load. The check now runs per import declaration rather
+  than once per distinct target, which closes the case where an import pointing at a
+  module something else already reached (the entry application above all) skipped it
+  entirely. An application target used to abort the whole load; it is now a
+  diagnostic on its own line, and still fatal at run time because the runtime
+  refuses to start on any of these.
+
+  Three codes, because three different people fix them: `INVALID_IMPORT_SOURCE`
+  (not a module reference), `IMPORT_UNRESOLVED` (well-formed but not obtainable) and
+  the new `INVALID_IMPORT_TARGET` (obtained, but not importable).
+
+  **No guessing about module identity.** The analyzer used to derive a module name
+  from an import's source string whenever the loader had stamped none. For a pinned
+  ref that produced a canonical kind no registry can hold —
+  `http-dispatch@0.11.1#sha256-….Outcomes` — and every consumer of the alias then
+  failed in its own vocabulary, reporting a _dependency_ as schemaless when the real
+  fact was that the import never resolved. The fallback is gone: an import with no
+  resolved identity registers no alias, and uses of it say `cannot resolve alias
+'<X>'`, which names the import the author can fix.
+
+  **Upgrade affordances filter by `requires.telo`.** `manifestCompatibility` moves
+  the verdict (`yes` / `too-new` / `unreadable` / `unknown`) into the analyzer, where
+  the `requires:` grammar already has its single reader; `telo upgrade` now calls it
+  rather than carrying its own copy. `@telorun/ide-support` gains the selection rule
+  on top — walk candidates newest-first, stop at the first hostable one, report what
+  was held back and why — so the editor's Imports view and the VS Code lenses answer
+  "which version does this move to" identically. `buildImportUpgrades` takes an
+  environment (`listVersions` + `isCompatible`) instead of a bare lookup, so a host
+  cannot silently skip the check; one that genuinely cannot read candidate manifests
+  passes `uncheckedVersionCompatibility`, which says so. A version that cannot be
+  read or reached is never treated as incompatible, and only the telo axis is checked
+  in an IDE — an IDE is not the host that will run the manifest.
+
+- b5dc9d5: `telo install` now resolves sibling module libraries, so a bundled controller that
+  imports another module's `exports.code:` entry point (`@telorun/ai`,
+  `@telorun/cache`, …) installs instead of failing with "Cannot find package". The
+  join `kernel.load()` performs is exported as `buildSiblingLibraries` and computed
+  by the install warm pass, which already holds all three inputs.
+- 7463386: A DECLARATION-derived contract (`x-telo-schema-projection-from`) is now resolved
+  at dispatch as well as at `telo check`. It was static-only, which is a contract
+  with a hole exactly where a value is COMPUTED rather than written: a misspelled
+  column written as a literal was rejected, and the identical key arriving from a
+  CEL expression reached the database — which for a repository kind means arbitrary
+  caller text in a SQL identifier position.
+
+  `ProjectionScope` becomes a resolver over the raw slot value rather than a list of
+  manifests, because the two hosts see different things there: the analyzer sees the
+  `{kind, name, alias?}` reference, while the kernel binds contracts after Phase-5
+  injection has replaced it with the live instance. That also makes reference
+  resolution alias-aware, so an unambiguous `!ref Alias.users` is no longer refused
+  as ambiguous merely because two libraries each export a `users`.
+
+  `x-telo-schema-projection` is read from `schema:` as well as from the kind
+  document and reported when it is found there — ignoring a misplaced annotation
+  moved the failure onto the consumer's slot and blamed the wrong author.
+
+  A ref slot inside a kind's `schema:` is typed as the published reading it yields,
+  so `self.<ref>.status.<field>` is checked instead of being read off the annotation
+  node. The runtime view is memoized against a publication counter rather than
+  rebuilt on every dispatch.
+
+  A resource rule that throws or exhausts its budget is anchored on the declaring
+  definition, and is a warning rather than an error when that definition belongs to
+  a published dependency — an error there blocked `telo check` on a line the
+  consumer could not change.
+
+  A projection that cannot resolve at dispatch now raises
+  `ERR_SCHEMA_PROJECTION_UNRESOLVED` instead of leaving the slot open — the
+  analyzer's report is entry-module-scoped, so a dependency's consumer slot was
+  unreported at both ends. Rule-declaration validation reads the same merged schema
+  the evaluation reads, so a rule declared on an abstract resolves its `in:` pointer
+  against the fields a child declares.
+
+  `telo publish` reads the npm controller candidates it may push from the PURL
+  parser it already uses, and the self-pin rewrite is anchored on the `controllers:`
+  scalars, so a PURL mentioned in a description is no longer a rewrite target. Its
+  package directory comes from the candidate's `local_path` rather than an assumed
+  layout, an unreachable npm registry is no longer read as "not published", and a
+  malformed `package.json` fails instead of silently skipping the pin stamp.
+
+- 9ac2b8a: The step grammar becomes shared vocabulary, and its execution moves to the SDK.
+
+  `$ref: "telo://manifest#/$defs/Step"` on an array's items declares a step body —
+  `invoke` / `value` / `if` / `while` / `switch` / `try` / `throw`, the
+  `steps.<name>.result` accumulator and the `error` variable inside a `catch:`. Any
+  kind can carry one now; a composite kind that wraps a region of work no longer
+  needs a `!ref` to an executable and a second document to hold it. The grammar was
+  declared four times inside `modules/run/telo.yaml`, and `$defs` are local to the
+  schema that declares them, so four kinds in one module could not share one.
+
+  `StepEngine` moves from `modules/run` to `@telorun/sdk` beside the
+  `executeInvokeStep` leaf it already delegated to, against a structural context
+  (`StepEngineContext`) so it depends on neither the kernel nor `run`. The SDK is
+  the one name the bundle loader symlinks onto the kernel's own copy, so the engine
+  is one version per process and reachable from a controller bundle and the
+  kernel's boot runner alike.
+
+  Two consequences for a kind author. `while/do` is admitted in every step body —
+  a fragment cannot be narrowed by its consumer, and the copies that dropped it did
+  so editorially rather than for soundness. And `x-telo-step-context` is now the
+  legacy spelling: it is read forever (published artifacts carry it, and no
+  migration entry can synthesize a `$ref`) but a new step body is declared by
+  pointing at the fragment, which the derived `x-telo-fragment: Step` stamp makes
+  recognizable with no marker to remember.
+
+  A forward-declared `requires.telo` lower bound is now its own verification state.
+  Adopting new syntax means declaring the release that will carry it, so on that
+  commit the edge names a version npm does not have — and spawning
+  `npx @telorun/cli@<unpublished>` there produced an `ETARGET` wrapped in install
+  noise, reported as "could not run", indistinguishable from being offline. The
+  registry is now asked before any edge runs, such an edge is never spawned, and it
+  is reported as `pending` alongside the latest published version (which is what
+  makes a typo'd bound visible). Informational in `telo release check`, fatal in
+  `telo publish`, where npm has already published and the floor must exist.
+
+### Patch Changes
+
+- b5dc9d5: Controller progress now reports the wait itself instead of guessing around it.
+
+  A new `ControllerWorkStarted` event is emitted by the sub-loader that is about to install, compile or fetch — past every cache check and re-check, at the point the package manager, `cargo`, esbuild or a layer transfer actually runs. It is the only in-progress signal, and a warm start enters no such branch, so nothing is emitted and nothing has to be taken back. `ControllerLoading` now carries the resolve `source`, and `ControllerLoaded`'s `durationMs` measures from the first work branch entered (falling back to the import call), so a 40-second install is no longer reported as `(npm-install, 12ms)`. `ControllerLoader.resolve()` emits work and candidate-fallthrough events; `load()` is now that resolve plus the import half.
+
+  The CLI's `⬇` line is opened by the work event and closed in place by `Loaded`/`Failed`, so it is on screen for the whole of a real wait and never printed at all for a `cache`/`local` hit — replacing the speculative line that was printed and then erased.
+
+- Updated dependencies [b5dc9d5]
+- Updated dependencies [7463386]
+- Updated dependencies [321f153]
+- Updated dependencies [321f153]
+- Updated dependencies [321f153]
+- Updated dependencies [b5dc9d5]
+- Updated dependencies [18a5d61]
+- Updated dependencies [b5dc9d5]
+- Updated dependencies [7463386]
+- Updated dependencies [c7fdbd9]
+- Updated dependencies [7463386]
+- Updated dependencies [321f153]
+- Updated dependencies [9ac2b8a]
+- Updated dependencies [321f153]
+  - @telorun/kernel@0.79.0
+  - @telorun/sdk@0.79.0
+  - @telorun/analyzer@0.63.0
+  - @telorun/ide-support@0.15.0
+  - @telorun/templating@0.16.0
+
+## 0.78.0
+
+### Minor Changes
+
+- afb2b05: Publish the manifest the payload builder produced.
+
+  The `layers:` index was injected into `telo.yaml` during the push, after the
+  builder had already returned the manifest — so for every module shipping a
+  payload layer, the text a dependent hashed to derive its import pin was a
+  document no registry holds. 18 standard-library modules carried a pin that
+  could not resolve, and their consumers failed at load with an integrity error
+  naming a republish that never happened.
+
+  `ModulePayloadBuilder` now writes the index, so `publishedManifest()` returns
+  the shipping bytes. That requires layer framing to be a pure function of the
+  files it covers: `makeTarGz` pins every tar header field that is not the name
+  or the contents, which also makes artifacts reproducible. The index itself
+  comes from the transport (`Transport.layerIndex`), which owns that framing, and
+  publish now verifies each pushed blob against what the manifest already claims
+  rather than rewriting it.
+
+  Modules shipping a payload must republish — the wrong pins are in artifacts
+  that cannot be edited.
+
+### Patch Changes
+
+- Updated dependencies [afb2b05]
+  - @telorun/kernel@0.78.0
+  - @telorun/analyzer@0.62.1
+  - @telorun/ide-support@0.14.1
+
+## 0.77.0
+
+### Minor Changes
+
+- d08c3bd: Add declared runtime requirements: a module states, in a top-level `requires:` block,
+  the range of Telo it is verified against.
+
+  Telo closes every extension vocabulary and rejects an unknown token, which is right for
+  a typo and wrong for a version — so a module adopting new syntax broke on older runtimes
+  with a message blaming its own author. A declared range turns that into one accurate
+  diagnostic (`MODULE_REQUIRES_NEWER_RUNTIME`), and stops `telo upgrade` selecting versions
+  the running Telo cannot read at all.
+
+  `telo:` is a semver range over the manifest surface generation — one scale every kernel
+  reports, so there is no range per kernel — and host requirements nest under `host:`, where
+  `node` is the only axis for now, since an axis is added when something compares it and not
+  before. `^` and `~` are rejected: pre-1.0 they allow only one minor, and Telo
+  ships breaking changes as minor bumps, so they would pin a module to a single release
+  generation. An upper bound must name a version that already exists.
+
+  The claim is verified by running the CLI at each edge of the declared range, in
+  `telo publish`'s preflight and across the workspace in `telo release check`. A module
+  declaring nothing carries no requirement.
+
+### Patch Changes
+
+- Updated dependencies [17584a7]
+- Updated dependencies [17584a7]
+- Updated dependencies [987decd]
+- Updated dependencies [d08c3bd]
+  - @telorun/analyzer@0.62.0
+  - @telorun/ide-support@0.14.0
+  - @telorun/kernel@0.77.0
+  - @telorun/sdk@0.77.0
+  - @telorun/templating@0.16.0
+
+## 0.76.0
+
+### Minor Changes
+
+- f4efb4b: A module-owned library is resolved at load through the import graph instead of
+  being copied into every dependent's controller bundle, and a module builds one
+  bundle rather than one per kind.
+
+  Both halves fix the same defect: a bundle is a module graph, so a shared source
+  file compiled into two bundles is two module scopes, and any state a module keeps
+  beside its instances — a registry, a `WeakMap`, a counter — silently becomes two
+  of them. `sql` had six controller bundles and therefore six copies of its
+  connection registry.
+
+  - A module's kinds now select their controllers out of its single bundle with the
+    PURL fragment (`…&local_path=./nodejs/src/index.ts#SqlQueryController`).
+  - A `Telo.Library` may declare `exports.code:` — entries naming the bare
+    specifier dependents import it by and the file that resolves to
+    (`{ specifier, format, path, source }`, plus `os` / `arch` / `libc` for a
+    native entry). The kernel joins that to the consumer's `imports:` during
+    `load()` and resolves the import to that module's own entry point.
+  - The artifact spec gains a `library` layer role, per selector, carrying that
+    entry point; a file claimed as both a controller and a library entry ships in
+    the library layer, and materializing either code role pulls both plus `common`.
+  - Three build-time guards keep the property from decaying: importing a subpath of
+    a declared specifier, reaching a declared library's entry-source directory by
+    any other route, and inlining a module-owned library the manifest never
+    declared an import for — each a hard build error rather than a silent extra
+    copy. The last is the one that matters most: the other two are derived from the
+    `imports:` edges, so they are vacuous exactly where the mistake is made.
+  - An unknown layer role in a published index is now skipped rather than rejected,
+    so a module that gains a layer for a newer runtime does not become unreadable
+    on an older one.
+
+  Deduplication is per (module, resolved version): two dependents pinning different
+  versions of one library still resolve two copies — that is different code — and
+  the kernel warns rather than pretending otherwise.
+
+### Patch Changes
+
+- b8be55b: Two places converted a `file://` URL to a filesystem path by hand rather than
+  through `fileURLToPath`, and both failed on Windows.
+
+  The napi controller loader sliced the seven-character `file://` prefix off the
+  declaring manifest's URL. A file URL's path is not a filesystem path: on Windows
+  `file:///D:/a/telo/telo.yaml` sliced that way leaves `/D:/a/telo/telo.yaml`, whose
+  leading slash makes `path.resolve` graft the current drive on and produce
+  `D:\D:\a\telo\…`, so every `pkg:cargo` controller resolved to a crate directory
+  that does not exist. It also left percent-escapes undecoded on every platform, so
+  a manifest under a directory with a space resolved to a path that is not there.
+
+  The CLI's diagnostic formatter called `fileURLToPath` unguarded when shortening a
+  manifest source for display. That function throws rather than returning null, and
+  on Windows it throws for any file URL without a drive letter — so
+  `file:///app/telo.yaml`, perfectly ordinary from a Linux-authored manifest or a
+  container path, replaced the diagnostic being reported with an
+  `ERR_INVALID_FILE_URL_PATH` from the code reporting it. A `file://` URL that names
+  no path on this host now renders as the URL, which is what the `http(s)://` branch
+  beside it already did.
+
+- b8be55b: The controller installer spawns its package manager through a shell on Windows.
+  There is no executable named `npm` there — npm, pnpm and every corepack shim are
+  `.cmd` files, which libuv's PATH search (`.com`/`.exe` only) never finds and
+  which Node has refused to spawn without a shell since CVE-2024-27980. Every
+  `pkg:npm` controller was therefore unloadable on Windows, and the failure was
+  reported as `'npm' not found on PATH … Install Node.js`, which told a user with
+  npm already installed to install the thing they had.
+
+  Going through `cmd.exe` moves the quoting obligation to the caller: Node builds
+  `cmd.exe /d /s /c "<file> <args joined by spaces>"` and quotes nothing, so the
+  installer quotes each argument itself. Both hazards are live in the arguments it
+  actually passes — a space in a `file:` install spec would re-split into two
+  arguments, and `^` in a semver range is cmd's escape character and is eaten
+  outside quotes. A literal `"` is rejected rather than escaped, since the escape
+  that restores cmd's quote state differs from the batch shim's own parser.
+
+  The COMMAND is quoted only when it cannot be left bare, because quoting a bare
+  one breaks the shim it resolves to. `npm.cmd` locates the CLI it exists to
+  launch as `%~dp0\node_modules\npm\bin\npm-cli.js`, and cmd substitutes the
+  resolved script path for `%0` only when the token was bare; quoted, `%~dp0`
+  expands against the current directory, so the shim looked for npm inside Telo's
+  own install root and failed with MODULE_NOT_FOUND on a path that never existed.
+  A command that does need quoting is a path rather than a name, and there `%0`
+  already carries a directory — so both cases are correct.
+
+  The not-found detection moved with it. Through a shell the binary always
+  resolves — `cmd.exe` exists — so a genuinely missing package manager arrives as
+  exit 9009 and "is not recognized as an internal or external command", matching
+  neither the `ENOENT` nor the wording the old check looked for; it would have
+  fallen through to the generic install-failure branch and buried the line naming
+  what to install.
+
+  The POSIX path is unchanged in both halves.
+
+- Updated dependencies [b8be55b]
+- Updated dependencies [f4efb4b]
+- Updated dependencies [b8be55b]
+- Updated dependencies [b8be55b]
+  - @telorun/kernel@0.76.0
+  - @telorun/analyzer@0.61.0
+  - @telorun/ide-support@0.13.3
+
+## 0.75.0
+
+### Minor Changes
+
+- 58bc988: One release system for Telo modules, in the CLI: `telo release add | status | order | check | apply | verify`, over the modules discovered inside a workspace declared by a `telo-workspace.yaml`. A module has one version across `telo.yaml`, `nodejs/package.json` and `rust/Cargo.toml`, and one changelog.
+
+  A Telo module's artifact **embeds its dependencies** — esbuild inlines a sibling library's source into the controller bundle, and publish pins each relative import to a hash of the sibling's manifest — so bumping the dependents is a correctness requirement rather than a courtesy. Neither previous ledger could see that: changie has no dependency graph, and changesets' stops at the npm boundary. Two mechanisms now cover it. A **payload digest**, exact and taken from the bytes, decides _whether_ a module bumps, so it fires for an inlined sibling, a shared-library fix and a lockfile-only transitive bump alike. An **edge graph**, built from the controller build's own metafile plus in-repo relative `imports:`, decides _at what level_, mirroring a dependency's level onto its dependents. A digest that moved with nothing to attribute it to takes a patch and is reported as unattributed rather than passing silently. Both are recorded in `.changes/ledger.yaml`, so the PR gate and the publish gate compute the same number — and the PR gate needs no credentials, which is what lets a fork run it.
+
+  Three changes make the published bytes a pure function of the commit, which is what makes "the same number" true rather than aspirational. Import pins are **authored and verified, never discovered**: `telo publish` no longer fetches a hash for an unpinned remote import (previously best-effort, so one commit produced different bytes depending on network reachability, and an unresolvable import shipped silently unpinned) — it refuses one, and verifies the pins the author wrote. Manifest re-serialization is unconditional. And a relative sibling's pin is derived from the sibling's own locally-built published bytes, in topological order, so a whole release batch is plannable offline.
+
+  The controller layer is now **built by the kernel on the publish path**, as it already was on the run path (`buildControllerBundle`), instead of read as a prebuilt `.mjs` staged by `pnpm run build:bundles`. The shipped bytes and the digested bytes are the same bytes by construction, and the edge graph gets its metafile from the same run. On this path a host without esbuild is a hard failure rather than a fallthrough to a possibly-stale file.
+
+  New CEL binding **`module.<field>`** — the declaring module's own `metadata`, typed per field and closed, so `module.version` reads a module's version instead of restating it and `module.verison` is a diagnostic. An imported library reads its own metadata, not its importer's; the loader's derived stamps (`source`, `sourceLine`, …) are filtered out.
+
+  `ModuleFileClaim` for a bundled controller now carries `localPath`, the source its entry point is built from. `assertWithinModule` aggregates missing payload files into one message and takes a set of paths whose content the caller supplies in memory — a built controller entry point is gitignored and legitimately absent, so the guard runs _after_ the build rather than demanding a prestep that no longer exists. `--frozen` is removed from `telo publish`: it selected between best-effort pinning and a hard error, and best-effort is gone.
+
+  `Output` gains `progress()`, a stderr write gated on the stream being a TTY. `errLine` must write in every format because silencing it loses the reason a command failed; a progress tick explains nothing, so its gate is whether a human is watching rather than which format was asked for.
+
+### Patch Changes
+
+- Updated dependencies [831c0c4]
+- Updated dependencies [58bc988]
+- Updated dependencies [831c0c4]
+  - @telorun/sdk@0.75.0
+  - @telorun/analyzer@0.60.0
+  - @telorun/templating@0.16.0
+  - @telorun/kernel@0.75.0
+  - @telorun/ide-support@0.13.2
+
+## 0.74.0
+
+### Patch Changes
+
+- Updated dependencies [ccf56f5]
+- Updated dependencies [35e1a58]
+  - @telorun/sdk@0.74.0
+  - @telorun/analyzer@0.59.0
+  - @telorun/templating@0.15.0
+  - @telorun/kernel@0.74.0
+  - @telorun/ide-support@0.13.1
+
+## 0.73.0
+
+### Minor Changes
+
+- a434722: Manifest migrations: one registry and one driver for rewriting a legacy
+  spelling to the current one.
+
+  Telo rewrote a manifest between parsing it and analyzing it in six places, and
+  two different things were tangled there. Most are **normalizations** — sugar
+  folded into the internal form, never written back, correctly invisible. A
+  growing minority are **migrations**: an old spelling rewritten because published
+  artifacts carry it and cannot be edited. Each re-invented the same four things by
+  hand — where to walk, how to report without blaming a dependency the author
+  cannot fix, how an author is meant to _act_ on the warning, and when the code may
+  be deleted. The last two were usually skipped: a deprecation warning told an
+  author something was wrong and offered no repair but hand editing.
+
+  Adding a migration is now one JSON file in `analyzer/migrations/`. **An entry
+  contains no code** — both what a rule matches and what it patches are data, so
+  one file is read identically by every kernel; a predicate expressed in one
+  language would mean one artifact is read two ways, invisibly, since a migration
+  that succeeds is silent. JSON rather than YAML because it is the only format all
+  three runtimes embed with no generation step (Rust `include_str!`, Go
+  `//go:embed`, TypeScript `resolveJsonModule` and nothing else).
+
+  - **The patch names what it targets**: `rename-key`, `set-value`, `set-tag`,
+    `insert-item`, `remove-entry`. Every operation has a known YAML edit form,
+    which is what makes a migration applicable to a _file_ and what lets the driver
+    **derive** whether a quick fix exists — read off the verb, never declared, so a
+    missing repair is stated rather than silent. A lone `set-value` yields a
+    `DiagnosticFix`; anything else says `no quick fix (removes an entry) — run
+\`telo migrate\``instead of offering one that would corrupt the file. A
+written value must be a scalar, refused when the entry is *read*: the file
+applier re-quotes a value in the author's own style at the node's own span,
+which has no meaning for a mapping, so accepting one would hide the limitation
+until a user ran`telo migrate` and was told, permanently, to fix it by hand.
+  - **The matcher's containment is positive and required**: `inKind` names the
+    document kinds a rule may touch and `under` the region within them it may
+    reach; nothing outside is reachable. `under` is **anchored at the document
+    root** — it names top-level keys — which is what makes that claim true rather
+    than decorative: a `Telo.Definition`'s `resources:` template body carries other
+    kinds' configuration, so a rule matching "any path segment spelled `schema`"
+    would reach the very user JSON blob the positive form exists to keep out.
+    Walking everything and subtracting cannot be made sound — the set to subtract
+    is unbounded, since any kind whose config carries a user JSON blob can hold
+    something shaped like the node a rule looks for — and it cannot express the
+    guarantee the module surface is promised to carry. Both halves are closed
+    vocabularies at every level; an unknown token is refused, `$comment` aside.
+    Both gates bound the _walk_ rather than filter its output, so a document no
+    rule targets is never walked and a region no rule names is never descended
+    into — this runs on the kernel's boot path for every file in the graph.
+  - **The phase runs in the loader**, after parse and before both the CEL
+    precompile and import desugaring, so a rule only ever matches author-written
+    nodes — a synthetic import manifest has no YAML document to edit, would record
+    a path the file never had, and shares `variables` / `secrets` by reference with
+    the module doc.
+  - **Composition is the driver's guarantee**: one pass with the match set frozen
+    against the pre-migration tree, rules ordered within an entry, entries
+    independent. Idempotency follows from that rather than from every author
+    getting it right. A patch that cannot apply in full applies not at all. A
+    frozen match reaches through a sequence by index, and an index is not an
+    identity, so a match under an array a sibling patch resized is refused rather
+    than rewriting the element that patch produced.
+  - **Rewrite always, report locally.** Every file in the graph is rewritten, so a
+    module published years ago keeps loading; only the entry module's own files
+    report, because a published dependency is not the consumer's to fix.
+    `LoadedGraph` gains `migrationDiagnostics`, `LoadedFile` gains `migrations`.
+  - **Path provenance is in the driver's contract.** Each rewrite records the path
+    it matched beside the migrated one, and every downstream diagnostic is mapped
+    back through it before its position is resolved — without which a key rename
+    would silently downgrade every squiggle on that node to a parent squiggle, and
+    let a fix among them write across a parent's span. The general index is by
+    FILE, so a diagnostic that names only its file (as many do) and a rewrite in a
+    document with no `metadata.name` (every `Telo.Import`) are both reachable;
+    resource identity narrows within a file rather than being the only key.
+  - **A migration is reported everywhere the manifest is read.** `telo run` warns
+    through the kernel logger, alongside the version-hoist warning it already
+    emitted — otherwise the one command an author actually uses would be the only
+    surface that rewrote their manifest silently. The SDK's `check` seam remaps
+    paths like every other consumer, so a module acting on `path` and an editor
+    rendering a squiggle never disagree about what a manifest says.
+  - **`LoadOptions.migrate`** is a new, opt-in third cache axis beside `compile`
+    and `desugarImports`. Every resolved consumer passes it; a round-trip view must
+    not, since the editor writes its manifest/YAML pair back on save.
+    `ctx.loadModule`'s `LoadOptions` (SDK) gains the same flag.
+  - **`telo migrate <paths..>`** applies pending migrations to a file, through
+    byte-level splices — comments, indentation, block scalars and quote style are
+    preserved, exactly as `telo upgrade`'s rewrite already is. Imported modules are
+    left alone. A location whose YAML cannot carry the edit is reported rather than
+    silently skipped, since the diagnostic that sent the author here says to run
+    this command. Removing a mapping entry that _opens_ a sequence item
+    (`- type: string`, the shape a legacy `anyOf` branch takes) splices out to the
+    following key instead of deleting the line, which would take the `- ` with it.
+
+  - **The scalar re-quoting rule and the byte-splice loop are one primitive**
+    (`yaml-source-edit.ts` in `@telorun/analyzer`, browser-safe), read by the
+    migration applier, `@telorun/ide-support`'s quick fix and `telo upgrade`'s pin
+    rewrite. Three surfaces now write repairs into the same files; two copies of a
+    subtle quoting rule would eventually quote one value two ways and nothing would
+    catch it. `@telorun/ide-support` re-exports `renderFixReplacement`,
+    `quoteStyleOf` and `isPlainSafe` unchanged.
+
+  **Breaking:** `normalizeRefSlots` is removed from `@telorun/templating`. It
+  dropped the legacy scalar `type:` at an `x-telo-ref` slot at every
+  schema-compile site, which the shipped `ref-slot-scalar-type` entry now does once
+  at load. Keeping both would have left one rewrite with two traversals that match
+  different node sets, and it falsified the design's own safety property — a
+  consumer who forgot `migrate` behaved identically apart from the missing warning,
+  so the entry could not prove the mechanism it demonstrates. Nothing outside this
+  repo is known to call it; a manifest still carrying that spelling is repaired by
+  the migration on every load, and `telo migrate` fixes the file.
+
+### Patch Changes
+
+- Updated dependencies [a434722]
+- Updated dependencies [c8d457b]
+  - @telorun/analyzer@0.58.0
+  - @telorun/templating@0.14.0
+  - @telorun/ide-support@0.13.0
+  - @telorun/kernel@0.73.0
+  - @telorun/sdk@0.73.0
+
+## 0.72.0
+
+### Minor Changes
+
+- 55a7bef: Make CEL diagnostics actionable, and let an instant leave an expression.
+
+  cel-js reports one sentence for three unrelated mistakes, and two of the three
+  readings actively mislead: `no matching overload for 'startsWith(dyn, string)'`
+  names argument types, so the repair looks like a cast when the real fix is
+  `key.startsWith('x')`; `no matching overload for 'now()'` reads as wrong arity
+  when the function does not exist. Each wrong repair cost a full check cycle and
+  landed back on the same message.
+
+  Every call is now classified against the CEL function registry
+  (`Environment.getDefinitions()`), which reports call form and parameters for
+  cel-js built-ins and Telo's catalog alike. Name existence, call form and arity
+  are decided by lookup, so nothing parses cel-js's message text and a cel-js
+  version bump cannot silently degrade the classification. New codes:
+  `CEL_UNKNOWN_FUNCTION`, `CEL_WRONG_CALL_FORM`, and
+  `CEL_NONDETERMINISTIC_IN_COMPILE_FIELD` (a warning: `nowIso()` in an
+  `x-telo-eval: compile` field bakes once at load).
+
+  - **Breaking:** `TemplatingEngine.analyze` returns `AnalyzeResult`
+    (`{ diagnostics, type?, calls }`) instead of `EngineDiagnostic[]`. The engine
+    now owns the type-check, so one expression produces one verdict against one
+    environment — previously two passes with two environments let the opaque
+    residual survive beside the diagnostic that explained it, and left `${{ }}`
+    interpolations chain-validated but never type-checked.
+  - **Breaking:** CEL failures no longer report as `SCHEMA_VIOLATION`; the
+    residual type error is `CEL_TYPE_ERROR`.
+  - **Breaking:** `NormalizedDiagnostic.suggestions` entries are
+    `kind: "replace"` (was `"replace-kind"`).
+    Diagnostics with a decidable repair stamp a generic `fix` (`{ replacement }`
+    — the whole corrected value, with no sub-range) that flows unchanged to CLI
+    JSON and IDE CodeActions; `UNDEFINED_KIND`'s suggestion collapses into it.
+  - The VS Code extension offers those repairs as quick fixes. `ide-support`
+    gains `renderFixReplacement`, which re-quotes a replacement in the style the
+    author used: the span a fix replaces is the value node as written, so it
+    includes the scalar's quotes (the YAML tag sits outside it), and writing a
+    bare CEL expression into a quoted span would unquote text that a `: ` or a
+    trailing `#` stops parsing as one scalar. Shared with the Tauri editor so
+    both surfaces write a repaired scalar identically. It refuses a multi-line
+    span: a block scalar's span covers its `|`/`>-` indicator and its trailing
+    newline, so a single-line replacement would delete the break that ended the
+    mapping entry and glue the next key onto the value — the quick fix is simply
+    not offered there.
+  - `telo check -o json` diagnostics gain `resource`, `path` and `fix`.
+  - `telo cel functions` lists CEL's own built-ins alongside Telo's catalog,
+    grouped by receiver type (appended to the `--json` array as
+    `category: "builtin"`, so an existing consumer keeps working). They were
+    absent entirely — which is why an author could read that command end to end
+    and still call a method as a global, and why every new diagnostic pointing at
+    it would otherwise have pointed at a list missing the functions it was about.
+  - `CheckDiagnostic` (the SDK's static-analysis seam, `ctx.runtime.check()`) gains
+    `resource`, `path` and `fix`, so a module can act on a repair instead of
+    recovering it from prose. `path` travels with `fix` because the repair
+    replaces the value AT that path — a consumer holding only `line`/`column`
+    could not apply it to a parsed manifest.
+  - CEL gains `string(timestamp)` (RFC 3339) and `int(timestamp)` (epoch
+    seconds), the two conversions cel-go defines and cel-js omits. Without them
+    an expiry could be computed and not stored, which is also why three parallel
+    encodings of "now" exist.
+  - `UNCOVERED_THROW_CODE` reports one diagnostic per `catches:` block naming
+    every uncovered code and the handler, instead of one per code.
+
+- e801bd2: Embed a file that ships beside the manifest, with `!include-text` and `!include-bytes`.
+
+  A brand font, a background SVG, a `.sql` file, a system prompt — each is a file
+  next to `telo.yaml`, and until now there was no way to make one a manifest
+  value. `Fs.File` reads at _invocation_ time, resolves against the process cwd
+  rather than the module, and cannot supply a field read at construction; pasting
+  base64 into a scalar is unreviewable and contradicts the rule `x-telo-binary`
+  exists to enforce — that bytes always arrive by reference and are never authored
+  inline.
+
+  ```yaml
+  kind: PdfMake.Document
+  fonts:
+    Brand:
+      normal: !include-bytes assets/Brand-Regular.ttf
+  background:
+    svg: !include-text assets/page-background.svg
+  ```
+
+  - **Paths are module-root-relative**, never relative to the file the tag was
+    written in. That is the rule a controller's `path=` qualifier and
+    `files:`/`assets:` patterns already follow, and it is what makes a path mean
+    the same thing after publish, which inlines every `include:` partial into a
+    single published `telo.yaml` — a per-file-relative path would silently move,
+    passing `telo check` locally and failing only for consumers.
+  - **Confinement is decided from the written path alone** (`INCLUDE_PATH_INVALID`,
+    `INCLUDE_PATH_ESCAPES_MODULE`), so the browser-side analyzer enforces it
+    without a filesystem. The kernel re-checks rather than trusting that
+    `telo check` ran. A computed path is deliberately not expressible: a file that
+    ships inside the artifact has a name known at publish time, so the dynamic
+    case belongs to `Fs.File`.
+  - **The read happens when the resource holding it is created**, not at manifest
+    load — `telo.yaml` is its own artifact layer precisely so reading a manifest
+    cannot pull the payload, and an app loads every imported library's manifest.
+    A `with:`-scoped resource pays only when its scope runs. An embed on a doc
+    that is never instantiated is therefore read by nothing, and reported
+    (`INCLUDE_OUTSIDE_RESOURCE`) rather than silently ignored.
+  - **Publish adds a named file to the artifact automatically** — nothing is
+    restated in `files:`.
+
+  Payload membership is now one generic mechanism rather than two derivations that
+  happened to agree:
+
+  - `TemplatingEngine` gains an optional `fileClaims(source)` hook, so an engine
+    declares what its tag embeds. The `ref-slot.ts` precedent: one accessor on the
+    contract, no consumer pattern-matching a shape.
+  - `collectModuleFileClaims` (`@telorun/analyzer`, browser-safe) is the single
+    reader — engine claims plus the controller `path=`/`siblings=` claims, each
+    carrying its path, layer role and selector. Deliberately **not** part of
+    `analyze()`, whose pass is flattened and import-inclusive: its claims would
+    mix in imported libraries' files and would make packaging depend on resolving
+    the whole import graph.
+  - **Breaking:** `partitionLayers` takes that claim set instead of manifest text,
+    and `unmatchedSiblings` entries carry `origin` (was `purl`). `readControllerClaims`
+    moves out of the CLI. Publish now recognises neither a PURL nor a YAML tag, and
+    refuses to publish when a named file does not exist.
+
+  **Fixed: an imported library measured module-relative files from the CONSUMER's
+  directory.** An import's child `ModuleContext` carried the importing manifest's
+  URL rather than the library's own, and `source` is what every module-relative
+  reference resolves against. So a library reading its own asset looked in the
+  app's directory — and if the app happened to have a file at the same relative
+  path, it silently got the app's. This was never specific to embeds: it is the
+  same `source` `ctx.resolveModuleFile` reads, so `Http.Static`, `mcp-client`,
+  `assert`'s manifest loader and `Test.Suite` were mis-resolving for an imported
+  library too, and one fix covers all of them. It also contradicted packaging,
+  which is per-module and had already placed the library's file in the library's
+  own artifact.
+
+  **Fixed: a file embed's type is now checked statically.** `substituteCelFields`
+  collapsed every tagged sentinel to a slot-shaped placeholder — right for `!cel`,
+  whose type is only derivable from the expression, wrong for these two, whose
+  result type is a constant of the tag. So `!include-bytes` at a `type: string`
+  slot passed `telo check` and failed at resource creation, and the reverse did
+  too. The substitution now uses the real type, and AJV plus the existing
+  `x-telo-binary` keyword reject both directions with no new diagnostic code.
+
+  Two latent bugs surfaced and are fixed, both from config-resident values that
+  previously could not exist:
+
+  - The CEL expansion walker rebuilt **any** object from its entries, so a byte
+    buffer in a config field would have reached the controller as `{"0":137,…}`
+    with nothing raising. It now recurses only into plain containers, the rule
+    `precompileDoc` already followed.
+  - The same rule fixes a stack overflow: a template kind expands
+    `${{ self.connection }}` to a live `ResourceInstance`, whose object graph is
+    cyclic.
+
+  The Rust half mirrors the tag set and the path grammar, and resolves
+  `!include-text` at resource creation. `!include-bytes` fails there with an
+  explicit message: that kernel carries a manifest as JSON, which has no value for
+  raw bytes.
+
+### Patch Changes
+
+- Updated dependencies [55a7bef]
+- Updated dependencies [e801bd2]
+  - @telorun/templating@0.13.0
+  - @telorun/analyzer@0.57.0
+  - @telorun/ide-support@0.12.0
+  - @telorun/sdk@0.72.0
+  - @telorun/kernel@0.72.0
+
+## 0.71.0
+
+### Minor Changes
+
+- 418a70b: Global `-o, --output text|json` for the CLI's own output, and colour decided per stream.
+
+  Every command routes its output through one seam (`cli/nodejs/src/output.ts`) instead of writing `console.*` or `process.stdout.write` directly — enforced by a test, so the invariant is checkable rather than a convention.
+
+  **stdout is the machine surface; stderr stays human.** Under `-o json` stdout carries the payload and nothing else, so a caller reads `telo check`'s diagnostics by `code` and location instead of parsing prose. Prose keeps flowing to stderr in both formats — the convention npm, cargo and kubectl follow — because silencing it would swallow the reason a command failed, leaving `{"ok":false}` with no cause.
+
+  Two payload shapes share one serializer. `emit` writes a result envelope (`check`, `install`, `publish`, `upgrade`) and is silent under `text`. `document` writes a bare document (`cel`, `search`, `module versions|manifest|digest|resources|kinds`) in either format, since those commands' `--json` flags predate `-o` and keep working. A document command's stdout is the document or empty, never an error envelope — a CEL expression evaluating to `{"ok":false,…}` would otherwise be indistinguishable from a failure report — so its errors are prose on stderr plus a non-zero exit.
+
+  **`telo run` is exempt from `-o json`.** The kernel runs in-process and stdout/stderr are copied rather than redirected, so the app writes to those same descriptors and neither is the CLI's to claim; an envelope appended after app output would be unparseable. The machine surface for a run is `--debug`, whose wire protocol is framed per event precisely because it shares a stream.
+
+  Colour is decided separately for stdout and stderr rather than once from `process.stdout.isTTY`. Diagnostics go to stderr, so redirecting one stream and not the other previously emitted escapes where nothing could render them. stdout is never coloured under `-o json`, whatever `FORCE_COLOR` says.
+
+  A payload write is now followed by `process.exitCode` rather than `process.exit()`: on a pipe `write` is asynchronous and `exit` does not flush, so a large diagnostic set truncated into invalid JSON.
+
+  `yaml` is deliberately unimplemented — `-o` is an enum so it can gain that value without a second flag, and an unrecognized format throws instead of silently degrading to text.
+
+## 0.70.0
+
+### Minor Changes
+
+- 0ea1b8b: A CEL integer crosses a JSON boundary without a cast.
+
+  CEL models `int` as int64, which this runtime evaluates to a BigInt, and both doors out were shut. A JSON response body with no declared schema reached `JSON.stringify`, which throws on a BigInt; declaring the schema traded that for an AJV rejection (`must be integer` — its type check is `typeof data == "number"`) before the value was ever serialized. The only way through was `double(...)`, a cast that says "float" about a value that is an integer and silently truncates past 2^53 — and it had spread into the standard library's own examples, its docs, and the hub.
+
+  The kernel now installs `BigInt.prototype.toJSON` at `boot()` (`enableBigIntJson`, exported from `@telorun/kernel` — installing a global is a composition-root action, not something a controller should reach for), built on `JSON.rawJSON` so a BigInt serializes as its exact decimal digits rather than a lossy Number or a type-changing string. The rule is normative in `kernel/specs/invocation-contract.md` §4.4, so a second-language runtime has something to implement against. That is not a new policy: it is what `fast-json-stringify` already emitted for a schema-typed `integer`, so the runtime's two JSON serializers now agree at every magnitude instead of only below 2^53. Being a process-global patch — in the same spirit as the existing `process.env` guardrail — it covers every JSON boundary in the process: the kernel's, the standard library's, a third-party module's, and one not yet written.
+
+  The validator half moved with it. `ctx.validateSchema` and every `SchemaValidator.compile()` validator now check a BigInt-normalized view and merge the `useDefaults` fills back, so a computed integer satisfies a declared `integer` slot while the value that reaches the controller keeps its 64-bit range. That merge now recurses index-wise through arrays: AJV writes a default at every level it finds one, `items` included, and stopping at the array boundary dropped those fills silently. The contract binding no longer normalizes on its own — one layer owns the concern, and a contracted dispatch no longer walks its input and output trees twice.
+
+  Serializers that deliberately encode a BigInt differently were updated to keep doing so, since `toJSON` runs before a replacer: `encodeJsonValue` still tags one so a persisted value replays as the same type, the `json` log encoding still quotes a value beyond the safe range as OTLP does for its 64-bit fields, and the `pretty` console encoding still renders one as text. `bigIntAt` is exported from `@telorun/sdk` for a sink or codec that needs the same.
+
+### Patch Changes
+
+- Updated dependencies [0ea1b8b]
+- Updated dependencies [0ea1b8b]
+- Updated dependencies [07fca98]
+  - @telorun/kernel@0.70.0
+  - @telorun/sdk@0.70.0
+  - @telorun/analyzer@0.56.1
+  - @telorun/templating@0.12.0
+  - @telorun/ide-support@0.11.3
+
+## 0.69.0
+
+### Patch Changes
+
+- Updated dependencies [8cede51]
+  - @telorun/analyzer@0.56.0
+  - @telorun/kernel@0.69.0
+  - @telorun/ide-support@0.11.2
+
+## 0.68.0
+
+### Patch Changes
+
+- Updated dependencies [2373398]
+- Updated dependencies [2373398]
+- Updated dependencies [2373398]
+  - @telorun/kernel@0.68.0
+  - @telorun/sdk@0.68.0
+  - @telorun/analyzer@0.55.0
+  - @telorun/templating@0.12.0
+  - @telorun/ide-support@0.11.1
+
+## 0.67.0
+
+### Minor Changes
+
+- 8a9b494: `telo check` now reports execution-zone diagnostics: a statement declaring a
+  `transaction:` wired onto a path that reaches it outside any transaction is an
+  error at check time rather than a throw the first time that route is exercised.
+
+  The command feeds the analyzer each imported library's full documents
+  (`collectZoneModuleDocuments`) alongside the flattened manifest list. The
+  flattened view carries only each library's export surface, never its internal
+  dispatch chain, so without this the zone stage cannot derive what an exported
+  resource requires of its importers — and `ZONE_EXPORT_UNSATISFIABLE` would
+  never fire at the library that owns the fix.
+
+### Patch Changes
+
+- e7853d5: `telo install` now hands each controller pre-install job its module's
+  `ModuleArtifact`, the same handle the kernel supplies at run time. Previously
+  the pass called the controller loader with no artifact, so every `pkg:telo`
+  bundled candidate of a published (`oci://`) module was env-missing and the
+  install failed on modules `telo run` loads fine — only legacy `pkg:npm`
+  modules passed. `warmModuleLayers` now returns the artifact handles it already
+  built (keyed by module source) instead of discarding them.
+- Updated dependencies [8a9b494]
+- Updated dependencies [e7853d5]
+- Updated dependencies [0938ed4]
+  - @telorun/kernel@0.67.0
+  - @telorun/sdk@0.67.0
+  - @telorun/analyzer@0.54.0
+  - @telorun/ide-support@0.11.0
+  - @telorun/templating@0.12.0
+
+## 0.66.0
+
+### Minor Changes
+
+- 3bd2de9: Modules now report which kernels can run them, and deprecation is structured
+  rather than prose.
+
+  `telo module manifest --json` gains a `runtime` block classifying every kind by
+  the kernels that can host it, derived from its `controllers:` PURL candidates:
+  `pkg:cargo` runs on both kernels (the Node kernel builds the crate as a napi
+  addon, the Rust kernel opens it as a cdylib), `pkg:npm` and a bundled
+  `pkg:telo/local/js` on Node alone, and a format no kernel hosts contributes
+  nothing. Telo is polyglot, so this is a capability rather than trivia — without
+  it a consumer composing for the Rust kernel is offered kinds it cannot load.
+
+  The classification is per KIND, and the module roll-up distinguishes full from
+  partial coverage, because coverage genuinely differs within one module:
+  `std/console` ships Rust controllers for two of its four kinds, so a boolean
+  would claim the whole module runs on the Rust kernel. A kind declaring no
+  controllers is reported as `portable` — no kernel constraint — rather than
+  having today's kernels enumerated into it, which would make the record wrong
+  the day a third kernel ships. Language is tracked as a separate axis from
+  runtime and is left blank for a `napi`/`wasm` bundle, whose source language the
+  PURL does not determine.
+
+  `@telorun/analyzer` gains the first validation of the `metadata:` block on
+  `Telo.Application` / `Telo.Library` docs, which previously had no schema at all.
+  Known fields are type-checked, the vocabulary stays open, and an unknown key is
+  reported only when it is a near-miss of a known one — nothing in the kernel
+  reads these fields, so a mistyped `licence:` or `deprecatd:` has no runtime
+  failure mode and would otherwise ship unnoticed.
+
+  Two new fields are recognized: `metadata.homepage`, and `metadata.deprecated`
+  with a `reason` and an optional `replacedBy`. The replacement is resolvable
+  rather than free text, and its form follows the level — a module doc names
+  another module ref, a kind doc names an alias-qualified kind (`Self.Migrations`,
+  `Telo.JsonSchema`) resolved through the declaring file's own imports, exactly as
+  `extends:` is. `INVALID_DEPRECATION` and `DEPRECATION_REPLACEMENT_UNRESOLVED`
+  report a replacement a consumer could not follow.
+
+### Patch Changes
+
+- Updated dependencies [3bd2de9]
+- Updated dependencies [0b971d6]
+  - @telorun/analyzer@0.53.0
+  - @telorun/kernel@0.66.0
+  - @telorun/ide-support@0.10.1
+
+## 0.65.0
+
+### Minor Changes
+
+- bd6398e: Upgrading an import from an editor now writes the new version's integrity pin
+  instead of dropping it.
+
+  `telo module manifest --json` emits an `integrity` field — the owning
+  transport's `manifestHash`, never a hash re-derived from the manifest text,
+  since only the transport knows what its own reads verify against. The hub stores
+  it per version and serves it from `/module/versions`, so an editor gets the pin
+  in the request it already makes and no browser has to speak OCI to produce one.
+
+  In `@telorun/ide-support`, `ModuleVersionLookup` now returns
+  `{version, integrity?}` entries, and `buildImportUpgrades` reports two
+  categories: imports that are behind (bumped and re-pinned in one edit) and
+  imports at the newest version carrying no pin (pinned in place, matching
+  `telo upgrade`'s `ensurePinned`). Pins are written in the shape the author
+  wrote — a scalar shorthand takes a `#sha256-…` fragment, an object-form
+  `integrity:` has its value replaced — which also lets a flow-style
+  `{source: …, integrity: …}` entry be re-pointed instead of skipped. With no pin
+  available for the target version the previous behaviour is unchanged: the
+  version is bumped, the stale pin removed, and the host told to say so.
+
+  A pin arriving over the network is spliced into the author's YAML, so it is
+  validated before it is written: `@telorun/analyzer` exports
+  `isCanonicalIntegrity`, and a value that is not `sha256-<43 base64url chars>`
+  is treated as no pin rather than written through — a malformed one would
+  corrupt the manifest, which is the one failure install-time verification cannot
+  catch. `parseModuleVersions` (also new, in `@telorun/ide-support`) is the single
+  reader for the route's body, so a host no longer hand-rolls the parse.
+
+### Patch Changes
+
+- Updated dependencies [bd6398e]
+- Updated dependencies [f94ff85]
+- Updated dependencies [0bbbc3f]
+  - @telorun/ide-support@0.10.0
+  - @telorun/analyzer@0.52.0
+  - @telorun/kernel@0.65.0
+  - @telorun/sdk@0.65.0
+  - @telorun/templating@0.11.1
+
+## 0.64.0
+
+### Minor Changes
+
+- c28ee72: Present OCI as the primary module ref form in CLI help and docs. `telo module`'s
+  `<ref>` help text now leads with `oci://host/repo@1.2.0` instead of a `std/`
+  registry ref; the bare `<namespace>/<name>@<version>` form still resolves and is
+  still listed. No behavioural change — help and comment text only.
+
+### Patch Changes
+
+- Updated dependencies [c28ee72]
+- Updated dependencies [424aacf]
+- Updated dependencies [a8402d9]
+- Updated dependencies [642b057]
+  - @telorun/ide-support@0.9.0
+  - @telorun/analyzer@0.51.0
+  - @telorun/kernel@0.64.0
+  - @telorun/sdk@0.64.0
+  - @telorun/templating@0.11.1
+
+## 0.63.0
+
+### Minor Changes
+
+- e52a2bf: `telo publish`: a bundled controller's entry point no longer has to be restated in `files:`.
+
+  `controllers:` already names it, so it joins the payload from there — matching the module-artifact spec, which defines a controller layer by its candidates' entry points and says nothing about `files:`. A module whose only payload is its controller now declares no `files:` at all, and `files:` keeps its role for what the manifest cannot otherwise name: assets, static files, sidecars. Symlink confinement moved from the pattern match to the whole partition, so it covers every file that actually ships.
+
+  `telo publish` also refuses to publish changed bytes at an unchanged `metadata.version`. A bundle inlines its dependencies, so a fix in a shared TS library — or a transitive bump the lockfile alone moved — changes a module's shipped bytes while touching no file under its own directory and moving no package version; no path-scoped rule and no version ledger can see that, and the fix would ship to nobody. Publish now builds the payload and compares each layer's `integrity` digest against the artifact already published under that version, naming the digest that moved. Exact rather than inferred: it cannot miss what no version records, and identical bytes hash identically so it cannot fire spuriously.
+
+  The analyzer accepts `local_path` as a known qualifier on a bundled-controller PURL. It names the source `path=` was built from, contributes nothing to the layer selector, and is inert in a published artifact.
+
+### Patch Changes
+
+- 3e9f802: Surface outdated `imports:` entries in the IDE, the way the telo editor's Imports view already does.
+
+  `@telorun/analyzer` gains `newestModuleVersion(versions, { includePrerelease })` beside `isNewerModuleVersion`. Both halves of an upgrade check have to come from one rule: a host that decides "behind" through the shared ordering but reads "latest" off the head of a version list is answering with whatever order its index happened to return. For a module whose newest tag is a prerelease, list-order said the import was behind while the ordering rule said it was current — the same manifest against the same hub, two answers. Unparseable tags (an OCI digest, a moving `latest`) are dropped rather than ordered, and prereleases are excluded unless asked for, matching `telo upgrade`'s default. The editor's Imports view now derives its "latest" through it, so its badge no longer offers `-rc` builds as automatic upgrade targets; the per-import dropdown still lists every version for a deliberate pick.
+
+  `@telorun/ide-support` gains `buildImportUpgrades(text, listVersions, docs?)` — a host-neutral builder that locates every `imports:` entry of a module document, asks a caller-supplied `ModuleVersionLookup` for each distinct base ref's versions, and returns the source edits that re-point the ones that are behind. Both authored shapes are handled: for the object form the now-stale `integrity:` line is deleted alongside the source rewrite, because the pin hashes the `telo.yaml` of the version being replaced and carrying it forward would turn the next install into a tamper error. An entry whose pin shares a line with other fields is reported as a skip — carrying its anchor and versions, so a host renders it in place of the upgrade affordance rather than showing nothing for an import that is behind.
+
+  The VS Code extension renders it as CodeLenses: a summary lens on the `imports:` key (`2 imports outdated · Upgrade all`), a per-entry lens (`↑ 0.9.0 → 1.0.0`), and a warning lens for a skip. Version lists come from the hub, memoized so lens resolution stays off the keystroke path — failures are memoized too, on a shorter clock, or an unreachable hub would fire a request per base ref on every keystroke. A click that changes nothing now says which of the three reasons applied: a lookup that failed, a skip that named a reason, or genuinely current. Hub failures go to a new `Telo` output channel, reachable from the failure notification. New setting `telo.importUpgrades.enabled` turns the feature and its hub traffic off; new command `Telo: Check Imports for Updates` drops the memo and re-checks.
+
+  `@telorun/cli` drops its private copy of the module-kind list in favour of the analyzer's `isModuleKind`.
+
+- Updated dependencies [e52a2bf]
+- Updated dependencies [e52a2bf]
+- Updated dependencies [3e9f802]
+  - @telorun/analyzer@0.50.0
+  - @telorun/sdk@0.63.0
+  - @telorun/kernel@0.63.0
+  - @telorun/ide-support@0.8.0
+  - @telorun/templating@0.11.1
+
+## 0.62.0
+
+### Minor Changes
+
+- 15acf14: `telo check` no longer re-downloads every import on every run.
+
+  It built its `Loader` from `[LocalFileSource, ...transports]` — `LocalManifestCacheSource` was absent, and nothing wrote the cache afterwards. So every `oci://` and registry import was pulled from the origin on every invocation, including fully digest-pinned ones whose bytes cannot change. The loader was also constructed per input path, so one `telo check a b c` re-fetched a module shared between them once per file. Checking the repo's examples took 41s of which 35s was network, with `http-server` and `console` each fetched six times inside a single process.
+
+  `check` now registers the same manifest cache `run` reads and write-throughs after a successful load, and shares one loader across every input path (its `urlToSource` / `fileCache` dedupe by canonical URL, so the resolution result never depended on which entry asked). A cache source is registered per input path's cache root; entries are content-addressed, so a hit under any root is as good as a hit under the one that path would write to.
+
+  Freshness is kept honest rather than assumed, per cache-key shape:
+
+  - A **pinned** import — what `telo install` writes and what every published manifest carries — is verified against its inline `sha256-` hash on read, so it needs no network at all.
+  - An import naming a **mutable OCI tag** is revalidated with one `HEAD` per reference (once per invocation, not once per input path) against the digest that produced the cached copy, recorded in `.telo/manifests/.origins.json`. A tag that has moved, or was never recorded — e.g. a cache written by `telo run` — drops that one entry and reloads it.
+  - A **registry** ref is always version-segmented, and a published version is immutable by the same convention npm relies on, so it is served without revalidation. This is a deliberate call: the registry origin has no cheap freshness probe (`digest()` downloads the manifest to hash it), so revalidating would cost exactly what re-fetching costs.
+  - An arbitrary **HTTP(S) URL** import is never read from the cache by `check`. Its key carries no version segment — one URL is one path forever — so a hit would be served for the lifetime of the directory regardless of what the server now returns. Re-fetching costs one request, which is exactly what revalidating would cost, so the honest option is also the cheap one. `check` still writes these entries, since `telo run` reads them.
+
+  So `check` cannot report a clean bill of health against a manifest that has changed upstream.
+
+  On the kernel side, read-side `OciClient`s are pooled per `(host, repo)` on the `OciTransport` instance instead of built per operation. The client caches bearer tokens per scope, but a per-operation client discarded that cache immediately, so every manifest and every blob paid its own 401→challenge→token round trip plus a `~/.docker/config.json` read and possibly a credential-helper subprocess. An expired token still self-heals through the existing 401 retry. The pool belongs to the instance rather than the module so a second transport — a test, or a second in-process kernel — never inherits another's credentials; `defaultTransportRegistry` is memoized per registry URL, so the production lifetime is unchanged. Publishing keeps its own client.
+
+  `Loader.forget(url)` drops one file's memo (every parse variant, plus every request URL that canonicalised to it) so a single stale manifest can be re-resolved without discarding the whole loader and every unrelated file's cached resolution with it. The loader already documented needing this for watch mode.
+
+  Checking the examples now takes 1.2s warm; a single pinned manifest resolves with no network at all.
+
+### Patch Changes
+
+- 89ffea7: `telo run` points a manifest error at its line again, exactly as `telo check` does.
+
+  A failure the kernel raises from static analysis converted the analyzer's diagnostics into `RuntimeDiagnostic`s while dropping their `data` — the file, the field path within it, and the owning resource. That is precisely what `findPositions` resolves a position from, so the CLI had nothing left to locate and printed the message alone. The same manifest checked with `telo check` still named the line, which made the two commands disagree about the same error.
+
+  `RuntimeDiagnostic` gains `origin` (`DiagnosticOrigin`: `filePath`, field `path`, `resource`, and the diagnostic's own `range`), carried through verbatim so a renderer resolves `file:line:col` against the loaded graph rather than re-parsing a rendered message. `range` is what locates a failure with no field path to look up: a YAML parse error knows where the syntax broke but has no parsed tree to index.
+
+  All four raise sites now go through one mapper (`static-analysis-diagnostics.ts`, sibling of the init-failure one): the pre-flight validation pass, Phase-3 reference resolution, YAML parse failures, and major-version conflicts. The last two used to flatten their diagnostics into a joined message string, so a syntax error and a bad `imports:` pin were the two failures `run` could not locate at all. Their `error.message` is unchanged for consumers that only read it. The loaded graph is now recorded before the parse-failure throw, since that is the failure that most needs to name a line.
+
+  The position itself comes from `resolveRange`, the rule the VS Code extension already uses, rather than a third copy of it in the CLI: it walks parent paths when the exact field path is absent from the index (an `imports.<alias>` conflict lands on the import entry) and prefers an entry's key over its value. `resolveRange` now takes just the position half of a `DiagnosticContext`, so a caller holding only a located file does not have to invent an `AnalysisRegistry` to reuse it. A located static failure renders byte-identically under `run` and `check`. A diagnostic nothing can locate falls back to naming the resource rather than pointing at line 1 — a wrong line sends the reader somewhere the error is not. Runtime failures are unchanged: they are pinned to a resource, not to a spot in the YAML, and keep the kind + name form.
+
+- 0bbfa77: `telo run --watch` keeps reloading after an editor's atomic save.
+
+  Watch mode reloaded a few times and then went permanently silent. `fs.watch` binds to the file's **inode**, not to its path, so the save style most editors and formatters use — write a temp file, then rename it over the target — leaves the watcher attached to the replaced inode. It never fires again, and it emits no `error` event, so the re-establish handler never ran and `sync` skipped the path as already watched. Every file died on its first atomic save, which is why the session survived exactly as many reloads as it happened to get in-place writes.
+
+  The watcher now records the inode it is bound to and re-binds when it changes. The event that accompanies the replacement is the dying watcher's last gasp, which is enough to notice and re-arm — the strategy chokidar uses. The check is keyed on the inode rather than on a `rename` event type, because bun reports the replacement as `change`, so a rename-keyed variant would do nothing under the runtime the CLI actually runs on.
+
+  A change arriving while no cycle was waiting on its gate — during teardown and the next load, which take seconds — is no longer dropped. It was resolving an already-settled promise; it is now held and consumed by the next cycle, so an edit made while the app is restarting still triggers the reload it should.
+
+- Updated dependencies [15acf14]
+- Updated dependencies [89ffea7]
+- Updated dependencies [89ffea7]
+- Updated dependencies [89ffea7]
+- Updated dependencies [89ffea7]
+  - @telorun/kernel@0.62.0
+  - @telorun/analyzer@0.49.1
+  - @telorun/sdk@0.62.0
+  - @telorun/ide-support@0.7.10
+  - @telorun/templating@0.11.1
+
+## 0.61.0
+
+### Minor Changes
+
+- bf324d2: Init failures now report the root cause instead of the whole cascade.
+
+  When a resource fails to initialize, every resource downstream of it is unfinished too, and the multi-pass init loop used to report all of them flat — shadows first, since a resource that never got created was listed before one whose `init()` threw. A ten-resource chain printed one actionable line buried under nine repetitions of it.
+
+  The kernel now classifies the failure set before raising `ERR_RESOURCE_INITIALIZATION_FAILED`. An entry is **derived** — collapsible — only when it carries `ERR_LOCAL_REF_PENDING` or `ERR_CROSS_MODULE_REF_PENDING`: a deferral, which says the resource never ran and so has nothing of its own to report. A reference edge into the failure set is **attribution only**, never grounds for collapsing: it proves an edge exists, not that this entry's failure came from it, so a resource that references a failed dependency _and_ fails its own validation keeps its line. `RuntimeDiagnostic` gains `derived` and `blockedBy` — the **root** of the chain, not the immediate blocker, since that is the name to go fix. If no entry survives as a root, the whole set is reported unclassified rather than collapsed to nothing.
+
+  A nested context's failures — an import initializing its library's resources — are attached to the importing entry as `RuntimeDiagnostic.children` instead of being flattened into its message, so the child's own root causes stay distinguishable from the child's cascade and the CLI's error count reflects the real leaves rather than one `Telo.Import`. They are reported even when the wrapping entry is itself collapsed.
+
+  `ModuleContext.getInstance` no longer reports a declared-but-uninitialized resource as `Resource 'X' not found in module context. Available resources: …`. That message listed the module's imports and read as a typo in a name that was in fact declared right there. While the context is still initializing the name now defers with `ERR_LOCAL_REF_PENDING`, exactly as Phase-5 injection does, so the loop retries and the failure is attributed to the dependency. **After** init — at dispatch, where no later pass is coming — it raises `ERR_RESOURCE_NOT_FOUND` saying the resource was declared but never initialized, rather than promising a retry that will never happen. An unknown name still gets the original message.
+
+  The CLI prints root causes in full and collapses each blocked chain to a single line (`3 resources blocked by GrantDb: GrantStore, GuardedWork, OnceWork`); `--verbose` prints every entry.
+
+### Patch Changes
+
+- Updated dependencies [bf324d2]
+- Updated dependencies [2ee3598]
+- Updated dependencies [bf324d2]
+- Updated dependencies [bf324d2]
+  - @telorun/kernel@0.61.0
+  - @telorun/sdk@0.61.0
+  - @telorun/analyzer@0.49.0
+  - @telorun/templating@0.11.0
+  - @telorun/ide-support@0.7.9
+
+## 0.60.0
+
+### Minor Changes
+
+- d23de89: Layered module artifacts: a published module is now one artifact of several layers instead of one tarball, and each layer is materialized only when something needs it.
+
+  `telo.yaml` gets its own layer, so reading a manifest no longer downloads (and discards) the whole payload. The rest of `files:` is partitioned into one layer per bundled-controller selector — `format` plus optional `os`/`arch`/`libc` PURL qualifiers — plus an `assets` layer for what the new optional `assets:` list claims and a `common` layer for everything else. A Node kernel never fetches a `napi` layer, a `linux/amd64` host never fetches the `darwin/arm64` binary, and an app that imports a module for its API alone never fetches its frontend.
+
+  This fixes a cold-start failure: bundled controllers used to resolve against an `oci://` base URI that was read as a filesystem path, because the payload was written to disk by a CLI hook running _after_ `kernel.load()`. The first run of any OCI-imported module with bundled controllers failed and the second succeeded. Controller layers now materialize at resolve time through a module-scoped `ModuleArtifact`, built during load where the pinned import ref and the verified manifest are both available — so verification stays anchored to the importer's `#sha256-` pin rather than to whatever is in the cache.
+
+  `ctx.resolveModuleFile(relative)` is the new, URI-returning way to reach a file that ships with a module; it materializes the asset layer on first use. `Http.Static`, `mcp-client`, `assert`'s manifest loader and `Test.Suite` all use it, which also fixes a silent bug where a non-`file://` module resolved a relative root against the process working directory and served the wrong directory instead of failing.
+
+  Also: `telo install --platform os/arch[/libc]` pre-fetches layers for a platform other than the build machine's, the layer index and selector grammar are specified normatively in `kernel/specs/module-artifact.md`, and the cross-process cache lock is shared between the npm loader and layer materialization instead of duplicated.
+
+  Modules published before layers keep resolving: the manifest read path still accepts a single-blob artifact, which contains `telo.yaml` — so nothing that ships no payload needs anything done to it, and npm-backed modules are entirely unaffected. What such an artifact cannot supply is a layer index, so a module that _does_ ship a payload resolves its manifest and then fails at the controller with an actionable "republish" error. That is the six modules shipping `files:` — `oauth-client`, `scheduler`, `kv-store-memory`, `kv-store-redis`, `kv-store-sql`, `idempotency` — which must be republished, with consumers bumping to the new versions.
+
+### Patch Changes
+
+- Updated dependencies [d23de89]
+  - @telorun/analyzer@0.48.0
+  - @telorun/kernel@0.60.0
+  - @telorun/sdk@0.60.0
+  - @telorun/ide-support@0.7.8
+  - @telorun/templating@0.11.0
+
+## 0.59.0
+
+### Patch Changes
+
+- Updated dependencies [6376a66]
+- Updated dependencies [6376a66]
+- Updated dependencies [6376a66]
+  - @telorun/analyzer@0.47.0
+  - @telorun/kernel@0.59.0
+  - @telorun/sdk@0.59.0
+  - @telorun/ide-support@0.7.7
+  - @telorun/templating@0.11.0
+
+## 0.58.0
+
+### Patch Changes
+
+- Updated dependencies [8353d0e]
+  - @telorun/sdk@0.58.0
+  - @telorun/kernel@0.58.0
+  - @telorun/analyzer@0.46.0
+  - @telorun/templating@0.11.0
+  - @telorun/ide-support@0.7.6
+
+## 0.57.0
+
+### Patch Changes
+
+- Updated dependencies [3729559]
+  - @telorun/analyzer@0.45.0
+  - @telorun/kernel@0.57.0
+  - @telorun/ide-support@0.7.5
+
+## 0.56.0
+
+### Minor Changes
+
+- f3b044d: Remove `metadata.namespace` as a structural field. Five subsystems read it;
+  each now uses something the module already has.
+
+  `x-telo-ref` names its target as an **alias-qualified kind** — the same grammar
+  `kind:` and `extends:` use: `KvStore.Store` for a module in this file's
+  `imports:` map, `Self.Store` for a kind in this library, `Telo.Invocable` for a
+  built-in. The analyzer canonicalizes each constraint in the _declaring_ module's
+  scope before registration, so the definition registry answers ref queries with
+  no module context and a constraint stays correct whatever alias a consumer
+  picks. The legacy `"<namespace>/<module>#<Kind>"` identity form still resolves
+  for already-published module versions and now warns as
+  `X_TELO_REF_LEGACY_IDENTITY`; `metadata.namespace` feeds nothing else.
+
+  A constraint whose prefix names no alias is now `X_TELO_REF_UNRESOLVED` (or
+  `KIND_NOT_EXPORTED` when the alias is known but the target gates the kind),
+  quoting the slot's path and the aliases in scope. Previously — and for the old
+  identity form before it — an unresolvable constraint made the reference check
+  treat the slot as partial context and skip it, so a typo silently let the slot
+  accept any resource. All three diagnostics are scoped to the modules the author
+  can edit, so a published dependency never reports against its consumers.
+
+  Definition schema `$id`s move onto `telo://<module>/<Name>`, the scheme named
+  `Telo.Type`s already register under. One id space per module means a kind and a
+  named type may no longer share a name; that collision is reported as
+  `DUPLICATE_SCHEMA_ID` rather than silently dropping the type's schema.
+
+  Version reconciliation keys on the **import ref minus its version** rather than
+  `<namespace>/<name>`, so OCI and `https://` modules are hoisted for the first
+  time and two same-named modules published to different origins are no longer
+  conflated. A relative path addresses one file on disk, not a published
+  location, and is not reconciled.
+
+  `Transport.cacheLocation` is replaced by `Transport.cacheCoords`, returning the
+  `{ transport, host, path, version }` coordinates that `manifestCacheKey`
+  renders. The local manifest cache therefore uses the same layout as the
+  discovery hub's static bucket:
+  `.telo/manifests/<transport>/<host>/<path…>/<version>/<file>`. Registry entries
+  now carry the registry host, so two registries' copies of one path and version
+  no longer share a cache entry. **Existing `.telo/manifests` trees are orphaned
+  by the new layout and are re-downloaded on the next `telo install`.**
+
+  `telo publish` derives a relative sibling import's ref from the publish
+  destination — the destination's last segment is the module's own directory, so
+  `../bar` under `oci://ghcr.io/acme/foo` resolves to `oci://ghcr.io/acme/bar` —
+  and reads only the sibling's version from its manifest. `SiblingIdentity` is
+  gone.
+
+### Patch Changes
+
+- Updated dependencies [f3b044d]
+  - @telorun/analyzer@0.44.0
+  - @telorun/kernel@0.56.0
+  - @telorun/sdk@0.56.0
+  - @telorun/ide-support@0.7.4
+  - @telorun/templating@0.11.0
+
+## 0.55.0
+
+### Patch Changes
+
+- Updated dependencies [cae53b0]
+  - @telorun/kernel@0.55.0
+
+## 0.54.0
+
+### Patch Changes
+
+- Updated dependencies [942c176]
+- Updated dependencies [adc8459]
+- Updated dependencies [adc8459]
+- Updated dependencies [adc8459]
+  - @telorun/sdk@0.54.0
+  - @telorun/kernel@0.54.0
+  - @telorun/analyzer@0.43.0
+  - @telorun/templating@0.11.0
+  - @telorun/ide-support@0.7.3
+
+## 0.53.0
+
+### Patch Changes
+
+- Updated dependencies [de6c2aa]
+  - @telorun/kernel@0.53.0
+  - @telorun/analyzer@0.42.0
+  - @telorun/ide-support@0.7.2
+
+## 0.52.0
+
+### Minor Changes
+
+- 84002d3: Remove the Telo module registry as a publish/discovery surface; the hub is now the discovery path.
+
+  The `registry.telo.run` origin stays a read-only resolution source, so apps that
+  import bare `namespace/name@version` refs keep resolving and running unchanged.
+  `telo run` / `install` / `check` / `module` / `upgrade` are unaffected — they
+  resolve and enumerate versions against the still-deployed origin. What is removed:
+
+  - **`telo publish` targets OCI only.** A non-OCI (HTTP registry / bare-host)
+    destination is rejected with a clear error; publish to `oci://host/repo`.
+    `--registry` remains, used solely to resolve/pin dependencies read-only.
+  - **`RegistryTransport.publish()` now throws** — the transport is read/resolve
+    only. Resolution, cache placement, version listing, digest, and manifest
+    hashing are unchanged.
+
+### Patch Changes
+
+- Updated dependencies [ab4a911]
+- Updated dependencies [84002d3]
+  - @telorun/templating@0.11.0
+  - @telorun/kernel@0.52.0
+  - @telorun/analyzer@0.41.1
+  - @telorun/ide-support@0.7.1
+
+## 0.51.2
+
+### Patch Changes
+
+- 2e1bb5c: Fix `telo publish` for OCI imports and directory arguments.
+
+  - The pre-flight analysis loader now uses the kernel's transport sources (same
+    chain as `telo check`), so a manifest whose `imports:` reference an `oci://`
+    dependency — pinned (`#sha256-…`) or not — resolves for analysis instead of
+    failing with `No source found for: oci://…`. Previously it used the analyzer's
+    `defaultSources()` (HTTP + registry only), which owns no `oci://` scheme.
+  - A directory argument now resolves to its `telo.yaml` (standard Telo path
+    resolution, matching `run` / `check`), instead of failing with
+    `Cannot read file: <dir>`.
+
+- Updated dependencies [0c1c8fd]
+- Updated dependencies [2e1bb5c]
+  - @telorun/analyzer@0.41.0
+  - @telorun/ide-support@0.7.0
+  - @telorun/kernel@0.51.2
+
+## 0.51.1
+
+### Patch Changes
+
+- Updated dependencies [bdc21e9]
+  - @telorun/ide-support@0.6.0
+
+## 0.51.0
+
+### Minor Changes
+
+- 6418e2a: `telo check` now resolves every import scheme the runtime does — `oci://`
+  included — and reports locations as CWD-relative paths.
+
+  `check` built its loader from the analyzer's browser-safe `defaultSources()`
+  (HTTP + registry only), so an `oci://` import failed with "No source found for".
+  It now uses the kernel's `defaultTransportRegistry(registryUrl).sources()` — the
+  same origin-direct chain `install` / `run` use — so OCI resolves straight from
+  the origin registry, never through the hub cache (the discovery plan's invariant:
+  CLI resolution never routes through the hub; the `manifests.telo.sh` cache is the
+  browser editor's read path only). A `--registry-url` option is added, matching
+  the `--registry-url → TELO_REGISTRY_URL → https://registry.telo.run` fallback of
+  `run` / `install` / `upgrade`.
+
+  Diagnostic locations for on-disk manifests are now printed relative to the
+  working directory (e.g. `examples/hello-world/telo.yaml:12:12`) instead of an
+  absolute `file://` URL; genuine `http(s)://` sources stay absolute.
+
+  `@telorun/kernel` gains a `./transports` subpath export (re-exporting
+  `defaultTransportRegistry` and the transport registry) and a
+  `./manifest-sources/local-file-source` subpath so a Node consumer can pull just
+  the transport-resolution sources and the local-file source without the
+  controller/bundler machinery the package root drags in. `telo check` and the VS
+  Code host both import through these subpaths.
+
+- 6418e2a: Surface broken `imports:` sources as structured diagnostics through one shared
+  code path, so every host reports them identically.
+
+  Import-resolution failures were collected into `LoadedGraph.errors` as raw
+  `Error`s with no diagnostic code. Each host assembled its own diagnostic list
+  from the graph, and they drifted: the CLI re-threw the first error as a bare
+  message, while the VS Code extension dropped the channel entirely — a manifest
+  with an unresolvable import showed **no** in-editor diagnostic.
+
+  The channels split cleanly across two layers:
+
+  - The analyzer owns the raw conversion: `importResolutionDiagnostics(graph)`
+    turns `graph.errors` into coded `AnalysisDiagnostic`s — `INVALID_IMPORT_SOURCE`
+    for a source no transport can ever resolve (e.g. `not-found@whatever`) and
+    `IMPORT_UNRESOLVED` for a well-formed ref that failed to fetch (404, missing
+    file). Each adopts the `{ filePath, path: "imports.<alias>" }` shape
+    version-reconciliation diagnostics already use, so the shared `findPositions` /
+    `resolveRange` routing anchors them on the offending import line with no
+    host-specific code.
+  - `@telorun/ide-support` owns the presentation policy:
+    `assembleGraphDiagnostics(graph, analysis)` folds parse, version, import, and
+    static analysis into one list and partitions out the cascade that would bury
+    the real cause — the analysis diagnostics of any file that failed to parse
+    **or** whose import failed to resolve (both have unreliable kind resolution).
+    It returns `{ diagnostics, suppressed }`: hosts surface `diagnostics` and may
+    render `suppressed` dimmed. The compromised-file set is exposed on its own as
+    `compromisedFiles(graph)` so the multi-closure telo-editor applies the exact
+    same policy the single-closure VS Code host does — the two show identical
+    info. The CLI, VS Code extension, and telo-editor all route through this one
+    source, so a channel can never again be surfaced by some hosts and forgotten
+    by others.
+
+  `GraphLoadError` gains `alias`, `source` (the author-written import string), and
+  `sourceLine` to support precise anchoring and messages that quote what the
+  author wrote rather than a resolved `file://` URL.
+
+  `telo check` now renders import-resolution failures as coded diagnostics
+  alongside everything else — with a file:line:col and code — instead of throwing
+  the first as an uncoded message, and suppresses the secondary kind-resolution
+  cascade a broken import would otherwise trigger.
+
+- 6418e2a: `telo upgrade` now upgrades OCI imports and can follow relative imports
+  recursively.
+
+  Version enumeration, ref reconstruction, and integrity hashing during an
+  upgrade are delegated to the transport that owns each ref's scheme, so every
+  backend the kernel can resolve is also upgradeable. Previously the command used
+  a registry-only ref classifier that skipped `oci://host/repo@tag` imports as
+  "not a registry ref"; they are now bumped in place like registry refs. The
+  `Transport` interface gains two methods for this — `refVersion(ref)` (the
+  version segment currently named) and `withVersion(ref, version)` (the ref
+  rewritten at a new version) — implemented by `RegistryTransport` and
+  `OciTransport`.
+
+  A new `--recursive` / `-r` flag follows relative (local) imports into their
+  sibling manifests and upgrades those too. It is cycle-safe and upgrades each
+  file at most once even when a sibling is reached from several manifests. Remote
+  refs are always upgraded in place; recursion only descends into on-disk
+  siblings. Without the flag, a relative import is reported skipped with a hint to
+  use `--recursive`.
+
+### Patch Changes
+
+- Updated dependencies [6418e2a]
+- Updated dependencies [6418e2a]
+- Updated dependencies [6418e2a]
+  - @telorun/kernel@0.51.0
+  - @telorun/analyzer@0.40.0
+  - @telorun/ide-support@0.5.0
+
+## 0.50.0
+
+### Minor Changes
+
+- c1fef72: Implement the structured logging specification (`kernel/specs/logging.md`).
+
+  Records carry an OTel severity number, a message, structured attributes, the
+  emitting resource's identity, its import-alias scope, and the active dispatch
+  span's trace and span ids — all attached automatically. Controllers emit through
+  the new ambient `ctx.log`.
+
+  Logging is configured by a `logging:` block on the root `Telo.Application`:
+  `level`, `attributes`, `redact`, `sampling`, and a `sinks:` list of ref-or-inline
+  entries. `Telo.ConsoleSink` and `Telo.FileSink` are kernel built-ins resolvable
+  without an import; omitting `sinks:` yields exactly one console sink, so the
+  zero-config case stays "pretty on a terminal, JSON when piped". An `imports:`
+  entry may carry its own `logging:` block to raise verbosity for that dependency's
+  subtree; config cascades and may be narrowed at each hop. There is no
+  `TELO_LOG_*` variable and no logging CLI flag — a level derived from the host
+  environment goes through a `variables:` entry read with `!cel`.
+
+  New `Telo.Sink` capability and `Telo.LogSink` abstract, so the sink set is open
+  to the ecosystem: a third party ships a sink by publishing a module whose kind
+  extends `Telo.LogSink`. The new `std/otlp` module does exactly that.
+
+  Behaviour changes:
+
+  - The CLI now honours `NO_COLOR` and implements the spec's full color-precedence
+    order. `FORCE_COLOR=0` disables color rather than enabling it.
+  - `TracePayload.spanId` / `parentSpanId` on the debug wire are now 16-character
+    lowercase hex strings rather than numeric counters, matching the ids log
+    records carry. The internal counter is unchanged; hex is rendered only at the
+    encoding boundary and is salted per process so two services in one distributed
+    trace cannot mint the same id.
+  - `Http.Server`'s `logger:` field now means "enable request logging" rather than
+    being a raw Fastify passthrough. Fastify's Pino instance is replaced with a
+    Telo-backed adapter, so request records inherit the root `logging:` block's
+    level, encoding, redaction, and sinks.
+  - The kernel no longer writes diagnostics to `process.stderr` or `console.*`;
+    everything routes through the logger. The ad-hoc `TELO_BUNDLE_DEBUG` env var is
+    replaced by ordinary trace-level records.
+  - `on_full: block` and invalid redaction paths are now caught by `telo check`
+    (static analysis), not only at boot — `on_full: block` is unimplementable on a
+    single-threaded runtime and a bad redaction path would otherwise silently fail
+    to redact. Both remain enforced at runtime as a backstop.
+
+  Two pre-existing bugs fixed along the way:
+
+  - A CEL expression feeding **any** enum-constrained field produced a spurious
+    `SCHEMA_VIOLATION`, because the placeholder substituted for the expression
+    satisfied `type` but violated `enum`. Fixed in both the analyzer and the
+    kernel.
+  - `teardownResources` aborted the whole cascade on the first throwing resource,
+    with no aggregation and no reporting. Failures are now collected into
+    `ERR_TEARDOWN_FAILED` so one bad teardown cannot skip the rest — including the
+    log sinks, which are pinned to tear down last.
+  - The inline `imports:` desugaring silently dropped unknown entry fields, so a
+    per-import `logging:` block never reached the import controller.
+
+### Patch Changes
+
+- Updated dependencies [c1fef72]
+  - @telorun/sdk@0.50.0
+  - @telorun/kernel@0.50.0
+  - @telorun/analyzer@0.39.0
+  - @telorun/templating@0.10.1
+  - @telorun/ide-support@0.4.45
+
+## 0.49.0
+
+### Patch Changes
+
+- Updated dependencies [2395a4a]
+  - @telorun/sdk@0.49.0
+  - @telorun/kernel@0.49.0
+  - @telorun/analyzer@0.38.0
+  - @telorun/templating@0.10.1
+
+## 0.48.0
+
+### Minor Changes
+
+- 0368e6f: Pin `oci://` imports on publish, restoring the integrity chain for OCI modules.
+
+  `fetchManifestHash` recognised only bare registry refs and `http(s)` URLs, so an
+  `oci://` import fell through to "cannot hash non-remote import" and `telo
+publish` skipped it as best-effort-unresolved. Published OCI artifacts therefore
+  carried unpinned dependencies, and the Merkle chain that makes an importer's
+  hash transitively cover its dependencies stopped at the first OCI ref — leaving
+  integrity to rest on registry trust alone, contrary to the inline hash being
+  authoritative across transports.
+
+  Hashing moves onto the `Transport` interface as `manifestHash(ref)`, so each
+  transport hashes exactly what its own `read()` verifies — registry/HTTP the raw
+  response bytes, OCI the UTF-8 encoding of the `telo.yaml` extracted from the tar
+  layer — and a pin written at publish always matches at import. `fetchManifestHash`
+  is now transport dispatch rather than a scheme chain.
+
+  That placement is the actual fix. The bug was the failure mode of a caller-side
+  `isRegistryRef`/`http(s)`/else chain: a ref whose scheme nobody had added a branch
+  for degraded silently to best-effort-unresolved. A fourth transport would have
+  reproduced it identically. Since `manifestHash` is required on the interface, one
+  cannot now be added without deciding what it hashes.
+
+### Patch Changes
+
+- Updated dependencies [8af345f]
+- Updated dependencies [8af345f]
+- Updated dependencies [0368e6f]
+- Updated dependencies [0368e6f]
+- Updated dependencies [0368e6f]
+- Updated dependencies [8af345f]
+  - @telorun/kernel@0.48.0
+  - @telorun/sdk@0.48.0
+  - @telorun/analyzer@0.38.0
+  - @telorun/templating@0.10.1
+  - @telorun/ide-support@0.4.44
+
+## 0.47.0
+
+### Patch Changes
+
+- Updated dependencies [ec524cd]
+  - @telorun/analyzer@0.37.0
+  - @telorun/kernel@0.47.0
+  - @telorun/sdk@0.47.0
+  - @telorun/ide-support@0.4.43
+  - @telorun/templating@0.10.1
+
+## 0.46.0
+
+### Minor Changes
+
+- bd4f3ac: Support direct `https://` module refs in the manifest-cache key contract. `analyzer` gains `isHttpsModuleRef` and `urlManifestCacheCoords(ref, version)` — a URL addresses one file whose version lives inside it, so the version is supplied by the caller rather than parsed from the ref; a trailing `telo.yaml` is dropped so the key doesn't duplicate the filename, and refs carrying a query or userinfo are rejected (both would let distinct URLs collide onto one key, or smuggle an authority). `telo module manifest --json` now emits a `cacheKey` for `https://` refs, built from the `metadata.version` the fetched manifest declares.
+
+### Patch Changes
+
+- Updated dependencies [bd4f3ac]
+- Updated dependencies [bd4f3ac]
+  - @telorun/kernel@0.46.0
+  - @telorun/analyzer@0.36.0
+  - @telorun/ide-support@0.4.42
+
+## 0.45.0
+
+### Minor Changes
+
+- d88a397: Federated discovery, phase 1 — the ingest/search spine behind the telo hub.
+
+  - **analyzer**: browser-safe `manifestCacheKey` / `manifestCacheUrl` /
+    `ociManifestCacheCoords` helpers plus `ManifestCacheSource`, resolving
+    `oci://` imports against the hub's static manifest cache
+    (`manifests.telo.sh`) with `#sha256-…` verification for pinned refs. The OCI
+    ref grammar (`parseOciRef` / `isOciRef` / `OCI_SCHEME`) moves here from the
+    kernel so the tracker's write key and the editor's read key share one source
+    of truth. The throws-coverage check now reads `when:` clauses written with
+    the `!cel` tag (previously only the inline `${{ }}` string form parsed).
+  - **kernel**: `Transport.digest(ref)` — a cheap content-identity digest per
+    version (OCI: `Docker-Content-Digest` via HEAD; HTTP: hash of the
+    `telo.yaml` bytes) so the discovery tracker can detect re-pushed tags
+    without re-downloading. OCI `tags/list` now follows pagination `Link`
+    headers. New `TELO_EGRESS=public-only` egress guard refuses transport
+    fetches to private/loopback/link-local/CGNAT hosts (SSRF guard for
+    deployments that fetch registered, attacker-suppliable refs).
+  - **cli**: `telo module digest <ref>` (the digest verb the tracker records and
+    re-checks), `telo module manifest --json` (emits `{ ref, cacheKey,
+manifest }` with the shared cache key), and `telo search "<query>"` /
+    `telo search --kinds` — a thin client of the hub's `/search/*` endpoints
+    (`TELO_HUB_URL`, default `https://telo.sh`).
+
+### Patch Changes
+
+- Updated dependencies [56c810b]
+- Updated dependencies [d88a397]
+- Updated dependencies [d88a397]
+  - @telorun/analyzer@0.35.0
+  - @telorun/kernel@0.45.0
+  - @telorun/ide-support@0.4.41
+
+## 0.44.1
+
+### Patch Changes
+
+- Updated dependencies [cd3ec0b]
+  - @telorun/analyzer@0.34.1
+  - @telorun/kernel@0.44.1
+  - @telorun/ide-support@0.4.40
+
+## 0.44.0
+
+### Patch Changes
+
+- Updated dependencies [8c24da2]
+  - @telorun/kernel@0.44.0
+  - @telorun/analyzer@0.34.0
+  - @telorun/sdk@0.44.0
+  - @telorun/ide-support@0.4.39
+  - @telorun/templating@0.10.1
+
+## 0.43.0
+
+### Minor Changes
+
+- 3961e35: Add a `telo module` inspection command group — generic, transport-neutral verbs
+  (the `npm view` / `docker manifest inspect` analog):
+
+  - `versions <ref>` — published versions newest-first (`--json`); for a local
+    path or direct URL it reports the single declared `metadata.version`.
+  - `manifest <ref>` — the module's `telo.yaml`, verified against the inline hash
+    when pinned.
+  - `resources <ref>` — the resource instances declared in the manifest (`--json`).
+  - `kinds <ref>` — the resource kinds the module defines: kind suffix, owning
+    module, capability, export status, and description (`--json`). The prefix in a
+    `kind:` field is the consumer's own import alias, so a kind's identity is
+    reported as the `(module, name)` pair, not a fixed dotted string.
+
+  Every verb resolves a ref uniformly across sources — a local path, a direct
+  `https://` URL, a registry `ns/name[@ver]` ref, or an `oci://host/repo[@tag]`
+  ref — dispatching through the existing `TransportRegistry` with no scheme
+  branching. This is the read seam the federated-discovery hub's tracker consumes.
+
+- 9a92bf1: Add a `Transport` abstraction that owns everything ref-scheme-specific about a
+  module's lifecycle — manifest read, full-artifact fetch, cache path, version
+  list, and publish — and ship two implementations behind it: the existing HTTP
+  registry (`RegistryTransport`) and a new OCI transport (`OciTransport`). The
+  loader, cache, `telo upgrade`, `telo install`, and `telo publish` no longer
+  branch on ref shape; they ask the transport registry which transport owns a ref
+  and delegate, so adding a backend is "implement one interface and register it."
+
+  `OciTransport` resolves and publishes `oci://host/repo@version` modules to any
+  OCI distribution registry (GHCR / ECR / Docker Hub / Harbor) over a hand-rolled
+  minimal client — pull/push manifest + blob, the `WWW-Authenticate` token
+  handshake, and the ambient Docker credential chain (`~/.docker/config.json` +
+  `docker-credential-*`). A module is one artifact: a single tar blob carrying
+  `telo.yaml` and the `files:` payload, pushed under a standard OCI artifact
+  manifest (`artifactType: application/vnd.telo.module.v1+tar`).
+
+  `telo publish` gains a destination-first positional — `telo publish
+<destination?> <paths…>` — whose scheme selects the transport (`oci://` → OCI,
+  `https://` / bare host → HTTP registry, omitted → the default registry). Bare
+  `telo publish .` is unchanged. Relative sibling imports are canonicalized
+  against the destination (OCI: via the destination repo; HTTP: the sibling's
+  `<namespace>/<name>`), pinned to the sibling's own version, and every derived
+  ref is verified to resolve at its published location before publishing.
+
+  Telo's inline `#sha256-…` hash stays authoritative across transports: the
+  manifest is verified against it and the payload against the manifest's
+  `filesIntegrity`, the same Merkle chain regardless of backend. A tamper failure
+  is a distinct `IntegrityError` (always terminal, never a best-effort skip). The
+  `isRegistryRef` shape-test now rejects any `scheme://`, so an `oci://…` ref can
+  never be misrouted to the default registry or a garbage cache path. The tar and
+  `filesIntegrity` helpers moved from the CLI into the kernel so both transports
+  share one implementation.
+
+### Patch Changes
+
+- Updated dependencies [3961e35]
+- Updated dependencies [b5a325f]
+- Updated dependencies [9a92bf1]
+- Updated dependencies [9a92bf1]
+  - @telorun/analyzer@0.33.0
+  - @telorun/templating@0.10.1
+  - @telorun/kernel@0.43.0
+  - @telorun/ide-support@0.4.38
+
+## 0.42.0
+
+### Minor Changes
+
+- 2ff9027: Add inline module integrity — remote imports may carry a `#sha256-<base64url>`
+  fragment (or an `integrity:` sibling on the object form) that pins the fetched
+  `telo.yaml` bytes. Every source `read()` (registry, HTTP, and the kernel's
+  on-disk manifest cache) hashes the fetched bytes and fails the load on a
+  mismatch — a terminal error, never a self-healing cache miss. A canonical
+  `parseModuleRef`/`splitIntegrity` in the analyzer strips the fragment at every
+  path-building site so it never pollutes fetch URLs or cache paths.
+
+  Bundle modules (`files:` → `module.tar.gz`) pin their payload with a
+  `filesIntegrity` field on the manifest — a canonical per-file content digest
+  that `telo publish` writes and `extract` verifies before unpacking. Because the
+  importer's hash covers the manifest, the payload is pinned transitively.
+
+  `telo publish` pins each remote import to its dependency's hash (best-effort:
+  unresolvable imports are warned, not fatal; `--frozen` makes them hard errors).
+  `telo upgrade` re-pins on a version change and also pins already-current imports
+  in place (so a rarely-changing module whose version never moves still gets a
+  hash), both best-effort.
+
+### Patch Changes
+
+- Updated dependencies [b7d378a]
+- Updated dependencies [2ff9027]
+  - @telorun/kernel@0.42.0
+  - @telorun/analyzer@0.32.0
+  - @telorun/ide-support@0.4.37
+
+## 0.41.0
+
+### Patch Changes
+
+- Updated dependencies [721a241]
+- Updated dependencies [721a241]
+  - @telorun/kernel@0.41.0
+  - @telorun/sdk@0.41.0
+  - @telorun/analyzer@0.31.0
+  - @telorun/templating@0.10.0
+
+## 0.40.2
+
+### Patch Changes
+
+- 36af5f5: Surface YAML parse failures as error diagnostics. A document that fails to
+  parse (e.g. an unquoted scalar containing `: ` that the parser reads as a
+  nested mapping) previously produced a mangled `toJSON()` projection that
+  static analysis silently accepted — `telo check` reported "passed" while the
+  registry rejected the same file on push. The loader now aggregates every
+  file's YAML `parseErrors` into `LoadedGraph.parseDiagnostics` (fatal `Error`
+  diagnostics carrying the parser's line/column range), surfaced by `telo check`
+  / `telo publish` / the editor / VS Code and treated as fatal by the kernel at
+  load.
+- Updated dependencies [36af5f5]
+  - @telorun/analyzer@0.31.0
+  - @telorun/kernel@0.40.2
+  - @telorun/ide-support@0.4.36
+
+## 0.40.1
+
+### Patch Changes
+
+- Updated dependencies [5dd71ee]
+  - @telorun/analyzer@0.30.1
+  - @telorun/kernel@0.40.1
+  - @telorun/ide-support@0.4.35
+
+## 0.40.0
+
+### Patch Changes
+
+- Updated dependencies [4e5d861]
+- Updated dependencies [2d9323c]
+- Updated dependencies [4e5d861]
+  - @telorun/kernel@0.40.0
+  - @telorun/analyzer@0.30.0
+  - @telorun/ide-support@0.4.34
+
+## 0.39.1
+
+### Patch Changes
+
+- Updated dependencies [ef511d9]
+  - @telorun/kernel@0.39.1
+
+## 0.39.0
+
+### Minor Changes
+
+- d84a585: Give the `telorun/node` image a smart entrypoint, modeled on the official node image's `docker-entrypoint.sh`. It prepends `telo` only when the first argument is a flag (`-…`), an unknown command, or a non-executable file — so `docker run telorun/node ./telo.yaml` and `docker run telorun/node --watch ./telo.yaml` both reach the CLI, while `bash`, `sh`, and `node` still run verbatim as escape hatches. A derived image may write either the explicit `CMD ["telo", ".", "--watch"]` or the terse `CMD ["./telo.yaml"]` — both work; the bare image runs the CLI via the default `CMD ["telo"]`.
+
+### Patch Changes
+
+- d84a585: Honor `--no-cache-write` when fetching the on-demand debug UI for `--inspect`. Previously the bundle was always written into `TELO_CACHE_DIR`, so in the k8s runner — where `/telo-cache` is the baked, read-only deps cache and the workload runs with `--no-cache-write` — the cache write failed (`EROFS` / `ENOENT mkdir '/telo-cache/debug-ui'`) and the inspect UI came up unavailable. Under `--no-cache-write` the fetched bytes are now served in-memory via `DebugServer` and never touch disk.
+- d84a585: Unify glob matching across the monorepo onto a single dependency-free engine in a new `@telorun/glob` package. It exports `selectByPatterns` (plus `HARD_IGNORE` / `DEFAULT_IGNORE` / `GLOB_PRUNE_DIRS`) as the one matcher used everywhere a `.gitignore`-style pattern set is resolved: `files:` bundling (`telo publish` + the editor run bundle), `include:` expansion (kernel `LocalFileSource` + the editor adapters), and test discovery (`@telorun/test`).
+
+  This removes four divergent implementations — the kernel's `minimatch`, the editor's hand-rolled glob→regex, the test runner's own `globToRegex`, and an `ignore`-based pass — in favor of a small matcher implementing a documented **Telo glob** subset of gitignore. The subset and its exact behavior are pinned by a language-neutral conformance suite (`packages/glob/conformance/glob.json` + `README.md`) so any runtime (Node today; Rust / Go later) can reimplement it identically rather than chasing one library's quirks. The kernel drops `minimatch` and the CLI drops its direct `ignore` dependency; the matcher lives in its own package rather than the static analyzer, so consumers depend on it directly instead of reaching into `@telorun/analyzer` for a non-analysis primitive.
+
+  The deny set is split into a non-overridable **hard** tier (`node_modules`/`.git`/`.telo`) and a soft, opt-out-able tier (`.telobundle.*`). `applyDefaultIgnore: false` (used by `include:` resolution to reach co-located partials) now only skips the soft tier — a broad `**` `include:` can no longer recurse into the manifest cache, and resolves identically in the kernel and the editor.
+
+- Updated dependencies [ebca26a]
+- Updated dependencies [d84a585]
+  - @telorun/analyzer@0.29.0
+  - @telorun/kernel@0.39.0
+  - @telorun/glob@0.2.0
+  - @telorun/ide-support@0.4.33
+
+## 0.38.0
+
+### Patch Changes
+
+- Updated dependencies [a9ac4ba]
+- Updated dependencies [a125804]
+  - @telorun/sdk@0.38.0
+  - @telorun/analyzer@0.28.1
+  - @telorun/kernel@0.38.0
+  - @telorun/templating@0.10.0
+  - @telorun/ide-support@0.4.32
+
+## 0.37.0
+
+### Minor Changes
+
+- 5ea5ff3: Reconcile module versions to one version per identity within an import graph.
+
+  When the same `<namespace>/<module-name>` is reached at multiple versions (a diamond import), the loader now collapses them onto a single version before any controller, definition, or kind is registered — fixing the spurious `DUPLICATE_IMPORT_ALIAS` and the silent last-writer-wins controller collision that two versions of one module previously caused.
+
+  - Same major → the highest version wins (a non-lossy hoist given the additive-only pre-1.0 policy), reported as a `MODULE_VERSION_HOISTED` warning on the lower-version import line.
+  - Different major → a fatal `MODULE_VERSION_CONFLICT`; `telo run` refuses to start and `telo check` errors.
+  - Same version from two sources with differing content → a `MODULE_VERSION_HOISTED` warning; identical content is deduplicated silently.
+
+  Reconciliation lives in the shared analyzer loader, so `telo check`, the kernel runtime, and the editor all resolve the same single version. `LoadedGraph` gains `overrides` and `versionDiagnostics`.
+
+### Patch Changes
+
+- 5ea5ff3: Inject manifest sources into the `Loader` constructor instead of constructing built-ins inside it.
+
+  `new Loader(...)` now takes `(sources: ManifestSource[], options?: { celHandlers? })` — the caller (composition root) decides which concrete sources exist and supplies them. The previous behaviour of self-constructing `HttpSource`/`RegistrySource` (gated by `includeHttpSource`/`includeRegistrySource` flags) and the `extraSources`/`registryUrl` init options are removed. A new exported `defaultSources(registryUrl?)` bundles the browser-safe built-ins (HTTP + registry) for the common case, so consumers compose them explicitly: `new Loader([localFileSource, ...defaultSources(registryUrl)])`.
+
+  This removes a dependency-inversion violation: the `Loader` now depends only on the `ManifestSource` abstraction and no longer imports concrete source implementations.
+
+- Updated dependencies [5ea5ff3]
+- Updated dependencies [5ea5ff3]
+  - @telorun/analyzer@0.28.0
+  - @telorun/kernel@0.37.0
+  - @telorun/ide-support@0.4.31
+
+## 0.36.0
+
+### Patch Changes
+
+- Updated dependencies [dded615]
+  - @telorun/kernel@0.36.0
+  - @telorun/sdk@0.36.0
+  - @telorun/analyzer@0.27.0
+  - @telorun/templating@0.10.0
+  - @telorun/ide-support@0.4.30
+
+## 0.35.0
+
+### Minor Changes
+
+- 12f6d6f: Add `files:` for bundling static assets into a published module. A `Telo.Application` or `Telo.Library` may declare a `files:` list of ordered, `.gitignore`-style patterns (matched with the `ignore` engine: positive patterns opt in, `!` patterns carve out, last-match-wins). When present, `telo publish` packs `telo.yaml` plus the selected files into a `module.tar.gz` and PUTs it to the registry; `telo install` / `telo run` extract that archive into the local cache next to the cached `telo.yaml`, so a relative `Http.Static` `root:` (e.g. a built SPA in `./public`) resolves on the consumer exactly as it does in development. An always-on ignore set (`node_modules/`, `.git/`, `.telo/`, `.telobundle.*`) is never shipped. The CLI's `include:` resolver moves from `minimatch` to the same `ignore` engine.
+
+### Patch Changes
+
+- Updated dependencies [12f6d6f]
+  - @telorun/analyzer@0.26.0
+  - @telorun/kernel@0.35.0
+  - @telorun/ide-support@0.4.29
+
+## 0.34.0
+
+### Patch Changes
+
+- Updated dependencies [d7fda97]
+  - @telorun/sdk@0.34.0
+  - @telorun/analyzer@0.25.0
+  - @telorun/kernel@0.34.0
+  - @telorun/templating@0.10.0
+  - @telorun/ide-support@0.4.28
+
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies [95f168e]
+- Updated dependencies [95f168e]
+  - @telorun/kernel@0.33.0
+  - @telorun/sdk@0.33.0
+  - @telorun/analyzer@0.24.1
+  - @telorun/templating@0.10.0
+
+## 0.32.0
+
+### Patch Changes
+
+- Updated dependencies [a8c99ab]
+  - @telorun/sdk@0.32.0
+  - @telorun/kernel@0.32.0
+  - @telorun/analyzer@0.24.1
+  - @telorun/templating@0.10.0
+
+## 0.31.0
+
+### Patch Changes
+
+- b41012f: cli: two debug event serializer fixes.
+
+  - The serializer no longer mislabels a **shared reference** as `[Circular]`. `toWire`'s cycle detection is now path-scoped (a value is "circular" only while it's an ancestor on the current descent), so an object reachable by two sibling paths — a DAG, common in invocation `inputs` where a sub-value is shared — serializes fully. Genuine cycles still collapse to `[Circular]`.
+  - A **bigint** now serializes as a plain number when it fits a JS safe integer (CEL models small integers as bigint, so `${{ size(x) }}` reads as `3`, not `[BigInt 3]`), falling back to its decimal digits as a string for out-of-range values so no precision is lost.
+
+- Updated dependencies [b41012f]
+- Updated dependencies [b41012f]
+  - @telorun/kernel@0.31.0
+  - @telorun/sdk@0.31.0
+  - @telorun/analyzer@0.24.1
+  - @telorun/templating@0.10.0
+
+## 0.30.2
+
+### Patch Changes
+
+- Updated dependencies [912044a]
+  - @telorun/kernel@0.30.2
+
+## 0.30.1
+
+### Patch Changes
+
+- b1dd65c: Inspect debug UI: surface an explicit failure (including the exact fetch URL and HTTP status / error) when the on-demand UI bundle can't be resolved or fetched, instead of a generic "not available" notice — the reason is shown in the endpoint's 503 and logged at startup. Add a `TELO_DEBUG_UI_VERSION` override so the version to fetch can be set when the CLI manifest doesn't carry a concrete one (e.g. container images built via `pnpm deploy`, where `workspace:*` isn't rewritten).
+- Updated dependencies [0c16f41]
+  - @telorun/templating@0.10.0
+  - @telorun/analyzer@0.24.1
+  - @telorun/kernel@0.30.1
+  - @telorun/ide-support@0.4.27
+
+## 0.30.0
+
+### Patch Changes
+
+- Updated dependencies [aaa760d]
+- Updated dependencies [aaa760d]
+- Updated dependencies [cce2caa]
+  - @telorun/analyzer@0.24.0
+  - @telorun/templating@0.9.0
+  - @telorun/kernel@0.30.0
+  - @telorun/ide-support@0.4.26
+
+## 0.29.0
+
+### Patch Changes
+
+- Updated dependencies [b4e6ac8]
+  - @telorun/kernel@0.29.0
+
+## 0.28.0
+
+### Minor Changes
+
+- d59e847: Debug stream now carries **logs as well as events**, and the editor embeds the
+  debug UI.
+
+  - New `@telorun/debug-wire` package: the language-neutral frame contract shared
+    by the producer, the runner, the editor, and the debug UI. A stream now carries
+    two discriminated frame kinds on one channel — `kind: "event"` (kernel events)
+    and `kind: "log"` (one stdout/stderr line). Browser-safe; `wire-schema.json` is
+    the source of truth a non-TypeScript producer conforms to. `@telorun/debug-ui`
+    re-exports its types.
+  - `@telorun/cli`: `--inspect` / `--debug` now tee the run's stdout/stderr into the
+    stream as `log` frames (the terminal is untouched; the tee is restored on stop).
+    The inspect server adds permissive CORS so an embedding webview can read it.
+  - `@telorun/debug-ui`: the watcher is now a **Logs / Events** tab split over one
+    frame stream (`DebugPanel` + `LogView`); `DebugWatcher` wraps it for the
+    standalone app. `connectDebugStream` delivers `DebugFrame`s routed by `kind`.
+    Components take a `theme` prop (`"light" | "dark" | "system"`, default
+    `"system"` — follows `prefers-color-scheme` live); `DebugPanel` also takes a
+    `logsSlot` (an embedding host can render its own interactive terminal in the
+    Logs tab) and a `defaultTab`. When **no** `theme` is supplied the panel owns
+    its mode and shows a system/light/dark toggle in its header; when a host
+    passes `theme`, the host owns it and the toggle is hidden.
+
+  The editor (private) embeds `DebugPanel` in the run view's Debug tab: remote
+  HTTP/k8s runners relay frames over the existing `/v1/sessions/:id/events`
+  transport (the security/ingress boundary), while the local runner reads the
+  workload's loopback `--inspect` port directly — both surface identical `debug`
+  run events. Blob payloads aren't resolvable in the editor embed yet (the
+  workload's blob endpoint isn't reachable from the editor); events and logs work.
+
+- d59e847: Debug UI now links to the running application's exposed ports.
+
+  - `@telorun/debug-ui`: `DebugPanel` takes an `endpoints` prop and renders each as
+    a link in its header (tcp → clickable `http://host:port`, udp → plain label).
+    New `AppEndpoint` type + `endpointHref` / `endpointLabel` helpers (browser-safe,
+    no runner/kernel dependency). The standalone `DebugWatcher` sources endpoints
+    from the producer's `/json/version` handshake, filling a blank host from the
+    page origin so the link points where the viewer reached the server (localhost
+    locally, the bound host remotely).
+  - `@telorun/kernel`: new `Kernel.getResolvedPorts()` — the root Application's
+    resolved `ports:` (integer + declared protocol per name), available after
+    `load()`. Empty when the root declares no ports.
+  - `@telorun/cli`: the `--inspect` server advertises the app's resolved ports as
+    `appEndpoints` in its `/json/version` handshake. The UI now opens once the
+    ports are known (deferred from server start to first load), so the discovery
+    handshake already carries the endpoints.
+
+  The editor (private) renders the same links inside `DebugPanel` from its resolved
+  run endpoints, replacing the separate chips in the run-view header.
+
+### Patch Changes
+
+- Updated dependencies [d59e847]
+- Updated dependencies [d59e847]
+  - @telorun/analyzer@0.23.2
+  - @telorun/kernel@0.28.0
+  - @telorun/ide-support@0.4.25
+
+## 0.27.0
+
+### Minor Changes
+
+- 9ef48a6: Add a live debug-event inspection UI. `telo run --inspect` starts a
+  localhost-only inspection endpoint and prints its URL — a single page that
+  watches the kernel event stream in real time (SSE), with text/kind/suffix
+  filtering, expandable payloads, pause, and replay of events that fired before
+  the page was opened. (`--debug` independently writes the `.telo.debug.jsonl`
+  event log; the two compose. See the `--inspect` flag set for delivery details.)
+
+  New `@telorun/debug-ui` package: the browser-safe, runtime-agnostic consumer
+  surface — the debug wire-format types + JSON Schema, filter logic, an SSE client,
+  and React components (incl. the standalone app served by the inspection server).
+  It has no Node-only dependency so it also runs in the editor webview.
+
+  Binary payloads (images and any other file kind) are not inlined: the producer
+  offloads each `Uint8Array`/`Buffer` to an in-memory, content-addressed LRU blob
+  store and emits a small `{ "$blob": "blobs/<id>", "mediaType", "byteLength" }`
+  pointer in its place (the key it sits under is preserved). The `DebugServer`
+  serves the bytes at `GET /blobs/:id`; the UI renders `image/*` inline and other
+  types as download links. Content addressing dedupes repeated buffers (e.g. a
+  redraw loop).
+
+  The producer (serializer + `DebugServer` + blob store) stays Node-side in the
+  CLI; the cross-runtime contract is the wire format
+  (`@telorun/debug-ui/wire-schema.json`), so a future Rust/Go kernel can serve the
+  same UI by conforming to it. The inspection server binds `127.0.0.1` and is
+  `unref`'d, so a one-shot `--inspect` run still exits normally.
+
+- 9ef48a6: Ship the debug UI on demand instead of bundling it in the CLI, and give the
+  inspection endpoint its own composable flag set.
+
+  - `telo run --inspect[=[host:]port]` starts the live inspection endpoint
+    (default `127.0.0.1:9230`; non-loopback binds print a security warning) and
+    serves the UI same-origin, with a `/json/version` discovery handshake.
+    `--no-open` suppresses auto-opening the browser. `--debug` is a separate,
+    composable flag that writes only the `.telo.debug.jsonl` event log (no network,
+    no UI).
+  - The CLI does not bundle `@telorun/debug-ui` (it's a `devDependency`). The UI is
+    fetched on demand from npm via jsDelivr and cached under the `.telo` cache
+    root; in the monorepo it resolves from the workspace, so local builds are
+    testable offline. `TELO_DEBUG_UI_PATH` overrides the bundle path; `TELO_DEBUG_UI_URL`
+    overrides the CDN base.
+  - `@telorun/debug-ui` builds a self-contained single-file bundle
+    (`app-single/index.html`) alongside `app-dist/`.
+
+### Patch Changes
+
+- 9ef48a6: Move the `--debug` event log out of the kernel into the CLI. The kernel no
+  longer monkeypatches `EventBus.emit` with an always-installed streaming wrapper;
+  debugging is now a plain `kernel.on("*", …)` subscriber (`DebugEventSubscriber`,
+  attached by the CLI only when `--debug` is set). A normal run registers no `*`
+  listener, so the event bus carries zero added overhead.
+
+  Serialization is cycle- and value-safe and logs only plain data. Stream-bearing
+  payloads (e.g. an Invocable's `{ outputs: { output: Stream } }`) whose
+  async-generator closures form reference cycles previously threw `cannot serialize
+cyclic structures` and dropped the event. Live runtime objects — a resolved
+  `!ref` is a controller instance whose `.ctx` back-references the whole Kernel —
+  previously serialized into multi-megabyte heap dumps. Now: a resolved `!ref`
+  renders as the `{ kind, name }` reference it stands for; every other live object
+  collapses to a one-token `[ClassName]` / `[Stream]` / `[Circular]` marker;
+  object/array literals still log in full.
+
+  BREAKING (kernel public API): `EventStream`, `Kernel.enableEventStream`,
+  `Kernel.disableEventStream`, and `Kernel.getEventStream` are removed. The CLI was
+  the only consumer.
+
+- 9ef48a6: Fix `telo run --watch --inspect` dropping the debug UI on every reload. The
+  inspection server is now created once per session and the rebuilt kernel
+  re-attaches to it each cycle, so the browser's SSE connection (and replay buffer
+  - JSONL) survive reloads instead of the UI showing the process as terminated.
+- Updated dependencies [9ef48a6]
+- Updated dependencies [9ef48a6]
+  - @telorun/kernel@0.27.0
+
+## 0.26.1
+
+### Patch Changes
+
+- Updated dependencies [5973024]
+- Updated dependencies [a592710]
+  - @telorun/analyzer@0.23.1
+  - @telorun/kernel@0.26.1
+  - @telorun/ide-support@0.4.24
+
+## 0.26.0
+
+### Minor Changes
+
+- 1ddd803: Add a single, threaded cache-root resolution and a read-only cache mode for ephemeral runs.
+
+  - **`TELO_CACHE_DIR` reinstated** as the override for the `.telo` cache root, resolved once per load via the new `resolveCacheRoot(entryUrl)` and threaded to the manifest cache, compiled validators, analysis stamp, and npm install root — no consumer re-derives it or reads the env independently. `Kernel.load` gains a `cacheDir` option so a CLI caller resolves it once and the kernel reads no env.
+  - **`telo run --no-cache-write`** (kernel `writeCache: false`) keeps the cache read-only: baked validators/manifests are still loaded, anything uncached validates in-memory, and nothing is persisted — so a read-only, ephemeral session rootfs validates without touching (or failing to write) the cache. Validation errors still surface normally.
+  - **SDK**: `ResourceContext` gains `getInstallRoot()`, the threaded npm install root, so controllers honour a relocated cache root.
+
+### Patch Changes
+
+- Updated dependencies [1ddd803]
+  - @telorun/kernel@0.26.0
+  - @telorun/sdk@0.26.0
+  - @telorun/analyzer@0.23.0
+  - @telorun/templating@0.8.0
+
+## 0.25.0
+
+### Patch Changes
+
+- 206cf98: fix(cli): restore `telo run --watch`
+
+  Watch mode was inert — its file watching and reload were stubbed out against
+  two kernel methods (`getSourceFiles`, `reloadSource`) that no longer exist.
+  Reimplement it as a full-restart loop: load → derive the graph's local files
+  (entry, `include:` partials, imported libraries) → start (held alive so
+  one-shot apps don't exit) → reload on any change by cancelling and tearing the
+  kernel down, then rebuilding. Load/boot failures are reported as diagnostics
+  and watch keeps running so the next edit retries. The watcher set is persistent
+  across reloads (one long-lived `fs.watch` per file) rather than torn down and
+  recreated each cycle — under bun, re-`fs.watch`-ing a just-closed path never
+  fires again, which limited reloads to exactly one.
+
+- Updated dependencies [c89e79b]
+- Updated dependencies [c89e79b]
+- Updated dependencies [1098ad0]
+- Updated dependencies [4794671]
+  - @telorun/kernel@0.25.0
+  - @telorun/analyzer@0.23.0
+  - @telorun/ide-support@0.4.23
+
+## 0.24.2
+
+### Patch Changes
+
+- 004a848: Warm analysis caches at `telo install` time so a prebuilt image boots without re-deriving them.
+
+  `kernel.load` now accepts an `analyzeOnly` option that runs the static-analysis pre-flight and persists its caches (the `.validated.json` analysis stamp and the compiled `__validators/` schema cache) but stops before module instantiation, target wiring, and application-env resolution. It also pre-compiles the application-env residual validators (`variables`/`secrets`/`ports`), which the runtime would otherwise recompile on every boot. `telo install` invokes this offline `kernel.load` to bake the caches onto a writable filesystem, so the runtime `load()` on a read-only session rootfs hits the stamp and skips the validation walk instead of failing to persist the caches (EROFS/ENOENT) on every boot.
+
+- Updated dependencies [004a848]
+  - @telorun/kernel@0.24.2
+
+## 0.24.1
+
+### Patch Changes
+
+- Updated dependencies [9a305e6]
+  - @telorun/kernel@0.24.1
+
+## 0.24.0
+
+### Patch Changes
+
+- Updated dependencies [ee8926f]
+- Updated dependencies [ee8926f]
+  - @telorun/kernel@0.24.0
+  - @telorun/templating@0.8.0
+  - @telorun/analyzer@0.22.0
+  - @telorun/ide-support@0.4.22
+
+## 0.23.0
+
+### Patch Changes
+
+- Updated dependencies [8586b39]
+- Updated dependencies [2292a84]
+  - @telorun/kernel@0.23.0
+  - @telorun/analyzer@0.21.0
+  - @telorun/sdk@0.23.0
+  - @telorun/templating@0.7.0
+  - @telorun/ide-support@0.4.21
+
+## 0.22.0
+
+### Minor Changes
+
+- 06cfcbf: Add `telo cel functions` (list the CEL standard library — `--json` for tooling) and `telo cel eval "<expr>" [--context <json>]` (evaluate a CEL expression with the real Node handlers). Backed by a single-source CEL catalog: `@telorun/templating` now exports `celFunctionCatalog()` / `CEL_FUNCTIONS`, and `buildCelEnvironment` registers from it so the documented surface can't drift from what's registered. `@telorun/kernel` exports `nodeCelHandlers` (the Node `crypto`/`Buffer` implementations) so the CLI's eval matches a real run.
+
+### Patch Changes
+
+- Updated dependencies [06cfcbf]
+- Updated dependencies [06cfcbf]
+- Updated dependencies [06cfcbf]
+  - @telorun/kernel@0.22.0
+  - @telorun/analyzer@0.20.0
+  - @telorun/templating@0.6.0
+  - @telorun/ide-support@0.4.20
+
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [64debb5]
+  - @telorun/templating@0.5.0
+  - @telorun/sdk@0.21.0
+  - @telorun/analyzer@0.19.1
+  - @telorun/kernel@0.21.0
+  - @telorun/ide-support@0.4.19
+
+## 0.20.1
+
+### Patch Changes
+
+- Updated dependencies [81ebf47]
+- Updated dependencies [ea57e10]
+- Updated dependencies [81ebf47]
+  - @telorun/analyzer@0.19.0
+  - @telorun/kernel@0.20.1
+  - @telorun/ide-support@0.4.18
+
+## 0.20.0
+
+### Patch Changes
+
+- Updated dependencies [2864c4d]
+  - @telorun/kernel@0.20.0
+
+## 0.19.0
+
+### Minor Changes
+
+- 5331205: Add cooperative invoke cancellation via an out-of-band `InvokeContext`.
+
+  Every `invoke(inputs, ctx?)` now receives a second argument carrying a read-only
+  cancellation token (`ctx.cancellation`): poll `isCancelled`, subscribe via
+  `onCancelled`, bail with `throwIfCancelled`, or hand its `signal` to a Web API.
+  The SDK exposes the source/token split (`createCancellationSource`,
+  `CancellationSource`/`CancellationToken`), a never-cancellable sentinel, and the
+  `isCancellationError` helper. Deadlines are scheduled cancellation
+  (`source.cancelAt(epochMs)` / `cancelAfter(ms)`).
+
+  The kernel mints one cancellation scope per invocation tree (inherited by nested
+  invokes via a kernel-internal `AsyncLocalStorage`, always passed to controllers
+  as the explicit argument), refuses a not-yet-dispatched invoke whose tree was
+  cancelled with `ERR_INVOKE_CANCELLED`, and emits a scoped `InvokeCancelled`
+  event. `Kernel.invoke(ref, inputs, opts?)` accepts `{ signal, deadlineAt }`.
+  Sources are allocated lazily, so invokes that never touch cancellation pay no
+  extra allocation.
+
+  The boot `targets` run is also cancellable: `Runnable.run(ctx?)` now receives
+  the token, `Kernel.cancel(reason?)` cancels the boot scope, and the CLI's
+  SIGINT/SIGTERM handler calls it so Ctrl-C cooperatively stops honoring targets
+  and in-flight invoke trees (then unblocks graceful exit via `forceIdle`).
+
+  Honoring leaves: `Ai.Text` / `Ai.TextStream` / `Ai.Agent` forward the token's
+  signal into the model (aborting a live LLM stream on cancel); `http-client`
+  merges it with its request timeout. Triggers: `http-server` cancels on client
+  disconnect and returns 499; `lambda` arms cancellation at the AWS deadline.
+
+### Patch Changes
+
+- Updated dependencies [5331205]
+  - @telorun/sdk@0.19.0
+  - @telorun/kernel@0.19.0
+  - @telorun/analyzer@0.18.0
+  - @telorun/templating@0.4.1
+
+## 0.18.0
+
+### Patch Changes
+
+- Updated dependencies [d2294de]
+  - @telorun/analyzer@0.18.0
+  - @telorun/sdk@0.18.0
+  - @telorun/kernel@0.18.0
+  - @telorun/ide-support@0.4.17
+  - @telorun/templating@0.4.1
+
+## 0.17.3
+
+### Patch Changes
+
+- Updated dependencies [69a0a8d]
+  - @telorun/analyzer@0.17.0
+  - @telorun/kernel@0.17.3
+  - @telorun/ide-support@0.4.16
+
+## 0.17.2
+
+### Patch Changes
+
+- 0505e9b: cli + ide-support: operate on the inline `imports:` map instead of standalone `Telo.Import` documents
+
+  `telo upgrade` and `telo publish` now read and rewrite import sources from the
+  `imports:` map on the `Telo.Application` / `Telo.Library` doc, covering both the
+  scalar shorthand (`Alias: <src>`) and the object form (`Alias: { source: <src>, … }`).
+  Standalone `Telo.Import` document handling is dropped from both commands. `upgrade`
+  keeps its byte-level splice (quote style, comments, and folded block scalars are
+  preserved); `publish` canonicalizes relative `imports:` sources to
+  `<namespace>/<name>@<version>` and now loads the pre-flight analysis graph with
+  `desugarImports` so inline imports resolve during static validation. `telo install`
+  likewise loads its graph with `desugarImports`, so transitive inline imports are
+  discovered, cached, and analyzed.
+
+  ide-support source autocomplete fires on `imports:` entries (scalar value or the
+  `source:` under the object form), gated on the enclosing path so unrelated `source:`
+  fields never trigger it. `Telo.Import` is removed from the no-registry kind
+  completion fallback.
+
+- Updated dependencies [0505e9b]
+  - @telorun/ide-support@0.4.15
+
+## 0.17.1
+
+### Patch Changes
+
+- Updated dependencies [c1432a6]
+  - @telorun/analyzer@0.16.1
+  - @telorun/kernel@0.17.1
+  - @telorun/ide-support@0.4.14
+
+## 0.17.0
+
+### Patch Changes
+
+- 0cd36a1: inline imports — `imports:` map on Telo.Application / Telo.Library
+
+  Add an optional name-keyed `imports:` map to `Telo.Application` and
+  `Telo.Library` as additive sugar for separate `Telo.Import` documents. Each
+  entry's key is the PascalCase alias; its value is either a bare source string
+  (`Console: std/console@1.2.3`, shorthand for `{ source }`) or the full object
+  form carrying `variables` / `secrets` / `runtime`. Authored `Telo.Import`
+  documents keep working unchanged and both forms may coexist.
+
+  The loader desugars inline entries into synthetic `Telo.Import` manifests via a
+  new `desugarImports` `LoadOptions` flag (folded into the file cache key; mirrored
+  on the SDK's `ResourceContext.loadModule` options). The flag is on for every
+  resolved consumer — the kernel's analysis and runtime loads, the
+  import-controller's child-module load, the analyzer, `telo check`, and the
+  `Assert.Manifest` test helper — and off for the editor's round-trip view, which
+  reads the raw `imports:` map and pairs manifests to YAML nodes by index. Inline
+  imports therefore resolve and execute identically to authored docs.
+
+  Adds a `DUPLICATE_IMPORT_ALIAS` diagnostic: an alias declared twice in one
+  module scope (across either form) is now an error instead of silently
+  shadowing.
+
+- Updated dependencies [0cd36a1]
+  - @telorun/analyzer@0.16.0
+  - @telorun/kernel@0.17.0
+  - @telorun/sdk@0.17.0
+  - @telorun/ide-support@0.4.13
+  - @telorun/templating@0.4.1
+
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies [acb8996]
+  - @telorun/kernel@0.16.1
+
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies [55b4ec5]
+- Updated dependencies [adc248b]
+  - @telorun/analyzer@0.15.0
+  - @telorun/kernel@0.16.0
+  - @telorun/sdk@0.16.0
+  - @telorun/templating@0.4.1
+  - @telorun/ide-support@0.4.12
+
+## 0.15.0
+
+### Patch Changes
+
+- Updated dependencies [ae0bf77]
+- Updated dependencies [222b3d6]
+  - @telorun/sdk@0.13.0
+  - @telorun/kernel@0.15.0
+  - @telorun/analyzer@0.14.0
+  - @telorun/templating@0.4.0
+  - @telorun/ide-support@0.4.11
+
+## 0.14.0
+
+### Patch Changes
+
+- Updated dependencies [bfe4967]
+- Updated dependencies [1c37ee1]
+  - @telorun/kernel@0.14.0
+  - @telorun/analyzer@0.13.0
+  - @telorun/templating@0.3.1
+  - @telorun/ide-support@0.4.10
+
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [6ce1a52]
+- Updated dependencies [6ce1a52]
+  - @telorun/analyzer@0.12.1
+  - @telorun/kernel@0.13.2
+  - @telorun/ide-support@0.4.9
+
+## 0.13.1
+
+### Patch Changes
+
+- 4c1a50b: Refresh in-tree documentation version pins to the current registry latest.
+
+## 0.13.0
+
+### Minor Changes
+
+- f3e5fbc: Make warm `telo run` ~3× faster by populating the local manifest cache automatically and deduplicating loader reads.
+
+  - **analyzer**: `Loader.loadFile` now keys a fast path on the request URL, skipping the source `read()` round-trip when the same URL is loaded twice in one kernel lifetime. When the cache has the file in the other compile mode it reparses from cached text instead of re-reading. Previously every duplicate request re-ran the underlying `read()` — a `fetch` for `RegistrySource`, a disk read for `LocalFileSource`.
+  - **kernel**: `Kernel.load()` retains the full `LoadedGraph` and exposes it via `kernel.getLoadedGraph()` so the CLI can hand it to `writeManifestCache` without re-walking the graph.
+  - **cli**: `telo run` now writes through to `<entry-dir>/.telo/manifests/` after a successful first load, reusing the same `writeManifestCache` path `telo install` already uses. Subsequent runs hit the local cache and skip the registry round-trip — without requiring an explicit `telo install`. Cache writes are best-effort: read-only filesystems (e.g. baked Docker images) log a warning and continue.
+
+- 768f5d7: Add `telo upgrade <paths..>` — scans the given manifest files for `Telo.Import` declarations whose `source` is a registry ref (`<namespace>/<name>@<version>`), queries the registry for the latest published version, and rewrites the source in place when a newer version is available.
+
+  The command uses the same registry-URL fallback as `install` / `run` (`--registry-url` flag > `TELO_REGISTRY_URL` > `https://registry.telo.run`). Pre-release versions are excluded by default; pass `--include-prerelease` to consider them. `--dry-run` reports the proposed upgrades without touching the file.
+
+  Non-registry sources (relative paths, HTTP URLs) and unparseable versions are skipped with a notice rather than treated as errors.
+
+### Patch Changes
+
+- Updated dependencies [c0129c0]
+
+  - @telorun/analyzer@0.12.0
+  - @telorun/kernel@0.13.0
+  - @telorun/ide-support@0.4.8
+
+- Updated dependencies [0331069]
+- Updated dependencies [0331069]
+
+  - @telorun/analyzer@0.12.0
+  - @telorun/kernel@0.13.0
+  - @telorun/ide-support@0.4.7
+
+- Updated dependencies [77c1c86]
+- Updated dependencies [7889023]
+
+  - @telorun/analyzer@0.12.0
+  - @telorun/templating@0.3.0
+  - @telorun/kernel@0.13.0
+  - @telorun/ide-support@0.4.6
+
+- Updated dependencies [f3e5fbc]
+- Updated dependencies [f3e5fbc]
+
+  - @telorun/analyzer@0.12.0
+  - @telorun/kernel@0.13.0
+  - @telorun/ide-support@0.4.5
+
+- 3e3f134: Migrate Docker image publishing to a per-runtime-repo scheme with variant + multi-arch tagging.
+
+  **Kernel image** moves from `telorun/telo` to `telorun/node`, reserving the namespace for future polyglot kernels (`telorun/rust`, `telorun/go`). The previous monolithic image is split into four variants per release:
+
+  - `telorun/node:<v>` / `telorun/node:<v>-slim` — lean variants, no Rust toolchain.
+  - `telorun/node:<v>-rust-<rust-version>` / `telorun/node:<v>-rust-<rust-version>-slim` — opt-in Rust toolchain layered on top.
+
+  Rolling tags (`latest`, `<major>`, `<major>.<minor>`) compose with the variant suffixes. Release tags are immutable; pin to exact versions for reproducible builds. Release images are multi-arch (`linux/amd64` + `linux/arm64`). Dev tags (`sha-<short>-*`) appear on every main-branch push, slim variants only.
+
+  **Lambda base images** newly published as `telorun/lambda-node-managed:<lambda-version>` (managed nodejs runtime) and `telorun/lambda-node-custom:<lambda-version>` (custom `provided.al2023` runtime). Both pre-install `@telorun/lambda` and its workspace deps at `${LAMBDA_TASK_ROOT}`; user images derive from them and add only their manifest + install root. The `-node-` segment in the repo name reserves the namespace for future `telorun/lambda-rust-*` images.
+
+  **CI**: docker publishing now runs from `.github/workflows/publish-docker.yml`, called by `publish.yml` after `changesets/action` actually publishes packages. Per-image gating reads `outputs.publishedPackages` so kernel images rebuild only when `@telorun/cli` bumps and lambda images only when `@telorun/lambda` bumps.
+
+- Updated dependencies [39aef08]
+
+  - @telorun/kernel@0.13.0
+  - @telorun/analyzer@0.12.0
+  - @telorun/ide-support@0.4.4
+
+- Updated dependencies [849f57a]
+- Updated dependencies [e411584]
+- Updated dependencies [e411584]
+- Updated dependencies [be79957]
+  - @telorun/kernel@0.13.0
+  - @telorun/sdk@0.12.0
+  - @telorun/analyzer@0.12.0
+  - @telorun/ide-support@0.4.3
+  - @telorun/templating@0.3.0
+
+## 0.12.0
+
+### Patch Changes
+
+- Updated dependencies [67a9b31]
+- Updated dependencies [0f80fc5]
+  - @telorun/kernel@0.12.0
+  - @telorun/analyzer@0.11.0
+  - @telorun/ide-support@0.4.2
+
+## 0.11.1
+
+### Patch Changes
+
+- Updated dependencies [58362c4]
+- Updated dependencies [58362c4]
+  - @telorun/kernel@0.11.1
+  - @telorun/sdk@0.11.1
+  - @telorun/analyzer@0.10.1
+  - @telorun/templating@0.2.3
+  - @telorun/ide-support@0.4.1
+
+## 0.11.0
+
+### Minor Changes
+
+- f61b36a: `telo install` now also persists every imported manifest's YAML to `<entry-dir>/.telo/manifests/` (registry refs under `<namespace>/<name>/<version>/telo.yaml`, HTTP imports under `__http/<host>/<pathname>`). `telo run` registers a new `LocalManifestCacheSource` ahead of the registry / HTTP sources, so production images that ran `telo install` at build time boot with zero registry network I/O — fixing the self-bootstrap loop in the registry image and unblocking air-gapped deploys. Cache misses fall through to the network source transparently; dev runs without a prior install are unchanged. New CLI flag `telo install --registry-url <url>` mirrors `telo run` for consistency.
+
+  The reader and writer share a single URL→path function so direct-URL imports of a registry-served manifest (`source: https://registry.telo.run/...`) hit the same cache file as the corresponding `source: namespace/name@version` ref. HTTP URLs with a query string or fragment are disambiguated with a 12-char content hash on the filename so two different manifests never collide. All cache paths are validated to stay under the cache root, guarding against `..` segments in module refs.
+
+  - `@telorun/kernel`: adds `LocalManifestCacheSource`, `writeManifestCache`, `cachePathForCanonical`, and `resolveEntryDir` exports.
+  - `@telorun/cli`: `telo install` writes the manifest cache; `telo run` registers the cache source; new `--registry-url` flag on `telo install`.
+
+### Patch Changes
+
+- Updated dependencies [d9df589]
+- Updated dependencies [f61b36a]
+- Updated dependencies [65647e0]
+  - @telorun/ide-support@0.4.0
+  - @telorun/kernel@0.11.0
+  - @telorun/analyzer@0.10.0
+
+## 0.10.0
+
+### Patch Changes
+
+- 5c49834: Loader returns the canonical load result; editor stops re-parsing.
+
+  The analyzer's `Loader` now produces a single `LoadedFile` / `LoadedModule` / `LoadedGraph` that carries text, parsed `yaml.Document` ASTs, manifests, position metadata, and canonical identity together. Hosts consume the same parse — the editor no longer runs a parallel YAML pipeline, the VS Code extension and CLI no longer read positions from non-enumerable manifest metadata, and the kernel uses the same primitive for static analysis and runtime entry loads.
+
+  **Breaking changes** in `@telorun/analyzer`. The deprecated methods are removed in this release rather than kept as shims:
+
+  - `Loader.loadModule(url, opts)` now returns `LoadedModule` (was `ResourceManifest[]`).
+  - `Loader.loadModuleGraph` removed — use `loadGraph` + `flattenForAnalyzer`.
+  - `Loader.loadManifests` removed — use `loadGraph` + `flattenForAnalyzer`.
+  - `Loader.loadModuleForFile` legacy shape removed; the replacement is `loadGraphForFile(url) → { graph, ownerUrl } | null`.
+  - `attachPositionIndex` (the non-enumerable-metadata helper) removed; positions live on `LoadedFile.positions` and consumers look them up via `findPositions(graph, …)` from `@telorun/ide-support`.
+  - `LoadedGraph.importEdges` is now `Map<string, Map<string, ImportEdge>>` carrying `{targetSource, targetModuleName, targetNamespace}` rather than a bare target URL — `flattenForAnalyzer` reads library identity off the edge directly instead of re-deriving from manifest metadata.
+
+  **New surface**:
+
+  - `parseLoadedFile(source, requestedUrl, text, opts?)` — pure, I/O-free parse primitive shared between the editor's source-view debounce and the loader's `read()` post-processing.
+  - `Loader.loadFile(url, opts?)`, `Loader.loadGraph(entry, opts?)`, `Loader.loadGraphForFile(fileUrl)` — new methods returning the canonical types.
+  - `flattenForAnalyzer(graph)` and `flattenLoadedModule(mod)` — produce the flat `ResourceManifest[]` `analyze()` consumes (graph-wide vs. single-module).
+  - `@telorun/ide-support`: `findPositions(graph, diagnosticData)` returns `{file, positionIndex?, sourceLine?}` and replaces every host's hand-rolled "look up the file owning this diagnostic + its positions" loops.
+
+  **Internal effects**:
+
+  - `@telorun/cli`: migrated `check`, `install`, and `publish` to the new API; `formatAnalysisDiagnostics` takes a `LoadedGraph`.
+  - `@telorun/kernel`: the kernel's facade methods (`loadModule`, `loadManifests`) preserve their `ResourceManifest[]` API so module controllers don't need to migrate; internally they project from the new types via `flattenForAnalyzer` / `flattenLoadedModule`.
+  - The editor's `ModuleDocument` collapses to `{filePath, loaded: LoadedFile, dirty: boolean}`; the previous parallel `parseModuleDocument` pipeline (`text` / `docs` / `loadedJson` / `parseError` snapshots, in-memory adapter, chained adapter, populate/collect-partial passes, `mergeSubGraph`) is gone. Source-view edits and form edits both flow through `parseLoadedFile`; saves re-parse the just-written text to refresh the load-time snapshot.
+
+- f1c35bc: Split `Kernel.start()` into `boot()` / `runTargets()` / `teardown()`, add public `Kernel.invoke()`, rename `Kernel.shutdown()` → `Kernel.forceIdle()`.
+
+  Embedders that want "boot once, invoke many" (e.g. an AWS Lambda managed-runtime adapter, IDE previews, programmatic tests) can now drive each lifecycle phase explicitly without owning the wait loop. `start()` stays as a convenience method with no observable behaviour change — its `try` widens to cover `boot()` and `runTargets()` so init-time failures still drive teardown and still emit `Kernel.Stopping` / `Kernel.Stopped`, matching the pre-split contract that the CLI and test runner rely on.
+
+  **New methods**:
+
+  - `boot(): Promise<void>` — initialize resources, emit `Kernel.Initialized`. Does not run targets, does not wait.
+  - `runTargets(): Promise<void>` — emit `Kernel.Starting`, run `targets:` from the manifest, emit `Kernel.Started`. Throws `ERR_KERNEL_STATE_INVALID` if called before `boot()` or after `teardown()`, or a second time.
+  - `teardown(): Promise<void>` — emit `Kernel.Stopping`, tear down every initialized resource, emit `Kernel.Stopped`. Idempotent on the second call (no-op, no re-emit). Tolerates partial state — a `boot()` that threw mid-init still cleans up.
+  - `invoke<TInputs, TOutput>(ref, inputs): Promise<TOutput>` — invoke a `Telo.Invocable` resource by `<Kind>.<Name>` (dot-form string) or `{ kind, name }`. Throws `ERR_KERNEL_STATE_INVALID` before `boot()` or after `teardown()`.
+
+  **Breaking**:
+
+  - `Kernel.shutdown(): void` is renamed to `Kernel.forceIdle(): void`. Same semantics (force-resolve a pending `waitForIdle()` regardless of active holds; used by SIGINT/SIGTERM handlers). The name disambiguates from the new `teardown()`. The only known external caller is the CLI's signal handler, updated in this changeset.
+  - New `ERR_KERNEL_STATE_INVALID` runtime error code on `RuntimeErrorCode`.
+
+  No migration needed for callers that only use `start()` — its semantics are unchanged.
+
+- 47f7d83: Single-realm controller install: every controller in a kernel process now resolves through one `<entry-manifest-dir>/.telo/npm/` tree, with the kernel's own `@telorun/sdk` wired in as a `file:` dep. The realpath collapse this produces fixes class-identity bugs across the kernel/controller boundary — most visibly cel-js's `registerType("Stream", Stream)` matching `Stream` instances created on either side of the realm split.
+
+  - `@telorun/kernel`: `Kernel.load(url)` records the entry URL; `getEntryUrl()` is exposed via `ResourceContext`. `NpmControllerLoader` rewrites every load — registry tag or `local_path` — as an `npm install <spec>` into the per-manifest install root. A filesystem lock at `<root>/.lock` (atomic `fs.open(path, 'wx')`, PID + start-time inside) makes the install cross-process safe; a hash of the materialized `package.json` short-circuits repeat installs. The legacy `~/.cache/telo/npm/` global cache is no longer consulted (existing trees are safe to delete by hand). `TELO_PKG_MANAGER` overrides the default `npm` invocation.
+  - `@telorun/cli`: `telo install` passes the manifest's entry URL through to the kernel-side loader so the install root lands next to the manifest. `TELO_CACHE_DIR` is no longer consumed.
+  - `@telorun/sdk`: `ResourceContext` gains a `getEntryUrl()` method.
+  - `@telorun/assert`: `package.json` `exports` map now declares the Bun/Node conditional split (`bun → src/*.ts`, `import → dist/*.js`). The previous bare-`./src/*.ts` entries only worked because the old controller loader silently rewrote `src→dist`; that rewriter is gone.
+
+- Updated dependencies [07c881a]
+- Updated dependencies [5c49834]
+- Updated dependencies [50ae578]
+- Updated dependencies [f1c35bc]
+- Updated dependencies [47f7d83]
+  - @telorun/analyzer@0.9.0
+  - @telorun/ide-support@0.3.0
+  - @telorun/kernel@0.10.0
+  - @telorun/sdk@0.10.0
+  - @telorun/templating@0.2.2
+
+## 0.9.2
+
+### Patch Changes
+
+- Updated dependencies [30bcfef]
+  - @telorun/analyzer@0.8.1
+  - @telorun/templating@0.2.1
+  - @telorun/kernel@0.9.2
+
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [543b91f]
+  - @telorun/kernel@0.9.1
+
+## 0.9.0
+
+### Minor Changes
+
+- 88e5cb4: Introduce per-property templating engines via YAML tags. New `@telorun/templating` package owns the shared CEL core (compile, chain validator, walker, environment) and a pluggable engine registry. Two built-in engines ship: `!cel` (single CEL expression — no `${{ }}` wrapping) and `!literal` (opaque text — no interpolation, no analysis). Untagged `${{ }}` strings continue to compile as CEL exactly as before. The kernel, analyzer, telo editor, and VS Code extension now share one source of truth for engine registration and YAML tag parsing.
+
+### Patch Changes
+
+- Updated dependencies [88e5cb4]
+- Updated dependencies [88e5cb4]
+  - @telorun/analyzer@0.8.0
+  - @telorun/templating@0.2.0
+  - @telorun/kernel@0.9.0
+
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [019c62a]
+- Updated dependencies [c792025]
+  - @telorun/kernel@0.8.0
+  - @telorun/analyzer@0.7.0
+
+## 0.7.3
+
+### Patch Changes
+
+- 84e9edf: `telo publish` now canonicalizes relative `Telo.Import.source` paths (e.g. `../ai`) into absolute registry references of the form `<namespace>/<name>@<version>` before pushing the manifest. Relative paths are only meaningful on the publisher's filesystem; once a manifest reached the registry, the leading `..` collapsed the version segment of the registry URL (so e.g. a sibling import at `…/<package>/<version>/` + `../<sibling>` resolved to `…/<package>/<sibling>`, dropping the version), and any consumer that imported a published library which itself used relative imports got a 500 from the registry. Sibling-module metadata (`namespace` / `name` / `version`) is read from the local target's `telo.yaml` at publish time.
+
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [40ae3ea]
+- Updated dependencies [0335074]
+  - @telorun/analyzer@0.6.1
+  - @telorun/kernel@0.7.2
+
+## 0.7.1
+
+### Patch Changes
+
+- 024debe: Declare `engines.node: ">=24"` on `@telorun/cli` and `@telorun/kernel`. Makes the supported Node version explicit (and fixes the npm Node-version badge in the README, which previously rendered "not specified").
+- Updated dependencies [024debe]
+  - @telorun/kernel@0.7.1
+
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies [6d4280e]
+- Updated dependencies [b62e535]
+  - @telorun/kernel@0.7.0
+  - @telorun/sdk@0.7.0
+  - @telorun/analyzer@0.6.0
+
+## 0.6.1
+
+### Patch Changes
+
+- 0c4d023: Surface controller-download progress as kernel events and render them in the CLI.
+
+  `ControllerLoading` / `ControllerLoaded` / `ControllerLoadFailed` /
+  `ControllerLoadSkipped` are now emitted from `ControllerLoader` itself, one
+  cycle per attempted PURL candidate so env-missing fallback chains are visible.
+  Payloads carry the single attempted `purl` instead of the full candidate
+  array, plus `source` (`local` | `node_modules` | `cache` | `npm-install` |
+  `cargo-build`) and `durationMs` on `Loaded` so consumers can distinguish real
+  work from cache hits. `pkg:cargo` resolutions through `local_path` (the only
+  cargo mode currently wired up) report `source: "local"` — cargo's incremental
+  cache makes every run after the first effectively a no-op build, the same
+  mental model as the npm `local_path` branch. `cargo-build` is reserved for a
+  future distribution mode (fetch from a registry + compile). `Skipped` is
+  emitted for recoverable env-missing fallbacks (e.g. `pkg:cargo` with no
+  `rustc` on PATH) so consumers can close out per-attempt UI state without
+  conflating it with a hard failure.
+
+  The CLI renders a `⬇ <purl>` line at `Loading` and rewrites it in place to
+  `✓ <purl> (<source>, <ms>)` (or `✗ …`) at `Loaded` / `Failed`. By default the
+  renderer activates only when stdout is a TTY, so CI logs and the dockerised
+  `telorun/telo` service stay silent. `--verbose` forces rendering on regardless
+  of TTY (so captured/piped logs get the lines too).
+
+  By default, resolutions reporting `source: cache` or `local` have their line
+  erased once `Loaded` arrives — they're sub-millisecond and don't represent
+  work worth surfacing. `--verbose` bypasses this filter and prints every
+  resolution, including cache/local, which is useful for debugging which branch
+  the loader took. Other sources (`node_modules`, `npm-install`, `cargo-build`)
+  always render their `✓` line.
+
+  The cargo / napi loader now also accepts an optional PURL fragment. When
+  present, `pkg:cargo/foo?local_path=...#bar` projects to `module.bar` after
+  loading the dylib (each sub-export must itself have `create` or `register`);
+  without a fragment the whole module is the controller, as before. This
+  mirrors the npm `#entry` semantics for crates that want one source file per
+  controller. The raw module is cached per crate, so two PURLs differing only
+  by fragment share one cargo build.
+
+- Updated dependencies [0c4d023]
+  - @telorun/kernel@0.6.1
+
+## 0.6.0
+
+### Minor Changes
+
+- 2e0ad31: In-memory kernel bootstrap and `Adapter` → `Source` rename.
+
+  **Breaking changes:**
+
+  - `Kernel.loadFromConfig(path)` → `Kernel.load(url)`. The new method dispatches the URL through the registered `ManifestSource` chain unchanged — no implicit `file://` cwd-wrapping. The `loadDirectory` deprecation shim is removed.
+  - `KernelOptions.sources: ManifestSource[]` is now required. Callers must pass an explicit list, e.g. `new Kernel({ sources: [new LocalFileSource()] })`. The previous hardcoded `LocalFileAdapter` registration in the `Kernel` constructor is gone.
+  - `ManifestAdapter` interface renamed to `ManifestSource`. Per-scheme classes renamed: `LocalFileAdapter` → `LocalFileSource`, `HttpAdapter` → `HttpSource`, `RegistryAdapter` → `RegistrySource`. Files and directories renamed in turn (`manifest-adapters/` → `manifest-sources/`, `analyzer/.../adapters/` → `.../sources/`).
+  - `LoaderInitOptions` field renames: `extraAdapters` → `extraSources`, `includeHttpAdapter` → `includeHttpSource`, `includeRegistryAdapter` → `includeRegistrySource`.
+  - The dead-stub `kernel/nodejs/src/manifest-adapters/manifest-adapter.ts` (an unused parallel interface that drifted from the live one in `@telorun/analyzer`) is deleted.
+
+  **New:**
+
+  - `MemorySource`: an in-memory `ManifestSource` for embedders and tests. Available as a top-level export from `@telorun/kernel` and as a subpath export at `@telorun/kernel/memory-source`. Bare module names register under `<name>/telo.yaml` (mirroring disk's "module is a directory containing telo.yaml" convention) so relative imports (`./sub`, `../sibling`) work transparently with POSIX path resolution. `set(name, content)` accepts either YAML text or an array of parsed manifest objects (serialized via `yaml.stringify`).
+
+  **Internal:**
+
+  - `Loader.moduleCache` is now per-instance rather than `private static readonly`. Multiple in-process kernels (the headline use case for `MemorySource` — test runners, IDE previews) no longer share a process-wide cache.
+
+### Patch Changes
+
+- Updated dependencies [dccd3a6]
+- Updated dependencies [2e0ad31]
+  - @telorun/sdk@0.6.0
+  - @telorun/kernel@0.6.0
+  - @telorun/analyzer@0.5.0
+
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies [fc4a562]
+- Updated dependencies [80c3c03]
+- Updated dependencies [f76dd0f]
+- Updated dependencies [fc4a562]
+  - @telorun/kernel@0.5.0
+  - @telorun/analyzer@0.4.0
+  - @telorun/sdk@0.5.0
+
+## 0.4.1
+
+### Patch Changes
+
+- 2900b1c: `telo publish` now retries transient registry push failures with exponential backoff (up to 4 attempts). Retries on network errors (DNS, reset, `fetch failed`) and on `408`, `425`, `429`, and `5xx` responses so flaky CI pushes no longer fail the whole workflow.
+- Updated dependencies [e35e2ee]
+- Updated dependencies [c97da42]
+  - @telorun/analyzer@0.3.0
+  - @telorun/kernel@0.4.1
+
+## 0.4.0
+
+### Minor Changes
+
+- 6a61dbf: Add `telo install <path>` — pre-downloads every controller declared by a manifest and its transitive `Telo.Import`s into the on-disk cache. At runtime the kernel finds each controller already cached and skips the boot-time `npm install`, removing the startup delay and the network dependency from production containers.
+
+  Reuses the existing `ControllerLoader`, so resolution semantics (local_path, node_modules, npm fallback, entry resolution) are identical to runtime loading. Jobs run in parallel via `Promise.allSettled`; failures are reported per controller and the command exits non-zero if any failed.
+
+  `ControllerLoader` is now exported from `@telorun/kernel`.
+
+  **Cache location**: defaults to `~/.cache/telo/` (XDG-style, shared across projects for a user). Override via `TELO_CACHE_DIR` — set it per-project to bundle the cache alongside the manifest. The registry image now uses `TELO_CACHE_DIR=/srv/.telo-cache` so `telo install` at build time and `telo run` at boot both read/write the same project-local cache, and a single `COPY --from=build /srv /srv` carries the full bundle into the production stage.
+
+### Patch Changes
+
+- Updated dependencies [6a61dbf]
+  - @telorun/kernel@0.4.0
+
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [f75a730]
+- Updated dependencies [f75a730]
+  - @telorun/kernel@0.3.3
+
+## 0.3.2
+
+### Patch Changes
+
+- 3c4ac58: Resource initialization errors now carry the resource `kind`, an underlying error `code`, and a structured `details` block extracted from the original error — AWS SDK service exceptions expose HTTP status / request ID / fault, pg database errors expose severity / detail / hint / SQLSTATE / routine, Node system errors expose syscall / address / port, and the full `cause` chain is walked. The CLI renders runtime diagnostics distinctly from static-analysis diagnostics: no redundant file path, `kind` and `name` shown as the heading, details indented below.
+- Updated dependencies [3c4ac58]
+  - @telorun/sdk@0.3.2
+  - @telorun/kernel@0.3.2
+  - @telorun/analyzer@0.2.1
+
+## 0.3.1
+
+### Patch Changes
+
+- 2d866be: Add `--skip-controllers` flag to `telo publish`. When set, skips the controller build/publish/PURL-rewrite loop and only runs static analysis and pushes the manifest to the Telo registry. Used by the Changesets-driven CI release flow, where controller packages are already published by `changeset publish`.
+
+## 0.3.0
+
+### Minor Changes
+
+- 31d721e: feat: bearer-token auth for the Telo module registry publish endpoint
+
+  The registry's `PUT /{namespace}/{name}/{version}` now requires an `Authorization: Bearer <token>` header. Reads stay anonymous. Tokens are provisioned declaratively at boot via `TELO_PUBLISH_TOKEN` and stored as SHA-256 hashes in a `tokens` table joined to `users` and `namespaces`.
+
+  **Analyzer** (`@telorun/analyzer`) — **breaking for direct API consumers**
+
+  - `StaticAnalyzer` and `Loader` now accept an optional `{ celHandlers }` in their constructors. Analyzer-only callers (VS Code extension, Docusaurus preview, CLI `check`/`publish`) can omit it and get throwing stubs. Runtime callers (kernel) must supply real handlers.
+  - The module-level `celEnvironment` singleton is removed — `precompile.ts` now takes the `Environment` as a parameter.
+  - New CEL stdlib function: `sha256(string): string`. Always registered with the correct signature so `env.check()` type-checks; behaviour depends on the supplied handler.
+  - The throws-union resolver recognises the new `throw:` step shape (see Run module) and resolves its code at the call site using the same rules as passthrough invocables (literal / `${{ 'LIT' }}` / `${{ error.code }}` in catch).
+  - CEL type-check failures now surface as diagnostics. Previously the analyzer only reported schema/type mismatches on valid expressions; `env.check(...)` returning `{ valid: false }` (wrong method, wrong operand types, wrong overload — e.g. `s.slice(7)` on a dyn) was silently dropped. Now surfaces as `SCHEMA_VIOLATION` with a `CEL type error:` message.
+
+  **Kernel** (`@telorun/kernel`)
+
+  - Constructs `StaticAnalyzer` and `Loader` with a `node:crypto`-backed `sha256` handler, so CEL templates invoking `sha256()` evaluate at runtime.
+
+  **Run module** (`@telorun/run`) — **breaking**
+
+  - `Run.Sequence` gains a first-class `throw:` step variant: `- name: X; throw: { code, message?, data? }` — throws `InvokeError` directly from inside the sequence. Works inside `catch:` blocks via `code: "${{ error.code }}"` for re-raise. A malformed `throw.code` (non-string or empty after expansion) is itself reported as `InvokeError("INVALID_THROW_STEP", …)` rather than a plain Error, so the failure stays in the structured-error channel and a surrounding `catches:` can map it.
+  - The `Run.Throw` invocable is removed. Existing `invoke: { kind: Run.Throw }` call sites must migrate to `throw:` steps. The separate kind was redundant with the new step form, and the `throw:` step expresses the intent more directly inside sequences.
+  - **Event-stream change:** `throw:` steps do **not** emit a scoped `<Kind>.<name>.InvokeRejected` event the way `Run.Throw` did. The error is thrown from inside the sequence's own `invoke()`, so the enclosing kind's event is what fires (e.g. `Run.Sequence.<handlerName>.InvokeRejected` — or nothing, when an enclosing `try` absorbs the throw). Downstream observers that filtered on `Run.Throw.*.InvokeRejected` must switch filters.
+
+  **CLI** (`@telorun/cli`)
+
+  - `telo publish` reads `TELO_REGISTRY_TOKEN` and sends it as `Authorization: Bearer <token>`. Without the env var, publishes to auth-gated registries fail with 401.
+
+  See `apps/registry/plans/registry-auth.md` for the full plan.
+
+### Patch Changes
+
+- Updated dependencies [353d7e5]
+- Updated dependencies [31d721e]
+  - @telorun/sdk@0.3.0
+  - @telorun/kernel@0.3.0
+  - @telorun/analyzer@0.2.0
+
+## 0.2.9
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/analyzer@0.1.4
+  - @telorun/kernel@0.2.9
+
+## 0.2.8
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/analyzer@0.1.3
+  - @telorun/kernel@0.2.8
+
+## 0.2.7
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/analyzer@0.1.2
+  - @telorun/kernel@0.2.7
+
+## 0.2.6
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/analyzer@0.1.1
+  - @telorun/kernel@0.2.6
+
+## 0.2.5
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/kernel@0.2.5
+
+## 0.2.4
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/kernel@0.2.4
+
+## 0.2.3
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/runtime@0.2.3
+
+## 0.2.2
+
+### Patch Changes
+
+- Automated release.
+- Updated dependencies
+  - @telorun/runtime@0.2.2

@@ -1,4 +1,4 @@
-# @telorun/studio
+# Changelog
 
 ## 0.37.1
 

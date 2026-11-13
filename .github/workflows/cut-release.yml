@@ -1,8 +1,8 @@
 name: Start release candidates
 
 # Creates `release/<major>.<minor>` at the main commit it is dispatched on and
-# dispatches the branch's Publish, which opens the first Version PR. Main is not
-# changed: the branch carries the pending changesets and module fragments, and main
+# dispatches the branch's Publish, which opens the first release PR (candidates).
+# Main is not changed: the branch carries the pending fragments, and main
 # learns what shipped only through the record PR of each release (record-release.yml).
 # The cut refuses while main does not record the live branch's newest release tag.
 # Publish final release dispatched at main (finish-release.yml) makes the same checks
@@ -43,8 +43,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The release main would cut is the minor its release plan reaches for the
+      # telo line (`telo release status`, the Node build of the CLI), so the
+      # workspace is built.
+      - name: Build workspace
+        run: pnpm -r --if-present build
+
+      # A linking crate's cargo layer reads its closure across every platform
+      # (`cargo metadata --locked --offline`), so every platform's crates are fetched first.
+      - name: Fetch every platform's crates
+        run: cargo fetch --locked
+
       # Under bun: whether main records the live branch's newest tag is the record's
-      # own check, which reads the analyzer from source (no build).
+      # own check, which reads the analyzer from source.
       - name: Check
         id: check
         run: pnpm exec bun scripts/release-branch.mjs cut-check --ref "$GITHUB_REF_NAME"
@@ -72,7 +83,7 @@ jobs:
           RELEASE: ${{ steps.check.outputs.release }}
         run: node scripts/release-branch.mjs create-branch --branch "release/$RELEASE" --sha "$GITHUB_SHA"
 
-      # The new branch's own Publish opens its first Version PR.
+      # The new branch's own Publish opens its first release PR.
       - name: Dispatch Publish on the branch
         env:
           GH_TOKEN: ${{ secrets.TELO_BOT_TOKEN }}

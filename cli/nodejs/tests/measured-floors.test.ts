@@ -24,7 +24,7 @@ let calls: Array<{ version: string; paths: string[] }>;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "telo-floors-"));
   calls = [];
-  fs.writeFileSync(path.join(root, "telo-workspace.yaml"), "release:\n  modules:\n    - modules/*\n");
+  fs.writeFileSync(path.join(root, "telo-workspace.yaml"), "release:\n  units:\n    - { path: modules/*, ecosystem: telo }\n");
 });
 
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -267,6 +267,28 @@ describe("telo publish — the floor preflight", () => {
     expect(await verify(">=0.95.0")).toMatchObject({ status: "pending", latestPublished: "0.90.0" });
     expect(await verify(">=0.80.0")).toMatchObject({ status: "failed", reading: "0.80.0 reports SCHEMA_VIOLATION at telo.yaml:5" });
     expect(await verify(">=0.86.0")).toMatchObject({ status: "passed" });
+  });
+
+  it("measures a floor at the line's surface with the newest published candidate CLI, and refuses when none exists", async () => {
+    const file = path.join(root, "telo.yaml");
+    fs.writeFileSync(file, "");
+    const ran: string[] = [];
+    const runner: CliRunner = async (version) => {
+      ran.push(version);
+      return { status: "passed" };
+    };
+    const verify = (published: string[]) =>
+      verifyFloor(file, text(">=0.95.0"), { currentVersion: "0.90.0", publishedVersions: published, runner });
+
+    expect(await verify([...FINALS, "0.95.0-rc.1", "0.95.0-rc.10", "0.95.0-rc.2", "0.96.0-rc.1"])).toMatchObject({
+      status: "passed",
+      checkedWith: "0.95.0-rc.10",
+    });
+    expect(ran).toEqual(["0.95.0-rc.10"]);
+    expect(await verify([...FINALS, "0.96.0-rc.1"])).toMatchObject({
+      status: "pending",
+      latestPublished: "0.90.0",
+    });
   });
 });
 

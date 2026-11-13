@@ -1,21 +1,23 @@
-// Packs the extension with its markdown links resolved to the release tag, then
-// puts the working tree back. Relative links in source resolve against any ref
-// on GitHub; inside a .vsix they resolve against nothing.
+// Packs the staged extension (`stage-vsix.mjs`) into `telo-vscode.vsix`: what
+// ships is the staged directory itself, so it is what the release planner digests.
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extension = join(here, "..");
-const rewrite = join(here, "..", "..", "..", "scripts", "rewrite-pack-links.mjs");
 
-function run(command, args) {
-  const result = spawnSync(command, args, { cwd: extension, stdio: "inherit", shell: process.platform === "win32" });
+function run(command, args, cwd, stdout) {
+  const result = spawnSync(command, args, { cwd, stdio: ["ignore", stdout, "inherit"], shell: process.platform === "win32" });
   if (result.error) throw result.error;
   return result.status ?? 1;
 }
 
-let status = run(process.execPath, [rewrite, "."]);
-if (status === 0) status = run("pnpm", ["exec", "vsce", "package", "--no-dependencies", "--out", "telo-vscode.vsix"]);
-const restored = run(process.execPath, [rewrite, ".", "--restore"]);
-process.exit(status !== 0 ? status : restored);
+// The staging script's stdout is the payload listing; here only its work matters.
+let status = run(process.execPath, [join(here, "stage-vsix.mjs")], extension, "ignore");
+if (status === 0) {
+  // The unit's own vsce, run from the staged directory.
+  const vsce = join(extension, "node_modules", ".bin", process.platform === "win32" ? "vsce.cmd" : "vsce");
+  status = run(vsce, ["package", "--no-dependencies", "--out", "../../telo-vscode.vsix"], join(extension, "dist", "vsix"), "inherit");
+}
+process.exit(status);

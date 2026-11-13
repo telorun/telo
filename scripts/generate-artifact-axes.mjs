@@ -22,7 +22,7 @@
 //
 // Usage: node scripts/generate-artifact-axes.mjs
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -153,5 +153,6 @@ if (existsSync(DEST) && readFileSync(DEST, "utf8") === contents) {
   process.exit(0);
 }
 
+mkdirSync(dirname(DEST), { recursive: true });
 writeFileSync(DEST, contents);
 console.log(`generate-artifact-axes: wrote ${names.length} selector axes (${names.join(", ")})`);

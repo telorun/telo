@@ -1,0 +1,1429 @@
+[
+  {
+    "name": "npm-pattern-with-private",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: packages/*, ecosystem: npm }\n",
+      "packages/a/package.json": "{\n  \"name\": \"@fx/a\",\n  \"version\": \"1.0.0\"\n}\n",
+      "packages/b/package.json": "{\n  \"name\": \"@fx/b\",\n  \"version\": \"2.0.0\",\n  \"private\": true\n}\n",
+      "packages/c/README.md": "no package\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+          "severity": "error",
+          "message": "Unit 'packages/b' ships no layer: its packages (npm at .) publish nothing. List the ecosystem it ships through, declare 'payload:', or exclude it with '!packages/b'.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "packages/a",
+          "dir": "packages/a",
+          "anchors": [
+            {
+              "ecosystem": "npm",
+              "anchor": ".",
+              "dir": "packages/a",
+              "name": "@fx/a",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "packages/a/package.json",
+          "versionLocations": [
+            "packages/a/package.json"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "exclusion-last-match-wins",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: packages/*, ecosystem: npm }\n    - '!packages/b'\n    - { path: packages/c, ecosystem: npm, maxBump: patch }\n",
+      "packages/a/package.json": "{\n  \"name\": \"a\",\n  \"version\": \"1.0.0\"\n}\n",
+      "packages/b/package.json": "{\n  \"name\": \"b\",\n  \"version\": \"1.0.0\"\n}\n",
+      "packages/c/package.json": "{\n  \"name\": \"c\",\n  \"version\": \"1.0.0\"\n}\n"
+    },
+    "expected": {
+      "diagnostics": [],
+      "units": [
+        {
+          "key": "packages/a",
+          "dir": "packages/a",
+          "anchors": [
+            {
+              "ecosystem": "npm",
+              "anchor": ".",
+              "dir": "packages/a",
+              "name": "a",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "packages/a/package.json",
+          "versionLocations": [
+            "packages/a/package.json"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        },
+        {
+          "key": "packages/c",
+          "dir": "packages/c",
+          "anchors": [
+            {
+              "ecosystem": "npm",
+              "anchor": ".",
+              "dir": "packages/c",
+              "name": "c",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "packages/c/package.json",
+          "versionLocations": [
+            "packages/c/package.json"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "patch",
+          "group": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "polyglot-component",
+    "files": {
+      "telo-workspace.yaml": "release:\n  maxBump: minor\n  ignore: ['**/notes/**']\n  units:\n    - path: engine\n      ecosystem: { npm: nodejs, cargo: [rust, rust/value] }\n      version: nodejs/package.json\n      versionFiles: ['meta/*.version', { path: meta/info.json, pointer: /release/version }]\n      payload: [rust/abi/**]\n      metafile: nodejs/meta.json\n",
+      "engine/nodejs/package.json": "{\n  \"name\": \"@fx/engine\",\n  \"version\": \"0.3.0\"\n}\n",
+      "engine/rust/Cargo.toml": "[package]\nname = \"fx-engine\"\nversion = \"0.3.0\"\nedition = \"2021\"\n",
+      "engine/rust/value/Cargo.toml": "[package]\nname = \"fx-engine-value\"\nversion = \"0.3.0\"\nedition = \"2021\"\n",
+      "engine/rust/abi/lib.rs": "\n",
+      "engine/meta/a.version": "0.3.0\n",
+      "engine/meta/info.json": "{ \"release\": { \"version\": \"0.3.0\" } }\n"
+    },
+    "expected": {
+      "diagnostics": [],
+      "units": [
+        {
+          "key": "engine",
+          "dir": "engine",
+          "anchors": [
+            {
+              "ecosystem": "cargo",
+              "anchor": "rust",
+              "dir": "engine/rust",
+              "name": "fx-engine",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            },
+            {
+              "ecosystem": "cargo",
+              "anchor": "rust/value",
+              "dir": "engine/rust/value",
+              "name": "fx-engine-value",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            },
+            {
+              "ecosystem": "npm",
+              "anchor": "nodejs",
+              "dir": "engine/nodejs",
+              "name": "@fx/engine",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "engine/nodejs/package.json",
+          "versionLocations": [
+            "engine/nodejs/package.json",
+            "engine/rust/Cargo.toml",
+            "engine/rust/value/Cargo.toml",
+            "engine/meta/a.version",
+            "engine/meta/info.json#/release/version"
+          ],
+          "payload": {
+            "patterns": [
+              "rust/abi/**"
+            ]
+          },
+          "metafile": "engine/nodejs/meta.json",
+          "ignore": [
+            "**/notes/**"
+          ],
+          "maxBump": "minor",
+          "group": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "version-unresolved",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: napi, ecosystem: [npm, cargo] }\n    - { path: img, ecosystem: docker }\n    - { path: bare }\n",
+      "napi/package.json": "{\n  \"name\": \"napi\",\n  \"version\": \"1.0.0\"\n}\n",
+      "napi/Cargo.toml": "[package]\nname = \"napi\"\nversion = \"1.0.0\"\nedition = \"2021\"\n",
+      "img/Dockerfile": "FROM scratch\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.0' (napi) declares no 'version:' and 2 anchors keep one (npm at ., cargo at .). Declare 'version:', naming the one that holds the unit's version.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.1' (img) declares no 'version:' and none of its ecosystems (docker) keeps a version. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.2' (bare) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "path": [
+            "release",
+            "units",
+            2
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.2' (bare) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            2
+          ]
+        }
+      ],
+      "units": []
+    }
+  },
+  {
+    "name": "ecosystem-unavailable",
+    "ecosystemHosts": {
+      "telo": "the `telo` CLI (`telo release`), which serves Telo modules"
+    },
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { telo: { registry: oci://ghcr.io/acme }, pip: {} }\n  units:\n    - { path: modules/*, ecosystem: telo }\n    - { path: py, ecosystem: pip, version: VERSION }\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_ECOSYSTEM_UNAVAILABLE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: the 'telo' ecosystem is not served here — no adapter for it is registered in this host, so it cannot be planned. Run the release through the `telo` CLI (`telo release`), which serves Telo modules.",
+          "path": [
+            "release",
+            "ecosystems",
+            "telo"
+          ]
+        },
+        {
+          "code": "WORKSPACE_ECOSYSTEM_UNAVAILABLE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: the 'pip' ecosystem is not served here — no adapter for it is registered in this host, so it cannot be planned. Run the release through a host that serves 'pip'. Served here: npm, cargo, docker, helm.",
+          "path": [
+            "release",
+            "ecosystems",
+            "pip"
+          ]
+        },
+        {
+          "code": "WORKSPACE_ECOSYSTEM_UNAVAILABLE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: the 'telo' ecosystem is not served here — no adapter for it is registered in this host, so it cannot be planned. Run the release through the `telo` CLI (`telo release`), which serves Telo modules.",
+          "path": [
+            "release",
+            "units",
+            0,
+            "ecosystem"
+          ]
+        },
+        {
+          "code": "WORKSPACE_ECOSYSTEM_UNAVAILABLE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: the 'pip' ecosystem is not served here — no adapter for it is registered in this host, so it cannot be planned. Run the release through a host that serves 'pip'. Served here: npm, cargo, docker, helm.",
+          "path": [
+            "release",
+            "units",
+            1,
+            "ecosystem"
+          ]
+        }
+      ],
+      "units": []
+    }
+  },
+  {
+    "name": "flat-and-unknown-keys",
+    "files": {
+      "telo-workspace.yaml": "release:\n  modules: [modules/*]\n  registry: oci://x\n  unit: []\n  units:\n    - { path: a, ecosystem: npm, registry: ghcr.io/acme }\n    - { path: b, ecosystem: docker, version: V, context: . }\n    - { path: c, ecosystem: npm, verison: package.json }\n    - { path: d, ecosystem: npm, frobnicate: 1 }\n",
+      "a/package.json": "{\n  \"name\": \"a\",\n  \"version\": \"1.0.0\"\n}\n",
+      "b/V": "1.0.0\n",
+      "b/Dockerfile": "FROM scratch\n",
+      "c/package.json": "{\n  \"name\": \"c\",\n  \"version\": \"1.0.0\"\n}\n",
+      "d/package.json": "{\n  \"name\": \"d\",\n  \"version\": \"1.0.0\"\n}\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_MODULES_MOVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.modules' became 'release.units': list each unit with the ecosystem it ships through, e.g. { path: modules/*, ecosystem: telo }.",
+          "path": [
+            "release",
+            "modules"
+          ]
+        },
+        {
+          "code": "WORKSPACE_MODULES_MOVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.registry' moved under 'release.ecosystems', keyed by the ecosystem reading it, e.g. ecosystems: { telo: { registry: oci://ghcr.io/acme } }.",
+          "path": [
+            "release",
+            "registry"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: unknown key 'release.unit'. Did you mean 'units'?",
+          "path": [
+            "release",
+            "unit"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.0.registry' is a setting of the docker / helm ecosystem, which is never written flat on an entry. Write it at the anchor (ecosystem: { docker: { \".\": { registry: … } } }) or for every docker anchor under 'release.ecosystems.docker'.",
+          "path": [
+            "release",
+            "units",
+            0,
+            "registry"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.1.context' is a setting of the docker ecosystem, which is never written flat on an entry. Write it at the anchor (ecosystem: { docker: { \".\": { context: … } } }) or for every docker anchor under 'release.ecosystems.docker'.",
+          "path": [
+            "release",
+            "units",
+            1,
+            "context"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: unknown key 'release.units.2.verison'. Known keys: 'path', 'ecosystem', 'version', 'payload', 'metafile', 'versionFiles', 'ignore', 'maxBump'.",
+          "path": [
+            "release",
+            "units",
+            2,
+            "verison"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: unknown key 'release.units.3.frobnicate'. Known keys: 'path', 'ecosystem', 'version', 'payload', 'metafile', 'versionFiles', 'ignore', 'maxBump'.",
+          "path": [
+            "release",
+            "units",
+            3,
+            "frobnicate"
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "a",
+          "dir": "a",
+          "anchors": [
+            {
+              "ecosystem": "npm",
+              "anchor": ".",
+              "dir": "a",
+              "name": "a",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "a/package.json",
+          "versionLocations": [
+            "a/package.json"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        },
+        {
+          "key": "b",
+          "dir": "b",
+          "anchors": [
+            {
+              "ecosystem": "docker",
+              "anchor": ".",
+              "dir": "b",
+              "name": null,
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "b/V",
+          "versionLocations": [
+            "b/V"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        },
+        {
+          "key": "c",
+          "dir": "c",
+          "anchors": [
+            {
+              "ecosystem": "npm",
+              "anchor": ".",
+              "dir": "c",
+              "name": "c",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "c/package.json",
+          "versionLocations": [
+            "c/package.json"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        },
+        {
+          "key": "d",
+          "dir": "d",
+          "anchors": [
+            {
+              "ecosystem": "npm",
+              "anchor": ".",
+              "dir": "d",
+              "name": "d",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "d/package.json",
+          "versionLocations": [
+            "d/package.json"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "anchors-invalid-and-claimed",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: a, ecosystem: { npm: '*' } }\n    - { path: b, ecosystem: { npm: ../a } }\n    - { path: c, ecosystem: { cargo: rust } }\n    - { path: '.', ecosystem: { npm: shared }, version: VERSION }\n    - { path: shared, ecosystem: npm }\n    - { path: e, ecosystem: { npm: [x, x, 3] } }\n    - { path: f, ecosystem: { payload: '.' } }\n",
+      "VERSION": "1.0.0\n",
+      "c/rust/README.md": "\n",
+      "shared/package.json": "{\n  \"name\": \"shared\",\n  \"version\": \"1.0.0\"\n}\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_ANCHOR_INVALID",
+          "severity": "error",
+          "message": "telo-workspace.yaml: anchor \"*\" of 'npm' is not a literal directory inside the unit. An anchor is a unit-relative path with no pattern and no '..' (or '.' for the unit itself).",
+          "path": [
+            "release",
+            "units",
+            0,
+            "ecosystem",
+            "npm"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.0' (a) declares no 'version:' and none of its ecosystems (npm) keeps a version. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_ANCHOR_INVALID",
+          "severity": "error",
+          "message": "telo-workspace.yaml: anchor \"../a\" of 'npm' is not a literal directory inside the unit. An anchor is a unit-relative path with no pattern and no '..' (or '.' for the unit itself).",
+          "path": [
+            "release",
+            "units",
+            1,
+            "ecosystem",
+            "npm"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.1' (b) declares no 'version:' and none of its ecosystems (npm) keeps a version. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: anchor 'x' of 'npm' is listed twice.",
+          "path": [
+            "release",
+            "units",
+            5,
+            "ecosystem",
+            "npm",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_ANCHOR_INVALID",
+          "severity": "error",
+          "message": "telo-workspace.yaml: anchor 3 of 'npm' is not a literal directory inside the unit. An anchor is a unit-relative path with no pattern and no '..' (or '.' for the unit itself).",
+          "path": [
+            "release",
+            "units",
+            5,
+            "ecosystem",
+            "npm",
+            2
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'payload' is reserved for a declared payload and names no ecosystem. Declare a payload with the entry's 'payload:' key.",
+          "path": [
+            "release",
+            "units",
+            6,
+            "ecosystem",
+            "payload"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.6' (f) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "path": [
+            "release",
+            "units",
+            6
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.6' (f) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            6
+          ]
+        },
+        {
+          "code": "WORKSPACE_ANCHOR_INVALID",
+          "severity": "error",
+          "message": "'c/rust' is anchored as cargo by unit 'c', but it is not a directory holding a Cargo.toml with a [package] table.",
+          "path": [
+            "release",
+            "units",
+            2,
+            "ecosystem"
+          ]
+        },
+        {
+          "code": "WORKSPACE_ANCHOR_INVALID",
+          "severity": "error",
+          "message": "'e/x' is anchored as npm by unit 'e', but it is not a directory holding a package.json with a version.",
+          "path": [
+            "release",
+            "units",
+            5,
+            "ecosystem"
+          ]
+        },
+        {
+          "code": "WORKSPACE_ANCHOR_CLAIMED",
+          "severity": "error",
+          "message": "The npm package at 'shared' is claimed by units '.' and 'shared'. A package belongs to one unit; anchor it in only one of them.",
+          "path": [
+            "release",
+            "units",
+            4,
+            "ecosystem"
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": ".",
+          "dir": "",
+          "anchors": [
+            {
+              "ecosystem": "npm",
+              "anchor": "shared",
+              "dir": "shared",
+              "name": "shared",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "VERSION",
+          "versionLocations": [
+            "VERSION",
+            "shared/package.json"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        },
+        {
+          "key": "shared",
+          "dir": "shared",
+          "anchors": [
+            {
+              "ecosystem": "npm",
+              "anchor": ".",
+              "dir": "shared",
+              "name": "shared",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "shared/package.json",
+          "versionLocations": [
+            "shared/package.json"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "docker-settings",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { docker: { registry: ghcr.io/acme, regsitry: x }, helm: { registry: oci://ghcr.io/acme/charts } }\n  units:\n    - path: app\n      version: package.json\n      ecosystem: { npm: ., docker: { '.': { context: '.' }, worker: { context: 'nowhere', name: w }, bad: { context: 'x/*' } }, helm: chart }\n    - path: svc\n      version: VERSION\n      ecosystem: { docker: { '.': { name: null, colour: red } } }\n",
+      "app/package.json": "{\n  \"name\": \"app\",\n  \"version\": \"1.2.3\"\n}\n",
+      "app/Dockerfile": "FROM scratch\n",
+      "app/worker/Dockerfile": "FROM scratch\n",
+      "app/bad/Dockerfile": "FROM scratch\n",
+      "app/chart/Chart.yaml": "apiVersion: v2\nname: app-chart\nversion: 1.2.3\n",
+      "svc/VERSION": "1.0.0\n",
+      "svc/Dockerfile": "FROM scratch\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.ecosystems.docker.regsitry' is not read by the docker ecosystem. It reads 'registry', 'name', 'context'.",
+          "path": [
+            "release",
+            "ecosystems",
+            "docker",
+            "regsitry"
+          ]
+        },
+        {
+          "code": "WORKSPACE_ANCHOR_INVALID",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.0.ecosystem.docker.bad.context' is \"x/*\", which is not a literal directory inside the workspace. Write a workspace-relative path with no pattern and no '..' ('.' for the workspace root).",
+          "path": [
+            "release",
+            "units",
+            0,
+            "ecosystem",
+            "docker",
+            "bad",
+            "context"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.1.ecosystem.docker...colour' is not read by the docker ecosystem. It reads 'registry', 'name', 'context'.",
+          "path": [
+            "release",
+            "units",
+            1,
+            "ecosystem",
+            "docker",
+            ".",
+            "colour"
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.1.ecosystem.docker...name' has no value.",
+          "path": [
+            "release",
+            "units",
+            1,
+            "ecosystem",
+            "docker",
+            ".",
+            "name"
+          ]
+        },
+        {
+          "code": "WORKSPACE_ANCHOR_INVALID",
+          "severity": "error",
+          "message": "docker anchor 'app/worker' of unit 'app' names context 'nowhere', which is not a directory of this workspace.",
+          "path": [
+            "release",
+            "units",
+            0,
+            "ecosystem"
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "svc",
+          "dir": "svc",
+          "anchors": [
+            {
+              "ecosystem": "docker",
+              "anchor": ".",
+              "dir": "svc",
+              "name": null,
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {
+                "registry": "ghcr.io/acme"
+              }
+            }
+          ],
+          "version": "svc/VERSION",
+          "versionLocations": [
+            "svc/VERSION"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "groups",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units: [a, b]\n  groups:\n    one: [a, ./b/]\n    two: [a, missing]\n    three:\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'a' is in groups 'one' and 'two'. A unit shares one version, so it belongs to at most one group.",
+          "path": [
+            "release",
+            "groups",
+            "two",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.groups.three' must be a list of unit keys.",
+          "path": [
+            "release",
+            "groups",
+            "three"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.0' (a) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.0' (a) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.1' (b) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "path": [
+            "release",
+            "units",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.1' (b) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "Group 'one' names 'a', which is not a unit of this workspace.",
+          "path": [
+            "release",
+            "groups",
+            "one",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "Group 'one' names 'b', which is not a unit of this workspace.",
+          "path": [
+            "release",
+            "groups",
+            "one",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "Group 'two' names 'missing', which is not a unit of this workspace.",
+          "path": [
+            "release",
+            "groups",
+            "two",
+            0
+          ]
+        }
+      ],
+      "units": []
+    }
+  },
+  {
+    "name": "null-and-shape-errors",
+    "files": {
+      "telo-workspace.yaml": "release:\n  maxBump: huge\n  units:\n    - ''\n    - 42\n    - { path: }\n    - { ecosystem: npm }\n    - { path: a, version: }\n    - { path: b, payload: [] }\n    - { path: c, payload: { cmd: x } }\n    - { path: d, version: { file: v.json } , payload: { command: ls } }\n    - { path: e, version: { file: v.json, pointer: version }, payload: [x] }\n    - { path: f, metafile: '../m.json', payload: [x], version: V }\n    - { path: g, versionFiles: [{ path: x.json }, 7], payload: [x], version: V }\n    - { path: h, ignore: notalist, payload: [x], version: V, maxBump: patch }\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.maxBump' must be patch, minor or major.",
+          "path": [
+            "release",
+            "maxBump"
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.0' is empty.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units' entry 1 must be a path, or a mapping carrying 'path:' plus the keys it adds.",
+          "path": [
+            "release",
+            "units",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.2.path' has no value, so the entry names nothing.",
+          "path": [
+            "release",
+            "units",
+            2,
+            "path"
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units' entry 3 declares no 'path:', so it names nothing.",
+          "path": [
+            "release",
+            "units",
+            3
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.4.version' has no value.",
+          "path": [
+            "release",
+            "units",
+            4,
+            "version"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.4' (a) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "path": [
+            "release",
+            "units",
+            4
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.4' (a) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            4
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.5.payload' is empty, so it selects no file.",
+          "path": [
+            "release",
+            "units",
+            5,
+            "payload"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.5' (b) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "path": [
+            "release",
+            "units",
+            5
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.5' (b) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            5
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: unknown key 'release.units.6.payload.cmd'. Known keys: 'command'.",
+          "path": [
+            "release",
+            "units",
+            6,
+            "payload",
+            "cmd"
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.6.payload' needs 'command:'.",
+          "path": [
+            "release",
+            "units",
+            6,
+            "payload"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.6' (c) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "path": [
+            "release",
+            "units",
+            6
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.6' (c) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            6
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.7.version' needs both 'file:' and 'pointer:'.",
+          "path": [
+            "release",
+            "units",
+            7,
+            "version"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.7' (d) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            7
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.8.version.pointer' must be a JSON pointer (RFC 6901) starting with '/', e.g. /version.",
+          "path": [
+            "release",
+            "units",
+            8,
+            "version",
+            "pointer"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.8' (e) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "path": [
+            "release",
+            "units",
+            8
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.9.metafile' must be a file inside the unit, with no pattern and no '..'.",
+          "path": [
+            "release",
+            "units",
+            9,
+            "metafile"
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.10.versionFiles.0' needs both 'path:' and 'pointer:'.",
+          "path": [
+            "release",
+            "units",
+            10,
+            "versionFiles",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.10.versionFiles.1' must be a unit-relative pattern, or { path, pointer }.",
+          "path": [
+            "release",
+            "units",
+            10,
+            "versionFiles",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.11.ignore' must be a list of strings.",
+          "path": [
+            "release",
+            "units",
+            11,
+            "ignore"
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "f",
+          "dir": "f",
+          "anchors": [],
+          "version": "f/V",
+          "versionLocations": [
+            "f/V"
+          ],
+          "payload": {
+            "patterns": [
+              "x"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        },
+        {
+          "key": "g",
+          "dir": "g",
+          "anchors": [],
+          "version": "g/V",
+          "versionLocations": [
+            "g/V"
+          ],
+          "payload": {
+            "patterns": [
+              "x"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        },
+        {
+          "key": "h",
+          "dir": "h",
+          "anchors": [],
+          "version": "h/V",
+          "versionLocations": [
+            "h/V"
+          ],
+          "payload": {
+            "patterns": [
+              "x"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "patch",
+          "group": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty-units",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units: []\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units' is empty, so nothing is released. List the units, e.g. [{ path: packages/*, ecosystem: npm }].",
+          "path": [
+            "release",
+            "units"
+          ]
+        }
+      ],
+      "units": []
+    }
+  },
+  {
+    "name": "not-a-mapping",
+    "files": {
+      "telo-workspace.yaml": "- release\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml must be a YAML mapping.",
+          "path": []
+        }
+      ],
+      "units": null
+    }
+  },
+  {
+    "name": "comments-only",
+    "files": {
+      "telo-workspace.yaml": "# nothing here\n"
+    },
+    "expected": {
+      "diagnostics": [],
+      "units": null
+    }
+  },
+  {
+    "name": "release-not-a-mapping",
+    "files": {
+      "telo-workspace.yaml": "release: [a]\nenv: { x: 1 }\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release' must be a mapping.",
+          "path": [
+            "release"
+          ]
+        }
+      ],
+      "units": null
+    }
+  },
+  {
+    "name": "helm-and-cargo-literal",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: chart, ecosystem: helm }\n    - { path: tool, ecosystem: cargo }\n    - { path: nochart, ecosystem: helm }\n",
+      "chart/Chart.yaml": "apiVersion: v2\nname: chart\nversion: 0.1.0\n",
+      "tool/Cargo.toml": "[package]\nname = \"tool\"\nversion.workspace = true\n",
+      "nochart/Chart.yaml": "apiVersion: v2\nversion: 0.1.0\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_ANCHOR_INVALID",
+          "severity": "error",
+          "message": "'nochart' is anchored as helm by unit 'nochart', but it is not a directory holding a Chart.yaml with a name and a version.",
+          "path": [
+            "release",
+            "units",
+            2,
+            "ecosystem"
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "chart",
+          "dir": "chart",
+          "anchors": [
+            {
+              "ecosystem": "helm",
+              "anchor": ".",
+              "dir": "chart",
+              "name": "chart",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "chart/Chart.yaml",
+          "versionLocations": [
+            "chart/Chart.yaml"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        },
+        {
+          "key": "tool",
+          "dir": "tool",
+          "anchors": [
+            {
+              "ecosystem": "cargo",
+              "anchor": ".",
+              "dir": "tool",
+              "name": "tool",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {}
+            }
+          ],
+          "version": "tool/Cargo.toml",
+          "versionLocations": [
+            "tool/Cargo.toml"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null
+        }
+      ]
+    }
+  }
+]

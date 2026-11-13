@@ -1,4 +1,4 @@
-import { serializeFragment } from "@telorun/analyzer";
+import { serializeFragment } from "@telorun/release";
 import { makeTarGz } from "@telorun/kernel";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
@@ -95,7 +95,7 @@ beforeAll(async () => {
   root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "telo-release-imports-")));
   write(
     "telo-workspace.yaml",
-    `release:\n  registry: ${REGISTRY}\n  modules:\n    - modules/*\n    - blueprints/*\n    - apps/*\n    - examples/chat-app/chat\n`,
+    `release:\n  ecosystems: { telo: { registry: ${REGISTRY} }, docker: { registry: registry.example/acme } }\n  units:\n    - { path: modules/*, ecosystem: telo }\n    - { path: blueprints/*, ecosystem: telo }\n    - { path: apps/*, ecosystem: [telo, docker] }\n    - { path: examples/chat-app/chat, ecosystem: telo }\n`,
   );
   write("modules/run/telo.yaml", library("Run", "0.2.7"));
   write("modules/sql/telo.yaml", library("Sql", "1.0.0"));
@@ -120,7 +120,7 @@ beforeAll(async () => {
     changed: [],
     entries: [],
   }));
-  writeLedger(root, await recordLedger(root, targets, { ...plan, modules: everyModule }));
+  writeLedger(root, await recordLedger(root, { ...plan, units: everyModule }));
 }, 120_000);
 
 afterAll(() => {

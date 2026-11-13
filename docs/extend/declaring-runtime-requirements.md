@@ -61,9 +61,10 @@ published telo release that accepts it. It is one of three values:
 - **`>=<version>`** — the lowest published telo that reads the module's syntax.
 - **`>=unreleased`** — no published telo reads it yet: the module adopts syntax that is still
   pending. A released telo answers `MODULE_REQUIRES_NEWER_RUNTIME`; a build of the unreleased
-  telo (`X+unreleased`) satisfies it. When the release branch's Version PR versions the telo line, its
-  version step (`version-packages`) rewrites every `>=unreleased` in the workspace's manifests to the
-  version it just gave the telo line.
+  telo (`X+unreleased`) satisfies it. When the release branch's release PR versions the telo line, `telo release apply`
+  (candidate or final) rewrites every `>=unreleased` in the workspace's manifests to the
+  surface of the version it gave the telo line. A `>=unreleased` in a plan that moves no telo
+  version fails `telo release check`: no release would carry the syntax it waits for.
 - **absent** — every telo that reads `requires:` accepts the module, so a floor would protect
   nobody. A floor-less module is correct, not incomplete.
 
@@ -154,7 +155,7 @@ publish a later version whose entries cover the broken ones. See
   works offline; a restriction a later version adds never breaks an installed pin.
 - **At selection** (`telo upgrade`, the editor's lenses and version pickers), a candidate's range
   is also narrowed, per key (`telo`, `host.node`), by the covering entries of the newest *newer*
-  published version that states that key. Prereleases speak only when no release exists.
+  published version that states that key. A prerelease's entries speak for no version: they are read only with `telo upgrade --include-prerelease`, and a restriction first published in a release candidate takes effect when the final repeats it.
 - **Omitting** an entry from a later version lifts nothing. **Lifting** is stating the key again
   from a later version, with an entry covering the same versions.
 

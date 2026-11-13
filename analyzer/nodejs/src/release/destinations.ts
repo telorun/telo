@@ -16,11 +16,10 @@
  * out: the destinations are already computed for `telo release order`.
  */
 
-import type { ModuleKey } from "./fragment.js";
-import type { ReleaseDiagnostic } from "./release-plan.js";
+import type { ReleaseDiagnostic, UnitKey } from "@telorun/release";
 
 export interface ModuleDestination {
-  readonly key: ModuleKey;
+  readonly key: UnitKey;
   /** `<registry>/<the module's own directory name>`. */
   readonly destination: string;
 }
@@ -36,7 +35,7 @@ export interface ModuleDestination {
 export function checkDestinationCollisions(
   destinations: readonly ModuleDestination[],
 ): ReleaseDiagnostic[] {
-  const byDestination = new Map<string, ModuleKey[]>();
+  const byDestination = new Map<string, UnitKey[]>();
   for (const { key, destination } of destinations) {
     const sharing = byDestination.get(destination);
     if (sharing) sharing.push(key);
@@ -53,7 +52,7 @@ export function checkDestinationCollisions(
         `${keys.sort().join(" and ")} both publish to '${destination}'. A module's ref is its ` +
         `registry base plus its own directory name, so they would overwrite one artifact and ` +
         `their ledger entries could never reconcile. Rename one directory, or give one of the ` +
-        `subtrees its own 'registry:' in telo-workspace.yaml.`,
+        `entries its own 'registry:' in telo-workspace.yaml.`,
     });
   }
   return diagnostics;

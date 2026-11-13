@@ -1,0 +1,13 @@
+[package]
+name = "telorun-glob"
+version = "0.3.2"
+license = "MIT"
+edition = "2021"
+publish = false
+description = "Telo glob for Rust: the .gitignore-style file-selection matcher, answering as @telorun/glob answers and pinned by the same language-neutral conformance suite. Dependency-free."
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+serde_json = { version = "=1.0.149", features = ["preserve_order"] }

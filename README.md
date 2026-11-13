@@ -13,8 +13,6 @@
   <a href="https://github.com/telorun/telo/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/telorun/telo" /></a>
   <a href="https://github.com/telorun/telo/issues"><img alt="Issues" src="https://img.shields.io/github/issues/telorun/telo" /></a>
   <a href="https://github.com/telorun/telo/pulls"><img alt="Pull requests" src="https://img.shields.io/github/issues-pr/telorun/telo" /></a>
-  <br />
-  <img alt="Changesets" src="https://img.shields.io/badge/maintained%20with-changesets-176de3" />
 </p>
 
 Telo runs applications described in YAML files instead of written as program code. You declare your web APIs, databases, data screens (tables, forms, create/edit/delete) and AI workflows as small, connected YAML documents, and Telo checks them and runs them. There is no drag-and-drop screen builder: screens are declared in YAML like everything else.
@@ -107,7 +105,7 @@ Two licenses, split by directory. Each MIT directory carries its own `LICENSE`; 
 
 | MIT | Sustainable Use |
 | --- | --- |
-| `cel/`, `message-format/`, `sdk/`, `templating/`, `packages/glob/`, `packages/editor-protocol/` — the expression engine, the message core, the SDK and what a controller links against | `analyzer/`, `kernel/`, `cli/` — what loads, checks and runs a manifest |
+| `cel/`, `message-format/`, `sdk/`, `templating/`, `release/`, `packages/glob/`, `packages/editor-protocol/` — the expression engine, the message core, the SDK, the release planner and what a controller links against | `analyzer/`, `kernel/`, `cli/` — what loads, checks and runs a manifest |
 | `modules/`, `blueprints/` — the standard library | `packages/ide-support/`, `packages/language-server/`, `packages/language-host/`, `ide/` — the editor tooling |
 | `starters/`, `examples/`, `docs/`, `benchmarks/` | `packages/runner-core/`, `packages/debug-wire/`, `packages/debug-ui/`, `apps/docker-runner/`, `apps/k8s-runner/` — the runners |
 | `apps/hub/`, `apps/hub-web/` | `apps/studio/`, `apps/authoring-agent/`, `pages/` and everything not listed |

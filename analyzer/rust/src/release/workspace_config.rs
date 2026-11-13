@@ -2,7 +2,7 @@
 //!
 //! Mirrors `analyzer/nodejs/src/release/workspace-config.ts`, of which only the
 //! filename constant has a Rust counterpart so far. Parsing the file's
-//! `release.modules` list is release scope and the Rust side has no release
+//! `release.units` list is release scope and the Rust side has no release
 //! commands;
 //! what it needs is the marker's LOCATION, which is what anchors the `.telo`
 //! cache. Naming the file is the analyzer's either way, so that both halves of

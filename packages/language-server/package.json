@@ -22,16 +22,6 @@
   },
   "type": "module",
   "teloEditorProtocol": 2,
-  "teloInlines": [
-    "@telorun/analyzer",
-    "@telorun/cel",
-    "@telorun/editor-protocol",
-    "@telorun/glob",
-    "@telorun/ide-support",
-    "@telorun/message-format",
-    "@telorun/sdk",
-    "@telorun/templating"
-  ],
   "exports": {
     ".": "./dist/language-server.mjs",
     "./package.json": "./package.json"
@@ -40,12 +30,11 @@
     "dist/language-server.mjs"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build.mjs",
+    "build": "node ../../scripts/generate-telo-version.mjs && tsc -p tsconfig.json && node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "prepare": "node ../../scripts/generate-telo-version.mjs",
-    "prepack": "node scripts/check-engine-identity.mjs && cp ../../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
-    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE"
+    "prepack": "node ../../scripts/pack-backup.mjs . --save dist && node scripts/build.mjs --published && node scripts/check-engine-identity.mjs && cp ../../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE && node ../../scripts/pack-backup.mjs . --restore"
   },
   "devDependencies": {
     "@telorun/analyzer": "workspace:*",

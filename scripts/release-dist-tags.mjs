@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Moves npm's `rc` dist-tag to a final or patch, forward only.
 //
-// Candidates publish under `rc` (changesets' prerelease mode does that), and a
-// final or patch publishes under `latest`. Afterwards `rc` follows the final, so
+// Candidates publish under `rc` (`publish-packages.mjs` does that), and a final or
+// patch publishes under `latest`. Afterwards `rc` follows the final, so
 // `@rc` never resolves below `latest`. A pointer that already holds a higher
 // version is left alone, so re-running an old publish moves nothing.
 //
-// Usage: PUBLISHED_PACKAGES='[{"name":"@telorun/cli","version":"0.85.0"}]' \
+// Usage: MOVED_UNITS='[{"key":"cli","name":"@telorun/cli","version":"0.85.0","ecosystem":"npm"}]' \
 //        RELEASE_CHANNEL=final node scripts/release-dist-tags.mjs [--dry-run]
+//        (only the `npm` rows of the moved units are npm packages)
 
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -47,8 +48,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       console.log("release-dist-tags: a candidate publishes under rc already; nothing to move.");
       process.exit(0);
     }
-    const published = JSON.parse(process.env.PUBLISHED_PACKAGES || "[]");
-    const moves = planRcMoves({ published: Array.isArray(published) ? published : [], tagsOf: registryTags });
+    const units = JSON.parse(process.env.MOVED_UNITS || "[]");
+    const published = (Array.isArray(units) ? units : []).filter((unit) => unit.ecosystem === "npm");
+    const moves = planRcMoves({ published, tagsOf: registryTags });
     if (moves.length === 0) console.log("release-dist-tags: no rc pointer to move.");
     for (const { name, version, from } of moves) {
       console.log(`release-dist-tags: ${name} rc ${from ?? "(none)"} -> ${version}${dryRun ? " (dry run)" : ""}`);

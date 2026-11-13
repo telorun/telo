@@ -1,0 +1,27 @@
+units:
+  release: Added
+  analyzer: Added
+  cli: Added
+  packages/ide-support: Added
+body: "`@telorun/release` gains a Node-only `./node` entry and a `telo-release` bin: the
+  whole `release` command tree (`add --unit`, `status`, `order`, `check`, `apply
+  [--candidate[=<id>]]`, `verify [--write]`, `tag`, `adopt changesets`) over the `npm`,
+  `cargo`, `docker` and `helm` ecosystems, each layer digested as a file set — the
+  package manager's `pack` output (npm, pnpm, yarn classic and berry, bun; a packed
+  `workspace:` / `catalog:` range is refused), `cargo package --list`, a Docker build
+  context less its ignore file with the Dockerfile and ignore file always in it, and the
+  chart `helm package` builds — plus a declared `payload:` (patterns or a `{ command
+  }`), `metafile:` inline edges, and read-back from the npm registry, crates.io and an
+  OCI chart registry. An ecosystem's settings are written at an anchor (`ecosystem: {
+  docker: { \".\": { context: ., name: web } } }`) or for every anchor under the new
+  `release.ecosystems` block (`telo` and `helm` take `registry`, `docker` takes
+  `registry`, `name` and `context`); a setting written flat on an entry,
+  `release.registry` and `release.modules` are refused naming where each went, and an
+  anchor that publishes with no registry is `NO_DESTINATION_KNOWN`. `order` emits one
+  row per unit and package (`{ key, ecosystem, path, version, destination, group,
+  imports }`), `status` / `check` / `apply` report their plan under `units`, `tag` tags
+  `<unit>@<version>` for what the last committed apply moved, and `apply` writes each
+  unit's `CHANGELOG.md` at its directory. `telo release` is that tree with the `telo`
+  ecosystem registered, its `floor`, `stage` and `imports` subcommands and `requires:`
+  checks kept, and `apply` rewriting `requires: telo: \">=unreleased\"` to the surface
+  the telo line is planned at; `telo release add --module` is now `--unit`."

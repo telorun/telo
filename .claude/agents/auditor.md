@@ -75,7 +75,7 @@ Then judge, in this order:
    added to a file that already carries too many responsibilities. Look for signs the
    implementer fought the design and worked around it.
 7. **Obligations.** Docs that match the code — module docs, the nested `CLAUDE.md`, the
-   authoring-agent primer. For a change: a changeset or release fragment where one is required,
+   authoring-agent primer. For a change: a release fragment (`telo release add --unit …`, never hand-written) where one is required,
    and no major version bump anywhere.
 8. **Overreach.** Only against a stated intent: any edit outside the paths the work was allowed to
    touch, and a change well past its stated size that the intent does not require.

@@ -20,19 +20,19 @@
 // `analyzer/nodejs/src/builtin-vocabulary/`: `builtins.yaml`, a byte copy of
 // `sdk/LICENSE` beside it, and `index.ts` exporting the same bytes as
 // `BUILTIN_VOCABULARY_ARCHIVE`. The archive's version is the identity
-// `version-line.mjs` computes for this tree (`X`, or `X+unreleased` while a line
-// changeset is pending). Its YAML comes from the fixed emitter below, never from a
+// `version-line.mjs` computes for this tree: `V+unreleased`, or exactly `V` under
+// `--published`, which only `@telorun/analyzer`'s `prepack` passes. Its YAML comes from the fixed emitter below, never from a
 // library, so the bytes depend on nothing installed. Beside them it writes
 // `analyzer/nodejs/builtin-vocabulary-slices.json`: every name `telo builtins`
 // selects with the exact text it must print, recorded as the archive is emitted —
 // the expectation both CLIs' slicers are tested against.
 //
 // Dependency-free, so it runs wherever nothing is installed or built: the root
-// `prepare`, `@telorun/analyzer`'s own `prepare` and `prepack`, and the CI job
+// `prepare`, `@telorun/analyzer`'s own `build` and `prepack`, and the CI job
 // that builds the Rust CLI all run it. Every destination is gitignored; the repo
 // holds one copy of each entry.
 //
-// Usage: node scripts/render-builtin-vocabulary.mjs
+// Usage: node scripts/render-builtin-vocabulary.mjs [--published]
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -53,6 +53,12 @@ const SECTION_SRC = {
   translations: join(ROOT, "sdk", "translations"),
 };
 const LICENSE_SRC = join(ROOT, "sdk", "LICENSE");
+
+// A checkout holding no analyzer (an image's build context) has no archive to render.
+if (!existsSync(join(ROOT, "analyzer", "nodejs", "package.json"))) {
+  console.log("render-builtin-vocabulary: this checkout holds no analyzer/nodejs; nothing to render.");
+  process.exit(0);
+}
 
 const MARKER = "$roster";
 const ROSTER_FLAGS = ["declarable", "throwsAllowed"];
@@ -132,8 +138,8 @@ function derive(node, where) {
   );
 }
 
-// The directory is never removed: `changeset publish` renders it (the analyzer's `prepare`)
-// while the kernel compiles against the analyzer's source, so a reader must always find it.
+// The directory is never removed: a build renders it (the analyzer's `build`) while
+// the kernel compiles against the analyzer's source, so a reader must always find it.
 mkdirSync(DEST, { recursive: true });
 
 // The derived data is written as literals rather than imported as JSON modules:
@@ -306,7 +312,7 @@ const sections = {
 
 let version;
 try {
-  version = (await teloGeneration()).identity;
+  version = teloGeneration({ published: process.argv.includes("--published") }).identity;
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }

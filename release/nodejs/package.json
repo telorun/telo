@@ -1,0 +1,70 @@
+{
+  "name": "@telorun/release",
+  "version": "0.1.0",
+  "description": "A polyglot release planner: units shipped through npm, Cargo, Docker, Helm or any registered ecosystem, versioned from the digest of what they ship, with fragments for changelogs, groups that share a version, candidates, and one changelog per unit.",
+  "keywords": [
+    "release",
+    "versioning",
+    "changelog",
+    "monorepo",
+    "semver"
+  ],
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "release/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "telo-release": "./bin/telo-release.mjs"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "source": "./src/node/index.ts",
+      "types": "./dist/node/index.d.ts",
+      "bun": "./src/node/index.ts",
+      "import": "./dist/node/index.js",
+      "default": "./dist/node/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/**",
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:browser-safe": "node scripts/check-browser-safe.mjs",
+    "prepack": "cp ../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE"
+  },
+  "dependencies": {
+    "@telorun/glob": "workspace:*",
+    "yaml": "2.8.3",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8",
+    "@types/yargs": "^17.0.33"
+  }
+}

@@ -204,7 +204,7 @@ describe("--pin-local", () => {
   it("leaves an import of a library below the importer untouched, even when it is a workspace module", async () => {
     await fs.writeFile(
       path.join(workdir, "telo-workspace.yaml"),
-      "release:\n  modules:\n    - examples/app/chat\n",
+      "release:\n  units:\n    - { path: examples/app/chat, ecosystem: telo }\n",
     );
     const chatDir = path.join(workdir, "examples", "app", "chat");
     await fs.mkdir(chatDir, { recursive: true });

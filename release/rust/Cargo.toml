@@ -1,0 +1,35 @@
+[package]
+name = "telorun-release"
+version = "0.1.0"
+license = "MIT"
+edition = "2021"
+publish = false
+description = "A polyglot release planner: units shipped through npm, Cargo, Docker, Helm or any registered ecosystem, versioned from the digest of what they ship, with fragments for changelogs, groups that share a version, candidates, and one changelog per unit. The twin of @telorun/release, building the same telo-release binary."
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "telo-release"
+path = "src/node/bin.rs"
+
+[dependencies]
+# The Telo glob, as `@telorun/glob` is the Node half's.
+telorun-glob = { path = "../../packages/glob/rust" }
+# Gunzipping the tarballs a package manager or a registry hands back.
+flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
+# Ordered maps: every map the Node twin keeps is a JavaScript Map or object, whose order is insertion order.
+indexmap = "=2.14.0"
+# The YAML event reader the marker, the ledger, fragments and charts are read with.
+saphyr-parser = "=0.3.4"
+serde_json = { version = "=1.0.149", features = ["preserve_order"] }
+# The digests: SHA-256 for file sets, SHA-512 / SHA-1 for an npm tarball's transport check.
+sha1 = "=0.11.0"
+sha2 = "=0.10.9"
+base64 = "=0.22.1"
+# Registry read-back over HTTPS.
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
+
+[dev-dependencies]
+# Scratch repositories for the command tests.
+tempfile = "=3.27.0"
