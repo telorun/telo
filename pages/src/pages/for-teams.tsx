@@ -20,7 +20,7 @@ const FAQ: { question: string; answer: ReactNode }[] = [
         Questions and bug reports go to{" "}
         <a href="https://github.com/telorun/telo/issues">GitHub issues</a>. For commercial
         licensing and enterprise inquiries, write to{" "}
-        <a href="mailto:contact@codenet.pl">contact@codenet.pl</a>. The repository does not
+        <a href="mailto:contact@codenet.pl">contact@codenet.pl</a>. Telo's documentation does not
         describe a paid support plan or service levels, so ask before you plan around one.
       </>
     ),
@@ -158,7 +158,7 @@ export default function BusinessFirst() {
 
       <h2 className="text--center margin-top--xl margin-bottom--none">What people build with Telo</h2>
       <p className="text--center margin-bottom--lg">
-        Working examples from the repository, described in business terms.
+        Working examples, described in business terms.
       </p>
       <ExampleCards />
 

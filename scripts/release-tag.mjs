@@ -29,7 +29,7 @@ function git(cwd, ...args) {
 
 /** The remote and the environment a tag push uses. The token travels as an
  *  environment-borne header, never in argv or a URL a git message could print. */
-function pushTarget() {
+export function pushTarget() {
   const token = process.env.GH_TOKEN;
   const repository = process.env.GITHUB_REPOSITORY;
   if (!token || !repository) return { remote: "origin", env: process.env };

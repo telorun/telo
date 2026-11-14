@@ -153,7 +153,7 @@ export function generateStandardLibrary(modulesRoot: string, outFile: string): v
   lines.push(
     "## Beyond the standard library",
     "",
-    "The list above is what ships from the Telo repository. It is not the whole",
+    "The list above is what ships with Telo. It is not the whole",
     "ecosystem: connectors (AWS Lambda, S3, …) and third-party modules are",
     `published from their own repositories and indexed on the [hub](${HUB})`,
     "alongside these. Any module you publish yourself is discovered the same way —",

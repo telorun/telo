@@ -552,6 +552,38 @@ jobs:
           key: ${{ steps.staged.outputs.key }}
           paths: ${{ steps.staged.outputs.paths }}
 
+  # `stable` follows the newest final release's publication commit, forward only, once
+  # the artifact check passed on it. A failed push shows red and blocks nothing: the
+  # pointer is the least of what a release produces.
+  stable:
+    name: Move the stable branch
+    runs-on: ubuntu-latest
+    needs: [release, publication, artifact-check]
+    if: >-
+      ${{ always() && needs.publication.result == 'success' &&
+      needs.artifact-check.result == 'success' && needs.release.outputs.release-tag != '' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the publication commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publication.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Move stable
+        env:
+          GH_TOKEN: ${{ secrets.TELO_BOT_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.release.outputs.release-tag }}
+          PUBLICATION_SHA: ${{ needs.publication.outputs.sha }}
+        run: node scripts/release-stable.mjs --tag "$RELEASE_TAG" --sha "$PUBLICATION_SHA"
+
   # Kernel images (`telorun/node` and its variants) on every channel but `none`, from
   # npm: not built from the tag, so neither the publication nor the artifact check
   # gates them. `latest`, `<major>` and `<major>.<minor>` move only forward.

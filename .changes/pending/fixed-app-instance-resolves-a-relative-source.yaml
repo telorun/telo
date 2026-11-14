@@ -1,0 +1,6 @@
+units:
+  modules/app: Fixed
+body: App.Instance resolves a relative source against the module declaring it for every
+  relative form, including a bare `..`, `.` and `child`; only `./` and `../` paths were,
+  so the others were read against the process's working directory and failed with ENOENT
+  unless started from the module's own directory.

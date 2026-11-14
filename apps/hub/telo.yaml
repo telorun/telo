@@ -312,6 +312,7 @@ kind: HttpClient.Client
 metadata: { name: embedderClient }
 baseUrl: !cel "variables.embedderBaseUrl"
 credential: !ref embedderCredential
+retry: { attempts: 2, initialDelay: 500, maxDelay: 2000 }
 ---
 kind: HttpClient.Request
 metadata: { name: embedderRequest }

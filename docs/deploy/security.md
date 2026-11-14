@@ -168,7 +168,7 @@ Stated explicitly so nothing is designed around a promise:
 - **No controller sandbox / capability grants.** The `grants:` spec is a draft.
 - **No artifact signing or provenance attestation.** Integrity is verified
   against a hash *you* pinned; there is no publisher signature to verify it
-  against. This covers the published `telorun/*` images too: the repository's
+  against. This covers the published `telorun/*` images too: Telo's
   publishing workflows contain no signing, provenance or SBOM step, so pin an
   image by digest and verify what you pull by your own policy.
 - **No SBOM generation.**

@@ -10,7 +10,7 @@ plain terms. It is a summary, not legal advice; the licence texts decide.
 
 ## What is free
 
-Everything in the repository is free of charge to download, read, run, modify
+Everything Telo ships is free of charge to download, read, run, modify
 and distribute, commercial use included. The software comes with no warranty.
 
 ## What you can do
@@ -52,5 +52,4 @@ Commercial licensing, managed-hosting exemptions and enterprise inquiries:
 [contact@codenet.pl](mailto:contact@codenet.pl). The copyright holder is
 CodeNet Sp. z o.o.
 
-The full text is the [Sustainable Use License](../../LICENSE)
-at the repository root.
+The full text is the [Sustainable Use License](../../LICENSE).

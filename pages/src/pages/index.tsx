@@ -187,7 +187,7 @@ export default function Home() {
 
         <h2 className="text--center margin-top--xl margin-bottom--none">What people build with Telo</h2>
         <p className="text--center margin-bottom--lg">
-          Four of the working examples in the repository, described in business terms.
+          Four of Telo's working examples, described in business terms.
         </p>
         <ExampleCards />
 

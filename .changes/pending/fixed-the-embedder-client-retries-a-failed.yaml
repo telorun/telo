@@ -1,0 +1,4 @@
+units:
+  apps/hub: Fixed
+body: The embedder client retries a failed embeddings call twice with a short backoff,
+  so a search no longer fails with ERR_MODEL_TIMEOUT on one slow response.

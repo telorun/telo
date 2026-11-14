@@ -9,6 +9,7 @@ import {
   type TextChannel,
   type TextChannelInput,
 } from "@telorun/sdk";
+import { isAbsolute } from "path";
 import { fileURLToPath } from "url";
 
 interface InstanceResource {
@@ -21,10 +22,11 @@ interface InstanceResource {
   awaitStart?: boolean;
 }
 
-/** A location the author wrote as a path into their own module, as opposed to a
- *  module reference (`oci://…`, an http URL) that resolves on its own. */
+/** A location the author wrote as a path into their own module (`./x`, `..`, `child`),
+ *  as opposed to an absolute path or a module reference (`oci://…`, an http URL). */
 function isModuleRelative(source: string): boolean {
-  return source.startsWith("./") || source.startsWith("../");
+  if (source.startsWith("./") || source.startsWith("../")) return true;
+  return !isAbsolute(source) && !/^[a-z][a-z0-9+.-]*:/i.test(source) && !source.includes("@");
 }
 
 /**

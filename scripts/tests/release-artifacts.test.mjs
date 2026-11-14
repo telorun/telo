@@ -2,9 +2,15 @@
 // Run: node --test scripts/tests/*.test.mjs
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { attachAssets } from "../release-assets.mjs";
 import { imageLatestMoves, imageVersionOf, pointerMoves } from "../release-pointers.mjs";
+import { moveStable, stableMoves } from "../release-stable.mjs";
 import { promotion } from "../release-promote.mjs";
 import { composePlan, siteBuild } from "../release-site.mjs";
 
@@ -154,5 +160,56 @@ describe("standalone package versions", () => {
     assert.equal(nativeVersion("rpm", "0.85.0-rc.1"), "0.85.0~rc.1");
     assert.equal(nativeVersion("msi", "0.85.0-rc.1"), "0.85.0");
     assert.equal(nativeVersion("deb", "0.85.0"), "0.85.0");
+  });
+});
+
+describe("stable branch", () => {
+  const tags = ["v0.84.2", "v0.85.0-rc.1", "v0.85.0"];
+
+  it("follows the newest final or patch", () => {
+    assert.equal(stableMoves({ tag: "v0.85.0", tags }), true);
+    assert.equal(stableMoves({ tag: "v0.85.1", tags: [...tags, "v0.85.1"] }), true);
+  });
+
+  it("never moves backwards, for a candidate, or for a modules or packages release", () => {
+    assert.equal(stableMoves({ tag: "v0.84.2", tags }), false);
+    assert.equal(stableMoves({ tag: "v0.86.0-rc.1", tags }), false);
+    assert.equal(stableMoves({ tag: "modules-0.85-1", tags }), false);
+    assert.equal(stableMoves({ tag: "packages-0.85-1", tags }), false);
+  });
+});
+
+describe("stable branch push", () => {
+  const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+  it("force-pushes the commit for the newest final and leaves it for an older one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "stable-"));
+    const remote = join(dir, "remote.git");
+    const work = join(dir, "work");
+    git(dir, "init", "--bare", remote);
+    git(dir, "init", work);
+    git(work, "remote", "add", "origin", remote);
+    const commit = (name) => {
+      writeFileSync(join(work, "f"), name);
+      git(work, "add", "f");
+      git(work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", name);
+      return git(work, "rev-parse", "HEAD");
+    };
+    const env = { GH_TOKEN: process.env.GH_TOKEN, GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY };
+    delete process.env.GH_TOKEN;
+    delete process.env.GITHUB_REPOSITORY;
+    try {
+      const a = commit("a");
+      const b = commit("b");
+      const tags = ["v0.1.0", "v0.2.0"];
+      assert.equal(moveStable({ tag: "v0.2.0", sha: b, tags, cwd: work }), true);
+      assert.equal(git(remote, "rev-parse", "refs/heads/stable"), b);
+      assert.equal(moveStable({ tag: "v0.1.0", sha: a, tags, cwd: work }), false);
+      assert.equal(git(remote, "rev-parse", "refs/heads/stable"), b);
+      assert.equal(moveStable({ tag: "v0.2.0", sha: b, tags, cwd: work }), true);
+      assert.equal(git(remote, "rev-parse", "refs/heads/stable"), b);
+    } finally {
+      for (const [key, value] of Object.entries(env)) if (value !== undefined) process.env[key] = value;
+    }
   });
 });
