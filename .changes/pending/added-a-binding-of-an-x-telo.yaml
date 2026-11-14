@@ -1,0 +1,14 @@
+units:
+  analyzer: Added
+body: "A binding of an `x-telo-context`, or a member beneath one, may be marked
+  `x-telo-context-withheld: \"<reason>\"`: it is named at the site and holds no value
+  there, so every expression reading it — a null test, `has()` and an accessor chain
+  included — is refused, a binding as `CEL_UNKNOWN_IDENTIFIER` and a member as
+  `CEL_UNKNOWN_FIELD`, with the reason. The mark travels through
+  `x-telo-context-from-referrer` like any typing, and then the message names the
+  referrer that withholds it (`'request' is not available here — the inline Ui.SplitView
+  withholds it: …`); one kind stays fully typed where another referrer places it. A
+  binding naming a `$defs` entry by `$ref` is read as that entry, so a reason shared by
+  several regions is written once. The mark off a binding, or beside anything but
+  `x-telo-context-eval`, `title` and `description`, is `CONTEXT_WITHHELD_INVALID`; a
+  value that is no sentence is `SCHEMA_VIOLATION`."

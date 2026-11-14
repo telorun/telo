@@ -118,9 +118,12 @@ a self-referencing foreign key and a mutual pair are both cycles.
 **Only what the condition reads is judged.** A member holding an expression, or a
 reference the binding cannot resolve, does not stop the rule unless the condition
 reads it. A server whose mount entries carry a guard's `inputs: !cel …` is still
-judged by a rule reading `entry.authentication`. A peer read whole (`p == x`) is
-read with everything it holds, nested declarations included, so an expression
-anywhere in it skips the rule.
+judged by a rule reading `entry.authentication`. A bound declaration — `self`,
+`referrer`, a peer, an entry's declaration — is equal only to itself: `==`, `!=`
+and `in` decide it by which declaration it is, never by what it holds, so
+`p == self` runs over peers holding expressions. Read whole any other way (handed
+to a function, `size(p)`), a peer is read with everything it holds, nested
+declarations included, so an expression anywhere in it skips the rule.
 
 ### One evaluation per entry
 

@@ -3,46 +3,53 @@
    so this names no part only a control draws. */
 @layer telo.base {
   [data-telo-part="app"] { display: flex; flex-direction: column; min-height: 100vh; }
-  /* The header is a bar; its content is one row inside it: the navigation
-     takes the room between the title and the end, and what does not fit it
-     moves under More; below the breakpoint the row wraps instead. The
-     navigation fills its slot, which is one column wide. */
-  [data-telo-part="header"] { display: block; padding-inline: 0; }
-  [data-telo-part="header-content"] { display: flex; align-items: center; flex-wrap: nowrap; min-width: 0; box-sizing: border-box; }
-  [data-telo-part="app-title"] { flex: none; }
+  /* The header and the footer span the application; their content is one row
+     inside: a navbar takes the room it has, and below the breakpoint the row
+     wraps. A navbar's navigation fills its slot, which is one column wide. */
+  [data-telo-part="header"],
+  [data-telo-part="footer"] { display: block; padding-inline: 0; }
+  [data-telo-part="header-content"],
+  [data-telo-part="footer-content"] { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; box-sizing: border-box; }
+  [data-telo-part="navbar"] { display: flex; align-items: center; flex: 1 1 0; flex-wrap: nowrap; min-width: 0; }
+  [data-telo-part="navbar-title"] { flex: none; }
   [data-telo-part="nav"] { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1 1 0; min-width: 0; }
   [data-telo-part="nav-menu"] { display: inline-flex; align-items: center; justify-content: center; flex: none; }
-  [data-telo-part="header-start"],
-  [data-telo-part="header-end"] { display: flex; align-items: center; flex: none; flex-wrap: nowrap; }
-  [data-telo-part="header-end"] { margin-inline-start: auto; }
-  [data-compact] > [data-telo-part="header"] > [data-telo-part="header-content"] { flex-wrap: wrap; }
-  [data-compact] > [data-telo-part="header"] > [data-telo-part="header-content"] > [data-telo-part="header-start"],
-  [data-compact] > [data-telo-part="header"] > [data-telo-part="header-content"] > [data-telo-part="header-end"] { flex: 0 1 auto; flex-wrap: wrap; min-width: 0; }
-  /* The page column and the header's content share one inset, and a contained
-     one the page's measure: the same expression over the room each has, so
-     the header's content starts and ends where a contained page does. */
+  [data-telo-part="navbar-start"],
+  [data-telo-part="navbar-end"] { display: flex; align-items: center; flex: none; flex-wrap: nowrap; }
+  [data-telo-part="navbar-end"] { margin-inline-start: auto; }
+  [data-compact] [data-telo-part="navbar"] { flex-wrap: wrap; }
+  [data-compact] [data-telo-part="navbar-start"],
+  [data-compact] [data-telo-part="navbar-end"] { flex: 0 1 auto; flex-wrap: wrap; min-width: 0; }
+  /* The page column, the header's content and the footer's share one inset, and
+     a contained one the page's measure: the same expression over the room each
+     has, so a contained header starts and ends where a contained page does in
+     an application with no aside. */
   [data-telo-part="main"] { flex: 1; min-width: 0; padding-inline: var(--telo-space-page); }
-  [data-telo-part="header"][data-width="full"] > [data-telo-part="header-content"] { padding-inline: var(--telo-space-page); }
-  [data-telo-part="header"][data-width="contained"] > [data-telo-part="header-content"] {
+  [data-telo-part="header"][data-width="full"] > [data-telo-part="header-content"],
+  [data-telo-part="footer"][data-width="full"] > [data-telo-part="footer-content"] { padding-inline: var(--telo-space-page); }
+  [data-telo-part="header"][data-width="contained"] > [data-telo-part="header-content"],
+  [data-telo-part="footer"][data-width="contained"] > [data-telo-part="footer-content"] {
     padding-inline: max(var(--telo-space-page), calc((100% - var(--telo-width-page)) / 2));
   }
-  /* A sidebar is a column beside the page, under the header, at its side; a
-     tab bar stays at the bottom edge while the page scrolls. The header spans
-     every column as a subgrid of the application's, so its bar covers the
-     strip above the sidebar while a contained header's content sits over the
-     page's column, wherever that is. */
-  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) {
-    display: grid; grid-template-columns: [side-start] auto [side-end main-start] minmax(0, 1fr) [main-end]; grid-template-rows: auto 1fr;
+  /* A layout's aside is a column beside the page, between the header and the
+     footer, at its side; the header and the footer span every column. A tab
+     bar stays at the bottom edge while the page scrolls. */
+  [data-telo-part="app"][data-side] {
+    display: grid; grid-template-columns: [side-start] auto [side-end main-start] minmax(0, 1fr) [main-end]; grid-template-rows: auto 1fr auto;
   }
-  [data-telo-part="app"]:has(> [data-telo-part="sidebar"][data-side="end"]) {
-    grid-template-columns: [main-start] minmax(0, 1fr) [main-end side-start] auto [side-end];
-  }
-  [data-telo-part="app"] > [data-telo-part="header"] { grid-column: 1 / -1; }
-  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) > [data-telo-part="header"] { display: grid; grid-template-columns: subgrid; }
-  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) > [data-telo-part="header"] > [data-telo-part="header-content"] { grid-column: 1 / -1; }
-  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) > [data-telo-part="header"][data-width="contained"] > [data-telo-part="header-content"] { grid-column: main; }
-  [data-telo-part="sidebar"] { display: flex; flex-direction: column; min-width: 0; }
+  [data-telo-part="app"][data-side="end"] { grid-template-columns: [main-start] minmax(0, 1fr) [main-end side-start] auto [side-end]; }
+  [data-telo-part="app"] > [data-telo-part="header"],
+  [data-telo-part="app"] > [data-telo-part="footer"] { grid-column: 1 / -1; }
+  [data-telo-part="app"][data-side] > [data-telo-part="header"] { grid-row: 1; }
+  [data-telo-part="app"][data-side] > [data-telo-part="main"] { grid-row: 2; grid-column: main; }
+  [data-telo-part="app"][data-side] > [data-telo-part="footer"] { grid-row: 3; }
+  [data-telo-part="app"][data-side] > [data-telo-region="aside"] > div > div > [data-telo-part="aside"] { grid-row: 2; grid-column: side; max-width: 100%; width: 24rem; }
+  [data-telo-part="app"][data-side] > [data-telo-region="aside"] > div > div > [data-telo-part="aside"][data-size="small"] { width: 18rem; }
+  [data-telo-part="app"][data-side] > [data-telo-region="aside"] > div > div > [data-telo-part="aside"][data-size="large"] { width: 32rem; }
+  [data-telo-part="app"][data-side] > [data-telo-region="aside"] > div > div > [data-telo-part="aside"][data-state="rail"] { width: auto; }
+  [data-telo-part="nav-column"] { display: flex; flex-direction: column; min-width: 0; }
   [data-telo-part="tab-bar"] { position: sticky; bottom: 0; }
+  [data-telo-part="app"][data-side] > [data-telo-part="tab-bar"] { grid-column: 1 / -1; }
   /* An icon's glyph is its file as a mask over the colour of the text around
      it, so whatever colours the text colours the glyph. */
   [data-telo-part="link"][data-button] { display: inline-flex; align-items: center; justify-content: center; }
@@ -113,17 +120,17 @@
   [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"], [data-state="compact"])[data-side="end"] { grid-template-columns: minmax(0, 1fr) auto; }
   [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"], [data-state="compact"]) > [data-telo-part="split-content"] { grid-row: 1; grid-column: 2; }
   [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"], [data-state="compact"])[data-side="end"] > [data-telo-part="split-content"] { grid-column: 1; }
-  [data-telo-part="split-aside"] { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; min-width: 0; }
-  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"]) [data-telo-part="split-aside"] { grid-row: 1; grid-column: 1; max-width: 100%; width: 24rem; }
-  [data-telo-part="split"][data-state="open"] [data-telo-part="split-aside"][data-size="small"] { width: 18rem; }
-  [data-telo-part="split"][data-state="open"] [data-telo-part="split-aside"][data-size="large"] { width: 32rem; }
-  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"])[data-side="end"] [data-telo-part="split-aside"] { grid-column: 2; }
-  [data-telo-part="split"][data-state="collapsed"] [data-telo-part="split-aside"] { width: auto; }
-  [data-telo-part="split"][data-state="compact"] > [data-telo-part="split-aside"] { grid-row: 1; grid-column: 1; width: auto; }
-  [data-telo-part="split"][data-state="compact"][data-side="end"] > [data-telo-part="split-aside"] { grid-column: 2; }
-  [data-telo-part="split-bar"] { display: flex; flex: none; align-items: center; box-sizing: border-box; }
-  [data-telo-part="split-actions"] { display: flex; flex: none; flex-wrap: wrap; align-items: center; box-sizing: border-box; }
-  [data-telo-part="split-aside"][data-state="rail"] > [data-telo-part="split-actions"] { flex-direction: column; flex-wrap: nowrap; }
+  [data-telo-part="aside"] { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; min-width: 0; }
+  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"]) [data-telo-part="aside"] { grid-row: 1; grid-column: 1; max-width: 100%; width: 24rem; }
+  [data-telo-part="split"][data-state="open"] [data-telo-part="aside"][data-size="small"] { width: 18rem; }
+  [data-telo-part="split"][data-state="open"] [data-telo-part="aside"][data-size="large"] { width: 32rem; }
+  [data-telo-part="split"]:is([data-state="open"], [data-state="collapsed"])[data-side="end"] [data-telo-part="aside"] { grid-column: 2; }
+  [data-telo-part="split"][data-state="collapsed"] [data-telo-part="aside"] { width: auto; }
+  [data-telo-part="split"][data-state="compact"] > [data-telo-part="aside"] { grid-row: 1; grid-column: 1; width: auto; }
+  [data-telo-part="split"][data-state="compact"][data-side="end"] > [data-telo-part="aside"] { grid-column: 2; }
+  [data-telo-part="aside-bar"] { display: flex; flex: none; align-items: center; box-sizing: border-box; }
+  [data-telo-part="aside-actions"] { display: flex; flex: none; flex-wrap: wrap; align-items: center; box-sizing: border-box; }
+  [data-telo-part="aside"][data-state="rail"] > [data-telo-part="aside-actions"] { flex-direction: column; flex-wrap: nowrap; }
   [data-telo-part="split-content"] { display: flex; flex-direction: column; min-width: 0; }
   /* Chat: the transcript with the message box under it. */
   [data-telo-part="chat"] { display: grid; grid-template-columns: minmax(0, 1fr); height: min(48rem, calc(100vh - 8rem)); min-height: 24rem; overflow: hidden; }
@@ -320,11 +327,11 @@
      answer, a header of its own or a surface sized by its content, which grow
      with what they hold. */
   [data-telo-part="app"][data-fill="true"] { height: 100dvh; min-height: 0; }
-  [data-telo-part="app"][data-fill="true"]:has(> [data-telo-part="sidebar"]) { grid-template-rows: auto minmax(0, 1fr); }
+  [data-telo-part="app"][data-fill="true"][data-side] { grid-template-rows: auto minmax(0, 1fr) auto; }
   [data-telo-part="main"][data-fill="true"] { min-height: 0; }
   [data-telo-part="page"][data-fill="true"] { height: 100%; overflow-y: auto; }
   [data-fill="true"] { flex-grow: 1; flex-shrink: 1; flex-basis: 0; }
-  :is([data-telo-part="page"][data-fill="true"], [data-surface="drawer"]) [data-fill="true"]:not([data-telo-part="chat"], :has([data-fill="true"]), :is([data-surface="inline"], [data-surface="panel"], [data-telo-part="table-row"], [data-telo-part="list-item"], [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"], [data-telo-part="tree-item"], [data-telo-part="action-result"], [data-telo-part="action-failure"], [data-telo-part="row-answer"], [data-telo-part="row-failure"], [data-telo-part="listing-empty"], [data-telo-part="chat-header"], [data-telo-part="split-actions"]) [data-fill="true"]) { overflow-y: auto; }
+  :is([data-telo-part="page"][data-fill="true"], [data-surface="drawer"]) [data-fill="true"]:not([data-telo-part="chat"], :has([data-fill="true"]), :is([data-surface="inline"], [data-surface="panel"], [data-telo-part="table-row"], [data-telo-part="list-item"], [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"], [data-telo-part="tree-item"], [data-telo-part="action-result"], [data-telo-part="action-failure"], [data-telo-part="row-answer"], [data-telo-part="row-failure"], [data-telo-part="listing-empty"], [data-telo-part="chat-header"], [data-telo-part="aside-actions"]) [data-fill="true"]) { overflow-y: auto; }
   :is([data-telo-part="box"], [data-telo-part="data"])[data-fill="true"] { display: flex; flex-direction: column; }
   [data-telo-part="columns"][data-fill="true"] { align-items: stretch; }
   [data-telo-part="columns"][data-fill="true"] > [data-telo-part="column"] { display: flex; flex-direction: column; }
@@ -336,6 +343,6 @@
   /* A filling split stretches both halves to its height; a half holding no
      filling node scrolls, and gives the split no height of its own. */
   [data-telo-part="split"][data-fill="true"] { align-items: stretch; }
-  :is([data-telo-part="split-aside"], [data-telo-part="split-content"])[data-fill="true"]:not([data-state="compact"], :has([data-fill="true"])) { height: 0; min-height: 100%; overflow-y: auto; }
+  :is([data-telo-part="aside"], [data-telo-part="split-content"])[data-fill="true"]:not([data-state="compact"], :has([data-fill="true"])) { height: 0; min-height: 100%; overflow-y: auto; }
   [data-telo-part="chat"][data-fill="true"] { height: auto; }
 }

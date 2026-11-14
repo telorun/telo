@@ -689,8 +689,9 @@ pub fn chain_failure_against_schema(chain: &[String], schema: &Value) -> Option<
             return None;
         }
         let path = chain[..=at].join(".");
+        let available = if available.is_empty() { "none".to_string() } else { available.join(", ") };
         return Some(ChainFailure {
-            message: format!("'{path}' is not defined (available: {})", available.join(", ")),
+            message: format!("'{path}' is not defined (available: {available})"),
             path,
         });
     }

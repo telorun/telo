@@ -54,3 +54,32 @@ export function isComparableTag(value: unknown): boolean {
 export function isBoundDeclaration(value: unknown): boolean {
   return !!value && typeof value === "object" && boundDeclarations.has(value as object);
 }
+
+const identities = new WeakMap<object, string>();
+
+/**
+ * Records which declaration `value` binds — a key of the module declaring it and
+ * its name, which a rule compares instead of what the value holds: two bound
+ * declarations are equal exactly when they are the same declaration.
+ */
+export function markDeclarationIdentity<T extends object>(value: T, identity: string): T {
+  identities.set(value, identity);
+  return value;
+}
+
+/** The identity key of a declaration `module` declares as `name`. */
+export function declarationKey(module: unknown, name: unknown): string {
+  return JSON.stringify([typeof module === "string" ? module : "", String(name ?? "")]);
+}
+
+/** The identity key of a top-level declaration, read off its own metadata. */
+export function manifestDeclarationKey(declaration: { metadata?: unknown }): string {
+  const metadata = declaration.metadata as { module?: unknown; name?: unknown } | undefined;
+  return declarationKey(metadata?.module, metadata?.name);
+}
+
+/** The declaration `value` binds, by identity key, or `undefined` for a value
+ *  that is no bound declaration. */
+export function declarationIdentityOf(value: unknown): string | undefined {
+  return value && typeof value === "object" ? identities.get(value as object) : undefined;
+}

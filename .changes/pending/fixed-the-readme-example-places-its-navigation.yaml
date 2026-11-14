@@ -1,0 +1,4 @@
+units:
+  modules/ui-lucide: Fixed
+body: The README example places its navigation entry in a Ui.Navbar of the application's
+  page layout, as UiReact.App no longer takes a navigation.

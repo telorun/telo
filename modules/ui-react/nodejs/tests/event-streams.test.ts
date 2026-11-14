@@ -56,9 +56,8 @@ function context(faults: Faults = {}) {
 const text = (written: string) => ({ text: written, context: null, lang: "en", computed: false });
 const THEME = { provide: async () => ({ owner: "UiReact.Theme 'plain'", stylesheets: [], controls: [] }) };
 const HOME = {
-  snapshot: () => ({ path: "/", title: text("Home"), query: {} }),
+  snapshot: () => ({ path: "/", title: text("Home"), query: {}, assets: [] }),
   invoke: async () => ({ path: "/", title: text("Home"), query: {}, children: [] }),
-  assets: () => [],
   headerReads: () => new Set<string>(),
 };
 const RESOURCE = { kind: "UiReact.App", metadata: { name: "admin" }, title: text("Events"), theme: THEME, pages: [HOME] };

@@ -33,25 +33,30 @@ export {
   type ReadPosition,
   type RelatedSource,
 } from "./listing-requests.js";
-// What a renderer's controller hosts a page with: the page it invokes per
-// request, the nodes of its own header prepared and delivered the same way, the
-// request headers they read, and the navigation with every default filled.
+// What a renderer's controller hosts pages with: the pages and layouts it
+// invokes per request, nodes of its own prepared and delivered the same way,
+// the request headers they read, and what a pane is invoked with and answers.
 export { errorNode, RequestNodes, type EvaluatedNode } from "./delivered-nodes.js";
 export { headerReads, unionReads, type HeaderReads } from "./request-header-reads.js";
 export { isPage, type PageDocument, type PageInputs, type PageInstance, type PageReading, type PageRequest } from "./page-controller.js";
+export { isPageLayout, type PageLayoutDocument, type PageLayoutInputs, type PageLayoutInstance } from "./page-layout.js";
+export { isPane, paneAssets, type AssetsReading, type PaneAnswer, type PaneInputs, type PaneInstance, type PaneRequest } from "./pane.js";
+export { asideFrame, keptState, type AsideConfig, type AsideFrame, type AsideSpec, type KeptState } from "./aside.js";
 export { resolvedPageWidth, type PageWidth } from "./page-width.js";
 // A page path's variables, and the key two paths routing the same addresses share.
 export { pagePathVariables, pageRouteKey } from "./page-path.js";
+// What a navigation pane of any module draws its tree with: prepared once,
+// every default filled and every glyph's file in `assets`, then delivered per
+// request; the runtime twins of the navigation rules are raised here.
 export {
   deliveredNavigation,
   preparedNavigation,
-  type IconAddress,
   type NavigationConfig,
   type NavigationEntrySpec,
   type NavigationPlacementSpec,
   type PreparedNavigation,
 } from "./navigation.js";
-export { isIcon, type IconFile } from "./icon.js";
+export { iconAsset, isIcon, type IconFile } from "./icon.js";
 // What counts as an icon file, read from its bytes: one reader for every place an icon is served.
 export { iconFormat, servedIconFormat, type IconFormat } from "./icon-format.js";
 // How a renderer's controller sends the texts of what `ui` provides: each text
@@ -65,6 +70,8 @@ export { DESIGN_TOKENS, type DesignTokenName } from "./design-tokens-controller.
 
 export * as ViewController from "./view-controller.js";
 export * as PageController from "./page-controller.js";
+export * as PageLayoutController from "./page-layout.js";
+export { NavbarController, NavigationColumnController } from "./navigation-panes.js";
 export * as DataController from "./data-controller.js";
 export * as CollectionSourceController from "./collection-source.js";
 export * as ConversationSourceController from "./conversation-source.js";
@@ -112,10 +119,5 @@ export {
   SearchBoxPlacementController,
 } from "./filter-placement.js";
 export { LocalStoreController, SessionStoreController } from "./state-store.js";
-export {
-  HeaderNavigationController,
-  OverlayNavigationController,
-  SidebarNavigationController,
-  TabBarNavigationController,
-} from "./navigation.js";
+export { HeaderNavigationController, OverlayNavigationController, TabBarNavigationController } from "./navigation.js";
 export { FileIconController } from "./icon.js";

@@ -18,7 +18,7 @@ The files split along one line:
 - **`module-calls.json`** — calls on a module's name: what resolves as one, how it is typed, and how it is dispatched.
 - **`verdicts.json`** — every diagnostic code and Telo error code the tag engines emit, each in each circumstance it is reported.
 
-Row counts, pinned by the runners: `language.json` 1816 (1814 cel-spec rows and 2 authored), `catalog.json` 195, `types.json` 74, `holes.json` 97, `module-calls.json` 53, `verdicts.json` 112.
+Row counts, pinned by the runners: `language.json` 1816 (1814 cel-spec rows and 2 authored), `catalog.json` 195, `types.json` 74, `holes.json` 97, `module-calls.json` 53, `verdicts.json` 113.
 
 ## Files
 

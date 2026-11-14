@@ -57,9 +57,9 @@ expect:
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Dialog/compactNested: names a compact surface that declares a compact surface of its own"
     - code: RESOURCE_RULE_VIOLATED
-      message: "Ui.SplitView/splitCompactAddressed: names a compact surface that declares an address"
+      message: "Ui.SplitView/splitCompactAddressed at 'aside.compact': names a compact surface that declares an address"
     - code: RESOURCE_RULE_VIOLATED
-      message: "Ui.SplitView/splitCompactNested: names a compact surface that declares a compact surface of its own"
+      message: "Ui.SplitView/splitCompactNested at 'aside.compact': names a compact surface that declares a compact surface of its own"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/filterDuplicate at 'fields[1]': lists a property and operator another field already has"
     - code: RESOURCE_RULE_VIOLATED

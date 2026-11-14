@@ -16,7 +16,9 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { ModuleCallDispatch } from "@telorun/templating";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
-import { nodeIdFor } from "./call-graph.js";
+import { buildCallGraph, nodeIdFor } from "./call-graph.js";
+import type { ReachEnv } from "./reachable-walk.js";
+import { stepBodiesOf } from "./step-bodies.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
 import { reportRuleEvaluation } from "./cel-site-judgements.js";
 import { governedCelEvalSites, type CelEvalSites } from "./eval-paths.js";
@@ -116,7 +118,51 @@ function binderOf(door: RuleDoor): PeerBinder {
     (slotKinds, declarationKind) => slotKinds.some((target) => kindSatisfies(declarationKind, target, defs)),
     (declaration) => views.of(declaration),
     writing,
+    reachEnvOf(door, writing.isDependency),
   );
+}
+
+/** What a `reachable:` walk reads of the registry: canonical kinds read in the
+ *  scope of the module that wrote them, the subtype index, and each
+ *  declaration's step `invoke:` slots from the call graph's own step walk. */
+function reachEnvOf(door: RuleDoor, isDependency: (module: string) => boolean): ReachEnv {
+  const { defs, aliases, aliasesByModule } = door;
+  const descendants = new Map<string, ReadonlySet<string>>();
+  return {
+    canonicalKind: (declaration, writer) => {
+      if (typeof declaration.kind !== "string") return undefined;
+      const metadata = (declaration.metadata ?? writer.metadata) as { module?: unknown } | undefined;
+      const definition = definitionInScope(defs, declaration.kind, metadata, aliases, aliasesByModule);
+      return definition ? kindOf(definition) : undefined;
+    },
+    isKindOf: (candidate, ancestor) => {
+      if (candidate === ancestor) return true;
+      let below = descendants.get(ancestor);
+      if (!below) descendants.set(ancestor, (below = new Set(defs.getByExtends(ancestor).map(kindOf))));
+      return below.has(candidate);
+    },
+    isDependency,
+    stepSlotsOf: (declaration, kind, writer) => {
+      const definition = defs.resolve(kind);
+      const schema = definition ? (defs.effectiveSchemaOf(definition) as Record<string, any> | undefined) : undefined;
+      if (!schema || stepBodiesOf(declaration, schema).length === 0) return [];
+      const metadata = (declaration.metadata ?? {}) as Record<string, unknown>;
+      // An inline declaration is read as one of the module that wrote it.
+      const probe = {
+        ...declaration,
+        kind,
+        metadata: {
+          ...(writer.metadata as Record<string, unknown> | undefined),
+          ...metadata,
+          name: typeof metadata.name === "string" ? metadata.name : `${String(writer.metadata?.name ?? "")}#inline`,
+        },
+      } as unknown as ResourceManifest;
+      const graph = buildCallGraph([probe], defs, { aliases, aliasesByModule });
+      return graph
+        .steps(nodeIdFor(probe))
+        .flatMap((step) => (step.refSlots ?? []).map((slot) => ({ path: slot.path, kinds: slot.kinds, uses: slot.uses })));
+    },
+  };
 }
 
 /** The groups a `coReferrers:` rule binds, built once per (declaring kind and
@@ -272,7 +318,7 @@ export function resourceRuleFindings(identity: DeclarationIdentity, door: RuleDo
           key: `${module}.${definitionName}#${rule.code}`,
           rule: rule.code,
           module,
-          exercised: ruleExercised(subject, rule),
+          exercised: ruleExercised(subject, rule, binder, subject.kind),
           report: describedAt(definition, reportUnexercisedRule(definition, rule)),
         }),
         judgedAt: "",

@@ -36,6 +36,7 @@ const X_TELO_CONTEXT_FROM_REFERRER = "x-telo-context-from-referrer" as const;
 const X_TELO_CONTEXT_FROM_PATH_TEMPLATE = "x-telo-context-from-path-template" as const;
 const X_TELO_CONTEXT_NULLABLE_WHEN = "x-telo-context-nullable-when" as const;
 const X_TELO_CONTEXT_ITEM_FILLS = "x-telo-context-item-fills" as const;
+const X_TELO_CONTEXT_WITHHELD = "x-telo-context-withheld" as const;
 const X_TELO_CAUGHT_MEMBER = "x-telo-caught-member" as const;
 import { ANNOTATION_KEYWORDS } from "./value-type-keyword.js";
 import { TOPOLOGY_ROLES } from "./topology-role.js";
@@ -77,6 +78,7 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       | typeof X_TELO_TEXT_CONTEXT
       | typeof X_TELO_CONTEXT_EVAL
       | typeof X_TELO_CONTEXT_FROM_REFERRER
+      | typeof X_TELO_CONTEXT_WITHHELD
       | typeof X_TELO_CONTEXT_FROM_PATH_TEMPLATE
       | typeof X_TELO_CONTEXT_NULLABLE_WHEN
       | typeof X_TELO_CONTEXT_ITEM_FILLS
@@ -172,7 +174,7 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-resource-rules": {
     title: "Resource rules",
     description:
-      "Relationships between this kind's own fields that JSON Schema cannot state, as CEL over `self` (the resource) and `this` (the element `in:` iterates). `condition` is TRUE when the rule holds.",
+      "Relationships between this kind's own fields that JSON Schema cannot state, as CEL over `self` (the resource) and `this` (the element `in:` iterates, or each declaration a `reachable:` walk finds). `condition` is TRUE when the rule holds.",
     type: "array",
   },
   "x-telo-schema-projection-from": {
@@ -386,6 +388,14 @@ const FROM_PATH_TEMPLATE_ENTRY = {
   type: "string",
 };
 
+const WITHHELD_ENTRY = {
+  title: "Context withheld",
+  description:
+    "This node is named here and holds no value: every expression reading it — a null test, `has()` and an accessor chain included — is refused with this reason, naming the referrer that withholds it when the mark arrived through `x-telo-context-from-referrer`. Written beside `x-telo-context-eval`, `title` and `description` only.",
+  type: "string",
+  minLength: 1,
+};
+
 const NULLABLE_WHEN_ENTRY = {
   title: "Context nullable when",
   description:
@@ -409,12 +419,14 @@ export const TELO_CONTEXT_BINDING_ANNOTATIONS: Record<
   | typeof X_TELO_CONTEXT_FROM_REFERRER
   | typeof X_TELO_CONTEXT_FROM_PATH_TEMPLATE
   | typeof X_TELO_CONTEXT_NULLABLE_WHEN
+  | typeof X_TELO_CONTEXT_WITHHELD
   | typeof X_TELO_CONTEXT_ITEM_FILLS,
   Record<string, unknown>
 > = {
   [X_TELO_CONTEXT_FROM_REFERRER]: FROM_REFERRER_ENTRY,
   [X_TELO_CONTEXT_FROM_PATH_TEMPLATE]: FROM_PATH_TEMPLATE_ENTRY,
   [X_TELO_CONTEXT_NULLABLE_WHEN]: NULLABLE_WHEN_ENTRY,
+  [X_TELO_CONTEXT_WITHHELD]: WITHHELD_ENTRY,
   [X_TELO_CONTEXT_ITEM_FILLS]: {
     title: "Context item fills",
     description:
@@ -442,12 +454,14 @@ export const TELO_CONTEXT_MEMBER_ANNOTATIONS: Record<
   | typeof X_TELO_CAUGHT_MEMBER
   | typeof X_TELO_CONTEXT_FROM_REFERRER
   | typeof X_TELO_CONTEXT_FROM_PATH_TEMPLATE
-  | typeof X_TELO_CONTEXT_NULLABLE_WHEN,
+  | typeof X_TELO_CONTEXT_NULLABLE_WHEN
+  | typeof X_TELO_CONTEXT_WITHHELD,
   Record<string, unknown>
 > = {
   [X_TELO_CONTEXT_FROM_REFERRER]: FROM_REFERRER_ENTRY,
   [X_TELO_CONTEXT_FROM_PATH_TEMPLATE]: FROM_PATH_TEMPLATE_ENTRY,
   [X_TELO_CONTEXT_NULLABLE_WHEN]: NULLABLE_WHEN_ENTRY,
+  [X_TELO_CONTEXT_WITHHELD]: WITHHELD_ENTRY,
   [X_TELO_CAUGHT_MEMBER]: {
     title: "Caught member",
     description:

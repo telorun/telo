@@ -25,8 +25,8 @@ files: [conformance/match.json, conformance/control-fits.json, conformance/listi
 include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml]
 imports: { Font: ../font, DataModel: ../data-model, Conversation: ../conversation }
 exports:
-  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, SidebarNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay]
+  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -1139,12 +1139,51 @@ schema:
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
         fill: { type: boolean, default: false }
+    # A piece of chrome, replaced by the node the pane answers and left out when
+    # it answers none: invoked per request where the tree is delivered per
+    # request, once when the composite holding it is created.
+    - additionalProperties: false
+      required: [type, ref]
+      properties:
+        type: { const: pane }
+        ref: { x-telo-ref: { kind: Self.Pane, use: call } }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
   $defs:
-    StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
+    StyleName: { enum: [title, heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
       anyOf:
         - { $ref: "#/$defs/StyleName" }
         - { type: array, items: { $ref: "#/$defs/StyleName" } }
+    # Named in every node-holding region of a composite, and read by none: a
+    # composite is resolved once, so a pane placed there holds no request.
+    CompositeRequest:
+      x-telo-context-withheld: >-
+        a composite is resolved once, at its creation, with no request. Place
+        what reads it in a page's children or a layout region, or drop the read.
+    # Named in a layout region for `params` and `query`, and read by none.
+    RegionPageInput:
+      x-telo-context-withheld: >-
+        a layout region is drawn on pages with different path variables and
+        query parameters, so it reads none. Read them in the page that declares them.
+    # Nodes drawn around every page of an application, per request: each reads
+    # `request`, and no page variables and no query parameters, since one
+    # region is drawn on pages with different ones.
+    Region:
+      type: array
+      items: { $ref: "#" }
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            x-telo-context-eval: runtime
+            type: object
+            properties:
+              headers: { type: object, additionalProperties: { type: string } }
+              ip: { type: string }
+              lang: { type: string, description: The language negotiated for the request. }
+          params: { $ref: "#/$defs/RegionPageInput", x-telo-context-eval: accessor }
+          query: { $ref: "#/$defs/RegionPageInput", x-telo-context-eval: accessor }
     # Styles chosen by a value: `cases` keyed by its plain text, else `default`.
     StyleRule:
       type: object
@@ -1624,43 +1663,35 @@ schema:
     # An aside beside its content, both trees. `collapse` is null when the aside
     # never folds; `state` is null when the choice is kept in memory only.
     - additionalProperties: false
-      required: [type, side, size, frame, toggle, label, aside, content, collapse, compact, fill]
+      required: [type, aside, content, fill]
       properties:
         type: { const: split }
-        side: { enum: [start, end] }
-        size: { enum: [small, medium, large] }
-        frame: { $ref: "telo:Ui/Frame" }
-        toggle: { $ref: "telo:Ui/ButtonDisplaySpec" }
-        label: { $ref: "#/$defs/Text" }
-        # `actions` holds the button-shaped links drawn under the aside's top bar.
-        aside:
-          type: object
-          additionalProperties: false
-          required: [actions, content]
-          properties:
-            actions: { type: array, items: { $ref: "#/$defs/Link" } }
-            content: { $ref: "#" }
+        aside: { $ref: "#/$defs/Aside" }
         content: { $ref: "#" }
-        collapse:
-          anyOf:
-            - { type: "null" }
-            - type: object
-              additionalProperties: false
-              required: [collapsed, state]
-              properties:
-                collapsed: { type: boolean }
-                state:
-                  anyOf:
-                    - { type: "null" }
-                    - type: object
-                      additionalProperties: false
-                      required: [key, store]
-                      properties:
-                        key: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" }
-                        store: { $ref: "telo:Ui/StateStoreSpec" }
-        # The surface the aside becomes below the application's breakpoint.
-        compact: { $ref: "telo:Ui/OverlaySpec#/$defs/Compact" }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    # A title and a navigation drawn by its placement, with the nodes before
+    # and after them.
+    - additionalProperties: false
+      required: [type, start, end, navigation, placement, fill]
+      properties:
+        type: { const: navbar }
+        title: { $ref: "#/$defs/Text" }
+        start: { type: array, items: { $ref: "#" } }
+        end: { type: array, items: { $ref: "#" } }
+        navigation: { $ref: "#/$defs/Navigation" }
+        placement: { $ref: "telo:Ui/NavigationPlacementSpec" }
+        shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    # A navigation as a column, its groups opening in place; a rail of glyphs
+    # while the aside holding it is folded. `state` keeps its open groups.
+    - additionalProperties: false
+      required: [type, navigation, state, fill]
+      properties:
+        type: { const: navigation-column }
+        navigation: { $ref: "#/$defs/Navigation" }
+        state: { $ref: "#/$defs/KeptState" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
     - additionalProperties: false
@@ -1938,7 +1969,7 @@ schema:
       additionalProperties: false
       required: [at, matches]
       properties: { at: { $ref: "#/$defs/Binding" }, matches: { $ref: "telo:Ui/Match" } }
-    StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
+    StyleName: { enum: [title, heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
       anyOf:
         - { $ref: "#/$defs/StyleName" }
@@ -1982,6 +2013,77 @@ schema:
       additionalProperties: false
       required: [digest, name]
       properties: { digest: { type: string }, name: { type: string } }
+    # A fold-out column beside its content, every member present: a split
+    # view's, and a page layout's. `actions` holds the button-shaped links drawn
+    # under its top bar; `compact` is the surface it becomes below the
+    # application's breakpoint.
+    Aside:
+      type: object
+      additionalProperties: false
+      required: [side, size, frame, toggle, label, collapse, compact, actions, content]
+      properties:
+        side: { enum: [start, end] }
+        size: { enum: [small, medium, large] }
+        frame: { $ref: "telo:Ui/Frame" }
+        toggle: { $ref: "telo:Ui/ButtonDisplaySpec" }
+        label: { $ref: "#/$defs/Text" }
+        collapse:
+          anyOf:
+            - { type: "null" }
+            - type: object
+              additionalProperties: false
+              required: [collapsed, state]
+              properties: { collapsed: { type: boolean }, state: { $ref: "#/$defs/KeptState" } }
+        compact: { $ref: "telo:Ui/OverlaySpec#/$defs/Compact" }
+        actions: { type: array, items: { $ref: "#/$defs/Link" } }
+        content: { $ref: "#" }
+    # Where a piece of chrome keeps what the viewer chose, by key; null keeps
+    # it in memory.
+    KeptState:
+      anyOf:
+        - { type: "null" }
+        - type: object
+          additionalProperties: false
+          required: [key, store]
+          properties:
+            key: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" }
+            store: { $ref: "telo:Ui/StateStoreSpec" }
+    # A navigation as delivered for a request: an entry switched off is left
+    # out, and so is a group none of whose entries is delivered.
+    Navigation:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties: { items: { type: array, items: { $ref: "#/$defs/NavigationEntry" } } }
+    # One entry, keyed by the slug of the source text it was written with under
+    # its group's key; a page by its path, its glyph's file when it has one.
+    NavigationEntry:
+      type: object
+      oneOf:
+        - additionalProperties: false
+          required: [type, key, path, text]
+          properties:
+            type: { const: page }
+            key: { type: string }
+            path: { type: string }
+            text: { $ref: "#/$defs/Text" }
+            icon: { $ref: "#/$defs/AssetRef" }
+        - additionalProperties: false
+          required: [type, key, href, text]
+          properties:
+            type: { const: link }
+            key: { type: string }
+            href: { type: string }
+            text: { $ref: "#/$defs/Text" }
+            icon: { $ref: "#/$defs/AssetRef" }
+        - additionalProperties: false
+          required: [type, key, text, items]
+          properties:
+            type: { const: group }
+            key: { type: string }
+            text: { $ref: "#/$defs/Text" }
+            items: { type: array, minItems: 1, items: { $ref: "#/$defs/NavigationEntry" } }
+            icon: { $ref: "#/$defs/AssetRef" }
 ---
 # Where a piece of interface floats over the page, as a renderer receives it.
 # Tagged on `type`, one branch per kind; every member a branch names is present,
@@ -2244,39 +2346,24 @@ schema:
   required: [type]
   properties: { type: { enum: [memory, local, session] } }
 ---
-# An application's navigation: the tree of entries a renderer draws, and how it
-# is drawn. A page is named by reference, never by path, so a path changes in
-# one place and a library's pages are put in the tree like the application's own.
+# A navigation tree. A page is named by reference, never by path, so a path
+# changes in one place and a library's pages are put in the tree like the
+# application's own. It binds nothing: whoever holds it declares what an
+# entry's `when:` reads.
 kind: Telo.JsonSchema
 metadata: { name: Navigation }
 schema:
   type: object
   additionalProperties: false
+  required: [items]
   properties:
     items:
       title: Items
       description: >-
-        The entries, in order: a page, a link, or a group of entries. Each
-        entry's `when:` may read the request, evaluated per request; a group
+        The entries, in order: a page, a link, or a group of entries. A group
         none of whose entries is delivered is left out.
       type: array
       items: { $ref: "telo:Ui/NavigationItem" }
-      x-telo-context:
-        type: object
-        properties:
-          request:
-            x-telo-context-eval: runtime
-            type: object
-            properties:
-              headers: { type: object, additionalProperties: { type: string } }
-              ip: { type: string }
-              lang: { type: string, description: The language negotiated for the request. }
-    placement:
-      title: Placement
-      description: >-
-        How the tree is drawn. Omitted, in the header, behind a menu button on
-        a narrow viewport.
-      x-telo-ref: { kind: Self.NavigationPlacement, use: dependency }
 ---
 # One entry of a navigation tree, tagged on `type`: a page the application
 # serves, a link to any address, or a group of entries nested to any depth.
@@ -2292,7 +2379,7 @@ schema:
         page:
           title: Page
           description: The page the entry leads to, one the application lists in its pages.
-          x-telo-ref: { kind: Self.Page, use: dependency }
+          x-telo-ref: { kind: Self.Page, use: schema }
         text:
           title: Text
           description: What the entry says. Omitted, the page's title.
@@ -2351,8 +2438,8 @@ schema:
     Icon:
       title: Icon
       description: >-
-        The glyph drawn before the entry's text, and in place of its first
-        letter in a sidebar's rail.
+        The glyph drawn before the entry's text, and alone where the entry is
+        drawn as a glyph.
       x-telo-ref: { kind: Self.Icon, use: dependency }
 ---
 # How a navigation tree is drawn, as a renderer receives it. Tagged on `type`,
@@ -2365,21 +2452,6 @@ schema:
     - additionalProperties: false
       required: [type, compact]
       properties: { type: { const: header }, compact: { $ref: "#/$defs/Compact" } }
-    # A column beside the page. `rail` is present when it collapses to one,
-    # and says whether it starts collapsed; `store` keeps its open groups and
-    # whether it is collapsed.
-    - additionalProperties: false
-      required: [type, side, store, compact]
-      properties:
-        type: { const: sidebar }
-        side: { enum: [start, end] }
-        rail:
-          type: object
-          additionalProperties: false
-          required: [collapsed]
-          properties: { collapsed: { type: boolean } }
-        store: { $ref: "telo:Ui/StateStoreSpec" }
-        compact: { $ref: "#/$defs/Compact" }
     - { $ref: "#/$defs/Overlay" }
     - { $ref: "#/$defs/TabBar" }
   $defs:
@@ -3037,11 +3109,10 @@ kind: Telo.Abstract
 metadata:
   name: NavigationPlacement
   description: >-
-    How an application's site navigation is drawn: a menu bar in the header
-    with dropdowns and submenus, a sidebar collapsing to a narrow rail, the
-    whole tree behind a menu button in a drawer, or a bottom tab bar. Provides
-    the layout a renderer draws the navigation with, including what replaces
-    it on a narrow viewport.
+    How a navigation bar draws its site navigation: a menu bar in the header
+    with dropdowns and submenus, the whole tree behind a menu button in a
+    drawer, or a bottom tab bar. Provides the layout a renderer draws the
+    navigation with, including what replaces it on a narrow viewport.
 capability: Telo.Provider
 outputType: !ref NavigationPlacementSpec
 ---
@@ -3077,55 +3148,6 @@ schema:
       description: >-
         The navigation used instead on a narrow viewport. Omitted, a
         `Ui.OverlayNavigation` with its defaults.
-      x-telo-ref: { kind: Self.CompactNavigationPlacement, use: dependency }
----
-kind: Telo.Definition
-metadata:
-  name: SidebarNavigation
-  description: >-
-    Site navigation as a sidebar beside the page: pages and links in a column,
-    groups expanding in place, several open at once. Can collapse to a narrow
-    rail whose groups open as flyouts, and remembers the open groups and
-    the collapsed rail between visits. Replaced on a narrow viewport by a
-    compact navigation, a drawer from the same side unless another is named.
-capability: Telo.Provider
-extends: Self.NavigationPlacement
-controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SidebarNavigationController]
-schema:
-  type: object
-  additionalProperties: false
-  properties:
-    side:
-      title: Side
-      description: The edge of the page the sidebar sits at.
-      enum: [start, end]
-      default: start
-    rail:
-      title: Rail
-      description: >-
-        Lets the viewer collapse the sidebar to a rail of each top-level
-        entry's icon, or its first letter when it has none, its groups opening
-        beside it. Omitted, the sidebar does not collapse.
-      type: object
-      additionalProperties: false
-      properties:
-        collapsed:
-          title: Collapsed
-          description: Whether the sidebar starts collapsed. A stored choice overrides it.
-          type: boolean
-          default: false
-    store:
-      title: Store
-      description: >-
-        Where the open groups and whether the rail is collapsed are kept
-        between visits. Omitted, in memory only.
-      x-telo-ref: { kind: Self.StateStore, use: dependency }
-    compact:
-      title: Compact
-      description: >-
-        The navigation used instead on a narrow viewport. Omitted, a
-        `Ui.OverlayNavigation` whose drawer slides in from the sidebar's side,
-        with its other defaults.
       x-telo-ref: { kind: Self.CompactNavigationPlacement, use: dependency }
 ---
 kind: Telo.Definition
@@ -3190,7 +3212,7 @@ metadata:
   name: Icon
   description: >-
     A single-colour glyph shown beside text, such as the icon of a menu entry
-    or a sidebar link. Provides the one image file it is drawn from; a renderer
+    or a navigation link. Provides the one image file it is drawn from; a renderer
     serves the file by its content digest and paints its shape in the colour
     of the text around it, so a theme colours an icon as it colours text.
 capability: Telo.Provider
@@ -3366,10 +3388,11 @@ kind: Telo.Definition
 metadata:
   name: Page
   description: >-
-    One screen of a web application at its own address: an optional heading and a tree of
-    layout, text, data grids, forms and custom components, whose parts can be
-    shown per request by a header such as a role or a tenant. Listed by an
-    application to route to it and named in its navigation menu.
+    One screen of a web application at its own address: a tree of layout,
+    text, data grids, forms, custom components and chrome such as navigation
+    bars, whose parts can be shown per request by a header such as a role or a
+    tenant. Listed by an application to route to it and named in its
+    navigation menus.
 capability: Telo.Invocable
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PageController]
 inputType:
@@ -3426,9 +3449,9 @@ schema:
     title:
       title: Title
       description: >-
-        Shown above the page and in the navigation unless an entry says otherwise.
-        Omitted, no heading is drawn, an omitted navigation leaves the page out,
-        and a navigation entry naming it must give its own text.
+        The document title while the page is shown, and what a navigation entry
+        naming the page says unless it gives its own text. No heading is drawn
+        for it: a page draws its heading as a node.
       $ref: "telo://manifest#/$defs/Text"
       x-telo-text-values: {}
     query:
@@ -3449,8 +3472,9 @@ schema:
       title: Children
       description: >-
         The page's nodes, top to bottom. Each node's `when:` and text values
-        may read the request, evaluated per request; a `shown` condition and a
-        `value` or `list` node read `query` and `params` in the browser.
+        may read the request, evaluated per request, and a pane placed here is
+        invoked per request; a `shown` condition and a `value` or `list` node
+        read `query` and `params` in the browser.
       type: array
       items: { $ref: "telo://Self/Node" }
       x-telo-context:
@@ -3494,7 +3518,307 @@ schema:
       x-telo-context:
         type: object
         properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
           params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+---
+# A piece of chrome placed by a `pane` node: invoked with the request where the
+# tree placing it is delivered per request (a page's children, a layout region),
+# and once with none where it is resolved at creation (inside a composite). Its
+# files are published in its `assets` reading at creation.
+kind: Telo.Abstract
+metadata:
+  name: Pane
+  description: >-
+    A piece of a web screen's chrome such as a navigation bar, an account menu,
+    a footer or a side menu, written once and placed in pages, layout regions
+    or composites. Answers, for the request it is drawn for, the node a
+    renderer draws, or nothing, so a pane from any module is placed like the
+    built-in ones.
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      request:
+        title: Request
+        description: The request the pane is drawn for; absent where it is resolved once, at creation.
+        type: object
+        additionalProperties: false
+        required: [headers]
+        properties:
+          headers: { type: object, additionalProperties: { type: string } }
+          ip: { type: string }
+          lang: { type: string, description: The language negotiated for the request. }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      # Absent when the pane has nothing to show: it is left out.
+      node: { $ref: "telo://Self/SpecNode" }
+---
+# A pane drawing a navigation tree. Holds its rules, so a navigation pane of any
+# module extending it in merge form is checked with no rule of its own.
+kind: Telo.Abstract
+metadata:
+  name: NavigationPane
+  description: >-
+    Site navigation drawn as a piece of chrome: a menu bar, a side column, a
+    list of help links. Holds a tree of pages, links and groups, each entry
+    delivered per request by a header such as a role, and answers the node
+    drawing what is delivered.
+capability: Telo.Invocable
+extends: Self.Pane
+schema:
+  type: object
+  required: [navigation]
+  properties:
+    navigation:
+      title: Navigation
+      description: >-
+        The tree the pane draws. Each entry's `when:` may read `request`, null
+        where the pane is resolved once, inside a composite.
+      $ref: "telo://Self/Navigation"
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            x-telo-context-eval: runtime
+            x-telo-context-from-referrer: request
+            type: [object, "null"]
+            properties:
+              headers: { type: object, additionalProperties: { type: string } }
+              ip: { type: string }
+              lang: { type: string, description: The language negotiated for the request. }
+  x-telo-resource-rules:
+    - resolve: ["/navigation/items(/*/items)*/*/page"]
+      in: /navigation/items(/*/items)*
+      condition: !cel "this.type != 'page' || has(this.text) || !has(this.page.path) || has(this.page.title)"
+      code: UI_NAVIGATION_PAGE_UNTITLED
+      message: >-
+        names a page with no title and gives no text of its own, so it has no
+        label. Write the entry's text, or give the page a title.
+    - resolve: ["/navigation/items(/*/items)*/*/page"]
+      in: /navigation/items(/*/items)*
+      condition: !cel "this.type != 'page' || !has(this.page.path) || !this.page.path.contains('{')"
+      code: UI_NAVIGATION_PAGE_HAS_PARAMETERS
+      message: >-
+        names a page with a variable in its path, which a navigation entry
+        cannot fill. Reach the page with a link whose pathParams fill it, or
+        remove the entry.
+---
+kind: Telo.Definition
+metadata:
+  name: Navbar
+  description: >-
+    A navigation bar for a web application's header: its title, a menu bar of
+    pages and links with dropdowns, or a menu button opening the whole tree,
+    or a bottom tab bar on a phone, with logos, sign-in links or switches
+    before and after it. Entries are delivered per request by role or header.
+capability: Telo.Invocable
+extends: Self.NavigationPane
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#NavbarController]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    title:
+      title: Title
+      description: The text drawn at the bar's start, such as the application's name.
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: {}
+    start:
+      title: Start
+      description: Nodes before the title, such as a logo, delivered per request.
+      $ref: "#/$defs/BarNodes"
+      default: []
+    end:
+      title: End
+      description: Nodes after the navigation, such as a sign-in link or a language switch, delivered per request.
+      $ref: "#/$defs/BarNodes"
+      default: []
+    placement:
+      title: Placement
+      description: >-
+        How the navigation is drawn. Omitted, a menu bar in the header, behind
+        a menu button on a narrow viewport.
+      x-telo-ref: { kind: Self.NavigationPlacement, use: dependency }
+  $defs:
+    # Read `request` like the navigation, and no page variables or query
+    # parameters: one bar is drawn on pages with different ones.
+    BarNodes:
+      type: array
+      items: { $ref: "telo://Self/Node" }
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            x-telo-context-eval: runtime
+            x-telo-context-from-referrer: request
+            type: [object, "null"]
+            properties:
+              headers: { type: object, additionalProperties: { type: string } }
+              ip: { type: string }
+              lang: { type: string, description: The language negotiated for the request. }
+          params: { $ref: "telo://Self/Node#/$defs/RegionPageInput", x-telo-context-eval: accessor }
+          query: { $ref: "telo://Self/Node#/$defs/RegionPageInput", x-telo-context-eval: accessor }
+---
+kind: Telo.Definition
+metadata:
+  name: NavigationColumn
+  description: >-
+    Site navigation as a column of pages and links whose groups open in place,
+    for a sidebar or a side panel. Folds to a rail of glyphs with the panel
+    holding it and remembers its open groups between visits. Entries are
+    delivered per request by role or header.
+capability: Telo.Invocable
+extends: Self.NavigationPane
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#NavigationColumnController]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    state:
+      title: State
+      description: >-
+        Keeps the open groups between visits under `key` in `store`; columns
+        naming one key share them. Omitted, they are kept in memory only.
+      type: object
+      additionalProperties: false
+      required: [key, store]
+      properties:
+        key:
+          title: Key
+          description: The name the open groups are kept under, letters and digits.
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9]*$"
+        store:
+          title: Store
+          description: Where the open groups are stored between visits.
+          x-telo-ref: { kind: Self.StateStore, use: dependency }
+---
+# The chrome around a page: three regions around the page's own nodes. The
+# application invokes it per request, so its regions follow the request.
+kind: Telo.Definition
+metadata:
+  name: PageLayout
+  description: >-
+    The frame drawn around the pages of a web application: a header with
+    navigation and account links, a fold-out sidebar and a footer, each
+    delivered per request by a header such as a role or a session. Insets its
+    header and footer content against the application's width, and is the same
+    on every page it frames.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PageLayoutController]
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [request]
+    properties:
+      request:
+        type: object
+        additionalProperties: false
+        required: [headers]
+        properties:
+          headers: { type: object, additionalProperties: { type: string } }
+          ip: { type: string }
+          lang: { type: string, description: The language negotiated for the request. }
+      # The application's width, used when the layout declares none.
+      pageWidth: { $ref: "telo://Self/PageWidth" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [width, header, footer]
+    properties:
+      # The layout's own width, else the one it was invoked with, else `contained`.
+      width: { $ref: "telo://Self/PageWidth" }
+      # Each a `Ui.SpecNode`, judged by the layout: one that is not valid is
+      # replaced by an error node.
+      header: { type: array, items: { type: object, required: [type] } }
+      # A `Ui.SpecNode` aside, every member filled; absent when the layout has none.
+      aside: { type: object, required: [content] }
+      footer: { type: array, items: { type: object, required: [type] } }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    width:
+      title: Width
+      description: >-
+        How wide the header's and footer's content is drawn: `contained` starts
+        and ends where a contained page does, `full` spans the bars. Omitted,
+        the application's width; a page's own width never changes it.
+      $ref: "telo://Self/PageWidth"
+    header:
+      title: Header
+      description: Nodes spanning the top of the application, such as a navigation bar, delivered per request.
+      $ref: "telo://Self/Node#/$defs/Region"
+      default: []
+    aside:
+      title: Aside
+      description: >-
+        A fold-out column beside every page, such as a navigation column. It
+        reads `request`, and no page variables or query parameters.
+      $ref: "telo://Self/Aside"
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            x-telo-context-eval: runtime
+            type: object
+            properties:
+              headers: { type: object, additionalProperties: { type: string } }
+              ip: { type: string }
+              lang: { type: string, description: The language negotiated for the request. }
+          params: { $ref: "telo://Self/Node#/$defs/RegionPageInput", x-telo-context-eval: accessor }
+          query: { $ref: "telo://Self/Node#/$defs/RegionPageInput", x-telo-context-eval: accessor }
+    footer:
+      title: Footer
+      description: Nodes spanning the bottom of the application, delivered per request.
+      $ref: "telo://Self/Node#/$defs/Region"
+      default: []
+  x-telo-resource-rules:
+    - resolve: [/aside/compact]
+      in: /aside
+      condition: !cel "key != 'compact' || !has(this.address)"
+      code: UI_SURFACE_COMPACT_ADDRESSED
+      message: >-
+        names a compact surface that declares an address. The aside has no
+        address of its own to stand in for: remove `address` from it.
+    - resolve: [/aside/compact]
+      in: /aside
+      condition: !cel "key != 'compact' || !has(this.compact)"
+      code: UI_SURFACE_COMPACT_NESTED
+      message: >-
+        names a compact surface that declares a compact surface of its own.
+        Only one level applies: remove `compact` from it.
+---
+# One `pages` entry of an application drawing its page in a layout other than
+# the application's; `layout: { kind: Ui.PageLayout }` draws it bare.
+kind: Telo.JsonSchema
+metadata: { name: PageRoute }
+schema:
+  title: Page route
+  description: A page an application routes to, drawn in a layout of its own instead of the application's.
+  type: object
+  additionalProperties: false
+  required: [page, layout]
+  properties:
+    page:
+      title: Page
+      description: The page routed to.
+      x-telo-ref: { kind: Self.Page, use: call }
+    layout:
+      title: Layout
+      description: The layout the page is drawn in. One with nothing written draws the page with no chrome.
+      x-telo-ref: { kind: Self.PageLayout, use: call }
 ---
 kind: Telo.Definition
 metadata:
@@ -3561,6 +3885,7 @@ schema:
       x-telo-context:
         type: object
         properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
           data: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
           params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
@@ -3571,6 +3896,7 @@ schema:
       x-telo-context:
         type: object
         properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
           params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     failure:
@@ -3583,6 +3909,7 @@ schema:
       x-telo-context:
         type: object
         properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
           error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
           params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
@@ -3721,6 +4048,7 @@ schema:
       x-telo-context:
         type: object
         properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
           conversation:
             x-telo-context-eval: accessor
             anyOf: [{ $ref: "telo:Conversations/ConversationSummary" }, { type: "null" }]
@@ -3839,22 +4167,20 @@ schema:
             properties: { id: { type: string } }
             additionalProperties: false
 ---
-kind: Telo.Definition
-metadata:
-  name: SplitView
-  description: >-
-    A fold-out side panel beside the main content of a page: a list of
-    conversations, a navigation tree or a set of filters next to the screen
-    they steer. Sits at the start or end edge in one of three widths, folds
-    away on request and remembers the choice between visits, and on a narrow
-    viewport becomes a sheet or window opened from a button.
-capability: Telo.Provider
-extends: Self.Composite
-controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SplitViewController]
+# A fold-out column beside content: what a split view and a page layout both
+# hold, drawn the same in both. It declares no CEL context; each holder declares
+# what the column reads on the property holding it.
+kind: Telo.JsonSchema
+metadata: { name: Aside }
 schema:
+  title: Aside
+  description: >-
+    A column beside the content: where it sits and how wide, how it folds away
+    and where the fold is kept, the surface it becomes on a narrow viewport, the
+    buttons under its top bar and what it holds.
   type: object
   additionalProperties: false
-  required: [label, aside, content]
+  required: [label, content]
   properties:
     side:
       title: Side
@@ -3872,13 +4198,13 @@ schema:
         `flush` sets the aside against the content, separated by a divider and
         no gap; `framed` draws it as a bordered panel of its own, spaced from
         the content. Applies while the aside is drawn beside the content.
-      $ref: "telo://Self/Frame"
+      $ref: "telo:Ui/Frame"
       default: flush
     toggle:
       title: Toggle
       description: >-
         How the button folding the aside away and showing it again is drawn.
-        Omitted, a glyph of the look's own with the text as its name and tooltip.
+        Omitted, a glyph of the look's own with the label as its name and tooltip.
       x-telo-ref: { kind: Self.ButtonDisplay, use: dependency }
     label:
       title: Label
@@ -3887,41 +4213,6 @@ schema:
         button showing and hiding it.
       $ref: "telo://manifest#/$defs/Text"
       x-telo-text-values: {}
-    aside:
-      title: Aside
-      description: >-
-        What is drawn beside the content, over the placing page's `params`. It
-        stays mounted while folded away.
-      type: object
-      x-telo-context:
-        type: object
-        properties:
-          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
-      additionalProperties: false
-      required: [content]
-      properties:
-        actions:
-          title: Actions
-          description: >-
-            Link nodes drawn as buttons under the aside's top bar; folded
-            away, they stand under it as glyphs.
-          type: array
-          items:
-            allOf:
-              - { $ref: "telo://Self/Node" }
-              - { required: [type, button], properties: { type: { const: link } } }
-        content:
-          title: Content
-          description: The nodes the aside holds.
-          $ref: "telo://Self/Node"
-    content:
-      title: Content
-      description: What the aside sits beside, over the placing page's `params`.
-      $ref: "telo://Self/Node"
-      x-telo-context:
-        type: object
-        properties:
-          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     collapse:
       title: Collapse
       description: Lets the viewer fold the aside away. Omitted, it never folds on a wide viewport.
@@ -3936,7 +4227,7 @@ schema:
         state:
           title: State
           description: >-
-            Keeps the choice between visits under `key` in `store`; split views
+            Keeps the choice between visits under `key` in `store`; asides
             naming one key share it. Omitted, it is kept in memory only.
           type: object
           additionalProperties: false
@@ -3958,15 +4249,67 @@ schema:
         `Ui.ViewportOverlay` holding it, with neither an address nor a compact
         surface of its own. Omitted, a drawer from the aside's side.
       x-telo-ref: { kind: Self.ViewportOverlay, use: dependency }
+    actions:
+      title: Actions
+      description: >-
+        Link nodes drawn as buttons under the aside's top bar; folded away,
+        they stand under it as glyphs.
+      type: array
+      items:
+        allOf:
+          - { $ref: "telo:Ui/Node" }
+          - { required: [type, button], properties: { type: { const: link } } }
+    content:
+      title: Content
+      description: The node the aside holds. It stays mounted while folded away.
+      $ref: "telo:Ui/Node"
+---
+kind: Telo.Definition
+metadata:
+  name: SplitView
+  description: >-
+    A fold-out side panel beside the main content of a page: a list of
+    conversations, a navigation tree or a set of filters next to the screen
+    they steer. Sits at the start or end edge in one of three widths, folds
+    away on request and remembers the choice between visits, and on a narrow
+    viewport becomes a sheet or window opened from a button.
+capability: Telo.Provider
+extends: Self.Composite
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SplitViewController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [aside, content]
+  properties:
+    aside:
+      title: Aside
+      description: The column drawn beside the content, over the placing page's `params`.
+      $ref: "telo://Self/Aside"
+      x-telo-context:
+        type: object
+        properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+    content:
+      title: Content
+      description: What the aside sits beside, over the placing page's `params`.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
   x-telo-resource-rules:
-    - resolve: [/compact]
-      condition: !cel "!has(self.compact) || !has(self.compact.address)"
+    - resolve: [/aside/compact]
+      in: /aside
+      condition: !cel "key != 'compact' || !has(this.address)"
       code: UI_SURFACE_COMPACT_ADDRESSED
       message: >-
-        names a compact surface that declares an address. The split view has no
+        names a compact surface that declares an address. The aside has no
         address of its own to stand in for: remove `address` from it.
-    - resolve: [/compact]
-      condition: !cel "!has(self.compact) || !has(self.compact.compact)"
+    - resolve: [/aside/compact]
+      in: /aside
+      condition: !cel "key != 'compact' || !has(this.compact)"
       code: UI_SURFACE_COMPACT_NESTED
       message: >-
         names a compact surface that declares a compact surface of its own.
@@ -5483,6 +5826,7 @@ schema:
       x-telo-context:
         type: object
         properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
           result:
             x-telo-context-from-root: "outputModel"
             x-telo-context-eval: accessor
@@ -5501,6 +5845,7 @@ schema:
       x-telo-context:
         type: object
         properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
           error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
           input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
           values: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
@@ -5815,6 +6160,7 @@ schema:
       x-telo-context:
         type: object
         properties:
+          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
           params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
   $defs:
     RelativeValue:

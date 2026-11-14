@@ -1,0 +1,21 @@
+# The mark off a binding, beside a type, and holding no sentence.
+kind: Telo.Library
+metadata: { name: WithheldInvalid }
+exports: { kinds: [Bad] }
+---
+kind: Telo.Definition
+metadata: { name: Bad }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    off: { type: string, x-telo-context-withheld: not a binding. }
+    typed:
+      type: string
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          request: { type: object, x-telo-context-withheld: typed beside the mark. }
+          empty: { x-telo-context-withheld: "" }

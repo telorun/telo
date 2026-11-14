@@ -52,10 +52,10 @@ steps:
         literalDocument: !cel "[steps.literalDocument.result.status, steps.literalDocument.result.body.path]"
         malformedDocument:
           status: !cel "steps.malformedDocument.result.status"
-          body: !cel "steps.malformedDocument.result.body"
+          problem: !cel "[steps.malformedDocument.result.body.type, steps.malformedDocument.result.body.title, steps.malformedDocument.result.body.status]"
       expected:
         shells: [200, 200, 404]
         malformedPages: { status: [404, 404], shell: [true, true] }
         variableDocument: [200, "/plans/{id}"]
         literalDocument: [200, /plans/new]
-        malformedDocument: { status: 404, body: { type: about:blank, title: Not Found, status: 404 } }
+        malformedDocument: { status: 404, problem: [about:blank, Not Found, 404] }

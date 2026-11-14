@@ -28,6 +28,7 @@ import {
 } from "./schema-reference.js";
 import { isStepSlot } from "./step-slot.js";
 import { bindingExistsAt } from "./context-eval.js";
+import { withWithheldReferencesRead } from "./context-withheld.js";
 
 /**
  * THE EVAL-PATH GRAMMAR. A path is the `walkCelExpressions` spelling of where a
@@ -440,7 +441,7 @@ function collectedOf(schema: Record<string, any>, shapes: NamedShapeLookup): Col
   const found = emptyCollected();
   const own = withContextNames(NO_NAMES, schema);
   if (declaresCelRegion(schema)) found.regions.push("");
-  if (isContextNode(schema)) found.contexts.push({ path: "", schema: schema["x-telo-context"] });
+  if (isContextNode(schema)) found.contexts.push({ path: "", schema: contextOf(schema, schema, state) });
   // At the root an `x-telo-eval` is the `**` wildcard, read by the caller, and
   // eval sites are reached through the root's own `properties` alone.
   if (schema.properties && typeof schema.properties === "object") {
@@ -450,6 +451,17 @@ function collectedOf(schema: Record<string, any>, shapes: NamedShapeLookup): Col
   }
   descendBeyondProperties(schema, "", schema, [], found, state, own, true);
   return found;
+}
+
+/** A node's `x-telo-context`, a binding naming a withheld node by `$ref` read
+ *  as that node — resolved from `document`, where the context is written. */
+function contextOf(schema: Record<string, any>, document: Record<string, any>, state: WalkState): Record<string, any> {
+  return withWithheldReferencesRead(schema["x-telo-context"], (ref) => {
+    const { shape } = schemaReferenceParts(ref);
+    const target = resolveSchemaReference(ref, document, state.shapes);
+    if (shape !== undefined) state.resolved.set(shape, target?.document);
+    return target?.node;
+  });
 }
 
 function isContextNode(schema: Record<string, any>): boolean {
@@ -500,7 +512,7 @@ function walk(
   const schema = node as Record<string, any>;
   const bindings = withContextNames(inherited, schema);
   if (declaresCelRegion(schema)) out.regions.push(path);
-  if (isContextNode(schema)) out.contexts.push({ path, schema: schema["x-telo-context"] });
+  if (isContextNode(schema)) out.contexts.push({ path, schema: contextOf(schema, document, state) });
   if (typeof schema[MATCH_FOR_ANNOTATION] === "string") {
     out.matchFor.push({ path, pointer: schema[MATCH_FOR_ANNOTATION] });
   }

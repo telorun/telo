@@ -219,7 +219,7 @@ describe("a filter bar", () => {
     await rendered.focus(from);
     await touch(to);
     expect([drawn(), document.activeElement === to]).toEqual([["Filters", "chip"], true]);
-    await touch(rendered.part("page-title"));
+    await touch(rendered.part("page"));
     expect(drawn()).toEqual([]);
   });
 

@@ -5,15 +5,15 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 
 | Field | | |
 | --- | --- | --- |
-| `title` | required | the application's name, a text shown in its header and as the document title |
+| `title` | required | the application's name, a text used as the document title |
 | `theme` | required | one [`UiReact.Theme`](theme.md): `!ref UiReact.defaultTheme`, a theme another module publishes, or one of your own |
 | `tokens` | | your brand: one [`Ui.DesignTokens`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), or a list of `{ tokens, when? }` |
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
 | `compactBelow` | `40rem` | the viewport width below which every surface's `compact` replacement applies: a CSS length in `px`, `rem` or `em` |
 | `pageWidth` | `contained` | how wide a page's content is drawn when the page declares no `width`: `contained` or `full` — see [Page width](#page-width) |
-| `header` | | `{ start?, end?, width? }`: nodes of your own in the header, before the title and after the navigation, and how wide its content is drawn — see [Header](#header) |
-| `pages` | required, at least one | the [`Ui.Page`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)s the application routes to, written in place or `!ref` |
-| `navigation` | | the [`Ui.Navigation`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) tree and how it is drawn — see [Navigation](#navigation) |
+| `layout` | | the [`Ui.PageLayout`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) every page is drawn in, unless its `pages` entry names another — see [Layouts](#layouts); omitted, pages are drawn with no chrome |
+| `pages` | required, at least one | each entry a [`Ui.Page`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), written in place or `!ref`, or a `Ui.PageRoute` `{ page, layout }` |
+| `notFound` | | nodes drawn, inside the layout, for a path no page serves — see [Not found](#not-found) |
 
 ## Pages
 
@@ -30,14 +30,17 @@ pages:
 ```
 
 - Each entry is a [`Ui.Page`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): its `path`, optional `title`,
-  `query` and `children`; a page with a `title` draws it as its heading, and one
-  without draws none. The application invokes it for every request to its
-  path; the page's composites are resolved once, when the page is created.
+  `query` and `children`; the `title` names the document and the page's
+  navigation entries and draws no heading — a page that wants one writes a
+  `text` node with `style: title`. The application invokes it for every
+  request to its path; the page's composites are resolved once, when the page
+  is created.
 - Two pages at one path are refused, and so are two whose paths differ only
   in the names of their [variables](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   (`/plans/{id}`, `/plans/{key}`), since both route the same addresses:
   `RESOURCE_RULE_VIOLATED` with `data.rule: UI_PAGE_PATH_DUPLICATE` at
-  `telo check`, `ERR_UI_PAGE_PATH_DUPLICATE` at creation.
+  `telo check`, `ERR_UI_PAGE_PATH_DUPLICATE` at creation. The rule reads the
+  page of each entry, whether it is written alone or in a `Ui.PageRoute`.
 - A page's `query` declares the query parameters its own nodes read; the page
   document carries it, `{}` when none is declared.
 
@@ -84,186 +87,120 @@ pages:
 - The `page` part carries it as `data-width`, and the renderer's own layer
   applies the measure (see [the styling contract](styling.md#tokens)): a theme
   sets the measure through `width.page`, never by a `max-width` on `page`.
-- The header's content follows the application's width, not the page's — see
-  [Header width](#header-width).
+- A layout's header and footer follow its own width, else the application's, not
+  the page's — see [Layouts](#layouts).
 - A misspelt value is `SCHEMA_VIOLATION` at `telo check`.
 
-## Navigation
+## Layouts
 
-The navigation is a tree of entries naming pages by reference — never by path
-— beside links and groups nested to any depth; how it is drawn is a placement.
-The whole vocabulary is [`ui`'s](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/).
+The chrome around a page is a [`Ui.PageLayout`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): a
+`header`, an `aside` and a `footer` around the page's own nodes. The
+application assigns them — a page never names its layout, so a library's page
+is drawn in whatever layout the application listing it chooses:
 
 ```yaml
-navigation:
-  items:
-    - { type: page, page: !ref home, icon: !ref homeIcon }
-    - type: group
-      text: Reports
-      icon: !ref reportsIcon
-      items:
-        - { type: page, page: !ref monthly }
-        - type: group
-          text: Archive
+layout:                          # every page, unless its entry names another
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Acme
+        navigation:
           items:
-            - { type: page, page: !ref archive2025 }
-    - { type: link, text: Status, href: "https://status.example.com" }
-  placement:
-    kind: Ui.HeaderNavigation
-    compact:
-      kind: Ui.OverlayNavigation
-      surface: { kind: Ui.Drawer, side: end }
----
-kind: UiLucide.Icon
-metadata: { name: homeIcon }
-name: house
----
-kind: Ui.FileIcon
-metadata: { name: reportsIcon }
-file: !module-path ./icons/reports.svg
+            - { type: page, page: !ref home }
+            - { type: page, page: !ref reports, when: !cel "'x-role' in request.headers" }
+  footer:
+    - { type: text, text: Acme Corporation, style: muted }
+pages:
+  - !ref home
+  - !ref reports
+  - { page: !ref signIn, layout: { kind: Ui.PageLayout } }   # an empty layout: no chrome
+  - { page: !ref print, layout: !ref printChrome }
 ```
 
-- With no `navigation`, there is one entry per titled page with no variable
-  in its path, in the order `pages` lists them; with no `placement`, the tree is drawn in the header, and below
-  `compactBelow` behind a menu button opening a drawer from the start edge.
-  Every other default is filled by `ui` (see
-  [its defaults](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)).
-- An entry's `when` is evaluated per request over `request`, and the headers
-  it reads join the application document's `Vary`. A group none of whose
-  entries is delivered is left out.
-- An entry naming a page `pages` does not list leads nowhere: it is
-  `RESOURCE_RULE_VIOLATED` with `data.rule: UI_NAVIGATION_PAGE_UNROUTED` at
-  `telo check`, at that entry however deep, and
-  `ERR_UI_NAVIGATION_PAGE_UNROUTED` at creation.
-- An entry's label is its `text`, else its page's `title`. A page with no title
-  is left out of an omitted navigation, and an entry naming one without `text` is
-  `UI_NAVIGATION_PAGE_UNTITLED` at `telo check`, at that entry however deep,
-  and `ERR_UI_NAVIGATION_PAGE_UNTITLED` at creation.
-- A page with a variable in its path is left out of an omitted navigation, and
-  an entry naming one is `UI_NAVIGATION_PAGE_HAS_PARAMETERS` at `telo check`,
-  at that entry however deep, and `ERR_UI_NAVIGATION_PAGE_HAS_PARAMETERS` at
-  creation: it is reached by a link whose `pathParams` fill it.
-- **In the header** (`Ui.HeaderNavigation`) the tree is drawn in the `nav`
-  part by the [`Navigation` control](controls-abi.md#navigation) in a row: a
-  group opens as a dropdown, a group inside it as a submenu, and what does not
-  fit the row moves under More. The navigation is a landmark named by the
-  `siteNavigation` text, under every placement.
-- **Behind a menu button** (`Ui.OverlayNavigation`) the header shows the
-  `nav-menu` button — first, or last when its surface is a drawer opening from
-  the `end` edge — which opens the surface holding the whole tree in a column,
-  each group opening in place beneath its button, so several may be open at
-  once. Following an entry closes it. The surface's own `compact` applies below the
-  breakpoint, and its `address`, when it declares one, keeps it open in the
-  page's query.
-- **In a sidebar** (`Ui.SidebarNavigation`) the tree is drawn in the
-  `sidebar` part, a column beside `main` under the header at the placement's
-  `side`, in a column whose groups open in place beneath their buttons —
-  several at once, none closed by following a link. With a `rail`, the
-  `sidebar-toggle` button — named by the `collapseNavigation` text, or
-  `expandNavigation` while collapsed — collapses it to a rail of each
-  top-level entry's icon — its first letter when it has none — whose groups
-  float their entries beside it, and expands it again. The open groups, each
-  by its [key](urls.md#entry-keys), and whether it is collapsed are kept in
-  its `store` under `telo.ui:<mount path>:n` (see [what an application
-  serves](urls.md#navigation-state)) and read back when the application is
-  drawn again. Below `compactBelow` it is replaced by its `compact`: a menu
-  button with a drawer from its own side unless another is named.
-- **As a tab bar** (`Ui.TabBarNavigation`) the top-level entries are drawn as
-  tabs in the `tab-bar` part along the bottom edge — at most `visible`, the
-  last being More, holding the rest, when there are more; every tab stays in
-  the bar however narrow the screen. A page or a link's tab follows it; a
-  group's tab, or More, is a button (`aria-haspopup="dialog"`, expanded while
-  its surface is open) opening its entries in the placement's `surface`, in a
-  column whose groups open in place, and following an entry there closes
-  it. A tab bar is a sidebar's or a header's
-  `compact`, or the application's placement at every width.
-- The entry of the page being shown carries `aria-current="page"`, and every
-  group on the way to it is marked current.
-- An entry whose address does not resolve inside the application is left out
-  of the tree and drawn as the `error` node `ERR_UI_NODE_INVALID` beside it.
+- A `pages` entry that is a page is drawn in the application's `layout`; a
+  `Ui.PageRoute` (`{ page, layout }`, both required) draws its page in the
+  layout it names, and `layout: { kind: Ui.PageLayout }` is an empty layout: a
+  layout like any other, with an id, that writes no header, aside or footer, so
+  the page is drawn with no chrome and no heading. With no `layout` at all and
+  no route, no page names a layout and every page is drawn with no chrome.
+- The App is the only caller of a layout. Navigation is explicit: a
+  [`Ui.Navbar`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) or
+  `Ui.NavigationColumn` takes its `navigation` tree, and nothing is derived from
+  `pages`. Their rules — an entry naming a page with no title or with a
+  variable in its path — are the navigation pane's own.
+- A layout and every pane it holds are evaluated for each request, so a navbar
+  follows a sign-in, a session expiry or a role header at the next navigation.
+- The width of a layout's header and footer is its `width`, else the
+  application's `pageWidth`, else `contained`, whatever width a page declares.
+  Each region insets its content against the box it spans: the header and
+  footer against the application's width, `main` against `main`. Beside no
+  aside a contained header and a contained page line up; with an aside beside
+  `main` the two columns do not, since `main` is narrower than the application.
+
+### How the renderer gets a layout
+
+A layout travels on its own, as the [layout document](urls.md#the-layout-document),
+named by an id the [application document](urls.md#the-application-document)
+gives each page (`pages[].layout`) and the default (`layout`).
+
+- The renderer fetches a layout document the first time it needs an id, and
+  revalidates it with `If-None-Match` in parallel with each page document it
+  fetches and when the event stream reconnects. A `304` keeps the layout in
+  place; a new `digest` redraws it, so between two pages with the same id
+  the header, the aside and the footer stay mounted — a menu does not flash and
+  a folded aside stays folded.
+- The id is a digest of the `UiReact.App` field that first names the layout
+  declaration (`/layout`, `/pages/3/layout`), so every replica answers the same
+  id, two entries naming one declaration share one, and two inline layouts have
+  two. A layout with nothing written has an id like any other, and its document
+  holds empty regions and no `aside`.
+- A `304` is decided by the digest of the document produced for that very
+  request, so it never crosses users with different headers.
+
+### What a layout and `notFound` read
+
+A layout's regions and `notFound` read `request` (`headers`, `ip`, `lang`) at run time and withhold `params` and `query` (`x-telo-context-withheld`), because one layout is drawn on pages with different variables: a composite placed there reading `params.id` is `CEL_UNKNOWN_IDENTIFIER`, naming the layout and why. A [`Ui.Data`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
+there still reads the `query` it declares itself. A composite and a pane
+inside it are resolved once, when the application starts; a pane placed in a
+region or a page's `children` is invoked for every request. The structure of
+the tree and its references are literal, as for a page.
+
+### Page references are checked
+
+Every reference to a page reachable from the application — a navigation entry,
+a `link` address, an action's `onSuccess.navigate`, in a layout, a pane, a
+composite or a page — must name a page `pages` lists, or
+`telo check` reports `RESOURCE_RULE_VIOLATED` with `data.rule: UI_PAGE_UNROUTED`
+at that reference; one written in a library the application imports is
+reported at the slot of the application's own modules where it entered that
+library. A library's page listed through its alias is never reported. An unlisted
+page named by the entry module's own files is an error the load refuses, so
+`telo run` exits 1 with the same diagnostic; no check at run time repeats it,
+so only a dependency's unlisted page reaches a running application, where its
+link opens the not-found page.
+
+### Not found
+
+An address no page serves answers the [not-found document](urls.md#the-page-document)
+with `children`: `notFound`'s nodes produced for the request, drawn by the
+renderer inside the application's default layout, so a missing page keeps its
+navigation. Omitted, `children` is a heading and a sentence naming the address,
+in the language of the request.
 
 ### Icons
 
-An entry's `icon` (a [`Ui.Icon`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)) is drawn as the
-`glyph` part before its text — above it in a tab bar, in its place in a rail.
-The application reads the icon's file when it starts and serves it under
-`_telo/ui/assets/<digest>/<name>` like every other file. The glyph is an empty
+A navigation entry's `icon` (a [`Ui.Icon`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)) is drawn as the
+`glyph` part before its text. The file is read when the application starts and
+served, like every other, under `_telo/ui/assets/<digest>/<name>` by every replica from
+boot, the layout document naming it as `{ digest, name }`. The glyph is an empty
 `span` whose `--ui-react-glyph` custom property names that address, which the
 renderer's layout uses as a mask over `currentColor`: the glyph takes the
-colour of the entry's text — the current entry's included — and none of the
-file's markup enters the page. A file that is not an SVG, PNG or WebP image is
-refused with `ERR_UI_ICON_FORMAT_UNKNOWN` when the application starts. A chat
-button's icon is the same glyph, its file served by the same rule and refused
-the same way by `Ui.Chat` when the chat is first read.
-
-## Header
-
-The header holds the application's title and the navigation. `header` adds
-nodes of your own around them, drawn on every page — the not-found page
-included: `start` before the title, `end` after the navigation. Above
-`compactBelow` the built-in layout keeps the header to one row — `start`, the
-title, the navigation taking the room left, `end` at the inline end — and
-below it the header wraps; the default theme then keeps the menu button,
-`start`, the title and `end` on one row, and lets the header scroll away with
-the page (see [the default theme](theme.md#the-default-theme)). The `header`
-slots are the same under every navigation placement. A switch belongs in a
-[`menu`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), which takes one button's room:
-
-```yaml
-header:
-  start:
-    - { type: image, src: /files/logo.svg, alt: Acme }
-  end:
-    - type: menu
-      text: Language
-      items:
-        - type: link
-          text: English
-          href: "/api/lang?set=en"
-          style: !cel "'cookie' in request.headers && request.headers['cookie'].contains('lang=en') ? ['strong'] : []"
-        - type: link
-          text: Polski
-          href: "/api/lang?set=pl"
-          style: !cel "'cookie' in request.headers && request.headers['cookie'].contains('lang=pl') ? ['strong'] : []"
-    - type: badge
-      text: Staff
-      when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
-```
-
-- Each is a [`Ui.Node`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), resolved as a page's own
-  nodes are: its `when:` — and a menu item's — and leaf values are [evaluated per
-  request](#what-is-evaluated-per-request) over `request`, its texts are
-  translated, a composite is resolved once when the application starts, and
-  the headers its expressions read join the application document's `Vary`.
-- A header has no `query`, or any other browser root: a condition or a
-  `value` / `list` node in it reading one is `CEL_UNKNOWN_IDENTIFIER` at
-  `telo check`.
-- The nodes travel in the [application document](urls.md#the-application-document),
-  not in a page's; the renderer draws each side in its own part,
-  `header-start` and `header-end`, only when it holds a node.
-
-### Header width
-
-```yaml
-pageWidth: full
-header:
-  width: contained   # the header's content keeps the look's column over full pages
-```
-
-- `header.width` is a `Ui.PageWidth`: `contained` starts and ends the header's
-  content — its whole row, `header-content` — exactly where a contained page
-  does; `full` spans the bar, inset by the `space.page` token. The bar itself,
-  its background and border, always spans the screen.
-- Omitted, the application's `pageWidth` applies; with neither, `contained`.
-  A page's own `width` never changes it, so the header is the same on every
-  page. It is resolved by `ui`'s one resolver and carried in the application
-  document as `header.width`; the `header` part carries it as `data-width`.
-- Beside a sidebar the header spans the sidebar's column too, and a contained
-  header's content sits over the page's column, so it moves with the sidebar
-  — collapsed to its rail or expanded, at either side.
-- The alignment is the renderer's (see [the styling contract](styling.md#tokens)),
-  so it holds under every theme; a theme sets the measure and the inset
-  through the `width.page` and `space.page` tokens.
+colour of the entry's text and none of the file's markup enters the page. A
+file that is not an SVG, PNG or WebP image is refused with
+`ERR_UI_ICON_FORMAT_UNKNOWN` when the application starts. A chat button's icon is
+the same glyph, its file served by the same rule.
 
 ## What the browser decides
 
@@ -293,7 +230,7 @@ placement's, so both must hold.
 
 ## What is evaluated per request
 
-Inside `children` and `header`, each node's `when:` and its leaf values — `text`, `href`,
+Inside `children`, a layout's regions and `notFound`, each node's `when:` and its leaf values — `text`, `href`,
 `src`, `alt`, `markup`, `style` — may be expressions, evaluated for every
 request against the request — and never against `query` or any other root the
 browser holds (`CEL_UNKNOWN_IDENTIFIER`):
@@ -317,7 +254,7 @@ A header may be absent, so test for it with `in` before reading it.
 children, a computed list item or a computed `ref` is `REF_SLOT_COMPUTED` at
 `telo check` and `ERR_REF_SLOT_COMPUTED` at creation: a composite cannot come
 out of an expression. Each composite a page places is resolved once, when the
-page is created; one the header places, when the application starts.
+page is created; one a layout places, when the layout is created.
 
 A value that does not make a valid node once evaluated — a `style` naming none
 of the known styles, a `text` that is not a string — replaces that one node with
@@ -352,7 +289,7 @@ translations:
 `UiReact.App` takes no language setting of its own. It serves each request in the
 language the HTTP server negotiated for it (`request.lang`: `Http.Server.preferredLanguages`,
 then `Accept-Language`, then the application's `lang:`), so a cookie or a
-`?lang=` query is chosen with the server's `preferredLanguages`. The same language is `request.lang` in every per-request expression (page nodes, tokens, header and navigation), and reading it adds the headers the negotiation used to `Vary`. The server looks
+`?lang=` query is chosen with the server's `preferredLanguages`. The same language is `request.lang` in every per-request expression (page nodes, tokens, layouts and not-found nodes), and reading it adds the headers the negotiation used to `Vary`. The server looks
 each text up and sends the browser the message it chose, already parsed, with the
 language it is written in; the browser formats it — plural forms, placeholders,
 numbers — with no catalog of its own. A text with no translation is shown as
@@ -379,10 +316,10 @@ With more than one language served, every shell, application and page response
 carries `Content-Language` and `Vary: Accept-Language`; an application serving
 one language sends neither. Each document's `Vary` also names exactly the other
 request headers its per-request expressions read — a token set's `when`, a
-navigation entry's `when`, a page or header node's `when` and its values — read
+navigation entry's `when`, a page's node's `when` and its values — read
 off the expressions themselves: `request.headers.cookie` or
 `'cookie' in request.headers` gives `Cookie`, a header name computed at request
-time `*`, and an application reading no header adds none.
+time `*`, and an application reading no header adds none. A layout document and a page holding a [pane](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) vary by `*`, since a pane is handed the whole request.
 
 ## What the page draws when a node is wrong
 

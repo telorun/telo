@@ -3,7 +3,9 @@
 One page of an application: its address, its optional title and its nodes. A
 `Telo.Invocable`: a renderer's application lists it, routes the page's path to
 it, and invokes it once per request with the request; the page answers with
-its nodes as delivered for that request.
+its nodes as delivered for that request. A page draws its own nodes and
+nothing else: the chrome around it — a header, a sidebar, a footer — is the
+[page layout](page-layout.md) the application draws it in.
 
 ```yaml
 kind: Ui.Page
@@ -13,6 +15,7 @@ title: Reports
 query:
   period: { type: string }
 children:
+  - { type: text, text: Reports, style: title }
   - { type: text, text: Open work, style: heading }
   - { type: composite, ref: !ref reportTable }
   - type: composite
@@ -23,7 +26,7 @@ children:
 | Field | | |
 | --- | --- | --- |
 | `path` | required | the page's address under the application's mount; a `{name}` segment is a [variable](#path-variables) |
-| `title` | | a text, shown above the page as its heading and in the navigation unless an entry says otherwise. Omitted, no heading is drawn, the document is titled by the application alone, an omitted navigation leaves the page out, and a [navigation](navigation.md) entry naming it must give its own `text` |
+| `title` | | a text with no values: the document title while the page is shown, and what a [navigation](navigation.md) entry naming the page says unless it gives its own `text`. No heading is drawn for it — a page draws its heading as a node, `{ type: text, style: title }`. Omitted, the document is titled by the application alone, and an entry naming the page must give its own `text` |
 | `query` | | the query parameters the page's own nodes read, as [`Ui.QueryParameters`](conditions.md#query-parameters) |
 | `width` | | how wide its content is drawn, a `Ui.PageWidth`: `contained` or `full`; omitted, the application's — see [Width](#width) |
 | `children` | required | the page's [nodes](nodes.md), top to bottom |
@@ -34,7 +37,8 @@ children:
   (`SCHEMA_VIOLATION`), since a browser reads them as another host.
 - Inside `children`, each node's `when:` and its leaf values may read
   `request` — `request.headers` (lower-case names), `request.ip` and `request.lang` (the language the server negotiated) — and are
-  evaluated for every request. A `shown` condition and a `value` or `list`
+  evaluated for every request; a [pane](pane.md) placed there is invoked for
+  every request with it. A `shown` condition and a `value` or `list`
   node read `query` and `params` in the browser instead, and never `request`
   (`CEL_UNKNOWN_IDENTIFIER`).
 - A `link`'s `href` is an [address](nodes.md#addresses), and is not evaluated per
@@ -120,15 +124,19 @@ text's values, an address's parameters, a reader's `source`, a listing's
 Every composite the page places is resolved when the page is created: what it
 provides is judged against [`Ui.SpecNode`](nodes.md) once and stands for every
 request, and one that is not valid is replaced by an `error` node
-(`ERR_UI_NODE_INVALID`) and logged.
+(`ERR_UI_NODE_INVALID`) and logged. A pane the page places in its own tree is
+invoked per request instead, and one inside a composite once, with the
+composite (see [panes](pane.md)).
 
 Invoked with `{ request: { headers, ip?, lang? }, pageWidth? }`, the page answers
 `{ path, title, query, width, children }`: `title` the record of its text,
+the document title,
 `query` the declared parameters (`{}` with none), `width` as under
 [Width](#width), and `children` its nodes for that
 request — a node whose `when:` is false left out, each composite placed as it
-provided, and a node an expression made invalid replaced by an `error` node,
-its siblings kept.
+provided, each pane placed as it answered for the request (left out when it
+answered nothing), and a node an expression made invalid replaced by an
+`error` node, its siblings kept.
 
 A move to the page already shown — a link whose address is the page's own
 address with other query parameters, back or forward — keeps its nodes mounted:
@@ -136,8 +144,15 @@ each reader and listing re-reads the parameters it declares instead of being
 drawn again, so a draft, a scroll position and an open surface stay. This is
 how a renderer behaves; `ui` states it so a page can rely on it.
 
-Its published reading is `{ path, title, query }`, so another resource reads
-`resources.<page>.path`.
+Its published reading is `{ path, title, query, assets }`, so another
+resource reads `resources.<page>.path`. `assets` is every file its nodes can
+name — each composite's, each pane's reading, each button's glyph — in
+`Ui.Composite`'s `assets` item shape and known when the page is created, so
+an application serves every file from boot.
+
+The headers a page varies by are the ones its own expressions read; a page
+placing a pane in its own tree varies by any (`*`), since the pane is handed
+the whole request.
 
 ## Width
 
@@ -154,7 +169,8 @@ own; one page listed by two applications is drawn at each one's width.
 That chain — the value written where it applies, else the application's
 `pageWidth`, else `contained` — is read in one place: `@telorun/ui` exports it
 as `resolvedPageWidth`, which a renderer uses for any other `Ui.PageWidth` it
-resolves (a header's width, say), so no renderer restates the default.
+resolves (a [layout's](page-layout.md) width, say), so no renderer restates the
+default.
 
 ## Listing a page
 
@@ -172,5 +188,5 @@ pages:
       - { type: text, text: Ask in the team channel. }
 ```
 
-What draws a page's address in a menu is the application's
-[navigation](navigation.md), which names pages by reference and never by path.
+What draws a page's address in a menu is a [navigation pane](navigation.md),
+which names pages by reference and never by path.

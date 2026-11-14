@@ -198,33 +198,45 @@ label: Send feedback
 result: { type: text, text: Thank you — your feedback was received., style: success }
 onSuccess: { refreshes: [/v1/feedback/recent] }
 ---
+kind: Ui.Page
+metadata: { name: feedbackPage }
+path: /
+title: Feedback
+width: contained
+children:
+  - { type: text, text: Tell us what you think, style: title }
+  - { type: composite, ref: !ref sendFeedback }
+  - { type: text, text: What came in, style: subheading }
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref FeedbackEntries
+      source: /v1/feedback/recent
+      reloadOn: [focus]
+      content:
+        type: list
+        rows: !cel "data.entries"
+        columns:
+          - { header: Rating, value: !cel "row.rating" }
+          - { header: Feedback, value: !cel "row.text" }
+          - { header: Source, value: !cel "row.source" }
+          - { header: Received, value: !cel "row.created_at" }
+---
 kind: UiReact.App
 metadata: { name: ui }
 title: Feedback
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Feedback
-    width: contained
-    children:
-      - { type: text, text: Tell us what you think, style: heading }
-      - { type: composite, ref: !ref sendFeedback }
-      - { type: text, text: What came in, style: subheading }
-      - type: composite
-        ref:
-          kind: Ui.Data
-          model: !ref FeedbackEntries
-          source: /v1/feedback/recent
-          reloadOn: [focus]
-          content:
-            type: list
-            rows: !cel "data.entries"
-            columns:
-              - { header: Rating, value: !cel "row.rating" }
-              - { header: Feedback, value: !cel "row.text" }
-              - { header: Source, value: !cel "row.source" }
-              - { header: Received, value: !cel "row.created_at" }
+pages: [!ref feedbackPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Feedback
+        navigation:
+          items:
+            - { type: page, page: !ref feedbackPage }
 ---
 kind: Telo.OpenUrl
 metadata: { name: openUi }

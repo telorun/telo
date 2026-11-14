@@ -1,0 +1,40 @@
+# Panes declared outside `ui`: a navigation pane extending `Ui.NavigationPane`
+# in merge form, which inherits its navigation rules with none of its own, and
+# a pane answering how many times it was invoked — placed with no change to `ui`.
+kind: Telo.Library
+metadata:
+  name: Help
+  version: 1.0.0
+  description: >-
+    Test fixture: a titled column of help links and pages, and a pane counting
+    its invocations.
+lang: en
+imports: { Ui: ../../.. }
+exports: { kinds: [Links, Counter] }
+---
+kind: Telo.Definition
+metadata:
+  name: Links
+  description: Draws a heading over a column of help links and pages, delivered per request.
+capability: Telo.Invocable
+extends: Ui.NavigationPane
+controllers: [pkg:telo/local/js?path=./help.mjs#Links]
+schema:
+  type: object
+  additionalProperties: false
+  required: [heading]
+  properties:
+    heading:
+      title: Heading
+      description: The text drawn above the links.
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: {}
+---
+kind: Telo.Definition
+metadata:
+  name: Counter
+  description: Answers a text saying how many times it was invoked, and whether with a request.
+capability: Telo.Invocable
+extends: Ui.Pane
+controllers: [pkg:telo/local/js?path=./help.mjs#Counter]
+schema: { type: object, additionalProperties: false }

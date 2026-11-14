@@ -27,7 +27,7 @@ metadata:
     Filters page; and the themes page with its tokens, typefaces and, on `/`,
     the links between mounts and the brand switch. `/radix`, `/brand` and
     `/sidebar` place the very same views, `/sidebar` drawing its navigation in
-    a sidebar that is a tab bar on a phone, its pages at full width. The routes these call are asserted by
+    an aside that folds to a rail and is a drawer on a phone, its pages at full width. The routes these call are asserted by
     `answers-every-route.yaml`, `tables-and-filters.yaml`,
     `forms-and-actions.yaml` and `components-crud-themes.yaml`.
 imports:
@@ -94,6 +94,39 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /brand/_telo/ui/app }
   - name: sidebarApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /sidebar/_telo/ui/app }
+  - name: appLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.app.result.body.layout" } }
+  - name: polishAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.polishApp.result.body.layout" }, headers: { accept-language: "pl-PL, en;q=0.5" } }
+  - name: acmeAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.acmeApp.result.body.layout" }, headers: { cookie: "theme=dark; showcase-brand=acme" } }
+  - name: cookiePolishAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.cookiePolishApp.result.body.layout" }, headers: { accept-language: en, cookie: "theme=dark; showcase-lang=pl" } }
+  - name: cookieEnglishAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.cookieEnglishApp.result.body.layout" }, headers: { accept-language: pl, cookie: showcase-lang=en } }
+  - name: weightedAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.weightedApp.result.body.layout" }, headers: { accept-language: "de;q=0.1, pl" } }
+  - name: unservedCookieAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.unservedCookieApp.result.body.layout" }, headers: { accept-language: pl, cookie: showcase-lang=xx } }
+  - name: radixAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /radix/_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.radixApp.result.body.layout" } }
+  - name: radixPolishAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /radix/_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.radixPolishApp.result.body.layout" }, headers: { cookie: showcase-lang=pl } }
+  - name: brandAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /brand/_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.brandApp.result.body.layout" } }
+  - name: sidebarAppLayout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /sidebar/_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.sidebarApp.result.body.layout" } }
   - name: brandThemeTokens
     invoke: { kind: HttpClient.Request, client: !ref browser, responseType: text }
     inputs:
@@ -216,13 +249,13 @@ steps:
   # The nodes the checks below read, by name.
   - name: nodes
     value:
-      overview: !cel "steps.overview.result.body.children[0].children"
-      record: !cel "steps.overview.result.body.children[0].children[13].content.children"
-      perRequest: !cel "steps.overview.result.body.children[1].children"
-      polishPerRequest: !cel "steps.polishOverview.result.body.children[1].children"
-      acmePerRequest: !cel "steps.acmeOverview.result.body.children[1].children"
-      reader: !cel "steps.conditions.result.body.children[0].children[0]"
-      enablement: !cel "steps.conditions.result.body.children[0].children[3]"
+      overview: !cel "steps.overview.result.body.children[1].children"
+      record: !cel "steps.overview.result.body.children[1].children[13].content.children"
+      perRequest: !cel "steps.overview.result.body.children[2].children"
+      polishPerRequest: !cel "steps.polishOverview.result.body.children[2].children"
+      acmePerRequest: !cel "steps.acmeOverview.result.body.children[2].children"
+      reader: !cel "steps.conditions.result.body.children[1].children[0]"
+      enablement: !cel "steps.conditions.result.body.children[1].children[3]"
       data: !cel "steps.data.result.body.children[0].children"
       tables: !cel "steps.tables.result.body.children[0].children"
       filters: !cel "steps.filters.result.body.children[0].children"
@@ -230,12 +263,12 @@ steps:
       actions: !cel "steps.actions.result.body.children[0].children"
       components: !cel "steps.components.result.body.children[0].children"
       crud: !cel "steps.crud.result.body.children[0].children"
-      themes: !cel "steps.themes.result.body.children[0].children"
+      themes: !cel "steps.themes.result.body.children[1].children"
 
   # Four mounts of one design: the same pages, under the built-in look with
   # the example's stylesheet, under Radix, under a theme of the example's own
   # with Radix's controls, and under the built-in look with the navigation in a
-  # sidebar — its rail and store, and a tab bar of four tabs on a phone — every
+  # aside — its rail and store, and a drawer on a phone — every
   # entry's icon served under each mount. Every
   # mount reads a cookie for its language, and `/` also for its brand.
   - name: verifyApps
@@ -249,16 +282,16 @@ steps:
         samePages: !cel "[steps.radixApp, steps.brandApp, steps.sidebarApp].all(a, a.result.body.pages == steps.app.result.body.pages)"
         # Each mount's tree, each entry with the file its icon is served as.
         navigation: !cel >-
-          [steps.app, steps.radixApp, steps.brandApp, steps.sidebarApp].map(a, a.result.body.navigation.items.map(e, e.type == 'group'
-            ? [e.text.message[0], e.icon.substring(e.icon.lastIndexOf('/') + 1), e.items.map(i, i.type == 'group'
-              ? [i.text.message[0], i.icon.substring(i.icon.lastIndexOf('/') + 1), i.items.map(j, [j.path, j.icon.substring(j.icon.lastIndexOf('/') + 1)])]
-              : [i.path, i.icon.substring(i.icon.lastIndexOf('/') + 1)])]
-            : [e.path, e.icon.substring(e.icon.lastIndexOf('/') + 1)]))
-        placement: !cel "steps.app.result.body.navigation.placement"
+          ([steps.appLayout, steps.radixAppLayout, steps.brandAppLayout].map(a, a.result.body.header[0].navigation) + [steps.sidebarAppLayout.result.body.aside.content.navigation]).map(n, n.items.map(e, e.type == 'group'
+            ? [e.text.message[0], e.icon.name, e.items.map(i, i.type == 'group'
+              ? [i.text.message[0], i.icon.name, i.items.map(j, [j.path, j.icon.name])]
+              : [i.path, i.icon.name])]
+            : [e.path, e.icon.name]))
+        placement: !cel "steps.appLayout.result.body.header[0].placement"
         sameNavigation: !cel >-
-          steps.radixApp.result.body.navigation.placement == steps.app.result.body.navigation.placement
-            && steps.brandApp.result.body.navigation.placement == steps.app.result.body.navigation.placement
-        sidebarPlacement: !cel "steps.sidebarApp.result.body.navigation.placement"
+          steps.radixAppLayout.result.body.header[0].placement == steps.appLayout.result.body.header[0].placement
+            && steps.brandAppLayout.result.body.header[0].placement == steps.appLayout.result.body.header[0].placement
+        sidebarAside: !cel "cel.bind(a, steps.sidebarAppLayout.result.body.aside, {'side': a.side, 'size': a.size, 'label': a.label.message[0], 'collapse': a.collapse, 'compact': a.compact, 'content': {'type': a.content.type, 'state': a.content.state}})"
         titles: !cel "[steps.radixApp, steps.brandApp, steps.sidebarApp].map(a, a.result.body.title.message[0])"
         stylesheets: !cel >-
           [steps.app.result.body, steps.acmeApp.result.body, steps.radixApp.result.body, steps.brandApp.result.body, steps.sidebarApp.result.body]
@@ -314,15 +347,13 @@ steps:
             type: overlay
             surface: { type: drawer, side: start, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
         sameNavigation: true
-        sidebarPlacement:
-          type: sidebar
+        sidebarAside:
           side: start
-          rail: { collapsed: false }
-          store: { type: local }
-          compact:
-            type: tab-bar
-            visible: 4
-            surface: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+          size: medium
+          label: Navigation
+          collapse: { collapsed: false, state: { key: navigation, store: { type: local } } }
+          compact: { type: drawer, side: start, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+          content: { type: navigation-column, state: { key: navigation, store: { type: local } } }
         titles: [ UI showcase — Radix, UI showcase — brand, UI showcase — sidebar ]
         stylesheets:
           - [ renderer.css, default-theme.css, showcase.css ]
@@ -350,20 +381,20 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        start: !cel "steps.app.result.body.header.start"
+        start: !cel "steps.appLayout.result.body.header[0].start"
         end: !cel >-
-          steps.app.result.body.header.end.map(n, [n.type, n.text.message[0],
+          steps.appLayout.result.body.header[0].end.map(n, [n.type, n.text.message[0],
             n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
-        acmeTheme: !cel "steps.acmeApp.result.body.header.end[1].items.map(i, i.text.message[0])"
-        radixStart: !cel "steps.radixApp.result.body.header.start == steps.app.result.body.header.start"
+        acmeTheme: !cel "steps.acmeAppLayout.result.body.header[0].end[1].items.map(i, i.text.message[0])"
+        radixStart: !cel "steps.radixAppLayout.result.body.header[0].start == steps.appLayout.result.body.header[0].start"
         radixEnd: !cel >-
-          steps.radixApp.result.body.header.end.map(n, [n.text.message[0],
+          steps.radixAppLayout.result.body.header[0].end.map(n, [n.text.message[0],
             n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
         brandEnd: !cel >-
-          steps.brandApp.result.body.header.end.map(n, [n.text.message[0],
+          steps.brandAppLayout.result.body.header[0].end.map(n, [n.text.message[0],
             n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
         sidebarEnd: !cel >-
-          steps.sidebarApp.result.body.header.end.map(n, [n.text.message[0],
+          steps.sidebarAppLayout.result.body.header[0].end.map(n, [n.text.message[0],
             n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
       expected:
         start: [ { type: image, src: /files/mark.svg, fill: false, alt: { lang: en, message: [ UI showcase logo ] } } ]
@@ -427,8 +458,8 @@ steps:
         polish:
           lang: !cel "steps.cookiePolishApp.result.body.lang"
           pages: !cel "steps.cookiePolishApp.result.body.pages.map(p, p.title.message[0])"
-          logo: !cel "steps.cookiePolishApp.result.body.header.start[0].alt"
-          menus: !cel "steps.cookiePolishApp.result.body.header.end.map(n, n.text.message[0])"
+          logo: !cel "steps.cookiePolishAppLayout.result.body.header[0].start[0].alt"
+          menus: !cel "steps.cookiePolishAppLayout.result.body.header[0].end.map(n, n.text.message[0])"
         english:
           lang: !cel "steps.cookieEnglishApp.result.body.lang"
           title: !cel "steps.cookieEnglishApp.result.body.title"
@@ -436,8 +467,8 @@ steps:
           lang: !cel "steps.radixPolishApp.result.body.lang"
           title: !cel "steps.radixPolishApp.result.body.title"
         marked: !cel >-
-          [steps.app, steps.polishApp, steps.cookiePolishApp, steps.cookieEnglishApp, steps.radixPolishApp, steps.weightedApp, steps.unservedCookieApp]
-            .map(a, a.result.body.header.end[0].items.filter(i, size(i.style) > 0).map(i, i.text.message[0]))
+          [steps.appLayout, steps.polishAppLayout, steps.cookiePolishAppLayout, steps.cookieEnglishAppLayout, steps.radixPolishAppLayout, steps.weightedAppLayout, steps.unservedCookieAppLayout]
+            .map(a, a.result.body.header[0].end[0].items.filter(i, size(i.style) > 0).map(i, i.text.message[0]))
       expected:
         polish:
           lang: pl
@@ -502,7 +533,7 @@ steps:
         title: !cel "steps.polishApp.result.body.title"
         pages: !cel "steps.polishApp.result.body.pages.map(p, p.title.message[0])"
         save: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].save"
-        heading: !cel "steps.polishOverview.result.body.children[0].children[0].text"
+        heading: !cel "steps.polishOverview.result.body.children[1].children[0].text"
       expected:
         lang: pl
         title: { lang: pl, message: [ Pokaz interfejsu ] }
@@ -526,7 +557,7 @@ steps:
         markup: !cel "steps.nodes.result.overview[12].children[2].markup.startsWith('<svg')"
         tabs: !cel >-
           cel.bind(t, steps.nodes.result.overview[25], [t.address, t.tabs.map(tab, [tab.text.message[0], tab.children.map(c, c.type)])])
-        polishTab: !cel "steps.polishOverview.result.body.children[0].children[25].tabs[0].text"
+        polishTab: !cel "steps.polishOverview.result.body.children[1].children[25].tabs[0].text"
       expected:
         kinds: [ text, text, columns, text, text, columns, columns, text, text, columns, text, text, columns, data, text, text, listing, text, columns, text, text, text, box, text, text, tabs ]
         containers: [ box, stack, box ]
@@ -614,9 +645,9 @@ steps:
         basePath: !cel "steps.nodes.result.overview[16].basePath"
         rowStyle: !cel "steps.nodes.result.overview[16].rowStyle"
         columns: !cel "steps.nodes.result.overview[16].layout.columns.map(c, [c.header, 'style' in c ? c.style : null])"
-        polishHeaders: !cel "steps.polishOverview.result.body.children[0].children[16].layout.columns.map(c, c.header.message[0])"
+        polishHeaders: !cel "steps.polishOverview.result.body.children[1].children[16].layout.columns.map(c, c.header.message[0])"
         nodeTexts: !cel "steps.nodes.result.overview[18].children.map(c, [c.type, c.text])"
-        polishNodeTexts: !cel "steps.polishOverview.result.body.children[0].children[18].children.map(c, c.text.message[0])"
+        polishNodeTexts: !cel "steps.polishOverview.result.body.children[1].children[18].children.map(c, c.text.message[0])"
       expected:
         basePath: /api/projects
         rowStyle: { by: { root: row, path: [ featured ] }, cases: { "true": strong } }
@@ -642,7 +673,7 @@ steps:
       actual:
         inline: !cel "steps.nodes.result.overview[21]"
         callout: !cel "steps.nodes.result.overview[22]"
-        polishCallout: !cel "steps.polishOverview.result.body.children[0].children[22].children[0].text"
+        polishCallout: !cel "steps.polishOverview.result.body.children[1].children[22].children[0].text"
       expected:
         inline: { type: text, fill: false, text: { lang: en, message: [ A view declared inline at the node that places it. ] } }
         callout:
@@ -689,7 +720,7 @@ steps:
         byQuery: !cel "steps.nodes.result.reader.content.children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'query').map(c, [c.shown.at.path, c.shown.matches])"
         links: !cel "steps.nodes.result.reader.content.children[37].children.map(c, c.href.path.value)"
         pageQuery: !cel "steps.conditions.result.body.query"
-        pageOwn: !cel "steps.conditions.result.body.children[1].children[2].shown"
+        pageOwn: !cel "steps.conditions.result.body.children[2].children[2].shown"
       expected:
         source: { path: { value: /api/project-summary }, pathParams: {}, queryParams: { code: { value: TEL-42 } } }
         query:
@@ -1563,9 +1594,9 @@ steps:
         kinds: !cel "steps.nodes.result.themes.map(c, c.type)"
         mounts: !cel "steps.nodes.result.themes[2].children.map(b, b.children[0].text.message[0])"
         components: !cel "[steps.nodes.result.themes[6], steps.nodes.result.themes[9]].map(c, [c.export, c.props, c.module == steps.nodes.result.components[2].module])"
-        rootLinks: !cel "[steps.themes.result.body.children[1].children[2], steps.themes.result.body.children[1].children[4]].map(c, c.children.map(l, l.href.path.value))"
-        badge: !cel "[steps.themes, steps.acmeThemes].map(p, p.result.body.children[1].children.exists(c, c.type == 'badge'))"
-        polish: !cel "[steps.polishThemes.result.body.children[0].children[0].text, steps.polishThemes.result.body.children[1].children[0].text]"
+        rootLinks: !cel "[steps.themes.result.body.children[2].children[2], steps.themes.result.body.children[2].children[4]].map(c, c.children.map(l, l.href.path.value))"
+        badge: !cel "[steps.themes, steps.acmeThemes].map(p, p.result.body.children[2].children.exists(c, c.type == 'badge'))"
+        polish: !cel "[steps.polishThemes.result.body.children[1].children[0].text, steps.polishThemes.result.body.children[2].children[0].text]"
       expected:
         kinds: [ text, text, columns, text, text, text, component, text, text, component ]
         mounts: [ At the root, Under /radix, Under /brand, Under /sidebar ]
@@ -1594,8 +1625,8 @@ steps:
         sidebar: !cel "[steps.sidebarOverview.result.body.children, steps.sidebarThemes.result.body.children]"
       expected:
         radix: &shared
-          - !cel "[steps.overview.result.body.children[0]]"
-          - !cel "[steps.conditions.result.body.children[0]]"
+          - !cel "[steps.overview.result.body.children[1]]"
+          - !cel "[steps.conditions.result.body.children[1]]"
           - !cel "steps.data.result.body.children"
           - !cel "steps.tables.result.body.children"
           - !cel "steps.filters.result.body.children"
@@ -1603,11 +1634,11 @@ steps:
           - !cel "steps.actions.result.body.children"
           - !cel "steps.components.result.body.children"
           - !cel "steps.crud.result.body.children"
-          - !cel "[steps.themes.result.body.children[0]]"
+          - !cel "[steps.themes.result.body.children[1]]"
         brand: *shared
         sidebar:
-          - !cel "[steps.overview.result.body.children[0]]"
-          - !cel "[steps.themes.result.body.children[0]]"
+          - !cel "[steps.overview.result.body.children[1]]"
+          - !cel "[steps.themes.result.body.children[1]]"
 
   # One page resource at two widths: `/` leaves its pages contained, `/sidebar`
   # declares `pageWidth: full`, and each header follows its application.
@@ -1617,7 +1648,7 @@ steps:
       actual:
         root: !cel "steps.data.result.body.width"
         sidebar: !cel "steps.sidebarData.result.body.width"
-        headers: !cel "[steps.app, steps.radixApp, steps.brandApp, steps.sidebarApp].map(a, a.result.body.header.width)"
+        headers: !cel "[steps.appLayout, steps.radixAppLayout, steps.brandAppLayout, steps.sidebarAppLayout].map(a, a.result.body.width)"
       expected:
         root: contained
         sidebar: full

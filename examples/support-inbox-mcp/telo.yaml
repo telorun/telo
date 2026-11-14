@@ -257,35 +257,47 @@ label: Close
 result: { type: badge, style: success, text: Closed }
 onSuccess: { refreshes: [/api/tickets/inbox] }
 ---
+kind: Ui.Page
+metadata: { name: inboxPage }
+path: /
+title: Inbox
+children:
+  - { type: text, text: Support tickets, style: title }
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref Inbox
+      source: /api/tickets/inbox
+      reloadOn: [focus]
+      content:
+        type: list
+        rows: !cel "data.tickets"
+        columns:
+          - { header: "#", value: !cel "row.id" }
+          - { header: Subject, value: !cel "row.subject" }
+          - { header: Details, value: !cel "row.body" }
+          - { header: Status, value: !cel "row.status" }
+        rowActions:
+          - action: !ref closeTicketAction
+            inputs: { id: !cel "row.id" }
+            confirm: Close this ticket?
+            enabled: { at: !cel "row.status", matches: { const: open }, disabledText: Already closed. }
+---
 kind: UiReact.App
 metadata: { name: ui }
 title: Support inbox
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Inbox
-    children:
-      - { type: text, text: Support tickets, style: heading }
-      - type: composite
-        ref:
-          kind: Ui.Data
-          model: !ref Inbox
-          source: /api/tickets/inbox
-          reloadOn: [focus]
-          content:
-            type: list
-            rows: !cel "data.tickets"
-            columns:
-              - { header: "#", value: !cel "row.id" }
-              - { header: Subject, value: !cel "row.subject" }
-              - { header: Details, value: !cel "row.body" }
-              - { header: Status, value: !cel "row.status" }
-            rowActions:
-              - action: !ref closeTicketAction
-                inputs: { id: !cel "row.id" }
-                confirm: Close this ticket?
-                enabled: { at: !cel "row.status", matches: { const: open }, disabledText: Already closed. }
+pages: [!ref inboxPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Support inbox
+        navigation:
+          items:
+            - { type: page, page: !ref inboxPage }
 ---
 kind: Telo.OpenUrl
 metadata: { name: openUi }

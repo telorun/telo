@@ -70,6 +70,20 @@ export type ForwardedReference = (
   writer: Record<string, unknown>,
 ) => ResolvedReference | undefined;
 
+/** Each view's accessor fields, by concrete path from the view's own root. */
+const accessorPaths = new WeakMap<object, ReadonlySet<string>>();
+
+/**
+ * The concrete paths of `view` (a view {@link RuleDeclarationViews.of} built,
+ * an inline declaration's included) holding an accessor binding — a site, never
+ * a shape: a `{ value }` the author wrote at another field is data.
+ */
+export function accessorSitePaths(view: object): ReadonlySet<string> {
+  return accessorPaths.get(view) ?? EMPTY;
+}
+
+const EMPTY: ReadonlySet<string> = new Set();
+
 function isPlainContainer(value: unknown): value is Record<string, unknown> | unknown[] {
   if (!value || typeof value !== "object" || isTaggedSentinel(value)) return false;
   if (Array.isArray(value)) return true;
@@ -151,6 +165,7 @@ export class RuleDeclarationViews {
       if (kind && kind !== view.kind) view = { ...view, kind };
     }
     this.views.set(declaration, view);
+    if (written.size > 0) accessorPaths.set(view, written);
     return view;
   }
 }

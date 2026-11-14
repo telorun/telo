@@ -1,28 +1,29 @@
 # A compact placement handed a compact of its own, a tab bar showing more tabs
-# than fit, and a placement that is not compact named where a compact one goes.
+# than fit, a placement that is not compact named where a compact one goes, and
+# a navigation bar and a navigation column with no navigation.
 kind: Telo.Application
-metadata:
-  name: UiInvalidNavigationApp
-  version: 1.0.0
-imports:
-  Ui: ../../../../
+metadata: { name: UiInvalidNavigationApp, version: 1.0.0 }
+imports: { Ui: ../../../../ }
 ---
 kind: Ui.OverlayNavigation
-metadata:
-  name: overlayCompact
+metadata: { name: overlayCompact }
 compact: { kind: Ui.TabBarNavigation }
 ---
 kind: Ui.TabBarNavigation
-metadata:
-  name: tabBarCompact
+metadata: { name: tabBarCompact }
 compact: { kind: Ui.OverlayNavigation }
 ---
 kind: Ui.TabBarNavigation
-metadata:
-  name: tooManyTabs
+metadata: { name: tooManyTabs }
 visible: 6
 ---
 kind: Ui.HeaderNavigation
-metadata:
-  name: sidebarAsCompact
-compact: { kind: Ui.SidebarNavigation }
+metadata: { name: headerAsCompact }
+compact: { kind: Ui.HeaderNavigation }
+---
+kind: Ui.Navbar
+metadata: { name: navbarWithoutNavigation }
+title: Acme
+---
+kind: Ui.NavigationColumn
+metadata: { name: columnWithoutNavigation }

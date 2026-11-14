@@ -835,7 +835,7 @@ a conversation it creates is written back by replacing the history entry, a
 link or back switches without cancelling a running turn; omitted, the choice
 lives in memory), and `refreshes: [<request target>]` over `conversation.id`
 re-reads readers of a path when a send is admitted and a turn ends. The list of
-conversations is COMPOSED: a `Ui.SplitView` whose `aside` is `{ actions, content }`: `actions` holds, under the toggle's bar, a
+conversations is COMPOSED: a `Ui.SplitView` whose `aside` is `{ label, size, collapse, actions, content }`: `actions` holds, under the toggle's bar, a
 button `link` to the page (New conversation) and `content` a `Ui.Listing` over a `Ui.CollectionSource` for
 `Conversation.conversations` (`model: !ref Conversation.ConversationSummary`,
 `delete: true`, rows linking with `queryParams: { conversation: !cel "row.id" }`,
@@ -1529,6 +1529,11 @@ so the rule runs per element and the squiggle lands on it; omit `in:` and the
 rule is about the resource as a whole. In scope: `self` (the resource), `this`
 (the element — a map entry's VALUE), `key` (its map key). `self` stays visible
 inside the loop, which is how an element correlates against the whole.
+`reachable: { kind, use, through }` instead of `in:` iterates, as `this`, every
+declaration a reference of `kind` at a `use` slot names, walked from the
+resource through slots and step `invoke:` targets whose use is in `through`; a
+bound declaration is equal only to itself under `==` / `!=` / `in`, so
+`self.pages.exists(p, p == this)` compares which page, not what it holds.
 
 Guard optional fields — an unguarded missing key THROWS, and `has()` does not
 work under an iterated key. Write `'renamedFrom' in this` or
@@ -4756,13 +4761,15 @@ Where to start:
     computed path or `pathParams` value is exact. `Ui.Data.source` is a request target
     over `query` and `params` (`{ path, pathParams, queryParams }`).
     `Ui.SplitView` (a composite) draws an `aside` beside `content`, the aside being
-    `{ actions?, content }` (`actions`: `link` nodes with `button`, drawn under the
-    toggle's bar and kept as stacked glyphs in the folded rail): `side`,
+    the `Ui.Aside` shape a layout's `aside` is too: `{ actions?, content }`
+    (`actions`: `link` nodes with `button`, drawn under the toggle's bar and kept
+    as stacked glyphs in the folded rail) plus `side`,
     `size` (`small` | `medium` | `large`), a required `label`, `collapse: {
     collapsed?, state: { key, store } }` and `compact` (default a `Ui.Drawer`
     below the breakpoint), `frame` (`flush` default, attached to the content, or
-    `framed`) and `toggle` (a `Ui.IconButton`, default, or `Ui.TextButton`); the
-    aside stays mounted and starts no request while hidden. A `link` node takes
+    `framed`) and `toggle` (a `Ui.IconButton`, default, or `Ui.TextButton`) —
+    all inside `aside`; the aside stays mounted and starts no request while
+    hidden. A `link` node takes
     `button` (a `Ui.TextButton` / `Ui.IconButton`) to draw as a button, and a
     link whose address is the current page (`_telo*` parameters aside) is
     `aria-current="page"`, its record `data-selected`, with no authoring. A
@@ -4851,18 +4858,33 @@ Where to start:
     member-form map (`scope`, a listing's `filters`) refuses a key the model
     does not declare.
   - `ui-react` renders it: `UiReact.App` is a mount holding the pages — each
-    a `Ui.Page`, inline or `!ref` — and their `navigation` tree, which names
-    pages by `!ref`, never by path, and is drawn by a placement kind: a
-    header menu bar (the default), a sidebar collapsing to a rail of icons, a
-    menu button's drawer or a bottom tab bar, the last two what a narrow
-    screen uses. A page's content is `contained` (the look's centred measure,
+    a `Ui.Page`, inline or `!ref`, or a `Ui.PageRoute` `{ page, layout }` — and
+    the chrome around them, a `layout:` (`Ui.PageLayout`: `width?`, `header?`,
+    `footer?`, `aside?`). A page draws only its own children (its `title` is the
+    document title and navigation text, never a heading: put `{ type: text,
+    style: title }`, the one `h1`, first); `layout: { kind: Ui.PageLayout }` on
+    a route is an empty layout (no chrome), and with no `layout:` nothing
+    surrounds the pages. A layout's regions read `request` and withhold
+    `params` / `query`. There is no `header:` or `navigation:` on the App. A `pane` node
+    `{ type: pane, ref }` places a `Ui.Pane` (a piece of chrome answering one
+    node, invoked per request in a page or layout region and once inside a
+    composite, whose regions withhold `request`, so what reads it goes in a
+    page's children or a layout region): `Ui.Navbar` (`title?`, `start?`,
+    `end?`, a required `navigation`, `placement?` — `Ui.HeaderNavigation`, the
+    default, `Ui.OverlayNavigation`'s menu button and drawer, or
+    `Ui.TabBarNavigation`) and `Ui.NavigationColumn` (`navigation`, `state?`, a
+    column that folds to a rail of icons inside an aside). A `navigation` is
+    `{ items }` naming pages by `!ref`, never by path, never derived. Every page
+    a link, navigation entry or `onSuccess.navigate` names must be listed in
+    `pages` (`UI_PAGE_UNROUTED`). `notFound:` is the nodes drawn for an unknown
+    path inside the layout. A page's content is `contained` (the look's centred measure,
     the `width.page` design token, inset by `space.page`) unless
     `UiReact.App.pageWidth` or the page's own `width` says `full`; the
-    header's content lines up with a contained page unless
-    `UiReact.App.header.width` (default: the app's `pageWidth`) says `full` —
-    never a `max-width` or an inline padding on `page`, `main` or `header` in
-    a stylesheet. A theme's header row rules go through the `header-content`
-    part (`[data-telo-part="header"] > [data-telo-part="header-content"] > …`). An entry's `icon:` is a `Ui.FileIcon` (`file`) or a
+    header's content lines up with a contained page unless the layout's `width`
+    (default: the app's `pageWidth`) says `full` —
+    never a `max-width` or an inline padding on `page`, `main`, `header` or
+    `footer` in a stylesheet. A theme's header row rules go through the
+    `navbar` part (`[data-telo-part="header"] > [data-telo-part="header-content"] > …`). An entry's `icon:` is a `Ui.FileIcon` (`file`) or a
     `UiLucide.Icon` (`name`, a Lucide glyph, from `ui-lucide`), declared
     inline when one entry uses it and named, then `!ref`, when several
     share it. The

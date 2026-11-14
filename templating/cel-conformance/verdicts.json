@@ -2563,6 +2563,51 @@
       }
     },
     {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/no_members_declared",
+      "tag": "cel",
+      "source": "empty.b",
+      "bindings": {
+        "empty": {}
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "empty": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'empty.b' is not defined (available: none)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "empty"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_key",
+          "message": "no such key: \"b\""
+        }
+      }
+    },
+    {
       "id": "verdicts/CEL_UNKNOWN_FIELD/index_into_properties",
       "tag": "cel",
       "source": "labels['other'].zzz",

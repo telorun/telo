@@ -20,26 +20,41 @@ targets:
   - !ref helloServer
   - { name: openUi, invoke: !ref openUi, inputs: { url: !cel "resources.helloServer.status.localUrl" } }
 ---
+kind: Ui.Page
+metadata: { name: home }
+path: /
+title: Home
+width: contained
+children:
+  - { type: text, text: "Hello, world!", style: title }
+  - { type: text, text: This page is declared in YAML and drawn by the UI renderer., style: muted }
+  - { type: link, text: Open settings, href: { path: !ref settings }, button: { kind: Ui.TextButton }, style: accent }
+---
+kind: Ui.Page
+metadata: { name: settings }
+path: /settings
+title: Settings
+width: contained
+children:
+  - { type: text, text: Settings, style: title }
+  - { type: text, text: Nothing to configure yet., style: muted }
+---
 kind: UiReact.App
 metadata: { name: helloUi }
 title: Hello
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Home
-    width: contained
-    children:
-      - { type: text, text: "Hello, world!", style: heading }
-      - { type: text, text: This page is declared in YAML and drawn by the UI renderer., style: muted }
-      - { type: link, text: Open settings, href: /settings, button: { kind: Ui.TextButton }, style: accent }
-  - kind: Ui.Page
-    path: /settings
-    title: Settings
-    width: contained
-    children:
-      - { type: text, text: Settings, style: heading }
-      - { type: text, text: Nothing to configure yet., style: muted }
+pages: [!ref home, !ref settings]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Hello
+        navigation:
+          items:
+            - { type: page, page: !ref home }
+            - { type: page, page: !ref settings }
 ---
 kind: Http.Server
 metadata: { name: helloServer }

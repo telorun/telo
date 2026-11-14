@@ -408,44 +408,59 @@ result:
     - { type: text, text: Approved. The run continues and pays., style: success, shown: { at: !cel "result.delivered", matches: { const: true } } }
     - { type: text, text: Nobody is waiting on this expense any more., style: warning, shown: { at: !cel "result.delivered", matches: { const: false } } }
 ---
+kind: Ui.Page
+metadata: { name: submitPage }
+path: /
+title: New expense
+width: contained
+children:
+  - { type: text, text: Submit an expense, style: title }
+  - { type: text, text: "Under the threshold it is paid at once; above it the run waits for a manager.", style: muted }
+  - { type: composite, ref: !ref submitExpenseAction }
+---
+kind: Ui.Page
+metadata: { name: expensePage }
+path: /expense
+title: Expense
+width: contained
+children:
+  - { type: text, text: Where the expense stands, style: title }
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref ExpenseScreen
+      query: { run: { type: string } }
+      source: { path: "/api/expenses/{run}/screen", pathParams: { run: !cel "query.run" } }
+      reloadOn: [focus]
+      content:
+        type: list
+        rows: !cel "data.expenses"
+        columns:
+          - { header: Expense, value: !cel "row.run" }
+          - { header: Status, value: !cel "row.status" }
+        rowActions:
+          - action: !ref approveAction
+            inputs: { token: !cel "row.token" }
+            prompt: true
+            enabled: { at: !cel "row.status", matches: { const: parked }, disabledText: Waiting for the run to reach its approval step. }
+      failure: { type: text, text: Open an expense by submitting one., style: muted }
+---
 kind: UiReact.App
 metadata: { name: ui }
 title: Expense approvals
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: New expense
-    width: contained
-    children:
-      - { type: text, text: Submit an expense, style: heading }
-      - { type: text, text: "Under the threshold it is paid at once; above it the run waits for a manager.", style: muted }
-      - { type: composite, ref: !ref submitExpenseAction }
-  - kind: Ui.Page
-    path: /expense
-    title: Expense
-    width: contained
-    children:
-      - { type: text, text: Where the expense stands, style: heading }
-      - type: composite
-        ref:
-          kind: Ui.Data
-          model: !ref ExpenseScreen
-          query: { run: { type: string } }
-          source: { path: "/api/expenses/{run}/screen", pathParams: { run: !cel "query.run" } }
-          reloadOn: [focus]
-          content:
-            type: list
-            rows: !cel "data.expenses"
-            columns:
-              - { header: Expense, value: !cel "row.run" }
-              - { header: Status, value: !cel "row.status" }
-            rowActions:
-              - action: !ref approveAction
-                inputs: { token: !cel "row.token" }
-                prompt: true
-                enabled: { at: !cel "row.status", matches: { const: parked }, disabledText: Waiting for the run to reach its approval step. }
-          failure: { type: text, text: Open an expense by submitting one., style: muted }
+pages: [!ref submitPage, !ref expensePage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Expense approvals
+        navigation:
+          items:
+            - { type: page, page: !ref submitPage }
+            - { type: page, page: !ref expensePage }
 ---
 kind: Telo.OpenUrl
 metadata: { name: openUi }

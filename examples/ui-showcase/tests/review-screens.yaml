@@ -45,6 +45,9 @@ steps:
   # ── The pages, as a renderer receives them ──
   - name: application
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+  - name: layout
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/layout }
+    inputs: { query: { id: !cel "steps.application.result.body.layout" } }
   - name: inbox
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/reviews" }
   - name: review
@@ -68,7 +71,7 @@ steps:
     inputs:
       actual:
         pages: !cel "steps.application.result.body.pages.filter(p, p.path.startsWith('/reviews') || p.path.startsWith('/workers')).map(p, [p.path, p.title.message[0]])"
-        navigation: !cel "steps.application.result.body.navigation.items.filter(e, e.type == 'page' && e.path.startsWith('/reviews')).map(e, e.path)"
+        navigation: !cel "steps.layout.result.body.header[0].navigation.items.filter(e, e.type == 'page' && e.path.startsWith('/reviews')).map(e, e.path)"
         source: !cel "[steps.nodes.result.bar.basePath, steps.nodes.result.bar.content.basePath]"
         reloadEvery: !cel "steps.nodes.result.bar.content.reloadEvery"
         rowStyle: !cel "steps.nodes.result.bar.content.rowStyle"

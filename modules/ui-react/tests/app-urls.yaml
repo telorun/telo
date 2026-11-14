@@ -113,8 +113,6 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/app" }
   - name: plainApp
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/plain/_telo/ui/app" }
-  - name: wideApp
-    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/wide/_telo/ui/app" }
   - name: plainPage
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/plain/_telo/ui/page?path=/" }
   - name: appAgain
@@ -135,6 +133,8 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/page?path=/all" }
   - name: noPage
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/page?path=/nowhere" }
+  - name: noPageWritten
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/wide/_telo/ui/page?path=/nowhere" }
   - name: stylesheet
     invoke: { kind: HttpClient.Request, responseType: text }
     inputs:
@@ -156,7 +156,6 @@ steps:
           title: !cel "steps.app.result.body.title"
           lang: !cel "steps.app.result.body.lang"
           compactBelow: !cel "steps.app.result.body.compactBelow"
-          header: !cel "steps.app.result.body.header"
           pages: !cel "steps.app.result.body.pages.map(p, p.path)"
           stylesheets: !cel "steps.app.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
           controlStylesheets: !cel "sort(steps.app.result.body.controls.stylesheets.map(c, steps.app.result.body.controls.stylesheets[c].substring(steps.app.result.body.controls.stylesheets[c].lastIndexOf('/') + 1)))"
@@ -165,8 +164,6 @@ steps:
         appAgain: !cel "steps.appAgain.result.status"
         defaultCompactBelow: !cel "steps.plainApp.result.body.compactBelow"
         defaultPageWidth: !cel "steps.plainPage.result.body.width"
-        defaultHeaderWidth: !cel "steps.plainApp.result.body.header.width"
-        inheritedHeaderWidth: !cel "[size(steps.wideApp.result.body.header.start), steps.wideApp.result.body.header.width]"
         containedPageWidth: !cel "steps.containedPage.result.body.width"
         page:
           status: !cel "steps.page.result.status"
@@ -182,7 +179,12 @@ steps:
         pageAgain: !cel "steps.pageAgain.result.status"
         noPage:
           status: !cel "steps.noPage.result.status"
+          type: !cel "steps.noPage.result.headers['content-type']"
+          cache: !cel "steps.noPage.result.headers['cache-control']"
           body: !cel "steps.noPage.result.body"
+        noPageWritten:
+          status: !cel "steps.noPageWritten.result.status"
+          body: !cel "steps.noPageWritten.result.body"
         stylesheet:
           status: !cel "steps.stylesheet.result.status"
           type: !cel "steps.stylesheet.result.headers['content-type'].startsWith('text/css')"
@@ -197,9 +199,8 @@ steps:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, compactBelow, controls, digest, header, lang, navigation, pages, specVersion, stylesheets, texts, title]
+          keys: [bundle, compactBelow, controls, digest, lang, pages, specVersion, stylesheets, texts, title]
           compactBelow: 48rem
-          header: { start: [], end: [], width: full }
           specVersion: 1
           title: { lang: en, message: [Fixture Admin] }
           lang: en
@@ -217,8 +218,6 @@ steps:
         appAgain: 304
         defaultCompactBelow: 40rem
         defaultPageWidth: contained
-        defaultHeaderWidth: contained
-        inheritedHeaderWidth: [1, full]
         containedPageWidth: contained
         page:
           status: 200
@@ -232,7 +231,29 @@ steps:
           children: [text, listing]
           fixedFilter: { isDone: { value: true } }
         pageAgain: 304
-        noPage: { status: 404, body: { type: about:blank, title: Not Found, status: 404 } }
+        noPage:
+          status: 404
+          type: application/problem+json; charset=utf-8
+          cache: private, no-cache
+          body:
+            type: about:blank
+            title: Not Found
+            status: 404
+            children:
+              - { type: text, fill: false, style: title, text: { set: Ui.Translations, key: notFound } }
+              - type: text
+                fill: false
+                text:
+                  lang: en
+                  message: ["This application has no page at ", { placeholder: path }, .]
+                  values: { path: { value: /nowhere } }
+        noPageWritten:
+          status: 404
+          body:
+            type: about:blank
+            title: Not Found
+            status: 404
+            children: [{ type: text, fill: false, style: title, text: { lang: en, message: [Nothing here] } }]
         stylesheet:
           status: 200
           type: true
@@ -273,7 +294,6 @@ steps:
         setLayer: !cel "steps.setSheet.result.body.startsWith('@import url(\"/themed/_telo/ui/assets/') && steps.setSheet.result.body.endsWith('/controls.css\") layer(telo.control);\\n')"
         lookLayer: !cel "steps.lookSheet.result.body.endsWith('/look.css\") layer(telo.theme);\\n')"
         look: !cel "steps.look.result.body"
-        headerWidth: !cel "steps.themedApp.result.body.header.width"
       expected:
         stylesheets: [renderer.css, controls.css, theme-tokens.css, look.css]
         setExports: [[Checkbox]]
@@ -282,5 +302,4 @@ steps:
         builtInsKept: true
         setLayer: true
         lookLayer: true
-        look: "[data-telo-part=\"page-title\"] { color: var(--telo-color-accent); }\n"
-        headerWidth: full
+        look: "[data-telo-part=\"navbar-title\"] { color: var(--telo-color-accent); }\n"

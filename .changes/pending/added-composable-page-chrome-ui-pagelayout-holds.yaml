@@ -1,0 +1,32 @@
+units:
+  modules/ui: Added
+body: "Composable page chrome. `Ui.PageLayout` holds the chrome around a page — `width`,
+  `header`, `aside` and `footer` — invoked per request and answering `{ width, header,
+  aside?, footer }`; `Ui.PageRoute` (`{ page, layout }`) is the shape of an
+  application's `pages` entry drawing one page in another layout. `Ui.Pane` is the
+  abstract for a piece of chrome (invoked with `{ request? }`, answering `{ node? }`),
+  placed by the new `pane` node: invoked per request in a page's children or a layout
+  region, once with no request inside a composite. Every node-holding region of a
+  composite withholds `request` (`x-telo-context-withheld`), so a pane or node reading
+  it there, guarded or not, is refused naming the composite and why, and a layout region
+  withholds `params` and `query`, so a view placed there reading a page variable is
+  refused naming the layout. `Ui.NavigationPane` holds a required `navigation` and the
+  rules `UI_NAVIGATION_PAGE_UNTITLED` / `UI_NAVIGATION_PAGE_HAS_PARAMETERS`, which
+  `Ui.Navbar` (title, start, end, navigation, placement) and `Ui.NavigationColumn`
+  (navigation, state) inherit; the wire gains the `navbar` and `navigation-column`
+  branches of `Ui.SpecNode`. Panes, pages and layouts publish an `assets` reading of
+  every file their nodes can name, known at creation. `Ui.Aside` is the fold-out column
+  a split view and a layout share, filled by one set of defaults. A `text` node takes
+  the `title` style, drawn as the page's level-1 heading. Breaking: `Ui.SplitView` is
+  now `{ aside, content }`, its `side`, `size`, `frame`, `toggle`, `label`, `collapse`
+  and `compact` moved into `aside` (the wire's `split` branch likewise), and
+  `UI_SURFACE_COMPACT_ADDRESSED` / `UI_SURFACE_COMPACT_NESTED` are reported at
+  `aside.compact`; `Ui.Navigation` is `{ items }` only — `placement` is gone, its `page`
+  entries name a page (`use: schema`) and it binds no CEL context of its own;
+  `Ui.SidebarNavigation` and the `sidebar` branch of `Ui.NavigationPlacementSpec` are
+  removed (a sidebar is a layout's aside holding a navigation column); `Ui.Page.title`
+  is the document title and navigation text only, with no heading drawn; a navigation
+  entry's `icon` arrives as a `{ digest, name }` file address; and in `@telorun/ui`,
+  `preparedNavigation(navigation, ctx, owner)` takes no pages and derives no default
+  tree, `RequestNodes.deliver` is asynchronous, and a page's files are its reading's
+  `assets` rather than an `assets()` method."

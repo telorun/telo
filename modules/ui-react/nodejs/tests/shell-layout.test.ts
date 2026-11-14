@@ -26,28 +26,45 @@ function declared(selector: string): Record<string, string> {
 }
 
 const app = '[data-telo-part="app"]';
-const withSidebar = `${app}:has(> [data-telo-part="sidebar"])`;
 const header = '[data-telo-part="header"]';
-const content = '[data-telo-part="header-content"]';
+const footer = '[data-telo-part="footer"]';
+const headerContent = '[data-telo-part="header-content"]';
+const footerContent = '[data-telo-part="footer-content"]';
+const region = `${app}[data-side] > [data-telo-region="aside"] > div > div > [data-telo-part="aside"]`;
 
 describe("the shell's layout", () => {
-  it("insets a contained header's content as a contained page is inset, a full one by the page inset alone", () => {
+  it("insets a contained header's and footer's content as a contained page is inset, a full one by the page inset alone", () => {
     expect(declared('[data-telo-part="main"]')["padding-inline"]).toBe("var(--telo-space-page)");
     expect(declared('[data-telo-part="page"][data-width="contained"]')).toEqual({ "max-width": "var(--telo-width-page)", "margin-inline": "auto" });
-    expect(declared(`${header}[data-width="contained"] > ${content}`)["padding-inline"]).toBe(
-      "max(var(--telo-space-page), calc((100% - var(--telo-width-page)) / 2))",
-    );
-    expect(declared(`${header}[data-width="full"] > ${content}`)["padding-inline"]).toBe("var(--telo-space-page)");
+    for (const [region, content] of [
+      [header, headerContent],
+      [footer, footerContent],
+    ]) {
+      expect(declared(`${region}[data-width="contained"] > ${content}`)["padding-inline"]).toBe("max(var(--telo-space-page), calc((100% - var(--telo-width-page)) / 2))");
+      expect(declared(`${region}[data-width="full"] > ${content}`)["padding-inline"]).toBe("var(--telo-space-page)");
+    }
   });
 
-  it("beside a sidebar, makes the header a subgrid of every column, a contained header's content over the page's column", () => {
+  it("insets the header's and footer's content against the application whatever the aside does", () => {
+    // Folded, unfolded or compact, the aside changes no rule that reaches a
+    // region's content: the inset is the same expression over the application's width.
+    const selectors = [...base.matchAll(/([^{}]+)\{[^{}]*\}/g)].flatMap(([, written]) => written.replace(/\/\*[^]*?\*\//g, "").split(",").map((part) => part.trim()));
+    const reachingContent = selectors.filter((selector) => /(header|footer)-content/.test(selector));
+    expect(reachingContent.length).toBeGreaterThan(0);
+    for (const selector of reachingContent) expect(selector).not.toMatch(/data-side|data-state|data-compact|aside/);
+    expect(declared(`${app}[data-side] > ${header}`)["grid-column"]).toBeUndefined();
     expect(declared(`${app} > ${header}`)["grid-column"]).toBe("1 / -1");
-    expect(declared(`${withSidebar} > ${header}`)).toEqual({ display: "grid", "grid-template-columns": "subgrid" });
-    expect(declared(`${withSidebar} > ${header} > ${content}`)["grid-column"]).toBe("1 / -1");
-    expect(declared(`${withSidebar} > ${header}[data-width="contained"] > ${content}`)["grid-column"]).toBe("main");
-    for (const columns of [declared(withSidebar)["grid-template-columns"], declared(`${app}:has(> [data-telo-part="sidebar"][data-side="end"])`)["grid-template-columns"]]) {
+  });
+
+  it("places an aside beside the page between the header and the footer, which span every column", () => {
+    expect(declared(`${app} > ${header}`)["grid-column"]).toBe("1 / -1");
+    expect(declared(`${app}[data-side] > ${header}`)["grid-row"]).toBe("1");
+    expect(declared(`${app}[data-side] > [data-telo-part="main"]`)).toEqual({ "grid-row": "2", "grid-column": "main" });
+    expect(declared(`${app}[data-side] > ${footer}`)["grid-row"]).toBe("3");
+    expect(declared(region)["grid-column"]).toBe("side");
+    for (const columns of [declared(`${app}[data-side]`)["grid-template-columns"], declared(`${app}[data-side="end"]`)["grid-template-columns"]]) {
       expect(columns).toMatch(/\[[^\]]*\bmain-start\b[^\]]*\] minmax\(0, 1fr\) \[[^\]]*\bmain-end\b[^\]]*\]/);
     }
-    expect(declared(header).display).toBe("block");
+    expect([declared(header).display, declared(footer).display]).toEqual(["block", "block"]);
   });
 });

@@ -66,9 +66,10 @@ date range, field groups and field descriptions included — declares no
 reserved property, and gives every token a value, light and dark — a
 contained page's measure, `width.page`, `64rem`, and the page inset,
 `space.page`, `1.5rem`; how it reads the tokens is
-under [Tokens](styling.md#tokens). A sidebar is a column on the
+under [Tokens](styling.md#tokens). A layout's aside is a column on the
 surface colour under the sticky header, staying in view while the page
-scrolls, with its toggle at its top; a tab bar is a row on the surface colour
+scrolls, with its toggle at its top; the header and the footer are bars on the
+surface colour; a tab bar is a row on the surface colour
 along the bottom edge, its tabs spread across it; tabs are a row over a
 hairline, the chosen one underlined in the accent. It has no standing a theme
 of another module lacks.
@@ -76,7 +77,7 @@ of another module lacks.
 On a narrow screen — while the `app` part carries `data-compact="true"` — it
 lays the same parts out to fit the width: the header scrolls away with the
 page instead of staying at the top, and the `nav-menu` button, the title (cut
-short when it must be), `header-start` and `header-end` share one row; a
+short when it must be), `navbar-start` and `navbar-end` share one row; a
 filter's bounds and every filter control shrink and
 wrap, so no filter is wider than the screen; and `table-frame` shows a shadow
 at an edge while more columns lie beyond it. It draws nothing the wide layout

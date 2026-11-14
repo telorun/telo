@@ -82,17 +82,19 @@ compact: { kind: Ui.Drawer, compact: { kind: Ui.Dialog } }
 ---
 kind: Ui.SplitView
 metadata: { name: splitCompactAddressed }
-label: Conversations
-aside: { content: { type: text, text: Aside } }
+aside:
+  label: Conversations
+  content: { type: text, text: Aside }
+  compact: { kind: Ui.Drawer, address: { name: aside } }
 content: { type: text, text: Content }
-compact: { kind: Ui.Drawer, address: { name: aside } }
 ---
 kind: Ui.SplitView
 metadata: { name: splitCompactNested }
-label: Conversations
-aside: { content: { type: text, text: Aside } }
+aside:
+  label: Conversations
+  content: { type: text, text: Aside }
+  compact: { kind: Ui.Drawer, compact: { kind: Ui.Dialog } }
 content: { type: text, text: Content }
-compact: { kind: Ui.Drawer, compact: { kind: Ui.Dialog } }
 ---
 # Accepts everything the bars below ask for, and facets nothing.
 kind: Ui.CollectionPresentation

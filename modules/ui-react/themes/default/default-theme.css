@@ -79,7 +79,7 @@
 body { margin: 0; background: var(--telo-color-background); color: var(--telo-color-text); font-family: var(--telo-font-body); font-size: var(--telo-font-size-md); line-height: var(--telo-line-height-body); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 [data-telo-part="icon"] { width: 1rem; height: 1rem; }
 /* Parts drawn on a tinted fill read their secondary text in the stronger muted colour. */
-:is([data-telo-part="split-aside"], [data-telo-part="markdown-code-block"], [data-telo-part="chat-tool"], [data-telo-part="chat-approval"], [data-telo-part="chat-sources"], [data-telo-part="filters-presets"], [data-telo-part="filter-options"], [data-telo-part="options"], [data-telo-part="date-range-presets"]) { --telo-color-muted: var(--ui-react-derived-muted-on-fill); }
+:is([data-telo-part="aside"], [data-telo-part="markdown-code-block"], [data-telo-part="chat-tool"], [data-telo-part="chat-approval"], [data-telo-part="chat-sources"], [data-telo-part="filters-presets"], [data-telo-part="filter-options"], [data-telo-part="options"], [data-telo-part="date-range-presets"]) { --telo-color-muted: var(--ui-react-derived-muted-on-fill); }
 /* Scroll areas inside the page take a thin bar in the text's colour, faint, so they read as part of their surface. */
 :is([data-telo-part="chat-transcript"], [data-telo-part="chat-tool-data"], [data-telo-part="markdown-code-pre"], [data-telo-part="markdown-table-frame"], [data-telo-part="table-frame"], [data-telo-part="surface-body"], [data-fill="true"]) { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--telo-color-text) 22%, transparent) transparent; }
 /* An icon resource's glyph takes its colour from the text around it. */
@@ -89,31 +89,33 @@ body { margin: 0; background: var(--telo-color-background); color: var(--telo-co
 [data-telo-part="app"] { background: var(--telo-color-background); color: var(--telo-color-text); }
 [data-telo-part="header"] { background: var(--telo-color-surface); border-bottom: 1px solid var(--telo-color-border); position: sticky; top: 0; z-index: 10; }
 [data-telo-part="header-content"] { min-height: 2.5rem; gap: var(--telo-space-md); }
-[data-telo-part="app-title"] { font-family: var(--telo-font-heading); font-weight: 600; }
+[data-telo-part="navbar"] { gap: var(--telo-space-md); min-height: 2.5rem; }
+[data-telo-part="navbar-title"] { font-family: var(--telo-font-heading); font-weight: 600; }
+[data-telo-part="footer"] { background: var(--telo-color-surface); border-top: 1px solid var(--telo-color-border); }
+[data-telo-part="footer-content"] { min-height: 2.5rem; gap: var(--telo-space-md); color: var(--telo-color-muted); }
 [data-telo-part="nav"] { gap: var(--telo-space-xs); }
-[data-telo-part="header-start"], [data-telo-part="header-end"] { gap: var(--telo-space-sm); }
-[data-telo-part="header-start"] [data-telo-part="image"], [data-telo-part="header-start"] [data-telo-part="svg"], [data-telo-part="header-end"] [data-telo-part="image"], [data-telo-part="header-end"] [data-telo-part="svg"] { height: 1.75rem; width: auto; }
+[data-telo-part="navbar-start"], [data-telo-part="navbar-end"] { gap: var(--telo-space-sm); }
+[data-telo-part="navbar-start"] [data-telo-part="image"], [data-telo-part="navbar-start"] [data-telo-part="svg"], [data-telo-part="navbar-end"] [data-telo-part="image"], [data-telo-part="navbar-end"] [data-telo-part="svg"] { height: 1.75rem; width: auto; }
 /* A link button before the title is the application's mark: square, bare unless accented, its glyph at the size of an image there. */
-[data-telo-part="header-start"] [data-telo-part="link"][data-button] { padding-inline: 0.25rem; }
-[data-telo-part="header-start"] [data-telo-part="link"][data-button]:not([data-style~="accent"]) { border-color: transparent; background: transparent; }
-[data-telo-part="header-start"] [data-telo-part="link"][data-button]:not([data-style~="accent"]):hover { background: var(--ui-react-derived-fill); }
-[data-telo-part="header-start"] [data-telo-part="link"][data-button]:not([data-style~="accent"])[aria-current="page"]:not(:hover) { background: transparent; }
-[data-telo-part="header-start"] [data-telo-part="link"][data-button] > :is([data-telo-part="glyph"], [data-telo-part="icon"]) { width: 1.5rem; height: 1.5rem; }
+[data-telo-part="navbar-start"] [data-telo-part="link"][data-button] { padding-inline: 0.25rem; }
+[data-telo-part="navbar-start"] [data-telo-part="link"][data-button]:not([data-style~="accent"]) { border-color: transparent; background: transparent; }
+[data-telo-part="navbar-start"] [data-telo-part="link"][data-button]:not([data-style~="accent"]):hover { background: var(--ui-react-derived-fill); }
+[data-telo-part="navbar-start"] [data-telo-part="link"][data-button]:not([data-style~="accent"])[aria-current="page"]:not(:hover) { background: transparent; }
+[data-telo-part="navbar-start"] [data-telo-part="link"][data-button] > :is([data-telo-part="glyph"], [data-telo-part="icon"]) { width: 1.5rem; height: 1.5rem; }
 /* The menu button opening the navigation on a narrow screen: a square, quiet
    until hovered or open. */
 [data-telo-part="nav-menu"] { width: 2rem; padding: 0; color: var(--telo-color-muted); }
 [data-telo-part="nav-menu"]:hover, [data-telo-part="nav-menu"][aria-expanded="true"] { background: var(--ui-react-derived-fill); color: var(--telo-color-text); }
 [data-telo-part="main"] { padding-block: var(--telo-space-xl); }
-/* A sidebar: a column under the sticky header that stays while the page
-   scrolls, its toggle at its top; collapsed, a rail of squares. A tab bar: a
-   row along the bottom edge, its tabs spread across it. */
-[data-telo-part="sidebar"] { position: sticky; top: 2.5rem; align-self: start; height: calc(100vh - 2.5rem); box-sizing: border-box; overflow-y: auto; gap: var(--telo-space-sm); width: 15rem; padding: var(--telo-space-md) var(--telo-space-sm); background: var(--telo-color-surface); border-inline-end: 1px solid var(--telo-color-border); }
-[data-telo-part="sidebar"][data-side="end"] { border-inline-end: none; border-inline-start: 1px solid var(--telo-color-border); }
-[data-telo-part="sidebar"][data-state="closed"] { width: auto; align-items: center; }
-[data-telo-part="sidebar-toggle"] { align-self: flex-end; width: 2rem; padding: 0; color: var(--telo-color-muted); }
-[data-telo-part="sidebar"][data-state="closed"] > [data-telo-part="sidebar-toggle"] { align-self: center; }
-[data-telo-part="sidebar-toggle"]:hover { background: var(--ui-react-derived-fill); color: var(--telo-color-text); }
-[data-telo-part="sidebar"] [data-telo-part="navigation"] { font-size: var(--telo-font-size-md); }
+/* A layout's aside: a column under the sticky header that stays while the
+   page scrolls, its toggle at its top; folded, a rail of squares, whose
+   navigation column draws a rail of glyphs. A tab bar: a row along the bottom
+   edge, its tabs spread across it. */
+[data-telo-part="app"][data-side] [data-telo-part="aside"]:not([data-telo-part="split"] *) { position: sticky; top: 2.5rem; align-self: start; height: calc(100vh - 2.5rem); box-sizing: border-box; overflow-y: auto; padding-top: 0; background: var(--telo-color-surface); border-inline-end: 1px solid var(--telo-color-border); }
+[data-telo-part="app"][data-side="end"] [data-telo-part="aside"]:not([data-telo-part="split"] *) { border-inline-end: none; border-inline-start: 1px solid var(--telo-color-border); }
+[data-telo-part="app"][data-side]:not(:has(> [data-telo-part="header"])) [data-telo-part="aside"]:not([data-telo-part="split"] *) { top: 0; height: 100vh; }
+[data-telo-part="aside"][data-state="rail"] { align-items: center; }
+[data-telo-part="nav-column"] { gap: var(--telo-space-xs); font-size: var(--telo-font-size-md); }
 [data-telo-part="tab-bar"] { z-index: 10; padding: var(--telo-space-xs) var(--telo-space-sm); background: var(--telo-color-surface); border-top: 1px solid var(--telo-color-border); }
 [data-telo-part="tab-bar"] [data-telo-part="navigation"] > ul { justify-content: space-around; }
 [data-telo-part="tab-bar"] :is([data-telo-part="nav-item"], [data-telo-part="nav-toggle"]) { min-height: 2.5rem; font-size: var(--telo-font-size-sm); }
@@ -126,13 +128,13 @@ body { margin: 0; background: var(--telo-color-background); color: var(--telo-co
 [data-telo-part="tab-bar"] :is([data-telo-part="nav-item"], [data-telo-part="nav-toggle"]):has(> [data-telo-part="glyph"]) { flex-direction: column; justify-content: center; gap: 0.125rem; min-height: 3rem; font-size: 0.6875rem; }
 [data-telo-part="tab-bar"] [data-telo-part="glyph"] { width: 1.25rem; height: 1.25rem; }
 [data-telo-part="page"] { gap: var(--telo-space-lg); width: 100%; box-sizing: border-box; }
-[data-telo-part="page-title"] { font-family: var(--telo-font-heading); font-size: var(--telo-font-size-xl); font-weight: 600; letter-spacing: -0.025em; line-height: var(--telo-line-height-heading); margin: 0; }
+h1[data-telo-part="text"] { font-family: var(--telo-font-heading); font-size: var(--telo-font-size-xl); font-weight: 600; letter-spacing: -0.025em; line-height: var(--telo-line-height-heading); margin: 0; }
 
 /* Structure */
 [data-telo-part="stack"] { gap: var(--telo-space-md); }
 [data-telo-part="columns"] { gap: var(--telo-space-lg); }
 [data-telo-part="text"] { margin: 0; }
-h2[data-telo-part="text"], h3[data-telo-part="text"] { font-family: var(--telo-font-heading); line-height: var(--telo-line-height-heading); }
+h1[data-telo-part="text"], h2[data-telo-part="text"], h3[data-telo-part="text"] { font-family: var(--telo-font-heading); line-height: var(--telo-line-height-heading); }
 h2[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-weight: 600; letter-spacing: -0.01em; }
 h3[data-telo-part="text"] { font-size: var(--telo-font-size-md); font-weight: 600; }
 [data-telo-part="value"]:is([data-style~="heading"], [data-style~="subheading"]) { font-family: var(--telo-font-heading); font-weight: 600; line-height: var(--telo-line-height-heading); }
@@ -494,8 +496,8 @@ button[data-telo-part="calendar-period"], button[data-telo-part="timeline-scale"
 [data-compact="true"] > [data-telo-part="header"] > [data-telo-part="header-content"] { row-gap: 0; }
 /* The menu button, the title, what starts the header and what ends it share
    one row, the title cut short when they leave it no room. */
-[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="header-content"] > :is([data-telo-part="header-start"], [data-telo-part="header-end"]) { flex: none; flex-wrap: nowrap; }
-[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="header-content"] > [data-telo-part="app-title"] { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-compact="true"] [data-telo-part="navbar"] > :is([data-telo-part="navbar-start"], [data-telo-part="navbar-end"]) { flex: none; flex-wrap: nowrap; }
+[data-compact="true"] [data-telo-part="navbar"] > [data-telo-part="navbar-title"] { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-compact="true"] :is([data-telo-part="filter"], [data-telo-part="filter-group"], [data-telo-part="filter-bound"]) { min-width: 0; max-width: 100%; }
 [data-compact="true"] :is([data-telo-part="filter-group"], [data-telo-part="filter-bound"], [data-telo-part="filter-options"]) { flex-wrap: wrap; }
 [data-compact="true"] :is([data-telo-part="filter-input"], [data-telo-part="filter-select"], [data-telo-part="filter-tags"], [data-telo-part="filter-options"], [data-telo-part="filter-chip"]) { min-width: 0; max-width: 100%; }
@@ -585,25 +587,25 @@ button[data-telo-part="markdown-code-copy"]:hover { background: var(--ui-react-d
 [data-telo-part="split"][data-frame="framed"] { gap: var(--telo-space-md); }
 [data-telo-part="split"][data-frame="flush"] { border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-lg); background: var(--telo-color-surface); }
 :is([data-telo-part="chat"], [data-telo-part="list-layout"], [data-telo-part="table-frame"], [data-telo-part="tree-layout"], [data-telo-part="calendar-grid"])[data-embedded] { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-[data-telo-part="split-aside"] { gap: var(--telo-space-sm); padding: 0 var(--telo-space-sm) var(--telo-space-sm); background: var(--ui-react-derived-fill); }
-[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="flush"] { background: var(--ui-react-derived-tint); }
-[data-telo-part="split-bar"] { min-height: var(--ui-react-bar-height); margin-inline: calc(-1 * var(--telo-space-sm)); padding-inline: var(--telo-space-sm); border-bottom: 1px solid var(--telo-color-border); }
-[data-telo-part="split-bar"] { gap: var(--telo-space-sm); }
-[data-telo-part="split-actions"] { gap: var(--telo-space-sm); }
-[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="framed"] { border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); }
-[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="flush"] { border-inline-end: 1px solid var(--telo-color-border); }
-[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="flush"][data-side="end"] { border-inline-end: none; border-inline-start: 1px solid var(--telo-color-border); }
-[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="flush"] { border-start-start-radius: calc(var(--telo-radius-lg) - 1px); border-end-start-radius: calc(var(--telo-radius-lg) - 1px); }
-[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="flush"][data-side="end"] { border-radius: 0; border-start-end-radius: calc(var(--telo-radius-lg) - 1px); border-end-end-radius: calc(var(--telo-radius-lg) - 1px); }
-[data-telo-part="split"][data-side="end"] [data-telo-part="split-toggle"] > [data-telo-part="icon"], [data-telo-part="split"]:not([data-side="end"]):dir(rtl) [data-telo-part="split-toggle"] > [data-telo-part="icon"], :dir(rtl) [data-telo-part="link"][data-button] > [data-telo-part="icon"] { transform: scaleX(-1); }
-[data-telo-part="split"][data-side="end"]:dir(rtl) [data-telo-part="split-toggle"] > [data-telo-part="icon"] { transform: none; }
-[data-telo-part="split-aside"][data-state="rail"] { padding-bottom: 0; }
+[data-telo-part="aside"] { gap: var(--telo-space-sm); padding: 0 var(--telo-space-sm) var(--telo-space-sm); background: var(--ui-react-derived-fill); }
+[data-telo-part="split"] [data-telo-part="aside"][data-frame="flush"] { background: var(--ui-react-derived-tint); }
+[data-telo-part="aside-bar"] { min-height: var(--ui-react-bar-height); margin-inline: calc(-1 * var(--telo-space-sm)); padding-inline: var(--telo-space-sm); border-bottom: 1px solid var(--telo-color-border); }
+[data-telo-part="aside-bar"] { gap: var(--telo-space-sm); }
+[data-telo-part="aside-actions"] { gap: var(--telo-space-sm); }
+[data-telo-part="split"] [data-telo-part="aside"][data-frame="framed"] { border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); }
+[data-telo-part="split"] [data-telo-part="aside"][data-frame="flush"] { border-inline-end: 1px solid var(--telo-color-border); }
+[data-telo-part="split"] [data-telo-part="aside"][data-frame="flush"][data-side="end"] { border-inline-end: none; border-inline-start: 1px solid var(--telo-color-border); }
+[data-telo-part="split"] [data-telo-part="aside"][data-frame="flush"] { border-start-start-radius: calc(var(--telo-radius-lg) - 1px); border-end-start-radius: calc(var(--telo-radius-lg) - 1px); }
+[data-telo-part="split"] [data-telo-part="aside"][data-frame="flush"][data-side="end"] { border-radius: 0; border-start-end-radius: calc(var(--telo-radius-lg) - 1px); border-end-end-radius: calc(var(--telo-radius-lg) - 1px); }
+[data-telo-part="split"][data-side="end"] [data-telo-part="aside-toggle"] > [data-telo-part="icon"], [data-telo-part="split"]:not([data-side="end"]):dir(rtl) [data-telo-part="aside-toggle"] > [data-telo-part="icon"], :dir(rtl) [data-telo-part="link"][data-button] > [data-telo-part="icon"] { transform: scaleX(-1); }
+[data-telo-part="split"][data-side="end"]:dir(rtl) [data-telo-part="aside-toggle"] > [data-telo-part="icon"] { transform: none; }
+[data-telo-part="aside"][data-state="rail"] { padding-bottom: 0; }
 [data-telo-part="split-content"] { gap: var(--telo-space-md); }
 [data-telo-part="split"][data-frame="flush"] > [data-telo-part="split-content"] { overflow-x: clip; border-start-end-radius: calc(var(--telo-radius-lg) - 1px); border-end-end-radius: calc(var(--telo-radius-lg) - 1px); }
 [data-telo-part="split"][data-frame="flush"] > [data-telo-part="split-content"]:not([data-fill="true"]) { overflow-y: clip; }
 [data-telo-part="split"][data-frame="flush"][data-side="end"] > [data-telo-part="split-content"] { border-radius: 0; border-start-start-radius: calc(var(--telo-radius-lg) - 1px); border-end-start-radius: calc(var(--telo-radius-lg) - 1px); }
-button[data-telo-part="split-toggle"] { padding: var(--telo-space-xs) var(--telo-space-sm); color: var(--telo-color-muted); }
-button[data-telo-part="split-toggle"]:hover { background: var(--ui-react-derived-fill); color: var(--telo-color-text); }
+button[data-telo-part="aside-toggle"] { padding: var(--telo-space-xs) var(--telo-space-sm); color: var(--telo-color-muted); }
+button[data-telo-part="aside-toggle"]:hover { background: var(--ui-react-derived-fill); color: var(--telo-color-text); }
 [data-telo-part="chat-archived-toggle"] [data-telo-part="label"] { color: inherit; font-weight: 400; }
 [data-telo-part="chat-header"] { gap: var(--telo-space-md); min-height: var(--ui-react-bar-height); box-sizing: border-box; padding: 0 var(--telo-space-lg); border-bottom: 1px solid var(--telo-color-border); }
 /* The header is the bar: a bar in it takes no height of its own, its heading the size of a card's title. */

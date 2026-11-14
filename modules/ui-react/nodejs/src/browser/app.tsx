@@ -6,7 +6,7 @@ import { pageAddress } from "./link-address.js";
 import { matchPage } from "./page-route.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
 import { PressQueueContext, PressQueues } from "./operation.js";
-import { SiteNavigation, type NavigationSpec } from "./site-navigation.js";
+import { LayoutFrame, type LayoutDocument } from "./layout.js";
 import { queryRoot } from "./query-root.js";
 import { RendererContext, RootsContext, type RendererEnvironment } from "./renderer-context.js";
 import { Confirmation, PageSlotContext, type PageSlot } from "./surface.js";
@@ -20,13 +20,11 @@ interface AppDocument {
   title: TranslatedText;
   /** The language the documents are in: a catalog's, else the application's own. */
   lang?: string;
-  /** Every page the application serves, by its declared path: what a move within it may reach. */
-  pages: { path: string; title?: TranslatedText }[];
-  /** The navigation tree and how it is drawn. */
-  navigation: NavigationSpec;
-  /** The application's own header nodes, before its title and after its
-   *  navigation (empty when it declares none), and how wide its content is drawn. */
-  header: { start: SpecNode[]; end: SpecNode[]; width: "contained" | "full" };
+  /** Every page the application serves, by its declared path: what a move within it may reach,
+   *  and the id of the layout it is drawn in (none: drawn bare). */
+  pages: { path: string; title?: TranslatedText; layout?: string }[];
+  /** The id of the default layout, which an unknown path is drawn in. */
+  layout?: string;
   /** The keyed texts in the request's language, and the set the renderer's own are drawn from. */
   texts: Texts;
   stylesheets: string[];
@@ -71,6 +69,19 @@ async function fetchDocument<T extends { digest: string }>(host: Host, url: stri
   if (response.status === 304 && holding) return holding;
   if (!response.ok) throw await responseError(response);
   return (await response.json()) as T;
+}
+
+/** The not-found nodes the server answers an undeclared path with: none when it sends none. */
+async function fetchNotFound(host: Host, url: string): Promise<SpecNode[] | undefined> {
+  const response = await host.fetch(url, { headers: { accept: "application/json" } }).catch((error) => {
+    throw networkError(error);
+  });
+  if (response.status !== 404) {
+    if (!response.ok) throw await responseError(response);
+    throw errorSpec(new Error(`The server answered a page for '${new URL(url, window.location.href).searchParams.get("path")}', which the application does not declare.`), "ERR_UI_REQUEST_FAILED");
+  }
+  const body = (await response.json().catch(() => undefined)) as { children?: SpecNode[] } | undefined;
+  return body?.children;
 }
 
 /** How long a stylesheet may hold the first drawing back before the page is
@@ -154,11 +165,16 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   // Nothing is drawn before the first stylesheets are in: an unstyled page is
   // worse than the shell's spinner, which shows while the root is empty.
   const [styled, setStyled] = useState(false);
-  const held = useRef<{ app?: AppDocument; page?: PageDocument }>({});
+  const held = useRef<{ app?: AppDocument; page?: PageDocument; layouts: Map<string, LayoutDocument> }>({ layouts: new Map() });
+  const [layouts, setLayouts] = useState<ReadonlyMap<string, LayoutDocument>>(new Map());
+  // What an undeclared path was answered with; `children` is absent when the server sent none.
+  const [missing, setMissing] = useState<{ path: string; children?: SpecNode[] }>();
   const path = host.location.path;
   // The page the address opens, and the variables it fills.
   const matched = useMemo(() => (app ? matchPage(app.pages.map((candidate) => candidate.path), path) : undefined), [app, path]);
   const declared = matched && app?.pages.find((candidate) => candidate.path === matched.path);
+  // A page names its layout; an undeclared path is drawn in the default one.
+  const layoutId = app === undefined ? undefined : declared ? declared.layout : app.layout;
 
   const accept = <T extends { bundle: string }>(document: T): T | undefined => {
     if (document.bundle === bundle) return document;
@@ -203,8 +219,21 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
 
   // One document per declared page: a move to another value of its variables fetches none.
   useEffect(() => {
-    if (!declared) return;
+    if (!app) return;
     let current = true;
+    if (!declared) {
+      fetchNotFound(host, `${prefix}/_telo/ui/page?path=${encodeURIComponent(path)}`).then(
+        (children) => {
+          if (!current) return;
+          setMissing({ path, children });
+          setFailure(undefined);
+        },
+        (error) => current && setFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED")),
+      );
+      return () => {
+        current = false;
+      };
+    }
     const holding = held.current.page?.path === declared.path ? held.current.page : undefined;
     if (!holding) setPage(undefined);
     fetchDocument(host, `${prefix}/_telo/ui/page?path=${encodeURIComponent(path)}`, holding).then(
@@ -220,7 +249,28 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     return () => {
       current = false;
     };
-  }, [prefix, declared?.path, refreshes]);
+  }, [prefix, app !== undefined, declared?.path, declared ? undefined : path, refreshes]);
+
+  // The layout is revalidated with each page document, and whenever the stream reconnects:
+  // a 304 keeps it, a new digest redraws it in place.
+  useEffect(() => {
+    if (layoutId === undefined) return;
+    let current = true;
+    const holding = held.current.layouts.get(layoutId);
+    fetchDocument(host, `${prefix}/_telo/ui/layout?id=${encodeURIComponent(layoutId)}`, holding).then(
+      (fetched) => {
+        const accepted = accept(fetched);
+        if (!current || !accepted) return;
+        if (accepted === holding) return;
+        held.current.layouts.set(layoutId, accepted);
+        setLayouts(new Map(held.current.layouts));
+      },
+      (error) => current && setFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED")),
+    );
+    return () => {
+      current = false;
+    };
+  }, [prefix, layoutId, declared?.path, declared ? undefined : path, refreshes]);
 
   const sets = JSON.stringify(app?.controls.sets ?? null);
   useEffect(() => {
@@ -268,7 +318,10 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   const drawing = `${declared?.path ?? ""}\u0000${paramsKey}`;
   // Serial presses are ordered within one page.
   const queues = useMemo(() => new PressQueues(), [path]);
-  const state = failure ? "error" : !app ? "loading" : !declared ? "empty" : shown ? "idle" : "loading";
+  const layout = layoutId === undefined ? undefined : layouts.get(layoutId);
+  const arranged = layoutId === undefined || layout !== undefined;
+  const absent = !declared && missing?.path === path ? missing : undefined;
+  const state = failure ? "error" : !app ? "loading" : !declared ? (absent ? "empty" : "loading") : shown ? "idle" : "loading";
   // The last page delivered keeps its width while the next one loads; a path no
   // page declares has none, whichever page came before it.
   const width = declared ? (shown ?? held.current.page)?.width : undefined;
@@ -283,59 +336,43 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     <ControlsContext.Provider value={controls ?? BUILT_IN}>
     <HostContext.Provider value={store}>
       <RendererContext.Provider value={base}>
-        <div data-telo-part="app" data-compact={compact ? "true" : undefined} data-fill={fill} onClick={followAnchor}>
-          <header data-telo-part="header" data-width={app?.header.width}>
-            <div data-telo-part="header-content">
-              {app && <SiteNavigation navigation={app.navigation} path={path} side="start" />}
-              {app && app.header.start.length > 0 && (
-                <div data-telo-part="header-start">
-                  <Nodes nodes={app.header.start} />
-                </div>
-              )}
-              <span data-telo-part="app-title">{app && formatText(texts, app.title, {})}</span>
-              {app && <SiteNavigation navigation={app.navigation} path={path} side="middle" />}
-              {app && app.header.end.length > 0 && (
-                <div data-telo-part="header-end">
-                  <Nodes nodes={app.header.end} />
-                </div>
-              )}
-              {app && <SiteNavigation navigation={app.navigation} path={path} side="end" />}
-            </div>
-          </header>
-          {app && <SiteNavigation navigation={app.navigation} path={path} side="before" />}
+        <LayoutFrame key={layoutId ?? ""} layout={layout} compact={compact} fill={fill} onClick={followAnchor}>
           <main data-telo-part="main" data-fill={fill}>
             <div data-telo-part="page" data-state={state} data-width={width} data-fill={fill}>
               {failure ? (
                 <ErrorNode error={failure} />
-              ) : !app ? (
+              ) : !app || !arranged ? (
                 <Loading />
               ) : !declared ? (
-                <>
-                  <h1 data-telo-part="page-title">{say("notFound")}</h1>
-                  <p data-telo-part="text">{say("noPageAt", { path })}</p>
-                </>
+                absent ? (
+                  absent.children ? (
+                    <Nodes nodes={absent.children} />
+                  ) : (
+                    <>
+                      <h1 data-telo-part="text">{say("notFound")}</h1>
+                      <p data-telo-part="text">{say("noPageAt", { path })}</p>
+                    </>
+                  )
+                ) : (
+                  <Loading />
+                )
               ) : (
-                <>
-                  {declared.title && <h1 data-telo-part="page-title">{formatText(texts, declared.title, {})}</h1>}
-                  <PageSlotContext.Provider value={slot}>
-                    <div ref={setSlotElement} style={{ display: "contents" }} />
-                    <div style={{ display: claims > 0 ? "none" : "contents" }}>{shown ? (
-                      <PressQueueContext.Provider key={drawing} value={queues}>
-                        <RootsContext.Provider value={pageRoots}>
-                          <Nodes nodes={shown.children} />
-                        </RootsContext.Provider>
-                      </PressQueueContext.Provider>
-                    ) : (
-                      <Loading />
-                    )}</div>
-                  </PageSlotContext.Provider>
-                </>
+                <PageSlotContext.Provider value={slot}>
+                  <div ref={setSlotElement} style={{ display: "contents" }} />
+                  <div style={{ display: claims > 0 ? "none" : "contents" }}>{shown ? (
+                    <PressQueueContext.Provider key={drawing} value={queues}>
+                      <RootsContext.Provider value={pageRoots}>
+                        <Nodes nodes={shown.children} />
+                      </RootsContext.Provider>
+                    </PressQueueContext.Provider>
+                  ) : (
+                    <Loading />
+                  )}</div>
+                </PageSlotContext.Provider>
               )}
             </div>
           </main>
-          {app && <SiteNavigation navigation={app.navigation} path={path} side="after" />}
-          {app && <SiteNavigation navigation={app.navigation} path={path} side="bottom" />}
-        </div>
+        </LayoutFrame>
         {asking && (
           <Confirmation
             title={say("unsavedQuestion")}

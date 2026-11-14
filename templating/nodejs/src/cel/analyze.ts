@@ -680,7 +680,10 @@ export function chainFailureAgainstSchema(
     }
     if (!declares) return null;
     const path = chain.slice(0, i + 1).join(".");
-    return { path, message: `'${path}' is not defined (available: ${available.join(", ")})` };
+    return {
+      path,
+      message: `'${path}' is not defined (available: ${available.length > 0 ? available.join(", ") : "none"})`,
+    };
   }
   return null;
 }

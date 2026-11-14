@@ -382,51 +382,63 @@ routes:
               me: !cel "variables.instanceId"
               queue: !cel "result.rows"
 ---
+kind: Ui.Page
+metadata: { name: queuePage }
+path: /
+title: Queue
+children:
+  - { type: text, text: "Enqueue a job", style: title }
+  - { type: text, text: "A payload starting with fail is refused by the worker, tried again, and parked as failed.", style: muted }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: !ref NewJob
+      outputModel: !ref Queue
+      request: { target: { path: /api/jobs } }
+      label: Enqueue
+      result:
+        type: list
+        heading: Queue
+        rows: !cel "result.jobs"
+        columns: &jobColumns
+          - value: !cel "row.id"
+          - value: !cel "row.payload"
+          - value: !cel "row.status"
+          - value: !cel "row.attempts"
+          - value: !cel "row.workedBy"
+          - value: !cel "row.lastError"
+  - { type: text, text: "Watch it drain", style: heading }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel:
+        kind: Telo.JsonSchema
+        schema: { type: object, additionalProperties: false, properties: {} }
+      outputModel: !ref Queue
+      request: { target: { path: /api/jobs/recent } }
+      label: Refresh
+      result:
+        type: list
+        rows: !cel "result.jobs"
+        columns: *jobColumns
+---
 # The whole frontend: a form that enqueues, a button that refreshes, and the
 # queue each draws from what its route answers.
 kind: UiReact.App
 metadata: { name: ui }
 title: !cel "'Worker ' + variables.instanceId"
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Queue
-    children:
-      - { type: text, text: "Enqueue a job", style: heading }
-      - { type: text, text: "A payload starting with fail is refused by the worker, tried again, and parked as failed.", style: muted }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: !ref NewJob
-          outputModel: !ref Queue
-          request: { target: { path: /api/jobs } }
-          label: Enqueue
-          result:
-            type: list
-            heading: Queue
-            rows: !cel "result.jobs"
-            columns: &jobColumns
-              - value: !cel "row.id"
-              - value: !cel "row.payload"
-              - value: !cel "row.status"
-              - value: !cel "row.attempts"
-              - value: !cel "row.workedBy"
-              - value: !cel "row.lastError"
-      - { type: text, text: "Watch it drain", style: heading }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel:
-            kind: Telo.JsonSchema
-            schema: { type: object, additionalProperties: false, properties: {} }
-          outputModel: !ref Queue
-          request: { target: { path: /api/jobs/recent } }
-          label: Refresh
-          result:
-            type: list
-            rows: !cel "result.jobs"
-            columns: *jobColumns
+pages: [!ref queuePage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Worker
+        navigation:
+          items:
+            - { type: page, page: !ref queuePage }
 ---
 kind: Http.Server
 metadata: { name: server }

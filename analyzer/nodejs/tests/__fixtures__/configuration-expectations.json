@@ -668,7 +668,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/input-type-choice.yaml",
       "path": "steps[0].value",
-      "message": "Telo.Sequence/sequence: !cel: 'inputs.x' is not defined (available: ) (when variables.flag1 is false)",
+      "message": "Telo.Sequence/sequence: !cel: 'inputs.x' is not defined (available: none) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -711,7 +711,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/kind-contract-choice.yaml",
       "path": "steps[0].value",
-      "message": "Self.Op/op: !cel: 'inputs.args.x' is not defined (available: ) (when variables.flag1 is false)",
+      "message": "Self.Op/op: !cel: 'inputs.args.x' is not defined (available: none) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -744,7 +744,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/named-shape-choice.yaml",
       "path": "steps[1].value",
-      "message": "Telo.Sequence/main: !cel: 'steps.call.result.x' is not defined (available: ) (when variables.flag1 is false)",
+      "message": "Telo.Sequence/main: !cel: 'steps.call.result.x' is not defined (available: none) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -1035,7 +1035,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/shape-ref-choice.yaml",
       "path": "check",
-      "message": "Self.Op/op: !cel: 'sample.x' is not defined (available: ) (when variables.flag1 is false)",
+      "message": "Self.Op/op: !cel: 'sample.x' is not defined (available: none) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -1047,7 +1047,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/shape-ref-choice.yaml",
       "path": "steps[0].value",
-      "message": "Self.Op/op: !cel: 'inputs.x' is not defined (available: ) (when variables.flag1 is false)",
+      "message": "Self.Op/op: !cel: 'inputs.x' is not defined (available: none) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -1329,7 +1329,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-target.yaml",
       "path": "steps[1].value",
-      "message": "Telo.Sequence/main: !cel: 'steps.call.result.x' is not defined (available: ) (when variables.flag1 is false)",
+      "message": "Telo.Sequence/main: !cel: 'steps.call.result.x' is not defined (available: none) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false

@@ -38,6 +38,21 @@ export function schemaText(text: string, context: string | null): TextRecord {
   return { text: serializePattern(text === "" ? [] : [text]), context, lang: "und", computed: false };
 }
 
+/**
+ * A `Text` read off a declaration rather than handed over as a record — a
+ * page's title named by reference — as the record it is looked up by: the
+ * Message as written and its context. No API says which module wrote a
+ * declaration, so its language is undetermined; such a text declares no
+ * values, so it is a literal and reads the same in any.
+ */
+export function declaredText(text: unknown): TextRecord {
+  if (text !== null && typeof text === "object" && "text" in text) {
+    const { text: message, context } = text as { text: TextRecord["text"]; context?: unknown };
+    return { text: message, context: typeof context === "string" ? context : null, lang: "und", computed: false };
+  }
+  return { text: text as TextRecord["text"], context: null, lang: "und", computed: false };
+}
+
 /** A key of `ui`'s own keyed set. */
 export const uiText = (key: string): KeyedText => ({ set: UI_TEXTS, key });
 

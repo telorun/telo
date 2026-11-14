@@ -1,0 +1,18 @@
+units:
+  modules/ui-react: Added
+body: "UiReact.App draws its pages in layouts. New layout, pages (each entry a page, or
+  a Ui.PageRoute { page, layout } drawing it in another layout; { kind: Ui.PageLayout }
+  is an empty layout, which has an id like any other and draws no chrome) and notFound
+  fields. layout names the Ui.PageLayout every page is drawn in. It is served on its own
+  at _telo/ui/layout?id=<id>, evaluated for each request, with ETag as its digest and
+  Vary: *. The application document names each page's layout id in pages[].layout and
+  the default in layout (absent only when no layout is named), and no longer carries
+  navigation or header. The page document names no layout and answers Vary: * when it
+  holds a pane. An unknown path answers the 404 problem with children, the not-found
+  nodes drawn in the default layout. Every file a page, layout or pane can name is
+  served by every replica from boot. UI_PAGE_UNROUTED checks before the app runs that
+  every page reference reachable from the app names a page pages lists. This breaks
+  applications using header or navigation, which move into a layout with a Ui.Navbar and
+  an explicit navigation; title is now the document title only;
+  UI_NAVIGATION_PAGE_UNROUTED and ERR_UI_NAVIGATION_PAGE_UNROUTED are removed, and the
+  other two navigation rules now belong to Ui.NavigationPane."

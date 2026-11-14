@@ -9,6 +9,5 @@ exports: { resources: [barKey] }
 ---
 kind: Ui.SplitView
 metadata: { name: barKey }
-label: Conversations
-aside: { bar: [], content: { type: text, text: Aside } }
+aside: { label: Conversations, bar: [], content: { type: text, text: Aside } }
 content: { type: text, text: Content }

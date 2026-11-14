@@ -48,11 +48,16 @@ metadata:
   name: admin
 title: Admin
 theme: !ref UiReact.defaultTheme
-pages:
-  - !ref home
-navigation:
-  items:
-    - { type: page, page: !ref home, icon: !ref homeIcon }
+pages: [!ref home]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        navigation:
+          items:
+            - { type: page, page: !ref home, icon: !ref homeIcon }
 ```
 
 ## Documentation

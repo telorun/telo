@@ -1,0 +1,126 @@
+kind: Telo.Application
+metadata:
+  name: UiPanesTest
+  version: 1.0.0
+  description: |
+    A pane is resolved where the tree placing it is: in a page's children it is
+    invoked per request with the request, inside a composite once, with none,
+    however often the page is invoked. A navigation pane of another module
+    extending `Ui.NavigationPane` delivers its entries per request through
+    `@telorun/ui` and inherits the navigation rules; a pane reading `request`
+    inside a composite — guarded or not — and a view reading `params.id` in a
+    layout region are refused before anything runs, naming the composite or the
+    layout that withholds the binding and why.
+lang: en
+imports: { Ui: ../, Help: ./__fixtures__/help, Probe: ./__fixtures__/probe, Assert: ../../assert }
+targets:
+  - !ref check
+  - !ref refused
+  - !ref refusedCount
+---
+kind: Help.Counter
+metadata: { name: perRequest }
+---
+kind: Help.Counter
+metadata: { name: atCreation }
+---
+kind: Ui.View
+metadata: { name: holder }
+content: { type: pane, ref: !ref atCreation }
+---
+kind: Ui.Page
+metadata: { name: home }
+path: /
+title: Home
+children:
+  - { type: text, text: Welcome, style: title }
+  - { type: pane, ref: !ref perRequest }
+  - { type: composite, ref: !ref holder }
+  - type: pane
+    ref:
+      kind: Help.Links
+      heading: Need a hand?
+      navigation:
+        items:
+          - { type: link, text: Status, href: "https://status.acme.test" }
+          - { type: page, page: !ref reports, text: Reading reports, when: !cel "'x-role' in request.headers" }
+---
+kind: Ui.Page
+metadata: { name: reports }
+path: /reports
+title: Reports
+children:
+  - { type: text, text: Reports, style: title }
+---
+kind: Telo.Sequence
+metadata: { name: check }
+steps:
+  - name: first
+    invoke: !ref home
+    inputs: { request: { headers: {} } }
+  - name: second
+    invoke: !ref home
+    inputs: { request: { headers: { x-role: admin } } }
+  - name: firstIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.first.result.children"
+      expected:
+        - { type: text, fill: false, style: title, text: { text: Welcome, context: null, lang: en, computed: false } }
+        - { type: text, fill: false, text: { text: invoked 1 for a request, context: null, lang: und, computed: false } }
+        - { type: text, fill: false, text: { text: invoked 1, context: null, lang: und, computed: false } }
+        - type: stack
+          fill: false
+          children:
+            - { type: text, fill: false, style: subheading, text: { text: Need a hand?, context: null, lang: en, computed: false } }
+            - type: navigation-column
+              fill: false
+              state: null
+              navigation:
+                items:
+                  - { type: link, key: status, href: "https://status.acme.test", text: { text: Status, context: null, lang: en, computed: false } }
+  - name: secondIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.second.result.children[1], steps.second.result.children[2], steps.second.result.children[3]]"
+      expected:
+        - { type: text, fill: false, text: { text: invoked 2 for a request, context: null, lang: und, computed: false } }
+        - { type: text, fill: false, text: { text: invoked 1, context: null, lang: und, computed: false } }
+        - type: stack
+          fill: false
+          children:
+            - { type: text, fill: false, style: subheading, text: { text: Need a hand?, context: null, lang: en, computed: false } }
+            - type: navigation-column
+              fill: false
+              state: null
+              navigation:
+                items:
+                  - { type: link, key: status, href: "https://status.acme.test", text: { text: Status, context: null, lang: en, computed: false } }
+                  - { type: page, key: reading-reports, path: /reports, text: { text: Reading reports, context: null, lang: en, computed: false } }
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/invalid/panes/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Help.Links/home_children_2_ref at 'children[2].ref.navigation.items[0]': names a page with no title and gives no text of its own"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.View/editLink: !cel: 'params' is not available here — Ui.PageLayout/layout withholds it: a layout region is drawn on pages with different path variables and query parameters, so it reads none. Read them in the page that declares them."
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.SplitView/sections: !cel: 'request' is not available here — Ui.SplitView/sections withholds it: a composite is resolved once, at its creation, with no request. Place what reads it in a page's children or a layout region, or drop the read."
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Page/home: !cel: 'request' is not available here — the inline Ui.SplitView withholds it: a composite is resolved once, at its creation, with no request."
+---
+# Exactly those four: the same pane kind in a page's children and in a layout
+# region, and the same view in a page whose path binds `id`, read freely.
+kind: Telo.Sequence
+metadata: { name: refusedCount }
+steps:
+  - name: check
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/invalid/panes/telo.yaml }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "sort(steps.check.result.reported.map(l, l.split(':')[0]))"
+      expected: ["CEL_UNKNOWN_IDENTIFIER Ui.Page/home", "CEL_UNKNOWN_IDENTIFIER Ui.SplitView/sections", "CEL_UNKNOWN_IDENTIFIER Ui.View/editLink", "RESOURCE_RULE_VIOLATED Help.Links/home_children_2_ref at 'children[2].ref.navigation.items[0]'"]

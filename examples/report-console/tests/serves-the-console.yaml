@@ -70,8 +70,8 @@ steps:
         lang: en
         title: { lang: en, message: [ Reports ] }
         pages:
-          - { path: /, title: { lang: en, message: [ Reports ] } }
-          - { path: /projects, title: { lang: en, message: [ Projects ] } }
+          - { path: /, title: { lang: en, message: [ Reports ] }, layout: "9b0ae41872b4" }
+          - { path: /projects, title: { lang: en, message: [ Projects ] }, layout: "9b0ae41872b4" }
         stylesheet: true
         vary: Accept-Language
 

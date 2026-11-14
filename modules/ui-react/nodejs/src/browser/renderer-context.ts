@@ -27,6 +27,9 @@ export const RendererContext = createContext<RendererEnvironment>({
  *  `row`, `values` — by name, for the bindings drawn beneath. */
 export const RootsContext = createContext<Readonly<Record<string, unknown>>>({});
 
+/** Where a tab bar is drawn: the bottom edge of the application, whatever region its navbar stands in. */
+export const BottomSlotContext = createContext<HTMLElement | null>(null);
+
 /** Whether what is drawn here is shown. Hidden content keeps its state and
  *  starts no request until it is shown. */
 export const VisibleContext = createContext(true);

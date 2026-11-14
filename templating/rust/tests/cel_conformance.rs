@@ -41,7 +41,7 @@ use telorun_sdk_core::value_type::{cel_type_of_value_type, value_brand_bases, va
 
 /// The dialect files: every row of each is answered here, with the rows each holds.
 const DRIVEN_FILES: [(&str, usize); 5] =
-    [("catalog.json", 195), ("types.json", 74), ("holes.json", 97), ("module-calls.json", 53), ("verdicts.json", 112)];
+    [("catalog.json", 195), ("types.json", 74), ("holes.json", 97), ("module-calls.json", 53), ("verdicts.json", 113)];
 /// The engine's own file; read here only for the file-set, surrogate and `celCode` gates.
 const LANGUAGE_FILE: &str = "language.json";
 /// The two files the engine's projection also answers, which hold no tag-only site input.

@@ -1,0 +1,23 @@
+# A kind whose field names `request` and withholds it.
+kind: Telo.Library
+metadata:
+  name: WithheldKinds
+  version: 1.0.0
+  description: Fixture library declaring a kind whose field region withholds a binding.
+exports: { kinds: [Box] }
+---
+kind: Telo.Definition
+metadata: { name: Box, description: Fixture kind holding a title computed per call. }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./box.mjs#Box]
+schema:
+  type: object
+  properties:
+    title:
+      type: string
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties: { request: { $ref: "#/$defs/NoRequest", x-telo-context-eval: runtime } }
+  $defs:
+    NoRequest: { x-telo-context-withheld: "a box is drawn once, with no request." }

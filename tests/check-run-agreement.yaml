@@ -563,6 +563,7 @@ targets:
   - !ref accessorOnlyEvaluatedAtRuntime
   - !ref accessorRootRuntimeOnly
   - !ref accessorRootRuntimeOnlyAtRuntime
+  - !ref contextWithheldRead
   - !ref compileOnlyReadPerCall
   - !ref compileOnlyReadPerCallAtRuntime
   - !ref mapRegionUnknownField
@@ -5334,6 +5335,17 @@ source: ./__fixtures__/check-run-agreement/node-tree/runtime-root-app/telo.yaml
 expect:
   errors: []
   runFails: "[ERR_ACCESSOR_NOT_PLAIN_CHAIN] RuntimeError: NodeTreeKinds.Probe/byAddress: 'condition.at: !cel \"request.ip\"' is not a plain chain the field can name: it starts at 'request'"
+---
+# A binding a region names and withholds is read by no expression, a guarded
+# one included — refused where it is written and by the load that runs it.
+kind: Assert.Manifest
+metadata: { name: contextWithheldRead }
+source: ./__fixtures__/check-run-agreement/context-withheld/app/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Kinds.Box/box: !cel: 'request' is not available here: a box is drawn once, with no request."
+  runFails: "[CEL_UNKNOWN_IDENTIFIER] Kinds.Box/box: !cel: 'request' is not available here: a box is drawn once, with no request."
 ---
 # A binding that exists only at load is unknown to an expression evaluated per
 # call…

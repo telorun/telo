@@ -1,0 +1,36 @@
+# A choice decides which page a bar names, and whether the site's layout holds
+# the library's bar: an unlisted page is reached in some configurations only.
+kind: Telo.Application
+metadata: { name: ReachableChoice }
+imports: { Reach: ./kinds, Docs: ./docs }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+---
+kind: Reach.Page
+metadata: { name: home }
+path: /
+---
+kind: Reach.Page
+metadata: { name: draft }
+path: /draft
+---
+kind: Reach.Bar
+metadata: { name: bar }
+items:
+  - page: !if
+      if: !cel "variables.flag1"
+      then: !ref draft
+      else: !ref home
+---
+kind: Reach.Layout
+metadata: { name: layout }
+header: !if
+  if: !cel "variables.flag2"
+  then: [!ref bar, !ref Docs.nav]
+  else: [!ref bar]
+---
+kind: Reach.Site
+metadata: { name: site }
+pages: [!ref home, !ref Docs.guide]
+layout: !ref layout

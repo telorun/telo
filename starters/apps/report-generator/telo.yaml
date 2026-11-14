@@ -482,6 +482,45 @@ routes:
             body: !cel "result.text"
     catches: *notFound
 ---
+kind: Ui.Page
+metadata: { name: reportsPage }
+path: /
+title: Reports
+children:
+  - { type: text, text: "Build a report", style: title }
+  - { type: text, text: "Queries the orders, draws the charts and stores the page and its CSV.", style: muted }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: &nothing
+        kind: Telo.JsonSchema
+        schema: { type: object, additionalProperties: false, properties: {} }
+      outputModel: !ref ReportList
+      request: { target: { path: /api/reports } }
+      label: Build report
+      result:
+        type: list
+        heading: Reports
+        rows: !cel "result.reports"
+        columns: &reportColumns
+          - value: !cel "row.builtAt"
+          - value: !cel "row.total"
+          - value: !cel "row.html"
+          - value: !cel "row.csv"
+  - { type: text, text: "Built so far", style: heading }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: *nothing
+      outputModel: !ref ReportList
+      request: { target: { path: /api/reports/recent } }
+      label: Show reports
+      result:
+        type: list
+        rows: !cel "result.reports"
+        columns: *reportColumns
+  - { type: link, text: "Open the latest report", href: /api/reports/latest }
+---
 # The whole frontend: two buttons with nothing to fill in, and the table of
 # reports each draws from what its route answers. A link out of that table
 # opens the stored page itself.
@@ -489,44 +528,17 @@ kind: UiReact.App
 metadata: { name: ui }
 title: !cel "variables.title"
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Reports
-    children:
-      - { type: text, text: "Build a report", style: heading }
-      - { type: text, text: "Queries the orders, draws the charts and stores the page and its CSV.", style: muted }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: &nothing
-            kind: Telo.JsonSchema
-            schema: { type: object, additionalProperties: false, properties: {} }
-          outputModel: !ref ReportList
-          request: { target: { path: /api/reports } }
-          label: Build report
-          result:
-            type: list
-            heading: Reports
-            rows: !cel "result.reports"
-            columns: &reportColumns
-              - value: !cel "row.builtAt"
-              - value: !cel "row.total"
-              - value: !cel "row.html"
-              - value: !cel "row.csv"
-      - { type: text, text: "Built so far", style: heading }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: *nothing
-          outputModel: !ref ReportList
-          request: { target: { path: /api/reports/recent } }
-          label: Show reports
-          result:
-            type: list
-            rows: !cel "result.reports"
-            columns: *reportColumns
-      - { type: link, text: "Open the latest report", href: /api/reports/latest }
+pages: [!ref reportsPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Reports
+        navigation:
+          items:
+            - { type: page, page: !ref reportsPage }
 ---
 kind: Http.Server
 metadata: { name: server }

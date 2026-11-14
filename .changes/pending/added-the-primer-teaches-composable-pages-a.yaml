@@ -1,0 +1,6 @@
+units:
+  apps/authoring-agent: Added
+body: "The primer teaches composable pages: a UiReact.App layout with navbar and aside
+  panes replaces the App header and navigation, Ui.SplitView holds its fold settings in
+  aside, a page title draws no heading, an unlisted linked page is refused, and resource
+  rules may walk references with reachable."

@@ -437,7 +437,10 @@ async function judge(loaded: Loaded): Promise<void> {
 
 /** Fixtures of this package's own tests that write a choice, outside the
  *  repository corpus `fileCorpus` walks. */
-const PACKAGE_FIXTURES = ["analyzer/nodejs/tests/__fixtures__/resource-rule-co-referrers/choice.yaml"];
+const PACKAGE_FIXTURES = [
+  "analyzer/nodejs/tests/__fixtures__/resource-rule-co-referrers/choice.yaml",
+  "analyzer/nodejs/tests/__fixtures__/resource-rule-reachable/choice.yaml",
+];
 
 describe("each fixture projects as its configurations", () => {
   for (const file of [...fileCorpus(), ...PACKAGE_FIXTURES]) {

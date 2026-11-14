@@ -12,25 +12,20 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { basename } from "node:path";
 import {
-  deliveredNavigation,
   isPage,
-  pagePathVariables,
+  isPageLayout,
   pageRouteKey,
-  preparedNavigation,
-  resolvedPageWidth,
   RequestNodes,
-  servedIconFormat,
   SpecTranslator,
-  type NavigationConfig,
-  type NavigationEntrySpec,
+  type AsideSpec,
   type PageInstance,
+  type PageLayoutInstance,
   type PageReading,
   type PageWidth,
-  type PreparedNavigation,
 } from "@telorun/ui";
 import abi from "./contract/abi.json" with { type: "json" };
 import layoutsContract from "./contract/layouts.json" with { type: "json" };
-import { AssetStore, entryAssets, type AssetRef } from "./asset-store.js";
+import { AssetStore, entryAssets, sha256Hex, type AssetRef } from "./asset-store.js";
 import { CONTROL_MECHANICS, mechanicsFileName } from "./browser/controls/mechanics.js";
 import { matchPage } from "./browser/page-route.js";
 import { HostedNodes, type SpecNode } from "./component-abi.js";
@@ -42,16 +37,6 @@ import type { ProvidedTheme } from "./theme-controller.js";
 import { tokensStylesheet, type ProvidedTokens } from "./tokens-stylesheet.js";
 
 type TokensEntry = { tokens: unknown; when?: unknown };
-
-/** The nodes of the application's own in its header, by side, and how wide its content is drawn. */
-interface HeaderConfig {
-  start?: unknown;
-  end?: unknown;
-  width?: PageWidth | null;
-}
-
-const HEADER_SIDES = ["start", "end"] as const;
-type HeaderSide = (typeof HEADER_SIDES)[number];
 
 /** Nothing served here: the bare problem of a 404, as the server answers one. */
 function notFound(reply: FastifyReply) {
@@ -69,17 +54,33 @@ export type AppResource = RuntimeResource & {
   compactBelow?: string;
   /** Left to each page to fill when omitted. */
   pageWidth?: PageWidth | null;
-  header?: HeaderConfig | null;
-  /** Each a `Ui.Page`. */
+  /** The layout every page is drawn in, unless its entry names another. */
+  layout?: unknown;
+  /** Each a `Ui.Page`, or a `Ui.PageRoute`. */
   pages: unknown[];
-  navigation?: NavigationConfig | null;
+  /** Nodes drawn for a path no page serves. */
+  notFound?: unknown[] | null;
 };
 
-/** A listed page, with what it publishes. */
+/** A listed page, with what it publishes and the layout it is drawn in. */
 interface ListedPage {
   instance: PageInstance;
   reading: PageReading;
+  /** Absent for a page drawn bare. */
+  layout?: string;
 }
+
+/** A `pages` entry naming its own layout. */
+interface PageRouteConfig {
+  page: unknown;
+  layout: unknown;
+}
+
+const isRoute = (entry: unknown): entry is PageRouteConfig =>
+  entry !== null && typeof entry === "object" && "page" in entry && "layout" in entry && !("kind" in entry);
+
+/** How many hex digits of a field's digest name its layout. */
+const LAYOUT_ID_LENGTH = 12;
 
 interface Providing<T> {
   provide(): Promise<T>;
@@ -133,15 +134,12 @@ interface Started {
   bundle: string;
   rendererUrl: string;
   importMap: Record<string, string>;
-  /** The headers the shell, the application document and each page read. */
-  vary: { app: HeaderReads; pages: HeaderReads[] };
+  /** The headers the application document, each page and the not-found answer read. */
+  vary: { app: HeaderReads; pages: HeaderReads[]; notFound: HeaderReads };
   /** By negotiated tag. */
   languages: Map<string, InLanguage>;
-  /** The header's nodes by side, prepared once; nothing when the application
-   *  declares no header. */
-  header?: Record<HeaderSide, RequestNodes>;
-  /** The navigation, every default filled; its entries delivered per request. */
-  navigation: PreparedNavigation;
+  /** The nodes drawn for a path no page serves, prepared once. */
+  notFound: RequestNodes;
   /** Components this renderer cannot host, replaced as they are delivered. */
   hosted: HostedNodes;
   /** The stylesheet of each of the application's token sets, by instance. */
@@ -167,6 +165,11 @@ export class UiReactApp {
   private readonly owner: string;
   private readonly streams: EventStreams;
   private readonly pages: ListedPage[];
+  /** The layouts drawing a page, by id. */
+  private readonly layouts = new Map<string, PageLayoutInstance>();
+  /** What each layout declaration was given as its id: one declaration, one id. */
+  private readonly layoutIds = new Map<PageLayoutInstance, string>();
+  private readonly defaultLayout: string | undefined;
 
   constructor(
     private readonly resource: AppResource,
@@ -174,9 +177,13 @@ export class UiReactApp {
   ) {
     this.owner = `UiReact.App '${resource.metadata.name}'`;
     this.streams = new EventStreams(this.owner, ctx);
-    this.pages = resource.pages.map((page, index) => {
-      const instance = ctx.resolveRef(page, isPage, () => `'pages[${index}]' of ${this.owner}`, "Ui.Page");
-      return { instance, reading: instance.snapshot() };
+    this.defaultLayout = resource.layout == null ? undefined : this.layoutOf(resource.layout, "/layout");
+    this.pages = resource.pages.map((entry, index) => {
+      const where = `'pages[${index}]' of ${this.owner}`;
+      const route = isRoute(entry) ? entry : undefined;
+      const instance = ctx.resolveRef(route ? route.page : entry, isPage, () => (route ? `'pages[${index}].page' of ${this.owner}` : where), "Ui.Page");
+      const layout = route ? this.layoutOf(route.layout, `/pages/${index}/layout`) : this.defaultLayout;
+      return { instance, reading: instance.snapshot(), ...(layout === undefined ? {} : { layout }) };
     });
     const seen = new Map<string, { path: string; index: number }>();
     for (const [index, { reading }] of this.pages.entries()) {
@@ -196,35 +203,22 @@ export class UiReactApp {
       }
       seen.set(key, { path: reading.path, index });
     }
-    this.refuseUnroutedEntries(resource.navigation?.items ?? [], "navigation.items");
   }
 
-  /** Every entry naming a page, at any depth, names one `pages` lists, a label for it, and no variable in its path. */
-  private refuseUnroutedEntries(entries: NavigationConfig["items"], at: string): void {
-    for (const [index, entry] of (entries ?? []).entries()) {
-      const where = `${at}[${index}]`;
-      if (entry.type === "group") this.refuseUnroutedEntries(entry.items, `${where}.items`);
-      if (entry.type !== "page") continue;
-      const page = this.ctx.resolveRef(entry.page, isPage, () => `'${where}.page' of ${this.owner}`, "Ui.Page");
-      if (!this.pages.some(({ instance }) => instance === page)) {
-        throw new RuntimeError(
-          "ERR_UI_NAVIGATION_PAGE_UNROUTED",
-          `${this.owner}: '${where}' names a page the application does not list in its pages ('${page.snapshot().path}'), so it leads nowhere. Add the page to pages, or remove the entry.`,
-        );
-      }
-      if (entry.text == null && page.snapshot().title === undefined) {
-        throw new RuntimeError(
-          "ERR_UI_NAVIGATION_PAGE_UNTITLED",
-          `${this.owner}: '${where}' names a page with no title ('${page.snapshot().path}') and gives no text of its own, so it has no label. Write the entry's text, or give the page a title.`,
-        );
-      }
-      if (pagePathVariables(page.snapshot().path).length > 0) {
-        throw new RuntimeError(
-          "ERR_UI_NAVIGATION_PAGE_HAS_PARAMETERS",
-          `${this.owner}: '${where}' names a page with a variable in its path ('${page.snapshot().path}'), which a navigation entry cannot fill. Reach the page with a link whose pathParams fill it, or remove the entry.`,
-        );
-      }
-    }
+  /**
+   * The id of the layout `value` names: a digest of the field that first names
+   * its declaration, so every replica reads the same one and two entries naming
+   * one declaration share it. A layout writing nothing is a layout like any
+   * other: it has an id and draws no chrome.
+   */
+  private layoutOf(value: unknown, field: string): string {
+    const instance = this.ctx.resolveRef(value, isPageLayout, () => `'${field}' of ${this.owner}`, "Ui.PageLayout");
+    const known = this.layoutIds.get(instance);
+    if (known !== undefined) return known;
+    const id = sha256Hex(field).slice(0, LAYOUT_ID_LENGTH);
+    this.layoutIds.set(instance, id);
+    this.layouts.set(id, instance);
+    return id;
   }
 
   /** Mount contract. Everything lives in one encapsulated scope under the
@@ -241,6 +235,7 @@ export class UiReactApp {
         scope.addHook("preClose", () => this.streams.closeAll());
         scope.get("/_telo/ui/app", (request, reply) => this.serveApp(started, requestScope, request, reply));
         scope.get("/_telo/ui/page", (request, reply) => this.servePage(started, requestScope, request, reply));
+        scope.get("/_telo/ui/layout", (request, reply) => this.serveLayout(started, requestScope, request, reply));
         scope.get("/_telo/ui/events", async (request, reply) => {
           reply.hijack();
           try {
@@ -276,33 +271,14 @@ export class UiReactApp {
       stylesheets[specifier] = assets.filter((asset) => asset.mediaType === "text/css");
       if (specifier === HOST) hostAbi = entry.abi;
     }
-    for (const { instance } of this.pages) {
-      for (const asset of instance.assets()) await store.hold(asset);
+    for (const { reading } of this.pages) {
+      for (const asset of reading.assets) await store.hold(asset);
     }
-    const declaredHeader = this.resource.header ?? undefined;
-    let header: Record<HeaderSide, RequestNodes> | undefined;
-    if (declaredHeader !== undefined) {
-      header = {} as Record<HeaderSide, RequestNodes>;
-      for (const side of HEADER_SIDES) {
-        const nodes = await RequestNodes.prepare(declaredHeader[side] ?? [], {}, this.ctx, `${this.owner} header.${side}`);
-        for (const asset of nodes.assets) await store.hold(asset);
-        header[side] = nodes;
-      }
+    for (const layout of this.layouts.values()) {
+      for (const asset of layout.snapshot().assets) await store.hold(asset);
     }
-    // Each icon's file served as it is, by its digest, and drawn as a mask.
-    const navigation = await preparedNavigation(
-      this.resource.navigation,
-      this.pages.map(({ instance }) => instance),
-      this.ctx,
-      this.owner,
-      async ({ file }, where) => {
-        const bytes = await store.bytesOf(file);
-        const format = servedIconFormat(bytes, file, this.owner, where);
-        const slug = basename(file).replace(/\.[^.]*$/, "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
-        const name = `${slug || "icon"}.${format.extension}`;
-        return urlOf(store.addBytes(name, format.mediaType, bytes));
-      },
-    );
+    const notFound = await RequestNodes.prepare(this.resource.notFound ?? [], {}, this.ctx, `${this.owner} notFound`);
+    for (const asset of notFound.assets) await store.hold(asset);
     const hosted = new HostedNodes(
       { abis: hostAbi === undefined ? [] : [hostAbi], layoutAbis: [layoutsContract.generation], specifiers: SUPPLIED },
       (error) =>
@@ -372,10 +348,9 @@ export class UiReactApp {
     const vary = {
       app: unionReads(
         headerReads(this.tokenEntries().map((entry) => entry.when)),
-        ...HEADER_SIDES.map((side) => header?.[side].headerReads ?? new Set<string>()),
-        headerReads(navigation.items),
       ),
       pages: this.pages.map(({ instance }) => unionReads(instance.headerReads())),
+      notFound: unionReads(notFound.headerReads),
     };
     return {
       mount,
@@ -385,8 +360,7 @@ export class UiReactApp {
       importMap,
       vary,
       languages: new Map(),
-      header,
-      navigation,
+      notFound,
       hosted,
       tokens,
       leading,
@@ -513,19 +487,6 @@ export class UiReactApp {
     const tokens = chosen === undefined ? [] : [started.tokens.get(chosen.tokens) as string];
     const tag = this.languageOf(request, requestScope);
     const language = this.inLanguage(started, tag);
-    const header = {
-      width: resolvedPageWidth(this.resource.header?.width, this.resource.pageWidth),
-      ...Object.fromEntries(
-        HEADER_SIDES.map((side) => [side, started.header ? this.shown(started, started.header[side].deliver(scope.request), language) : []]),
-      ),
-    };
-    const translatedEntries = (entries: NavigationEntrySpec[]): unknown[] =>
-      entries.map((entry) =>
-        entry.type === "group"
-          ? { ...entry, text: language.translate(entry.text), items: translatedEntries(entry.items) }
-          : { ...entry, text: language.translate(entry.text) },
-      );
-    const items = deliveredNavigation(this.ctx.expandValue(started.navigation.items, scope));
     return this.send(
       request,
       reply,
@@ -534,9 +495,12 @@ export class UiReactApp {
         bundle: started.bundle,
         title: language.title,
         ...(tag === "und" ? {} : { lang: tag }),
-        pages: this.pages.map(({ reading }, index) => ({ path: reading.path, ...titled(language.pageTitles[index]) })),
-        navigation: { items: translatedEntries(items), placement: started.navigation.placement },
-        header,
+        pages: this.pages.map(({ layout }, index) => ({
+          path: this.pages[index]!.reading.path,
+          ...titled(language.pageTitles[index]),
+          ...(layout === undefined ? {} : { layout }),
+        })),
+        ...(this.defaultLayout === undefined ? {} : { layout: this.defaultLayout }),
         texts: language.texts,
         stylesheets: [...started.leading, ...tokens, ...started.trailing],
         controls: started.controls,
@@ -546,13 +510,54 @@ export class UiReactApp {
     );
   }
 
+  /** The chrome of one layout for this request. It holds the answers of the panes it handed the request to, so it varies by all of it. */
+  private async serveLayout(started: Started, requestScope: RequestScope<FastifyRequest> | undefined, request: FastifyRequest, reply: FastifyReply) {
+    const id = (request.query as Record<string, unknown>).id;
+    const layout = typeof id === "string" ? this.layouts.get(id) : undefined;
+    if (!layout) return notFound(reply.header("cache-control", "private, no-cache"));
+    const scope = { request: this.requestOf(request, requestScope) };
+    const pageWidth = this.resource.pageWidth ?? undefined;
+    const delivered = await layout.invoke(
+      { request: scope.request as { headers: Record<string, string>; ip?: string }, ...(pageWidth === undefined ? {} : { pageWidth }) },
+      requestScope?.forRequest(request).context,
+    );
+    const language = this.inLanguage(started, this.languageOf(request, requestScope));
+    return this.send(
+      request,
+      reply,
+      {
+        specVersion: SPEC_VERSION,
+        bundle: started.bundle,
+        id,
+        width: delivered.width,
+        header: this.shown(started, delivered.header, language),
+        ...(delivered.aside === undefined ? {} : { aside: this.shownAside(started, delivered.aside, language) }),
+        footer: this.shown(started, delivered.footer, language),
+      },
+      "*",
+    );
+  }
+
+  /** An aside with its frame's texts, its actions and its content translated. */
+  private shownAside(started: Started, aside: AsideSpec, language: InLanguage): AsideSpec {
+    const nothing = { type: "stack", children: [], fill: false };
+    const framed = language.translator.node({ type: "split", aside: { ...aside, actions: [], content: nothing }, content: nothing, fill: false }) as {
+      aside: AsideSpec;
+    };
+    return {
+      ...framed.aside,
+      actions: this.shown(started, aside.actions, language),
+      content: this.shown(started, [aside.content], language)[0]!,
+    };
+  }
+
   /** `requestScope` is the one of the server this request reached: one App may be mounted on several. */
   private async servePage(started: Started, requestScope: RequestScope<FastifyRequest> | undefined, request: FastifyRequest, reply: FastifyReply) {
     const path = (request.query as Record<string, unknown>).path;
     const index = typeof path === "string" ? this.pageAt(path) : -1;
     const page = this.pages[index];
     if (!page) {
-      return notFound(reply.header("cache-control", "private, no-cache"));
+      return this.servePageNotFound(started, requestScope, request, reply, typeof path === "string" ? path : "");
     }
     const scope = { request: this.requestOf(request, requestScope) };
     const pageWidth = this.resource.pageWidth ?? undefined;
@@ -577,6 +582,37 @@ export class UiReactApp {
       },
       started.vary.pages[index],
     );
+  }
+
+  /** The 404 problem of an address no page serves, with the nodes drawn for it. */
+  private async servePageNotFound(
+    started: Started,
+    requestScope: RequestScope<FastifyRequest> | undefined,
+    request: FastifyRequest,
+    reply: FastifyReply,
+    path: string,
+  ) {
+    const language = this.inLanguage(started, this.languageOf(request, requestScope));
+    const drawn =
+      this.resource.notFound == null
+        ? this.builtInNotFound(language, path)
+        : this.shown(started, await started.notFound.deliver(this.requestOf(request, requestScope) as never, requestScope?.forRequest(request).context), language);
+    this.addVary(reply, started.vary.notFound);
+    return reply
+      .code(404)
+      .header("cache-control", "private, no-cache")
+      .type("application/problem+json; charset=utf-8")
+      .send(JSON.stringify({ type: "about:blank", title: "Not Found", status: 404, children: drawn }));
+  }
+
+  /** The heading and the sentence drawn where the application writes none, in the request's language. */
+  private builtInNotFound(language: InLanguage, path: string): SpecNode[] {
+    const { own, sets } = language.texts;
+    const sentence = sets[own]?.noPageAt;
+    return [
+      { type: "text", text: { set: own, key: "notFound" }, style: "title", fill: false },
+      ...(sentence === undefined ? [] : [{ type: "text", text: { ...sentence, values: { path: { value: path } } }, fill: false }]),
+    ];
   }
 
   /** The index of the page an address opens, matched by segments; -1 for none. */

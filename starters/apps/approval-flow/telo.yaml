@@ -552,66 +552,78 @@ kind: Ui.CollectionPresentation
 metadata: { name: requestsPresentation }
 source: { kind: Ui.CollectionSource, collection: !ref purchaseRequests, basePath: /api/requests }
 ---
+kind: Ui.Page
+metadata: { name: requestsPage }
+path: /
+title: Requests
+children:
+  - { type: text, text: "Waiting for review", style: title }
+  - { type: text, text: "A request under the limit is approved by the rule and never waits here.", style: muted }
+  - type: composite
+    ref:
+      kind: Ui.Listing
+      presentation: !ref requestsPresentation
+      model: !ref PurchaseRequest
+      filters: { status: pending }
+      layout:
+        kind: Ui.TableLayout
+        columns:
+          - value: !cel "row.requester"
+          - value: !cel "row.item"
+          - value: !cel "row.amountCents"
+          - value: !cel "row.costCenter"
+          - value: !cel "row.submittedAt"
+      create:
+        form: { kind: Ui.Form, model: !ref NewRequest, presentation: !ref requestsPresentation }
+      rowActions:
+        - action:
+            kind: Ui.Action
+            inputModel: !ref Decision
+            request: { target: { path: /api/approve } }
+            label: Approve
+          inputs:
+            id: !cel "row.id"
+        - action:
+            kind: Ui.Action
+            inputModel: !ref Decision
+            request: { target: { path: /api/reject } }
+            label: Reject
+          inputs:
+            id: !cel "row.id"
+          confirm: Reject this request?
+  - { type: text, text: "Every request", style: heading }
+  - type: composite
+    ref:
+      kind: Ui.Listing
+      presentation: !ref requestsPresentation
+      model: !ref PurchaseRequest
+      layout:
+        kind: Ui.TableLayout
+        columns:
+          - value: !cel "row.item"
+          - value: !cel "row.requester"
+          - value: !cel "row.amountCents"
+          - value: !cel "row.status"
+          - value: !cel "row.decidedBy"
+          - value: !cel "row.note"
+---
 # The whole frontend: the requests waiting, each with its two decisions and a
 # form to submit another, and under it the ledger.
 kind: UiReact.App
 metadata: { name: ui }
 title: Purchase requests
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Requests
-    children:
-      - { type: text, text: "Waiting for review", style: heading }
-      - { type: text, text: "A request under the limit is approved by the rule and never waits here.", style: muted }
-      - type: composite
-        ref:
-          kind: Ui.Listing
-          presentation: !ref requestsPresentation
-          model: !ref PurchaseRequest
-          filters: { status: pending }
-          layout:
-            kind: Ui.TableLayout
-            columns:
-              - value: !cel "row.requester"
-              - value: !cel "row.item"
-              - value: !cel "row.amountCents"
-              - value: !cel "row.costCenter"
-              - value: !cel "row.submittedAt"
-          create:
-            form: { kind: Ui.Form, model: !ref NewRequest, presentation: !ref requestsPresentation }
-          rowActions:
-            - action:
-                kind: Ui.Action
-                inputModel: !ref Decision
-                request: { target: { path: /api/approve } }
-                label: Approve
-              inputs:
-                id: !cel "row.id"
-            - action:
-                kind: Ui.Action
-                inputModel: !ref Decision
-                request: { target: { path: /api/reject } }
-                label: Reject
-              inputs:
-                id: !cel "row.id"
-              confirm: Reject this request?
-      - { type: text, text: "Every request", style: heading }
-      - type: composite
-        ref:
-          kind: Ui.Listing
-          presentation: !ref requestsPresentation
-          model: !ref PurchaseRequest
-          layout:
-            kind: Ui.TableLayout
-            columns:
-              - value: !cel "row.item"
-              - value: !cel "row.requester"
-              - value: !cel "row.amountCents"
-              - value: !cel "row.status"
-              - value: !cel "row.decidedBy"
-              - value: !cel "row.note"
+pages: [!ref requestsPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Purchase requests
+        navigation:
+          items:
+            - { type: page, page: !ref requestsPage }
 ---
 kind: Http.Server
 metadata: { name: server }

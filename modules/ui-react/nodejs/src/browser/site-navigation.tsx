@@ -1,31 +1,33 @@
-import { useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { NavigationEntry } from "../contract/ui-react-controls.js";
 import { isCurrentAddress, type CurrentLocation } from "./address-wire.js";
 import { useControl } from "./effective-controls.js";
 import { useHost, useHostStore } from "./host.js";
 import { linkAddress, pageAddress } from "./link-address.js";
+import { AsideContext } from "./aside.js";
 import {
   navigationStorage,
   navigationStorageKey,
   readNavigationStore,
   writeNavigationStore,
   type NavigationStore,
-  type SidebarState,
 } from "./navigation-state.js";
-import { ErrorNode } from "./nodes.js";
+import { ErrorNode, Nodes, type SpecNode } from "./nodes.js";
 import { openValue } from "./open-address.js";
-import { RendererContext } from "./renderer-context.js";
+import { assetUrl, BottomSlotContext, RendererContext, type RendererEnvironment } from "./renderer-context.js";
 import { Surface, type SurfaceSpec } from "./surface.js";
 import { useSay, useText, type WireText } from "./texts.js";
 
-/** An entry of the application's navigation, as the application document
- *  says it: `key` is the slug of its source text under its group's key — what
- *  a stored or addressed state names it by — and `icon` the address its
- *  glyph's file is served at. */
+/** An entry of a navigation tree, as the layout document says it: `key` is the
+ *  slug of its source text under its group's key — what a stored or addressed
+ *  state names it by — and `icon` the file its glyph is drawn from. */
 export type NavigationEntrySpec =
-  | { type: "page"; key: string; path: string; text: WireText; icon?: string }
-  | { type: "link"; key: string; href: string; text: WireText; icon?: string }
-  | { type: "group"; key: string; text: WireText; items: NavigationEntrySpec[]; icon?: string };
+  | { type: "page"; key: string; path: string; text: WireText; icon?: AssetRef }
+  | { type: "link"; key: string; href: string; text: WireText; icon?: AssetRef }
+  | { type: "group"; key: string; text: WireText; items: NavigationEntrySpec[]; icon?: AssetRef };
+
+type AssetRef = { digest: string; name: string };
 
 /** The whole tree behind a menu button. */
 type OverlayPlacement = { type: "overlay"; surface: SurfaceSpec };
@@ -33,26 +35,23 @@ type OverlayPlacement = { type: "overlay"; surface: SurfaceSpec };
 type TabBarPlacement = { type: "tab-bar"; visible: number; surface: SurfaceSpec };
 type CompactPlacement = OverlayPlacement | TabBarPlacement;
 
-/** How the navigation is drawn: in the header, in a sidebar, behind a menu button, or as a tab bar. */
-export type NavigationPlacementSpec =
-  | { type: "header"; compact: CompactPlacement }
-  | {
-      type: "sidebar";
-      side: "start" | "end";
-      rail?: { collapsed: boolean };
-      store: NavigationStore;
-      compact: CompactPlacement;
-    }
-  | CompactPlacement;
+/** How a navbar draws its navigation: in a row, behind a menu button, or as a tab bar. */
+export type NavigationPlacementSpec = { type: "header"; compact: CompactPlacement } | CompactPlacement;
 
-export interface NavigationSpec {
-  items: NavigationEntrySpec[];
+/** The `navbar` node: a title and its navigation, with nodes of its own before and after. */
+export interface NavbarNodeSpec {
+  title?: WireText;
+  start: SpecNode[];
+  end: SpecNode[];
+  navigation: { items: NavigationEntrySpec[] };
   placement: NavigationPlacementSpec;
 }
 
-/** Where in the application the navigation may be drawn: the header's start,
- *  middle and end, a column before or after `main`, and the bottom edge. */
-export type NavigationSlot = "start" | "middle" | "end" | "before" | "after" | "bottom";
+/** The `navigation-column` node: the tree as a column, its open groups kept under `state`. */
+export interface NavigationColumnNodeSpec {
+  navigation: { items: NavigationEntrySpec[] };
+  state: { key: string; store: NavigationStore } | null;
+}
 
 /** The key of the group what does not fit moves into: no entry's key starts with `~`. */
 const MORE = "~more";
@@ -75,13 +74,19 @@ function glyph(address: string): ReactElement {
 /** The entries with their addresses, the shown page's entry, a link leading to where the viewer is
  *  and every group on the way to either marked current. An entry whose address does not resolve is
  *  left out, and a group left with nothing with it. */
-function drawn(items: NavigationEntrySpec[], location: CurrentLocation, address: (href: string) => string | undefined, label: (text: WireText) => string): Drawn {
+function drawn(
+  items: NavigationEntrySpec[],
+  location: CurrentLocation,
+  address: (href: string) => string | undefined,
+  label: (text: WireText) => string,
+  environment: RendererEnvironment,
+): Drawn {
   const addresses = new Map<string, string>();
   const failing: string[] = [];
   const entries = (list: NavigationEntrySpec[]): NavigationEntry[] =>
     list.flatMap((entry): NavigationEntry[] => {
       const key = entry.key;
-      const icon = entry.icon === undefined ? {} : { icon: glyph(entry.icon) };
+      const icon = entry.icon === undefined ? {} : { icon: glyph(assetUrl(environment, entry.icon)) };
       if (entry.type === "group") {
         const items = entries(entry.items);
         if (items.length === 0) return [];
@@ -114,20 +119,6 @@ function Unresolved({ href }: { href: string }): ReactNode {
   );
 }
 
-/** The slot a placement is drawn in. */
-function slotOf(placement: NavigationPlacementSpec): NavigationSlot {
-  switch (placement.type) {
-    case "header":
-      return "middle";
-    case "sidebar":
-      return placement.side === "end" ? "after" : "before";
-    case "tab-bar":
-      return "bottom";
-    case "overlay":
-      return placement.surface.type === "drawer" && placement.surface.side === "end" ? "end" : "start";
-  }
-}
-
 /** The tree drawn, and how following one of its links moves the page. */
 interface Tree {
   drawn: Drawn;
@@ -135,27 +126,15 @@ interface Tree {
   follow(key: string, then?: () => void): void;
 }
 
-/**
- * The application's navigation where its placement says: a row in the header
- * — a group a dropdown, a nested group a submenu — a column beside the page
- * whose groups open in place, collapsible to a rail, a menu button opening the
- * whole tree in a surface, or a tab bar along the bottom edge. Below the
- * breakpoint a header row or a sidebar is replaced by its compact placement.
- * `side` is the slot this part is drawn in; it draws only in its placement's.
- */
-export function SiteNavigation({ navigation, path, side }: { navigation: NavigationSpec; path: string; side: NavigationSlot }): ReactNode {
+/** The tree of a navigation: drawn as `Navigation` takes it, and following one of its links. */
+function useTree(items: NavigationEntrySpec[], path: string): Tree {
   const store = useHostStore();
   const host = useHost();
-  const { prefix, pages, compact } = useContext(RendererContext);
+  const environment = useContext(RendererContext);
+  const { prefix, pages } = environment;
   const text = useText();
-  const declared = navigation.placement;
-  const placement = compact && (declared.type === "header" || declared.type === "sidebar") ? declared.compact : declared;
-  if (slotOf(placement) !== side) return null;
-
-  // A navigation with nothing delivered draws nothing, not even its button.
-  if (navigation.items.length === 0) return null;
   const tree: Tree = {
-    drawn: drawn(navigation.items, { path, search: host.location.search }, (href) => linkAddress(store, href), text),
+    drawn: drawn(items, { path, search: host.location.search }, (href) => linkAddress(store, href), text, environment),
     follow: (key, then) => {
       const href = tree.drawn.addresses.get(key);
       if (href === undefined) return;
@@ -165,21 +144,50 @@ export function SiteNavigation({ navigation, path, side }: { navigation: Navigat
       else host.navigate(to);
     },
   };
-  // Two entries may hold one failing address: each is keyed by its place among them.
-  const failing = tree.drawn.failing.map((href, index) => <Unresolved key={index} href={href} />);
-  switch (placement.type) {
-    case "header":
-      return <HeaderRow tree={tree}>{failing}</HeaderRow>;
-    case "sidebar":
-      return <Sidebar placement={placement} tree={tree}>{failing}</Sidebar>;
-    case "overlay":
-      return <MenuButton placement={placement} tree={tree}>{failing}</MenuButton>;
-    case "tab-bar":
-      return <TabBar placement={placement} tree={tree}>{failing}</TabBar>;
-  }
+  return tree;
 }
 
-/** The tree in a row in the header: a group opens as a dropdown, what does not fit moves under More. */
+/**
+ * A title and its navigation where the placement says: a row between the
+ * title and the end — a group a dropdown, a nested group a submenu — a menu
+ * button opening the whole tree in a surface, or a tab bar along the bottom
+ * edge. Below the breakpoint a header row is replaced by its compact placement.
+ * The node's own `start` stands before the title and its `end` after the
+ * navigation. A navigation with nothing delivered draws nothing, not even its button.
+ */
+export function NavbarNode({ node }: { node: NavbarNodeSpec }): ReactNode {
+  const host = useHost();
+  const { compact } = useContext(RendererContext);
+  const text = useText();
+  const tree = useTree(node.navigation.items, host.location.path);
+  const placement = compact && node.placement.type === "header" ? node.placement.compact : node.placement;
+  const empty = node.navigation.items.length === 0;
+  // Two entries may hold one failing address: each is keyed by its place among them.
+  const failing = tree.drawn.failing.map((href, index) => <Unresolved key={index} href={href} />);
+  const menuAtEnd = placement.type === "overlay" && placement.surface.type === "drawer" && placement.surface.side === "end";
+  const menu = placement.type === "overlay" && !empty ? <MenuButton placement={placement} tree={tree}>{failing}</MenuButton> : null;
+  return (
+    <div data-telo-part="navbar">
+      {!menuAtEnd && menu}
+      {node.start.length > 0 && (
+        <div data-telo-part="navbar-start">
+          <Nodes nodes={node.start} />
+        </div>
+      )}
+      {node.title !== undefined && <span data-telo-part="navbar-title">{text(node.title)}</span>}
+      {placement.type === "header" && !empty && <HeaderRow tree={tree}>{failing}</HeaderRow>}
+      {node.end.length > 0 && (
+        <div data-telo-part="navbar-end">
+          <Nodes nodes={node.end} />
+        </div>
+      )}
+      {menuAtEnd && menu}
+      {placement.type === "tab-bar" && !empty && <TabBar placement={placement} tree={tree}>{failing}</TabBar>}
+    </div>
+  );
+}
+
+/** The tree in a row in the navbar: a group opens as a dropdown, what does not fit moves under More. */
 function HeaderRow({ tree, children }: { tree: Tree; children: ReactNode }) {
   const say = useSay();
   const Navigation = useControl("Navigation");
@@ -263,23 +271,24 @@ function MenuButton({ placement, tree, children }: { placement: OverlayPlacement
 }
 
 /**
- * The tree in a column beside the page, its groups opening in place, several
- * at once. With a rail it collapses to one, whose groups float beside it. The
- * open groups and whether it is collapsed are kept in its store.
+ * The tree as a column whose groups open in place, several at once. In a
+ * folded aside it is a rail, whose groups float beside it. The open groups are
+ * kept under the column's own `state.key`.
  */
-function Sidebar({ placement, tree, children }: { placement: Extract<NavigationPlacementSpec, { type: "sidebar" }>; tree: Tree; children: ReactNode }) {
+export function NavigationColumnNode({ node }: { node: NavigationColumnNodeSpec }): ReactNode {
+  const host = useHost();
   const { prefix } = useContext(RendererContext);
   const say = useSay();
   const Navigation = useControl("Navigation");
-  const Icon = useControl("Icon");
-  const id = useId();
+  const aside = useContext(AsideContext);
+  const tree = useTree(node.navigation.items, host.location.path);
   const groups = useMemo(() => new Set(groupKeys(tree.drawn.entries)), [tree.drawn.entries]);
-  const kept = useRef<{ storage?: Storage; key: string }>({ key: navigationStorageKey(prefix) });
-  const [state, setState] = useState<SidebarState>(() => {
-    const storage = navigationStorage(placement.store);
-    kept.current.storage = storage;
-    const stored = storage ? readNavigationStore(storage, kept.current.key, groups) : undefined;
-    return { open: stored?.open ?? [], collapsed: stored?.collapsed ?? placement.rail?.collapsed ?? false };
+  const kept = useRef<{ storage?: Storage; key?: string }>({});
+  const [open, setOpen] = useState<string[]>(() => {
+    if (node.state === null) return [];
+    kept.current = { storage: navigationStorage(node.state.store), key: navigationStorageKey(prefix, node.state.key) };
+    const stored = kept.current.storage && kept.current.key ? readNavigationStore(kept.current.storage, kept.current.key, groups) : undefined;
+    return stored ?? [];
   });
   // A rail's floating panels are not kept: they close as the viewer moves on.
   const [floating, setFloating] = useState<string[]>([]);
@@ -291,51 +300,36 @@ function Sidebar({ placement, tree, children }: { placement: Extract<NavigationP
       return;
     }
     const { storage, key } = kept.current;
-    if (storage && !writeNavigationStore(storage, placement.store, key, state)) kept.current.storage = undefined;
-  }, [state]);
-  const collapsed = placement.rail !== undefined && state.collapsed;
+    if (storage && key !== undefined && node.state && !writeNavigationStore(storage, node.state.store, key, open)) kept.current.storage = undefined;
+  }, [open]);
+  if (node.navigation.items.length === 0) return null;
+  const rail = aside?.folded === true;
+  const failing = tree.drawn.failing.map((href, index) => <Unresolved key={index} href={href} />);
   return (
-    <div data-telo-part="sidebar" data-side={placement.side} data-state={collapsed ? "closed" : "open"}>
-      {placement.rail !== undefined && (
-        <button
-          data-telo-part="sidebar-toggle"
-          type="button"
-          aria-label={say(collapsed ? "expandNavigation" : "collapseNavigation")}
-          aria-expanded={!collapsed}
-          aria-controls={id}
-          onClick={() => {
-            setFloating([]);
-            setState((now) => ({ ...now, collapsed: !now.collapsed }));
-          }}
-        >
-          <Icon name={collapsed ? "panel-open" : "panel-close"} />
-        </button>
-      )}
+    <div data-telo-part="nav-column">
       <Navigation
         label={say("siteNavigation")}
-        layout={collapsed ? "rail" : "vertical"}
+        layout={rail ? "rail" : "vertical"}
         items={tree.drawn.entries}
         more={{ key: MORE, label: say("more") }}
-        open={collapsed ? floating : state.open.filter((key) => groups.has(key))}
-        onOpenChange={(next) =>
-          collapsed ? setFloating([...new Set(next)]) : setState((now) => ({ ...now, open: [...new Set(next)].filter((key) => groups.has(key)) }))
-        }
+        open={rail ? floating : open.filter((key) => groups.has(key))}
+        onOpenChange={(next) => (rail ? setFloating([...new Set(next)]) : setOpen([...new Set(next)].filter((key) => groups.has(key))))}
         onChange={(key) => tree.follow(key)}
-        attributes={{ id }}
       />
-      {children}
+      {failing}
     </div>
   );
 }
 
 /**
- * The top-level entries as tabs along the bottom edge, at most `visible` of
+ * The top-level entries as tabs along the application's bottom edge, at most `visible` of
  * them: with more, the last tab is More, holding the rest. A group's tab, and
  * More, opens its entries in the placement's surface, in a column whose groups
  * open in place; its tab is expanded while that surface is open.
  */
 function TabBar({ placement, tree, children }: { placement: TabBarPlacement; tree: Tree; children: ReactNode }) {
   const { compact } = useContext(RendererContext);
+  const bottom = useContext(BottomSlotContext);
   const say = useSay();
   const Navigation = useControl("Navigation");
   const bar = useRef<HTMLDivElement | null>(null);
@@ -357,7 +351,8 @@ function TabBar({ placement, tree, children }: { placement: TabBarPlacement; tre
     setOpen([]);
     sheet.close();
   };
-  return (
+  if (bottom === null) return null;
+  return createPortal(
     <div data-telo-part="tab-bar" ref={bar}>
       <Navigation
         label={say("siteNavigation")}
@@ -384,7 +379,8 @@ function TabBar({ placement, tree, children }: { placement: TabBarPlacement; tre
           />
         </Surface>
       )}
-    </div>
+    </div>,
+    bottom,
   );
 }
 

@@ -881,7 +881,8 @@ this module, beside the interpreter that runs it:
 - `parts` — the part list, the renderer's states, the reserved properties and
   the design tokens the renderer's own layer reads (`rendererTokens`) (see
   [the styling contract](styling.md));
-- `scenes` — applications that between them draw every part: their documents,
+- `scenes` — applications that between them draw every part: their documents —
+  application, layouts and pages —
   the answers their requests get, and the steps taken on them, with `texts`, the
   application document's keyed texts they are drawn with, which `runScene`
   takes as its `texts` option;

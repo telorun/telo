@@ -281,3 +281,17 @@ export const reviewerState = (fields: string[]) => ({ key: "reviewer", address: 
 export const promptOf = (action: SpecNode, properties: string[]) => ({
   fields: (action.fields as { property: string }[]).filter((field) => properties.includes(field.property)),
 });
+
+/** The `Aside` shape a split view and a page layout hold, every member present. */
+export const asideOf = (content: SpecNode, overrides: Record<string, unknown> = {}) => ({
+  side: "start",
+  size: "medium",
+  frame: "flush",
+  toggle: { type: "text" },
+  label: "Shortcuts",
+  collapse: null,
+  compact: { type: "drawer", side: "start", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } },
+  actions: [],
+  content,
+  ...overrides,
+});

@@ -1,5 +1,6 @@
+import type { ResourceContext } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
-import { judgedComposite, producedNode, type EvaluatedNode } from "../src/delivered-nodes.js";
+import { judgedComposite, producedNode, RequestNodes, type EvaluatedNode } from "../src/delivered-nodes.js";
 
 /** Refuses a `link` with no `href`, a menu holding one, and an item that
  *  still carries `when`; records everything it was asked about. */
@@ -137,5 +138,34 @@ describe("a page's nodes for a request", () => {
     });
     expect(check.judged.some((node) => JSON.stringify(node).includes("when"))).toBe(false);
     expect(produce([{ text: "Two", children: [], when: false }])).toBeUndefined();
+  });
+
+  it("invoke each pane they deliver with the request, and none a node switched off holds, and read every header", async () => {
+    const asked: unknown[] = [];
+    const pane = (text: string) => ({
+      invoke: async (inputs: unknown) => {
+        asked.push([text, inputs]);
+        return { node: { type: "text", text, fill: false } };
+      },
+      snapshot: () => ({ assets: [{ digest: "d", name: `${text}.svg`, file: `/${text}.svg`, mediaType: "image/svg+xml" }] }),
+    });
+    const ctx = {
+      resolveRef: (value: unknown) => value,
+      createTypeValidator: () => ({ validate() {}, isValid: () => true }),
+      // Stands for evaluating each `when` over the request.
+      expandValue: (value: unknown) => JSON.parse(JSON.stringify(value).replace(/"when":"off"/g, '"when":false')),
+      lookupSchema: () => undefined,
+    } as unknown as ResourceContext;
+    const nodes = await RequestNodes.prepare(
+      [{ type: "pane", ref: pane("bar") }, { type: "stack", when: "off", children: [{ type: "pane", ref: pane("hidden") }] }],
+      {},
+      ctx,
+      "the page",
+    );
+    expect(nodes.headerReads).toBe("*");
+    expect(nodes.assets.map((asset) => asset.name)).toEqual(["bar.svg", "hidden.svg"]);
+    const request = { headers: { "x-role": "admin" } };
+    expect(await nodes.deliver(request)).toEqual([{ type: "text", text: "bar", fill: false }]);
+    expect(asked).toEqual([["bar", { request }]]);
   });
 });

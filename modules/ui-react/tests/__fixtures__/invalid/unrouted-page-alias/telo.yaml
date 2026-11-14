@@ -1,0 +1,62 @@
+# `ui` imported under an alias that is not its name: a navbar entry naming a
+# page the application does not list, one naming a listed page with no title,
+# and a navigation column entry naming an unlisted page.
+kind: Telo.Library
+metadata:
+  name: UiReactUnroutedPageAlias
+  version: 1.0.0
+  description: >-
+    Test fixture exporting an application that imports the UI vocabulary under
+    another alias and names, in its navigation, pages it does not list and a
+    page with no title.
+imports: { UiReact: ../../../../, Kit: ../../../../../ui }
+exports: { resources: [aliased] }
+---
+kind: Kit.Page
+metadata: { name: home }
+path: /
+title: Home
+children: []
+---
+kind: Kit.Page
+metadata: { name: untitled }
+path: /untitled
+children: []
+---
+kind: Kit.Page
+metadata: { name: unlisted }
+path: /unlisted
+title: Unlisted
+children: []
+---
+kind: Kit.Page
+metadata: { name: hidden }
+path: /hidden
+title: Hidden
+children: []
+---
+kind: UiReact.App
+metadata: { name: aliased }
+title: Aliased
+theme: !ref UiReact.defaultTheme
+pages: [!ref home, !ref untitled]
+layout:
+  kind: Kit.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Kit.Navbar
+        title: Aliased
+        navigation:
+          items:
+            - { type: page, page: !ref unlisted }
+            - { type: page, page: !ref untitled }
+  aside:
+    label: Shortcuts
+    content:
+      type: pane
+      ref:
+        kind: Kit.NavigationColumn
+        navigation:
+          items:
+            - { type: page, page: !ref hidden }

@@ -3,9 +3,9 @@ metadata:
   name: UiReactLibraryPagesTest
   version: 1.0.0
   description: |
-    A page a library exports is listed and put in the navigation by an
+    A page a library exports is listed and put in a layout's navbar by an
     application with nothing else written for it: the application document
-    routes to it and names it in a group by its own title, and its page
+    routes to it, the layout document names it in a group by its own title, and its page
     document holds the nodes the library wrote.
 imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
 targets:
@@ -23,6 +23,10 @@ targets:
 steps:
   - name: app
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19318/admin/_telo/ui/app" }
+  - name: layout
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19318/admin/_telo/ui/layout?id=' + steps.app.result.body.layout"
   - name: page
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19318/admin/_telo/ui/page?path=/reports" }
   - name: verify
@@ -30,7 +34,7 @@ steps:
     inputs:
       actual:
         pages: !cel "steps.app.result.body.pages.map(p, p.path)"
-        navigation: !cel "steps.app.result.body.navigation.items"
+        navigation: !cel "steps.layout.result.body.header[0].navigation.items"
         children: !cel "steps.page.result.body.children"
       expected:
         pages: [/, /reports]

@@ -110,6 +110,8 @@ export interface Scene {
   compact?: boolean;
   /** The application document, less its bundle, digest and texts. */
   app: Record<string, unknown>;
+  /** Each layout document by id, less its bundle and digest; what the pages the application document names a layout for are drawn in. */
+  layouts?: Record<string, Record<string, unknown>>;
   /** Each page document by path, less its bundle and digest. */
   pages: Record<string, Record<string, unknown>>;
   /** By `<METHOD> <path>`, the path exact or ending `/*` for anything beneath it. */
@@ -704,6 +706,11 @@ export async function runScene(options: {
     const method = init?.method ?? "GET";
     const url = new URL(String(input instanceof Request ? input.url : input), view.location.href);
     if (url.pathname === "/_telo/ui/app") return json(app);
+    if (url.pathname === "/_telo/ui/layout") {
+      const id = url.searchParams.get("id") ?? "";
+      const layout = scene.layouts?.[id];
+      return layout ? json({ ...layout, bundle: "scene", digest: `scene-layout-${id}`, id }) : json({ type: "about:blank", title: "Not Found", status: 404 }, 404);
+    }
     if (url.pathname === "/_telo/ui/page") {
       const path = url.searchParams.get("path") ?? "";
       const page = scene.pages[path];

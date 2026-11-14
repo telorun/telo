@@ -306,7 +306,9 @@ jobs:
         run: |
           docker build -f apps/k8s-runner/Dockerfile --target production -t telo-k8s-runner:e2e .
           docker build -f cli/nodejs/Dockerfile --target lean-slim -t telo-dev/node:local .
-          docker pull pgvector/pgvector:pg18
+          # A pulled multi-platform index names blobs of platforms never fetched, which
+          # kind's import refuses; rebuilt in place it is this platform's image alone.
+          echo 'FROM pgvector/pgvector:pg18' | docker build --pull --provenance=false --sbom=false -t pgvector/pgvector:pg18 -
           kind load docker-image --name telo telo-k8s-runner:e2e telo-dev/node:local pgvector/pgvector:pg18
 
       - name: Install the chart with session containers on

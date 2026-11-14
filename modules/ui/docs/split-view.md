@@ -1,6 +1,6 @@
 # Ui.SplitView
 
-A fold-out side panel: an `aside` tree beside a `content` tree. A list of
+A fold-out side panel: an `aside` column beside a `content` tree. A list of
 conversations beside a chat, a tree of sections beside a page, a set of filters
 beside the results all compose from ordinary `ui` — the split view only places
 them. It is a [composite](composite.md), so it is placed with
@@ -11,11 +11,11 @@ which declare their own roots.
 - type: composite
   ref:
     kind: Ui.SplitView
-    label: Conversations
-    size: small
-    collapse:
-      state: { key: conversations, store: { kind: Ui.LocalStore } }
     aside:
+      label: Conversations
+      size: small
+      collapse:
+        state: { key: conversations, store: { kind: Ui.LocalStore } }
       actions:
         - type: link
           text: New conversation
@@ -31,15 +31,35 @@ which declare their own roots.
 
 | Key | | |
 | --- | --- | --- |
+| `aside` | required | the column beside the content, a [`Ui.Aside`](#the-aside) |
+| `content` | required | a [`Ui.Node`](nodes.md) tree with no roots of its own |
+
+Both trees read the placing page's `params`, and are resolved once, when the
+split view is created: a [pane](pane.md) placed in either is invoked then,
+with no request. Both withhold `request`, so a read of it there — guarded or
+not — is refused, naming the split view.
+
+## The aside
+
+`Ui.Aside` is the fold-out column, the same shape a [page
+layout](page-layout.md)'s `aside` takes, drawn the same in both and filled by
+the same defaults. It declares no CEL context: a split view's aside reads the
+placing page's `params`, a layout's the request.
+
+| Key | | |
+| --- | --- | --- |
 | `side` | `start` | `start` or `end`: the edge of the content the aside sits at |
 | `size` | `medium` | `small`, `medium` or `large`: how wide the aside is, the same three widths [`Ui.Panel`](surfaces.md#uipanel) has |
 | `frame` | `flush` | `flush` or `framed`: how the aside is set against the content, [below](#frame) |
 | `toggle` | a glyph of the look's own | a [`Ui.ButtonDisplay`](chat.md#buttons-as-icons) drawing the button that folds the aside away and shows it again, [below](#the-toggle) |
 | `label` | required | a [text](texts.md) with no values: names the aside for assistive technology and is the value of the button showing and hiding it |
-| `aside` | required | `{ actions?, content }`: the panel's [actions](#the-actions), drawn under its top bar, and the [`Ui.Node`](nodes.md) tree it holds, with no roots of its own |
-| `content` | required | a `Ui.Node` tree with no roots of its own |
 | `collapse` | none | lets the viewer fold the aside away; omitted, it never folds on a wide viewport |
 | `compact` | a `Ui.Drawer` from `side` | a `Ui.ViewportOverlay` the aside becomes below the application's breakpoint |
+| `actions` | none | the panel's [actions](#the-actions), drawn under its top bar |
+| `content` | required | the `Ui.Node` it holds |
+
+A [`Ui.NavigationColumn`](navigation.md#uinavigationcolumn) in an aside folds
+with it into a rail of glyphs.
 
 Neither tree reads a root: a `value` or `list` node needs one, so put such
 nodes in a composite that declares it (`Ui.Data`, `Ui.Listing`).
@@ -105,7 +125,7 @@ and the actions stacked under it as glyphs, and nothing else of the aside; the c
 same rail stays beside the content, and its toggle opens the compact surface
 instead of unfolding the aside; no toggle sits in the content.
 
-Two split views naming one `key` and store share the choice. The entry is
+Two asides naming one `key` and store share the choice. The entry is
 `{ "v": 1, "collapsed": <bool> }` under `telo.ui:<mount>:s:<key>`, written on
 each change ([how a renderer spells it](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/)).
 
@@ -126,9 +146,10 @@ by the button, in the `compact` surface. It is a `Ui.ViewportOverlay`
 ([`Ui.Dialog` or `Ui.Drawer`](surfaces.md)), by default
 `{ kind: Ui.Drawer, side: <side> }`. As on every other compact surface it
 declares neither an `address` (`UI_SURFACE_COMPACT_ADDRESSED`) nor a `compact`
-of its own (`UI_SURFACE_COMPACT_NESTED`): `telo check` reports both, and
+of its own (`UI_SURFACE_COMPACT_NESTED`): `telo check` reports both at
+`aside.compact`, on a split view and on a page layout, and
 `ERR_UI_SURFACE_COMPACT_ADDRESSED` / `ERR_UI_SURFACE_COMPACT_NESTED` are raised
-when the split view is first read. A move within the application that
+when the split view is first read or the layout created. A move within the application that
 starts from inside the surface — a followed link — closes it.
 
 ## What a renderer receives
@@ -136,21 +157,26 @@ starts from inside the surface — a followed link — closes it.
 ```json
 {
   "type": "split",
-  "side": "start",
-  "size": "medium",
-  "frame": "flush",
-  "toggle": { "type": "icon", "icon": null, "label": "hidden" },
-  "label": { "text": "Conversations", "context": null, "lang": "en", "computed": false },
-  "aside": { "actions": [], "content": { "type": "stack", "children": [] } },
+  "aside": {
+    "side": "start",
+    "size": "medium",
+    "frame": "flush",
+    "toggle": { "type": "icon", "icon": null, "label": "hidden" },
+    "label": { "text": "Conversations", "context": null, "lang": "en", "computed": false },
+    "collapse": { "collapsed": false, "state": { "key": "conversations", "store": { "type": "local" } } },
+    "compact": { "type": "drawer", "side": "start", "size": "medium", "modal": true, "dismiss": { "escape": true, "outside": true, "closeButton": true } },
+    "actions": [],
+    "content": { "type": "stack", "children": [] }
+  },
   "content": { "type": "stack", "children": [] },
-  "collapse": { "collapsed": false, "state": { "key": "conversations", "store": { "type": "local" } } },
-  "compact": { "type": "drawer", "side": "start", "size": "medium", "modal": true, "dismiss": { "escape": true, "outside": true, "closeButton": true } },
   "style": "…",
   "shown": { "…": "…" }
 }
 ```
 
-Every member is present except `style` and `shown` (`aside.actions` is a list of `link` nodes, `[]` for none); `toggle` is a button display
+Every member is present except `style` and `shown`; `aside` is
+`Ui.SpecNode`'s `Aside` shape, the one a layout's aside arrives in
+(`aside.actions` is a list of `link` nodes, `[]` for none); `toggle` is a button display
 as the [chat's buttons](chat.md#buttons-as-icons) are; `collapse` is `null` when
 the aside never folds and `state` is `null` when the choice is not kept. A
 tree that resolves to nothing — a `when` that is false — arrives as an empty

@@ -24,6 +24,7 @@ texts:
   - { text: Building blocks, translation: "構成要素" }
   - { text: Input, translation: "入力" }
   - { text: Search, translation: "検索" }
+  - { text: Navigation, translation: ナビゲーション }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written

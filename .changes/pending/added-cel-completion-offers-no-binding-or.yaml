@@ -1,0 +1,4 @@
+units:
+  packages/ide-support: Added
+body: CEL completion offers no binding or member the scope withholds
+  (`x-telo-context-withheld`), and hovering one shows why it holds no value there.

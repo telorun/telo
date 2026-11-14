@@ -1,0 +1,153 @@
+kind: Telo.Application
+metadata:
+  name: UiReactPageLayoutsTest
+  version: 1.0.0
+  description: |
+    An application assigns each page its layout: the application's own or one
+    a `pages` entry names. A layout declaration writing nothing is a layout
+    like any other: it has an id and its document holds empty regions and no
+    aside. Only an application naming no layout, with no route, carries none.
+    The application document names each page's layout by id and carries
+    neither a navigation nor a header; one declaration has one id however many entries name it, and two
+    declarations have two, the same on every replica. The layout travels on its
+    own at `_telo/ui/layout`, evaluated for each request: it answers `no-cache`,
+    varies by the whole request, is revalidated by its digest, and a navbar
+    entry gated on a header appears once the header is sent — a digest produced
+    for another header never answers `304`. A page holding a pane varies by the
+    whole request, one without does not, and an unknown layout id is the
+    reserved prefix's 404 problem.
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/page-layouts/telo.yaml
+    ports: { http: 19360 }
+  - kind: App.Instance
+    metadata: { name: replica }
+    source: ./__fixtures__/page-layouts/telo.yaml
+    ports: { http: 19361 }
+targets:
+  - !ref fixture
+  - !ref replica
+steps:
+  - name: app
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19360/admin/_telo/ui/app" }
+  - name: replicaApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19361/admin/_telo/ui/app" }
+  - name: layout
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19360/admin/_telo/ui/layout?id=' + steps.app.result.body.layout"
+  - name: replicaLayout
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19361/admin/_telo/ui/layout?id=' + steps.replicaApp.result.body.layout"
+  - name: staffLayout
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19360/admin/_telo/ui/layout?id=' + steps.app.result.body.layout"
+      headers: { x-role: staff }
+  - name: revalidated
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19360/admin/_telo/ui/layout?id=' + steps.app.result.body.layout"
+      headers:
+        if-none-match: !cel "steps.layout.result.headers['etag']"
+  - name: revalidatedForAnother
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19360/admin/_telo/ui/layout?id=' + steps.app.result.body.layout"
+      headers:
+        x-role: staff
+        if-none-match: !cel "steps.layout.result.headers['etag']"
+  - name: emptyLayout
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19360/admin/_telo/ui/layout?id=' + steps.app.result.body.pages[2].layout"
+  - name: plainApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19360/plain/_telo/ui/app" }
+  - name: unknownLayout
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19360/admin/_telo/ui/layout?id=nope" }
+  - name: home
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19360/admin/_telo/ui/page?path=/" }
+  - name: reports
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19360/admin/_telo/ui/page?path=/reports" }
+  - name: nowhere
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19360/admin/_telo/ui/page?path=/nowhere" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        app:
+          keys: !cel "sort(steps.app.result.body.map(k, k))"
+          named: !cel "steps.app.result.body.pages.map(p, 'layout' in p)"
+          sharedIsDefault: !cel "steps.app.result.body.pages[0].layout == steps.app.result.body.layout && steps.app.result.body.pages[1].layout == steps.app.result.body.layout"
+          inlineAreTwo: !cel "steps.app.result.body.pages[3].layout != steps.app.result.body.pages[4].layout"
+          sameOnReplica: !cel "steps.app.result.body.pages.map(p, 'layout' in p ? p.layout : '') == steps.replicaApp.result.body.pages.map(p, 'layout' in p ? p.layout : '')"
+        layout:
+          status: !cel "steps.layout.result.status"
+          cache: !cel "steps.layout.result.headers['cache-control']"
+          vary: !cel "steps.layout.result.headers['vary']"
+          etagIsDigest: !cel "steps.layout.result.headers['etag'] == '\"' + steps.layout.result.body.digest + '\"'"
+          keys: !cel "sort(steps.layout.result.body.map(k, k))"
+          id: !cel "steps.layout.result.body.id == steps.app.result.body.layout"
+          width: !cel "steps.layout.result.body.width"
+          entries: !cel "steps.layout.result.body.header[0].navigation.items.map(i, i.key)"
+          footer: !cel "steps.layout.result.body.footer.map(n, n.text.message)"
+          sameDigestOnReplica: !cel "steps.layout.result.body.digest == steps.replicaLayout.result.body.digest"
+        staffEntries: !cel "steps.staffLayout.result.body.header[0].navigation.items.map(i, i.key)"
+        staffDiffers: !cel "steps.staffLayout.result.body.digest != steps.layout.result.body.digest"
+        revalidated: !cel "steps.revalidated.result.status"
+        revalidatedForAnother: !cel "steps.revalidatedForAnother.result.status"
+        emptyLayout: !cel "{'width': steps.emptyLayout.result.body.width, 'header': steps.emptyLayout.result.body.header, 'footer': steps.emptyLayout.result.body.footer, 'aside': 'aside' in steps.emptyLayout.result.body}"
+        plain:
+          keys: !cel "sort(steps.plainApp.result.body.map(k, k))"
+          named: !cel "steps.plainApp.result.body.pages.map(p, 'layout' in p)"
+        unknownLayout:
+          status: !cel "steps.unknownLayout.result.status"
+          body: !cel "steps.unknownLayout.result.body"
+        pages:
+          homeKeys: !cel "sort(steps.home.result.body.map(k, k))"
+          homeVaries: !cel "'vary' in steps.home.result.headers"
+          reportsVary: !cel "steps.reports.result.headers['vary']"
+        nowhere:
+          status: !cel "steps.nowhere.result.status"
+          vary: !cel "'vary' in steps.nowhere.result.headers"
+          children: !cel "steps.nowhere.result.body.children.map(n, n.type)"
+      expected:
+        app:
+          keys: [bundle, compactBelow, controls, digest, layout, pages, specVersion, stylesheets, texts, title]
+          named: [true, true, true, true, true]
+          sharedIsDefault: true
+          inlineAreTwo: true
+          sameOnReplica: true
+        layout:
+          status: 200
+          cache: private, no-cache
+          vary: "*"
+          etagIsDigest: true
+          keys: [bundle, digest, footer, header, id, specVersion, width]
+          id: true
+          width: contained
+          entries: [home]
+          footer: [[Acme Corporation]]
+          sameDigestOnReplica: true
+        staffEntries: [home, staff]
+        staffDiffers: true
+        emptyLayout: { width: contained, header: [], footer: [], aside: false }
+        plain:
+          keys: [bundle, compactBelow, controls, digest, pages, specVersion, stylesheets, texts, title]
+          named: [false]
+        revalidated: 304
+        revalidatedForAnother: 200
+        unknownLayout: { status: 404, body: { type: about:blank, title: Not Found, status: 404 } }
+        pages:
+          homeKeys: [bundle, children, digest, path, query, specVersion, title, width]
+          homeVaries: false
+          reportsVary: "*"
+        nowhere: { status: 404, vary: false, children: [text, link] }
