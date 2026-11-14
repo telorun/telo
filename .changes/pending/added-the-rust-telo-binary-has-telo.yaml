@@ -1,0 +1,5 @@
+units:
+  cli: Added
+body: "The Rust `telo` binary has `telo check`: text and `-o json` output with the Node
+  CLI's envelope, wording, colour handling and exit status (0, 1, 2), and its manifest
+  cache with `--no-cache-write`, for what the Rust analyzer covers."

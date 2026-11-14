@@ -1,0 +1,9 @@
+units:
+  kernel: Added
+body: The Rust kernel loads a manifest that holds `!cel`, `!interpolate` or `!sql`.
+  Where it consumes a value — creating a resource, registering a kind, reading a module
+  doc, supplying an import, running a `targets:` entry — it compiles each such value
+  and, having no expression engine yet, refuses it with
+  `ERR_UNSUPPORTED_MANIFEST_FEATURE` naming the resource, the field and the tag;
+  `!literal` is replaced by its text at any depth, and a `${{` left untagged is refused
+  with `ERR_UNTAGGED_INTERPOLATION` as the Node kernel refuses it.

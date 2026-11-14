@@ -1,0 +1,6 @@
+units:
+  analyzer: Added
+body: The Rust analyzer applies every entry under `analyzer/migrations/` at load,
+  reporting the entry module's rewrites with the Node analyzer's deprecation
+  diagnostics, and reports a `${{` left untagged in the entry module as
+  `UNTAGGED_INTERPOLATION`.
