@@ -1,0 +1,6 @@
+units:
+  templating: Added
+body: The Rust tag reader reads `!cel`, `!interpolate`, `!sql` and `!literal` as the
+  same sentinels the Node reader builds, pinned by rows in
+  `templating/tag-conformance/sentinels.json`, instead of refusing every file that holds
+  one.
