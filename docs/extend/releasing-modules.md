@@ -15,6 +15,9 @@ has no such property — a dependent's tarball does not contain its dependency �
 where npm treats "bump the dependents" as a courtesy, here it is a correctness
 requirement.
 
+[Versioning and releases](../guides/versioning-and-releases.md) is the tour across
+every ecosystem; this page is the reference.
+
 The planner is [`@telorun/release`](../../release/nodejs/README.md),
 an MIT package a plain Node project can use alone as `telo-release`; `telo release`
 is the same command tree plus the `telo` ecosystem (modules) and the commands only
@@ -194,8 +197,8 @@ level and the changelog section:
 | `Fixed`, `Security` | patch |
 | `Changed`, `Removed` | major |
 
-A workspace sets the highest bump it allows with `release.maxBump`. This
-repository sets `minor`, because it is intentionally pre-1.0 and ships a breaking
+A workspace sets the highest bump it allows with `release.maxBump`. A
+pre-1.0 project sets `minor`, because it intends to stay pre-1.0 and ships a breaking
 change as a minor (`Added`, with the break described in the body): a plan that
 needs a major is refused (`MAX_BUMP_EXCEEDED`), naming the units and the cause.
 A project at 2.x leaves `maxBump` unset.
@@ -319,7 +322,9 @@ running a manifest needs no `stage`; publish, which reads every tuple, does. See
 
 ## When units publish
 
-Units publish from a release branch (`release/<major>.<minor>`), never from `main`:
+`telo release` plans and versions; the pipeline that publishes is yours. Telo's own
+releases run in this shape, and a workspace can follow it: units publish from a
+release branch (`release/<major>.<minor>`), never from `main`:
 
 - **A release opens one PR on its branch**, `chore(release): version` from `release-version/release/<x.y>`, whenever `telo release status` plans a unit. Candidates, the final and every patch run the same plan; in candidates the PR runs `apply --candidate`. A branch is in candidates while `v<x.y>.0` is absent and its open release PR's head carries no final versions — derived by Telo's scripts, never stored.
 - **Candidates publish modules too**, at their `-rc.<k>` versions, so a candidate tag can be installed and run as its final will be; a candidate version never moves a module's OCI `latest`. Every `requires: telo:` floor names a published telo, and a module adopting grammar of the release holds `>=unreleased` until `apply` writes the number.
@@ -327,9 +332,7 @@ Units publish from a release branch (`release/<major>.<minor>`), never from `mai
 - **A fragment a release branch already carries plans nothing on main.** `telo release status`, `check` and `apply` take `--carried-by <ref>`: a pending fragment of the same path and content at that ref's merge base with `HEAD`, or written on it since, is dropped from the plan. CI passes the live `release/*` branch when the tree checked is main's, so a fix picked onto the branch with its fragment does not plan a second release of it on main.
 - **Prereleases are inert to consumers.** `telo upgrade` and the editor read a prerelease's `restrictions:` only with `--include-prerelease`, and the hub indexes final versions only.
 - **Images** are built in the same Publish run from the `docker` rows of the units the release moved: `<destination>:<version>`, with `:latest` moving only forward and only for a final; a push to `main` publishes no image.
-- **Module docs link only to `https://telo.run/…` pages or another module's hub page** (`https://hub.telo.run/module/oci/ghcr.io/telorun/<name>/`), never into the repository tree, so a module's bytes do not depend on which release publishes it. `pnpm run check:links` refuses the rest.
-
-The whole procedure, with recovery, is in [RELEASING.md](../../RELEASING.md).
+- **A module's docs link only to site pages or another module's hub page** (`https://hub.telo.run/module/oci/ghcr.io/telorun/<name>/`), never to a path in your source tree, so a module's bytes do not depend on which release publishes it.
 
 ## Restricting a published version
 
@@ -388,8 +391,8 @@ is planned along. `--check` writes nothing and exits 1 listing every import not 
 the requested form; `--dry-run` shows the rewrites. The edit splices only each
 `source:` value, so the two directions give each other's bytes back.
 
-In this repository every branch holds the relative form, and the static checks
-refuse a pinned import of a workspace module. The published form exists only in a
+A workspace can keep every branch on the relative form and have its checks refuse
+a pinned import of one of its modules. The published form then exists only in a
 release's tags: after its modules publish, the release run commits
 `--as=published` over the consumer roots on a commit no branch holds and tags it.
 
@@ -536,7 +539,7 @@ Every package under `modules/*/nodejs/` belongs to its module: the module unit's
 module's, written by `telo release apply`. Most of those packages are private: the
 controller is bundled into the module artifact, so nothing is fetched at load and
 there is no tarball to push. A module delivered from npm instead — a third-party
-one; no module in this repository is — names `pkg:npm/<name>@<version>` in
+one — names `pkg:npm/<name>@<version>` in
 `controllers:`, and that tarball has to exist for any consumer outside this
 checkout.
 

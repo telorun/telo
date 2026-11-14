@@ -47,8 +47,8 @@ Fewer than 10 earlier runs means no alert. An alert opens a GitHub issue labelle
 
 ## Latest results
 
-The tables and charts below are read from the `benchmark-results` branch in your browser, so they are always the newest nightly run. The numbers carry the specs of the machine that produced them, a GitHub-hosted runner; compare ratios, not absolute values. The history files are [`comparison.jsonl` and `feature-cost.jsonl`](../../benchmarks/history/README.md) on that branch.
+The tables and charts below are read in your browser, so they always show the newest nightly run. The numbers carry the specs of the machine that produced them, a GitHub-hosted runner; compare ratios, not absolute values. The history is two files, `comparison.jsonl` and `feature-cost.jsonl`, described in the [benchmark history notes](../../benchmarks/history/README.md).
 
 ```benchmark-results
-Results are drawn on the documentation site, which reads comparison.jsonl and feature-cost.jsonl from the benchmark-results branch.
+Results are drawn on the documentation site from the newest nightly run's comparison.jsonl and feature-cost.jsonl.
 ```

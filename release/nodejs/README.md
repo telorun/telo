@@ -7,6 +7,9 @@ change notes. A unit bumps when the digest of what it ships moves, at the level
 its change notes and its dependencies give it. It replaces changesets, and works
 in any Node project: of Telo's packages it needs only `@telorun/glob`.
 
+For a tour of one flow across npm, cargo, Docker and Helm — and Telo modules —
+see [Versioning and releases](https://telo.run/guides/versioning-and-releases).
+
 ## Install
 
 ```sh

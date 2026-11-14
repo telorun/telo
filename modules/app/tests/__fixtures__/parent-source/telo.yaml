@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: ParentSource
+  version: 1.0.0
+  description: A child application that a nested child reaches through the source `..`.
+imports: { Console: ../../../../console }
+targets: [!ref greet]
+---
+kind: Telo.Sequence
+metadata: { name: greet }
+steps:
+  - name: say
+    invoke: { kind: Console.WriteLine }
+    inputs: { output: reached through a parent-directory source }

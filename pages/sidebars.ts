@@ -37,6 +37,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/guides/declaring-a-need", label: "Declaring a need" },
         { type: "doc", id: "docs/guides/providing-needs", label: "Providing needs" },
         { type: "doc", id: "docs/guides/workspaces", label: "Workspaces" },
+        { type: "doc", id: "docs/guides/versioning-and-releases", label: "Versioning and releases" },
         { type: "doc", id: "docs/guides/editor-telo-version", label: "Editing against a telo version" },
         { type: "doc", id: "cli/README", label: "Telo CLI" },
         { type: "doc", id: "docs/guides/packaging-an-app", label: "Packaging an application" },

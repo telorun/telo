@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: ResolvesAParentDirectorySourceTest
+  version: 1.0.0
+  description: >-
+    A child whose own `source` is `..` runs the application in its parent directory:
+    a relative source is read against the module that declares the resource, never
+    against the directory the process was started in.
+imports: { App: ../, Run: ../../run, Timer: ../../timer, Assert: ../../assert }
+targets:
+  - !ref child
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: child }
+source: ./__fixtures__/parent-source/child
+---
+kind: Run.Loop
+metadata: { name: awaitChildExit }
+condition: !cel "resources.child.status.exitCode == null"
+maxIterations: 200
+steps:
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: awaitExit
+    invoke: !ref awaitChildExit
+  - name: verifyExit
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.child.status.exitCode"
+      expected: 0

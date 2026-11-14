@@ -32,7 +32,9 @@ it resolves a manifest's environment. Nothing reads across: a run never consults
 `release.units`, which is why a manifest under `examples/`, in no release
 subtree at all, still gets the full env walk.
 
-Here is every key, with the default each omission falls back to.
+Here is every key, with the default each omission falls back to. For how the
+`release:` block is used end to end, see
+[Versioning and releases](./versioning-and-releases.md).
 
 ```yaml
 # telo-workspace.yaml — the anchor. Its LOCATION is what unit keys, ledger

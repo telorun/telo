@@ -197,7 +197,7 @@ level is closed.
 | `archive` | yes | the archive's format; `tar.gz` is the one format |
 | `notices` | yes, non-empty | module-relative notice files covering what the source ships — checked in, or staged as entries |
 | `entries` | yes | a map keyed by the module-relative path each entry produces |
-| `build` | no | how the files are built in this repository, keyed by build system: `cargo` names the module-relative directory of the crate, and `inputs` is the digest of its build inputs, `sha256-<base64url>`, written by `telo release stage --pin` |
+| `build` | no | how the files are built from your own source, keyed by build system: `cargo` names the module-relative directory of the crate, and `inputs` is the digest of its build inputs, `sha256-<base64url>`, written by `telo release stage --pin` |
 
 An entry is one of two shapes:
 
