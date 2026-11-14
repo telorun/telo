@@ -130,6 +130,21 @@ function changeFiles(root) {
     : [];
 }
 
+/** The tag's entry plus every ecosystem main's entry holds and the tag's lacks: an anchor main
+ *  gained after the release branch was cut is main's own, not something the tag outdates. */
+function withMainLayers(tagged, ours) {
+  if (!ours) return tagged;
+  const extra = Object.entries(ours.layers.ecosystems).filter(([ecosystem]) => !(ecosystem in tagged.layers.ecosystems));
+  if (extra.length === 0) return tagged;
+  return { ...tagged, layers: { ...tagged.layers, ecosystems: { ...tagged.layers.ecosystems, ...Object.fromEntries(extra) } } };
+}
+
+/** A changelog's first heading is `# Changelog`, as the release writer leaves it; a tag cut
+ *  from a changelog another tool started keeps that tool's heading until its unit releases. */
+function withChangelogHeading(text) {
+  return text.replace(/^#[ \t]+(?!Changelog\b)[^\n]*/, "# Changelog");
+}
+
 function sameEntry(a, b) {
   const canonical = (entry) =>
     entry &&
@@ -185,7 +200,7 @@ export function recordPlan({ tag, measured = false }) {
   for (const file of tagged) {
     if (!/(^|\/)CHANGELOG\.md$/.test(file)) continue;
     if (!unitDirs.has(file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : "")) continue;
-    const text = textAt(file);
+    const text = withChangelogHeading(textAt(file));
     if (text !== current(file)) put(file, text);
   }
   const taggedLedger = textAt(LEDGER_PATH);
@@ -196,8 +211,9 @@ export function recordPlan({ tag, measured = false }) {
     const entries = new Map(ours === undefined ? [] : parseLedger(ours, LEDGER_PATH, options).units);
     let changed = false;
     for (const [key, entry] of parseLedger(taggedLedger, `${tag}:${LEDGER_PATH}`, options).units) {
-      if (!keys.has(key) || sameEntry(entries.get(key), entry)) continue;
-      entries.set(key, entry);
+      const merged = withMainLayers(entry, entries.get(key));
+      if (!keys.has(key) || sameEntry(entries.get(key), merged)) continue;
+      entries.set(key, merged);
       changed = true;
     }
     if (changed) put(LEDGER_PATH, serializeLedger({ units: entries }));

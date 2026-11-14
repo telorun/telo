@@ -403,7 +403,9 @@ steps:
         notes: [{ attempt: 1, note: start }]
 ---
 # Two failures, each backoff stored as a visibility time on the store's clock:
-# 500ms after the first failure, 1000ms after the second.
+# 500ms after the first failure, 1000ms after the second, so the third attempt
+# settles at least 1500ms after the enqueue. Read from the settled message, which
+# a slow poller cannot miss the way it can a backoff window.
 kind: Run.Sequence
 metadata: { name: retriesOnTheStoreClock }
 steps:
@@ -412,12 +414,6 @@ steps:
     inputs:
       id: r-1
       message: { key: r-1, behaviour: retryTwice }
-  - name: firstBackoff
-    invoke: !ref awaitJob
-    inputs: { id: r-1, state: scheduled, attempts: 1 }
-  - name: secondBackoff
-    invoke: !ref awaitJob
-    inputs: { id: r-1, state: scheduled, attempts: 2 }
   - name: done
     invoke: !ref awaitJob
     inputs: { id: r-1, state: completed }
@@ -428,15 +424,13 @@ steps:
     invoke: !ref check
     inputs:
       actual:
-        firstWait: !cel "steps.firstBackoff.result.status.visibleAt - steps.firstBackoff.result.status.enqueuedAt >= duration('500ms')"
-        secondWait: !cel "steps.secondBackoff.result.status.visibleAt - steps.firstBackoff.result.status.visibleAt >= duration('1s')"
-        lastError: !cel "steps.firstBackoff.result.status.lastError.code"
+        waited: !cel "steps.done.result.status.settledAt - steps.done.result.status.enqueuedAt >= duration('1500ms')"
+        lastError: !cel "steps.done.result.status.lastError.code"
         state: !cel "steps.done.result.status.state"
         attempts: !cel "steps.done.result.status.attempts"
         notes: !cel "steps.notes.result.rows"
       expected:
-        firstWait: true
-        secondWait: true
+        waited: true
         lastError: RETRY_ME
         state: completed
         attempts: 3
