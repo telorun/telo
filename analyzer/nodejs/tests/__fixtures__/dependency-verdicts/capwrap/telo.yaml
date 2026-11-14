@@ -1,0 +1,4 @@
+# An editable library reaching an editable library with a defect.
+kind: Telo.Library
+metadata: { name: CapWrap }
+imports: { Inner: ../capability }

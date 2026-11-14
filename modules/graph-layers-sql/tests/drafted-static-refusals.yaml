@@ -41,7 +41,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: bookkeepingNotInSchemaAtRuntime }
 source: ./__fixtures__/drafted-rules/bookkeeping-not-in-schema-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: names a table its schema does not list in 'tables:' — a node or relationship type's, or its 'layers' or 'drafts' table. The schema is what creates and migrates the table; add it there." }], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableNotInSchema }
@@ -54,7 +54,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableNotInSchemaAtRuntime }
 source: ./__fixtures__/drafted-rules/table-not-in-schema-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: names a table its schema does not list in 'tables:' — a node or relationship type's, or its 'layers' or 'drafts' table. The schema is what creates and migrates the table; add it there." }], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatch }
@@ -67,7 +67,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatchAtRuntime }
 source: ./__fixtures__/drafted-rules/schema-connection-mismatch-app.yaml
-expect: { errors: [], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: names a schema on a different connection. The schema must create its tables where the graph reads them." }], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableShared }
@@ -80,7 +80,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableSharedAtRuntime }
 source: ./__fixtures__/drafted-rules/table-shared-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_SHARED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: names one table twice among its node and relationship types and its 'layers' and 'drafts' tables. Each is a table of its own." }], runFails: "GRAPH_TABLE_SHARED" }
 ---
 kind: Assert.Manifest
 metadata: { name: baseStoreMismatch }
@@ -93,7 +93,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: baseStoreMismatchAtRuntime }
 source: ./__fixtures__/drafted-rules/base-store-mismatch-app.yaml
-expect: { errors: [], runFails: "GRAPH_BASE_STORE_MISMATCH" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: lists a base on another connection or another schema, or one that keeps its layers or drafts in another table. A layer and its bases are read in one statement and registered in one layers table, so they must share all four." }], runFails: "GRAPH_BASE_STORE_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: baseBookkeepingMismatch }
@@ -106,7 +106,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: baseBookkeepingMismatchAtRuntime }
 source: ./__fixtures__/drafted-rules/base-bookkeeping-mismatch-app.yaml
-expect: { errors: [], runFails: "GRAPH_BASE_STORE_MISMATCH" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: lists a base on another connection or another schema, or one that keeps its layers or drafts in another table. A layer and its bases are read in one statement and registered in one layers table, so they must share all four." }], runFails: "GRAPH_BASE_STORE_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: baseLayerDuplicate }
@@ -119,7 +119,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: baseLayerDuplicateAtRuntime }
 source: ./__fixtures__/drafted-rules/base-layer-duplicate-app.yaml
-expect: { errors: [], runFails: "GRAPH_BASE_LAYER_DUPLICATE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: names the same layer twice among 'bases:', or a base naming this store's own 'layer'." }], runFails: "GRAPH_BASE_LAYER_DUPLICATE" }
 ---
 # The known gap: clean at check, refused at creation.
 kind: Assert.Manifest

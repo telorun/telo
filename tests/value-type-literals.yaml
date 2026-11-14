@@ -315,7 +315,7 @@ steps:
     invoke:
       kind: Assert.Manifest
       source: ./__fixtures__/value-type-literals/refused-app.yaml
-      expect: { runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)" }
+      expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Self.Stamp/stamp: /at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }], runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)" }
   # The same two halves at a slot typed from elsewhere: a step's `inputs:`
   # against the target's inputType, and a uint outside the range JSON Schema
   # cannot state. `telo check` reports both at the library, on the leaf.
@@ -340,18 +340,36 @@ steps:
       kind: Assert.Manifest
       source: ./__fixtures__/value-type-literals/refused-inputs-app.yaml
       expect:
+        errors:
+          - { code: SCHEMA_VIOLATION, message: "Run.Value/badQuota: `value` does not satisfy the type declared at `outputType`: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615; a plain number beyond 9007199254740991 is not exact, so write a wider one as a CEL uint (!cel \"18446744073709551615u\")" }
+          - { code: SCHEMA_VIOLATION, message: "Run.Value/wideQuota: `value` does not satisfy the type declared at `outputType`: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615; a plain number beyond 9007199254740991 is not exact, so write a wider one as a CEL uint (!cel \"18446744073709551615u\")" }
+          - { code: SCHEMA_VIOLATION, message: "Run.Value/badWindow: `value` does not satisfy the type declared at `outputType`: /window/at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }
+          - { code: CONTRACT_INPUTS_MISMATCH, message: "Run.Sequence/callWithBadLiteral: inputs at 'steps[0].inputs.at' do not satisfy stampInput's declared inputType: /at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }
+          - { code: CONTRACT_INPUTS_MISMATCH, message: "Self.Steps/inheritedCallWithBadLiteral: inputs at 'steps[0].inputs.at' do not satisfy stampInput's declared inputType: /at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }
         runFails: "Run.Value/stampInput: inputs do not satisfy the declared inputType: Invalid value passed: {\"at\":\"15/01/2026 09:30\"}. Error: /at must be a Telo.Timestamp"
   - name: refusedQuotaAtDispatch
     invoke:
       kind: Assert.Manifest
       source: ./__fixtures__/value-type-literals/refused-quota-app.yaml
       expect:
+        errors:
+          - { code: SCHEMA_VIOLATION, message: "Run.Value/badQuota: `value` does not satisfy the type declared at `outputType`: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615; a plain number beyond 9007199254740991 is not exact, so write a wider one as a CEL uint (!cel \"18446744073709551615u\")" }
+          - { code: SCHEMA_VIOLATION, message: "Run.Value/wideQuota: `value` does not satisfy the type declared at `outputType`: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615; a plain number beyond 9007199254740991 is not exact, so write a wider one as a CEL uint (!cel \"18446744073709551615u\")" }
+          - { code: SCHEMA_VIOLATION, message: "Run.Value/badWindow: `value` does not satisfy the type declared at `outputType`: /window/at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }
+          - { code: CONTRACT_INPUTS_MISMATCH, message: "Run.Sequence/callWithBadLiteral: inputs at 'steps[0].inputs.at' do not satisfy stampInput's declared inputType: /at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }
+          - { code: CONTRACT_INPUTS_MISMATCH, message: "Self.Steps/inheritedCallWithBadLiteral: inputs at 'steps[0].inputs.at' do not satisfy stampInput's declared inputType: /at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }
         runFails: "Run.Value/badQuota: result do not satisfy the declared outputType: Invalid value passed: {\"quota\":-5}. Error: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615"
   - name: refusedWideQuotaAtDispatch
     invoke:
       kind: Assert.Manifest
       source: ./__fixtures__/value-type-literals/refused-wide-quota-app.yaml
       expect:
+        errors:
+          - { code: SCHEMA_VIOLATION, message: "Run.Value/badQuota: `value` does not satisfy the type declared at `outputType`: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615; a plain number beyond 9007199254740991 is not exact, so write a wider one as a CEL uint (!cel \"18446744073709551615u\")" }
+          - { code: SCHEMA_VIOLATION, message: "Run.Value/wideQuota: `value` does not satisfy the type declared at `outputType`: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615; a plain number beyond 9007199254740991 is not exact, so write a wider one as a CEL uint (!cel \"18446744073709551615u\")" }
+          - { code: SCHEMA_VIOLATION, message: "Run.Value/badWindow: `value` does not satisfy the type declared at `outputType`: /window/at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }
+          - { code: CONTRACT_INPUTS_MISMATCH, message: "Run.Sequence/callWithBadLiteral: inputs at 'steps[0].inputs.at' do not satisfy stampInput's declared inputType: /at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }
+          - { code: CONTRACT_INPUTS_MISMATCH, message: "Self.Steps/inheritedCallWithBadLiteral: inputs at 'steps[0].inputs.at' do not satisfy stampInput's declared inputType: /at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }
         runFails: "Run.Value/wideQuota: result do not satisfy the declared outputType: Invalid value passed: {\"quota\":18446744073709552000}. Error: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615; a plain number beyond 9007199254740991 is not exact"
   # The derived slots a step's `inputs:` does not cover, each refused on the leaf
   # holding the text: a route's `inputs:` pointer and an `x-telo-schema-from`
@@ -372,7 +390,7 @@ steps:
     invoke:
       kind: Assert.Manifest
       source: ./__fixtures__/value-type-literals/refused-route-app.yaml
-      expect: { runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)" }
+      expect: { errors: [{ code: CONTRACT_INPUTS_MISMATCH, message: "Http.Api/stampApi: inputs at 'routes[0].inputs.at' do not satisfy stampInput's declared inputType: /at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }, { code: DEPENDENT_SCHEMA_MISMATCH, message: "Self.Holder/badHolder: 'payload' does not match schema from 'Self.Carrier/$defs/Payload': /at must be a Telo.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text (2026-01-15T09:30:00Z), and a computed value must already be one" }], runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)" }
   # A boot target's inline step and a template definition's own `inputs:`. No
   # consumer can run either past the refusal: an inline boot step lives in the
   # entry file, and a definition's body is checked wherever its kind is read —

@@ -587,7 +587,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       # `telo release order` names each chart's directory and destination.

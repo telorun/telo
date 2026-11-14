@@ -184,5 +184,5 @@ kind: Assert.Manifest
 metadata: { name: timeNotDateAtRuntime }
 source: ./__fixtures__/invalid/markdown-time/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: CEL_TYPE_ERROR, message: "Ui.Data/timeNoFormat: CEL at 'content.value': 'data.title' is a string with no format; the field takes a string of format date or date-time." }]
   runFails: "Ui.Data 'timeNoFormat' content.value: 'data.title' is a string with no format; a time takes a string of format date or date-time."

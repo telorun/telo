@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: CapabilityArtifactApp }
+imports: { Capability: "oci://registry.test/capability@1.0.0" }

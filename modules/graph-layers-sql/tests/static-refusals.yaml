@@ -57,7 +57,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyUnknownColumnAtRuntime }
 source: ./__fixtures__/rules/node-key-unknown-column-app.yaml
-expect: { errors: [], runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Node/bad: names a key column its table does not declare." }], runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeKeyMismatch }
@@ -70,7 +70,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyMismatchAtRuntime }
 source: ./__fixtures__/rules/node-key-mismatch-app.yaml
-expect: { errors: [], runFails: "GRAPH_NODE_KEY_MISMATCH" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Node/bad: names a key column other than its table's 'key'. The table's uniqueness within a layer is built on its own key, so the node type must use it." }], runFails: "GRAPH_NODE_KEY_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeKeyNotLayerable }
@@ -83,7 +83,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyNotLayerableAtRuntime }
 source: ./__fixtures__/rules/node-key-not-layerable-app.yaml
-expect: { errors: [], runFails: "GRAPH_NODE_KEY_NOT_LAYERABLE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Node/bad: names a key column that cannot hold one statement per layer: it must be 'nullable: false', and must not be a primary key, unique or an identity column, since each layer states the same key in a row of its own." }], runFails: "GRAPH_NODE_KEY_NOT_LAYERABLE" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeTableUnique }
@@ -96,7 +96,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeTableUniqueAtRuntime }
 source: ./__fixtures__/rules/node-table-unique-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_UNIQUE_DECLARED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Node/bad: is stored in a table that declares a primary key, a unique column or a unique index. A layered table holds one row per layer for the same node, so a value unique across the table would refuse the second layer's row." }], runFails: "GRAPH_TABLE_UNIQUE_DECLARED" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointUnknownColumn }
@@ -109,7 +109,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointUnknownColumnAtRuntime }
 source: ./__fixtures__/rules/endpoint-unknown-column-app.yaml
-expect: { errors: [], runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Relationship/bad: names a sourceColumn or targetColumn its table does not declare, or names the same column for both." }], runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointMismatch }
@@ -122,7 +122,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointMismatchAtRuntime }
 source: ./__fixtures__/rules/endpoint-mismatch-app.yaml
-expect: { errors: [], runFails: "GRAPH_ENDPOINT_MISMATCH" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Relationship/bad: names endpoint columns other than its table's 'sourceColumn' and 'targetColumn'. The table's uniqueness within a layer is built on its own endpoint columns, so the relationship type must use them." }], runFails: "GRAPH_ENDPOINT_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointNullable }
@@ -135,7 +135,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointNullableAtRuntime }
 source: ./__fixtures__/rules/endpoint-nullable-app.yaml
-expect: { errors: [], runFails: "GRAPH_ENDPOINT_NULLABLE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Relationship/bad: names an endpoint column that admits NULL. Declare both endpoint columns 'nullable: false': a relationship always joins two nodes." }], runFails: "GRAPH_ENDPOINT_NULLABLE" }
 ---
 kind: Assert.Manifest
 metadata: { name: relationshipTableUnique }
@@ -148,7 +148,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: relationshipTableUniqueAtRuntime }
 source: ./__fixtures__/rules/relationship-table-unique-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_UNIQUE_DECLARED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Relationship/bad: is stored in a table that declares a primary key, a unique column or a unique index. A layered table holds one row per layer for the same relationship, so a value unique across the table would refuse the second layer's row." }], runFails: "GRAPH_TABLE_UNIQUE_DECLARED" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableNotInSchema }
@@ -161,7 +161,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableNotInSchemaAtRuntime }
 source: ./__fixtures__/rules/table-not-in-schema-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: lists a node or relationship type whose table its schema does not list in 'tables:'. The schema is what creates and migrates the table; add it there." }], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatch }
@@ -174,7 +174,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatchAtRuntime }
 source: ./__fixtures__/rules/schema-connection-mismatch-app.yaml
-expect: { errors: [], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: names a schema on a different connection. The schema must create its tables where the graph reads them." }], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableShared }
@@ -187,7 +187,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableSharedAtRuntime }
 source: ./__fixtures__/rules/table-shared-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_SHARED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: lists two node or relationship types over the same table. Each type is its own table, so a row belongs to exactly one type." }], runFails: "GRAPH_TABLE_SHARED" }
 ---
 kind: Assert.Manifest
 metadata: { name: baseStoreMismatch }
@@ -200,7 +200,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: baseStoreMismatchAtRuntime }
 source: ./__fixtures__/rules/base-store-mismatch-app.yaml
-expect: { errors: [], runFails: "GRAPH_BASE_STORE_MISMATCH" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: lists a base on another connection or another schema. A layer and its bases are read in one statement, so they must share both." }], runFails: "GRAPH_BASE_STORE_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: baseLayerDuplicate }
@@ -213,7 +213,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: baseLayerDuplicateAtRuntime }
 source: ./__fixtures__/rules/base-layer-duplicate-app.yaml
-expect: { errors: [], runFails: "GRAPH_BASE_LAYER_DUPLICATE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: names the same layer twice among 'bases:', or a base naming this store's own 'layer'." }], runFails: "GRAPH_BASE_LAYER_DUPLICATE" }
 ---
 # Creation only, and the known gap: the store's own layer reached beneath a
 # base of a base is a cycle among layer NAMES through two store resources, and
@@ -240,7 +240,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointNotInStoreAtRuntime }
 source: ./__fixtures__/rules/endpoint-not-in-store-app.yaml
-expect: { errors: [], runFails: "GRAPH_ENDPOINT_NOT_IN_STORE" }
+expect: { errors: [{ code: REFERRER_RULE_VIOLATED, message: "Layers.Store/documentsOnly at 'relationships[0]': required by Layers.Relationship — lists a relationship type whose source or target node type it does not list in 'nodes:'. Add the endpoint node type to 'nodes:', or remove the relationship type." }], runFails: "GRAPH_ENDPOINT_NOT_IN_STORE" }
 ---
 # Creation only: a rule reads one reference deep, and comparing an endpoint
 # column with the endpoint node's key needs the node's table, two away.

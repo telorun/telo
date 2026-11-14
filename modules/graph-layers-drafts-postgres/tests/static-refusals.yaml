@@ -93,7 +93,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableReservedColumnAtRuntime }
 source: ./__fixtures__/tables/reserved-column-app.yaml
-expect: { errors: [], runFails: "/columns property name must be valid" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Layers.NodeTable/people: /columns matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Layers.NodeTable/people: /columns property name must be valid" }], runFails: "/columns property name must be valid" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableReservedIndex }
@@ -107,7 +107,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableReservedIndexAtRuntime }
 source: ./__fixtures__/tables/reserved-index-app.yaml
-expect: { errors: [], runFails: "/indexes property name must be valid" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Layers.NodeTable/people: /indexes matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Layers.NodeTable/people: /indexes property name must be valid" }], runFails: "/indexes property name must be valid" }
 ---
 # The engine table's own rules, restated on the table kinds under the engine's
 # codes (the code rides in `data.rule`), as `telo check` reports them. The
@@ -205,39 +205,39 @@ kind: Assert.Manifest
 metadata: { name: tableKeyUndeclaredAtRuntime }
 source: ./__fixtures__/tables/key-undeclared-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.NodeTable/people: names a column this table does not declare, as its 'key' or in an index. The index cannot be created — the table's own index is built on the key." }]
   runFails: "index 'people.graph_people_layer_key' names column 'uid', which this table does not declare"
 ---
 kind: Assert.Manifest
 metadata: { name: tableIndexUndeclaredColumnAtRuntime }
 source: ./__fixtures__/tables/index-undeclared-column-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.NodeTable/people: names a column this table does not declare, as its 'key' or in an index. The index cannot be created — the table's own index is built on the key." }]
   runFails: "index 'people.people_name' names column 'nmae', which this table does not declare"
 ---
 kind: Assert.Manifest
 metadata: { name: tableColumnRenameFromSelfAtRuntime }
 source: ./__fixtures__/tables/column-rename-from-self-app.yaml
-expect: { errors: [], runFails: "column 'people.name' declares renamedFrom itself" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.NodeTable/people at 'columns.name': declares renamedFrom itself, which describes no rename." }, { code: RESOURCE_RULE_VIOLATED, message: "Layers.NodeTable/people at 'columns.name': renames from a column this table also declares. A rename's source is the column being retired, so declaring both would copy one live column into another and retire neither." }], runFails: "column 'people.name' declares renamedFrom itself" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableColumnRenameSourceDeclaredAtRuntime }
 source: ./__fixtures__/tables/column-rename-source-declared-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.NodeTable/people at 'columns.title': renames from a column this table also declares. A rename's source is the column being retired, so declaring both would copy one live column into another and retire neither." }]
   runFails: "column 'people.title' renames from 'name', which this table also declares"
 ---
 kind: Assert.Manifest
 metadata: { name: tableCompositePrimaryKeyAtRuntime }
 source: ./__fixtures__/tables/composite-primary-key-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.NodeTable/people: marks more than one column as primaryKey. A composite primary key is not expressible as a per-column flag." }]
   runFails: "table 'people' marks 'tenant' and 'serial' as primaryKey"
 ---
 kind: Assert.Manifest
 metadata: { name: tableRenameFromSelfAtRuntime }
 source: ./__fixtures__/tables/table-rename-from-self-app.yaml
-expect: { errors: [], runFails: "table 'people' declares renamedFrom itself" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.NodeTable/people: declares renamedFrom itself, which describes no rename." }], runFails: "table 'people' declares renamedFrom itself" }
 ---
 # A node or table of another strategy module carries other bookkeeping, and the
 # slots name this module's own kinds.

@@ -110,7 +110,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: actionRefusedAtRuntime }
 source: ./__fixtures__/invalid/split-actions-at-runtime/telo.yaml
-expect: { errors: [], runFails: "Resource does not match schema for kind Ui.SplitView" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.SplitView/actionNotAButton: /aside/actions/0 is missing required property 'button'" }, { code: SCHEMA_VIOLATION, message: "Ui.SplitView/actionNotAButton: /aside/actions/0/type must be equal to constant" }], runFails: "Resource does not match schema for kind Ui.SplitView" }
 ---
 kind: Assert.Manifest
 metadata: { name: barKeyRefused }
@@ -122,4 +122,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: barKeyRefusedAtRuntime }
 source: ./__fixtures__/invalid/split-bar-key-at-runtime/telo.yaml
-expect: { errors: [], runFails: "Resource does not match schema for kind Ui.SplitView" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.SplitView/barKey: /aside must NOT have additional properties ('bar' is not allowed)" }], runFails: "Resource does not match schema for kind Ui.SplitView" }

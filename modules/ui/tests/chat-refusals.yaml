@@ -83,22 +83,22 @@ expect:
 kind: Assert.Manifest
 metadata: { name: headerKeysTitleAtRuntime }
 source: ./__fixtures__/invalid/chat-header-keys-at-runtime/telo.yaml
-expect: { errors: [], runFails: "Ui.Chat titled: RuntimeError: Resource does not match schema for kind Ui.Chat" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.Chat/titled: / must NOT have additional properties ('title' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.Chat/exportSwitch: /show must NOT have additional properties ('export' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.Chat/exportButton: /buttons must NOT have additional properties ('export' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.View/filledItem: /content/items/0/fill matches a shape that is not allowed here" }], runFails: "Ui.Chat titled: RuntimeError: Resource does not match schema for kind Ui.Chat" }
 ---
 kind: Assert.Manifest
 metadata: { name: headerKeysShowAtRuntime }
 source: ./__fixtures__/invalid/chat-header-keys-at-runtime/telo.yaml
-expect: { errors: [], runFails: "Ui.Chat exportSwitch: RuntimeError: Resource does not match schema for kind Ui.Chat" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.Chat/titled: / must NOT have additional properties ('title' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.Chat/exportSwitch: /show must NOT have additional properties ('export' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.Chat/exportButton: /buttons must NOT have additional properties ('export' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.View/filledItem: /content/items/0/fill matches a shape that is not allowed here" }], runFails: "Ui.Chat exportSwitch: RuntimeError: Resource does not match schema for kind Ui.Chat" }
 ---
 kind: Assert.Manifest
 metadata: { name: headerKeysButtonsAtRuntime }
 source: ./__fixtures__/invalid/chat-header-keys-at-runtime/telo.yaml
-expect: { errors: [], runFails: "Ui.Chat exportButton: RuntimeError: Resource does not match schema for kind Ui.Chat" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.Chat/titled: / must NOT have additional properties ('title' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.Chat/exportSwitch: /show must NOT have additional properties ('export' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.Chat/exportButton: /buttons must NOT have additional properties ('export' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.View/filledItem: /content/items/0/fill matches a shape that is not allowed here" }], runFails: "Ui.Chat exportButton: RuntimeError: Resource does not match schema for kind Ui.Chat" }
 ---
 kind: Assert.Manifest
 metadata: { name: headerKeysFillAtRuntime }
 source: ./__fixtures__/invalid/chat-header-keys-at-runtime/telo.yaml
-expect: { errors: [], runFails: "Ui.View filledItem: RuntimeError: Resource does not match schema for kind Ui.View" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.Chat/titled: / must NOT have additional properties ('title' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.Chat/exportSwitch: /show must NOT have additional properties ('export' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.Chat/exportButton: /buttons must NOT have additional properties ('export' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Ui.View/filledItem: /content/items/0/fill matches a shape that is not allowed here" }], runFails: "Ui.View filledItem: RuntimeError: Resource does not match schema for kind Ui.View" }
 ---
 kind: Assert.Manifest
 metadata: { name: headerRoots }

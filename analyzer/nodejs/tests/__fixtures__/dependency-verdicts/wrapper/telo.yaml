@@ -1,0 +1,4 @@
+# An editable library reaching a published one.
+kind: Telo.Library
+metadata: { name: Wrapper }
+imports: { Screens: oci://registry.test/screens@1.0.0 }

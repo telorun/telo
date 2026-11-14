@@ -68,7 +68,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: computedChildrenAtRuntime }
 source: ./__fixtures__/invalid/computed-children/telo.yaml
-expect: { errors: [], runFails: "ERR_REF_SLOT_COMPUTED" }
+expect: { errors: [{ code: REF_SLOT_COMPUTED, message: "UiReact.App/computed: 'children: !cel \"[]\"' computes a value that holds the reference slot 'children[].button'. CEL values are data, so the reference cannot survive the expression. Write the slot itself as '!ref'." }], runFails: "ERR_REF_SLOT_COMPUTED" }
 ---
 kind: Assert.Manifest
 metadata: { name: duplicatePath }
@@ -84,7 +84,7 @@ kind: Assert.Manifest
 metadata: { name: duplicatePathAtRuntime }
 source: ./__fixtures__/invalid/duplicate-path/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.App/twice at 'pages[0]': declares a path another page already has, or one differing from it only in the names of its variables, so both route the same addresses. Give each page a path of its own." }, { code: RESOURCE_RULE_VIOLATED, message: "UiReact.App/twice at 'pages[1]': declares a path another page already has, or one differing from it only in the names of its variables, so both route the same addresses. Give each page a path of its own." }]
   runFails: "UiReact.App 'twice': 'pages[1]' declares a path another page already has ('/reports')"
 ---
 # A page and a `Ui.PageRoute` routing one path are two pages at it.
@@ -102,7 +102,7 @@ kind: Assert.Manifest
 metadata: { name: duplicateRouteAtRuntime }
 source: ./__fixtures__/invalid/duplicate-route/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.App/twice at 'pages[0]': declares a path another page already has, or one differing from it only in the names of its variables, so both route the same addresses. Give each page a path of its own." }, { code: RESOURCE_RULE_VIOLATED, message: "UiReact.App/twice at 'pages[1]': declares a path another page already has, or one differing from it only in the names of its variables, so both route the same addresses. Give each page a path of its own." }]
   runFails: "UiReact.App 'twice': 'pages[1]' declares a path another page already has ('/reports')"
 ---
 # A literal segment beside a variable routes apart; two variables named apart do not.
@@ -120,7 +120,7 @@ kind: Assert.Manifest
 metadata: { name: variableNamesPathAtRuntime }
 source: ./__fixtures__/invalid/variable-names-path/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.App/renamed at 'pages[1]': declares a path another page already has, or one differing from it only in the names of its variables, so both route the same addresses. Give each page a path of its own." }, { code: RESOURCE_RULE_VIOLATED, message: "UiReact.App/renamed at 'pages[2]': declares a path another page already has, or one differing from it only in the names of its variables, so both route the same addresses. Give each page a path of its own." }]
   runFails: "UiReact.App 'renamed': 'pages[2]' (/plans/{key}) routes the same addresses as /plans/{id} ('pages[1]')"
 ---
 kind: Assert.Manifest
@@ -176,7 +176,7 @@ kind: Assert.Manifest
 metadata: { name: themeControlDuplicateAtRuntime }
 source: ./__fixtures__/invalid/theme-control-duplicate/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.Theme/doubled at 'controls[0]': implements a control another entry of controls implements too. Give each control one implementation." }, { code: RESOURCE_RULE_VIOLATED, message: "UiReact.Theme/doubled at 'controls[1]': implements a control another entry of controls implements too. Give each control one implementation." }]
   runFails: "UiReact.Theme 'doubled': 'controls[1]' (UiReact.Controls 'checkboxes') implements 'Checkbox', which 'controls[0]' (UiReact.Controls 'controls') already implements"
 ---
 kind: Assert.Manifest
@@ -193,7 +193,7 @@ kind: Assert.Manifest
 metadata: { name: themeControlEqualAtRuntime }
 source: ./__fixtures__/invalid/theme-control-equal/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.Theme/equal at 'controls[0]': implements a control another entry of controls implements too. Give each control one implementation." }, { code: RESOURCE_RULE_VIOLATED, message: "UiReact.Theme/equal at 'controls[1]': implements a control another entry of controls implements too. Give each control one implementation." }]
   runFails: "UiReact.Theme 'equal': 'controls[1]' (UiReact.Controls 'controls') implements 'Checkbox', which 'controls[0]' (UiReact.Controls 'controls') already implements"
 ---
 kind: Assert.Manifest
@@ -210,7 +210,7 @@ kind: Assert.Manifest
 metadata: { name: themeControlSharedAtRuntime }
 source: ./__fixtures__/invalid/theme-control-shared/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.Theme/aliased at 'controls[0]': implements a control another entry of controls implements too. Give each control one implementation." }, { code: RESOURCE_RULE_VIOLATED, message: "UiReact.Theme/aliased at 'controls[1]': implements a control another entry of controls implements too. Give each control one implementation." }]
   runFails: "UiReact.Theme 'aliased': 'controls[1]' (UiReact.Controls 'boxes') implements 'Checkbox', which 'controls[0]' (UiReact.Controls 'boxes') already implements"
 ---
 kind: Assert.Manifest
@@ -225,7 +225,7 @@ kind: Assert.Manifest
 metadata: { name: controlsLayersPartialAtRuntime }
 source: ./__fixtures__/invalid/controls-layers-partial/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.Controls/nineLayers: implements some of the layer controls but not all of them. A set implementing any of Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip and Navigation implements all ten." }]
   runFails: "UiReact.Controls 'nineLayers': implements the layer controls Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation but not Combobox"
 ---
 # A set written against the previous generation is refused, not drawn.
@@ -243,7 +243,7 @@ source: ./__fixtures__/invalid/controls-previous-generation/telo.yaml
 expect:
   errors:
     - code: BROWSER_ENTRY_ABI_UNSUPPORTED
-      message: "Imported library 'UiReactControlsPreviousGeneration', reached through import 'Lib': UiReact.Controls/previousControls: 'entry: @fixture/previous-controls' names a browser entry written against 'ui_react_controls-3', and this field accepts 'ui_react_controls-4'"
+      message: "UiReact.Controls/previousControls: 'entry: @fixture/previous-controls' names a browser entry written against 'ui_react_controls-3', and this field accepts 'ui_react_controls-4'"
 ---
 # Two entries implementing different controls are one theme: nothing refuses it.
 kind: Assert.Manifest

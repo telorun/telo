@@ -55,5 +55,7 @@ source: ./__fixtures__/needs/desktop-host/library/telo.yaml
 expect:
   errors:
     - code: NEED_PARAMETERS_INVALID
-      message: "Imported library 'Shell', reached through import 'Shell'"
+      message: "Need 'desktopHost' (type 'Telo.DesktopHost') states parameters, and a library's desktop host states none"
+    - code: NEED_ROOT_SUPPLY_REQUIRED
+      message: "Need 'Shell.desktopHost' is of type 'Telo.DesktopHost', which is supplied only through a root need forwarded whole, and nothing forwards it"
   runFails: "ERR_NEED_PARAMETERS_INVALID"

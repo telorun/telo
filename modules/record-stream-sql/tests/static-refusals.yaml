@@ -20,4 +20,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: pollIntervalPositiveAtRuntime }
 source: ./__fixtures__/poll-interval-zero-app.yaml
-expect: { errors: [], runFails: "RECORD_STREAM_SQL_POLL_INTERVAL_NOT_POSITIVE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "RecordStreamSql.JournalStore/store: sets `pollInterval` to zero or less; a waiting reader would query the database without pause." }], runFails: "RECORD_STREAM_SQL_POLL_INTERVAL_NOT_POSITIVE" }

@@ -20,4 +20,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: refusedAtCreation }
 source: ./__fixtures__/pending-retention-zero-app.yaml
-expect: { errors: [], runFails: "[ERR_AI_CHAT_PENDING_RETENTION_NOT_POSITIVE]" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Chat.Conversation/chat: sets `attachments.pendingRetention` to zero or less; every upload would expire before a message could send it." }], runFails: "[ERR_AI_CHAT_PENDING_RETENTION_NOT_POSITIVE]" }

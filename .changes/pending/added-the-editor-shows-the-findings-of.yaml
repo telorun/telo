@@ -1,0 +1,4 @@
+units:
+  packages/language-server: Added
+body: The editor shows the findings of the libraries a manifest imports, each published
+  once per file whether the library, its consumer or both are open.

@@ -25,7 +25,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: fromSelfAtCreation }
 source: ./__fixtures__/internal-columns/rename-from-self-app.yaml
-expect: { errors: [], runFails: "column 'documents.layer' declares renamedFrom itself" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "SQLite.Table/documents at 'internalColumns.layer': declares renamedFrom itself, which describes no rename." }, { code: RESOURCE_RULE_VIOLATED, message: "SQLite.Table/documents at 'internalColumns.layer': renames from a column this table also declares. A rename's source is the column being retired, so declaring both would copy one live column into another and retire neither." }], runFails: "column 'documents.layer' declares renamedFrom itself" }
 ---
 kind: Assert.Manifest
 metadata: { name: sourceDeclaredAtCheck }
@@ -39,5 +39,5 @@ kind: Assert.Manifest
 metadata: { name: sourceDeclaredAtCreation }
 source: ./__fixtures__/internal-columns/rename-source-declared-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "SQLite.Table/documents at 'internalColumns.layer': renames from a column this table also declares. A rename's source is the column being retired, so declaring both would copy one live column into another and retire neither." }]
   runFails: "column 'documents.layer' renames from 'stage', which this table also declares"

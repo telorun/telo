@@ -26,7 +26,7 @@ kind: Assert.Manifest
 metadata: { name: scopeUnknownAtStart }
 source: ./__fixtures__/scope-unknown-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "ApiKey.DeclaredKeys/keys at 'keys[0]': grants a scope outside this source's `scopes`." }]
   runFails: "ApiKey.DeclaredKeys \"keys\": keys[0]: scope \"admin\" is outside the source's 'scopes'. [ERR_API_KEY_SCOPE_UNKNOWN]"
 ---
 kind: Assert.Manifest
@@ -41,7 +41,7 @@ kind: Assert.Manifest
 metadata: { name: idDuplicateAtStart }
 source: ./__fixtures__/id-duplicate-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "ApiKey.DeclaredKeys/keys at 'keys[0]': declares a key id that another entry declares too." }, { code: RESOURCE_RULE_VIOLATED, message: "ApiKey.DeclaredKeys/keys at 'keys[1]': declares a key id that another entry declares too." }]
   runFails: "ApiKey.DeclaredKeys \"keys\": keys[1]: the id \"apk_01tRy6czI6jAOLpZvq3hw1\" is declared twice. [ERR_API_KEY_ID_DUPLICATE]"
 ---
 kind: Assert.Manifest
@@ -55,5 +55,5 @@ kind: Assert.Manifest
 metadata: { name: prefixDuplicateAtStart }
 source: ./__fixtures__/prefix-duplicate-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "ApiKey.Verifier/keys at 'sources[0]': has the same prefix as another source, so a key could not be routed to one." }, { code: RESOURCE_RULE_VIOLATED, message: "ApiKey.Verifier/keys at 'sources[1]': has the same prefix as another source, so a key could not be routed to one." }]
   runFails: "ApiKey.Verifier \"keys\": 'sources[1]' has the prefix \"tk\", which an earlier source already has; a key is routed to its source by prefix. [ERR_API_KEY_PREFIX_DUPLICATE]"

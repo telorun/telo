@@ -1,0 +1,10 @@
+# A library declaring a kind with a capability no kernel implements: its own
+# check reports it at the line, and an importer's at the import.
+kind: Telo.Library
+metadata: { name: Capability }
+---
+kind: Telo.Definition
+metadata: { name: Gadget }
+capability: Telo.Servise
+controllers: [pkg:telo/local/js?path=./gadget.mjs#Gadget]
+schema: { type: object }

@@ -1,0 +1,99 @@
+name: Bug report
+description: Telo, a module, the hub or the docs does something it should not.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Whoever fixes this cannot ask you follow-up questions, so the report has
+        to reproduce the bug on its own. Everything you post here is public:
+        remove secrets, tokens and private data first.
+  - type: textarea
+    id: affects
+    attributes:
+      label: Affects
+      description: >-
+        One per line: `kernel`, `analyzer`, `cli`, `editor`, `studio`, `hub`,
+        `docs`, or a module as `ref@version`
+        (`oci://ghcr.io/telorun/http-server@0.44.2`).
+    validations:
+      required: true
+  - type: input
+    id: teloVersion
+    attributes:
+      label: Telo version
+      description: The output of `telo --version`, verbatim (keep any `+unreleased`).
+    validations:
+      required: true
+  - type: dropdown
+    id: kernel
+    attributes:
+      label: Kernel
+      options: [nodejs, rust]
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and architecture, plus `node --version` for the Node kernel.
+      placeholder: linux x64, node v22.11.0
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The exact command that was run.
+      placeholder: telo run ./telo.yaml
+    validations:
+      required: true
+  - type: input
+    id: exitStatus
+    attributes:
+      label: Exit status
+    validations:
+      required: true
+  - type: dropdown
+    id: checkVerdict
+    attributes:
+      label: telo check
+      description: What `telo check` says about the same manifest.
+      options: [passes, fails, not-run]
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Reproduction
+      description: >-
+        Every file needed to reproduce, complete and self-contained, each as its
+        path on one line followed by its content in a fenced block. Pin every
+        import. Nothing else should need to be set up.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The full output, verbatim — diagnostic codes, messages and positions.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: Already tried
+      description: Workarounds attempted, and what they changed.

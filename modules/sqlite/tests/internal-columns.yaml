@@ -158,4 +158,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: noColumnsAtCreation }
 source: ./__fixtures__/internal-only/no-columns-app.yaml
-expect: { errors: [], runFails: "/columns must NOT have fewer than 1 properties" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "SQLite.Table/control: /columns must NOT have fewer than 1 properties" }], runFails: "/columns must NOT have fewer than 1 properties" }

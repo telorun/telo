@@ -31,13 +31,13 @@ kind: Assert.Manifest
 metadata: { name: connectionStringRefusedAtCreation }
 source: ./__fixtures__/access/legacy-app.yaml
 expect:
-  errors: []
+  errors: [{ code: SCHEMA_VIOLATION, message: "Postgres.Connection/beside: / must NOT have additional properties ('connectionString' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Postgres.Connection/insteadOf: / is missing required property 'access'" }, { code: SCHEMA_VIOLATION, message: "Postgres.Connection/insteadOf: / must NOT have additional properties ('connectionString' is not allowed)" }]
   runFails: "/ must NOT have additional properties ('connectionString' is not allowed)"
 ---
 kind: Assert.Manifest
 metadata: { name: accessRequiredAtCreation }
 source: ./__fixtures__/access/legacy-app.yaml
-expect: { errors: [], runFails: "/ is missing required property 'access'" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Postgres.Connection/beside: / must NOT have additional properties ('connectionString' is not allowed)" }, { code: SCHEMA_VIOLATION, message: "Postgres.Connection/insteadOf: / is missing required property 'access'" }, { code: SCHEMA_VIOLATION, message: "Postgres.Connection/insteadOf: / must NOT have additional properties ('connectionString' is not allowed)" }], runFails: "/ is missing required property 'access'" }
 ---
 kind: Assert.Manifest
 metadata: { name: unreachable }

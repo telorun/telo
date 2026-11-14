@@ -47,7 +47,7 @@ kind: Assert.Manifest
 metadata: { name: htmlSanitizeUnknownElementAtRuntime }
 source: ./__fixtures__/sanitize-policy/unknown-element-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy at 'attributes.span': allows attributes on an element `elements` does not list, so the entry never applies. Add the element to `elements` or remove the entry." }]
   runFails: "HTML_SANITIZE_UNKNOWN_ELEMENT: 'attributes' names 'span'"
 ---
 # A URL attribute allowed with no scheme list: a sanitize policy contradicting itself, refused at the
@@ -64,7 +64,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: htmlSanitizeUrlWithoutProtocolsAtRuntime }
 source: ./__fixtures__/sanitize-policy/url-without-protocols-app.yaml
-expect: { errors: [], runFails: "HTML_SANITIZE_URL_WITHOUT_PROTOCOLS" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy at 'attributes.a': allows a URL attribute without `protocols`, so a `javascript:` URL would pass. List the schemes it may use, such as `protocols: [http, https]`." }], runFails: "HTML_SANITIZE_URL_WITHOUT_PROTOCOLS" }
 ---
 # An element both kept and dropped with its content: a sanitize policy contradicting itself, refused at the
 # declaration…
@@ -80,7 +80,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: htmlSanitizeDropAllowedAtRuntime }
 source: ./__fixtures__/sanitize-policy/drop-allowed-app.yaml
-expect: { errors: [], runFails: "HTML_SANITIZE_DROP_ALLOWED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy: lists an element in both `elements` and `dropContent`; it would be removed with its content, so the allow entry has no effect." }], runFails: "HTML_SANITIZE_DROP_ALLOWED" }
 ---
 # An id prefix with no id or name allowed to prefix: refused at the
 # declaration…
@@ -96,7 +96,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: htmlSanitizeIdPrefixUnusedAtRuntime }
 source: ./__fixtures__/sanitize-policy/id-prefix-unused-app.yaml
-expect: { errors: [], runFails: "HTML_SANITIZE_ID_PREFIX_UNUSED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy: sets `idPrefix` but allows no `id` or `name` attribute on any element, so there is nothing for it to prefix. Allow `id` / `name` (under an element or `\"*\"`), or remove `idPrefix`." }], runFails: "HTML_SANITIZE_ID_PREFIX_UNUSED" }
 ---
 # An element whose content is raw text cannot be sanitized, so it cannot be kept:
 # refused at the declaration, anchored at the entry…
@@ -113,7 +113,7 @@ kind: Assert.Manifest
 metadata: { name: htmlSanitizeRawTextStyleAtRuntime }
 source: ./__fixtures__/sanitize-policy/raw-text-style-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy at 'elements[1]': keeps an element whose content is raw text (`script`, `style`, `xmp`, `iframe`, `noembed`, `noframes`, `plaintext`, `noscript`), which an allowlist cannot vet — the browser runs or renders it as written. Drop it with `dropContent`, or leave it out of `elements`." }]
   runFails: "HTML_SANITIZE_RAW_TEXT_ELEMENT: 'elements' lists 'style'"
 ---
 # `noscript` is raw text too, since the parser runs with scripting enabled.
@@ -129,7 +129,7 @@ kind: Assert.Manifest
 metadata: { name: htmlSanitizeRawTextNoscriptAtRuntime }
 source: ./__fixtures__/sanitize-policy/raw-text-noscript-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy at 'elements[1]': keeps an element whose content is raw text (`script`, `style`, `xmp`, `iframe`, `noembed`, `noframes`, `plaintext`, `noscript`), which an allowlist cannot vet — the browser runs or renders it as written. Drop it with `dropContent`, or leave it out of `elements`." }]
   runFails: "HTML_SANITIZE_RAW_TEXT_ELEMENT: 'elements' lists 'noscript'"
 ---
 # `svg` (like `math` and `image`) is never written as an HTML element, so a
@@ -146,7 +146,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: htmlSanitizeNotAnHtmlElementAtRuntime }
 source: ./__fixtures__/sanitize-policy/not-an-html-element-app.yaml
-expect: { errors: [], runFails: "HTML_SANITIZE_NOT_AN_HTML_ELEMENT" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy at 'elements[0]': keeps `svg`, `math` or `image`, which markup never writes as an HTML element — `svg` and `math` start SVG or MathML content, and `image` reads back as `img`. Remove the entry; list `img` for images." }], runFails: "HTML_SANITIZE_NOT_AN_HTML_ELEMENT" }
 ---
 # A URL scheme that runs script, listed in `protocols`: refused at the
 # declaration, anchored at the element's attribute map…
@@ -162,7 +162,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: htmlSanitizeScriptProtocolAtRuntime }
 source: ./__fixtures__/sanitize-policy/script-protocol-app.yaml
-expect: { errors: [], runFails: "HTML_SANITIZE_SCRIPT_PROTOCOL" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy at 'attributes.a': lists `javascript` or `vbscript` in `protocols`, so a URL attribute would keep a link that runs script. Remove the scheme; list `http`, `https` or `mailto`." }], runFails: "HTML_SANITIZE_SCRIPT_PROTOCOL" }
 ---
 # A `setAttributes` entry for an element the policy does not keep: refused at the
 # declaration, anchored at the entry…
@@ -178,7 +178,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: htmlSanitizeUnknownElementForcedAtRuntime }
 source: ./__fixtures__/sanitize-policy/unknown-element-forced-app.yaml
-expect: { errors: [], runFails: "HTML_SANITIZE_UNKNOWN_ELEMENT_FORCED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy at 'setAttributes.input': forces attributes onto an element `elements` does not list, so the entry never applies. Add the element to `elements` or remove the entry." }], runFails: "HTML_SANITIZE_UNKNOWN_ELEMENT_FORCED" }
 ---
 # An event handler allowed through from the input: refused at the declaration,
 # anchored at the element's attribute map…
@@ -195,7 +195,7 @@ kind: Assert.Manifest
 metadata: { name: htmlSanitizeEventHandlerAtRuntime }
 source: ./__fixtures__/sanitize-policy/event-handler-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy at 'attributes.p': allows an event handler attribute (a name starting with `on`), which would let script from the untrusted input through. Remove it; no policy may keep one." }]
   runFails: "HTML_SANITIZE_EVENT_HANDLER: 'p' allows the event handler 'onclick'"
 ---
 # An event handler forced onto every kept element: refused at the declaration,
@@ -212,4 +212,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: htmlSanitizeEventHandlerForcedAtRuntime }
 source: ./__fixtures__/sanitize-policy/event-handler-forced-app.yaml
-expect: { errors: [], runFails: "HTML_SANITIZE_EVENT_HANDLER_FORCED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Html.SafeTree/policy at 'setAttributes.p': forces an event handler attribute (a name starting with `on`), which would put the policy author's own script onto every kept element. Remove it." }], runFails: "HTML_SANITIZE_EVENT_HANDLER_FORCED" }

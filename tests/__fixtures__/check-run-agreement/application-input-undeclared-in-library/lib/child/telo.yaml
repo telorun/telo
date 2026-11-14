@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata:
+  name: Child
+  version: 1.0.0
+variables:
+  who:
+    env: CHILD_WHO
+    type: string
+    default: nobody

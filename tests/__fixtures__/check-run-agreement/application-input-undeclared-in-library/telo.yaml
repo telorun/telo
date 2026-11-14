@@ -1,0 +1,8 @@
+# Imports a library running a child application that the library supplies a
+# variable it does not declare.
+kind: Telo.Application
+metadata:
+  name: ApplicationInputUndeclaredInLibraryApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

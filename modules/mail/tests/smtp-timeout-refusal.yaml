@@ -23,5 +23,5 @@ kind: Assert.Manifest
 metadata: { name: refusedAtRuntime }
 source: ./__fixtures__/timeout-not-positive/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Mail.Smtp/mail: sets a timeout that is not longer than zero." }]
   runFails: "[ERR_RESOURCE_INITIALIZATION_FAILED] 1 resource failed to initialize"

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // The release units a Publish run releases, read from its RELEASE COMMIT: the tip
-// when it moved a unit's version, else the newest `chore(release): version` commit
-// beneath it (`version-commit.mjs`), so a fix pushed onto the branch after the
-// release PR merged still releases what that PR versioned.
+// when it moved a unit's version and is no record commit, else the newest
+// `chore(release): version` commit beneath it (`version-commit.mjs`), so a fix pushed
+// onto the branch after the release PR merged still releases what that PR versioned.
 //
 // What moved is `.changes/ledger.yaml` against the commit's first parent: `telo
 // release apply` records every unit it versions there — a final as the entry's
@@ -21,7 +21,7 @@ import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
 import { setOutput } from "./release-actions-output.mjs";
 import { releaseCommitOfCommit } from "./release-commit.mjs";
-import { newestVersionCommit } from "./version-commit.mjs";
+import { isRecordCommit, newestVersionCommit } from "./version-commit.mjs";
 import { ROOT } from "./version-line.mjs";
 
 export const LEDGER = ".changes/ledger.yaml";
@@ -59,12 +59,12 @@ export function movedVersions({ cwd = ROOT, commit }) {
 }
 
 /** The release commit of the run at `cwd`'s HEAD, or undefined: HEAD — or, at a
- *  publication commit, its first parent — when it moved a unit, else the newest
- *  `chore(release): version` commit beneath it that did. */
+ *  publication commit, its first parent — when it moved a unit and is no record
+ *  commit, else the newest `chore(release): version` commit beneath it that did. */
 export function releaseCommit({ cwd = ROOT } = {}) {
   const moves = (sha) => movedVersions({ cwd, commit: sha }).length > 0;
   const own = releaseCommitOfCommit({ cwd, commit: "HEAD" });
-  if (moves(own)) return own;
+  if (!isRecordCommit({ cwd, commit: own }) && moves(own)) return own;
   return newestVersionCommit({ cwd, paths: [LEDGER], moves });
 }
 

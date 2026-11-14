@@ -163,7 +163,12 @@ export function importAnchoredDiagnostic(
     severity: DiagnosticSeverity.Error,
     code,
     source: SOURCE,
-    message: `Imported library '${module}', reached through import '${via.alias}': ${message}`,
+    message: importAnchoredMessage(module, via.alias, message),
     data: { filePath: via.filePath, path: via.path, ...(via.resource ? { resource: via.resource } : {}) },
   };
+}
+
+/** The wording of every refusal of `module` reported at the import `alias`. */
+export function importAnchoredMessage(module: string, alias: string, message: string): string {
+  return `Imported library '${module}', reached through import '${alias}': ${message}`;
 }

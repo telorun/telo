@@ -56,6 +56,11 @@ jobs:
       - name: Build workspace
         run: pnpm -r --if-present build
 
+      # A linking crate's cargo layer reads its closure across every platform
+      # (`cargo metadata --locked --offline`), so every platform's crates are fetched first.
+      - name: Fetch every platform's crates
+        run: cargo fetch --locked
+
       # Under bun: on main this is the cut's own check, which asks the record and
       # reads the analyzer from source.
       - name: Check
@@ -70,10 +75,11 @@ jobs:
       contents: write
       pull-requests: write
       actions: read
-    # On main, the new branch's Publish group: the Publish run its creation starts
-    # waits until the release PR is open, then rebuilds it as the final.
+    # The branch's Publish group: on main, the Publish run the branch's creation starts
+    # waits until the release PR is open, then rebuilds it as the final; over candidates,
+    # a Publish run cannot rebuild the release PR's head while it is being replaced.
     concurrency:
-      group: ${{ needs.check.outputs.direct == 'true' && format('publish-refs/heads/{0}', needs.check.outputs.branch) || format('finish-release-job-{0}', github.ref) }}
+      group: ${{ format('publish-refs/heads/{0}', needs.check.outputs.branch) }}
       cancel-in-progress: false
     env:
       BRANCH: ${{ needs.check.outputs.branch }}

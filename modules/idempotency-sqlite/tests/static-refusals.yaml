@@ -9,8 +9,7 @@ metadata:
   name: IdempotencySqliteStaticRefusals
   version: 1.0.0
   description: The SQLite ledger's refusals, as `telo check` and the kernel report them.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref outsideTransaction
   - !ref foreignConnection
@@ -51,7 +50,7 @@ kind: Assert.Manifest
 metadata: { name: ledgerNameDuplicateAtRuntime }
 source: ./__fixtures__/ledger-name-duplicate-app.yaml
 expect:
-  errors: []
+  errors: [{ code: REFERRER_RULE_VIOLATED, message: "Idempotency.Ledger/orders at 'table': required by Idempotency.Table — claims a ledger name another ledger in this table already claims. Two ledgers with one name in one table would read each other's keys as their own — give each ledger a name of its own." }, { code: REFERRER_RULE_VIOLATED, message: "Idempotency.Ledger/ordersAgain at 'table': required by Idempotency.Table — claims a ledger name another ledger in this table already claims. Two ledgers with one name in one table would read each other's keys as their own — give each ledger a name of its own." }]
   runFails: "ERR_IDEMPOTENCY_LEDGER_NAME_DUPLICATE"
 ---
 kind: Assert.Manifest
@@ -69,5 +68,4 @@ expect:
   errors:
     - code: CONTRACT_INPUTS_MISMATCH
       message: "/inputs is missing required property 'orderId'"
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'ordrId' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'ordrId' is not allowed" }

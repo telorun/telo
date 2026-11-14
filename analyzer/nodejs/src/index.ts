@@ -20,7 +20,23 @@ export {
   type ApplicationSourceSlot,
 } from "./application-source-slot.js";
 export { collectApplicationSources, type ApplicationSourceRecords } from "./child-application.js";
-export { assembleGraphDiagnostics, compromisedFiles } from "./graph-diagnostics.js";
+export { assembleGraphDiagnostics, compromisedFiles, partitionAnalysisDiagnostics } from "./graph-diagnostics.js";
+export { analyzeLoadedGraph, type GraphAnalysis, type GraphAnalysisOptions } from "./graph-analysis.js";
+export {
+  analyzeDependencies,
+  dependencyVerdictKey,
+  DependencyVerdictMemo,
+  libraryGraph,
+  NO_DEPENDENCY_VERDICT_STORE,
+  withoutCoveredDependencyFindings,
+  type DependencyAnalysis,
+  type DependencyAnalysisOptions,
+  type DependencyVerdict,
+  type DependencyVerdictRecord,
+  type DependencyVerdictStore,
+} from "./dependency-verdicts.js";
+export { moduleOrigins, type ModuleOrigin } from "./module-origin.js";
+export { diagnosticIdentity, unionDiagnostics } from "./diagnostic-identity.js";
 export { findPositions, locateDiagnostic, resolveRange } from "./diagnostic-location.js";
 export type { DiagnosticPositions } from "./diagnostic-location.js";
 export { writtenFailureSite, writtenRootOf, type WrittenFailureSite } from "./failure-site.js";

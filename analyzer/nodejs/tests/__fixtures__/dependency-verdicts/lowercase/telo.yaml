@@ -1,0 +1,4 @@
+# A published library whose module name is lowercase: its own check refuses the
+# name, though a kernel runs it.
+kind: Telo.Library
+metadata: { name: tidy }

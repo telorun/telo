@@ -1,0 +1,18 @@
+# A library whose own check finds an error and a warning in a resource it does
+# not export.
+kind: Telo.Library
+metadata: { name: Screens }
+---
+kind: Telo.Definition
+metadata: { name: Widget }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./widget.mjs#Widget]
+schema: { type: object, properties: { size: { type: integer } } }
+---
+kind: Self.Widget
+metadata: { name: badWidget }
+size: big
+---
+kind: Self.Widget
+metadata: { name: LoudWidget }
+size: 1

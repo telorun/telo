@@ -71,7 +71,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeConflictsTypeNotInStoreAtRuntime }
 source: ./__fixtures__/drafting/node-conflicts-type-not-in-store-app.yaml
-expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphLayers.NodeConflicts/bad: names a node type its store does not list in 'nodes:'." }], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: resolveNodeConflictTypeNotInStore }
@@ -84,7 +84,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: resolveNodeConflictTypeNotInStoreAtRuntime }
 source: ./__fixtures__/drafting/resolve-node-conflict-type-not-in-store-app.yaml
-expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphLayers.ResolveNodeConflict/bad: names a node type its store does not list in 'nodes:'." }], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: relationshipConflictsTypeNotInStore }
@@ -97,7 +97,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: relationshipConflictsTypeNotInStoreAtRuntime }
 source: ./__fixtures__/drafting/relationship-conflicts-type-not-in-store-app.yaml
-expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphLayers.RelationshipConflicts/bad: names a relationship type its store does not list in 'relationships:'." }], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: resolveRelationshipConflictTypeNotInStore }
@@ -110,7 +110,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: resolveRelationshipConflictTypeNotInStoreAtRuntime }
 source: ./__fixtures__/drafting/resolve-relationship-conflict-type-not-in-store-app.yaml
-expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphLayers.ResolveRelationshipConflict/bad: names a relationship type its store does not list in 'relationships:'." }], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: outsideSession }

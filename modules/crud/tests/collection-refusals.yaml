@@ -59,7 +59,7 @@ kind: Assert.Manifest
 metadata: { name: keyUndeclaredAtRuntime }
 source: ./__fixtures__/collection-refusals/key-undeclared/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection at 'schemas.list': does not declare a required `id`. Every row read carries its key: add `id` to this shape's properties and to its `required`." }]
   runFails: "[ERR_CRUD_COLLECTION_KEY_UNDECLARED] RuntimeError: Crud.Collection 'collection': 'schemas.list' does not declare a required 'id'"
 ---
 kind: Assert.Manifest
@@ -74,7 +74,7 @@ kind: Assert.Manifest
 metadata: { name: keyWritableAtRuntime }
 source: ./__fixtures__/collection-refusals/key-writable/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection at 'schemas.create': declares `id`. The key is assigned by the table and named by the URL: remove it from this shape." }]
   runFails: "[ERR_CRUD_COLLECTION_KEY_WRITABLE] RuntimeError: Crud.Collection 'collection': 'schemas.create' declares 'id'"
 ---
 kind: Assert.Manifest
@@ -89,7 +89,7 @@ kind: Assert.Manifest
 metadata: { name: writeShapeOpenAtRuntime }
 source: ./__fixtures__/collection-refusals/write-shape-open/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection at 'schemas.create': accepts properties it does not declare. A write body names columns: set `additionalProperties: false` on this shape." }]
   runFails: "[ERR_CRUD_COLLECTION_WRITE_SHAPE_OPEN] RuntimeError: Crud.Collection 'collection': 'schemas.create' accepts properties it does not declare"
 ---
 kind: Assert.Manifest
@@ -104,7 +104,7 @@ kind: Assert.Manifest
 metadata: { name: propertyNotReadableAtRuntime }
 source: ./__fixtures__/collection-refusals/property-not-readable/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection at 'schemas.update': declares a property `model` does not. Every property of a record is one a read returns: add it to `model`, or remove it here." }]
   runFails: "[ERR_CRUD_COLLECTION_PROPERTY_NOT_READABLE] RuntimeError: Crud.Collection 'collection': 'schemas.update' declares 'secret', which 'model' does not"
 ---
 kind: Assert.Manifest
@@ -119,7 +119,7 @@ kind: Assert.Manifest
 metadata: { name: propertyTypeDiffersAtRuntime }
 source: ./__fixtures__/collection-refusals/property-type-differs/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection at 'schemas.update': types a property differently from `model`. One column has one type: declare the same one in both shapes." }]
   runFails: "[ERR_CRUD_COLLECTION_PROPERTY_TYPE_DIFFERS] RuntimeError: Crud.Collection 'collection': 'schemas.update' types 'text' as integer, and 'model' as string"
 ---
 kind: Assert.Manifest
@@ -134,7 +134,7 @@ kind: Assert.Manifest
 metadata: { name: updateRequiresOptionalAtRuntime }
 source: ./__fixtures__/collection-refusals/update-requires-optional/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection: requires in `schemas.update` a property `model` leaves optional, so a record read without it could not be sent back. Require it in `model` too, or make it optional in `schemas.update`." }]
   runFails: "[ERR_CRUD_COLLECTION_UPDATE_REQUIRES_OPTIONAL] RuntimeError: Crud.Collection 'collection': 'schemas.update' requires 'note', which 'model' leaves optional"
 ---
 kind: Assert.Manifest
@@ -149,7 +149,7 @@ kind: Assert.Manifest
 metadata: { name: propertyUnknownColumnAtRuntime }
 source: ./__fixtures__/collection-refusals/property-unknown-column/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection: declares a `model` property `table` has no column for. A property is stored in the snake_case column of its name: add the column to the table, or remove the property." }]
   runFails: "[ERR_CRUD_COLLECTION_PROPERTY_UNKNOWN_COLUMN] RuntimeError: Crud.Collection 'collection': 'model' declares 'dueOn', and table 'notes' has no column 'due_on'"
 ---
 kind: Assert.Manifest
@@ -164,7 +164,7 @@ kind: Assert.Manifest
 metadata: { name: tableKeyNotPrimaryAtRuntime }
 source: ./__fixtures__/collection-refusals/table-key-not-primary/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection: stores its records in a table whose primary key is not `id`. A record is addressed by `id`: declare the column `id` with `primaryKey: true`." }]
   runFails: "[ERR_CRUD_COLLECTION_TABLE_KEY_NOT_PRIMARY] RuntimeError: Crud.Collection 'collection': table 'notes' does not have 'id' as its primary key"
 ---
 kind: Assert.Manifest
@@ -179,7 +179,7 @@ kind: Assert.Manifest
 metadata: { name: relationForeignKeyMismatchAtRuntime }
 source: ./__fixtures__/collection-refusals/relation-foreign-key-mismatch/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection at 'relations.authorId': contradicts the foreign key on its column: the key references another table, or another column than the target's key. Make the foreign key reference the target's table and key column, or relate the property to the collection the foreign key names." }]
   runFails: "[ERR_CRUD_COLLECTION_RELATION_FOREIGN_KEY_MISMATCH] RuntimeError: Crud.Collection 'collection': 'relations.authorId' points at 'id' of table 'authors', and foreign key 'author' maps column 'author_id' to 'id' of table 'editors'"
 ---
 kind: Assert.Manifest
@@ -194,7 +194,7 @@ kind: Assert.Manifest
 metadata: { name: relationForeignKeyPositionAtRuntime }
 source: ./__fixtures__/collection-refusals/relation-foreign-key-position/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection at 'relations.authorId': contradicts the foreign key on its column: the key references another table, or another column than the target's key. Make the foreign key reference the target's table and key column, or relate the property to the collection the foreign key names." }]
   runFails: "[ERR_CRUD_COLLECTION_RELATION_FOREIGN_KEY_MISMATCH] RuntimeError: Crud.Collection 'collection': 'relations.authorId' points at 'id' of table 'authors', and foreign key 'author' maps column 'author_id' to 'tenant_id' of table 'authors'"
 ---
 kind: Assert.Manifest
@@ -209,7 +209,7 @@ kind: Assert.Manifest
 metadata: { name: relationForeignKeyOtherModuleAtRuntime }
 source: ./__fixtures__/collection-refusals/relation-foreign-key-other-module/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection at 'relations.authorId': contradicts the foreign key on its column: the key references another table, or another column than the target's key. Make the foreign key reference the target's table and key column, or relate the property to the collection the foreign key names." }]
   runFails: "[ERR_CRUD_COLLECTION_RELATION_FOREIGN_KEY_MISMATCH] RuntimeError: Crud.Collection 'collection': 'relations.authorId' points at 'id' of table 'authors', and foreign key 'author' maps column 'author_id' to 'id' of table 'other_authors'"
 ---
 kind: Assert.Manifest
@@ -234,7 +234,7 @@ kind: Assert.Manifest
 metadata: { name: inheritedRuleAtRuntime }
 source: ./__fixtures__/collection-refusals/inherited-rule/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Crud.Collection/collection at 'query.filters[0]': filters by a property `model` does not declare. Use a property of `model`, or add this one to it." }]
   runFails: "[ERR_DATA_MODEL_FILTER_UNKNOWN_PROPERTY] RuntimeError: Crud.Collection 'collection': 'query.filters[0]' filters by 'status', which 'model' does not declare"
 ---
 kind: Assert.Manifest

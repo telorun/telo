@@ -163,7 +163,7 @@ Main's ledger, changelogs and versions must hold what shipped, because the next 
 - **Land it with a squash.** Merge it after the line's last module tag so one record covers them; every later tag rebuilds the same PR. While it is open main is stale, and `Start release candidates` refuses, as does `Publish final release` at main.
 - A main edit that conflicts with an open record PR is fixed by dispatching Record release again, never by hand.
 
-Main records a tag when running the record's copy-and-delete half against main's tip finds nothing to change; no marker file is kept, and the same test makes a re-dispatch idempotent.
+Main records a tag when running the record's copy-and-delete half against main's tip finds nothing to change; no marker file is kept, and the same test makes a re-dispatch idempotent. The test leaves a module's `requires.telo` that main holds at `>=unreleased` as it is, because that is what the record's floor step writes back for a module using main-only grammar; every other difference, a `restrictions:` bound included, still counts.
 
 **Transition.** `release/0.133` keeps the pipeline it was cut with — separate module and import-sync PRs, tags on release commits — and the first line on this flow is the next cut. A record of a `0.133` tag repins nothing on main and reads the tag as its own release commit; where that branch's Publish dispatches no record, dispatch it by hand after each of its releases: `gh workflow run record-release.yml --ref main -f tag=<tag>`. `0.133` cannot be rehearsed: its ledger was written by an older CLI.
 

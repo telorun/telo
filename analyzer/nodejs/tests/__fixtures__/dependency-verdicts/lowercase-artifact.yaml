@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: LowercaseApp }
+imports: { Tidy: "oci://registry.test/tidy@1.0.0" }

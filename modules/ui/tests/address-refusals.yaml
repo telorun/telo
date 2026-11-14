@@ -28,7 +28,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: pathParamsAtRuntime }
 source: ./__fixtures__/invalid/address-path-params/telo.yaml
-expect: { errors: [], runFails: "ERR_PATH_PARAMETER_UNBOUND" }
+expect: { errors: [{ code: PATH_PARAMETER_UNBOUND, message: "Ui.View/misspelledVariable: 'content.children[0].children[0].href.path: /x/{id}' reads '{id}', which 'content.children[0].children[0].href.pathParams' does not bind. Add 'id' to 'content.children[0].children[0].href.pathParams'." }, { code: PATH_PARAMETER_UNUSED, message: "Ui.View/misspelledVariable: 'content.children[0].children[0].href.pathParams.idd' names no variable of 'content.children[0].children[0].href.path: /x/{id}' — it reads 'id'. Remove the entry, or name the variable it fills." }], runFails: "ERR_PATH_PARAMETER_UNBOUND" }
 ---
 kind: Assert.Manifest
 metadata: { name: rowField }
@@ -53,4 +53,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: wildcardAtRuntime }
 source: ./__fixtures__/invalid/address-wildcard/telo.yaml
-expect: { errors: [], runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.View/literalLink: /content/href must match a schema in anyOf" }, { code: SCHEMA_VIOLATION, message: "Ui.View/templateLink: /content/href/path matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Ui.Action/literalTarget: /request/target matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Ui.Action/templateTarget: /request/target/path matches a shape that is not allowed here" }, { code: PATH_PARAMETER_UNBOUND, message: "Ui.Action/unboundRefresh: 'onSuccess.refreshes[0].path: /api/{id}/**' reads '{id}', which 'onSuccess.refreshes[0].pathParams' does not bind. Add 'id' to 'onSuccess.refreshes[0].pathParams'." }, { code: PATH_PARAMETER_UNUSED, message: "Ui.Action/unboundRefresh: 'onSuccess.refreshes[0].pathParams.idd' names no variable of 'onSuccess.refreshes[0].path: /api/{id}/**' — it reads 'id'. Remove the entry, or name the variable it fills." }], runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED" }

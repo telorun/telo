@@ -13,9 +13,9 @@
 // job once every installer is attached and verified; `releases/latest`, which the
 // install scripts read, skips drafts. A `packages-*` release has no binaries and is
 // created published. A candidate's is a pre-release and never `latest`; a final's or
-// patch's is `latest` unless a higher release already is. A release found with a
-// body is left alone; one found empty (the standalone job got there first to hang
-// its assets) is filled.
+// patch's is `latest` unless a higher release already is. A release found — draft
+// or published — with a body is left alone, so a re-run makes no second draft; one
+// found empty (the standalone job got there first to hang its assets) is filled.
 //
 // Usage: MOVED_UNITS='[{"key":"cli","name":"@telorun/cli","version":"0.85.0","ecosystem":"npm"}]' \
 //        RELEASE_TAG=v0.85.0 RELEASE_CHANNEL=final GITHUB_TOKEN=… GITHUB_REPOSITORY=owner/repo \
@@ -150,9 +150,26 @@ async function main() {
     console.log(`\n${"=".repeat(72)}\n${name}\n${"=".repeat(72)}\n${body}`);
     return;
   }
-  const found = await github(`/releases/tags/${encodeURIComponent(tag)}`);
-  if (found.ok) {
-    const release = await found.json();
+  const version = units.find((unit) => unit.key === "cli")?.version ?? units[0].version;
+  const channel = process.env.RELEASE_CHANNEL || channelOf({ cliVersion: version });
+  await ensureRelease({ tag, name, body, line, commit, channel, version, github });
+}
+
+/**
+ * Create the release of `tag`, or fill the one found with an empty body. `github(path,
+ * init?)` answers like `fetch` over the repository's API (`/releases`). The release is
+ * looked up in the list, because `GET /releases/tags/{tag}` never returns a draft.
+ */
+export async function ensureRelease({ tag, name, body, line, commit, channel, version, github }) {
+  let release;
+  for (let page = 1; !release; page++) {
+    const listed = await github(`/releases?per_page=100&page=${page}`);
+    if (!listed.ok) throw new Error(`Listing releases failed: ${listed.status} ${await listed.text()}`);
+    const releases = await listed.json();
+    if (releases.length === 0) break;
+    release = releases.find((candidate) => candidate.tag_name === tag);
+  }
+  if (release) {
     if ((release.body ?? "").trim().length > 0) {
       console.log(`github-releases: ${tag} already exists and carries a body; nothing to do.`);
       return;
@@ -162,10 +179,7 @@ async function main() {
     console.log(`github-releases: ${tag} existed with an empty body — filled it.`);
     return;
   }
-  if (found.status !== 404) throw new Error(`Checking release ${tag} failed: ${found.status} ${await found.text()}`);
 
-  const version = units.find((unit) => unit.key === "cli")?.version ?? units[0].version;
-  const channel = process.env.RELEASE_CHANNEL || channelOf({ cliVersion: version });
   let flags = githubReleaseFlags({ channel: /-rc\./.test(tag) ? "candidate" : channel, version });
   if (!flags.prerelease && line) {
     const latest = await github("/releases/latest");
@@ -186,7 +200,7 @@ async function main() {
   });
   if (created.ok) return;
   const detail = await created.text();
-  // A release created between the probe and this call is the shape a concurrent re-run takes.
+  // A release created between the lookup and this call is the shape a concurrent re-run takes.
   if (created.status === 422 && detail.includes("already_exists")) {
     console.log(`github-releases: ${tag} (release already exists)`);
     return;

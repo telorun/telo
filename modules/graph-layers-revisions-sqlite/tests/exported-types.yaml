@@ -41,7 +41,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableNotInSchemaAtRuntime }
 source: ./__fixtures__/exported-types/table-not-in-schema-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: names a table its schema does not list in 'tables:' — a node or relationship type's, or its 'layers', 'changesets' or 'changesetBases' table. The schema is what creates and migrates the table; add it there." }], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: typeNotInStore }
@@ -54,7 +54,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: typeNotInStoreAtRuntime }
 source: ./__fixtures__/exported-types/type-not-in-store-app.yaml
-expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphLayers.RetractRelationship/retract: names a relationship type its store does not list in 'relationships:'." }], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatch }
@@ -67,7 +67,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatchAtRuntime }
 source: ./__fixtures__/exported-types/schema-connection-mismatch-app.yaml
-expect: { errors: [], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Store/bad: names a schema on a different connection. The schema must create its tables where the graph reads them." }], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeKeyUnknownColumn }
@@ -80,4 +80,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyUnknownColumnAtRuntime }
 source: ./__fixtures__/exported-types/node-key-unknown-column-app.yaml
-expect: { errors: [], runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Layers.Node/person: names a key column its table does not declare." }], runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN" }

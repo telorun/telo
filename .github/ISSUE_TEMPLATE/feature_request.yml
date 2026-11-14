@@ -1,0 +1,50 @@
+name: Feature request
+description: Something Telo, a module, the hub or the docs should let you do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Whoever implements this cannot ask you follow-up questions, so describe
+        the problem, not only the solution. Everything you post here is public:
+        remove secrets, tokens and private data first.
+  - type: textarea
+    id: affects
+    attributes:
+      label: Affects
+      description: >-
+        One per line: `kernel`, `analyzer`, `cli`, `editor`, `studio`, `hub`,
+        `docs`, or a module as `ref@version`
+        (`oci://ghcr.io/telorun/http-server@0.44.2`).
+    validations:
+      required: true
+  - type: input
+    id: teloVersion
+    attributes:
+      label: Telo version
+      description: The output of `telo --version`, verbatim (keep any `+unreleased`).
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to achieve, and why it cannot be done today.
+    validations:
+      required: true
+  - type: textarea
+    id: desiredManifest
+    attributes:
+      label: Desired manifest
+      description: >-
+        The manifest you wish you could write, each file as its path on one
+        line followed by its content in a fenced block.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: What you do instead today, or `none`.
+    validations:
+      required: true

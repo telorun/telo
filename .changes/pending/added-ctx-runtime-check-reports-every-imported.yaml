@@ -1,0 +1,4 @@
+units:
+  kernel: Added
+body: "`ctx.runtime.check` reports every imported library's own findings, as `telo
+  check` does. The kernel's load is unchanged and refuses what it always did."

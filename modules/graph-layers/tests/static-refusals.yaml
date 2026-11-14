@@ -25,7 +25,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: retractNodeTypeNotInStoreAtRuntime }
 source: ./__fixtures__/rules/retract-node-type-not-in-store-app.yaml
-expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphLayers.RetractNode/retract: names a node type its store does not list in 'nodes:'." }], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: retractRelationshipTypeNotInStore }
@@ -38,4 +38,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: retractRelationshipTypeNotInStoreAtRuntime }
 source: ./__fixtures__/rules/retract-relationship-type-not-in-store-app.yaml
-expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphLayers.RetractRelationship/retract: names a relationship type its store does not list in 'relationships:'." }], runFails: "GRAPH_TYPE_NOT_IN_STORE" }

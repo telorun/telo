@@ -31,3 +31,5 @@ Every runtime dependency is a `devDependency`, because everything is inlined.
 ## Tests
 
 `tests/` drives the BUILT bundle (built fresh by `tests/global-setup.ts`) through an in-memory host (`tests/harness.ts`) that serves `telo/*` from the fixture directories, checks every protocol message — the engine's requests and notifications and its answers to the host's requests — against a CLOSED projection of `editor-protocol-schema.json` (`tests/closed-schema.ts` — the published schema is open, so a later addition validates for hosts, but this engine may send nothing beyond its generation), and refuses any non-canonical `file:` URI the engine sends. Published diagnostics are compared with `telo check -o json` over repo fixtures, and each feature with ide-support's in-process answer (`tests/in-process.ts`).
+
+**One diagnostic, one publication.** The session analyzes each graph with `analyzeLoadedGraph`, so a library's own findings come with its consumer's; `publish()` unions by `diagnosticIdentity` per file, so a library finding is shown once whether the library, its consumer or both are open.

@@ -365,6 +365,27 @@ describe("release channel", () => {
     assert.equal(classify(root, line("0.85.1")).tag, "v0.85.1");
   });
 
+  it("releases a packages-only version commit once, when a fix's run tagged it, and finds that tag again at the fix", () => {
+    const root = workspace("0.85.0");
+    git(root, "switch", "-q", "-c", "release/0.85");
+    versioned(root, { "packages/glob": "0.3.3" });
+    const glob = [{ key: "packages/glob", name: "@telorun/glob", version: "0.3.3", ecosystem: "npm" }];
+    const version = git(root, "rev-parse", "HEAD");
+    put(root, "x.txt", "fix");
+    commit(root, "fix: repair the pipeline");
+    const first = classify(root, glob);
+    assert.deepEqual([first["release-tag"], first.released], ["packages-0.85-1", "true"]);
+    git(root, "tag", "packages-0.85-1");
+    assert.deepEqual(classify(root, glob), first);
+
+    put(root, "y.txt", "next fix");
+    commit(root, "fix: later");
+    const later = classify(root, glob);
+    assert.deepEqual([later.channel, later["release-tag"], later.released], ["none", "", "false"]);
+    git(root, "switch", "-q", "--detach", version);
+    assert.equal(classify(root, glob).released, "false");
+  });
+
   it("numbers a branch's module releases from the tags it already has, a candidate's apart, and reuses the one on HEAD", () => {
     const root = workspace("0.85.0");
     put(root, "m.txt", "1");
@@ -787,6 +808,20 @@ describe("publication commits", () => {
     assert.equal(releaseCommit({ cwd: root }), undefined);
   });
 
+  it("does not read a record at HEAD as a release commit, so a branch cut at main's record squash releases nothing", async () => {
+    const { releaseCommit } = await import(pathToFileURL(join(REPO, "scripts/release-units.mjs")).href);
+    const { versionsMovedInRelease } = await import(pathToFileURL(join(REPO, "scripts/module-versions-moved.mjs")).href);
+    const root = workspace("0.85.0");
+    put(root, "modules/a/telo.yaml", "kind: Telo.Library\nmetadata:\n  name: A\n  version: 1.0.0\n");
+    commit(root, "module on main");
+    put(root, "modules/a/telo.yaml", "kind: Telo.Library\nmetadata:\n  name: A\n  version: 1.1.0\n");
+    ledger(root, { analyzer: "0.85.0", "modules/a": "1.1.0" });
+    commit(root, "chore(release): record modules-0.85-1 on main (#12)");
+    git(root, "switch", "-q", "-c", "release/0.86");
+    assert.equal(releaseCommit({ cwd: root }), undefined);
+    assert.deepEqual([...versionsMovedInRelease(root, ["modules/a/telo.yaml"])], []);
+  });
+
   it("gates the release PR on imports awaiting this release's publish only", async () => {
     const { releaseImportsVerdict } = await import(pathToFileURL(join(REPO, "scripts/check-release-imports.mjs")).href);
     const kept = (alias, cause) => ({ manifest: "starters/s/telo.yaml", alias, source: `../../modules/${alias}`, cause, reason: cause });
@@ -915,6 +950,26 @@ describe("the record of a release on main", () => {
       const root = recorded();
       applyRecord(root, "modules-0.85-1");
       assert.equal(recordPlanOf(root, "modules-0.85-1").writes["modules/a/telo.yaml"], undefined);
+    });
+
+    it("are judged by the cut's check as the floor step leaves them: a re-measured `>=unreleased` in requires counts as recorded", () => {
+      const root = recorded();
+      const difference = () =>
+        underRecord(
+          root,
+          'const { recordDifference } = await import("./scripts/release-record.mjs");\n' +
+            'console.log(JSON.stringify(recordDifference({ tag: "modules-0.85-1" }) ?? null));',
+        );
+      applyRecord(root, "modules-0.85-1");
+      // `telo release floor` after the copy, for a module using main-only grammar.
+      put(root, "modules/a/telo.yaml", manifest("1.1.0", ">=unreleased", ">=0.85.0"));
+      commit(root, "chore(release): record modules-0.85-1 on main");
+      assert.equal(recordPlanOf(root, "modules-0.85-1").writes["modules/a/telo.yaml"], manifest("1.1.0", ">=0.85.0", ">=0.85.0"));
+      assert.equal(difference(), null);
+
+      put(root, "modules/a/telo.yaml", manifest("1.1.0", ">=unreleased", ">=unreleased"));
+      commit(root, "a restriction left unresolved");
+      assert.equal(difference(), "modules/a/telo.yaml");
     });
   });
 });

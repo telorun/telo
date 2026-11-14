@@ -29,12 +29,12 @@ expect:
 kind: Assert.Manifest
 metadata: { name: missingAtRuntime }
 source: ./__fixtures__/protected-resource/missing/telo.yaml
-expect: { errors: [], runFails: "[ERR_MCP_PROTECTED_RESOURCE_MISSING]" }
+expect: { errors: [{ code: REFERRER_RULE_VIOLATED, message: "Http.Server/server at 'mounts[0].mount': required by Mcp.HttpEndpoint — serves an MCP endpoint behind authentication that denies anonymous callers, without protected-resource metadata an MCP client can use to find the authorization server. Declare `protectedResource:` on the mount, and use a verifier that declares an `issuer`." }], runFails: "[ERR_MCP_PROTECTED_RESOURCE_MISSING]" }
 ---
 kind: Assert.Manifest
 metadata: { name: noIssuerAtRuntime }
 source: ./__fixtures__/protected-resource/no-issuer/telo.yaml
-expect: { errors: [], runFails: "[ERR_MCP_PROTECTED_RESOURCE_MISSING]" }
+expect: { errors: [{ code: REFERRER_RULE_VIOLATED, message: "Http.Server/server at 'mounts[0].mount': required by Mcp.HttpEndpoint — serves an MCP endpoint behind authentication that denies anonymous callers, without protected-resource metadata an MCP client can use to find the authorization server. Declare `protectedResource:` on the mount, and use a verifier that declares an `issuer`." }], runFails: "[ERR_MCP_PROTECTED_RESOURCE_MISSING]" }
 ---
 kind: Assert.Manifest
 metadata: { name: noIssuer }
@@ -54,7 +54,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: otherAliasAtRuntime }
 source: ./__fixtures__/protected-resource/other-alias/telo.yaml
-expect: { errors: [], runFails: "[ERR_MCP_PROTECTED_RESOURCE_MISSING]" }
+expect: { errors: [{ code: REFERRER_RULE_VIOLATED, message: "Web.Server/server at 'mounts[0].mount': required by Mcp.HttpEndpoint — serves an MCP endpoint behind authentication that denies anonymous callers, without protected-resource metadata an MCP client can use to find the authorization server. Declare `protectedResource:` on the mount, and use a verifier that declares an `issuer`." }], runFails: "[ERR_MCP_PROTECTED_RESOURCE_MISSING]" }
 ---
 kind: Assert.Manifest
 metadata: { name: thirdPartyVerifier }

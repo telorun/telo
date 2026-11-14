@@ -20,7 +20,9 @@
 //
 // Two modes over one computation: `write` (Record release) writes the files; `check`
 // (Start release candidates) writes nothing and refuses when any file would change,
-// naming the first. Main records a tag exactly when `check` finds nothing.
+// naming the first. Main records a tag exactly when `check` finds nothing. `check` leaves
+// a `requires.telo` main holds at `>=unreleased` as it is: that is what the workflow's
+// floor step re-derives after `write` for a module using main-only grammar.
 //
 // Runs under bun, which reads the analyzer and the CLI's release modules from source.
 //
@@ -56,9 +58,10 @@ import { ROOT } from "./version-line.mjs";
  * `text` with each `>=unreleased` in `requires.telo` and in a `restrictions:` entry's
  * `requires.telo` replaced by the bound `taggedText` — the same module as a release
  * resolved it — holds at the same place: `requires.telo`, or the entry of the same index
- * and `reason`. A place the release left `>=unreleased`, or that has no counterpart, stays.
+ * and `reason`. A place the release left `>=unreleased`, or that has no counterpart, stays,
+ * as does `requires.telo` when `measured` (floors are measured after the copy).
  */
-function carryResolvedFloors(text, taggedText) {
+function carryResolvedFloors(text, taggedText, { measured = false } = {}) {
   const ownerOf = (source) =>
     parseAllDocuments(source).find((doc) => {
       const kind = doc.get("kind");
@@ -78,7 +81,7 @@ function carryResolvedFloors(text, taggedText) {
     const quote = /^['"]/.exec(text.slice(start, end))?.[0] ?? "";
     edits.push({ start, end, text: `${quote}${resolved}${quote}`, where });
   };
-  consider(own.contents.get("requires", true), tagged.contents.get("requires", true), "requires.telo");
+  if (!measured) consider(own.contents.get("requires", true), tagged.contents.get("requires", true), "requires.telo");
   const restrictions = own.contents.get("restrictions", true);
   const taggedRestrictions = tagged.contents.get("restrictions", true);
   if (isSeq(restrictions) && isSeq(taggedRestrictions)) {
@@ -142,9 +145,9 @@ function sameEntry(a, b) {
 /**
  * What recording `tag` changes in main's tree (the checkout): `writes` (each file's
  * new text, only where it differs) and `deletions`. Everything is read at the tag's
- * release commit.
+ * release commit. `measured` leaves `requires.telo` floors to `telo release floor`.
  */
-export function recordPlan({ tag }) {
+export function recordPlan({ tag, measured = false }) {
   const root = ROOT;
   const release = releaseCommitOf({ cwd: root, tag });
   const tagged = new Set(treeFiles(root, release));
@@ -176,7 +179,7 @@ export function recordPlan({ tag }) {
       if (!pkg.private && pkg.name) put(manifest, stampSelfNpmPins(current(manifest), pkg.name, version, manifest));
     }
     const taggedManifest = textAt(manifest);
-    if (taggedManifest !== undefined) put(manifest, carryResolvedFloors(current(manifest), taggedManifest).text);
+    if (taggedManifest !== undefined) put(manifest, carryResolvedFloors(current(manifest), taggedManifest, { measured }).text);
   }
   const unitDirs = new Set(units.map((unit) => unit.dir));
   for (const file of tagged) {
@@ -206,10 +209,10 @@ export function recordPlan({ tag }) {
   return { writes, deletions };
 }
 
-/** The first thing recording `tag` would change in main's tree, or undefined when
- *  main records it. Writes nothing. */
+/** The first thing recording `tag` and measuring floors would change in main's tree, or
+ *  undefined when main records it. Writes nothing. */
 export function recordDifference({ tag }) {
-  const { writes, deletions } = recordPlan({ tag });
+  const { writes, deletions } = recordPlan({ tag, measured: true });
   if (writes.length > 0) return writes[0].path;
   return deletions[0];
 }

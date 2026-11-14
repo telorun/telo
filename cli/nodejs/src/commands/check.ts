@@ -1,10 +1,4 @@
-import {
-  StaticAnalyzer,
-  assembleGraphDiagnostics,
-  collectApplicationSources,
-  collectModuleDocuments,
-  flattenForAnalyzer,
-} from "@telorun/analyzer";
+import { analyzeLoadedGraph, diagnosticIdentity } from "@telorun/analyzer";
 import { nodeHostVersions, writeManifestCache } from "@telorun/kernel";
 import * as path from "path";
 import type { Argv } from "yargs";
@@ -26,6 +20,7 @@ import { writeNestedOriginDigests } from "../bundle/nested-origin-digests.js";
 import { probeControllerTools } from "../controller-tool-probe.js";
 import { resolveManifestInput, type ManifestInput } from "../manifest-input.js";
 import { writeOriginDigests } from "../manifest-freshness.js";
+import { verdictStoreFor } from "../dependency-verdict-store.js";
 import { outErrLine, output } from "../output.js";
 
 interface CheckOutcome {
@@ -40,6 +35,8 @@ export async function checkOne(
   session: CheckSession,
   cacheWrite: boolean,
   log: Logger,
+  /** Identities already reported by an earlier path of this invocation. */
+  reported: Set<string> = new Set(),
 ): Promise<CheckOutcome> {
   const entryPath = input.entryPath;
   const isUrl = entryPath.startsWith("http://") || entryPath.startsWith("https://");
@@ -50,26 +47,25 @@ export async function checkOne(
     // reported as authoritative.
     const { graph, digests } = await loadFreshGraph(entryPath, session, log);
 
-    // `assembleGraphDiagnostics` is the shared assembler every host uses: it
-    // folds parse, version-reconciliation, import-resolution, and static
-    // analysis diagnostics into one list, holding back the cascade for files
-    // that failed to parse or whose imports failed to resolve. A broken
-    // `imports:` source thus surfaces here as a coded diagnostic — identical to
-    // the editor — instead of a bare re-thrown load error. The CLI drops the
-    // suppressed cascade; the editor / VS Code keep it available to render.
-    // `moduleDocuments` carries each imported library's FULL documents, which
-    // the flattened list drops — the zone stage derives an export's open
-    // requirements from the library's own internal dispatch chain. No cache:
-    // the CLI analyzes once per process.
-    const analysis = new StaticAnalyzer().analyze(flattenForAnalyzer(graph), {
-      moduleDocuments: collectModuleDocuments(graph),
-      applicationSources: collectApplicationSources(graph),
+    // `analyzeLoadedGraph` is the shared assembly every host uses: the entry's
+    // own analysis plus each loaded library judged by its own verdict, held back
+    // on files that failed to parse or whose imports failed to resolve. A library
+    // the app loads is reported as `telo check <library>` reports it. No cache:
+    // the CLI analyzes once per process; library verdicts persist beside the
+    // manifest cache.
+    const store = verdictStoreFor(input, cacheWrite, log);
+    const analyzed = await analyzeLoadedGraph(graph, {
       hostVersions: nodeHostVersions(),
+      ...(store ? { store } : {}),
     });
-    const { diagnostics } = assembleGraphDiagnostics(graph, analysis);
-    // Probing costs a process launch per tool the manifest actually calls for,
-    // and nothing at all for a manifest of bundled controllers. A running app
-    // never asks this question ahead of time; check is where it is affordable.
+    // One finding reached through several paths (`check app app/lib`) is
+    // reported once.
+    const diagnostics = analyzed.diagnostics.filter((d) => {
+      const identity = diagnosticIdentity(d);
+      if (reported.has(identity)) return false;
+      reported.add(identity);
+      return true;
+    });
     diagnostics.push(...(await probeControllerTools(graph)));
     const counts = formatAnalysisDiagnostics(diagnostics, graph, log, entryPath);
 
@@ -160,10 +156,11 @@ export async function check(argv: {
   let totalErrors = 0;
   let totalWarns = 0;
   const allDiagnostics: JsonDiagnostic[] = [];
+  const reported = new Set<string>();
 
   for (const { path: p, input, failure } of inputs) {
     const outcome = input
-      ? await checkOne(input, sessionFor(input), cacheWrite, log)
+      ? await checkOne(input, sessionFor(input), cacheWrite, log, reported)
       : loadFailure(p, failure, log);
     totalErrors += outcome.errorCount;
     totalWarns += outcome.warnCount;
