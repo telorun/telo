@@ -10,7 +10,7 @@ metadata:
     concurrency; loops that repeat a step body while a condition holds;
     first-match decision tables; and background dispatch that returns without
     waiting.
-requires: { telo: ">=0.133.0" }
+requires: { telo: ">=0.128.0" }
 exports: { kinds: [Sequence, Value, Choice, Loop, Iteration, Projection, Detach] }
 ---
 kind: Telo.Definition

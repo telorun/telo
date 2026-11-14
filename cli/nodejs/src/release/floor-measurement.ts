@@ -198,6 +198,14 @@ export function mentions(output: string, filePath: string): boolean {
   return false;
 }
 
+const NON_ERROR_DIAGNOSTIC = /:\d+(?::\d+)?\s+(?:warning|info)\s/;
+
+/** Whether a failed run's output rejects the file: some line naming it is not a
+ *  warning or info diagnostic, which a run fails on no more than it passes on. */
+export function rejects(output: string, filePath: string): boolean {
+  return output.split("\n").some((line) => mentions(line, filePath) && !NON_ERROR_DIAGNOSTIC.test(line));
+}
+
 const DIAGNOSTIC_AT = /^\s*(.+?):(\d+)(?::\d+)?\s+error\s+.*?([A-Z][A-Z0-9_]{2,})\s*$/;
 
 /** The manifests a module reaches by relative imports, transitively, itself included. */
@@ -321,7 +329,7 @@ export class FloorProbe {
       return;
     }
     const named =
-      result.status === "failed" ? copies.filter((c) => mentions(result.output, c.path)) : [];
+      result.status === "failed" ? copies.filter((c) => rejects(result.output, c.path)) : [];
     if (named.length === 0) {
       if (copies.length === 1 && result.status === "failed") {
         const reading = readDependencyRejection(

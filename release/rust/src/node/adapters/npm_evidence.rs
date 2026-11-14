@@ -15,7 +15,6 @@ use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -34,7 +33,7 @@ use super::super::files_digest::{digest_file_set, without_bookkeeping, FileSetEn
 use super::super::registry_fetch::{fetch_bytes, fetch_json};
 use super::super::tar::{read_tar_gz, scratch_dir};
 use super::super::workspace::ReleaseWorkspace;
-use super::package_manager::{detect_package_manager, pack_command, uses_plain_ranges, PackageManager};
+use super::package_manager::{detect_package_manager, pack_command, run_package_manager, uses_plain_ranges, PackageManager};
 
 const EDGE_SECTIONS: [&str; 3] = ["dependencies", "peerDependencies", "optionalDependencies"];
 const DEFAULT_REGISTRY: &str = "https://registry.npmjs.org";
@@ -319,13 +318,8 @@ fn pack(root: &Path, reference: AnchorRef<'_>, manager: PackageManager) -> Resul
     let destination = scratch_dir("telorun-release-pack-")?;
     let result = (|| {
         let (command, args) = pack_command(manager, &destination);
-        let run = Command::new(command).args(&args).current_dir(&dir).stdin(Stdio::null()).output().map_err(|err| {
-            ReleaseError::new(format!(
-                "{}: `{command} {}` could not start ({err}). {command} packs this package; install it, or name another manager in 'packageManager'.",
-                reference.unit.key,
-                args.join(" ")
-            ))
-        })?;
+        let run = run_package_manager(command, &args, &dir)
+            .map_err(|err| ReleaseError::new(format!("{}: {}", reference.unit.key, err.message)))?;
         if !run.status.success() {
             let stderr = String::from_utf8_lossy(&run.stderr).into_owned();
             let stdout = String::from_utf8_lossy(&run.stdout).into_owned();

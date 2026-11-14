@@ -144,7 +144,7 @@ fn a_declared_command_payload_is_read_exactly() {
     for (command, refusal) in [
         ("exit 3", "exited 3"),
         ("echo b.txt", "names no file"),
-        ("echo a.txt; echo a.txt", "twice"),
+        ("echo a.txt && echo a.txt", "twice"),
         ("echo ../../etc/passwd", "outside the workspace"),
     ] {
         let marker = format!("release:\n  units:\n    - path: ext\n      version: VERSION\n      payload: {{ command: \"{command}\" }}\n");

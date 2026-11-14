@@ -44,6 +44,8 @@ import {
 } from "./floor-measurement.js";
 import {
   compareFloors,
+  decidingSibling,
+  importedFloor,
   propagate,
   siblingClause,
   siblingFloor,
@@ -117,8 +119,8 @@ export async function checkWorkspaceRequires(
     return unavailable(modules, err.message);
   }
   const imports = workspaceImports(workspace);
-  const declared = new Map(modules.map((m) => [m.key, m.floor]));
-  const siblings = new Map(modules.map((m) => [m.key, siblingFloor(m.key, imports, declared)]));
+  const imposed = new Map(modules.map((m) => [m.key, importedFloor(m.text)]));
+  const siblings = new Map(modules.map((m) => [m.key, siblingFloor(m.key, imports, imposed)]));
   const probe = new FloorProbe(options.runner ?? npxRunner);
 
   const groups = new Map<string, Declared[]>();
@@ -204,7 +206,7 @@ async function verifyGroup(
       verdicts.set(module.key, {
         pass: false,
         code: "REQUIRES_FLOOR_TOO_LOW",
-        sibling: { key: sibling.key!, floor: sibling.floor },
+        sibling: decidingSibling({ ...sibling, key: sibling.key! }),
       });
       continue;
     }

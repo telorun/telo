@@ -96,7 +96,13 @@ export async function run(
 
 export function has(command: string, args: string[] = ["--version"], cwd?: string): string | undefined {
   try {
-    return execFileSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    // A package manager is a `.cmd` shim on Windows, found only through the shell.
+    return execFileSync(command, args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      shell: process.platform === "win32",
+    }).trim();
   } catch {
     return undefined;
   }

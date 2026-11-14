@@ -68,10 +68,13 @@ published telo release that accepts it. It is one of three values:
 - **absent** — every telo that reads `requires:` accepts the module, so a floor would protect
   nobody. A floor-less module is correct, not incomplete.
 
-No published telo checks a sibling's `requires:`, so a module's floor is the highest of its
-measured one and the floors of every workspace sibling it imports by relative path, transitively
-(`>=unreleased` is the highest, no floor the lowest); modules are measured siblings first so the
-sibling's new floor is known. If the registry cannot be reached, or a run cannot be attributed to
+No published telo checks a sibling's `requires:`, and a sibling's `restrictions:` entry is
+checked by the telos that read the key and ignored by the older ones, so measurement cannot be
+trusted about either: a module's floor is the highest of its measured one and what every workspace
+sibling it imports by relative path imposes, transitively — the sibling's `requires.telo`, raised
+to the highest `telo` bound of a `restrictions:` entry covering the sibling's own version
+(`>=unreleased` is the highest, no floor the lowest). A module's own `restrictions:` never raise
+its own floor. Modules are measured siblings first so the sibling's new floor is known. If the registry cannot be reached, or a run cannot be attributed to
 the manifest (a fetch of an import that failed says nothing about it), the command fails and
 writes nothing.
 

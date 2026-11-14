@@ -26,7 +26,16 @@ import {
   type CliRunner,
   type Floor,
 } from "./floor-measurement.js";
-import { propagate, siblingClause, siblingFloor, workspaceImports, type PropagatedMeasurement } from "./floor-propagation.js";
+import {
+  imposedFloor,
+  propagate,
+  restrictionFloor,
+  siblingClause,
+  siblingFloor,
+  workspaceImports,
+  type ImportedFloor,
+  type PropagatedMeasurement,
+} from "./floor-propagation.js";
 import { writeFloor } from "./requires-text.js";
 import type { DiscoveredModule, Workspace } from "./workspace.js";
 
@@ -66,9 +75,12 @@ export async function measureAndWriteFloors(
 
   const originals = new Map<string, string>();
   const results = new Map<string, FloorResult>();
-  const floors = new Map<string, Floor>(
-    workspace.modules.map((m) => [m.key, declaredFloor(fs.readFileSync(m.manifestPath, "utf8")).floor]),
-  );
+  const texts = new Map(workspace.modules.map((m) => [m.key, fs.readFileSync(m.manifestPath, "utf8")]));
+  const floors = new Map<string, Floor>([...texts].map(([key, text]) => [key, declaredFloor(text).floor]));
+  const restrictions = new Map([...texts].map(([key, text]) => [key, restrictionFloor(text)]));
+  // What each sibling imposes, read off the floors as written so far.
+  const imposed = (): Map<string, ImportedFloor> =>
+    new Map([...floors].map(([key, floor]) => [key, imposedFloor(floor, restrictions.get(key))]));
 
   try {
     let remaining = [...selected];
@@ -96,7 +108,7 @@ export async function measureAndWriteFloors(
         const from = floors.get(module.key)!;
         const measurement = propagate(
           measurements.get(module.key)!,
-          siblingFloor(module.key, imports, floors),
+          siblingFloor(module.key, imports, imposed()),
         );
         const to = measurement.floor;
         if (!sameFloor(from, to)) {
